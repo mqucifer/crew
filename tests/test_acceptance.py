@@ -275,3 +275,65 @@ def test_a_real_design_change_is_accepted():
         change="require a worked example with concrete numbers in every criterion",
     )
     assert "worked example" in defect.change
+
+
+# --- a card is verified where it lives -----------------------------------
+
+
+class RepoSpy:
+    """Records which repository each call was made against."""
+
+    def __init__(self):
+        self.asked: list[tuple[str, str, int]] = []
+
+    def has_comment_marked(self, repo, number, marker):
+        self.asked.append(("marker", repo, number))
+        return True  # skip, so the test needs no model or sandbox
+
+    def get(self, repo, number):
+        self.asked.append(("get", repo, number))
+        return {"body": "As a Sponsor…"}
+
+
+class WorkspaceSpy:
+    def __init__(self):
+        self.repos: list[str] = []
+        self.repo = "sprint-metrics"
+
+    def for_repo(self, repo):
+        self.repos.append(repo)
+        return self
+
+    def open_existing(self, branch):
+        return None
+
+    def head(self):
+        return "a" * 40
+
+    def close(self):
+        pass
+
+
+def test_a_card_is_verified_in_its_own_repository():
+    """QA read the story, checked its marker and posted its verdict against the
+    default repo whatever card it was judging. Delivery has always used
+    `card.repo or repo`; QA was the one flow that did not."""
+    from crew_org.flows.acceptance import run_qa
+
+    issues, ws = RepoSpy(), WorkspaceSpy()
+    cards = [story(6, "QAing").model_copy(update={"repo": "crew"})]
+    run_qa(FakeBoard(), issues, EventSink(None), ws, None, cards=cards, repo="sprint-metrics")
+
+    assert ws.repos == ["crew"], "the worktree comes from the card's repository"
+    assert all(r == "crew" for _, r, _ in issues.asked), issues.asked
+
+
+def test_a_card_naming_no_repository_falls_back():
+    """`repo` is a fallback for a card that names none, never the answer."""
+    from crew_org.flows.acceptance import run_qa
+
+    issues, ws = RepoSpy(), WorkspaceSpy()
+    cards = [story(6, "QAing").model_copy(update={"repo": None})]
+    run_qa(FakeBoard(), issues, EventSink(None), ws, None, cards=cards, repo="sprint-metrics")
+
+    assert ws.repos == ["sprint-metrics"]
