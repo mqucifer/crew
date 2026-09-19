@@ -316,11 +316,30 @@ class Workspace:
         except GitError:
             return None
 
-    def push(self) -> None:
+    def push(self, *, force: bool = False) -> None:
+        """Publish the branch.
+
+        `force` uses `--force-with-lease`, which is what a re-delivery needs and
+        nothing else does. `open()` resets the branch to `origin/HEAD`, so when
+        a story is delivered a second time its local history no longer descends
+        from whatever is on the remote from the first attempt — and the push is
+        rejected as a non-fast-forward. Story #31 burned two repair attempts and
+        twelve minutes before hitting exactly that.
+
+        The lease is the safety: the push fails if the remote moved since the
+        last fetch, so this overwrites the crew's own stale attempt and never
+        someone else's work. The caller decides — it is the one that knows
+        whether a pull request is open on the branch.
+        """
         if self.path is None or self.branch is None:
             raise GitError("no worktree open")
         assert_writable(self.branch)
-        _run(["push", "-u", "origin", self.branch], cwd=self.path, token=self.token)
+        args = (
+            ["push", "--force-with-lease", "-u", "origin", self.branch]
+            if force
+            else ["push", "-u", "origin", self.branch]
+        )
+        _run(args, cwd=self.path, token=self.token)
 
     def close(self, path: Path | None = None) -> None:
         """Remove the worktree. The branch and its commits survive on the remote."""

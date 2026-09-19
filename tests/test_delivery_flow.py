@@ -112,6 +112,7 @@ class FakeWorkspace:
 
     def __init__(self, tmp):
         self.tmp, self.committed, self.pushed, self.closed = tmp, [], 0, 0
+        self.forced = None
         self.repos_asked: list[str] = []
         # Recorded in order so a test can prove the evidence was read BEFORE
         # the worktree was removed, which is the whole point of keeping it.
@@ -127,7 +128,8 @@ class FakeWorkspace:
         self.committed.append(message)
         return True
 
-    def push(self):
+    def push(self, *, force=False):
+        self.forced = force
         self.pushed += 1
 
     def diff(self):
@@ -674,6 +676,32 @@ def test_a_verdict_that_cannot_be_read_does_not_lose_the_delivery(harness, monke
 
     assert len(result.delivered) == 1
     assert calls["prior"] == [""]
+
+
+# --- a second attempt can land ------------------------------------------
+
+
+def test_a_delivery_overwrites_its_own_dead_branch(harness):
+    """`open()` resets the branch to origin/HEAD, so a second attempt's history
+    no longer descends from the first attempt's remote branch and the push is
+    rejected as a non-fast-forward. Story #31 burned two repair attempts and
+    twelve minutes before hitting exactly that."""
+    _, _, _, ws, _, _ = harness(checks=[green()], cards=[story(6)])
+
+    assert ws.forced is True, "the lease is the safety, not the absence of force"
+
+
+def test_an_open_pull_request_stops_the_overwrite(harness, monkeypatch):
+    """Force-pushing under a review in progress would destroy the diff the
+    Reviewer is judging."""
+    monkeypatch.setattr(
+        FakeIssues, "landable", {"feat/6-show-metric-6": {"number": 101}}, raising=False
+    )
+    result, _, _, ws, _, _ = harness(checks=[green()], cards=[story(6)])
+
+    assert ws.pushed == 0, "nothing pushed"
+    assert result.blocked, "the card blocked"
+    assert "still open" in (result.blocked[0].blocked_reason or "")
 
 
 # --- one story at a time within an epic ----------------------------------

@@ -550,7 +550,21 @@ def deliver_story(
     ):
         outcome.blocked_reason = "the implementation produced no change"
         return outcome
-    ws.push()
+    # A branch left behind by an earlier attempt is the crew's own dead history:
+    # the pull request is closed, and `open()` already declared this worktree
+    # authoritative by resetting to origin/HEAD. Overwrite it. An *open* pull
+    # request is a different thing — force-pushing under a review in progress
+    # would destroy the context the Reviewer is judging — so that blocks
+    # instead, with the reason named.
+    open_pull = issues.pull_for_branch(repo, branch)
+    if open_pull is not None:
+        outcome.blocked_reason = (
+            f"PR #{open_pull['number']} is still open on `{branch}`. "
+            "Close it, or let that pull request finish; re-delivering would "
+            "overwrite the diff it is reviewing."
+        )
+        return outcome
+    ws.push(force=True)
 
     pr = issues.create_pull(
         repo,
