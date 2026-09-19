@@ -92,8 +92,17 @@ class FakeIssues:
         self.prs.append(head)
         return {"number": 100 + len(self.prs)}
 
+    # Set by a test that wants a card to have a pull request worth landing.
+    landable: dict[str, dict] = {}
+
     def pull_for_branch(self, repo, branch):
-        return None
+        return self.landable.get(branch)
+
+    def pull(self, repo, number):
+        return {"mergeable_state": "clean", "mergeable": True}
+
+    def pull_reviews(self, repo, number):
+        return [{"state": "APPROVED"}]
 
 
 class FakeWorkspace:
@@ -604,7 +613,22 @@ def test_a_dry_run_does_not_merge(harness):
     )
 
     assert result.landed == [], "nothing merged"
-    assert result.would_land == [6], "and it said what it declined to merge"
+    assert ("S6", "Done") not in board.moves
+    assert result.unmergeable == [(6, "no open pull request")], "and it says why, honestly"
+
+
+def test_a_dry_run_says_what_would_actually_land(harness, monkeypatch):
+    """Listing whatever sits in Merging as "would merge" was a guess that read
+    as a promise: two cards were reported as landing when their reviews had
+    requested changes."""
+    monkeypatch.setattr(
+        FakeIssues, "landable", {"feat/6-show-metric-6": {"number": 101}}, raising=False
+    )
+    approved = story(6).model_copy(update={"status": "Merging"})
+    result, board, _, _, _, _ = harness(checks=[green()], cards=[approved], dry_run=True)
+
+    assert result.would_land == [6], "classified exactly as a real run would"
+    assert result.landed == [], "and written nowhere"
     assert ("S6", "Done") not in board.moves
 
 

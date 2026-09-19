@@ -27,7 +27,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
-from crew_org.flows.merge import merge_approved, ready_to_land
+from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.process import ProcessRules
@@ -625,14 +625,17 @@ def deliver(
     # default: the diff is shown rather than landed" — true of the new work and
     # never true of the merge. A flag that means "change nothing" has to mean it
     # everywhere, most of all where the change is a merge to main.
+    landed = merge_approved(
+        board, issues, sink, cards=cards, default_repo=repo, repos=repos, dry_run=dry_run
+    )
+    result.conflicted = [card for card, _pr in landed.conflicted]
+    result.awaiting_approval = list(landed.awaiting_approval)
+    result.unmergeable = list(landed.failed)
     if dry_run:
-        result.would_land = [c.number or 0 for c in ready_to_land(cards, repos)]
+        # Classified exactly as a real run would, and written nowhere.
+        result.would_land = [card for card, _pr in landed.merged]
     else:
-        landed = merge_approved(board, issues, sink, cards=cards, default_repo=repo, repos=repos)
         result.landed = [card for card, _pr in landed.merged]
-        result.conflicted = [card for card, _pr in landed.conflicted]
-        result.awaiting_approval = list(landed.awaiting_approval)
-        result.unmergeable = list(landed.failed)
         if landed.merged or landed.conflicted:
             cards = board.cards()
 

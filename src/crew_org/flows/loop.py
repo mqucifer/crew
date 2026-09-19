@@ -113,6 +113,15 @@ class LoopResult:
                 return outcome
         return None
 
+    def moved_in(self, name: str) -> bool:
+        """Did this phase move anything, in any pass?
+
+        Not "is any count non-zero": `2 already judged` is a phase declining to
+        act, and reporting that as movement is the same class of lie this card
+        was about.
+        """
+        return any(o.moved for o in self.outcomes if o.name == name)
+
     def totals(self, name: str) -> dict[str, int]:
         """What a phase did across the whole run.
 
@@ -281,7 +290,7 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
         + [f"#{o.card} — blocked: {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
-        + [f"#{n} — would merge, but this is a dry run" for n in result.would_land]
+        + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
     return PhaseOutcome(
         "deliver",

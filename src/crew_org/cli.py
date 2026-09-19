@@ -152,7 +152,7 @@ def _render_tick(result, *, land: bool) -> None:
             continue
         totals = result.totals(name)
         did = ", ".join(f"{v} {k}" for k, v in totals.items() if v) or "nothing"
-        if any(totals.values()):
+        if result.moved_in(name):
             mark = "[green]moved[/]"
         elif result.held(name):
             mark = "[yellow]held[/]"
