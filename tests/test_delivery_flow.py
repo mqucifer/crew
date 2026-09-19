@@ -678,6 +678,24 @@ def test_a_verdict_that_cannot_be_read_does_not_lose_the_delivery(harness, monke
     assert calls["prior"] == [""]
 
 
+def test_a_failed_push_keeps_what_the_attempt_learned(harness, monkeypatch):
+    """The handler built a fresh DeliveryOutcome, throwing away the one that
+    knew about the repairs and the diff, so a card that had retried twice
+    blocked saying "Attempts: 0". #10's defect in a path #10 did not cover."""
+
+    def refuse(self, *, force=False):
+        raise RuntimeError("failed to push some refs")
+
+    monkeypatch.setattr(FakeWorkspace, "push", refuse)
+    result, _, _, _, _, _ = harness(checks=[red(), green()], cards=[story(6)])
+
+    assert len(result.blocked) == 1
+    blocked = result.blocked[0]
+    assert blocked.attempts == 1, "the repair it took is still on the outcome"
+    assert "could not push" in (blocked.blocked_reason or "")
+    assert blocked.rejected_diff is not None, "and the evidence survived"
+
+
 # --- a second attempt can land ------------------------------------------
 
 
