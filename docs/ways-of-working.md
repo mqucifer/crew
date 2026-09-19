@@ -21,12 +21,28 @@ negotiate process with each other; they follow what is written here.
 | Developer | Code, tests, docs, PRs, Bugs | Yes |
 | QA Engineer | Behaviour verdicts, Bugs | No |
 | Code Reviewer | Diff verdicts, Bugs | Yes |
-| Scrum Master | Standups, retros, process defects | No |
+| Scrum Master | Standups, retros, defects — in the process or in the product | No |
 
 These are enforced as capability allow-lists in `config/agents.yaml`, not as
 prompt wording — a boundary that depends on granularity (goal vs epic vs story)
 or altitude (what vs how) is exactly what a small model blurs. A Product Owner
 *cannot* write acceptance criteria; a Business Analyst *cannot* redraw an epic.
+
+**A defect is filed where it belongs, by whoever found it.** A retrospective
+finds two kinds of thing, and both are real: how the crew worked, and what the
+crew built. "Stories must name the module a metric belongs in" is a defect in
+the crew; "there are two definitions of `compute_wip_violations`" is a defect
+in the product. Section 18's two ladders decide which repository a finding goes
+to; nothing about the finder decides it.
+
+The Scrum Master may therefore file either. It was originally allowed only
+process defects, drawn when the crew worked on nothing but itself, and the
+alternative — routing product findings to QA or the Code Reviewer — pulls those
+roles toward creating cards, which is the Business Analyst's craft. Widening one
+role by one verb is a smaller change than blurring three.
+
+What it may still not do is file under another role's name. #19 and #22 exist so
+that attribution is true; faking it to satisfy a boundary would undo them.
 
 **Card movement and WIP limits are not a role.** They are deterministic rules in
 `crew_org.process`. A WIP limit an agent can decide to ignore is not a limit.
