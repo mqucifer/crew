@@ -564,7 +564,15 @@ def deliver_story(
             "overwrite the diff it is reviewing."
         )
         return outcome
-    ws.push(force=True)
+    try:
+        ws.push(force=True)
+    except Exception as exc:  # noqa: BLE001
+        # Landing failed, not the work. Returning the outcome keeps what it
+        # already knows — how many repairs it took, the diff it produced — where
+        # letting this propagate discards all of it and the card blocks saying
+        # "Attempts: 0". That is #10's defect in a path #10 did not cover.
+        outcome.blocked_reason = f"could not push `{branch}`: {exc}"[:400]
+        return outcome
 
     pr = issues.create_pull(
         repo,
@@ -725,8 +733,11 @@ def deliver(
                 dry_run=dry_run,
             )
         except Exception as exc:  # noqa: BLE001
+            # A last resort. Anything deliver_story can attribute it returns on
+            # its own outcome; reaching here means it could not, so the card
+            # blocks knowing nothing but the error.
             outcome = DeliveryOutcome(
-                card=card.number or 0, blocked_reason=f"{type(exc).__name__}: {exc}"
+                card=card.number or 0, blocked_reason=f"{type(exc).__name__}: {exc}"[:400]
             )
         finally:
             # Nothing is committed or pushed until verification passes, so for a
