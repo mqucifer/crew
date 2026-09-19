@@ -72,11 +72,16 @@ class PhaseOutcome:
     # What this phase did, as numbers rather than a sentence, so a run of
     # several passes can be added up. A summary string cannot be.
     counts: dict[str, int] = field(default_factory=dict)
-    # Cards this phase could not act on, each with the reason. Every phase
-    # result already works these out — awaiting an approval, held by a sibling,
-    # a conflict, already judged — and the tick printed none of them, so a run
-    # where two cards were stuck reported "the board is stable".
+    # Cards this phase could not act on, each with the reason — awaiting an
+    # approval, held by a sibling, already judged. This is *state*: it is true
+    # now, so the last pass to look is the one that knows.
     held: list[str] = field(default_factory=list)
+    # Cards this phase blocked. This is an *event*: it happened, and a later
+    # pass will not see it because the card is no longer claimable. Reporting it
+    # from the last pass alone meant a card that blocked mid-run vanished from
+    # the summary — #31 blocked on an exhausted escalation budget and the run
+    # reported only that its sibling was waiting.
+    blocked: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -95,6 +100,15 @@ class LoopResult:
     @property
     def moved(self) -> list[PhaseOutcome]:
         return [o for o in self.outcomes if o.moved]
+
+    @property
+    def blocked_any(self) -> bool:
+        """Did this run block a card? Something a person has to look at."""
+        return any(o.blocked for o in self.outcomes)
+
+    @property
+    def blocked_count(self) -> int:
+        return sum(len(self.blocked(name)) for name in {o.name for o in self.outcomes})
 
     @property
     def stuck(self) -> bool:
@@ -141,6 +155,21 @@ class LoopResult:
         """What is still waiting, as of the last pass that looked."""
         last = self.last(name)
         return list(last.held) if last else []
+
+    def blocked(self, name: str) -> list[str]:
+        """What this phase blocked, across the whole run.
+
+        Accumulated, because blocking is something that happened rather than
+        something that is still true: the pass after it will not see the card at
+        all. Deduplicated, because a phase can report the same block twice in
+        one pass — once from the outcome and once from the card move.
+        """
+        out: list[str] = []
+        for outcome in self.outcomes:
+            if outcome.name != name:
+                continue
+            out += [line for line in outcome.blocked if line not in out]
+        return out
 
 
 def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
@@ -284,14 +313,17 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved = bool(result.recovered)
     else:
         moved = bool(result.landed or result.delivered or result.blocked or result.recovered)
+    # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
-        + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
-        + [f"#{o.card} — blocked: {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
         + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
+    # Events: they happened, and the next pass will not see them.
+    blocked = [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason] + [
+        f"#{n} — merge conflict, needs a person" for n in result.conflicted
+    ]
     return PhaseOutcome(
         "deliver",
         moved=moved,
@@ -299,6 +331,7 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         result=result,
         counts={"merged": len(result.landed), "delivered": len(result.delivered)},
         held=held,
+        blocked=blocked,
     )
 
 

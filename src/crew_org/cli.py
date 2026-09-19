@@ -175,9 +175,12 @@ def _render_tick(result, *, land: bool) -> None:
         table.add_row(name, mark, escape(did))
     console.print(table)
 
-    # What could not happen, named. Every one of these was already worked out
-    # and thrown away, which is how two cards sat in Merging for an hour while
-    # the run reported the board as stable.
+    # What the run blocked, then what is still waiting. The first happened and
+    # the second is still true; reporting only the second meant a card that
+    # blocked mid-run vanished from the summary entirely.
+    for name, _run in loop.PHASES:
+        for line in result.blocked(name):
+            console.print(f"  [red]{name} blocked[/] {escape(line)}")
     for name, _run in loop.PHASES:
         for line in result.held(name):
             console.print(f"  [yellow]{name}[/] {escape(line)}")
@@ -192,6 +195,11 @@ def _render_tick(result, *, land: bool) -> None:
         console.print(
             f"\n[yellow]{passes} — stopped at the pass cap, not settled.[/] "
             "Something is still moving; run again, or raise --passes."
+        )
+    elif result.blocked_any:
+        console.print(
+            f"\n[yellow]{passes} — {result.blocked_count} card(s) blocked.[/] "
+            "They need a person; the rest of the board is waiting on what is listed above."
         )
     elif result.stuck:
         console.print(
