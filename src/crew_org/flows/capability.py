@@ -1,7 +1,15 @@
-"""What the crew can do, read off the board.
+"""Where the crew's effort has gone, read off the board.
 
-The scorecard was written by hand once and was stale within a week. This reads
-it from the cards instead, so the picture is whatever the board actually says.
+An investment ledger. It counts cards, which measures *what was worked on* and
+not *what works* — five Implementation cards may mean a lot was built or a lot
+needed fixing, and Release reads as zero while release demonstrably works,
+because the capability predates anyone carding it.
+
+Measuring capability properly means asking whether the crew can do a thing
+unattended, reliably, without the card sitting there: time in each column, when
+each phase was last exercised, and how often a person had to intervene. The
+move log already carries the columns, timestamps and acting role the first two
+need. That is a separate piece of work and it is not this.
 
 Two ladders, kept apart (section 18): a card in the crew's own repository
 advances a *capability* and carries the field; a card in a delivery repository

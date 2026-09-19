@@ -247,7 +247,11 @@ def _synthetic_tick(sink: EventSink) -> None:
 
 @app.command()
 def capability() -> None:
-    """What the crew can do, read off the board.
+    """Where the crew's effort has gone, by the capability it advanced.
+
+    An investment ledger, not a scorecard. It counts cards, and a card count
+    cannot tell strong from weak: five Implementation cards may mean a lot was
+    built or a lot needed fixing, and Release reads as zero while it works.
 
     Two ladders (section 18): a card in the crew's own repository advances a
     capability, a card in a delivery repository advances a product. The ratio
@@ -305,7 +309,8 @@ def capability() -> None:
     # capability being absent. Some of what works was built before any card was
     # attributed to it.
     console.print(
-        "[dim]Counts cards, not capability. An empty row means no card has carried it.[/]"
+        "[dim]Where effort went, not what works. An empty row means no card carried it, "
+        "not that the capability is missing.[/]"
     )
 
 
