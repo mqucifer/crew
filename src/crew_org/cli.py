@@ -42,6 +42,9 @@ def tick(
         False, "--demo", help="Render the live view from synthetic events. Needs no model."
     ),
     passes: int = typer.Option(None, "--passes", help="Cap the number of passes."),
+    repo: str = typer.Option(
+        None, "--repo", help="Work only this repository. Defaults to every repo in delivery.repos."
+    ),
 ) -> None:
     """Take the board as far as it can go: refine, admit, review, verify, land, deliver.
 
@@ -92,7 +95,17 @@ def tick(
         raise typer.Exit(code=2) from exc
 
     owner = env["GITHUB_OWNER"]
-    repo = env.get("PILOT_REPO", "crew")
+    allowed = set(org.get("delivery", {}).get("repos") or [env.get("PILOT_REPO", "crew")])
+    if repo and repo not in allowed:
+        console.print(
+            f"[red]{escape(repo)} is not in delivery.repos[/] "
+            f"({', '.join(sorted(allowed))}). The crew does not work there."
+        )
+        raise typer.Exit(code=2)
+    # Narrowed to one repository, or all of them. The default repo is what a
+    # card falls back to when it names none, which is a different question.
+    allowed = {repo} if repo else allowed
+    default_repo = repo or env.get("PILOT_REPO", "crew")
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     sprint = board.schema.field("Sprint").current_iteration()
     if not sprint:
@@ -101,7 +114,8 @@ def tick(
 
     console.print(
         f"[dim]acting as {escape(identity)} · reviewing as {escape(review_identity)} · "
-        f"{'LANDING' if land else 'dry run'} · {escape(sprint)}[/]"
+        f"{'LANDING' if land else 'dry run'} · {escape(sprint)} · "
+        f"{escape(', '.join(sorted(allowed)))}[/]"
     )
 
     crew = loop.Crew(
@@ -110,14 +124,14 @@ def tick(
         sink=sink,
         # Refinement reads the code it is deciding about, and delivery opens its
         # worktrees off the same clone.
-        ws=Workspace(owner, repo, token, _bot_identity(token, identity)),
+        ws=Workspace(owner, default_repo, token, _bot_identity(token, identity)),
         sandbox=sandbox,
         rules=ProcessRules.from_config(org),
         policy=EscalationPolicy.from_config(org),
         ledger=EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         org=org,
-        repo=repo,
-        repos=set(org.get("delivery", {}).get("repos") or [repo]),
+        repo=default_repo,
+        repos=allowed,
         sprint=sprint,
         capacity=org["sprint"]["capacity_points"],
         reviewer=IssueClient(review_token, owner),
@@ -490,8 +504,14 @@ def auth() -> None:
 
 
 @app.command()
-def qa() -> None:
-    """Verify delivered work against its acceptance criteria."""
+def qa(
+    repo: str = typer.Option(None, "--repo", help="Defaults to the pilot repo."),
+) -> None:
+    """Verify delivered work against its acceptance criteria.
+
+    A card is verified in its own repository; `--repo` only changes what a card
+    that names none falls back to.
+    """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env, load_org
     from crew_org.flows.acceptance import close_finished_parents, run_qa
@@ -514,7 +534,8 @@ def qa() -> None:
         raise typer.Exit(code=1)
 
     token, identity = resolve_credentials(env)
-    owner, repo = env["GITHUB_OWNER"], env.get("PILOT_REPO", "crew")
+    owner = env["GITHUB_OWNER"]
+    repo = repo or env.get("PILOT_REPO", "crew")
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     issues = IssueClient(token, owner)
     ws = Workspace(owner, repo, token, _bot_identity(token, identity))

@@ -167,21 +167,32 @@ def run_qa(
     cards: list[Card],
     repo: str,
 ) -> AcceptanceResult:
-    """Verify everything sitting in QAing."""
+    """Verify everything sitting in QAing.
+
+    `repo` is a fallback for a card that names none, never the answer. QA read
+    the story, checked its own marker and posted its verdict against this
+    argument whatever card it was judging — so a card outside the pilot got its
+    body read from the wrong repository and its verdict posted there. Delivery
+    has always used `card.repo or repo`; QA was the one flow that did not.
+    """
     result = AcceptanceResult()
 
     for card in awaiting_qa(cards):
         number = card.number or 0
+        card_repo = card.repo or repo
         branch = branch_name(number, card.title)
+        # The worktree has to come from the card's own repository too, or QA
+        # verifies a branch of the same name in a different codebase.
+        card_ws = ws.for_repo(card_repo)
 
         try:
-            worktree = ws.open_existing(branch)
-            revision = ws.head()
+            worktree = card_ws.open_existing(branch)
+            revision = card_ws.head()
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             continue
 
-        if issues.has_comment_marked(repo, number, qa_marker(revision)):
+        if issues.has_comment_marked(card_repo, number, qa_marker(revision)):
             result.skipped.append((number, f"already judged at {revision[:7]}"))
             continue
 
@@ -196,7 +207,7 @@ def run_qa(
         try:
             check = workspace.check(worktree, sandbox=sandbox)
             verdict = verify_story(
-                f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}",
+                f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}",
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
             )
@@ -212,12 +223,12 @@ def run_qa(
             )
             continue
         finally:
-            ws.close()
+            card_ws.close()
 
         artifacts.comment(
             issues,
             sink,
-            repo=repo,
+            repo=card_repo,
             number=number,
             body=render_qa(verdict, revision),
             by="QA Engineer",
