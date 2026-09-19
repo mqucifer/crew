@@ -46,16 +46,37 @@ def test_developer_owns_its_own_documentation(perms):
     assert perms.allows("Developer", Capability.UPDATE_DOCS)
 
 
-def test_scrum_master_narrates_and_nothing_more(perms):
+def test_scrum_master_narrates_and_files_what_it_found(perms):
+    """A retro finds two kinds of thing and both are real: how the crew worked,
+    and what the crew built. Routing the second to QA or the Reviewer pulls
+    those roles toward creating cards, which is the analyst's craft."""
     granted = {c for c in Capability if perms.allows("Scrum Master", c)}
     assert granted == {
         Capability.WRITE_STANDUP,
         Capability.WRITE_RETRO,
         Capability.FILE_PROCESS_DEFECT,
+        Capability.FILE_PRODUCT_DEFECT,
         Capability.COMMENT,
     }
-    for forbidden in (Capability.WRITE_CODE, Capability.CREATE_STORY, Capability.ESTIMATE):
+
+
+def test_narrating_is_still_not_deciding(perms):
+    """It reports; it does not decide. Filing a defect it found is not the same
+    as writing the story that fixes it."""
+    for forbidden in (
+        Capability.WRITE_CODE,
+        Capability.CREATE_STORY,
+        Capability.ESTIMATE,
+        Capability.WRITE_ACCEPTANCE_CRITERIA,
+        Capability.PROPOSE_EPIC,
+    ):
         assert not perms.allows("Scrum Master", forbidden)
+
+
+def test_filing_a_product_defect_is_not_a_general_grant(perms):
+    """Only the roles that judge the product, plus the one that narrates it."""
+    assert not perms.allows("Product Owner", Capability.FILE_PRODUCT_DEFECT)
+    assert not perms.allows("Business Analyst", Capability.FILE_PRODUCT_DEFECT)
 
 
 def test_only_the_architect_writes_design(perms):
