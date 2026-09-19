@@ -131,41 +131,63 @@ def tick(
 
 
 def _render_tick(result, *, land: bool) -> None:
-    """Report by phase. A Sponsor reading card-by-card is back in the work."""
+    """Report by phase, for the run.
+
+    A Sponsor reading card-by-card is back in the work; a Sponsor told the board
+    is stable while two cards are stuck is worse off than one told nothing.
+    """
     from crew_org.flows import loop
 
     console.print()
     table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
     table.add_column("phase")
     table.add_column("")
-    table.add_column("detail", ratio=1)
+    table.add_column("did", ratio=1)
     for name, _run in loop.PHASES:
         outcome = result.last(name)
         if outcome is None:
             continue
         if outcome.error:
             table.add_row(name, "[red]failed[/]", escape(outcome.error))
-        elif outcome.moved:
-            table.add_row(name, "[green]moved[/]", escape(outcome.summary))
+            continue
+        totals = result.totals(name)
+        did = ", ".join(f"{v} {k}" for k, v in totals.items() if v) or "nothing"
+        if any(totals.values()):
+            mark = "[green]moved[/]"
+        elif result.held(name):
+            mark = "[yellow]held[/]"
         else:
-            table.add_row(name, "[dim]quiet[/]", escape(outcome.summary))
+            mark = "[dim]quiet[/]"
+        table.add_row(name, mark, escape(did))
     console.print(table)
+
+    # What could not happen, named. Every one of these was already worked out
+    # and thrown away, which is how two cards sat in Merging for an hour while
+    # the run reported the board as stable.
+    for name, _run in loop.PHASES:
+        for line in result.held(name):
+            console.print(f"  [yellow]{name}[/] {escape(line)}")
 
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
     if result.failed:
         console.print(
-            f"[yellow]{passes}, {len(result.failed)} phase failures.[/] The board moved as "
+            f"\n[yellow]{passes}, {len(result.failed)} phase failures.[/] The board moved as "
             "far as the rest of the pass could take it."
         )
     elif not result.settled:
         console.print(
-            f"[yellow]{passes} — stopped at the pass cap, not settled.[/] "
+            f"\n[yellow]{passes} — stopped at the pass cap, not settled.[/] "
             "Something is still moving; run again, or raise --passes."
         )
+    elif result.stuck:
+        console.print(
+            f"\n[yellow]{passes} — nothing further can move.[/] "
+            "The board is not finished; it is waiting on what is listed above."
+        )
     elif not result.moved:
-        console.print(f"[dim]{passes} — the board is stable. Nothing could move.[/]")
+        console.print(f"\n[dim]{passes} — the board is stable. Nothing to do.[/]")
     else:
-        console.print(f"[green]{passes} — the board is stable.[/]")
+        console.print(f"\n[green]{passes} — the board is stable.[/]")
     if not land:
         console.print("[dim]Dry run: nothing was merged, pushed or opened. Pass --land to act.[/]")
 

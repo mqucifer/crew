@@ -69,6 +69,14 @@ class PhaseOutcome:
     summary: str = ""
     error: str | None = None
     result: Any = None
+    # What this phase did, as numbers rather than a sentence, so a run of
+    # several passes can be added up. A summary string cannot be.
+    counts: dict[str, int] = field(default_factory=dict)
+    # Cards this phase could not act on, each with the reason. Every phase
+    # result already works these out — awaiting an approval, held by a sibling,
+    # a conflict, already judged — and the tick printed none of them, so a run
+    # where two cards were stuck reported "the board is stable".
+    held: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -88,12 +96,42 @@ class LoopResult:
     def moved(self) -> list[PhaseOutcome]:
         return [o for o in self.outcomes if o.moved]
 
+    @property
+    def stuck(self) -> bool:
+        """Is anything waiting on something that did not happen?
+
+        Different from `settled`. A pass can move nothing because there is
+        nothing to do, or because nothing it could do was allowed — and those
+        are opposite states reported identically until now.
+        """
+        return any(o.held for o in self.outcomes)
+
     def last(self, name: str) -> PhaseOutcome | None:
-        """The most recent outcome for one phase, which is the one to report."""
+        """The most recent outcome for one phase."""
         for outcome in reversed(self.outcomes):
             if outcome.name == name:
                 return outcome
         return None
+
+    def totals(self, name: str) -> dict[str, int]:
+        """What a phase did across the whole run.
+
+        The report used to show `last(name)`, so a run whose first pass admitted
+        a story and whose second admitted none reported zero. Work happened and
+        the report denied it.
+        """
+        out: dict[str, int] = {}
+        for outcome in self.outcomes:
+            if outcome.name != name:
+                continue
+            for key, value in outcome.counts.items():
+                out[key] = out.get(key, 0) + value
+        return out
+
+    def held(self, name: str) -> list[str]:
+        """What is still waiting, as of the last pass that looked."""
+        last = self.last(name)
+        return list(last.held) if last else []
 
 
 def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
@@ -108,6 +146,9 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved=moved,
         summary=f"{len(result.epics_created)} epics, {len(result.stories_created)} stories",
         result=result,
+        counts={"epics": len(result.epics_created), "stories": len(result.stories_created)},
+        held=[f"#{n} — {why}" for n, why in result.failed]
+        + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
     )
 
 
@@ -138,6 +179,8 @@ def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved=bool(plan.admitted),
         summary=f"{len(plan.admitted)} stories, {plan.points} points",
         result=plan,
+        counts={"stories": len(plan.admitted), "points": plan.points},
+        held=[f"#{n} — no parent epic" for n in plan.unparented],
     )
 
 
@@ -146,6 +189,7 @@ def _review(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
 
     moved_any = False
     reviewed = skipped = 0
+    failed: list[str] = []
     cards = crew.board.cards()
     for repo in sorted(crew.repos):
         result = review_open_pulls(
@@ -158,9 +202,14 @@ def _review(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         )
         reviewed += len(result.reviewed)
         skipped += len(result.skipped)
+        failed += [f"PR #{n} — {why}" for n, why in result.failed]
         moved_any = moved_any or bool(result.reviewed)
     return PhaseOutcome(
-        "review", moved=moved_any, summary=f"{reviewed} reviewed, {skipped} already judged"
+        "review",
+        moved=moved_any,
+        summary=f"{reviewed} reviewed, {skipped} already judged",
+        counts={"reviewed": reviewed, "already judged": skipped},
+        held=failed,
     )
 
 
@@ -181,6 +230,12 @@ def _qa(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved=moved,
         summary=f"{len(result.verified)} accepted, {len(result.returned)} returned{skipped}",
         result=result,
+        counts={
+            "accepted": len(result.verified),
+            "returned": len(result.returned),
+            "already judged": len(result.skipped),
+        },
+        held=[f"#{n} — {why}" for n, why in result.failed],
     )
 
 
@@ -220,11 +275,21 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved = bool(result.recovered)
     else:
         moved = bool(result.landed or result.delivered or result.blocked or result.recovered)
+    held = (
+        [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
+        + [f"#{n} — {why}" for n, why in result.unmergeable]
+        + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
+        + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
+        + [f"#{o.card} — blocked: {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
+        + [f"#{n} — would merge, but this is a dry run" for n in result.would_land]
+    )
     return PhaseOutcome(
         "deliver",
         moved=moved,
         summary=f"{len(result.landed)} merged, {len(result.delivered)} delivered",
         result=result,
+        counts={"merged": len(result.landed), "delivered": len(result.delivered)},
+        held=held,
     )
 
 
