@@ -148,6 +148,11 @@ class FakeDeliveryResult:
         self.delivered = kw.get("delivered", [])
         self.blocked = kw.get("blocked", [])
         self.recovered = kw.get("recovered", [])
+        self.awaiting_approval = kw.get("awaiting_approval", [])
+        self.unmergeable = kw.get("unmergeable", [])
+        self.conflicted = kw.get("conflicted", [])
+        self.waiting_on_a_sibling = kw.get("waiting_on_a_sibling", [])
+        self.would_land = kw.get("would_land", [])
 
 
 def deliver_returning(monkeypatch, **kw):
@@ -217,3 +222,54 @@ def test_a_board_that_cannot_be_read_does_not_abort_the_tick(crew, monkeypatch):
 
     assert result.passes == 1, "the pass ran"
     assert any("could not read the board" in e.summary for e in seen), "and said why not"
+
+
+# --- the report is about the run --------------------------------------------
+
+
+def test_a_phase_reports_the_run_not_the_last_pass(crew, monkeypatch):
+    """A run whose first pass admitted a story and whose second admitted none
+    reported zero. Work happened and the report denied it."""
+    calls = {"n": 0}
+
+    def admit(_crew, *, dry_run):
+        calls["n"] += 1
+        first = calls["n"] == 1
+        return loop.PhaseOutcome(
+            "admit", moved=first, counts={"stories": 1 if first else 0, "points": 5 if first else 0}
+        )
+
+    monkeypatch.setattr(loop, "PHASES", (("admit", admit),))
+    result = loop.run(crew)
+
+    assert result.last("admit").counts["stories"] == 0, "the last pass really did admit none"
+    assert result.totals("admit") == {"stories": 1, "points": 5}, "and the run admitted one"
+
+
+def test_what_a_phase_could_not_do_is_carried(crew, monkeypatch):
+    """merge_approved works these out and the tick printed none of them."""
+    deliver_returning(
+        monkeypatch,
+        awaiting_approval=[(31, 36)],
+        waiting_on_a_sibling=[(32, 31)],
+    )
+    outcome = loop._deliver(crew, dry_run=False)
+
+    assert any("#31" in h and "approving review" in h for h in outcome.held)
+    assert any("#32" in h and "waits for #31" in h for h in outcome.held)
+
+
+def test_nothing_to_do_is_not_the_same_as_nothing_allowed(crew, monkeypatch):
+    """A pass can move nothing because there is nothing to do, or because
+    nothing it could do was allowed. Those are opposite states."""
+    phases(monkeypatch, ("refine", False))
+    assert loop.run(crew).stuck is False
+
+    def blocked(_crew, *, dry_run):
+        return loop.PhaseOutcome("deliver", moved=False, held=["#31 — waiting on an approval"])
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", blocked),))
+    result = loop.run(crew)
+
+    assert result.settled is True, "nothing moved"
+    assert result.stuck is True, "but not because there was nothing to do"
