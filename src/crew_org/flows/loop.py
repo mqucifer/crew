@@ -155,7 +155,13 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         moved=moved,
         summary=f"{len(result.epics_created)} epics, {len(result.stories_created)} stories",
         result=result,
-        counts={"epics": len(result.epics_created), "stories": len(result.stories_created)},
+        counts={
+            "epics": len(result.epics_created),
+            "stories": len(result.stories_created),
+            # What it looked at and left alone, so a quiet pass says why it was
+            # quiet rather than only that it was.
+            "already answered": sum(1 for _n, why in result.skipped if why == "already answered"),
+        },
         held=[f"#{n} — {why}" for n, why in result.failed]
         + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
     )

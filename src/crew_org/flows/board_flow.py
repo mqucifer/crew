@@ -215,8 +215,11 @@ def rework_gate(
     wants_rework = NEEDS_REWORK in card.labels
 
     if answered and not wants_rework:
+        # Recorded, not announced. A reconciliation pass finds most of the board
+        # already answered every time it runs, and emitting one note per card
+        # filled the log with eight lines a pass saying nothing happened. The
+        # count goes in the tick's summary instead.
         result.skipped.append((number, "already answered"))
-        sink.emit(CrewEvent(kind=EventKind.NOTE, card=number, summary="already answered"))
         return False, ""
     if not wants_rework:
         return True, ""
