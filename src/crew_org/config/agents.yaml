@@ -154,5 +154,5 @@ scrum_master:
     too large or whose criteria were ambiguous, and propose process defects
     against them. Never propose a larger escalation budget.
   llm: crew-draft
-  can: [write_standup, write_retro, file_process_defect, comment]
+  can: [write_standup, write_retro, file_process_defect, file_product_defect, comment]
   constitution: [9, 10, 11, 12] # escalation, audit, WIP, blocked cards

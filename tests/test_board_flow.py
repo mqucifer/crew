@@ -529,10 +529,15 @@ def test_an_answered_goal_is_left_alone(monkeypatch):
     """Ticks are reconciliation passes; without this a goal accrues one
     identical proposal per tick."""
     issues = ReworkIssues(comments=[marked(board_flow.EPIC_PROPOSAL_MARKER)])
-    result, _ = run(FakeBoard([card(1)]), issues, monkeypatch)
+    result, seen = run(FakeBoard([card(1)]), issues, monkeypatch)
 
     assert result.skipped == [(1, "already answered")]
     assert result.proposed == []
+    assert not [e for e in seen if e.summary == "already answered"], (
+        "recorded, not announced — a pass finds most of the board already "
+        "answered every time, and one note per card filled the log with lines "
+        "saying nothing happened"
+    )
 
 
 def test_a_goal_sent_back_is_proposed_again(monkeypatch):

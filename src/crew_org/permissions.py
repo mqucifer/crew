@@ -36,6 +36,12 @@ class Capability(StrEnum):
     VERDICT_BEHAVIOUR = "verdict_behaviour"
     FILE_BUG = "file_bug"
     FILE_PROCESS_DEFECT = "file_process_defect"
+    # A defect in the product the crew is building, as opposed to in how it
+    # works. Held by the Scrum Master as well as the roles that produce bugs:
+    # a retro that finds a duplicate definition in delivered code has found a
+    # real defect, and the alternative — routing it to QA or the Reviewer —
+    # pulls those roles toward creating cards, which is the analyst's craft.
+    FILE_PRODUCT_DEFECT = "file_product_defect"
     WRITE_STANDUP = "write_standup"
     WRITE_RETRO = "write_retro"
     COMMENT = "comment"
