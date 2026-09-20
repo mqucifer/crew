@@ -8,7 +8,7 @@ re-implemented at every call site.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import cached_property
 from typing import Any
 
@@ -100,6 +100,21 @@ class Card(BaseModel):
     # crew's ability to run a process, and counting it as the latter makes the
     # scorecard read healthier than it is.
     capability: str | None = None
+    # When the card was filed, last touched and finished. GitHub has always
+    # carried these and the crew never asked, so how long a card has been
+    # sitting was unanswerable without replaying the event log — and
+    # unanswerable at all for anything older than the log.
+    created: datetime | None = None
+    updated: datetime | None = None
+    closed: datetime | None = None
+
+    @property
+    def age_days(self) -> int | None:
+        """Days since the card was filed, or None if GitHub did not say."""
+        if self.created is None:
+            return None
+        return (datetime.now(UTC) - self.created).days
+
     # The epic this story was split from, read straight off the item query
     # rather than by asking each epic for its children. Sibling order is what
     # decides whether a story may be claimed yet.
@@ -162,6 +177,7 @@ query($owner: String!, $number: Int!, $cursor: String) {
           content {
             ... on Issue {
               number title url state
+              createdAt updatedAt closedAt
               repository { name }
               labels(first: 20) { nodes { name } }
               parent { number }
@@ -377,6 +393,16 @@ class ProjectClient:
         self._call(_DELETE_ITEM, project=self.schema.project_id, item=item_id)
 
 
+def _when(value: str | None) -> datetime | None:
+    """GitHub's ISO-8601, which ends in a Z that `fromisoformat` refused until 3.11."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _to_card(node: dict[str, Any]) -> Card | None:
     """Flatten one GraphQL item node. Returns None for draft items, which the
     crew does not use — every card must be a real issue with a number."""
@@ -400,6 +426,9 @@ def _to_card(node: dict[str, Any]) -> Card | None:
         repo=(content.get("repository") or {}).get("name"),
         state=content.get("state"),
         parent=(content.get("parent") or {}).get("number"),
+        created=_when(content.get("createdAt")),
+        updated=_when(content.get("updatedAt")),
+        closed=_when(content.get("closedAt")),
         labels=frozenset(
             label["name"] for label in (content.get("labels") or {}).get("nodes") or []
         ),
