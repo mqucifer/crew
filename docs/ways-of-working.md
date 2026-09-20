@@ -23,10 +23,23 @@ negotiate process with each other; they follow what is written here.
 | Code Reviewer | Diff verdicts, Bugs | Yes |
 | Scrum Master | Standups, retros, defects — in the process or in the product | No |
 
-These are enforced as capability allow-lists in `config/agents.yaml`, not as
-prompt wording — a boundary that depends on granularity (goal vs epic vs story)
-or altitude (what vs how) is exactly what a small model blurs. A Product Owner
-*cannot* write acceptance criteria; a Business Analyst *cannot* redraw an epic.
+These boundaries are structural, not prompt wording — a boundary that depends on
+granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
+small model blurs. A Product Owner *cannot* write acceptance criteria; a
+Business Analyst *cannot* redraw an epic.
+
+**What holds them is the output schema and the call site.** Each crew function
+builds one role and returns one shape: `propose_epics` builds the Product Owner
+and returns an `EpicProposal`, which has no field for acceptance criteria. There
+is no path through it — not a rule the model is asked to respect, but an absence
+of anywhere to put the thing.
+
+The `can:` lists in `config/agents.yaml` are the **declaration** those schemas
+are built against: what each role is permitted, in one place, readable without
+tracing call sites. `crew_org.permissions` can check them and no flow does,
+which was true and unstated until an audit found it. Changing a `can:` list
+therefore changes documentation; changing what a role may actually do means
+changing a schema or a call site, and the two should be changed together.
 
 **A defect is filed where it belongs, by whoever found it.** A retrospective
 finds two kinds of thing, and both are real: how the crew worked, and what the
