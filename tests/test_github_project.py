@@ -288,3 +288,46 @@ def test_past_the_last_sprint_falls_back_to_it():
 
 def test_an_unconfigured_iteration_field_has_no_current_sprint():
     assert BoardField(id="F", name="Sprint", data_type="ITERATION").current_iteration() is None
+
+
+# --- the board has always known when ------------------------------------
+
+
+def test_a_card_carries_when_it_was_filed():
+    """GitHub has always carried these and the crew never asked, so how long a
+    card had been sitting was unanswerable without replaying the event log."""
+    from crew_org.tools.github_project import _to_card
+
+    card = _to_card(
+        {
+            "id": "I1",
+            "fieldValues": {"nodes": []},
+            "content": {
+                "number": 12,
+                "title": "A story",
+                "state": "OPEN",
+                "createdAt": "2026-09-18T19:25:29Z",
+                "updatedAt": "2026-09-19T00:42:24Z",
+                "closedAt": None,
+            },
+        }
+    )
+
+    assert card.created.year == 2026 and card.created.month == 9 and card.created.day == 18
+    assert card.updated.day == 19
+    assert card.closed is None
+
+
+def test_a_timestamp_the_board_did_not_give_is_none():
+    """A field absent is not a field at epoch."""
+    from crew_org.tools.github_project import _when
+
+    assert _when(None) is None
+    assert _when("") is None
+    assert _when("not a date") is None, "and a malformed one does not take the read down"
+
+
+def test_age_is_unknown_rather_than_zero_without_a_created_date():
+    from crew_org.tools.github_project import Card
+
+    assert Card(item_id="I1", number=1).age_days is None
