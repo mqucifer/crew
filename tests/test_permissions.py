@@ -98,3 +98,19 @@ def test_unknown_role_is_refused_rather_than_silently_permitted(perms):
 def test_unknown_capability_in_config_fails_loudly():
     with pytest.raises(ValueError, match="unknown capability"):
         Permissions.from_agents({"x": {"role": "X", "can": ["teleport"]}})
+
+
+def test_the_declaration_matches_what_the_schemas_allow():
+    """Section 1 says the boundaries are held by output schema and call site,
+    and that `can:` lists declare what those are built against. A role permitted
+    something no schema lets it produce is a declaration that has drifted."""
+    from crew_org.crews.refinement_crew import EpicProposal, StoryProposal
+
+    assert (
+        "acceptance_criteria"
+        not in EpicProposal.model_fields["epics"].annotation.__args__[0].model_fields
+    ), "a Product Owner has nowhere to put acceptance criteria"
+    assert (
+        "acceptance_criteria"
+        in StoryProposal.model_fields["stories"].annotation.__args__[0].model_fields
+    ), "and a Business Analyst does"
