@@ -273,3 +273,46 @@ def test_nothing_to_do_is_not_the_same_as_nothing_allowed(crew, monkeypatch):
 
     assert result.settled is True, "nothing moved"
     assert result.stuck is True, "but not because there was nothing to do"
+
+
+# --- a block is an event, not a state ------------------------------------
+
+
+def test_a_card_blocked_mid_run_is_still_reported(crew, monkeypatch):
+    """#31 blocked on an exhausted escalation budget in pass 1. Pass 2 could not
+    see it — the card was no longer claimable — so the summary reported only
+    that its sibling was waiting, and never that anything had blocked."""
+    calls = {"n": 0}
+
+    def deliver(_crew, *, dry_run):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return loop.PhaseOutcome("deliver", moved=True, blocked=["#31 — budget exhausted"])
+        return loop.PhaseOutcome("deliver", moved=False, held=["#32 — waits for #31"])
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
+    result = loop.run(crew)
+
+    assert result.blocked("deliver") == ["#31 — budget exhausted"], "the run remembers"
+    assert result.held("deliver") == ["#32 — waits for #31"], "and state is still now"
+    assert result.blocked_any is True
+    assert result.blocked_count == 1
+
+
+def test_the_same_block_reported_twice_is_named_once(crew, monkeypatch):
+    """A phase can report one block from the outcome and again from the card
+    move."""
+
+    def deliver(_crew, *, dry_run):
+        return loop.PhaseOutcome("deliver", moved=False, blocked=["#31 — budget exhausted"])
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
+    assert loop.run(crew).blocked("deliver") == ["#31 — budget exhausted"]
+
+
+def test_a_clean_run_blocked_nothing(crew, monkeypatch):
+    phases(monkeypatch, ("refine", False))
+    result = loop.run(crew)
+
+    assert result.blocked_any is False
+    assert result.blocked_count == 0
