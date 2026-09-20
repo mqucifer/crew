@@ -83,6 +83,9 @@ litellm_settings:
   # Agents retry through the escalation policy, not blindly at the transport
   # layer — a silent retry storm would hide the failure classification.
   num_retries: 0
+  callbacks:
+    - prometheus 
+  require_auth_for_metrics_endpoint: false
 
 general_settings:
   # Keeps a local record of every request for the audit trail.
