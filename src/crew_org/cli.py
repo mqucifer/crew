@@ -136,6 +136,7 @@ def tick(
         capacity=org["sprint"]["capacity_points"],
         reviewer=IssueClient(review_token, owner),
         reviewer_login=review_identity,
+        sponsor=env.get("GITHUB_SPONSOR") or None,
     )
 
     with attach(sink, view):

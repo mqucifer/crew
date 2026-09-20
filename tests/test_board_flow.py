@@ -13,6 +13,7 @@ from crew_org.flows.board_flow import (
     goal_cards,
     render_proposal,
     tick,
+    unauthored_goals,
 )
 from crew_org.tools.github_project import Card
 
@@ -44,8 +45,10 @@ def card(
     status: str = INBOX,
     state: str = "OPEN",
     work_type: str | None = "Goal",
+    author: str = "mquarters",
 ) -> Card:
     return Card(
+        author=author,
         item_id=f"I{number}",
         number=number,
         title=f"Goal {number}",
@@ -142,12 +145,12 @@ class FakeBoard:
         return [m for m in self.moves if m[0] in existing]
 
 
-def run(board, issues, monkeypatch, proposer=lambda goal, **kw: PROPOSAL):
+def run(board, issues, monkeypatch, proposer=lambda goal, **kw: PROPOSAL, sponsor="mquarters"):
     monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", proposer)
     sink = EventSink(None)
     seen = []
     sink.subscribe(seen.append)
-    return tick(board, issues, sink, default_repo="sprint-metrics"), seen
+    return tick(board, issues, sink, default_repo="sprint-metrics", sponsor=sponsor), seen
 
 
 # --- selection -----------------------------------------------------------
@@ -586,3 +589,34 @@ def test_a_rework_that_would_throw_away_work_is_refused(monkeypatch):
     assert issues.closed == [], "nothing thrown away"
     assert any("rework refused" in why for _, why in result.skipped)
     assert any("#7" in why for _, why in result.skipped), "and it names the card"
+
+
+# --- a Goal is the Sponsor's ---------------------------------------------
+
+
+def test_a_goal_the_crew_wrote_is_not_decomposed(monkeypatch):
+    """Two of the three Goals on this board were written by the crew, and one
+    duplicated a crew capability as product work in the pilot — a day of
+    delivery on the wrong ladder."""
+    board = FakeBoard([card(1, author="mqucifer-crew[bot]")])
+    result, seen = run(board, ReworkIssues(), monkeypatch, proposer=lambda g, **kw: PROPOSAL)
+
+    assert result.proposed == []
+    assert result.skipped == [(1, "a Goal written by mqucifer-crew[bot], not the Sponsor")]
+    assert any("not decomposed" in e.summary for e in seen), "reported, not silently skipped"
+
+
+def test_the_sponsors_own_goal_is_decomposed(monkeypatch):
+    board = FakeBoard([card(1, author="mquarters")])
+    result, _ = run(board, ReworkIssues(), monkeypatch, proposer=lambda g, **kw: PROPOSAL)
+
+    assert result.proposed == [1]
+
+
+def test_no_sponsor_configured_keeps_the_old_behaviour():
+    """A board with no Sponsor set still works, whoever wrote the Goal."""
+    cards = [card(1, author="anyone-at-all")]
+
+    assert [c.number for c in goal_cards(cards)] == [1]
+    assert [c.number for c in goal_cards(cards, sponsor="mquarters")] == []
+    assert unauthored_goals(cards) == [], "nothing to report when nothing is configured"

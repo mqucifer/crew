@@ -60,6 +60,9 @@ class Crew:
     # the app that opened the pull request.
     reviewer: IssueClient
     reviewer_login: str
+    # The one person who may set a Goal. None means unconfigured, and the old
+    # behaviour: anything typed Goal is decomposed.
+    sponsor: str | None = None
 
 
 @dataclass
@@ -176,7 +179,13 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     from crew_org.flows.board_flow import tick as refine  # noqa: PLC0415
 
     result = refine(
-        crew.board, crew.issues, crew.sink, default_repo=crew.repo, org=crew.org, ws=crew.ws
+        crew.board,
+        crew.issues,
+        crew.sink,
+        default_repo=crew.repo,
+        org=crew.org,
+        ws=crew.ws,
+        sponsor=crew.sponsor,
     )
     moved = bool(result.epics_created or result.stories_created)
     return PhaseOutcome(

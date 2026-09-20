@@ -104,6 +104,9 @@ class Card(BaseModel):
     # carried these and the crew never asked, so how long a card has been
     # sitting was unanswerable without replaying the event log — and
     # unanswerable at all for anything older than the log.
+    # Who filed the issue. A Goal is the only artifact the Sponsor authors, and
+    # two of the three on this board were written by the crew.
+    author: str | None = None
     created: datetime | None = None
     updated: datetime | None = None
     closed: datetime | None = None
@@ -178,6 +181,7 @@ query($owner: String!, $number: Int!, $cursor: String) {
             ... on Issue {
               number title url state
               createdAt updatedAt closedAt
+              author { login }
               repository { name }
               labels(first: 20) { nodes { name } }
               parent { number }
@@ -426,6 +430,7 @@ def _to_card(node: dict[str, Any]) -> Card | None:
         repo=(content.get("repository") or {}).get("name"),
         state=content.get("state"),
         parent=(content.get("parent") or {}).get("number"),
+        author=(content.get("author") or {}).get("login"),
         created=_when(content.get("createdAt")),
         updated=_when(content.get("updatedAt")),
         closed=_when(content.get("closedAt")),
