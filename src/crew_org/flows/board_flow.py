@@ -254,15 +254,45 @@ def rework_gate(
     return True, sponsor_notes(issues, repo, number)
 
 
-def goal_cards(cards: list[Card]) -> list[Card]:
+def goal_cards(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
     """Cards awaiting an epic proposal.
 
     Filtered by Work Type, not just by column: the epics the crew creates land
     in the same column awaiting approval, and must never be mistaken for goals
     and decomposed again.
+
+    And filtered by author. A Goal is the only artifact the Sponsor writes, and
+    two of the three on this board were written by the crew — one of which
+    duplicated a crew capability as product work in the pilot and redirected a
+    day of delivery onto the wrong ladder. `sponsor` unset keeps the old
+    behaviour, so a board with no Sponsor configured still works.
     """
     return [
-        c for c in cards if c.status == INBOX and c.state != "CLOSED" and c.work_type == GOAL_TYPE
+        c
+        for c in cards
+        if c.status == INBOX
+        and c.state != "CLOSED"
+        and c.work_type == GOAL_TYPE
+        and (sponsor is None or c.author == sponsor)
+    ]
+
+
+def unauthored_goals(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
+    """Goals nobody with the authority to set one wrote.
+
+    Reported rather than silently skipped: a card that could be acted on and is
+    not needs a reason, or it sits on the board forever for causes nobody can
+    see.
+    """
+    if sponsor is None:
+        return []
+    return [
+        c
+        for c in cards
+        if c.status == INBOX
+        and c.state != "CLOSED"
+        and c.work_type == GOAL_TYPE
+        and c.author != sponsor
     ]
 
 
@@ -566,6 +596,7 @@ def tick(
     default_repo: str,
     org: dict | None = None,
     ws: Workspace | None = None,
+    sponsor: str | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
 
@@ -598,7 +629,18 @@ def tick(
             f"ignoring untyped cards in {INBOX}: {untyped} — set Work Type",
         )
 
-    for card in goal_cards(cards):
+    for card in unauthored_goals(cards, sponsor=sponsor):
+        number = card.number or 0
+        result.skipped.append((number, f"a Goal written by {card.author}, not the Sponsor"))
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.NOTE,
+                card=number,
+                summary=f"not decomposed — a Goal written by {card.author}"[:100],
+            )
+        )
+
+    for card in goal_cards(cards, sponsor=sponsor):
         result.considered += 1
         repo = card.repo or default_repo
         number = card.number
