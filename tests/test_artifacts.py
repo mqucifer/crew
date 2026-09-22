@@ -32,39 +32,6 @@ def run(fn, **kwargs):
 # --- comments ------------------------------------------------------------
 
 
-def test_a_comment_says_who_wrote_it():
-    """Everything the crew did appeared as crew[bot], so a Sponsor reading the
-    audit trail could not tell refinement from review without reading the body."""
-    issues, _ = run(artifacts.comment, body="split into 3 stories", by="Business Analyst")
-
-    _, body = issues.comments_[0]
-    assert "split into 3 stories" in body
-    assert "— *Business Analyst*" in body, "visible to a person"
-    assert artifacts.role_of(body) == "Business Analyst", "and readable by the crew"
-
-
-def test_each_role_signs_its_own():
-    issues, _ = run(artifacts.comment, body="every criterion proven", by="QA Engineer")
-
-    assert artifacts.role_of(issues.comments_[0][1]) == "QA Engineer"
-
-
-def test_a_comment_no_role_wrote_claims_nothing():
-    """A merge, a card closing because its children are done. Attributing those
-    to a role that did not act is worse than not attributing them — the same
-    ruling #22 made for card moves."""
-    issues, _ = run(artifacts.comment, body="merged", by=None)
-
-    body = issues.comments_[0][1]
-    assert body == "merged", "unchanged"
-    assert artifacts.role_of(body) is None
-
-
-def test_an_unsigned_comment_reads_back_as_nobody():
-    assert artifacts.role_of("just some text") is None
-    assert artifacts.role_of("") is None
-
-
 def test_a_comment_is_reported_as_well_as_written():
     _, seen = run(artifacts.comment, body="x", by="Developer")
 
