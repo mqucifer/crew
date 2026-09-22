@@ -297,6 +297,15 @@ def deliver_story(
     outcome = DeliveryOutcome(card=number)
     story_text = f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}"
 
+    # A dry run escalates too: local repair alone cannot prove a card is
+    # deliverable, and hiding that a card only lands with help would make a
+    # preview lie. But a dry escalation is isolated from the sprint budget the
+    # real run depends on — it is tallied under a separate key, so a preview is
+    # still bounded and auditable, yet can never spend the escalation slot the
+    # following `--land` run needs. (Sharing the key is what blocked the real
+    # #12 after a dry run escalated it to green.)
+    ledger_sprint = f"{sprint} (dry)" if dry_run else sprint
+
     branch = branch_name(number, card.title)
     outcome.branch = branch
     worktree = ws.open(branch)
@@ -329,7 +338,7 @@ def deliver_story(
                 attempts=outcome.seen("EDIT"),
                 detail=str(exc)[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
             outcome.count("EDIT")
             sink.emit(
                 CrewEvent(
@@ -365,7 +374,7 @@ def deliver_story(
                 attempts=outcome.seen("OVERWRITE"),
                 detail=f"would overwrite existing files: {', '.join(overwrites)}",
             )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
             outcome.count("OVERWRITE")
             sink.emit(
                 CrewEvent(
@@ -400,7 +409,7 @@ def deliver_story(
                 attempts=outcome.seen("REGRESSION"),
                 detail="; ".join(f"{k}: {was} -> {now}" for k, (was, now) in broken.items())[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
             outcome.count("REGRESSION")
             sink.emit(
                 CrewEvent(
@@ -433,7 +442,7 @@ def deliver_story(
                 attempts=outcome.seen("EDIT"),
                 detail=str(exc)[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
             outcome.count("EDIT")
             sink.emit(
                 CrewEvent(
@@ -465,7 +474,7 @@ def deliver_story(
             attempts=outcome.seen("VERIFY"),
             detail=check.failure_report[:400],
         )
-        decision = policy.decide(failure, spent=ledger.spent(sprint))
+        decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
         outcome.count("VERIFY")
         sink.emit(
             CrewEvent(
@@ -491,7 +500,7 @@ def deliver_story(
             ledger.record(
                 EscalationRecord(
                     at=utcnow(),
-                    sprint=sprint,
+                    sprint=ledger_sprint,
                     card=number,
                     role="Developer",
                     failure_class=FailureClass.VERIFY,
@@ -515,14 +524,14 @@ def deliver_story(
             )
             if result.should_park:
                 # Not an outcome yet — the work is unfinished, not failed.
-                ledger.resolve(number, sprint, "parked on a usage limit")
+                ledger.resolve(number, ledger_sprint, "parked on a usage limit")
                 outcome.blocked_reason = result.detail
                 return outcome
             check = workspace.check(worktree)
             if check.ok:
-                ledger.resolve(number, sprint, "resolved — lint and tests pass")
+                ledger.resolve(number, ledger_sprint, "resolved — lint and tests pass")
                 break
-            ledger.resolve(number, sprint, "escalated but still failing")
+            ledger.resolve(number, ledger_sprint, "escalated but still failing")
             outcome.failure_detail = check.failure_report
             outcome.blocked_reason = f"escalation did not resolve it: {check.failure_report[:200]}"
             return outcome

@@ -416,11 +416,27 @@ def test_a_dry_run_leaves_the_board_as_it_found_it(harness, monkeypatch):
 
 
 def test_a_dry_run_still_repairs_and_escalates(harness, monkeypatch):
-    """Dry means 'does not land', not 'does not try'."""
+    """Dry means 'does not land', not 'does not try'. Local repair alone cannot
+    prove a card is deliverable, so a dry run escalates too — hiding that a card
+    only lands with help would make the preview lie."""
     monkeypatch.setattr(FakeWorkspace, "diff", lambda self: "diff", raising=False)
     result, _, _, _, calls, _ = harness(checks=[red(), red(), red(), green()], dry_run=True)
     assert calls["escalate"] == 1
     assert result.delivered[0].escalated
+
+
+def test_a_dry_run_escalation_is_isolated_from_the_sprint_budget(tmp_path, harness, monkeypatch):
+    """A dry escalation must not spend the slot the real run depends on. It is
+    tallied under a separate key, so the sprint budget the `--land` run reads is
+    untouched — the bug where a dry run escalated #12 to green and the real #12
+    then found the budget already gone."""
+    monkeypatch.setattr(FakeWorkspace, "diff", lambda self: "diff", raising=False)
+    harness(checks=[red(), red(), red(), green()], dry_run=True)
+    ledger = EscalationLedger(tmp_path / "ledger.jsonl")
+    # The real sprint's budget is untouched...
+    assert ledger.spent(SPRINT) == 0
+    # ...and the dry escalation is recorded under its own isolated key.
+    assert ledger.spent(f"{SPRINT} (dry)") == 1
 
 
 def test_a_dry_run_failure_does_not_block_the_card(harness, monkeypatch):
