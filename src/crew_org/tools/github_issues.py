@@ -14,11 +14,21 @@ from typing import Any
 import httpx
 
 API = "https://api.github.com"
+GRAPHQL = "https://api.github.com/graphql"
 TIMEOUT = 30.0
 
 
 class IssueError(RuntimeError):
     pass
+
+
+_REVIEW_DECISION = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) { reviewDecision }
+  }
+}
+"""
 
 
 class IssueClient:
@@ -107,6 +117,33 @@ class IssueClient:
         )
         response.raise_for_status()
         return response.text
+
+    def review_decision(self, repo: str, number: int) -> str | None:
+        """GitHub's own verdict on whether this pull request is approved.
+
+        `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or None when the
+        branch has no review requirement at all.
+
+        `pull_reviews` says what the crew submitted; this says what counted.
+        An approving review from an identity without repository write access is
+        recorded and ignored by branch protection, so the two disagree — and
+        only this one distinguishes an approval that has not arrived yet from
+        one that never can. There is no REST field for it.
+        """
+        body = self._client.post(
+            GRAPHQL,
+            json={
+                "query": _REVIEW_DECISION,
+                "variables": {"owner": self.owner, "repo": repo, "number": number},
+            },
+        )
+        body.raise_for_status()
+        payload = body.json()
+        if payload.get("errors"):
+            raise IssueError(payload["errors"][0].get("message", "unknown GraphQL error"))
+        pull = ((payload.get("data") or {}).get("repository") or {}).get("pullRequest") or {}
+        decision = pull.get("reviewDecision")
+        return str(decision) if decision else None
 
     def pull_reviews(self, repo: str, number: int) -> list[dict[str, Any]]:
         response = self._client.get(
