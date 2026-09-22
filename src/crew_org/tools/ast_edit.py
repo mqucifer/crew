@@ -86,10 +86,6 @@ def definitions(source: str) -> dict[str, ast.stmt]:
         return {}
 
 
-def qualified_names(source: str) -> set[str]:
-    return set(definitions(source))
-
-
 def _span(node: ast.stmt) -> tuple[int, int]:
     """The line range a definition occupies, decorators included."""
     decorators = getattr(node, "decorator_list", None)

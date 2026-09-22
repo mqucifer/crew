@@ -35,15 +35,6 @@ def signed(body: str, by: str | None) -> str:
     return f"{body}\n\n{BY_MARKER}{by} -->\n— *{by}*"
 
 
-def role_of(body: str) -> str | None:
-    """The role that signed a comment, or None if nothing did."""
-    start = body.find(BY_MARKER)
-    if start == -1:
-        return None
-    end = body.find(" -->", start)
-    return body[start + len(BY_MARKER) : end].strip() or None if end != -1 else None
-
-
 def comment(
     issues: IssueClient,
     sink: EventSink,
