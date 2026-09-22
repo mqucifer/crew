@@ -32,8 +32,11 @@ class EpicSlice:
 
     number: int
     title: str
-    admitted: list[int] = field(default_factory=list)
-    deferred: list[int] = field(default_factory=list)
+    # The cards themselves, not their numbers. A number is not an identity —
+    # two repositories number independently — and carrying the card means the
+    # repository travels with it into every lookup and every report.
+    admitted: list[Card] = field(default_factory=list)
+    deferred: list[Card] = field(default_factory=list)
     points: int = 0
 
     @property
@@ -46,15 +49,15 @@ class SprintPlan:
     sprint: str
     capacity: int
     slices: list[EpicSlice] = field(default_factory=list)
-    unparented: list[int] = field(default_factory=list)
+    unparented: list[Card] = field(default_factory=list)
 
     @property
     def points(self) -> int:
         return sum(s.points for s in self.slices)
 
     @property
-    def admitted(self) -> list[int]:
-        return [n for s in self.slices for n in s.admitted]
+    def admitted(self) -> list[Card]:
+        return [c for s in self.slices for c in s.admitted]
 
 
 def _priority_key(card: Card) -> tuple[int, int]:
@@ -75,18 +78,21 @@ def approved_epics(cards: list[Card]) -> list[Card]:
 
 def plan_sprint(
     cards: list[Card],
-    parents: dict[int, int],
+    parents: dict[tuple[str, int], tuple[str, int]],
     *,
     sprint: str,
     capacity: int,
 ) -> SprintPlan:
     """Choose the sprint's contents. Pure — no I/O, so it is testable.
 
-    `parents` maps story number -> epic number.
+    `parents` maps a story's key to its epic's key. Keys rather than numbers:
+    keyed by number, a story in one repository could be attributed to an epic
+    in another whenever the numbers happened to line up, and nothing in the
+    board data prevents them lining up.
     """
     plan = SprintPlan(sprint=sprint, capacity=capacity)
     ready = {
-        c.number: c
+        c.key: c
         for c in cards
         if c.status == READY and c.work_type == STORY_TYPE and c.state != "CLOSED"
     }
@@ -94,7 +100,7 @@ def plan_sprint(
     remaining = capacity
     for epic in approved_epics(cards):
         stories = sorted(
-            (c for n, c in ready.items() if parents.get(n) == epic.number),
+            (c for key, c in ready.items() if parents.get(key) == epic.key),
             key=lambda c: c.number or 0,
         )
         if not stories:
@@ -106,15 +112,18 @@ def plan_sprint(
             # Never split a story to fit; a partially admitted story is not
             # deliverable, and shaving scope by halves is how sprints rot.
             if points <= remaining:
-                piece.admitted.append(story.number or 0)
+                piece.admitted.append(story)
                 piece.points += points
                 remaining -= points
             else:
-                piece.deferred.append(story.number or 0)
+                piece.deferred.append(story)
         plan.slices.append(piece)
 
     parented = set(parents)
-    plan.unparented = sorted(n for n in ready if n not in parented)
+    plan.unparented = sorted(
+        (c for key, c in ready.items() if key not in parented),
+        key=lambda c: (c.repo or "", c.number or 0),
+    )
     return plan
 
 
@@ -132,12 +141,14 @@ def start_sprint(
     cards = board.cards()
 
     # Parentage comes from sub-issue nesting, asked once per epic.
-    parents: dict[int, int] = {}
+    parents: dict[tuple[str, int], tuple[str, int]] = {}
     for epic in approved_epics(cards):
         repo = epic.repo or default_repo
         try:
+            # A sub-issue lives in its parent's repository, so the child's key
+            # is that repository and the number GitHub gave it.
             for child in issues.sub_issues(repo, epic.number or 0):
-                parents[child["number"]] = epic.number or 0
+                parents[(epic.repo or "", child["number"])] = epic.key
         except Exception as exc:  # noqa: BLE001
             sink.emit(
                 CrewEvent(
@@ -148,16 +159,15 @@ def start_sprint(
             )
 
     plan = plan_sprint(cards, parents, sprint=sprint, capacity=capacity)
-    by_number = {c.number: c for c in cards}
     counts = board.counts(cards)
 
     for piece in plan.slices:
-        for number in piece.admitted:
-            card = by_number[number]
+        for card in list(piece.admitted):
+            number = card.number or 0
             verdict = rules.may_move(frm=READY, to=SPRINT_BACKLOG, counts=counts)
             if not verdict.allowed:
                 sink.emit(CrewEvent(kind=EventKind.NOTE, card=number, summary=verdict.reason[:90]))
-                piece.deferred.append(number)
+                piece.deferred.append(card)
                 continue
             board.set_iteration(card.item_id, "Sprint", sprint)
             move_card(
@@ -172,8 +182,9 @@ def start_sprint(
             )
             counts[SPRINT_BACKLOG] = counts.get(SPRINT_BACKLOG, 0) + 1
 
-        piece.admitted = [n for n in piece.admitted if n not in piece.deferred]
-        piece.points = sum(int(by_number[n].points or 0) for n in piece.admitted)
+        held_back = {c.key for c in piece.deferred}
+        piece.admitted = [c for c in piece.admitted if c.key not in held_back]
+        piece.points = sum(int(c.points or 0) for c in piece.admitted)
 
     sink.note(
         EventKind.TICK_FINISHED,

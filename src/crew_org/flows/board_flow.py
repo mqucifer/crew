@@ -192,7 +192,10 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
     work in flight. A rework that would do that is refused instead, naming the
     cards, because that is a decision for the person asking.
     """
-    by_number = {c.number: c for c in cards}
+    # Keyed by repository as well as number: a sub-issue lives in its parent's
+    # repository, and a bare number would match a card of the same number in
+    # another one — closing or refusing to close the wrong card.
+    by_key = {c.key: c for c in cards}
     try:
         children = [child["number"] for child in issues.sub_issues(repo, number)]
     except Exception:  # noqa: BLE001
@@ -200,7 +203,7 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
 
     closable, started = [], []
     for child in children:
-        card = by_number.get(child)
+        card = by_key.get((repo, child))
         if card is None or card.state == "CLOSED":
             continue
         (started if card.status not in (INBOX, REFINEMENT, READY) else closable).append(child)

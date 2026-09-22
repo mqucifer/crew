@@ -30,7 +30,7 @@ from crew_org.events import EventKind, EventSink
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import ProjectClient
+from crew_org.tools.github_project import ProjectClient, many_repos
 from crew_org.tools.sandbox import Sandbox
 
 # A pass that keeps moving forever is a bug, not a busy board. Five is well
@@ -233,7 +233,10 @@ def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         summary=f"{len(plan.admitted)} stories, {plan.points} points",
         result=plan,
         counts={"stories": len(plan.admitted), "points": plan.points},
-        held=[f"#{n} — no parent epic" for n in plan.unparented],
+        held=[
+            f"{c.name(qualify=many_repos(plan.unparented))} — no parent epic"
+            for c in plan.unparented
+        ],
     )
 
 

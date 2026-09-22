@@ -852,9 +852,12 @@ def _render_plan(plan, *, dry_run: bool) -> None:
             + "[/]"
         )
     if plan.unparented:
+        from crew_org.tools.github_project import many_repos  # noqa: PLC0415
+
+        qualify = many_repos(plan.unparented)
         console.print(
             f"[yellow]Not admitted[/] — {len(plan.unparented)} stories have no parent epic: "
-            + ", ".join(f"#{n}" for n in plan.unparented)
+            + ", ".join(c.name(qualify=qualify) for c in plan.unparented)
         )
 
 
