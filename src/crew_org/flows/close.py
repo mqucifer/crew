@@ -21,12 +21,19 @@ from crew_org.tools.github_project import Card, ProjectClient, many_repos
 
 STORY_TYPE = "Story"
 
+# GitHub's word for "protection still wants an approving review".
+REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
 
 @dataclass
 class SprintClose:
     sprint: str
     merged: list[int] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # Approved, and GitHub did not count it. Kept apart from awaiting_approval
+    # because the sprint review would otherwise ask the Sponsor to approve a
+    # pull request their approval is not what is missing from.
+    unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
     # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
     # #32" for six stories in two repositories, and the retro then described
@@ -37,7 +44,9 @@ class SprintClose:
 
     @property
     def complete(self) -> bool:
-        return not (self.awaiting_approval or self.still_open or self.unmergeable)
+        return not (
+            self.awaiting_approval or self.unapprovable or self.still_open or self.unmergeable
+        )
 
 
 def sprint_cards(cards: list[Card], sprint: str) -> list[Card]:
@@ -94,6 +103,14 @@ def close_sprint(
         approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
             result.awaiting_approval.append((number, pull["number"]))
+            continue
+
+        # Approved and still refused. Branch protection only counts an approval
+        # from an actor with repository write access, so the crew's reviewing
+        # identity can approve into the void — and the sprint review must not
+        # ask the Sponsor for an approval that is already there.
+        if issues.review_decision(repo, pull["number"]) == REVIEW_REQUIRED:
+            result.unapprovable.append((number, pull["number"]))
             continue
 
         if not merge:

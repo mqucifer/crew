@@ -187,7 +187,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         ws=crew.ws,
         sponsor=crew.sponsor,
     )
-    moved = bool(result.epics_created or result.stories_created)
+    # Parking an epic is movement: the card left Needs Refinement, and a pass
+    # that reports "nothing moved" over it would hide the one thing that
+    # changed.
+    moved = bool(result.epics_created or result.stories_created or result.parked)
     return PhaseOutcome(
         "refine",
         moved=moved,
@@ -202,6 +205,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
         + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
+        blocked=[
+            f"#{n} — the split failed the same way twice; parked for a person"
+            for n in result.parked
+        ],
     )
 
 
@@ -339,9 +346,14 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
     # Events: they happened, and the next pass will not see them.
-    blocked = [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason] + [
-        f"#{n} — merge conflict, needs a person" for n in result.conflicted
-    ]
+    blocked = (
+        [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
+        + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
+        + [
+            f"#{n} — PR #{pr} is approved and GitHub will not count it, needs a person"
+            for n, pr in result.unapprovable
+        ]
+    )
     return PhaseOutcome(
         "deliver",
         moved=moved,
