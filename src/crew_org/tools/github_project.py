@@ -128,6 +128,28 @@ class Card(BaseModel):
     labels: frozenset[str] = frozenset()
 
     @property
+    def key(self) -> tuple[str, int]:
+        """What identifies this card. A number alone does not.
+
+        Two repositories number their issues independently, so sprint-metrics
+        #32 and crew #32 are different cards that happen to agree. Used as a
+        dictionary key a bare number silently picks one of them: a sprint close
+        reported "#12, #19, #20, #31, #32, #32" and a retro described one card
+        two ways.
+        """
+        return (self.repo or "", self.number or 0)
+
+    def name(self, *, qualify: bool = False) -> str:
+        """How to write this card in something a person reads.
+
+        `qualify` when more than one repository is on the board — where only
+        one is, the repository adds noise and no information.
+        """
+        if qualify and self.repo:
+            return f"{self.repo}#{self.number}"
+        return f"#{self.number}"
+
+    @property
     def is_blocked(self) -> bool:
         return "blocked" in self.labels
 
@@ -245,6 +267,16 @@ _FIELD_TO_ATTR = {
     "Points": "points",
     "Escalations": "escalations",
 }
+
+
+def many_repos(cards: list[Card]) -> bool:
+    """Is more than one repository on this board?
+
+    What decides whether a card's name needs its repository. Asked of the
+    board rather than configured, so a board that grows a second repository
+    starts qualifying names without anyone remembering to.
+    """
+    return len({c.repo for c in cards if c.repo}) > 1
 
 
 class ProjectClient:

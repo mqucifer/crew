@@ -22,9 +22,11 @@ would add ceremony that obscures what is happening. It arrives with Phase 2.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import re
 from dataclasses import dataclass, field
 
-from crew_org.columns import INBOX, READY
+from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org
 from crew_org.crews.refinement_crew import (
@@ -51,6 +53,21 @@ from crew_org.tools.repo_context import repository_context
 EPIC_PROPOSAL_MARKER = "<!-- crew:epic-proposal -->"
 
 STORY_SPLIT_MARKER = "<!-- crew:story-split -->"
+
+# A split that failed, and a split the crew has stopped attempting. Both are
+# comments because the comment history *is* the record (§10) — and a failed
+# split used to write nothing at all on the card, so there was nothing for a
+# later pass to read and nothing for a person to find.
+SPLIT_FAILURE_MARKER = "<!-- crew:split-failed"
+SPLIT_PARKED_MARKER = "<!-- crew:split-parked -->"
+
+# How many times the same failure is tolerated before the epic is parked. A
+# generation that fails identically will not succeed on the next identical
+# attempt: epic sprint-metrics#49 failed the same way six times in one tick —
+# reasoning_tokens 16,386, text_tokens 0, finish=length — and was retried each
+# pass because nothing recorded that it had already failed. Distinct failures
+# still retry; it is the identical repeat that is pointless.
+IDENTICAL_FAILURES_BEFORE_PARKING = 2
 
 GOAL_TYPE = "Goal"
 EPIC_TYPE = "Epic"
@@ -82,6 +99,10 @@ class TickResult:
     design_required: list[int] = field(default_factory=list)
     skipped: list[tuple[int, str]] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
+    # Epics the crew has stopped trying to split. Its own list because a
+    # failure that will be retried and one that will not are different news:
+    # the first is noise in a run, the second is work for a person.
+    parked: list[int] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -192,7 +213,10 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
     work in flight. A rework that would do that is refused instead, naming the
     cards, because that is a decision for the person asking.
     """
-    by_number = {c.number: c for c in cards}
+    # Keyed by repository as well as number: a sub-issue lives in its parent's
+    # repository, and a bare number would match a card of the same number in
+    # another one — closing or refusing to close the wrong card.
+    by_key = {c.key: c for c in cards}
     try:
         children = [child["number"] for child in issues.sub_issues(repo, number)]
     except Exception:  # noqa: BLE001
@@ -200,7 +224,7 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
 
     closable, started = [], []
     for child in children:
-        card = by_number.get(child)
+        card = by_key.get((repo, child))
         if card is None or card.state == "CLOSED":
             continue
         (started if card.status not in (INBOX, REFINEMENT, READY) else closable).append(child)
@@ -525,6 +549,91 @@ class RepoContext:
         return self._cache[repo]
 
 
+def failure_fingerprint(exc: Exception) -> str:
+    """A short, stable name for *how* something failed.
+
+    Digits are stripped before hashing: a token count, a duration and a
+    line number differ between two runs of the same dead end, and treating
+    those as distinct failures is what let one epic be retried six times.
+
+    Short enough to sit in a comment marker, long enough not to collide
+    across the handful of ways a split can fail.
+    """
+    text = f"{type(exc).__name__}:{re.sub(r'[0-9]+', '', str(exc))}".strip()[:400]
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def failures_since_parking(issues: IssueClient, repo: str, number: int) -> list[str]:
+    """Fingerprints of splits that have failed since this epic was last parked.
+
+    Scoped to the last parking on purpose. Parking is how a person is asked to
+    look at the epic, and moving it back is how they say they have — so the
+    count restarts and the epic gets its attempts again, rather than being
+    parked on the first failure for ever after.
+    """
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return []
+    last_park = max(
+        (i for i, body in enumerate(bodies) if SPLIT_PARKED_MARKER in body),
+        default=-1,
+    )
+    return [
+        body.split(SPLIT_FAILURE_MARKER, 1)[1].split("-->", 1)[0].strip()
+        for body in bodies[last_park + 1 :]
+        if SPLIT_FAILURE_MARKER in body
+    ]
+
+
+def park_epic(
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    repo: str,
+    number: int,
+    detail: str,
+) -> None:
+    """Stop attempting this split, and say so where a person will find it."""
+    move_card(
+        board,
+        sink,
+        item_id=card.item_id,
+        to=BLOCKED,
+        by=None,
+        card=number,
+        frm=card.status,
+        summary="split failed identically — not retried",
+        kind=EventKind.CARD_BLOCKED,
+    )
+    artifacts.label(issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"])
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"{SPLIT_PARKED_MARKER}\n**Blocked — this epic will not be split again.** "
+        f"The Business Analyst failed the same way "
+        f"{IDENTICAL_FAILURES_BEFORE_PARKING} times:\n\n```\n{detail[:600]}\n```\n\n"
+        "An identical repeat is not going to converge, so retrying it every pass only "
+        "spends wall-clock and GPU. The usual cause is an epic large enough that the "
+        "split exhausts its token budget before any answer begins.\n\n"
+        "Split this epic into smaller ones, or narrow it, and move it back to "
+        "`Needs Refinement` — the count restarts from here.",
+        by=None,
+    )
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.CARD_BLOCKED,
+            role="Business Analyst",
+            card=number,
+            summary=f"split failed identically {IDENTICAL_FAILURES_BEFORE_PARKING} times",
+        )
+    )
+
+
 def refine_epics(
     board: ProjectClient,
     issues: IssueClient,
@@ -550,6 +659,10 @@ def refine_epics(
         )
         if not proceed:
             continue
+
+        # What this epic has already failed at. Read before the attempt, so a
+        # dead end is recognised rather than walked into again.
+        seen_failures = failures_since_parking(issues, repo, number)
 
         sink.emit(
             CrewEvent(
@@ -580,6 +693,33 @@ def refine_epics(
                     summary=str(exc)[:100],
                 )
             )
+            fingerprint = failure_fingerprint(exc)
+            if seen_failures.count(fingerprint) + 1 >= IDENTICAL_FAILURES_BEFORE_PARKING:
+                park_epic(
+                    board,
+                    issues,
+                    sink,
+                    epic_card,
+                    repo=repo,
+                    number=number,
+                    detail=f"{type(exc).__name__}: {exc}",
+                )
+                result.parked.append(number)
+            else:
+                # Recorded so the next pass can tell a repeat from a new
+                # failure. Nothing was written here at all, which is why every
+                # pass saw an epic that had simply never been split.
+                artifacts.comment(
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    body=f"{SPLIT_FAILURE_MARKER} {fingerprint} -->\n"
+                    f"**The split failed.** `{type(exc).__name__}: {str(exc)[:300]}`\n\n"
+                    "It will be attempted once more. An identical failure after that "
+                    "parks the epic rather than retrying it every pass.",
+                    by=None,
+                )
             continue
 
         numbers: dict[str, int] = {}

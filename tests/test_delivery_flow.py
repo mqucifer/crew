@@ -104,6 +104,9 @@ class FakeIssues:
     def pull_reviews(self, repo, number):
         return [{"state": "APPROVED"}]
 
+    def review_decision(self, repo, number):
+        return "APPROVED"
+
 
 class FakeWorkspace:
     # Set by a test that wants `open(resume=True)` to find prior work.

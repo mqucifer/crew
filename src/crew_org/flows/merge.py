@@ -28,12 +28,21 @@ STORY_TYPE = "Story"
 # GitHub's word for "this branch and main have both changed the same lines".
 CONFLICTED = "dirty"
 
+# GitHub's word for "branch protection still wants an approving review". Read
+# off `reviewDecision`, which is the verdict protection actually applies —
+# unlike the review list, which records approvals that were never counted.
+REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
 
 @dataclass
 class MergeResult:
     merged: list[tuple[int, int]] = field(default_factory=list)
     conflicted: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # Approved by the crew, and GitHub did not count it. A separate list
+    # because the Sponsor's response differs: one is waiting, the other is a
+    # gate no identity the crew holds can satisfy, and waiting will not fix it.
+    unapprovable: list[tuple[int, int]] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
 
 
@@ -97,6 +106,52 @@ def merge_approved(
         )
         if not approved:
             result.awaiting_approval.append((number, pull["number"]))
+            continue
+
+        # An approving review sits on it and GitHub still wants one. That is
+        # not slowness: the reviewing identity's approval was recorded and
+        # does not count, so no further tick will change it. Reported as a gate
+        # the crew cannot satisfy rather than as an approval still to come —
+        # sprint-metrics #31 and #32 waited a whole tick looking merely slow.
+        if issues.review_decision(repo, pull["number"]) == REVIEW_REQUIRED:
+            result.unapprovable.append((number, pull["number"]))
+            if dry_run:
+                continue
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=BLOCKED,
+                by=None,
+                card=number,
+                frm=MERGING,
+                summary=f"PR #{pull['number']} cannot be approved by any crew identity",
+                kind=EventKind.CARD_BLOCKED,
+            )
+            artifacts.label(
+                issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"]
+            )
+            artifacts.comment(
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                body=f"**Blocked — an approval that cannot arrive.** PR #{pull['number']} "
+                "carries an approving review from the crew's reviewing identity, and GitHub "
+                "still reports `REVIEW_REQUIRED`: branch protection only counts an approval "
+                "from an actor with repository write access.\n\n"
+                "No further tick will change this. Either approve the pull request yourself, "
+                "or give the reviewing app the access its approval needs — which also lets it "
+                "push, and is a trade only you can make.",
+                by=None,
+            )
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.CARD_BLOCKED,
+                    card=number,
+                    summary=f"PR #{pull['number']} cannot be approved by any crew identity",
+                )
+            )
             continue
 
         if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:

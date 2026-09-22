@@ -30,7 +30,10 @@ def build_agent(key: str, spec: dict[str, Any] | None = None, **overrides: Any) 
         "role": spec["role"],
         "goal": spec["goal"].strip(),
         "backstory": backstory,
-        "llm": build_llm(spec.get("llm", "crew-local")),
+        # Per-role LLM settings, declared beside the role rather than hidden in
+        # code: a role whose generations are longer than the rest needs more
+        # headroom, and that is a fact about the role.
+        "llm": build_llm(spec.get("llm", "crew-local"), **(spec.get("llm_params") or {})),
         # A refined role does one thing. Letting agents delegate re-introduces
         # the fuzzy hand-offs the board exists to replace.
         "allow_delegation": False,
