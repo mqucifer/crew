@@ -11,6 +11,7 @@ from crew_org.flows.board_flow import (
     EPIC_PROPOSAL_MARKER,
     INBOX,
     goal_cards,
+    goals_missing_work_type,
     render_proposal,
     tick,
     unauthored_goals,
@@ -46,6 +47,7 @@ def card(
     state: str = "OPEN",
     work_type: str | None = "Goal",
     author: str = "mquarters",
+    labels: frozenset[str] = frozenset(),
 ) -> Card:
     return Card(
         author=author,
@@ -57,6 +59,7 @@ def card(
         work_type=work_type,
         priority="P0",
         repo="sprint-metrics",
+        labels=labels,
     )
 
 
@@ -163,6 +166,55 @@ def test_only_inbox_cards_are_considered():
 
 def test_closed_goals_are_ignored():
     assert goal_cards([card(1, state="CLOSED")]) == []
+
+
+# --- typing a Goal from its label ----------------------------------------
+#
+# Work Type is a project field and nothing that files an issue can set one, so
+# a correctly filed Goal arrives untyped and invisible to `goal_cards`.
+
+
+def test_a_labelled_goal_is_typed():
+    cards = [card(1, work_type=None, labels=frozenset({"goal"}))]
+    assert [c.number for c in goals_missing_work_type(cards)] == [1]
+
+
+def test_an_untyped_card_without_the_label_is_not_a_goal():
+    assert goals_missing_work_type([card(1, work_type=None)]) == []
+
+
+def test_an_already_typed_goal_is_not_retyped():
+    cards = [card(1, labels=frozenset({"goal"}))]
+    assert goals_missing_work_type(cards) == []
+
+
+def test_a_labelled_goal_outside_the_inbox_is_left_alone():
+    cards = [card(1, status="Ready", work_type=None, labels=frozenset({"goal"}))]
+    assert goals_missing_work_type(cards) == []
+
+
+def test_a_closed_labelled_goal_is_not_typed():
+    cards = [card(1, state="CLOSED", work_type=None, labels=frozenset({"goal"}))]
+    assert goals_missing_work_type(cards) == []
+
+
+def test_typing_a_goal_decomposes_it_on_the_same_tick(monkeypatch):
+    """The point of returning the updated cards rather than re-reading them."""
+    issues = FakeIssues()
+    board = FakeBoard([card(1, work_type=None, labels=frozenset({"goal"}))])
+    result, _ = run(board, issues, monkeypatch)
+    assert ("I1", "Work Type", "Goal") in board.selects
+    assert result.proposed == [1]
+
+
+def test_a_goal_typed_from_its_label_is_still_checked_for_authorship(monkeypatch):
+    """Typing the card is what makes it a Goal; crew#60's rule then applies."""
+    issues = FakeIssues()
+    board = FakeBoard([card(1, work_type=None, author="mqucifer-crew", labels=frozenset({"goal"}))])
+    result, _ = run(board, issues, monkeypatch)
+    assert ("I1", "Work Type", "Goal") in board.selects
+    assert result.proposed == []
+    assert [n for n, _ in result.skipped] == [1]
 
 
 # --- the tick ------------------------------------------------------------

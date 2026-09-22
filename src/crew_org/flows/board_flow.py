@@ -8,6 +8,12 @@ Phase 1 is deliberately read-only. The crew proposes epics as issue comments
 and moves nothing, so its decomposition can be judged before it is trusted with
 the board.
 
+One exception, and it is not a judgement the crew is making: a card carrying
+the `goal` label with no Work Type is typed `Goal` before selection. Work Type
+is a project field that nothing filing an issue can set, so this records what a
+person already said in the only place they could say it. It changes no column
+and decides nothing.
+
 This is plain reconciliation code, not a CrewAI Flow. A Flow earns its place
 when routing genuinely branches by card state; for a single linear pass it
 would add ceremony that obscures what is happening. It arrives with Phase 2.
@@ -49,6 +55,13 @@ STORY_SPLIT_MARKER = "<!-- crew:story-split -->"
 GOAL_TYPE = "Goal"
 EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
+# The label a person can actually apply when filing a Goal. Work Type is a
+# project field, and nothing that creates an issue can set one — not the issue
+# template's front matter, not `gh issue create`, not the new-issue form. A
+# label is the only signal available at the moment a Goal is written, so the
+# board reconciles the field from it rather than asking the Sponsor to
+# remember a second step in a second place.
+GOAL_LABEL = "goal"
 NEEDS_HUMAN = "needs:human"
 # The Sponsor's only verb beyond approve and reject. Without it a rejection
 # teaches the crew nothing: the same goal decomposed again produces the same
@@ -252,6 +265,67 @@ def rework_gate(
         # The Sponsor's label, spent. Nobody's role to claim.
         artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_REWORK])
     return True, sponsor_notes(issues, repo, number)
+
+
+def goals_missing_work_type(cards: list[Card]) -> list[Card]:
+    """Cards filed as a Goal that the board has not typed yet.
+
+    A person writing a Goal applies the `goal` label, because that is the only
+    thing they can set while filing the issue. `goal_cards` filters on Work
+    Type, which nothing at creation time can populate — so a correctly filed
+    Goal lands on the board invisible to the crew, and the tick used to do no
+    more than name it in a note nobody was reading.
+    """
+    return [
+        c
+        for c in cards
+        if c.status == INBOX and c.state != "CLOSED" and not c.work_type and GOAL_LABEL in c.labels
+    ]
+
+
+def stamp_goal_work_type(board: ProjectClient, sink: EventSink, cards: list[Card]) -> list[Card]:
+    """Set Work Type from the `goal` label, and return the board as it now is.
+
+    The updated cards are returned rather than re-read so that the Goal is
+    decomposed on the tick that typed it. Re-reading would cost a round trip to
+    say the same thing, and deferring to the next tick would make a Goal wait
+    for a pass that does nothing but look at it.
+
+    Authorship is deliberately not checked here. Typing the card is what makes
+    it a Goal at all, and an unauthored one then shows up in
+    `unauthored_goals`, reported as a Goal the Sponsor did not write — which is
+    the intended outcome. Skipping it here would instead leave it untyped and
+    silent, which is the failure this function exists to end.
+    """
+    pending = goals_missing_work_type(cards)
+    if not pending:
+        return cards
+
+    stamped: set[str] = set()
+    for c in pending:
+        try:
+            board.set_select(c.item_id, "Work Type", GOAL_TYPE)
+        except Exception as exc:  # noqa: BLE001
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.NOTE,
+                    card=c.number or 0,
+                    summary=f"could not set Work Type: {type(exc).__name__}: {exc}"[:100],
+                )
+            )
+            continue
+        stamped.add(c.item_id)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.NOTE,
+                card=c.number or 0,
+                summary=f"typed {GOAL_TYPE} from the `{GOAL_LABEL}` label",
+            )
+        )
+
+    return [
+        c.model_copy(update={"work_type": GOAL_TYPE}) if c.item_id in stamped else c for c in cards
+    ]
 
 
 def goal_cards(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
@@ -621,6 +695,8 @@ def tick(
 
     cards = board.cards()
     sink.note(EventKind.NOTE, f"{len(cards)} cards on the board", counts=board.counts(cards))
+
+    cards = stamp_goal_work_type(board, sink, cards)
 
     untyped = [c.number for c in cards if c.status == INBOX and not c.work_type]
     if untyped:
