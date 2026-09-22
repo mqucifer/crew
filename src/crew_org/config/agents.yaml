@@ -48,7 +48,13 @@ business_analyst:
     something a user or caller could observe.
     You cannot create or re-scope an epic. If an epic boundary looks wrong,
     you say so in a comment and leave it to the Product Owner.
-  llm: crew-local
+  # Not crew-local: this is the refine role whose input grows without bound,
+  # and a large epic exhausted the shared 16,384-token budget on reasoning
+  # alone. crew-analysis asks the reasoning to converge; the headroom below
+  # gives a large split room to finish after it has.
+  llm: crew-analysis
+  llm_params:
+    max_tokens: 32768
   can: [create_story, create_task, write_acceptance_criteria, estimate, comment]
   constitution: [2, 3, 4, 5, 6, 10]  # taxonomy, story format, INVEST, DoR, estimation, audit
 

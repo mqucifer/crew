@@ -92,6 +92,8 @@ class DeliveryResult:
     # worked these out and the command printed neither, so a run that silently
     # skipped every merge looked exactly like a run with nothing to merge.
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # Approved and refused by branch protection — a gate no tick can satisfy.
+    unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
     # What a real run would have merged. A dry run must not merge, and must
     # still say what it declined to do.
@@ -317,7 +319,11 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
     blockers = [
         c
         for c in cards
-        if c.parent == story.parent
+        # The repository as well as the parent number. Both are plain numbers,
+        # so a story in one repository could be held back by a sibling of an
+        # epic in another whenever the epic numbers happened to line up.
+        if c.repo == story.repo
+        and c.parent == story.parent
         and c.work_type == STORY_TYPE
         and (c.number or 0) < (story.number or 0)
         and c.state != "CLOSED"
@@ -743,6 +749,7 @@ def deliver(
     )
     result.conflicted = [card for card, _pr in landed.conflicted]
     result.awaiting_approval = list(landed.awaiting_approval)
+    result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     if dry_run:
         # Classified exactly as a real run would, and written nowhere.

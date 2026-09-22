@@ -30,7 +30,7 @@ from crew_org.events import EventKind, EventSink
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import ProjectClient
+from crew_org.tools.github_project import ProjectClient, many_repos
 from crew_org.tools.sandbox import Sandbox
 
 # A pass that keeps moving forever is a bug, not a busy board. Five is well
@@ -187,7 +187,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         ws=crew.ws,
         sponsor=crew.sponsor,
     )
-    moved = bool(result.epics_created or result.stories_created)
+    # Parking an epic is movement: the card left Needs Refinement, and a pass
+    # that reports "nothing moved" over it would hide the one thing that
+    # changed.
+    moved = bool(result.epics_created or result.stories_created or result.parked)
     return PhaseOutcome(
         "refine",
         moved=moved,
@@ -202,6 +205,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
         + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
+        blocked=[
+            f"#{n} — the split failed the same way twice; parked for a person"
+            for n in result.parked
+        ],
     )
 
 
@@ -233,7 +240,10 @@ def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         summary=f"{len(plan.admitted)} stories, {plan.points} points",
         result=plan,
         counts={"stories": len(plan.admitted), "points": plan.points},
-        held=[f"#{n} — no parent epic" for n in plan.unparented],
+        held=[
+            f"{c.name(qualify=many_repos(plan.unparented))} — no parent epic"
+            for c in plan.unparented
+        ],
     )
 
 
@@ -336,9 +346,14 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
     # Events: they happened, and the next pass will not see them.
-    blocked = [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason] + [
-        f"#{n} — merge conflict, needs a person" for n in result.conflicted
-    ]
+    blocked = (
+        [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
+        + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
+        + [
+            f"#{n} — PR #{pr} is approved and GitHub will not count it, needs a person"
+            for n, pr in result.unapprovable
+        ]
+    )
     return PhaseOutcome(
         "deliver",
         moved=moved,

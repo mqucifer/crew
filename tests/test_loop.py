@@ -149,6 +149,7 @@ class FakeDeliveryResult:
         self.blocked = kw.get("blocked", [])
         self.recovered = kw.get("recovered", [])
         self.awaiting_approval = kw.get("awaiting_approval", [])
+        self.unapprovable = kw.get("unapprovable", [])
         self.unmergeable = kw.get("unmergeable", [])
         self.conflicted = kw.get("conflicted", [])
         self.waiting_on_a_sibling = kw.get("waiting_on_a_sibling", [])
