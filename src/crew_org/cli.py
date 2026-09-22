@@ -500,7 +500,24 @@ def auth() -> None:
             "so it cannot post an approving review."
         )
     else:
-        console.print(f"\n[green]reviewing identity: {escape(review_identity)}[/] — can approve.")
+        # What was verified, and nothing more. This line used to read "can
+        # approve" on the strength of two facts — a distinct identity holding
+        # pull_requests: write — that are both true and neither sufficient.
+        # GitHub only counts an approval from an actor with repository write
+        # access, so the app's reviews were recorded and ignored, and two cards
+        # sat in Merging looking merely slow. Whether an approval counts is
+        # answered per pull request by `reviewDecision`, not by a grant set.
+        console.print(
+            f"\n[green]reviewing identity: {escape(review_identity)}[/] — a separate identity "
+            "with write on pull requests, so it can submit a review."
+        )
+        if grants.get("contents") != "write":
+            console.print(
+                "[yellow]→[/] [bold]reviewing identity:[/] it has no write on contents, so "
+                "branch protection may record its approval without counting it. "
+                "`crew tick` reports any pull request where that happens; granting "
+                "contents: write would likely fix it and would also let the app push."
+            )
     del review_token
 
     if any(c.status is AuthStatus.FAIL for c in checks):
@@ -704,6 +721,11 @@ def deliver(
         console.print(f"[red]#{number}[/] merge conflict — blocked, needs a person")
     for number, pull in result.awaiting_approval:
         console.print(f"[yellow]#{number}[/] not merged — PR #{pull} has no approving review")
+    for number, pull in result.unapprovable:
+        console.print(
+            f"[red]#{number}[/] not merged — PR #{pull} is approved and GitHub still "
+            "requires a review; no tick can satisfy that gate"
+        )
     for number, why in result.unmergeable:
         console.print(f"[red]#{number}[/] not merged — {why}")
     for number, blocker in result.waiting_on_a_sibling:
@@ -903,6 +925,12 @@ def sprint_close(
     for story, pull in result.awaiting_approval:
         console.print(
             f"  [yellow]#{story}[/] waiting on your approval of PR #{pull} — "
+            f"https://github.com/{owner}/{repo}/pull/{pull}"
+        )
+    for story, pull in result.unapprovable:
+        console.print(
+            f"  [red]#{story}[/] PR #{pull} is approved and GitHub still requires a review — "
+            f"the crew's approval was recorded and not counted. "
             f"https://github.com/{owner}/{repo}/pull/{pull}"
         )
     for number, why in result.unmergeable:

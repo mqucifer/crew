@@ -104,6 +104,9 @@ class FakeIssues:
     def pull_reviews(self, repo, number):
         return [{"state": "APPROVED"}]
 
+    def review_decision(self, repo, number):
+        return "APPROVED"
+
 
 class FakeWorkspace:
     def for_repo(self, repo):
