@@ -79,10 +79,27 @@ trying to remove, or folding the role into the Business Analyst, which collapses
 the goal/epic/story boundary §1 makes structural on the grounds that
 granularity is what a small model blurs.
 
+**The third option, and why it also fails.** Give the human *Product Manager*
+and let the agent keep *Product Owner*. The hierarchy then reads correctly —
+a Product Manager sits above a Product Owner — both names are standard, and
+nothing is coined. It is the best of the three on its own terms.
+
+It fails on something outside itself: **"Manager" is reserved by question 2.**
+The candidate orchestrator there is a Manager Agent, and if that question
+resolves toward one, the board carries a *Product Manager* who is a person and
+a *Manager Agent* that runs the process. Naming the human out of a word the
+architecture may still need is not worth a hierarchy that reads better.
+
 > **Ruling: the human stays the Product Sponsor, and the agent stays the
-> Product Owner.** One coined name on the human is cheaper than an inverted
-> hierarchy on two standard ones. *Sponsor* is also accurate: this person funds
-> and accepts, and does not own a backlog day to day.
+> Product Owner.** *Sponsor* collides with nothing and will not be wanted for
+> anything else — which is the property that decides it, above accuracy or
+> familiarity. It is also true: this person funds and accepts, and does not own
+> a backlog day to day.
+>
+> This is settled. Reopening it needs a new argument, not the observation that
+> *Product Owner* is the more familiar word — that is the argument that was
+> made, and the two options it leads to are an inverted hierarchy or a name the
+> orchestrator may need.
 
 ### 2. What orchestrates — the board, or a manager?
 
