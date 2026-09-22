@@ -42,10 +42,16 @@ class FakeBoard:
 
 
 class FakeIssues:
-    def __init__(self, *, reviews=APPROVED, mergeable_state="clean", pull=True):
+    def __init__(
+        self, *, reviews=APPROVED, mergeable_state="clean", pull=True, decision="APPROVED"
+    ):
         self.owner = "mqucifer"
         self._reviews, self._state, self._has_pull = reviews, mergeable_state, pull
+        self._decision = decision
         self.merged, self.labels, self.comments = [], [], []
+
+    def review_decision(self, repo, number):
+        return self._decision
 
     def pull_for_branch(self, repo, branch):
         return {"number": 100} if self._has_pull else None
@@ -168,3 +174,76 @@ def test_a_failed_merge_does_not_mark_the_card_done():
     assert result.merged == []
     assert ("C6", "Done") not in board.moves
     assert "base branch was modified" in result.failed[0][1]
+
+
+# --- an approval that cannot arrive --------------------------------------
+
+
+def test_an_approval_github_does_not_count_is_not_waiting():
+    """The crew's reviewing identity approved it and branch protection still
+    reports REVIEW_REQUIRED, because it only counts an approval from an actor
+    with repository write access. That card is not slow — no tick will ever
+    move it, and reporting it beside cards that are merely waiting is how
+    sprint-metrics #31 and #32 sat in Merging for a whole tick unnoticed."""
+    issues = FakeIssues(decision="REVIEW_REQUIRED")
+    result, board, _ = run([card(6)], issues)
+    assert issues.merged == []
+    assert result.awaiting_approval == []
+    assert result.unapprovable == [(6, 100)]
+    assert ("C6", "Blocked") in board.moves
+
+
+def test_an_approval_that_cannot_arrive_is_labelled_for_a_person():
+    issues = FakeIssues(decision="REVIEW_REQUIRED")
+    run([card(6)], issues)
+    assert (6, "blocked") in issues.labels
+    assert (6, "needs:human") in issues.labels
+
+
+def test_an_approval_that_cannot_arrive_says_why_and_what_to_do():
+    issues = FakeIssues(decision="REVIEW_REQUIRED")
+    run([card(6)], issues)
+    _number, body = issues.comments[0]
+    assert "REVIEW_REQUIRED" in body
+    assert "write access" in body
+    assert "approve the pull request yourself" in body
+
+
+def test_an_approval_that_cannot_arrive_is_visible_on_the_event_stream():
+    issues = FakeIssues(decision="REVIEW_REQUIRED")
+    _, _, seen = run([card(6)], issues)
+    assert any(e.kind == EventKind.CARD_BLOCKED for e in seen)
+
+
+def test_a_dry_run_reports_the_dead_gate_and_moves_nothing():
+    issues = FakeIssues(decision="REVIEW_REQUIRED")
+    board = FakeBoard()
+    sink = EventSink(None)
+    result = merge_approved(
+        board,
+        issues,
+        sink,
+        cards=[card(6)],
+        default_repo="sprint-metrics",
+        dry_run=True,
+    )
+    assert result.unapprovable == [(6, 100)]
+    assert board.moves == []
+    assert issues.comments == []
+
+
+def test_no_approving_review_is_still_ordinary_waiting():
+    """The distinction only applies to a card GitHub refuses *despite* an
+    approval. A card nobody has approved is waiting, as it always was."""
+    issues = FakeIssues(reviews=COMMENTED, decision="REVIEW_REQUIRED")
+    result, board, _ = run([card(6)], issues)
+    assert result.awaiting_approval == [(6, 100)]
+    assert result.unapprovable == []
+    assert board.moves == []
+
+
+def test_a_branch_with_no_review_requirement_still_merges():
+    """`reviewDecision` is null when protection asks for no review at all."""
+    issues = FakeIssues(decision=None)
+    result, _, _ = run([card(6)], issues)
+    assert result.merged == [(6, 100)]
