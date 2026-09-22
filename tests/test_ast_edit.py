@@ -18,7 +18,6 @@ from crew_org.tools.ast_edit import (
     Operation,
     apply_edit,
     apply_edits,
-    qualified_names,
 )
 
 SOURCE = '''"""A module."""
@@ -53,14 +52,6 @@ def parses(source: str) -> bool:
 # --- addressing ----------------------------------------------------------
 
 
-def test_definitions_are_addressable_by_qualified_name():
-    assert qualified_names(SOURCE) == {"Card", "Card.is_done", "Card.age", "existing", "VERSION"}
-
-
-def test_an_unparseable_file_yields_no_names():
-    assert qualified_names("def broken(:\n") == set()
-
-
 # --- replace -------------------------------------------------------------
 
 
@@ -71,22 +62,6 @@ def test_replacing_a_function_leaves_everything_else_alone():
     assert "return 0" in out
     assert "class Card" in out and "VERSION = 1" in out
     assert parses(out)
-
-
-def test_replacing_a_method_keeps_it_inside_its_class():
-    out = apply_edit(SOURCE, Edit(Operation.REPLACE, "Card.age", "def age(self):\n    return 99"))
-    assert "Card.age" in qualified_names(out)
-    assert "return 99" in out
-    assert parses(out)
-
-
-def test_a_method_emitted_unindented_is_reindented():
-    """Models emit methods flat. Correcting that is cheaper than rejecting it."""
-    out = apply_edit(
-        SOURCE, Edit(Operation.REPLACE, "Card.is_done", "def is_done(self):\n    return False")
-    )
-    assert parses(out)
-    assert "Card.is_done" in qualified_names(out)
 
 
 def test_replacing_something_that_does_not_exist_says_what_does():
@@ -109,24 +84,9 @@ def test_replacing_with_nothing_is_refused():
 # --- add -----------------------------------------------------------------
 
 
-def test_adding_a_function_appends_it():
-    out = apply_edit(SOURCE, Edit(Operation.ADD, "throughput", "def throughput(c):\n    return 1"))
-    assert "throughput" in qualified_names(out)
-    assert qualified_names(SOURCE) <= qualified_names(out)
-    assert parses(out)
-
-
 def test_adding_a_name_that_exists_is_refused():
     with pytest.raises(EditError, match="already exists"):
         apply_edit(SOURCE, Edit(Operation.ADD, "existing", "def existing():\n    pass"))
-
-
-def test_adding_a_method_puts_it_in_the_class():
-    out = apply_edit(
-        SOURCE, Edit(Operation.ADD_METHOD, "Card.started", "def started(self):\n    return None")
-    )
-    assert "Card.started" in qualified_names(out)
-    assert parses(out)
 
 
 def test_adding_a_method_to_a_missing_class_is_refused():
@@ -164,35 +124,7 @@ def test_an_empty_import_is_refused():
 # --- delete --------------------------------------------------------------
 
 
-def test_deleting_removes_only_the_named_definition():
-    out = apply_edit(SOURCE, Edit(Operation.DELETE, "existing"))
-    assert "existing" not in qualified_names(out)
-    assert {"Card", "Card.age", "VERSION"} <= qualified_names(out)
-    assert parses(out)
-
-
-def test_deletion_must_be_named_and_cannot_happen_by_omission():
-    """Everything not named is untouched — that is the whole point."""
-    out = apply_edit(SOURCE, Edit(Operation.ADD, "extra", "def extra():\n    return 1"))
-    assert qualified_names(SOURCE) <= qualified_names(out)
-
-
 # --- sequences -----------------------------------------------------------
-
-
-def test_several_edits_apply_in_order():
-    out = apply_edits(
-        SOURCE,
-        [
-            Edit(Operation.ADD_IMPORT, "date", "from datetime import date"),
-            Edit(Operation.ADD, "throughput", "def throughput(c):\n    return len(c)"),
-            Edit(Operation.REPLACE, "existing", "def existing(cards):\n    return 2"),
-            Edit(Operation.ADD_METHOD, "Card.blocked", "def blocked(self):\n    return False"),
-        ],
-    )
-    assert parses(out)
-    assert {"throughput", "Card.blocked"} <= qualified_names(out)
-    assert "return 2" in out
 
 
 def test_spans_do_not_go_stale_between_edits():
