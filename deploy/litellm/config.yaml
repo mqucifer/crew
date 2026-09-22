@@ -40,12 +40,16 @@ model_list:
   # failure crew-code exists to avoid, arriving in refinement as epics get
   # bigger.
   #
-  # UNVERIFIED THROUGH THE PROXY: reasoning_effort is an OpenAI-standard
-  # parameter, and whether SGLang's Qwen3 backend honours it (rather than
-  # having it silently dropped by drop_params) has not been measured here.
-  # Confirm that a large split completes and that reasoning_tokens falls before
-  # trusting it; if it is dropped, the larger max_tokens on the agent is doing
-  # the work on its own.
+  # reasoning_effort is an OpenAI-standard parameter and works well in the
+  # Sponsor's other setups, so the lever itself is not in doubt. What is not
+  # measured *here* is narrower: whether it survives this alias's
+  # drop_params: true on the way to SGLang, and whether medium effort is
+  # enough to make a large split converge.
+  #
+  # The check is the split that failed: run sprint-metrics#49 through and
+  # watch reasoning_tokens. If the parameter is being dropped, the larger
+  # max_tokens on the Business Analyst is doing the work on its own — which
+  # may be enough, and is worth knowing either way.
   - model_name: crew-analysis
     litellm_params:
       model: openai/qwen3.8-27b-sglang
