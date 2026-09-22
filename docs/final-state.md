@@ -71,7 +71,20 @@ later. The agent could be called something else.
 **What changes either way:** the constitution, `agents.yaml`, and every prompt
 that names the role. Not large, but it touches everything.
 
-> **Ruling:** _unset._
+> **Ruling: the human is the Product Owner.** It is the word every agile
+> practitioner already knows, and inventing a role name taxes everyone who
+> reads this later. *Product Sponsor* goes.
+
+**The knock-on, which is not yet settled.** The agent that turns Goals into
+Epics currently holds that name and must give it up. It is not a cosmetic
+rename: the whole reason role boundaries are structural (§1) is that
+granularity — goal, epic, story — is exactly what a small model blurs, so
+whatever the agent is called has to say *which altitude it works at*. It writes
+epics and it may not write acceptance criteria; the Business Analyst writes
+stories from what it produces.
+
+Until that is decided, this document calls it **the epic author** and means the
+agent, never the person.
 
 ### 2. What orchestrates — the board, or a manager?
 
@@ -209,8 +222,8 @@ Seven agents and one person today. The absorbed sketch proposes nine agents.
 
 | Role | Exists | At final state |
 |---|---|---|
-| The human | yes | Authors goals, approves epics, accepts increments. Nothing else. |
-| Product Owner | agent | Goals into epics |
+| **Product Owner** (the human) | yes | Authors goals, approves epics, accepts increments. Nothing else. |
+| The epic author (agent, name unsettled) | agent | Goals into epics |
 | Business Analyst | agent | Epics into stories, criteria, estimates |
 | Architect | agent | Design notes, rationed by complexity |
 | Developer | agent | Code, tests, pull requests |
