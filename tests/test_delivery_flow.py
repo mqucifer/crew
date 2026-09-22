@@ -106,6 +106,9 @@ class FakeIssues:
 
 
 class FakeWorkspace:
+    # Set by a test that wants `open(resume=True)` to find prior work.
+    unfinished = False
+
     def for_repo(self, repo):
         self.repos_asked.append(repo)
         return self
@@ -114,11 +117,14 @@ class FakeWorkspace:
         self.tmp, self.committed, self.pushed, self.closed = tmp, [], 0, 0
         self.forced = None
         self.repos_asked: list[str] = []
+        # Whether `open` found a previous attempt on the branch to build on.
+        self.resumed = False
         # Recorded in order so a test can prove the evidence was read BEFORE
         # the worktree was removed, which is the whole point of keeping it.
         self.events: list[str] = []
 
-    def open(self, branch):
+    def open(self, branch, *, resume=False):
+        self.resumed = bool(resume) and self.unfinished
         path = self.tmp / branch.replace("/", "__")
         path.mkdir(parents=True, exist_ok=True)
         (path / "pyproject.toml").write_text("[project]\nname='x'\n")
@@ -837,7 +843,8 @@ OVERWRITING = Implementation(
 def test_writing_over_an_existing_file_is_refused(harness, monkeypatch, tmp_path):
     """A 'new file' that already exists is a whole-file rewrite by another name."""
 
-    def seeded_open(self, branch):
+    def seeded_open(self, branch, *, resume=False):
+        self.resumed = False
         path = tmp_path / branch.replace("/", "__")
         (path / "src").mkdir(parents=True, exist_ok=True)
         (path / "src/m.py").write_text("def already_merged():\n    return 0\n")

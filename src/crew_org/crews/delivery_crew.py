@@ -190,13 +190,15 @@ def implement_story(
     `feedback` carries the previous attempt's failure, so a repair sees what
     went wrong instead of starting blind.
 
-    `prior` carries what the Code Reviewer and QA said the last time this story
-    was delivered — a different thing entirely. A returned card is delivered
-    again from a clean worktree (`worktree add -B ... origin/HEAD`), so that
-    work is *not* in the files and must not be described as if it were. Without
-    it the crew returns a card for a named defect and then implements it again
+    `prior` carries the card's own history — what the last attempt did, what
+    became of it, and whether its code is in the worktree. A different thing
+    entirely, and composed by the caller (`delivery.prior_context`) because only
+    the caller knows which of those two worlds this attempt is in. Without it
+    the crew returns a card for a named defect and then implements it again
     knowing nothing about the defect, which is how a story is returned twice for
-    the same reason.
+    the same reason. With only half of it — a verdict describing files a reset
+    worktree no longer holds — the model tries to edit a phantom file, which is
+    worse.
     """
     agents = build_agents("developer")
     repair = (
@@ -225,15 +227,7 @@ def implement_story(
     # Ordered stable-first for the prefix cache, then by how much each part
     # varies: the story is fixed for this card, what the gates said is fixed for
     # this delivery, the repository changes per attempt, the failure most of all.
-    previously = (
-        "\n\n## What the gates said last time this story was delivered\n\n"
-        f"{prior}\n\n"
-        "That work is **not** in the repository below — a returned story is "
-        "delivered again from a clean branch. Treat this as what went wrong "
-        "before, and do not repeat it.\n"
-        if prior
-        else ""
-    )
+    previously = f"\n\n# This story has been delivered before\n\n{prior}\n" if prior else ""
     task = Task(
         description=(
             STANDING_INSTRUCTIONS

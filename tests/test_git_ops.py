@@ -105,3 +105,67 @@ def test_the_registry_is_pruned_before_a_worktree_is_opened(monkeypatch, tmp_pat
     # The prune must come before the add, or it prunes nothing useful.
     worktree_ops = [c[1] for c in calls if c[0] == "worktree"]
     assert worktree_ops.index("prune") < worktree_ops.index("add")
+
+
+# --- resuming a previous attempt -----------------------------------------
+
+
+def _resume_workspace(monkeypatch, tmp_path, *, remote_branch: bool, merged: bool):
+    """A Workspace whose git answers are scripted, and the commands it ran."""
+    from crew_org import git_ops
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, *, cwd=None, token=None):
+        calls.append(args)
+        if args[0] == "rev-parse" and not remote_branch:
+            raise git_ops.GitError("unknown revision")
+        if args[0] == "merge-base" and not merged:
+            raise git_ops.GitError("not an ancestor")
+        if args[0] == "symbolic-ref":
+            return "refs/remotes/origin/main"
+        return ""
+
+    monkeypatch.setattr(git_ops, "_run", fake_run)
+    monkeypatch.setattr(git_ops.Workspace, "_ensure_clone", lambda self: None)
+    monkeypatch.setattr(git_ops, "WORKTREES", tmp_path / "wt")
+    return git_ops.Workspace("o", "r", "tok", git_ops.BotIdentity("bot", 1)), calls
+
+
+def _base_of(calls):
+    add = next(c for c in calls if c[:2] == ["worktree", "add"])
+    return add[-1]
+
+
+def test_a_first_delivery_starts_from_the_default_branch(monkeypatch, tmp_path):
+    ws, calls = _resume_workspace(monkeypatch, tmp_path, remote_branch=False, merged=False)
+    ws.open("feat/31-scrape-endpoint", resume=True)
+    assert _base_of(calls) == "origin/HEAD"
+    assert ws.resumed is False
+
+
+def test_a_re_delivery_builds_on_the_attempt_it_is_repairing(monkeypatch, tmp_path):
+    """`open` reset the branch to origin/HEAD unconditionally, so the accepted
+    implementation a verdict was *about* was discarded while the verdict
+    describing it was still handed to the Developer. sprint-metrics #31 spent
+    an attempt trying to edit a function that no longer existed."""
+    ws, calls = _resume_workspace(monkeypatch, tmp_path, remote_branch=True, merged=False)
+    ws.open("feat/31-scrape-endpoint", resume=True)
+    assert _base_of(calls) == "origin/feat/31-scrape-endpoint"
+    assert ws.resumed is True
+
+
+def test_a_merged_branch_is_not_resumed(monkeypatch, tmp_path):
+    """Its commits are already in the default branch; resuming onto them would
+    re-apply work that has landed."""
+    ws, calls = _resume_workspace(monkeypatch, tmp_path, remote_branch=True, merged=True)
+    ws.open("feat/31-scrape-endpoint", resume=True)
+    assert _base_of(calls) == "origin/HEAD"
+    assert ws.resumed is False
+
+
+def test_without_resume_nothing_is_carried_over(monkeypatch, tmp_path):
+    ws, calls = _resume_workspace(monkeypatch, tmp_path, remote_branch=True, merged=False)
+    ws.open("feat/31-scrape-endpoint")
+    assert _base_of(calls) == "origin/HEAD"
+    assert ws.resumed is False

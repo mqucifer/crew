@@ -217,6 +217,84 @@ def prior_verdicts(issues: IssueClient, repo: str, number: int, branch: str) -> 
     return "\n\n---\n\n".join(parts)
 
 
+def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
+    """What became of the last pull request from this branch, in one line.
+
+    A verdict says what was wrong. This says what happened next, and the two
+    are not the same: a pull request closed without merging carries no verdict
+    at all, so a story could come back with nothing on the card explaining why.
+
+    Best effort — a story delivered for the first time has no pull request, and
+    a read failure is not worth losing the delivery over.
+    """
+    try:
+        pulls = issues.pulls_for_branch(repo, branch)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not pulls:
+        return ""
+    pull = pulls[0]
+    number = pull.get("number")
+    if pull.get("merged_at"):
+        return f"PR #{number} was merged."
+    if pull.get("state") == "closed":
+        return f"PR #{number} was **closed without merging**. The work on it was not accepted."
+    return f"PR #{number} is still open, and this story was sent back to be re-worked."
+
+
+def prior_context(
+    issues: IssueClient,
+    repo: str,
+    number: int,
+    branch: str,
+    *,
+    resumed: bool,
+) -> str:
+    """Everything a second attempt needs: what it did, what happened, and where that leaves it.
+
+    The three have to arrive together. A verdict on its own describes code, and
+    a Developer handed a verdict about code its worktree does not contain will
+    try to edit a file that is not there — sprint-metrics #31 spent an attempt
+    doing exactly that, was refused by the edit tool, and returned an empty
+    implementation rather than admit it could not see what it was being asked
+    about. Incomplete context was worse than none.
+
+    So `resumed` is stated rather than assumed. It is the difference between
+    "your previous work is in these files" and "it is not, and here is why".
+    """
+    verdicts = prior_verdicts(issues, repo, number, branch)
+    fate = previous_fate(issues, repo, branch)
+    if not (verdicts or fate):
+        return ""
+
+    parts: list[str] = []
+    if fate:
+        parts.append(f"## What happened to your previous attempt\n\n{fate}")
+    if verdicts:
+        parts.append(f"## What the gates said about it\n\n{verdicts}")
+    if resumed:
+        parts.append(
+            "## Where that leaves your files\n\n"
+            f"**Your previous attempt is already in the repository below**, on branch "
+            f"`{branch}`. You are continuing it, not starting again.\n\n"
+            "- Change what the verdicts above identified, with `replace`, and leave the "
+            "rest alone.\n"
+            "- Do not re-send work that is already there. `add` on a name already in the "
+            "listing is rejected.\n"
+            "- If the listing does not contain something a verdict mentions, say so rather "
+            "than inventing it."
+        )
+    else:
+        parts.append(
+            "## Where that leaves your files\n\n"
+            "**Your previous attempt is not in the repository below.** This branch starts "
+            "from the default branch, so anything the verdicts above describe has to be "
+            "written again. Treat them as what went wrong before, not as a description of "
+            "code you can edit."
+        )
+    return "\n\n".join(parts)
+
+
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
     """The earlier story in this story's epic that has not landed yet.
 
@@ -308,7 +386,10 @@ def deliver_story(
 
     branch = branch_name(number, card.title)
     outcome.branch = branch
-    worktree = ws.open(branch)
+    # Resume whatever the last attempt left on this branch. `open` decides
+    # whether there is anything to resume; a merged branch is not resumed,
+    # because its commits are already in the default branch.
+    worktree = ws.open(branch, resume=True)
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -316,9 +397,10 @@ def deliver_story(
     feedback = ""
     # What the gates said if this story has been round before. Read once: it is
     # fixed for this delivery, where `feedback` changes on every attempt.
-    prior = prior_verdicts(issues, repo, number, branch)
+    prior = prior_context(issues, repo, number, branch, resumed=getattr(ws, "resumed", False))
     if prior:
-        sink.note(EventKind.NOTE, f"#{number} carries a previous verdict into this attempt")
+        carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
+        sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
 
     while True:
