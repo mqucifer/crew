@@ -698,6 +698,8 @@ def deliver(
         )
 
     console.print()
+    for number in result.reworked:
+        console.print(f"[cyan]#{number}[/] re-worked — the reviewer's findings, answered")
     for number in result.landed:
         console.print(f"[green]#{number}[/] merged and done")
     for number in result.conflicted:

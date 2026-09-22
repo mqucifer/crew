@@ -153,7 +153,7 @@ def test_an_already_reviewed_pull_request_is_skipped(monkeypatch):
     issues = FakeIssues([pull()], reviews)
     result = run(issues, APPROVAL, monkeypatch)
     assert issues.submitted == []
-    assert result.skipped[0].skipped == "already reviewed"
+    assert result.skipped[0].skipped == "already reviewed at this head"
 
 
 def test_a_human_review_does_not_count_as_the_crews(monkeypatch):
