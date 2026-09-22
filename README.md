@@ -21,6 +21,14 @@ Read [`docs/ways-of-working.md`](docs/ways-of-working.md) — the constitution
 every agent follows. Process constants live in
 [`src/crew_org/config/org.yaml`](src/crew_org/config/org.yaml).
 
+[`docs/running-the-crew.md`](docs/running-the-crew.md) is the operator's guide:
+what a tick does, what needs a person, and an honest read of how far the crew
+is from a full agile organisation — including the North Star it is aimed at.
+
+[`docs/target-workflow.md`](docs/target-workflow.md) is a work-in-progress
+sketch of the fully-staffed end state — the roles and ceremonies that do not
+exist yet. It is a target, not a rule; the constitution wins where they differ.
+
 ## Usage
 
 ```
