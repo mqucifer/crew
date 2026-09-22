@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.flows.history import past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.tools.github_issues import IssueClient
@@ -143,7 +144,11 @@ def review_open_pulls(
             )
         )
         try:
-            verdict = review_diff(pull["title"], issues.pull_diff(repo, number))
+            verdict = review_diff(
+                pull["title"],
+                issues.pull_diff(repo, number),
+                prior_verdicts=past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+            )
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(

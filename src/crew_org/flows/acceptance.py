@@ -22,6 +22,7 @@ from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.tools import workspace
@@ -210,6 +211,7 @@ def run_qa(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}",
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
+                prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
             )
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))

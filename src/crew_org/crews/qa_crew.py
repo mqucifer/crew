@@ -66,12 +66,33 @@ class QAVerdict(BaseModel):
         return [c for c in self.criteria if not c.proven]
 
 
-def verify_story(story: str, *, test_output: str, test_code: str) -> QAVerdict:
-    """Judge an implementation against its acceptance criteria."""
+def verify_story(
+    story: str, *, test_output: str, test_code: str, prior_verdicts: str = ""
+) -> QAVerdict:
+    """Judge an implementation against its acceptance criteria.
+
+    `prior_verdicts` is what QA itself said about this card on earlier
+    attempts. Without it every attempt was judged cold, so a story returned for
+    one unproven criterion could come back for a different one that was never
+    mentioned — a moving target, and a delivery cycle spent each time it moved.
+    """
     agents = build_agents("qa_engineer")
+    # Stable-first for the prefix cache: the story is fixed for this card, the
+    # trail is fixed for this attempt, the tests and their output change every
+    # time.
+    previously = (
+        "\n\n## What you said about this card before\n\n"
+        f"{prior_verdicts}\n\n"
+        "Your own earlier verdicts. Judge this attempt consistently with them: a "
+        "criterion you proved before stays proven unless the code that proved it "
+        "changed. If you return this card again, return it for a reason already "
+        "named above, or say plainly why a new one has appeared.\n"
+        if prior_verdicts
+        else ""
+    )
     task = Task(
         description=(
-            f"Verify this story against its acceptance criteria.\n\n{story}\n\n"
+            f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
             f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
             "For each acceptance criterion, decide whether a test actually exercises it "
