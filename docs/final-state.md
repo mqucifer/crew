@@ -66,27 +66,23 @@ rather than owning a backlog day to day.
 
 **The case for Product Owner.** It is the word every agile practitioner
 already knows, and inventing a role name is a tax on everyone who reads this
-later. The agent could be called something else.
+later. The agent would need another name.
 
-**What changes either way:** the constitution, `agents.yaml`, and every prompt
-that names the role. Not large, but it touches everything.
+**What the second option actually costs, which is the deciding fact.** Giving
+the human *Product Owner* does not free the name — it moves the problem to the
+agent, and there is no good name left. *Product Manager* is the only standard
+one that fits the altitude, and in every organisation that uses both, a Product
+Manager sits **above** a Product Owner. Here the agent sits below the human, so
+the hierarchy would read backwards to exactly the practitioner the change was
+meant to help. The remaining options are a coined name, which is what we were
+trying to remove, or folding the role into the Business Analyst, which collapses
+the goal/epic/story boundary §1 makes structural on the grounds that
+granularity is what a small model blurs.
 
-> **Ruling: the human is the Product Owner.** It is the word every agile
-> practitioner already knows, and inventing a role name taxes everyone who
-> reads this later. *Product Sponsor* goes.
-
-**The knock-on, settled with it: the agent becomes the Product Manager.** It
-turns Goals into Epics and may not write acceptance criteria; the Business
-Analyst writes stories from what it produces. Both names are ones a
-practitioner already holds, and the altitude each works at is the standard
-one — which matters more here than elsewhere, because §1 makes role boundaries
-structural precisely on the grounds that granularity is what a small model
-blurs.
-
-**One oddity, named rather than discovered.** In most organisations a Product
-Manager sits *above* a Product Owner, and here the agent sits below the human.
-The hierarchy reads inverted. It is accepted knowingly: the alternative is a
-coined name that nobody arrives already knowing.
+> **Ruling: the human stays the Product Sponsor, and the agent stays the
+> Product Owner.** One coined name on the human is cheaper than an inverted
+> hierarchy on two standard ones. *Sponsor* is also accurate: this person funds
+> and accepts, and does not own a backlog day to day.
 
 ### 2. What orchestrates — the board, or a manager?
 
@@ -224,8 +220,8 @@ Seven agents and one person today. The absorbed sketch proposes nine agents.
 
 | Role | Exists | At final state |
 |---|---|---|
-| **Product Owner** (the human) | yes | Authors goals, approves epics, accepts increments. Nothing else. |
-| Product Manager | agent | Goals into epics |
+| Product Sponsor (the human) | yes | Authors goals, approves epics, accepts increments. Nothing else. |
+| Product Owner | agent | Goals into epics |
 | Business Analyst | agent | Epics into stories, criteria, estimates |
 | Architect | agent | Design notes, rationed by complexity |
 | Developer | agent | Code, tests, pull requests |
