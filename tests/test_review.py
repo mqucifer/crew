@@ -303,3 +303,34 @@ def test_a_card_not_in_reviewing_is_not_moved(monkeypatch):
     )
 
     assert board.moves == []
+
+
+def test_the_reviewer_is_given_its_earlier_findings(monkeypatch):
+    """Judging every push cold is how a diff returned for one finding comes
+    back rejected for another the first review never raised."""
+    seen = {}
+
+    def fake_review(title, diff, *, acceptance_criteria="", prior_verdicts=""):
+        seen["prior"] = prior_verdicts
+        return ReviewVerdict(summary="ok", approve=True)
+
+    monkeypatch.setattr(review_flow, "review_diff", fake_review)
+    pulls = [
+        {
+            "number": 7,
+            "title": "t",
+            "user": {"login": HUMAN},
+            "head": {"ref": "feat/7-a-thing", "sha": "new"},
+        }
+    ]
+    reviews = {
+        7: [
+            {
+                "body": f"{REVIEW_MARKER}\nname the file",
+                "commit_id": "old",
+                "user": {"login": BOT},
+            }
+        ]
+    }
+    review_open_pulls(FakeIssues(pulls, reviews), EventSink(None), repo="r", bot_login=BOT)
+    assert "name the file" in seen["prior"]

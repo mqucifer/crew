@@ -61,8 +61,21 @@ class ReviewVerdict(BaseModel):
         return "APPROVE" if self.approve else "REQUEST_CHANGES"
 
 
-def review_diff(title: str, diff: str, *, acceptance_criteria: str = "") -> ReviewVerdict:
-    """Review one pull request's diff."""
+def review_diff(
+    title: str, diff: str, *, acceptance_criteria: str = "", prior_verdicts: str = ""
+) -> ReviewVerdict:
+    """Review one pull request's diff.
+
+    `prior_verdicts` is what the Reviewer said about earlier heads of this same
+    pull request. Judging every push cold is how a diff returned for one
+    finding comes back rejected for another the first review never raised, and
+    the author cannot converge on a target that moves.
+
+    Deliberately the Reviewer's own reviews and not QA's verdicts. QA judges
+    the behaviour and this gate judges the diff; handing this one QA's unproven
+    criteria invites it to start asking whether the code works, which is the
+    one question §1 says it must never ask.
+    """
     if len(diff) > MAX_DIFF_CHARS:
         return ReviewVerdict(
             summary=(
@@ -88,10 +101,20 @@ def review_diff(title: str, diff: str, *, acceptance_criteria: str = "") -> Revi
         if acceptance_criteria
         else ""
     )
+    previously = (
+        "\n\n## What you asked for on an earlier push to this pull request\n\n"
+        f"{prior_verdicts}\n\n"
+        "These are your own earlier reviews. Check first whether this diff answers "
+        "them. Do not re-litigate a point you settled, and do not raise a new one "
+        "late unless this diff introduced it — a finding that could have been made "
+        "the first time costs another delivery cycle.\n"
+        if prior_verdicts
+        else ""
+    )
     agents = build_agents("code_reviewer")
     task = Task(
         description=(
-            f"Review this pull request.\n\n## Title\n\n{title}{criteria}\n\n"
+            f"Review this pull request.\n\n## Title\n\n{title}{criteria}{previously}\n\n"
             f"## Diff\n\n```diff\n{diff}\n```\n\n"
             "Review for correctness first, then reuse and simplification. Name the file "
             "for every finding and say what to do about it. Reject scope creep: a diff "

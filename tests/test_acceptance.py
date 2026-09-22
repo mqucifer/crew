@@ -337,3 +337,101 @@ def test_a_card_naming_no_repository_falls_back():
     run_qa(FakeBoard(), issues, EventSink(None), ws, None, cards=cards, repo="sprint-metrics")
 
     assert ws.repos == ["sprint-metrics"]
+
+
+def test_qa_is_shown_what_it_said_about_this_card_before(monkeypatch, tmp_path):
+    """QA judged every attempt cold, so a story returned for one unproven
+    criterion could come back for a different one nobody had mentioned — a
+    target the Developer cannot hit."""
+    from crew_org.flows import acceptance as flow
+
+    seen = {}
+
+    def fake_verify(story, *, test_output, test_code, prior_verdicts=""):
+        seen["prior"] = prior_verdicts
+        return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
+
+    monkeypatch.setattr(flow, "verify_story", fake_verify)
+    monkeypatch.setattr(flow.workspace, "check", lambda w, sandbox=None: _green())
+    monkeypatch.setattr(flow, "collect_tests", lambda w: "def test_x(): pass")
+
+    card = Card(
+        item_id="C31",
+        number=31,
+        title="Scrape endpoint",
+        status="QAing",
+        state="OPEN",
+        work_type="Story",
+        repo="sprint-metrics",
+    )
+    issues = _QAIssues(
+        comments=[{"body": f"{flow.QA_MARKER}\ncriterion 2 is unproven"}],
+    )
+    flow.run_qa(
+        _QABoard(),
+        issues,
+        EventSink(None),
+        _QAWorkspace(tmp_path),
+        None,
+        cards=[card],
+        repo="sprint-metrics",
+    )
+    assert "criterion 2 is unproven" in seen["prior"]
+
+
+def _green():
+    from crew_org.tools.workspace import CheckResult, CommandResult
+
+    return CheckResult(results=[CommandResult(command="pytest", code=0, output="")])
+
+
+class _QAIssues:
+    def __init__(self, *, comments):
+        self.owner = "mqucifer"
+        self._comments = comments
+        self.posted: list[tuple[int, str]] = []
+
+    def comments(self, repo, number):
+        return self._comments
+
+    def get(self, repo, number):
+        return {"body": "As a Sponsor…"}
+
+    def has_comment_marked(self, repo, number, marker):
+        return any(marker in (c.get("body") or "") for c in self._comments)
+
+    def comment(self, repo, number, body):
+        self.posted.append((number, body))
+
+    def sub_issues(self, repo, number):
+        return []
+
+
+class _QABoard:
+    def __init__(self):
+        self.moves = []
+
+    def set_status(self, item_id, column):
+        self.moves.append((item_id, column))
+
+    def set_owner_agent(self, item_id, role):
+        pass
+
+
+class _QAWorkspace:
+    def __init__(self, tmp):
+        self.tmp = tmp
+
+    def for_repo(self, repo):
+        return self
+
+    def open_existing(self, branch):
+        path = self.tmp / branch.replace("/", "__")
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def head(self):
+        return "abc1234def56"
+
+    def close(self, path=None):
+        pass
