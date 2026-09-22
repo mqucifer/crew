@@ -52,12 +52,35 @@ def render_review(verdict: ReviewVerdict) -> str:
     return "\n".join(lines).strip()
 
 
-def already_reviewed(reviews: list[dict], bot_login: str) -> bool:
-    """Has the crew already put a verdict on this revision?"""
-    return any(
-        (r.get("user") or {}).get("login") == bot_login and REVIEW_MARKER in (r.get("body") or "")
+def already_reviewed(reviews: list[dict], bot_login: str, head: str = "") -> bool:
+    """Has the crew already put a verdict on *this* revision?
+
+    The docstring said "this revision" and the code meant "ever": any review
+    carrying the marker disqualified the pull request for good. So the crew
+    requested changes and then refused to read the answer — a repaired branch
+    was never looked at again, which is why sprint-metrics #31 and #32 could
+    not recover on their own.
+
+    The same defect #15 fixed for QA, in the gate it did not touch. GitHub
+    records the commit each review judged, so no new instrumentation is needed:
+    a verdict belongs to its `commit_id`, and a head nobody has judged is new
+    work whatever else sits on the pull request.
+
+    Without a head to compare against there is no honest answer, and the safe
+    one is "yes" — reviewing again costs a model call and posts a duplicate
+    verdict. Callers have the head; it is on the pull request.
+    """
+    ours = [
+        r
         for r in reviews
-    )
+        if (r.get("user") or {}).get("login") == bot_login
+        and REVIEW_MARKER in (r.get("body") or "")
+    ]
+    if not ours:
+        return False
+    if not head:
+        return True
+    return any(r.get("commit_id") == head for r in ours)
 
 
 def cards_by_branch(cards: list[Card]) -> dict[str, Card]:
@@ -104,9 +127,10 @@ def review_open_pulls(
             result.skipped.append(ReviewOutcome(pr=number, approved=False, skipped="draft"))
             continue
 
-        if already_reviewed(issues.pull_reviews(repo, number), bot_login):
+        head = (pull.get("head") or {}).get("sha", "")
+        if already_reviewed(issues.pull_reviews(repo, number), bot_login, head):
             result.skipped.append(
-                ReviewOutcome(pr=number, approved=False, skipped="already reviewed")
+                ReviewOutcome(pr=number, approved=False, skipped="already reviewed at this head")
             )
             continue
 

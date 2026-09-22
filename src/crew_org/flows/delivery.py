@@ -38,6 +38,11 @@ from crew_org.tools.repo_context import repository_context
 
 STORY_TYPE = "Story"
 
+# Marks the comment a repair leaves on the pull request it updated, so the
+# thread says why a new commit appeared rather than leaving the reviewer to
+# infer it from a push notification.
+REWORK_MARKER = "<!-- crew:rework -->"
+
 
 @dataclass
 class DeliveryOutcome:
@@ -85,6 +90,11 @@ class DeliveryResult:
     delivered: list[DeliveryOutcome] = field(default_factory=list)
     blocked: list[DeliveryOutcome] = field(default_factory=list)
     recovered: list[int] = field(default_factory=list)
+    # Cards the Code Reviewer sent back that this pass picked up again. Its own
+    # list because "delivered" reads as new work, and the difference between a
+    # pass that started something and one that finally finished something the
+    # loop had been dropping is the whole point of the card that added it.
+    reworked: list[int] = field(default_factory=list)
     not_ours: list[int] = field(default_factory=list)
     landed: list[int] = field(default_factory=list)
     conflicted: list[int] = field(default_factory=list)
@@ -102,6 +112,65 @@ class DeliveryResult:
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
     rate_limited: bool = False
+
+
+def awaiting_rework(issues: IssueClient, repo: str, branch: str) -> dict | None:
+    """The open pull request on `branch` whose *current* head was refused.
+
+    The middle of the loop that was missing. Review moves a card back to In
+    Progress when it requests changes, and nothing ever picked it up again:
+    `sprint_stories` only reads Sprint Backlog, and `reconcile_orphans` saw an
+    In Progress card with an open pull request and moved it straight back to
+    Reviewing, where the review phase skipped it as already judged. On
+    sprint-metrics#31 that cycle took two minutes and then ran forever.
+
+    Scoped to the head the reviewer actually judged. A repair pushes a new
+    commit, so the request no longer matches and the card stops being claimed —
+    which is what makes this self-clearing rather than a second loop. GitHub's
+    own `reviewDecision` would not do: it stays CHANGES_REQUESTED until someone
+    reviews again, so a repaired card would be re-worked forever.
+
+    Any reviewer's request counts, not only the crew's. A person who asks for
+    changes is owed the same repair.
+    """
+    try:
+        pull = issues.pull_for_branch(repo, branch)
+        if pull is None:
+            return None
+        head = (pull.get("head") or {}).get("sha")
+        if not head:
+            return None
+        refused = any(
+            r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
+            for r in issues.pull_reviews(repo, pull["number"])
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    return pull if refused else None
+
+
+def needs_rework(issues: IssueClient, cards: list[Card], *, repo: str) -> list[Card]:
+    """Cards whose pull request is waiting on the Developer, in card order.
+
+    Both columns, because the deadlock could park a card in either: In Progress
+    is where review puts it, and Reviewing is where reconciliation bounced it
+    back to. Reading both is what lets a card already stuck in Reviewing be
+    recovered without anyone touching the board by hand.
+    """
+    return [
+        c
+        for c in sorted(
+            (
+                c
+                for c in cards
+                if c.status in (IN_PROGRESS, REVIEWING)
+                and c.work_type == STORY_TYPE
+                and c.state != "CLOSED"
+            ),
+            key=lambda c: c.number or 0,
+        )
+        if awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title))
+    ]
 
 
 def reconcile_orphans(
@@ -135,6 +204,13 @@ def reconcile_orphans(
         number = card.number or 0
         branch = branch_name(number, card.title)
         if branch in open_prs:
+            # Not stranded, and not waiting for review either: the reviewer has
+            # already refused this head, so the card is exactly where it should
+            # be and the rework pass will claim it. Moving it to Reviewing is
+            # what made the ping-pong — review skips it as already judged, and
+            # the card never comes back.
+            if awaiting_rework(issues, repo, branch) is not None:
+                continue
             move_card(
                 board,
                 sink,
@@ -370,8 +446,15 @@ def deliver_story(
     repo: str,
     default_branch: str,
     dry_run: bool = False,
+    rework: bool = False,
 ) -> DeliveryOutcome:
     """Take one story from Sprint Backlog to a pull request.
+
+    `rework` says the story is coming back from the Code Reviewer and there is
+    an open pull request to *update*. That inverts the open-pull-request guard
+    below: normally an open pull request means stop, because overwriting it
+    would destroy the diff a review is judging. Here updating it is the whole
+    point, and the new commit is what the reviewer asked for.
 
     A dry run stops once the work is verified: the diff is captured and nothing
     is committed, pushed or opened. It is the same code path as a real run up to
@@ -654,7 +737,7 @@ def deliver_story(
     # would destroy the context the Reviewer is judging — so that blocks
     # instead, with the reason named.
     open_pull = issues.pull_for_branch(repo, branch)
-    if open_pull is not None:
+    if open_pull is not None and not rework:
         outcome.blocked_reason = (
             f"PR #{open_pull['number']} is still open on `{branch}`. "
             "Close it, or let that pull request finish; re-delivering would "
@@ -662,7 +745,10 @@ def deliver_story(
         )
         return outcome
     try:
-        ws.push(force=True)
+        # A repair adds a commit on top of the branch it resumed, so it is a
+        # fast-forward and must not be forced: the history the reviewer read is
+        # the history it keeps, with the answer appended to it.
+        ws.push(force=not rework)
     except Exception as exc:  # noqa: BLE001
         # Landing failed, not the work. Returning the outcome keeps what it
         # already knows — how many repairs it took, the diff it produced — where
@@ -671,14 +757,27 @@ def deliver_story(
         outcome.blocked_reason = f"could not push `{branch}`: {exc}"[:400]
         return outcome
 
-    pr = issues.create_pull(
-        repo,
-        title=card.title,
-        head=branch,
-        base=default_branch,
-        body=_pr_body(card, implementation, outcome),
-    )
-    outcome.pr = pr["number"]
+    if open_pull is not None:
+        # The push updated it. Opening a second pull request from the same
+        # branch is not possible and would not be wanted: the review thread,
+        # the findings and the card's history all hang off this one.
+        outcome.pr = open_pull["number"]
+        issues.comment(
+            repo,
+            open_pull["number"],
+            f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
+            "Pushed on top of the commit that was refused; lint and the full "
+            "test suite pass.",
+        )
+    else:
+        pr = issues.create_pull(
+            repo,
+            title=card.title,
+            head=branch,
+            base=default_branch,
+            body=_pr_body(card, implementation, outcome),
+        )
+        outcome.pr = pr["number"]
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
@@ -714,6 +813,164 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
     lines += ["", f"Closes #{card.number}"]
     return "\n".join(lines)
+
+
+def _work_one_card(
+    card: Card,
+    *,
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    ws: Workspace,
+    policy: EscalationPolicy,
+    ledger: EscalationLedger,
+    result: DeliveryResult,
+    counts: dict[str, int],
+    sprint: str,
+    repo: str,
+    default_branch: str,
+    dry_run: bool,
+    rework: bool = False,
+    restore_to: str = SPRINT_BACKLOG,
+) -> None:
+    """Deliver one card that is already In Progress, and move it on.
+
+    Shared by the two ways a card gets here: freshly claimed from the sprint
+    backlog, and sent back by the Code Reviewer. They differ only in `rework`,
+    which says whether there is an open pull request to update rather than to
+    refuse to overwrite.
+    """
+
+    # The card names its own repository. Using a global default would
+    # implement a card belonging to one repo inside another, silently.
+    card_repo = card.repo or repo
+    # Bound, not inlined: for_repo returns a *new* workspace when the
+    # repository differs, so closing `ws` would leak the worktree that was
+    # opened and close one that never was.
+    card_ws = ws.for_repo(card_repo)
+    outcome = None
+    try:
+        outcome = deliver_story(
+            card,
+            board=board,
+            issues=issues,
+            sink=sink,
+            ws=card_ws,
+            policy=policy,
+            ledger=ledger,
+            sprint=sprint,
+            repo=card_repo,
+            default_branch=default_branch,
+            dry_run=dry_run,
+            rework=rework,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # A last resort. Anything deliver_story can attribute it returns on
+        # its own outcome; reaching here means it could not, so the card
+        # blocks knowing nothing but the error.
+        outcome = DeliveryOutcome(
+            card=card.number or 0, blocked_reason=f"{type(exc).__name__}: {exc}"[:400]
+        )
+    finally:
+        # Nothing is committed or pushed until verification passes, so for a
+        # card that failed this worktree is the only copy of what was
+        # written. Read it before removing it, or the card blocks with no
+        # evidence of why and the diagnosis has to be guessed.
+        if outcome is not None and not outcome.ok:
+            outcome.rejected_diff = card_ws.diff_if_open()
+        card_ws.close()
+
+    if outcome.ok and dry_run:
+        # Put the card back: a dry run must leave the board as it found it.
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=restore_to,
+            by="Developer",
+            card=card.number,
+            frm=IN_PROGRESS,
+            summary="dry run — verified, nothing landed",
+        )
+        counts[IN_PROGRESS] -= 1
+        result.delivered.append(outcome)
+        return
+
+    if outcome.ok:
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=REVIEWING,
+            by="Developer",
+            card=card.number,
+            frm=IN_PROGRESS,
+            summary=f"delivered — PR #{outcome.pr}",
+        )
+        counts[IN_PROGRESS] -= 1
+        counts[REVIEWING] = counts.get(REVIEWING, 0) + 1
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=card.number or 0,
+            body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass."
+            + (" Escalated to finish." if outcome.escalated else ""),
+            by="Developer",
+        )
+        result.delivered.append(outcome)
+    elif dry_run:
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=restore_to,
+            by="Developer",
+            card=card.number,
+            frm=IN_PROGRESS,
+            summary="dry run — not verified, nothing landed",
+        )
+        counts[IN_PROGRESS] -= 1
+        result.blocked.append(outcome)
+    else:
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=BLOCKED,
+            by="Developer",
+            card=card.number,
+            frm=IN_PROGRESS,
+            summary=(outcome.blocked_reason or "")[:80],
+            kind=EventKind.CARD_BLOCKED,
+        )
+        counts[IN_PROGRESS] -= 1
+        artifacts.label(
+            issues, sink, repo=repo, number=card.number or 0, by="Developer", add=["blocked"]
+        )
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=card.number or 0,
+            body=f"**Blocked.** {outcome.blocked_reason}\n\n"
+            f"Attempts: {outcome.attempts}. "
+            f"{'Escalated.' if outcome.escalated else 'Not escalated.'}",
+            by="Developer",
+        )
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.CARD_BLOCKED,
+                role="Developer",
+                card=card.number,
+                summary=(outcome.blocked_reason or "")[:80],
+            )
+        )
+        result.blocked.append(outcome)
+        # A usage limit means come back later, not try the next card. The
+        # caller stops on the flag; this one is finished either way.
+        if outcome.blocked_reason and "usage limit" in outcome.blocked_reason.lower():
+            result.rate_limited = True
 
 
 def deliver(
@@ -776,6 +1033,58 @@ def deliver(
                 + ", ".join(f"#{c.number} ({c.repo})" for c in skipped),
             )
 
+    # Drain-first, and this is the most drained work there is: a story the
+    # reviewer has already read and sent back. Before this existed those cards
+    # were the only ones the loop could not finish, so they are claimed before
+    # anything new — and before the WIP arithmetic below, because a card that
+    # is already In Progress occupies no new slot.
+    returned = needs_rework(issues, cards, repo=repo)
+    for card in returned:
+        if repos is not None and (card.repo or repo) not in repos:
+            continue
+        if card.status == REVIEWING:
+            verdict = rules.may_move(frm=REVIEWING, to=IN_PROGRESS, counts=counts)
+            if not verdict.allowed:
+                sink.note(EventKind.NOTE, f"#{card.number} needs re-work: {verdict.reason}")
+                continue
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=IN_PROGRESS,
+                by="Developer",
+                card=card.number,
+                frm=REVIEWING,
+                summary="changes requested — returned for re-work",
+            )
+            counts[REVIEWING] = max(counts.get(REVIEWING, 1) - 1, 0)
+            counts[IN_PROGRESS] = counts.get(IN_PROGRESS, 0) + 1
+        result.reworked.append(card.number or 0)
+        _work_one_card(
+            card,
+            board=board,
+            issues=issues,
+            sink=sink,
+            ws=ws,
+            policy=policy,
+            ledger=ledger,
+            result=result,
+            counts=counts,
+            sprint=sprint,
+            repo=repo,
+            default_branch=default_branch,
+            dry_run=dry_run,
+            rework=True,
+            # A dry run leaves the board as it found it, and this card did not
+            # come from the backlog — putting it there would be the dry run
+            # making the very move the fix exists to stop.
+            restore_to=card.status or IN_PROGRESS,
+        )
+        if result.rate_limited:
+            return result
+    if result.reworked:
+        cards = board.cards()
+
     claimed = 0
     for card in sprint_stories(cards, sprint, repos=repos):
         if limit is not None and claimed >= limit:
@@ -807,135 +1116,21 @@ def deliver(
         )
         counts[IN_PROGRESS] = counts.get(IN_PROGRESS, 0) + 1
         claimed += 1
-
-        # The card names its own repository. Using a global default would
-        # implement a card belonging to one repo inside another, silently.
-        card_repo = card.repo or repo
-        # Bound, not inlined: for_repo returns a *new* workspace when the
-        # repository differs, so closing `ws` would leak the worktree that was
-        # opened and close one that never was.
-        card_ws = ws.for_repo(card_repo)
-        outcome = None
-        try:
-            outcome = deliver_story(
-                card,
-                board=board,
-                issues=issues,
-                sink=sink,
-                ws=card_ws,
-                policy=policy,
-                ledger=ledger,
-                sprint=sprint,
-                repo=card_repo,
-                default_branch=default_branch,
-                dry_run=dry_run,
-            )
-        except Exception as exc:  # noqa: BLE001
-            # A last resort. Anything deliver_story can attribute it returns on
-            # its own outcome; reaching here means it could not, so the card
-            # blocks knowing nothing but the error.
-            outcome = DeliveryOutcome(
-                card=card.number or 0, blocked_reason=f"{type(exc).__name__}: {exc}"[:400]
-            )
-        finally:
-            # Nothing is committed or pushed until verification passes, so for a
-            # card that failed this worktree is the only copy of what was
-            # written. Read it before removing it, or the card blocks with no
-            # evidence of why and the diagnosis has to be guessed.
-            if outcome is not None and not outcome.ok:
-                outcome.rejected_diff = card_ws.diff_if_open()
-            card_ws.close()
-
-        if outcome.ok and dry_run:
-            # Put the card back: a dry run must leave the board as it found it.
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=SPRINT_BACKLOG,
-                by="Developer",
-                card=card.number,
-                frm=IN_PROGRESS,
-                summary="dry run — verified, nothing landed",
-            )
-            counts[IN_PROGRESS] -= 1
-            result.delivered.append(outcome)
-            continue
-
-        if outcome.ok:
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=REVIEWING,
-                by="Developer",
-                card=card.number,
-                frm=IN_PROGRESS,
-                summary=f"delivered — PR #{outcome.pr}",
-            )
-            counts[IN_PROGRESS] -= 1
-            counts[REVIEWING] = counts.get(REVIEWING, 0) + 1
-            artifacts.comment(
-                issues,
-                sink,
-                repo=repo,
-                number=card.number or 0,
-                body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass."
-                + (" Escalated to finish." if outcome.escalated else ""),
-                by="Developer",
-            )
-            result.delivered.append(outcome)
-        elif dry_run:
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=SPRINT_BACKLOG,
-                by="Developer",
-                card=card.number,
-                frm=IN_PROGRESS,
-                summary="dry run — not verified, nothing landed",
-            )
-            counts[IN_PROGRESS] -= 1
-            result.blocked.append(outcome)
-        else:
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=BLOCKED,
-                by="Developer",
-                card=card.number,
-                frm=IN_PROGRESS,
-                summary=(outcome.blocked_reason or "")[:80],
-                kind=EventKind.CARD_BLOCKED,
-            )
-            counts[IN_PROGRESS] -= 1
-            artifacts.label(
-                issues, sink, repo=repo, number=card.number or 0, by="Developer", add=["blocked"]
-            )
-            artifacts.comment(
-                issues,
-                sink,
-                repo=repo,
-                number=card.number or 0,
-                body=f"**Blocked.** {outcome.blocked_reason}\n\n"
-                f"Attempts: {outcome.attempts}. "
-                f"{'Escalated.' if outcome.escalated else 'Not escalated.'}",
-                by="Developer",
-            )
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.CARD_BLOCKED,
-                    role="Developer",
-                    card=card.number,
-                    summary=(outcome.blocked_reason or "")[:80],
-                )
-            )
-            result.blocked.append(outcome)
-            # A usage limit means come back later, not try the next card.
-            if outcome.blocked_reason and "usage limit" in outcome.blocked_reason.lower():
-                result.rate_limited = True
-                break
-
+        _work_one_card(
+            card,
+            board=board,
+            issues=issues,
+            sink=sink,
+            ws=ws,
+            policy=policy,
+            ledger=ledger,
+            result=result,
+            counts=counts,
+            sprint=sprint,
+            repo=repo,
+            default_branch=default_branch,
+            dry_run=dry_run,
+        )
+        if result.rate_limited:
+            break
     return result

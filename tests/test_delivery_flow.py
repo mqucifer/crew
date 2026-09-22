@@ -965,3 +965,87 @@ def test_a_fumbled_name_does_not_spend_the_budget_for_real_failures(harness):
     # The VERIFY failure still gets a repair rather than escalating on arrival.
     assert verifies and "retry_local" in verifies[0].summary
     assert result.delivered
+
+
+# --- a story the reviewer sent back --------------------------------------
+
+REFUSED_HEAD = "deadbeefcafe"
+
+
+def _refused_pull(branch="feat/31-scrape-endpoint", number=67):
+    return {"number": number, "head": {"ref": branch, "sha": REFUSED_HEAD}}
+
+
+def _returned_card(status):
+    return Card(
+        item_id="S31",
+        number=31,
+        title="Scrape endpoint",
+        status=status,
+        state="OPEN",
+        work_type="Story",
+        sprint=SPRINT,
+        points=3,
+        repo="sprint-metrics",
+    )
+
+
+@pytest.fixture
+def refused(monkeypatch):
+    """A branch with an open pull request whose current head was refused."""
+    branch = "feat/31-scrape-endpoint"
+    pull = _refused_pull(branch)
+    monkeypatch.setattr(FakeIssues, "landable", {branch: pull}, raising=False)
+    monkeypatch.setattr(FakeIssues, "open_pulls", lambda self, repo: [pull], raising=False)
+    monkeypatch.setattr(
+        FakeIssues,
+        "pull_reviews",
+        lambda self, repo, n: [{"state": "CHANGES_REQUESTED", "commit_id": REFUSED_HEAD}],
+        raising=False,
+    )
+    monkeypatch.setattr(FakeWorkspace, "unfinished", True, raising=False)
+    return pull
+
+
+def test_a_story_stuck_in_reviewing_is_re_worked_with_no_board_surgery(harness, refused):
+    """sprint-metrics#31 exactly as it sits: Reviewing, open PR #67, changes
+    requested. It ping-ponged In Progress <-> Reviewing and nothing ever
+    addressed the findings."""
+    result, board, issues, _, _, _ = harness(checks=[green()], cards=[_returned_card("Reviewing")])
+    assert result.reworked == [31]
+    assert ("S31", "In Progress") in board.moves
+    assert ("S31", "Reviewing") in board.moves[board.moves.index(("S31", "In Progress")) :]
+
+
+def test_the_repair_updates_the_open_pull_request(harness, refused):
+    """The open-pull-request guard exists to stop a re-delivery overwriting a
+    diff under review. For a repair, updating it is the intent — and a second
+    pull request from the same branch is not possible anyway."""
+    result, _, issues, ws, _, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+    assert issues.prs == []
+    assert result.delivered[0].pr == 67
+    assert ws.forced is False
+
+
+def test_the_repair_is_announced_on_the_pull_request(harness, refused):
+    _result, _board, issues, _, _, _ = harness(
+        checks=[green()], cards=[_returned_card("In Progress")]
+    )
+    assert any("crew:rework" in body for _n, body in issues.comments_)
+
+
+def test_the_repair_builds_on_the_work_it_is_repairing(harness, refused):
+    _result, _board, _issues, ws, _, _ = harness(
+        checks=[green()], cards=[_returned_card("In Progress")]
+    )
+    assert ws.resumed is True
+
+
+def test_a_dry_run_leaves_a_returned_card_where_it_found_it(harness, refused):
+    """The dry-run restore put every card in Sprint Backlog. For a card that
+    came from Reviewing that is the dry run making the very move this card
+    exists to stop."""
+    _result, board, _issues, _ws, _, _ = harness(
+        checks=[green()], cards=[_returned_card("Reviewing")], dry_run=True
+    )
+    assert board.moves[-1] == ("S31", "Reviewing")

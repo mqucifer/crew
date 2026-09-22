@@ -335,9 +335,15 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         #
         # Orphan reconciliation is the exception: it heals an interrupted run
         # and is not gated on dry_run, so it is real movement either way.
-        moved = bool(result.recovered)
+        moved = bool(result.recovered or result.reworked)
     else:
-        moved = bool(result.landed or result.delivered or result.blocked or result.recovered)
+        moved = bool(
+            result.landed
+            or result.delivered
+            or result.blocked
+            or result.recovered
+            or result.reworked
+        )
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
@@ -357,7 +363,10 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     return PhaseOutcome(
         "deliver",
         moved=moved,
-        summary=f"{len(result.landed)} merged, {len(result.delivered)} delivered",
+        summary=(
+            f"{len(result.landed)} merged, {len(result.delivered)} delivered"
+            + (f", {len(result.reworked)} re-worked" if result.reworked else "")
+        ),
         result=result,
         counts={"merged": len(result.landed), "delivered": len(result.delivered)},
         held=held,
