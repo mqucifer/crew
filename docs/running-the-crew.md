@@ -1,6 +1,6 @@
 # Running the Crew
 
-As of 2026-09-19.
+As of 2026-09-22.
 
 An operator's guide to the crew, and an honest read on how close it is to a full agile organisation.
 
@@ -140,7 +140,9 @@ uv run crew tick --land                               # the real thing
 
 **Two identities.** The delivery app opens pull requests; the reviewing app judges them. GitHub refuses an approval from the identity that opened the pull request, so one app could only ever comment on the crew's own work and every story stalled waiting for a person.
 
-> **Caveat, as of 2026-09-19.** `crew auth` reports `reviewing identity: … — can approve` on the strength of two facts: it is a different identity, and it holds `pull_requests: write`. Both are true and neither is sufficient. GitHub only counts an approval from an actor with repository write access, so the reviewing app's approvals are recorded and ignored by branch protection. Two cards are sitting in Merging because of it. Tracked as crew#40.
+> **Caveat, as of 2026-09-22 — the detection landed, the trade is still yours.** `crew auth` used to report `reviewing identity: … — can approve` on the strength of two facts: it is a different identity, and it holds `pull_requests: write`. Both are true and neither is sufficient. GitHub only counts an approval from an actor with repository write access, so the reviewing app's approvals are recorded and ignored by branch protection, and two cards sat in `Merging` looking merely slow.
+>
+> crew#40 fixed the *reporting*, not the permission. `crew auth` now names what it verified rather than concluding what it had not tested, and a pull request GitHub still reports as `REVIEW_REQUIRED` despite an approving review is blocked and labelled for a person instead of waiting forever. **Whether to grant the reviewing app `contents: write`** — which would likely make its approvals count, and would also let it push — **remains a Sponsor decision that nothing in the crew can make.**
 
 **The Sponsor's verbs.** Approve an epic by moving it out of Inbox (Goals). Reject it by closing it. Send a decomposition back by commenting and adding `needs:rework` — the next tick reads the comment, supersedes the old cards, and tries again.
 
@@ -212,16 +214,26 @@ That also reframes what scale means. If the crew runs continuously, the binding 
 
 | Unlocks | Cards |
 | --- | --- |
-| **The crew can see itself** — the learn loop | #9 Senior Engineer (+ its unconsumed `FILE_PROMPT_DEFECT` queue), #39 a tick that reports honestly |
-| **Nothing stalls silently** | #40 an approval that cannot arrive, #32 the board's own automations |
+| **The crew can see itself** — the learn loop | #56 what is measured reaches somebody, #42 measure what the crew *can do*, #9 Senior Engineer (+ its unconsumed `FILE_PROMPT_DEFECT` queue), #50 the retro goes somewhere |
+| **Nothing stalls silently** | #32 the board's own automations, #44 a card held back by a full column, #46 a story with no parent epic |
 | **It scales past a repo you can paste** | #24 let an agent fetch what it needs (deferred, and the ceiling is already 48% of the window on the crew repo) |
 | **Cadence matches a 24/7 crew** | #26 a sprint that ends when its work is done |
+| **The Sponsor can watch it** | #4 the observability goal, and #5, #16, #17, #18 under it — all `needs:human` |
 
-**What I would do next, and why.** #39 before #9. The Senior Engineer's whole value is reading what the crew reports about itself, and right now a tick reports the last pass and hides every reason a card did not move. Building a diagnostician on top of a dishonest report is building it on sand.
+**What was cleared first, and why.** #39 — a tick that reports honestly — before anything that reads what the crew says about itself, because building a diagnostician on a dishonest report is building it on sand. Then, on 2026-09-22, seven cards closing the loop's ways of getting permanently stuck: #40, #45, #49, #63, #64, #67 and #69. A story that was refused, unapprovable, or refused again now has a path forward instead of a corner. None of that moved the North Star; all of it stopped the build loop eating the attention the North Star needs.
 
-Then #9, which is the first card that genuinely moves the North Star rather than the build loop.
+**What is next, and why in this order.** #56, then #42, then #9 — the order the cards themselves argue for.
 
-**Two open questions for you:**
+- **#56** is the cheapest by a distance: `aging_blocked()`, `over_limit()` and `bridge_crewai()` are all written and **nothing calls them**. Its third criterion puts model calls, tokens and tool use into the event log, which is most of what #42 needs about cost.
+- **#42** then measures what the crew *can do* rather than what it worked on. The data mostly exists — 48 of 58 `card.moved` events already carry the from-column, the to-column, a timestamp and the role.
+- **#9** last, because a Senior Engineer needs #42 to diagnose *from*. It is the first card that genuinely moves the North Star rather than the build loop.
 
-1. **Does the crew measure itself with its own pilot?** `sprint-metrics` computes cycle time, lead time, throughput and WIP violations — for any board. Pointing it at the crew's own board would close the metrics gap with software the crew wrote. That is either elegant or circular, and it is your call which.
-2. **What is a release?** There is no notion beyond a merged pull request. If the crew is to plan beyond a single sprint, something has to say what a shippable increment is.
+**Which model backs the Senior Engineer** was the open question inside #9, and it is settled: **the local model.** It has not been the bottleneck — every failure so far has been the agent not being shown what it needed, not the agent being unable to reason about what it saw. That is §16's argument, and three of those seven cards were exactly it — #63, #64 and #67 were all a role failing on what it could not see, or on a budget spent before it could answer. Escalation stays for genuinely hard problems, which is the one thing it must not stop being.
+
+**Does the crew measure itself with its own pilot? — answered: no.** `sprint-metrics` computes cycle time, lead time, throughput and WIP violations for any board, and pointing it at the crew's own board would close the metrics gap with software the crew wrote. It was posed here as either elegant or circular. #42 settled it, with the reason:
+
+> the crew practises on that repository, so a bad delivery would break the crew's self-knowledge precisely when it is most needed. Keep the dependency one-directional: the crew computes, and the pilot may present.
+
+Section 18 *allows* the pilot to become a tool the crew calls. It does not require the crew to depend on it, and the crew's ability to see itself is the wrong thing to make depend on the crew's own practice work.
+
+**Still open — what is a release?** There is no notion beyond a merged pull request. If the crew is to plan beyond a single sprint, something has to say what a shippable increment is. This gates release planning rather than the learn loop, so it is not urgent yet.
