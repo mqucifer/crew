@@ -9,11 +9,14 @@ help.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from crew_org.escalation import EscalationLedger
-from crew_org.events import EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.close import close_sprint
+from crew_org.process import ProcessRules
 from crew_org.tools.github_project import Card
 
 SPRINT = "Sprint 3"
@@ -128,3 +131,76 @@ def test_a_sprint_holding_an_uncountable_approval_is_not_complete(ledger):
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="REVIEW_REQUIRED")
     result, _ = run(issues, ledger)
     assert not result.complete
+
+
+# --- §12: an aging blocked card is raised at the review ------------------
+
+BLOCKED = "Blocked"
+
+AGING_ORG = {
+    "board": {
+        "columns": ["Sprint Backlog", "In Progress", "Merging", "Done"],
+        "blocked_column": BLOCKED,
+        "human_gates": [],
+    },
+    "wip_limits": {"In Progress": 3},
+    "sprint": {"blocked_aging_days": 3},
+}
+
+NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+
+
+def blocked_log(tmp_path, card_number: int, days: int):
+    """An event log in which `card_number` was blocked `days` ago."""
+    sink = EventSink(tmp_path / "deliver.jsonl")
+    sink.emit(
+        CrewEvent(
+            at=NOW - timedelta(days=days),
+            kind=EventKind.CARD_MOVED,
+            card=card_number,
+            detail={"from": "In Progress", "to": BLOCKED},
+        )
+    )
+    return tmp_path
+
+
+def close_with_log(issues, ledger, events_dir, cards):
+    board = FakeBoard(cards)
+    return close_sprint(
+        board,
+        issues,
+        EventSink(None),
+        ledger,
+        sprint=SPRINT,
+        repo="sprint-metrics",
+        rules=ProcessRules.from_config(AGING_ORG),
+        events_dir=events_dir,
+        now=NOW,
+    )
+
+
+def test_a_card_blocked_past_the_threshold_is_raised(ledger, tmp_path):
+    """§12 says these are raised at sprint review, blocked_aging_days is
+    configured with a comment saying exactly that, and `aging_blocked` has
+    always been able to answer which. Nothing joined them, so on 2026-09-19 a
+    card blocked most of a day went unmentioned."""
+    stuck = card(12, status=BLOCKED)
+    result = close_with_log(
+        FakeIssues(reviews=[], decision=None), ledger, blocked_log(tmp_path, 12, 4), [stuck]
+    )
+    assert result.aging_blocked == [("#12", 4)]
+
+
+def test_a_card_blocked_yesterday_is_not_raised(ledger, tmp_path):
+    stuck = card(12, status=BLOCKED)
+    result = close_with_log(
+        FakeIssues(reviews=[], decision=None), ledger, blocked_log(tmp_path, 12, 1), [stuck]
+    )
+    assert result.aging_blocked == []
+
+
+def test_a_close_given_no_log_raises_nothing(ledger):
+    """Without the rules and the log, the raise cannot happen at all. A caller
+    that only wants the merge still gets one."""
+    result, _ = run(FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED"), ledger)
+    assert result.aging_blocked == []

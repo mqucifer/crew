@@ -6,6 +6,7 @@ import pytest
 
 from crew_org.events import EventSink
 from crew_org.flows import loop
+from crew_org.process import ProcessRules
 
 
 class FakeBoard:
@@ -22,16 +23,31 @@ class FakeBoard:
         return dict(self._counts)
 
 
+ORG = {
+    "board": {
+        "columns": ["Ready", "In Progress", "Reviewing", "QAing", "Merging", "Done"],
+        "blocked_column": "Blocked",
+        "human_gates": [],
+    },
+    "wip_limits": {"In Progress": 3, "Reviewing": 3},
+    "sprint": {"blocked_aging_days": 3},
+}
+
+
 @pytest.fixture
-def crew():
-    """A Crew whose every dependency is unused: the phases are all faked."""
+def crew(counts=None):
+    """A Crew whose every dependency is unused: the phases are all faked.
+
+    `rules` is real, because the loop itself asks it whether any column is over
+    its limit — that is the loop's own behaviour, not a phase's.
+    """
     return loop.Crew(
-        board=FakeBoard(),
+        board=FakeBoard(counts),
         issues=None,
         sink=EventSink(None),
         ws=None,
         sandbox=None,
-        rules=None,
+        rules=ProcessRules.from_config(ORG),
         policy=None,
         ledger=None,
         org={},
@@ -318,3 +334,57 @@ def test_a_clean_run_blocked_nothing(crew, monkeypatch):
 
     assert result.blocked_any is False
     assert result.blocked_count == 0
+
+
+# --- a breach is reported, not merely prevented --------------------------
+
+
+def test_a_column_over_its_limit_is_reported_on_a_tick(monkeypatch):
+    """`over_limit` has always been able to answer this and nothing asked it,
+    so a column that was already over — a limit lowered, cards moved by hand —
+    looked exactly like a column at its limit, which is healthy."""
+    phases(monkeypatch)
+    over = loop.Crew(
+        board=FakeBoard({"In Progress": 5}),
+        issues=None,
+        sink=EventSink(None),
+        ws=None,
+        sandbox=None,
+        rules=ProcessRules.from_config(ORG),
+        policy=None,
+        ledger=None,
+        org={},
+        repo="sprint-metrics",
+        repos={"sprint-metrics"},
+        sprint="S1",
+        capacity=20,
+        reviewer=None,
+        reviewer_login="approver[bot]",
+    )
+    seen = []
+    over.sink.subscribe(seen.append)
+    result = loop.run(over, dry_run=True)
+
+    assert result.over_limit == {"In Progress": (5, 3)}
+    assert any("over its WIP limit" in e.summary for e in seen)
+
+
+def test_a_column_at_its_limit_is_not_reported(crew, monkeypatch):
+    phases(monkeypatch)
+    seen = []
+    crew.sink.subscribe(seen.append)
+    result = loop.run(crew, dry_run=True)
+
+    assert result.over_limit == {}
+    assert not any("over its WIP limit" in e.summary for e in seen)
+
+
+def test_a_tick_bridges_the_model_bus_onto_its_own_log(crew, monkeypatch):
+    """The bridge existed and nothing called it, so every real run's log was
+    blind to everything the model did."""
+    from crew_org import events as events_mod
+
+    events_mod.reset_bridge()
+    phases(monkeypatch)
+    loop.run(crew, dry_run=True)
+    assert crew.sink in events_mod.bridged_sinks()

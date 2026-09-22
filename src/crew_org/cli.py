@@ -186,6 +186,15 @@ def _render_tick(result, *, land: bool) -> None:
         for line in result.held(name):
             console.print(f"  [yellow]{name}[/] {escape(line)}")
 
+    # A column that is *over* its limit, as opposed to at it. The limits are
+    # enforced on the way in, so this can only happen after a limit is lowered
+    # or cards are moved by hand — and until now nothing said it had.
+    for column, (count, limit) in sorted(result.over_limit.items()):
+        console.print(
+            f"  [red]WIP breach[/] {escape(column)}: {count} cards against a limit of {limit} "
+            "— finish the oldest before starting more"
+        )
+
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
     if result.failed:
         console.print(
@@ -900,6 +909,7 @@ def sprint_close(
     from crew_org.escalation import EscalationLedger
     from crew_org.flows.close import close_sprint
     from crew_org.llm import health
+    from crew_org.process import ProcessRules
     from crew_org.tools.github_issues import IssueClient
     from crew_org.tools.github_project import ProjectClient
 
@@ -922,6 +932,8 @@ def sprint_close(
         sprint=sprint,
         repo=repo,
         merge=not no_merge,
+        rules=ProcessRules.from_config(load_org()),
+        events_dir=VAR / "events",
     )
 
     console.print(f"\n[bold]{result.sprint}[/]")
@@ -931,6 +943,11 @@ def sprint_close(
         console.print(
             f"  [yellow]#{story}[/] waiting on your approval of PR #{pull} — "
             f"https://github.com/{owner}/{repo}/pull/{pull}"
+        )
+    for card, days in result.aging_blocked:
+        console.print(
+            f"  [red]{card}[/] has been blocked {days} days — past the threshold, "
+            "and still waiting on a person"
         )
     for story, pull in result.unapprovable:
         console.print(
