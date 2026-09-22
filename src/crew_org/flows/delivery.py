@@ -241,7 +241,11 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
     blockers = [
         c
         for c in cards
-        if c.parent == story.parent
+        # The repository as well as the parent number. Both are plain numbers,
+        # so a story in one repository could be held back by a sibling of an
+        # epic in another whenever the epic numbers happened to line up.
+        if c.repo == story.repo
+        and c.parent == story.parent
         and c.work_type == STORY_TYPE
         and (c.number or 0) < (story.number or 0)
         and c.state != "CLOSED"

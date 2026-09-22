@@ -17,7 +17,7 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.github_project import Card, ProjectClient, many_repos
 
 STORY_TYPE = "Story"
 
@@ -35,7 +35,11 @@ class SprintClose:
     # pull request their approval is not what is missing from.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
-    still_open: list[int] = field(default_factory=list)
+    # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
+    # #32" for six stories in two repositories, and the retro then described
+    # one card two ways. A number is not a name where two repositories are on
+    # the board.
+    still_open: list[str] = field(default_factory=list)
     retro: Retro | None = None
 
     @property
@@ -50,11 +54,18 @@ def sprint_cards(cards: list[Card], sprint: str) -> list[Card]:
 
 
 def board_summary(cards: list[Card], sprint: str) -> str:
-    """What the board says, for the Scrum Master to narrate from."""
+    """What the board says, for the Scrum Master to narrate from.
+
+    Cards carry their repository when the board holds more than one. The retro
+    is written from this, and it described sprint-metrics#32 and crew#32 as a
+    single card listed twice — a 3-point scrape-endpoint story and a 0-point
+    card about the board's own automations.
+    """
+    qualify = many_repos(cards)
     lines = []
-    for card in sorted(sprint_cards(cards, sprint), key=lambda c: c.number or 0):
+    for card in sorted(sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)):
         points = int(card.points or 0)
-        lines.append(f"#{card.number} [{points}pt] {card.status}: {card.title}")
+        lines.append(f"{card.name(qualify=qualify)} [{points}pt] {card.status}: {card.title}")
     return "\n".join(lines) or "No stories in this sprint."
 
 
@@ -71,13 +82,14 @@ def close_sprint(
     """Merge what the Sponsor approved, then report on the sprint."""
     result = SprintClose(sprint=sprint)
     cards = board.cards()
+    qualify = many_repos(cards)
 
     for card in sorted(sprint_cards(cards, sprint), key=lambda c: c.number or 0):
         number = card.number or 0
         if card.status == DONE:
             continue
         if card.status != MERGING:
-            result.still_open.append(number)
+            result.still_open.append(card.name(qualify=qualify))
             continue
 
         pull = issues.pull_for_branch(repo, branch_name(number, card.title))
