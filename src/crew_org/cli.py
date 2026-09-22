@@ -313,7 +313,8 @@ def capability() -> None:
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.flows.capability import scorecard
+    from crew_org.events import replay_dir
+    from crew_org.flows.capability import measure, scorecard
     from crew_org.tools.github_project import ProjectClient
 
     env = load_env()
@@ -366,6 +367,78 @@ def capability() -> None:
         "[dim]Where effort went, not what works. An empty row means no card carried it, "
         "not that the capability is missing.[/]"
     )
+
+    _print_measure(measure(replay_dir(VAR / "events"), board.cards()))
+
+
+def _humanise(delta) -> str:
+    """A duration a person can compare at a glance, not to the second."""
+    if delta is None:
+        return "—"
+    seconds = delta.total_seconds()
+    if seconds >= 86400:
+        return f"{seconds / 86400:.1f}d"
+    if seconds >= 3600:
+        return f"{seconds / 3600:.1f}h"
+    if seconds >= 60:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds:.0f}s"
+
+
+def _print_measure(m) -> None:
+    """The other half: what the crew can do, read off the move log.
+
+    Printed beneath the ledger deliberately. Spend and ability answer different
+    questions and neither is legible alone — five Implementation cards means
+    nothing until you know whether Implementation is fast or stuck.
+    """
+    table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
+    table.add_column("column")
+    table.add_column("capability")
+    table.add_column("median", justify="right")
+    table.add_column("worst", justify="right")
+    table.add_column("n", justify="right")
+    table.add_column("")
+
+    for stat in m.columns:
+        if not stat.exercised:
+            # Distinct from a phase that runs and fails. "No cards" could mean
+            # absent, working but uncarded, or never tried; this says which.
+            table.add_row(stat.column, stat.capability, "", "", "", "[yellow]never exercised[/]")
+            continue
+        waiting = f"[yellow]{stat.still_waiting} still waiting[/]" if stat.still_waiting else ""
+        table.add_row(
+            stat.column,
+            stat.capability,
+            _humanise(stat.median),
+            _humanise(stat.worst),
+            str(len(stat.waits)),
+            waiting,
+        )
+
+    console.print()
+    console.print(table)
+
+    if m.intervention:
+        console.print(
+            "[yellow]Needed a person:[/] "
+            + ", ".join(f"{cap} ×{n}" for cap, n in sorted(m.intervention.items()))
+            + " [dim]— a floor, not a count: a card a person moves by hand is not logged.[/]"
+        )
+    if m.rework:
+        console.print(
+            "[yellow]Sent back by a gate:[/] "
+            + ", ".join(f"{cap} ×{n}" for cap, n in sorted(m.rework.items()))
+            + " [dim]— charged to what produced the work, not what caught it.[/]"
+        )
+
+    # The window is stated because a median without one is unreadable, and
+    # because events before the board's current shape are not counted at all.
+    window = f"{m.window_days:.1f} days"
+    excluded = (
+        f", {m.excluded} earlier events not counted — they predate this board" if m.excluded else ""
+    )
+    console.print(f"[dim]What the crew can do, over {window}{excluded}.[/]")
 
 
 @app.command()
