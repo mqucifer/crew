@@ -127,7 +127,7 @@ uv run crew tick --land                               # the real thing
 | Command | Changes | Notes |
 | --- | --- | --- |
 | `crew doctor` | nothing | Needs `--base-url` or `--host`. Checks the endpoint, chat, tool calling, constrained JSON, context length and thinking control |
-| `crew auth` | nothing | Verifies the delivery identity's scope and that the reviewing identity is a different one. See the caveat below |
+| `crew auth` | nothing | Verifies the delivery identity's scope and that the reviewing identity is a different one. See the note below |
 | `crew tick` | the board | Dry by default. Refines, admits, reviews and verifies; merges nothing, pushes nothing, opens nothing |
 | `crew tick --land` | the board, GitHub | Opens pull requests and merges approved ones |
 | `crew tick --demo` | nothing | Renders the live view from synthetic events. No model needed |
@@ -136,13 +136,29 @@ uv run crew tick --land                               # the real thing
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
 | `crew sprint close` | the board, GitHub | The sprint review. A human gate |
 
-**What "dry" means.** Nothing is merged, pushed or opened — the line you cannot walk back. Refining, admitting and verifying still happen, because those are board state you can undo by moving a card, and a dry tick that skipped them would show nothing of what the loop does.
+**What "dry" means, and why it is going.** Nothing is merged, pushed or opened. Refining, admitting and verifying still happen, because those are board state you can undo by moving a card.
+
+The justification was that landing is the line you cannot walk back. That is no longer the argument it was: the crew's approvals count, so work lands through its own gate, and a merged change can be reverted through that same gate. Meanwhile a dry run pays the full inference cost and produces nothing landable, writes no event log at all, and puts cards back where it found them — which is three of the five backward moves in the current log, and noise `crew capability` has to filter out of the crew's own self-knowledge.
+
+**crew#82 removes it from `crew tick` and `crew deliver`**, and crew#83 builds the revert that should have been built instead. `crew sprint start --dry-run` stays: it shows what would be admitted and costs nothing.
 
 **Two identities.** The delivery app opens pull requests; the reviewing app judges them. GitHub refuses an approval from the identity that opened the pull request, so one app could only ever comment on the crew's own work and every story stalled waiting for a person.
 
-> **Caveat, as of 2026-09-22 — the detection landed, the trade is still yours.** `crew auth` used to report `reviewing identity: … — can approve` on the strength of two facts: it is a different identity, and it holds `pull_requests: write`. Both are true and neither is sufficient. GitHub only counts an approval from an actor with repository write access, so the reviewing app's approvals are recorded and ignored by branch protection, and two cards sat in `Merging` looking merely slow.
+> **Resolved, verified 2026-09-22.** The reviewing app's approvals count, and
+> the crew merges its own work end to end. sprint-metrics PR #66 was approved by
+> `mqucifer-crew-approver[bot]`, GitHub recorded `reviewDecision: APPROVED`, and
+> it merged during the Sprint 3 run.
 >
-> crew#40 fixed the *reporting*, not the permission. `crew auth` now names what it verified rather than concluding what it had not tested, and a pull request GitHub still reports as `REVIEW_REQUIRED` despite an approving review is blocked and labelled for a person instead of waiting forever. **Whether to grant the reviewing app `contents: write`** — which would likely make its approvals count, and would also let it push — **remains a Sponsor decision that nothing in the crew can make.**
+> This is written from the live answer rather than from a card. An earlier
+> version of this page said the permission was still an open Sponsor decision;
+> it was reading crew#40's issue body, which described 2026-09-19 and was never
+> updated when the access changed. The issue text outlived the fact.
+>
+> crew#40's code still earns its place: `crew auth` states what it verified
+> instead of concluding what it has not tested, and a pull request GitHub
+> reports as `REVIEW_REQUIRED` despite an approving review is blocked and
+> labelled for a person rather than waiting forever. That is now a guard
+> against a regression instead of a description of the present.
 
 **The Sponsor's verbs.** Approve an epic by moving it out of Inbox (Goals). Reject it by closing it. Send a decomposition back by commenting and adding `needs:rework` — the next tick reads the comment, supersedes the old cards, and tries again.
 
