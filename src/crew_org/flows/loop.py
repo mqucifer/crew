@@ -343,9 +343,14 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
     # Events: they happened, and the next pass will not see them.
-    blocked = [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason] + [
-        f"#{n} — merge conflict, needs a person" for n in result.conflicted
-    ]
+    blocked = (
+        [f"#{o.card} — {o.blocked_reason}" for o in result.blocked if o.blocked_reason]
+        + [f"#{n} — merge conflict, needs a person" for n in result.conflicted]
+        + [
+            f"#{n} — PR #{pr} is approved and GitHub will not count it, needs a person"
+            for n, pr in result.unapprovable
+        ]
+    )
     return PhaseOutcome(
         "deliver",
         moved=moved,
