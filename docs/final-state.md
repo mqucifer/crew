@@ -75,16 +75,18 @@ that names the role. Not large, but it touches everything.
 > practitioner already knows, and inventing a role name taxes everyone who
 > reads this later. *Product Sponsor* goes.
 
-**The knock-on, which is not yet settled.** The agent that turns Goals into
-Epics currently holds that name and must give it up. It is not a cosmetic
-rename: the whole reason role boundaries are structural (§1) is that
-granularity — goal, epic, story — is exactly what a small model blurs, so
-whatever the agent is called has to say *which altitude it works at*. It writes
-epics and it may not write acceptance criteria; the Business Analyst writes
-stories from what it produces.
+**The knock-on, settled with it: the agent becomes the Product Manager.** It
+turns Goals into Epics and may not write acceptance criteria; the Business
+Analyst writes stories from what it produces. Both names are ones a
+practitioner already holds, and the altitude each works at is the standard
+one — which matters more here than elsewhere, because §1 makes role boundaries
+structural precisely on the grounds that granularity is what a small model
+blurs.
 
-Until that is decided, this document calls it **the epic author** and means the
-agent, never the person.
+**One oddity, named rather than discovered.** In most organisations a Product
+Manager sits *above* a Product Owner, and here the agent sits below the human.
+The hierarchy reads inverted. It is accepted knowingly: the alternative is a
+coined name that nobody arrives already knowing.
 
 ### 2. What orchestrates — the board, or a manager?
 
@@ -223,7 +225,7 @@ Seven agents and one person today. The absorbed sketch proposes nine agents.
 | Role | Exists | At final state |
 |---|---|---|
 | **Product Owner** (the human) | yes | Authors goals, approves epics, accepts increments. Nothing else. |
-| The epic author (agent, name unsettled) | agent | Goals into epics |
+| Product Manager | agent | Goals into epics |
 | Business Analyst | agent | Epics into stories, criteria, estimates |
 | Architect | agent | Design notes, rationed by complexity |
 | Developer | agent | Code, tests, pull requests |
