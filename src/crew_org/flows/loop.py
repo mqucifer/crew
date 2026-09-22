@@ -187,7 +187,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         ws=crew.ws,
         sponsor=crew.sponsor,
     )
-    moved = bool(result.epics_created or result.stories_created)
+    # Parking an epic is movement: the card left Needs Refinement, and a pass
+    # that reports "nothing moved" over it would hide the one thing that
+    # changed.
+    moved = bool(result.epics_created or result.stories_created or result.parked)
     return PhaseOutcome(
         "refine",
         moved=moved,
@@ -202,6 +205,10 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
         + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
+        blocked=[
+            f"#{n} — the split failed the same way twice; parked for a person"
+            for n in result.parked
+        ],
     )
 
 

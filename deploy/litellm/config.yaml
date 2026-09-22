@@ -30,6 +30,36 @@ model_list:
       temperature: 0.6
       timeout: 1800
 
+  # Refinement that has to hold a whole epic in its head. Same backend, same
+  # thinking, with the reasoning asked to converge rather than compound.
+  #
+  # The Business Analyst runs here rather than on crew-local because it is the
+  # refine role whose input grows without bound: epic sprint-metrics#49 hung
+  # six times in one tick at reasoning_tokens 16,386 and text_tokens 0,
+  # finish=length — the whole budget spent before the answer began. It is the
+  # failure crew-code exists to avoid, arriving in refinement as epics get
+  # bigger.
+  #
+  # reasoning_effort is an OpenAI-standard parameter and works well in the
+  # Sponsor's other setups, so the lever itself is not in doubt. What is not
+  # measured *here* is narrower: whether it survives this alias's
+  # drop_params: true on the way to SGLang, and whether medium effort is
+  # enough to make a large split converge.
+  #
+  # The check is the split that failed: run sprint-metrics#49 through and
+  # watch reasoning_tokens. If the parameter is being dropped, the larger
+  # max_tokens on the Business Analyst is doing the work on its own — which
+  # may be enough, and is worth knowing either way.
+  - model_name: crew-analysis
+    litellm_params:
+      model: openai/qwen3.8-27b-sglang
+      api_base: os.environ/SGLANG_BASE_URL
+      api_key: "sk-not-used"
+      drop_params: true
+      temperature: 0.1
+      timeout: 1800
+      reasoning_effort: medium
+
   # Mechanical work — routing, labelling, field-setting — where reasoning is
   # pure cost. Qwen3 honours enable_thinking=false (verified on the Spark).
   #
