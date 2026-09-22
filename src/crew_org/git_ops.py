@@ -171,6 +171,9 @@ class Workspace:
         self.clone = CLONES / repo
         self.path: Path | None = None
         self.branch: str | None = None
+        # Whether the open worktree carries a previous attempt's work. Read by
+        # delivery to decide what the Developer is told about its own files.
+        self.resumed = False
 
     def for_repo(self, repo: str) -> Workspace:
         """A workspace for another repository in the same organization.
@@ -215,8 +218,47 @@ class Workspace:
         _run(["checkout", "--force", f"origin/{default}"], cwd=self.clone, token=self.token)
         return self.clone
 
-    def open(self, branch: str) -> Path:
-        """Create a clean worktree on a new branch off origin/main."""
+    def unfinished_work_on(self, branch: str) -> bool:
+        """Does `origin/<branch>` hold work that `origin/HEAD` does not?
+
+        The question a re-delivery has to ask before it resets anything. A
+        story returned by a gate still has its previous attempt on the remote
+        branch, and `open` used to overwrite that branch from `origin/HEAD` —
+        so the accepted implementation the verdict was *about* vanished, while
+        the verdict describing it was still handed to the Developer.
+        sprint-metrics #31 spent an attempt trying to edit a function that had
+        been deleted out from under it.
+
+        False once the branch has merged: its commits are in `origin/HEAD` and
+        resuming onto them would re-apply work that already landed.
+        """
+        self._ensure_clone()
+        try:
+            _run(["rev-parse", "--verify", f"origin/{branch}"], cwd=self.clone)
+        except GitError:
+            return False
+        try:
+            _run(
+                ["merge-base", "--is-ancestor", f"origin/{branch}", "origin/HEAD"],
+                cwd=self.clone,
+            )
+        except GitError:
+            return True
+        return False
+
+    def open(self, branch: str, *, resume: bool = False) -> Path:
+        """Create a worktree on `branch`.
+
+        Off `origin/HEAD` by default: a story being delivered for the first
+        time starts from current `main` and nothing else.
+
+        `resume` starts from `origin/<branch>` instead when that branch holds
+        work `main` does not, so a repair builds on the attempt it is repairing
+        rather than silently discarding it. Whether it actually resumed is on
+        `self.resumed` — the caller has to tell the Developer which world it is
+        in, because a prompt describing files that are not there is worse than
+        one describing none.
+        """
         assert_writable(branch)
         validate_branch_name(branch)
         self._ensure_clone()
@@ -232,8 +274,10 @@ class Workspace:
         _run(["worktree", "prune"], cwd=self.clone)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        self.resumed = bool(resume) and self.unfinished_work_on(branch)
+        base = f"origin/{branch}" if self.resumed else "origin/HEAD"
         _run(
-            ["worktree", "add", "-B", branch, str(path), "origin/HEAD"],
+            ["worktree", "add", "-B", branch, str(path), base],
             cwd=self.clone,
             token=self.token,
         )

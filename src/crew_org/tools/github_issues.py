@@ -170,6 +170,29 @@ class IssueClient:
         """One pull request, including mergeability — the list endpoint omits it."""
         return self._request("GET", f"/repos/{self.owner}/{repo}/pulls/{number}")
 
+    def pulls_for_branch(
+        self, repo: str, branch: str, *, state: str = "all"
+    ) -> list[dict[str, Any]]:
+        """Every pull request ever opened from this branch, newest first.
+
+        `pull_for_branch` answers "is there one open now". This answers "what
+        happened to the last one", which is a different and, for a re-delivery,
+        more useful question: a pull request closed without merging is the
+        reason a story came back, and nothing else records it.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/pulls",
+            params={
+                "state": state,
+                "head": f"{self.owner}:{branch}",
+                "sort": "created",
+                "direction": "desc",
+                "per_page": 100,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
     def pull_for_branch(self, repo: str, branch: str) -> dict[str, Any] | None:
         for pull in self.open_pulls(repo):
             if pull["head"]["ref"] == branch:
