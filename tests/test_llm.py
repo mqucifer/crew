@@ -85,3 +85,61 @@ def test_an_absent_setting_falls_back_to_the_placeholder(monkeypatch, tmp_path):
     monkeypatch.delenv("CREW_LLM_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
     assert llm.api_key() == llm.PLACEHOLDER_KEY
+
+
+def test_a_role_can_ask_for_more_headroom_than_the_default(monkeypatch):
+    """The Business Analyst's input grows without bound — a large epic spent
+    the shared 16,384-token budget on reasoning alone and returned nothing."""
+    import crew_org.agents as agents_mod
+
+    captured = {}
+
+    def fake_build_llm(alias="crew-local", **overrides):
+        captured["alias"] = alias
+        captured.update(overrides)
+        return object()
+
+    monkeypatch.setattr(agents_mod, "build_llm", fake_build_llm)
+    monkeypatch.setattr(agents_mod, "Agent", lambda **kw: kw)
+
+    agents_mod.build_agent(
+        "business_analyst",
+        {
+            "role": "Business Analyst",
+            "goal": "split epics",
+            "backstory": "you are ruthless about size",
+            "llm": "crew-analysis",
+            "llm_params": {"max_tokens": 32768},
+        },
+    )
+    assert captured["alias"] == "crew-analysis"
+    assert captured["max_tokens"] == 32768
+
+
+def test_a_role_that_asks_for_nothing_gets_the_defaults(monkeypatch):
+    import crew_org.agents as agents_mod
+
+    captured = {}
+
+    def fake_build_llm(alias="crew-local", **overrides):
+        captured["alias"] = alias
+        captured["overrides"] = overrides
+        return object()
+
+    monkeypatch.setattr(agents_mod, "build_llm", fake_build_llm)
+    monkeypatch.setattr(agents_mod, "Agent", lambda **kw: kw)
+
+    agents_mod.build_agent(
+        "developer",
+        {"role": "Developer", "goal": "build", "backstory": "you write code", "llm": "crew-code"},
+    )
+    assert captured["overrides"] == {}
+
+
+def test_the_analyst_is_configured_off_the_shared_alias():
+    """The change that matters is in agents.yaml, not in a call site."""
+    from crew_org.permissions import load_agents
+
+    spec = load_agents()["business_analyst"]
+    assert spec["llm"] == "crew-analysis"
+    assert spec["llm_params"]["max_tokens"] > 16384
