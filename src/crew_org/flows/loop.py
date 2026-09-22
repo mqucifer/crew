@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.escalation import EscalationLedger, EscalationPolicy
-from crew_org.events import EventKind, EventSink
+from crew_org.events import EventKind, EventSink, bridge_crewai
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -95,6 +95,11 @@ class LoopResult:
     # the board being stable, and reporting it as such tells the Sponsor the
     # work is finished when it was merely stopped.
     settled: bool = False
+    # Columns found over their WIP limit, as {column: (count, limit)}. The
+    # limits are enforced on the way *in* — `may_move` refuses — so a column
+    # cannot be pushed over. It can still *be* over, after a limit is lowered
+    # or cards are moved by hand, and nothing said so.
+    over_limit: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     @property
     def failed(self) -> list[PhaseOutcome]:
@@ -390,6 +395,11 @@ def run(crew: Crew, *, dry_run: bool = True, max_passes: int = MAX_PASSES) -> Lo
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
 
+    # Model calls, their tokens and the tools they used. Installed once, for
+    # the whole tick: the bridge existed and nothing called it, so every real
+    # run's log was blind to everything the model did.
+    bridge_crewai(crew.sink)
+
     for _ in range(max_passes):
         result.passes += 1
         moved_this_pass = False
@@ -411,6 +421,21 @@ def run(crew: Crew, *, dry_run: bool = True, max_passes: int = MAX_PASSES) -> Lo
             sprint=crew.sprint,
             counts=counts,
         )
+
+        # A breach is reported, not merely prevented. `over_limit` has always
+        # been able to answer this and nothing asked it, so a column that was
+        # already over — a limit lowered, cards moved by hand — looked exactly
+        # like a column at its limit, which is a different and healthy thing.
+        breaches = crew.rules.over_limit(counts)
+        result.over_limit = breaches
+        for column, (count, limit) in sorted(breaches.items()):
+            crew.sink.note(
+                EventKind.NOTE,
+                f"{column} is over its WIP limit: {count} cards against {limit}",
+                column=column,
+                count=count,
+                limit=limit,
+            )
 
         for name, phase in PHASES:
             try:

@@ -96,7 +96,13 @@ class EventSink:
         self.emit(CrewEvent(kind=kind, summary=summary, detail=detail))
 
     def replay(self) -> list[CrewEvent]:
-        """Read back a persisted run — used by the standup and by tests."""
+        """Read back this sink's own log.
+
+        The docstring used to say "used by the standup and by tests". There is
+        no standup: the Scrum Master holds `write_standup` and no flow calls
+        it. Saying so here was the only record that it was meant to exist.
+        `replay_dir` is what reads history across commands.
+        """
         if self.path is None or not self.path.exists():
             return []
         out: list[CrewEvent] = []
@@ -106,6 +112,55 @@ class EventSink:
                 if line:
                     out.append(CrewEvent.model_validate(json.loads(line)))
         return out
+
+
+def replay_dir(directory: Path) -> list[CrewEvent]:
+    """Every event the crew has recorded, across all its logs, oldest first.
+
+    One log per command — `tick.jsonl`, `deliver.jsonl`, `close.jsonl` — so a
+    question about the board's history cannot be answered from any single one.
+    A card is blocked by `deliver` and read about by `close`.
+
+    Best effort per file: a truncated or hand-edited line is skipped rather
+    than losing the whole history to it.
+    """
+    out: list[CrewEvent] = []
+    if not directory.exists():
+        return out
+    for path in sorted(directory.glob("*.jsonl")):
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                with contextlib.suppress(Exception):
+                    out.append(CrewEvent.model_validate(json.loads(line)))
+    return sorted(out, key=lambda e: e.at)
+
+
+def blocked_since(events: list[CrewEvent], *, blocked_column: str) -> dict[int, datetime]:
+    """When each card that is still blocked entered Blocked, per the log.
+
+    The board says a card *is* blocked and never says since when: an issue's
+    `updated` timestamp moves for any comment, so it cannot answer this. The
+    move log can — `move_card` records the column a card came from and the one
+    it went to.
+
+    A card blocked, freed and blocked again counts from the latest time it was
+    blocked, which is what "how long has this been blocked" means to the person
+    being asked to deal with it.
+    """
+    since: dict[int, datetime] = {}
+    for event in events:
+        card = event.card
+        if card is None:
+            continue
+        detail = event.detail or {}
+        if detail.get("to") == blocked_column:
+            since[card] = event.at
+        elif detail.get("from") == blocked_column and detail.get("to") != blocked_column:
+            since.pop(card, None)
+    return since
 
 
 # --- CrewAI bridge -------------------------------------------------------
@@ -136,12 +191,90 @@ def _first_attr(obj: Any, *names: str) -> Any:
     return None
 
 
+# What a token count is called, across providers and CrewAI versions. Read
+# defensively for the same reason the rest of the bridge is: a live view that
+# breaks on upgrade is worse than no live view.
+_TOKEN_KEYS = {
+    "prompt_tokens": "prompt_tokens",
+    "input_tokens": "prompt_tokens",
+    "completion_tokens": "completion_tokens",
+    "output_tokens": "completion_tokens",
+    "total_tokens": "total_tokens",
+    "reasoning_tokens": "reasoning_tokens",
+    "cached_tokens": "cached_tokens",
+}
+
+
+def _usage(event: Any) -> dict[str, Any]:
+    """Token counts off a CrewAI LLM event, normalised and flattened.
+
+    The crew's own event model is the contract, so provider spellings are
+    mapped onto one set of names here rather than leaking into the log — and a
+    shape nobody anticipated yields nothing rather than an exception.
+
+    `reasoning_tokens` is picked out deliberately: a generation that spends its
+    whole budget reasoning and emits no text is the failure mode that hung an
+    epic split six times, and it is invisible in a total.
+    """
+    raw = _first_attr(event, "usage", "token_usage")
+    if not isinstance(raw, dict):
+        raw = getattr(raw, "__dict__", None) if raw is not None else None
+        if not isinstance(raw, dict):
+            return {}
+
+    out: dict[str, Any] = {}
+    for key, value in raw.items():
+        name = _TOKEN_KEYS.get(str(key))
+        if name is not None and isinstance(value, int):
+            out[name] = value
+        elif isinstance(value, dict):
+            # Nested details — OpenAI puts reasoning_tokens inside
+            # completion_tokens_details, and providers disagree about depth.
+            for inner, inner_value in value.items():
+                name = _TOKEN_KEYS.get(str(inner))
+                if name is not None and isinstance(inner_value, int):
+                    out.setdefault(name, inner_value)
+    return out
+
+
+# Where forwarded events go, and whether the handler is on the bus yet. The
+# bus is global and a handler registered twice delivers twice, so a command
+# that bridges more than one sink must not install a second handler.
+_TARGETS: list[tuple[EventSink, int | None]] = []
+_INSTALLED = False
+
+
+def bridged_sinks() -> list[EventSink]:
+    """The sinks currently receiving CrewAI's events. For tests."""
+    return [sink for sink, _card in _TARGETS]
+
+
+def reset_bridge() -> None:
+    """Forget every target. For tests — the bus handler itself cannot be removed."""
+    _TARGETS.clear()
+
+
 def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
     """Forward CrewAI's internal bus onto the crew's sink.
 
+    Nothing called this, so no real run's log has ever held a model call, a
+    token count or a tool invocation — `tui.py` defines and renders all four
+    kinds and they appeared only in the synthetic demo. The cost of a run was
+    unanswerable the moment it ended.
+
     Best-effort by design: if CrewAI changes its bus, the live view degrades to
     the crew's own events rather than crashing the tick.
+
+    Idempotent. Calling it again adds a target; the handler is installed once,
+    because the bus is global and registering twice delivers twice.
     """
+    global _INSTALLED  # noqa: PLW0603
+
+    if not any(existing is sink for existing, _ in _TARGETS):
+        _TARGETS.append((sink, card))
+    if _INSTALLED:
+        return
+
     try:
         from crewai.events import crewai_event_bus  # noqa: PLC0415
         from crewai.events.base_events import BaseEvent  # noqa: PLC0415
@@ -156,11 +289,30 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
             return
         role = _first_attr(event, "role", "agent_role", "from_agent")
         name = _first_attr(event, "task_name", "tool_name", "model", "description") or ""
-        sink.emit(
-            CrewEvent(
-                kind=kind,
-                role=str(role) if role else None,
-                card=card,
-                summary=str(name)[:120],
+
+        # What the call cost and what it did, not just that it happened. The
+        # log had no tokens, no model and no tool names, so the cost of a run
+        # was unanswerable after the fact and a generation that burned its
+        # budget looked the same as one that answered.
+        detail: dict[str, Any] = {}
+        for field, value in (
+            ("model", _first_attr(event, "model")),
+            ("tool", _first_attr(event, "tool_name")),
+            ("finish_reason", _first_attr(event, "finish_reason")),
+        ):
+            if value is not None:
+                detail[field] = str(value)[:120]
+        detail.update(_usage(event))
+
+        for target, target_card in list(_TARGETS):
+            target.emit(
+                CrewEvent(
+                    kind=kind,
+                    role=str(role) if role else None,
+                    card=target_card,
+                    summary=str(name)[:120],
+                    detail=detail,
+                )
             )
-        )
+
+    _INSTALLED = True

@@ -9,13 +9,16 @@ one pass at the end of a sprint rather than a decision per story.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
-from crew_org.events import EventKind, EventSink
+from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
+from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, many_repos
 
@@ -40,6 +43,11 @@ class SprintClose:
     # one card two ways. A number is not a name where two repositories are on
     # the board.
     still_open: list[str] = field(default_factory=list)
+    # (card, days blocked) for cards blocked longer than the configured
+    # threshold. §12 says these are raised to the Sponsor at sprint review and
+    # `process.aging_blocked` has always been able to say which — nothing
+    # called it, so a card blocked most of a day went unmentioned.
+    aging_blocked: list[tuple[str, int]] = field(default_factory=list)
     retro: Retro | None = None
 
     @property
@@ -78,8 +86,18 @@ def close_sprint(
     sprint: str,
     repo: str,
     merge: bool = True,
+    rules: ProcessRules | None = None,
+    events_dir: Path | None = None,
+    now: datetime | None = None,
 ) -> SprintClose:
-    """Merge what the Sponsor approved, then report on the sprint."""
+    """Merge what the Sponsor approved, then report on the sprint.
+
+    `rules` and `events_dir` are what raising an aging blocked card needs: the
+    threshold, and the log that says when each card was blocked. Both optional
+    so a caller that only wants the merge still gets one — but with neither,
+    §12's "raise it at sprint review" cannot happen, and the report says so
+    rather than quietly omitting it.
+    """
     result = SprintClose(sprint=sprint)
     cards = board.cards()
     qualify = many_repos(cards)
@@ -134,6 +152,23 @@ def close_sprint(
             summary=f"merged PR #{pull['number']}",
         )
         result.merged.append(number)
+
+    # §12: a card blocked longer than the threshold is raised to the Sponsor at
+    # sprint review. The function that answers "which ones" was written, the
+    # threshold was configured with a comment saying exactly this, and nothing
+    # joined them — on 2026-09-19 sprint-metrics#12 had been blocked most of a
+    # day and the close did not mention it.
+    if rules is not None and events_dir is not None:
+        blocked = blocked_since(replay_dir(events_dir), blocked_column=rules.blocked_column)
+        aging = rules.aging_blocked(blocked, now=now or datetime.now(UTC))
+        by_number = {c.number: c for c in cards}
+        result.aging_blocked = sorted(
+            (
+                (by_number[number].name(qualify=qualify) if number in by_number else f"#{number}"),
+                days,
+            )
+            for number, days in aging.items()
+        )
 
     # Report the outcome alongside the failure. Without it an escalation reads
     # as an unresolved failure and the retro concludes the story was shipped
