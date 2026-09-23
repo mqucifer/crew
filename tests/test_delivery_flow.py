@@ -82,6 +82,9 @@ class FakeIssues:
     def open_pulls(self, repo):
         return []
 
+    def closed_pulls(self, repo):
+        return []
+
     def comment(self, repo, number, body):
         self.comments_.append((number, body))
 

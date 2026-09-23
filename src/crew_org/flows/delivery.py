@@ -29,6 +29,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
+from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools import claude_code, regression, workspace
@@ -108,6 +109,8 @@ class DeliveryResult:
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
+    # Reverts landed this pass, and those that could not land yet (#83).
+    reverts: RevertLanding = field(default_factory=RevertLanding)
     rate_limited: bool = False
 
 
@@ -942,6 +945,14 @@ def deliver(
     result.unmergeable = list(landed.failed)
     result.landed = [card for card, _pr in landed.merged]
     if landed.merged or landed.conflicted:
+        cards = board.cards()
+
+    # Reverts land on the same terms, and before new work branches for the
+    # same reason: a story should start from the main the revert produced.
+    result.reverts = land_reverts(
+        board, issues, sink, cards=cards, repos=repos if repos is not None else {repo}
+    )
+    if result.reverts.merged or result.reverts.returned:
         cards = board.cards()
 
     # Heal before acting: an interrupted run leaves cards claimed by nobody.

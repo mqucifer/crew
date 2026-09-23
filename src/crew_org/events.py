@@ -44,6 +44,12 @@ class EventKind(StrEnum):
     TOOL_FINISHED = "tool.finished"
     TOOL_FAILED = "tool.failed"
 
+    # A merged change being undone. Each carries the pull request reverted,
+    # the card it belonged to and why, so the audit trail can answer all three.
+    REVERT_OPENED = "revert.opened"
+    REVERT_REFUSED = "revert.refused"
+    REVERT_LANDED = "revert.landed"
+
     ESCALATION_DECIDED = "escalation.decided"
     ESCALATED = "escalation.sent"
 
