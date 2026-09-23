@@ -138,3 +138,73 @@ def test_the_plan_reports_per_epic_not_per_story():
     plan = plan_sprint(cards, parents({6: 3, 9: 4}), sprint="S1", capacity=20)
     assert len(plan.slices) == 2
     assert [(p.number, p.points) for p in plan.slices] == [(3, 3), (4, 2)]
+
+
+# --- only work the crew can actually deliver ------------------------------
+
+CREW = "crew"
+
+
+def test_a_story_the_crew_cannot_deliver_is_not_admitted():
+    """`plan_sprint` filled from every Ready story while
+    `delivery.sprint_stories` filtered — so planning admitted the card,
+    delivery declined it as not_ours, and the capacity was gone either way.
+    Measured 2026-09-22: five of eight admitted points were undeliverable."""
+    cards = [epic(3), story(6, 3), story(7, 5, repo=CREW)]
+    plan = plan_sprint(
+        cards,
+        parents({6: 3, 7: 3}) | parents({7: 3}, CREW),
+        sprint="S1",
+        capacity=20,
+        repos={REPO},
+    )
+    assert [c.number for c in plan.admitted] == [6]
+    assert plan.points == 3
+
+
+def test_the_excluded_story_is_reported_rather_than_dropped():
+    """It is real work with a real estimate, just not the crew's to do. A card
+    that vanishes from planning without a word is how this went unnoticed."""
+    cards = [epic(3), story(6, 3), story(7, 5, repo=CREW)]
+    plan = plan_sprint(
+        cards,
+        parents({6: 3}) | parents({7: 3}, CREW),
+        sprint="S1",
+        capacity=20,
+        repos={REPO},
+    )
+    assert [(c.repo, c.number) for c in plan.not_ours] == [(CREW, 7)]
+
+
+def test_an_excluded_story_does_not_also_count_as_unparented():
+    """Two reports of one card reads as two problems."""
+    cards = [epic(3), story(9, 3, repo=CREW)]
+    plan = plan_sprint(cards, parents({}), sprint="S1", capacity=20, repos={REPO})
+    assert [c.number for c in plan.not_ours] == [9]
+    assert plan.unparented == []
+
+
+def test_capacity_is_spent_only_on_deliverable_work():
+    """The sprint looked two thirds full and was one third full."""
+    cards = [epic(3), story(6, 8, repo=CREW), story(7, 8)]
+    plan = plan_sprint(
+        cards,
+        parents({7: 3}) | parents({6: 3}, CREW),
+        sprint="S1",
+        capacity=8,
+        repos={REPO},
+    )
+    assert [c.number for c in plan.admitted] == [7]
+    assert plan.points == 8
+
+
+def test_no_allow_list_admits_everything():
+    """A caller with no delivery configuration gets every repository, which is
+    the behaviour that existed before.
+
+    Both epics are numbered 3, in different repositories — the collision #49
+    fixed, and the reason each story's parent is looked up by key."""
+    cards = [epic(3), epic(3, repo=CREW), story(6, 3), story(7, 5, repo=CREW)]
+    plan = plan_sprint(cards, parents({6: 3}) | parents({7: 3}, CREW), sprint="S1", capacity=20)
+    assert sorted(c.number for c in plan.admitted) == [6, 7]
+    assert plan.not_ours == []
