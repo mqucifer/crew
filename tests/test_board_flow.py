@@ -347,6 +347,7 @@ def test_the_proposal_says_the_goal_is_not_the_card_to_move(monkeypatch):
 
 from crew_org.crews.refinement_crew import AcceptanceCriterion, Story, StoryProposal  # noqa: E402
 from crew_org.flows.board_flow import (  # noqa: E402
+    HELD_FOR_ROOM,
     READY,
     REFINEMENT,
     STORY_SPLIT_MARKER,
@@ -443,6 +444,73 @@ def test_a_full_ready_column_holds_stories_in_refinement(monkeypatch):
     result = run_split(board, issues, monkeypatch)
     assert len(result.stories_created) == 2
     assert [m[1] for m in board.moves] == [REFINEMENT, REFINEMENT]
+    assert issues.added_labels == [(101, HELD_FOR_ROOM), (102, HELD_FOR_ROOM)]
+
+
+# --- a story held for room is let in when there is room (#44) -------------
+
+
+def in_ready(count: int) -> list[Card]:
+    return [
+        Card(
+            item_id=f"R{i}",
+            number=200 + i,
+            title="s",
+            status=READY,
+            state="OPEN",
+            work_type="Story",
+        )
+        for i in range(count)
+    ]
+
+
+def story_card(number: int, labels: frozenset[str] = frozenset({HELD_FOR_ROOM})) -> Card:
+    return card(number, status=REFINEMENT, work_type="Story", labels=labels)
+
+
+def test_a_held_story_enters_ready_when_it_has_room(monkeypatch):
+    """sprint-metrics #33 and #34: held while Ready was 10 of 10, still held
+    with Ready at 3, until a person moved them."""
+    board, issues = FakeBoard([story_card(33), story_card(34), *in_ready(3)]), FakeIssues()
+    result = run_split(board, issues, monkeypatch)
+    assert result.admitted == [33, 34]
+    assert board.moves == [("I33", READY), ("I34", READY)]
+    assert issues.removed_labels == [(33, HELD_FOR_ROOM), (34, HELD_FOR_ROOM)]
+    assert result.waiting == []
+
+
+def test_a_held_story_waits_while_ready_is_full(monkeypatch):
+    board, issues = FakeBoard([story_card(33), *in_ready(10)]), FakeIssues()
+    result = run_split(board, issues, monkeypatch)
+    assert result.admitted == []
+    assert board.moves == []
+    assert issues.removed_labels == []
+    assert [n for n, _why in result.waiting] == [33]
+
+
+def test_only_as_many_are_let_in_as_there_is_room(monkeypatch):
+    board, issues = FakeBoard([story_card(33), story_card(34), *in_ready(9)]), FakeIssues()
+    result = run_split(board, issues, monkeypatch)
+    assert result.admitted == [33]
+    assert [n for n, _why in result.waiting] == [34]
+
+
+def test_a_story_not_held_for_room_is_left_in_refinement(monkeypatch):
+    """Filed by hand, or returned by escalation: it needs refining, not room."""
+    board, issues = FakeBoard([story_card(40, labels=frozenset()), *in_ready(0)]), FakeIssues()
+    result = run_split(board, issues, monkeypatch)
+    assert result.admitted == []
+    assert board.moves == []
+
+
+def test_a_story_let_in_counts_against_ready_for_the_rest_of_the_tick(monkeypatch):
+    """Ready at 9: the held story takes the last place, so the epic split in the
+    same tick is held rather than pushing Ready past its limit."""
+    board = FakeBoard([story_card(33), epic_card(3), *in_ready(9)])
+    issues = FakeIssues()
+    result = run_split(board, issues, monkeypatch)
+    assert result.admitted == [33]
+    assert [m[1] for m in board.moves] == [READY, REFINEMENT, REFINEMENT]
 
 
 def test_design_is_required_when_the_split_trips_the_threshold(monkeypatch):
