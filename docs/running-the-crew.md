@@ -206,10 +206,10 @@ The flow from goal to merged code exists end to end and has run unattended. What
 | Audit trail | **Works** | Every move and comment carries its role |
 | Sprint review | **Partial** | `crew sprint close` exists; the increment is a list of merged cards |
 | Retrospective | **Partial** | Scrum Master reads the escalation ledger and proposes process defects; nothing else feeds it |
-| Standup | **Partial** | The role can write one; no ceremony triggers it |
+| Standup | **Absent** | The Scrum Master is allowed `write_standup` and no function behind it exists (#79) |
 | Estimation → velocity | **Partial** | Points are set and capacity is fixed at 20. Velocity is never measured, so capacity never learns |
 | Backlog refinement as a ceremony | **Partial** | Happens continuously in the tick; no dedicated pass over stale cards |
-| Burndown / flow metrics | **Absent** | The pilot *computes* cycle time, lead time, throughput, WIP violations — for its own repo, not for the crew |
+| Burndown / flow metrics | **Partial** | `crew capability` measures time in each column, what was exercised, rework, and interventions counted from the board's history (#42, #89). No burndown |
 | Dependency management | **Absent** | Sibling order only. Nothing models a dependency across epics |
 | Release planning | **Absent** | No notion of a release beyond a merged pull request |
 | Risk / impediment log | **Absent** | Blocked cards are the only record, and only while they are blocked |

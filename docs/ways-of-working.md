@@ -480,6 +480,14 @@ work the crew does — cards in the repositories under `delivery.repos` — and
 nothing else. Work *on* the crew is done by hand, tracked as issues on the crew
 repository and prioritised by their `P0`–`P3` labels.
 
+**A finding goes to the repository of the thing it found.** A defect in how the
+crew works is filed on the crew repository; a defect in what the crew built is
+filed on the delivery repository that holds it. Who found it does not decide
+where it goes, and one observation can produce one of each: *"stories must name
+the module a metric belongs in"* is the crew's, *"there are two definitions of
+`compute_wip_violations`"* is sprint-metrics'. Forcing a choice loses one, and
+it is usually the product one, because a retro feels like a process event.
+
 The two used to share the board, with a `Capability` field on each crew card
 and a ledger in `crew capability` counting them. It went for three reasons. The
 crew's own refinement pulled crew work onto the board by decomposing the crew
