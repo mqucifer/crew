@@ -107,13 +107,17 @@ jobs:
           set -euo pipefail
           # An item the board does not hold is not an error: the crew works
           # repositories whose issues are not all tracked.
+          # $number is deliberately not a GraphQL variable: the project is
+          # picked out of the result by jq below, and GraphQL refuses a
+          # declared variable the query does not use. Passing it here failed
+          # every pull_request run while the sweep, which does use it, passed.
           item_id=$(gh api graphql -f query='
-            query($id:ID!, $number:Int!) {
+            query($id:ID!) {
               node(id:$id) {
                 ... on Issue       { projectItems(first:20){ nodes { id project { number } } } }
                 ... on PullRequest { projectItems(first:20){ nodes { id project { number } } } }
               }
-            }' -F id="$NODE_ID" -F number="$PROJECT_NUMBER" \
+            }' -F id="$NODE_ID" \
             | jq -r --argjson n "$PROJECT_NUMBER" \
               '[.data.node.projectItems.nodes[]? | select(.project.number==$n)][0].id // empty')
 
