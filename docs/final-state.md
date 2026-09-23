@@ -295,11 +295,12 @@ trigger fires is a capability that exists on paper.
 
 Not from this document.
 
-- `crew capability` — the investment ledger, and time in column, exercise,
-  intervention and rework, computed from the board and the move log
+- `crew capability` — time in column, exercise, intervention and rework,
+  computed from the move log and the board's own history
 - the test suite — claims about the code that would otherwise rot in prose, such
   as whether anything can still reach a given function
-- the backlog — what is carded against each capability above
+- the crew repository's issues, by `P0`–`P3` label — what is carded against
+  each capability above
 
 **A gap that can be computed should be computed; a gap that can be asserted
 should be a test; only a gap that is neither belongs in prose, and then with a

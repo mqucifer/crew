@@ -111,11 +111,6 @@ class Card(BaseModel):
     work_type: str | None = None
     priority: str | None = None
     owner_agent: str | None = None
-    # Which agile capability this card advances. Set on the crew's own cards
-    # only — a card in a delivery repository advances the product, not the
-    # crew's ability to run a process, and counting it as the latter makes the
-    # scorecard read healthier than it is.
-    capability: str | None = None
     # When the card was filed, last touched and finished. GitHub has always
     # carried these and the crew never asked, so how long a card has been
     # sitting was unanswerable without replaying the event log — and
@@ -309,11 +304,23 @@ _FIELD_TO_ATTR = {
     "Work Type": "work_type",
     "Priority": "priority",
     "Owner Agent": "owner_agent",
-    "Capability": "capability",
     "Sprint": "sprint",
     "Points": "points",
     "Escalations": "escalations",
 }
+
+
+def within(cards: list[Card], repos: set[str] | None) -> list[Card]:
+    """The cards in `repos`, or all of them when `repos` is None.
+
+    The board holds more than the crew works on. Before this was applied to
+    every phase, only claiming a card checked `delivery.repos`: refinement
+    split the crew repository's own Goal #4 into eight epics and stories, and
+    that is how the crew's own backlog came to be on the board.
+    """
+    if repos is None:
+        return cards
+    return [c for c in cards if c.repo in repos]
 
 
 def many_repos(cards: list[Card]) -> bool:

@@ -45,8 +45,8 @@ changing a schema or a call site, and the two should be changed together.
 finds two kinds of thing, and both are real: how the crew worked, and what the
 crew built. "Stories must name the module a metric belongs in" is a defect in
 the crew; "there are two definitions of `compute_wip_violations`" is a defect
-in the product. Section 18's two ladders decide which repository a finding goes
-to; nothing about the finder decides it.
+in the product. Section 18 decides which repository a finding goes to: the
+crew's own, or the product's. Nothing about the finder decides it.
 
 The Scrum Master may therefore file either. It was originally allowed only
 process defects, drawn when the crew worked on nothing but itself, and the
@@ -475,29 +475,19 @@ judge. The pilot is that work. It may end up useful in its own right, most
 plausibly as a tool the crew calls to read its own delivery; it is not the
 thing being built, and no decision about the crew should be made to suit it.
 
-**Two ladders, kept apart.** Every card advances one of two different things,
-and counting them together hides the only ratio worth watching:
+**The board is the crew's workplace, not the crew's backlog.** It holds the
+work the crew does — cards in the repositories under `delivery.repos` — and
+nothing else. Work *on* the crew is done by hand, tracked as issues on the crew
+repository and prioritised by their `P0`–`P3` labels.
 
-- A card in the **crew** repository advances a *capability* — the crew's
-  ability to run some part of an agile process. It carries a `Capability`
-  field naming which.
-- A card in a **delivery repository** advances a *product*. It carries no
-  capability, because it advances none.
-
-A card that fixes authentication so merges can happen is `Release`: without it,
-release does not work. The field names the capability a card most advances —
-one, not several, because a scorecard that double-counts sums to nothing.
-
-**Why this is a field and not a habit.** The point is a scorecard the board can
-render, not a tag somebody remembers to set. `crew capability` reads it. If
-that command cannot produce the picture, the field has not earned its place —
-`Owner Agent` and `parent` both sat on this board unused for months, and both
-became useful only when something read them.
-
-**The ratio is the number.** How many points a sprint spent on the pilot versus
-on the crew itself says whether the orchestrator is still being built or has
-quietly become a place to work on something else. That number only exists if
-the ladders stay separate.
+The two used to share the board, with a `Capability` field on each crew card
+and a ledger in `crew capability` counting them. It went for three reasons. The
+crew's own refinement pulled crew work onto the board by decomposing the crew
+repository's Goal #4, because only claiming a card checked `delivery.repos`.
+Hand-worked crew cards polluted the crew's measurements: they sat in Ready
+forever, and every hand move on them read as a person stepping in. And a count
+of tagged cards says what someone tagged, not what the crew can do — which
+`crew capability` now answers from what the crew actually did.
 
 | Capability | Means |
 |---|---|

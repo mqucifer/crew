@@ -27,7 +27,7 @@ from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import IGNORED_DIRS
 from crew_org.tools.sandbox import Sandbox
 
@@ -167,6 +167,7 @@ def run_qa(
     *,
     cards: list[Card],
     repo: str,
+    repos: set[str] | None = None,
 ) -> AcceptanceResult:
     """Verify everything sitting in QAing.
 
@@ -178,7 +179,7 @@ def run_qa(
     """
     result = AcceptanceResult()
 
-    for card in awaiting_qa(cards):
+    for card in awaiting_qa(within(cards, repos)):
         number = card.number or 0
         card_repo = card.repo or repo
         branch = branch_name(number, card.title)
@@ -291,6 +292,7 @@ def close_finished_parents(
     cards: list[Card],
     *,
     repo: str,
+    repos: set[str] | None = None,
 ) -> list[int]:
     """Close an epic when its stories are Done, and a goal when its epics are.
 
@@ -308,7 +310,9 @@ def close_finished_parents(
     by_key = {(c.repo, c.number): c for c in cards}
 
     for parent_type in (EPIC_TYPE, GOAL_TYPE):
-        for card in cards:
+        # Parents only in the crew's repositories; their children are read
+        # from the whole board.
+        for card in within(cards, repos):
             if card.work_type != parent_type or card.state == "CLOSED":
                 continue
             parent_repo = card.repo or repo

@@ -1,22 +1,13 @@
-"""Where the crew's effort has gone, read off the board.
+"""What the crew can do, read off what it actually did.
 
-An investment ledger. It counts cards, which measures *what was worked on* and
-not *what works* — five Implementation cards may mean a lot was built or a lot
-needed fixing, and Release reads as zero while release demonstrably works,
-because the capability predates anyone carding it.
+Time in each column, whether each phase has ever been exercised, what a gate
+sent back, and how often a person had to step in. Computed from the move log
+and the board's own history, never from how cards were tagged.
 
-Measuring capability properly means asking whether the crew can do a thing
-unattended, reliably, without the card sitting there: time in each column, when
-each phase was last exercised, and how often a person had to intervene. That is
-`measure()` below, computed off the move log rather than off card counts. Both
-live here because both are read at once — what a sprint spent, beside what the
-crew can actually do — and neither is legible without the other.
-
-Two ladders, kept apart (section 18): a card in the crew's own repository
-advances a *capability* and carries the field; a card in a delivery repository
-advances a *product* and carries none. Counting them together hides the only
-ratio worth watching — how much of a sprint went on the orchestrator versus on
-the work it was exercising itself with.
+There used to be a second half here: a ledger counting the crew repository's
+own cards by a Capability field on the board. It measured what someone had
+tagged, not what works, and it depended on the crew's own backlog living on the
+board the crew works from. Both were removed together.
 """
 
 from __future__ import annotations
@@ -28,7 +19,6 @@ from datetime import UTC, datetime, timedelta
 from crew_org.columns import (
     ALL,
     BLOCKED,
-    DONE,
     FLOW,
     IN_PROGRESS,
     INBOX,
@@ -42,87 +32,6 @@ from crew_org.columns import (
 from crew_org.events import CrewEvent
 from crew_org.flows.board_moves import AttributedMove, Source
 from crew_org.tools.github_project import Card
-
-# In the order a card climbs them, so the scorecard reads like the loop.
-LADDER = (
-    "Refinement",
-    "Planning",
-    "Implementation",
-    "Review",
-    "Acceptance",
-    "Release",
-    "Flow metrics",
-    "Retrospective",
-    "Self-diagnosis",
-    "Audit trail",
-)
-
-STORY_TYPES = frozenset({"Story", "Spike", "Bug", "Task"})
-
-
-@dataclass
-class Row:
-    capability: str
-    done: int = 0
-    open: int = 0
-    points_done: float = 0.0
-    points_open: float = 0.0
-
-    @property
-    def total(self) -> int:
-        return self.done + self.open
-
-
-@dataclass
-class Scorecard:
-    rows: list[Row] = field(default_factory=list)
-    # Crew cards carrying no capability. Named rather than counted, because an
-    # unattributed card is the one thing that makes this whole picture a lie.
-    unattributed: list[int] = field(default_factory=list)
-    # The other ladder. Not broken down: it is one number, and its only job is
-    # to sit beside the crew's so the ratio is visible.
-    product_done: int = 0
-    product_open: int = 0
-
-    @property
-    def crew_points(self) -> float:
-        return sum(r.points_done + r.points_open for r in self.rows)
-
-
-def scorecard(cards: list[Card], *, crew_repo: str) -> Scorecard:
-    """The board, read as a picture of what the crew can and cannot do."""
-    out = Scorecard(rows=[Row(name) for name in LADDER])
-    by_name = {r.capability: r for r in out.rows}
-
-    for card in cards:
-        if card.work_type not in STORY_TYPES:
-            continue
-        finished = card.status == DONE or card.state == "CLOSED"
-
-        if card.repo != crew_repo:
-            if finished:
-                out.product_done += 1
-            else:
-                out.product_open += 1
-            continue
-
-        row = by_name.get(card.capability or "")
-        if row is None:
-            if not finished:
-                out.unattributed.append(card.number or 0)
-            continue
-        if finished:
-            row.done += 1
-            row.points_done += card.points or 0
-        else:
-            row.open += 1
-            row.points_open += card.points or 0
-
-    out.unattributed.sort()
-    return out
-
-
-# --- what the crew can do, as opposed to what it worked on ---------------
 
 # Which capability owns the wait in each column. `Inbox (Goals)` is absent on
 # purpose: the wait there is the Sponsor deciding, which is goal supply rather

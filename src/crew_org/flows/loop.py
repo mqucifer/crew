@@ -192,6 +192,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
         org=crew.org,
         ws=crew.ws,
         sponsor=crew.sponsor,
+        repos=crew.repos,
     )
     # Parking an epic is movement: the card left Needs Refinement, and a pass
     # that reports "nothing moved" over it would hide the one thing that
@@ -287,10 +288,17 @@ def _qa(crew: Crew) -> PhaseOutcome:
 
     cards = crew.board.cards()
     result = run_qa(
-        crew.board, crew.issues, crew.sink, crew.ws, crew.sandbox, cards=cards, repo=crew.repo
+        crew.board,
+        crew.issues,
+        crew.sink,
+        crew.ws,
+        crew.sandbox,
+        cards=cards,
+        repo=crew.repo,
+        repos=crew.repos,
     )
     result.parents_closed = close_finished_parents(
-        crew.board, crew.issues, crew.sink, crew.board.cards(), repo=crew.repo
+        crew.board, crew.issues, crew.sink, crew.board.cards(), repo=crew.repo, repos=crew.repos
     )
     moved = bool(result.verified or result.returned or result.parents_closed)
     skipped = f", {len(result.skipped)} already judged" if result.skipped else ""
