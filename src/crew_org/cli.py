@@ -973,7 +973,7 @@ def _render_plan(plan, *, dry_run: bool) -> None:
     table.add_column("")
     for piece in plan.slices:
         table.add_row(
-            f"#{piece.number} {piece.title[:46]}",
+            piece.name[:50],
             str(len(piece.admitted))
             + (f" of {len(piece.admitted) + len(piece.deferred)}" if piece.deferred else ""),
             str(piece.points),
@@ -988,7 +988,7 @@ def _render_plan(plan, *, dry_run: bool) -> None:
     if partial:
         console.print(
             "[dim]Deferred to the next sprint: "
-            + ", ".join(f"#{p.number} ({len(p.deferred)} stories)" for p in partial)
+            + ", ".join(f"{p.name} ({len(p.deferred)} stories)" for p in partial)
             + "[/]"
         )
     if plan.not_ours:
@@ -998,13 +998,15 @@ def _render_plan(plan, *, dry_run: bool) -> None:
             + ", ".join(c.name(qualify=True) for c in plan.not_ours)
             + " [dim]— real work, and not the crew's to deliver.[/]"
         )
-    if plan.unparented:
+    if plan.unestimated:
         from crew_org.tools.github_project import many_repos  # noqa: PLC0415
 
-        qualify = many_repos(plan.unparented)
+        qualify = many_repos(plan.unestimated)
         console.print(
-            f"[yellow]Not admitted[/] — {len(plan.unparented)} stories have no parent epic: "
-            + ", ".join(c.name(qualify=qualify) for c in plan.unparented)
+            f"[yellow]Not admitted[/] — {len(plan.unestimated)} stories with no epic have "
+            "no estimate: "
+            + ", ".join(c.name(qualify=qualify) for c in plan.unestimated)
+            + " [dim]— set Points to plan them.[/]"
         )
 
 

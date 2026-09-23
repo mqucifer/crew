@@ -4,7 +4,7 @@ sees epics, never a list of stories."""
 
 from __future__ import annotations
 
-from crew_org.flows.sprint import INBOX, READY, approved_epics, plan_sprint
+from crew_org.flows.sprint import INBOX, NO_EPIC, READY, approved_epics, plan_sprint
 from crew_org.tools.github_project import Card
 
 REPO = "sprint-metrics"
@@ -23,7 +23,13 @@ def epic(number: int, priority: str = "P1", status: str = "Needs Refinement", re
     )
 
 
-def story(number: int, points: int, status: str = READY, repo=REPO) -> Card:
+def story(
+    number: int,
+    points: int | None,
+    status: str = READY,
+    repo=REPO,
+    priority: str | None = None,
+) -> Card:
     return Card(
         item_id=f"S{number}",
         number=number,
@@ -33,6 +39,7 @@ def story(number: int, points: int, status: str = READY, repo=REPO) -> Card:
         work_type="Story",
         points=points,
         repo=repo,
+        priority=priority,
     )
 
 
@@ -117,13 +124,47 @@ def test_only_ready_stories_are_admitted():
     assert [c.number for c in plan.admitted] == [6]
 
 
-def test_stories_without_a_parent_epic_are_reported_not_admitted():
-    """An orphan story has not been through an approved epic, so nobody agreed
-    to it."""
+# --- stories with no epic (#46) -------------------------------------------
+
+
+def test_a_story_with_no_epic_is_admitted():
+    """crew #26, #40 and #42: filed by hand, refined, sized, in Ready — and
+    reported as held on every tick because nothing could ever admit them."""
     cards = [epic(3), story(6, 3), story(99, 3)]
     plan = plan_sprint(cards, parents({6: 3}), sprint="S1", capacity=20)
+    assert [c.number for c in plan.admitted] == [6, 99]
+    assert [(p.number, p.title) for p in plan.slices] == [(3, "Epic 3"), (None, NO_EPIC)]
+
+
+def test_stories_with_an_epic_come_first():
+    """Epic priority orders the rest: a P0 story with no epic still waits for a
+    P2 epic's stories."""
+    cards = [epic(3, priority="P2"), story(6, 5), story(99, 5, priority="P0")]
+    plan = plan_sprint(cards, parents({6: 3}), sprint="S1", capacity=5)
     assert [c.number for c in plan.admitted] == [6]
-    assert [c.number for c in plan.unparented] == [99]
+    assert [c.number for c in plan.slices[-1].deferred] == [99]
+
+
+def test_stories_with_no_epic_are_taken_in_their_own_priority_order():
+    cards = [story(7, 3, priority="P2"), story(8, 3, priority="P0"), story(9, 3)]
+    plan = plan_sprint(cards, parents({}), sprint="S1", capacity=6)
+    assert [c.number for c in plan.admitted] == [8, 7]
+    assert [c.number for c in plan.slices[0].deferred] == [9]
+
+
+def test_a_story_with_no_epic_and_no_estimate_is_excluded_and_named():
+    """Criterion 2: genuinely not ready. An epic's stories are sized when the
+    epic is split; a story filed by hand can reach Ready without Points."""
+    cards = [story(40, None), story(42, 2)]
+    plan = plan_sprint(cards, parents({}), sprint="S1", capacity=20)
+    assert [c.number for c in plan.admitted] == [42]
+    assert [c.number for c in plan.unestimated] == [40]
+
+
+def test_no_slice_is_reported_when_every_story_has_an_epic():
+    cards = [epic(3), story(6, 3)]
+    plan = plan_sprint(cards, parents({6: 3}), sprint="S1", capacity=20)
+    assert [p.number for p in plan.slices] == [3]
 
 
 def test_an_epic_with_no_ready_stories_is_left_out_of_the_report():
@@ -176,12 +217,13 @@ def test_the_excluded_story_is_reported_rather_than_dropped():
     assert [(c.repo, c.number) for c in plan.not_ours] == [(CREW, 7)]
 
 
-def test_an_excluded_story_does_not_also_count_as_unparented():
+def test_an_excluded_story_is_not_also_planned_as_one_with_no_epic():
     """Two reports of one card reads as two problems."""
-    cards = [epic(3), story(9, 3, repo=CREW)]
+    cards = [epic(3), story(9, None, repo=CREW)]
     plan = plan_sprint(cards, parents({}), sprint="S1", capacity=20, repos={REPO})
     assert [c.number for c in plan.not_ours] == [9]
-    assert plan.unparented == []
+    assert plan.unestimated == []
+    assert plan.slices == []
 
 
 def test_capacity_is_spent_only_on_deliverable_work():
