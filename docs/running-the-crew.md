@@ -249,3 +249,43 @@ That also reframes what scale means. If the crew runs continuously, the binding 
 Section 18 *allows* the pilot to become a tool the crew calls. It does not require the crew to depend on it, and the crew's ability to see itself is the wrong thing to make depend on the crew's own practice work.
 
 **Still open — what is a release?** There is no notion beyond a merged pull request. If the crew is to plan beyond a single sprint, something has to say what a shippable increment is. This gates release planning rather than the learn loop, so it is not urgent yet.
+
+## The board's own automations
+
+Card movements **no role performs** — a person closing an issue, a pull request
+merged by hand, an item arriving on the board — are handled by
+`.github/workflows/board.yml`, not by the board's built-in workflows.
+
+| Trigger | Sets Status to |
+| --- | --- |
+| an issue opened (and auto-added) | `Needs Refinement` |
+| an issue or pull request closed | `Done` |
+| run by hand (`workflow_dispatch`) | sweeps every closed card that is not in `Done` |
+
+**Why a file and not the board's own settings.** The GraphQL API exposes
+`enabled` on a `ProjectV2Workflow` and nothing else — no trigger, no target,
+and no mutation to create or configure one. A built-in workflow is therefore
+unreadable after the fact, unreviewable before it, and gives no way to tell
+whether it still points at a Status option that exists. It also cannot sweep:
+enabling one fixes the future and leaves every card already in the wrong
+column.
+
+**The built-ins stay off.** Two mechanisms moving the same cards is worse than
+either alone, and only one of them can be read.
+
+**The line this holds.** Transitions a *role* performs stay in crew code,
+because those carry an acting role and emit a `card.moved` event that the audit
+trail and `crew capability` both read. That is why "Pull request linked to
+issue" is deliberately not automated: the Developer makes that move and should
+be recorded making it.
+
+**It needs a credential.** Actions' automatic `GITHUB_TOKEN` is
+repository-scoped, and its `repository-projects` permission covers classic repo
+projects rather than organization Projects v2 — so it cannot write this board at
+all. The workflow mints a short-lived token from the crew's own App, which
+already holds project write, via `BOARD_APP_ID` and `BOARD_APP_PRIVATE_KEY`.
+
+**What it does not catch.** Reopening an issue moves nothing, so a card can sit
+in `Done` with its issue open. `crew capability` reports both that and any
+closed card outside `Done` before it prints anything else, because a column
+holding finished work reports a queue that is not a queue.
