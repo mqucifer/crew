@@ -69,8 +69,10 @@ def test_a_story_is_not_attributed_to_an_epic_in_another_repository():
     ]
     # The epic's child is crew#6, which does not exist; sprint-metrics#6 does.
     plan = plan_sprint(cards, {("crew", 6): ("crew", 3)}, sprint=SPRINT, capacity=20)
-    assert plan.admitted == []
-    assert [c.repo for c in plan.unparented] == ["sprint-metrics"]
+    # Admitted, but as a story with no epic, not into crew#3's slice.
+    assert [(p.number, [c.repo for c in p.admitted]) for p in plan.slices] == [
+        (None, ["sprint-metrics"])
+    ]
 
 
 def test_a_story_is_not_held_back_by_a_sibling_in_another_repository():

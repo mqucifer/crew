@@ -2,7 +2,12 @@
 
 The Sponsor approves epics, not sprint contents. Approving an epic *is* the
 scope decision, so planning is mechanical from there: pull the stories of
-approved epics in priority order until capacity is reached.
+approved epics in priority order until capacity is reached, then stories that
+belong to no epic.
+
+A story with no epic is admissible (#46). It was filed as a story rather than
+arrived at through a split, and filing it was its scope decision. Excluding it
+made a second tier of backlog that only running the phases by hand could reach.
 
 Everything here reports at the epic level. A Sponsor who has to read eight
 stories to understand a sprint has been put back into the work.
@@ -22,15 +27,21 @@ from crew_org.tools.github_project import Card, ProjectClient
 EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
 
+NO_EPIC = "Stories with no epic"
+
 # Priority order. Anything unset sorts last — unprioritised work is not urgent.
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 
 @dataclass
 class EpicSlice:
-    """How much of one epic made it into the sprint."""
+    """How much of one epic made it into the sprint.
 
-    number: int
+    `number` is None for the stories that belong to no epic, which are planned
+    as one more slice after every epic's.
+    """
+
+    number: int | None
     title: str
     # The cards themselves, not their numbers. A number is not an identity —
     # two repositories number independently — and carrying the card means the
@@ -43,13 +54,20 @@ class EpicSlice:
     def complete(self) -> bool:
         return not self.deferred
 
+    @property
+    def name(self) -> str:
+        return f"#{self.number} {self.title}" if self.number is not None else self.title
+
 
 @dataclass
 class SprintPlan:
     sprint: str
     capacity: int
     slices: list[EpicSlice] = field(default_factory=list)
-    unparented: list[Card] = field(default_factory=list)
+    # Stories with no epic and no estimate. An epic's stories are sized by the
+    # Business Analyst when they are split; a story filed by hand can reach
+    # Ready without one, and admitting it would spend capacity nobody measured.
+    unestimated: list[Card] = field(default_factory=list)
     # Ready stories in a repository the crew does not deliver. Reported rather
     # than silently dropped: they are real work with real estimates, just not
     # the crew's to do, and a card that vanishes from planning without a word
@@ -131,23 +149,34 @@ def plan_sprint(
 
         piece = EpicSlice(number=epic.number or 0, title=epic.title)
         for story in stories:
-            points = int(story.points or 0)
-            # Never split a story to fit; a partially admitted story is not
-            # deliverable, and shaving scope by halves is how sprints rot.
-            if points <= remaining:
-                piece.admitted.append(story)
-                piece.points += points
-                remaining -= points
-            else:
-                piece.deferred.append(story)
+            remaining = _fill(piece, story, remaining)
         plan.slices.append(piece)
 
-    parented = set(parents)
-    plan.unparented = sorted(
-        (c for key, c in ready.items() if key not in parented),
+    # After every epic: epic priority orders the work that has it.
+    parentless = [c for key, c in ready.items() if key not in parents]
+    plan.unestimated = sorted(
+        (c for c in parentless if c.points is None),
         key=lambda c: (c.repo or "", c.number or 0),
     )
+    loose = EpicSlice(number=None, title=NO_EPIC)
+    for story in sorted((c for c in parentless if c.points is not None), key=_priority_key):
+        remaining = _fill(loose, story, remaining)
+    if loose.admitted or loose.deferred:
+        plan.slices.append(loose)
     return plan
+
+
+def _fill(piece: EpicSlice, story: Card, remaining: int) -> int:
+    """Admit a story whole if it fits, defer it if not. Returns what is left."""
+    points = int(story.points or 0)
+    # Never split a story to fit; a partially admitted story is not
+    # deliverable, and shaving scope by halves is how sprints rot.
+    if points <= remaining:
+        piece.admitted.append(story)
+        piece.points += points
+        return remaining - points
+    piece.deferred.append(story)
+    return remaining
 
 
 def start_sprint(

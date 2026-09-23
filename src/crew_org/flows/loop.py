@@ -244,8 +244,8 @@ def _admit(crew: Crew) -> PhaseOutcome:
         result=plan,
         counts={"stories": len(plan.admitted), "points": plan.points},
         held=[
-            f"{c.name(qualify=many_repos(plan.unparented))} — no parent epic"
-            for c in plan.unparented
+            f"{c.name(qualify=many_repos(plan.unestimated))} — no epic and no estimate"
+            for c in plan.unestimated
         ]
         + [f"{c.name(qualify=True)} — ready, and not the crew's to deliver" for c in plan.not_ours],
     )
