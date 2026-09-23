@@ -111,7 +111,7 @@ Roles live in `config/agents.yaml` as data — goal, backstory, model alias, cap
 - **WIP limits and card movement.** Deterministic, in `crew_org.process`.
 - **One story at a time per epic.** Siblings extend each other, so delivery holds a story until its earlier sibling has landed.
 
-**And the counterweight.** Before adding a rule, ask whether the agent was *shown* what it needed to follow the rule it already had. Every context defect found on 2026-09-19 was prose compensating for something an agent could not see. The Developer, QA, the Reviewer, the Product Owner and the Business Analyst all now read the whole repository — the pilot is 3% of the window, the crew itself 48%.
+**And the counterweight.** Before adding a rule, ask whether the agent was *shown* what it needed to follow the rule it already had. Every context defect found on 2026-09-19 was prose compensating for something an agent could not see. The Developer, QA, the Reviewer, the Product Owner and the Business Analyst all now read the whole repository — the pilot is 3% of the window, the crew itself 40% (re-measured 2026-09-22).
 
 ## Running it
 
