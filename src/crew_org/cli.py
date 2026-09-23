@@ -919,6 +919,7 @@ def sprint_start(
             sprint=sprint,
             capacity=capacity,
             default_repo=repo,
+            repos=set(org.get("delivery", {}).get("repos") or [repo]),
         )
 
     _render_plan(plan, dry_run=dry_run)
@@ -952,6 +953,13 @@ def _render_plan(plan, *, dry_run: bool) -> None:
             "[dim]Deferred to the next sprint: "
             + ", ".join(f"#{p.number} ({len(p.deferred)} stories)" for p in partial)
             + "[/]"
+        )
+    if plan.not_ours:
+        console.print(
+            f"[dim]Not admitted[/] — {len(plan.not_ours)} ready stories are outside "
+            "the crew's repositories: "
+            + ", ".join(c.name(qualify=True) for c in plan.not_ours)
+            + " [dim]— real work, and not the crew's to deliver.[/]"
         )
     if plan.unparented:
         from crew_org.tools.github_project import many_repos  # noqa: PLC0415

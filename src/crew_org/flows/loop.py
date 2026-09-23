@@ -235,6 +235,7 @@ def _admit(crew: Crew) -> PhaseOutcome:
         sprint=crew.sprint,
         capacity=crew.capacity,
         default_repo=crew.repo,
+        repos=crew.repos,
     )
     return PhaseOutcome(
         "admit",
@@ -245,7 +246,8 @@ def _admit(crew: Crew) -> PhaseOutcome:
         held=[
             f"{c.name(qualify=many_repos(plan.unparented))} — no parent epic"
             for c in plan.unparented
-        ],
+        ]
+        + [f"{c.name(qualify=True)} — ready, and not the crew's to deliver" for c in plan.not_ours],
     )
 
 

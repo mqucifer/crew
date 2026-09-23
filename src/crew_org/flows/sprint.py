@@ -50,6 +50,11 @@ class SprintPlan:
     capacity: int
     slices: list[EpicSlice] = field(default_factory=list)
     unparented: list[Card] = field(default_factory=list)
+    # Ready stories in a repository the crew does not deliver. Reported rather
+    # than silently dropped: they are real work with real estimates, just not
+    # the crew's to do, and a card that vanishes from planning without a word
+    # is how five of eight admitted points came to be undeliverable.
+    not_ours: list[Card] = field(default_factory=list)
 
     @property
     def points(self) -> int:
@@ -82,8 +87,19 @@ def plan_sprint(
     *,
     sprint: str,
     capacity: int,
+    repos: set[str] | None = None,
 ) -> SprintPlan:
     """Choose the sprint's contents. Pure — no I/O, so it is testable.
+
+    `repos` is the allow-list the crew delivers from, and filling a sprint
+    without it spends capacity on work the crew is structurally incapable of
+    doing. `delivery.sprint_stories` has always filtered; planning did not, so
+    the two ends of the loop disagreed — planning admitted the card, delivery
+    declined it as `not_ours`, and the capacity was gone either way. Measured
+    on 2026-09-22: five of eight admitted points were undeliverable.
+
+    None means every repository, which is what a caller with no delivery
+    configuration should get.
 
     `parents` maps a story's key to its epic's key. Keys rather than numbers:
     keyed by number, a story in one repository could be attributed to an epic
@@ -91,11 +107,18 @@ def plan_sprint(
     board data prevents them lining up.
     """
     plan = SprintPlan(sprint=sprint, capacity=capacity)
-    ready = {
+    candidates = {
         c.key: c
         for c in cards
         if c.status == READY and c.work_type == STORY_TYPE and c.state != "CLOSED"
     }
+    # Same test as `delivery.sprint_stories`, so the two ends of the loop agree
+    # about what the crew can work.
+    ready = {k: c for k, c in candidates.items() if repos is None or c.repo in repos}
+    plan.not_ours = sorted(
+        (c for k, c in candidates.items() if k not in ready),
+        key=lambda c: (c.repo or "", c.number or 0),
+    )
 
     remaining = capacity
     for epic in approved_epics(cards):
@@ -136,6 +159,7 @@ def start_sprint(
     sprint: str,
     capacity: int,
     default_repo: str,
+    repos: set[str] | None = None,
 ) -> SprintPlan:
     """Admit the planned stories into the sprint."""
     cards = board.cards()
@@ -158,7 +182,7 @@ def start_sprint(
                 )
             )
 
-    plan = plan_sprint(cards, parents, sprint=sprint, capacity=capacity)
+    plan = plan_sprint(cards, parents, sprint=sprint, capacity=capacity, repos=repos)
     counts = board.counts(cards)
 
     for piece in plan.slices:
