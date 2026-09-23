@@ -6,6 +6,7 @@ import pytest
 
 from crew_org.events import EventSink
 from crew_org.flows import loop
+from crew_org.flows.delivery import DeliveryResult
 from crew_org.process import ProcessRules
 
 
@@ -158,25 +159,13 @@ def test_a_failing_phase_alone_does_not_keep_the_loop_spinning(crew, monkeypatch
 # --- a dry pass is not progress ------------------------------------------
 
 
-class FakeDeliveryResult:
-    def __init__(self, **kw):
-        self.landed = kw.get("landed", [])
-        self.delivered = kw.get("delivered", [])
-        self.blocked = kw.get("blocked", [])
-        self.recovered = kw.get("recovered", [])
-        self.reworked = kw.get("reworked", [])
-        self.awaiting_approval = kw.get("awaiting_approval", [])
-        self.unapprovable = kw.get("unapprovable", [])
-        self.unmergeable = kw.get("unmergeable", [])
-        self.conflicted = kw.get("conflicted", [])
-        self.waiting_on_a_sibling = kw.get("waiting_on_a_sibling", [])
-        self.would_land = kw.get("would_land", [])
-
-
 def deliver_returning(monkeypatch, **kw):
+    """The real result type, not a stand-in. A hand-written fake kept a field
+    #94 removed, so `_deliver` read `would_land` off every real result and
+    raised — and every test here passed."""
     import crew_org.flows.delivery as delivery_mod
 
-    monkeypatch.setattr(delivery_mod, "deliver", lambda *a, **k: FakeDeliveryResult(**kw))
+    monkeypatch.setattr(delivery_mod, "deliver", lambda *a, **k: DeliveryResult(**kw))
 
 
 def test_a_real_delivery_is_movement(crew, monkeypatch):

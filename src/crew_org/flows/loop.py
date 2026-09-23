@@ -338,7 +338,6 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
-        + [f"#{n} — would merge; a dry run does not" for n in result.would_land]
     )
     # Events: they happened, and the next pass will not see them.
     blocked = (
