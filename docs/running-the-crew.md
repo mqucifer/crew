@@ -132,7 +132,7 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew tick --passes N` | — | Caps the passes. Useful the first time you run it against a changed board |
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
-| `crew sprint close` | the board, GitHub | The sprint review. A human gate |
+| `crew sprint close` | the board, GitHub | The sprint review. A human gate. Records the retro as an issue, once per sprint |
 | `crew moves [--people]` | nothing | Every card movement on the board and who made it: the crew, the platform (`board.yml`), or a person, named. Read from GitHub's own history |
 | `crew revert <pr> --reason "…"` | GitHub | Opens a pull request undoing a merged one. It lands through review and `deliver` like any change |
 
@@ -186,6 +186,7 @@ Escalation is a release valve, never a substitute for task design. The Scrum Mas
 - A merge conflict — two changes disagree, and the crew should not decide which wins
 - A card returned by a revert — decide whether to re-scope it, re-deliver it, or close it
 - `crew sprint close` — the sprint review
+- The sprint's `retro` issue on the crew repository — read it, triage the `retro-finding` issues it filed, and close it
 
 **Reading what happened.** `var/events/*.jsonl` is the append-only record: every card move carries the acting role and the columns it moved between. Every comment the crew writes is signed with its role. `var/diffs/` keeps the rejected diff and the failure output of a card that blocked — deliberately kept, because the worktree is deleted and the evidence would go with it.
 
@@ -205,7 +206,7 @@ The flow from goal to merged code exists end to end and has run unattended. What
 | Merge and release | **Works** | Approval-gated, conflict-aware, ordered |
 | Audit trail | **Works** | Every move and comment carries its role |
 | Sprint review | **Partial** | `crew sprint close` exists; the increment is a list of merged cards |
-| Retrospective | **Partial** | Scrum Master reads the escalation ledger and proposes process defects; nothing else feeds it |
+| Retrospective | **Partial** | Recorded at sprint close as a `retro` issue on the crew repository, each defect filed where the thing it found lives (#50). The escalation ledger is still all that feeds it |
 | Standup | **Absent** | The Scrum Master is allowed `write_standup` and no function behind it exists (#79) |
 | Estimation → velocity | **Partial** | Points are set and capacity is fixed at 20. Velocity is never measured, so capacity never learns |
 | Backlog refinement as a ceremony | **Partial** | Happens continuously in the tick; no dedicated pass over stale cards |

@@ -1137,6 +1137,8 @@ def sprint_close(
 
     token, _ = resolve_credentials(env)
     owner, repo = env["GITHUB_OWNER"], env.get("PILOT_REPO", "crew")
+    crew_repo = env.get("CREW_REPO", "crew")
+    org = load_org()
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     sprint = sprint or board.schema.field("Sprint").current_iteration()
 
@@ -1148,8 +1150,10 @@ def sprint_close(
         sprint=sprint,
         repo=repo,
         merge=not no_merge,
-        rules=ProcessRules.from_config(load_org()),
+        rules=ProcessRules.from_config(org),
         events_dir=VAR / "events",
+        crew_repo=crew_repo,
+        delivery_repos=list(org.get("delivery", {}).get("repos") or []),
     )
 
     console.print(f"\n[bold]{result.sprint}[/]")
@@ -1185,6 +1189,17 @@ def sprint_close(
         for defect in result.retro.defects:
             console.print(f"\n[yellow]{defect.subject}[/] — {defect.problem}")
             console.print(f"  → {defect.change}")
+    record = result.retro_record
+    if record is not None and record.issue is not None:
+        url = f"https://github.com/{owner}/{crew_repo}/issues/{record.issue}"
+        if result.retro_already:
+            console.print(f"\n[dim]Retro already recorded for {result.sprint}:[/] {url}")
+        else:
+            console.print(f"\n[bold]Recorded:[/] {url}")
+            for defect_repo, number in record.filed:
+                console.print(f"  filed {defect_repo}#{number}")
+            for subject, why in record.failed:
+                console.print(f"  [red]not filed[/] {subject} — {why}")
 
     if result.complete:
         console.print("\n[green]Sprint complete.[/]")
