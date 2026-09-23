@@ -31,6 +31,7 @@ from crew_org.columns import (
     DONE,
     FLOW,
     IN_PROGRESS,
+    INBOX,
     MERGING,
     NEEDS_REFINEMENT,
     QAING,
@@ -39,6 +40,7 @@ from crew_org.columns import (
     SPRINT_BACKLOG,
 )
 from crew_org.events import CrewEvent
+from crew_org.flows.board_moves import AttributedMove, Source
 from crew_org.tools.github_project import Card
 
 # In the order a card climbs them, so the scorecard reads like the loop.
@@ -186,9 +188,19 @@ class Measure:
     """What the crew can do, over a window."""
 
     columns: list[ColumnStat] = field(default_factory=list)
-    # Cards a person had to touch, against the capability whose column they
-    # were in. A floor, not a count — see `measure`.
+    # Cards a person moved, against the capability whose column they left. A
+    # count when the board's own history was read (#89); without it, a floor.
     intervention: dict[str, int] = field(default_factory=dict)
+    # Who made those moves. A person using the crew's credentials is named as
+    # such, because everywhere else that move reads as the crew's.
+    intervened_by: dict[str, int] = field(default_factory=dict)
+    # Whether `intervention` came from the board's history, or only from what
+    # the crew declared.
+    counted: bool = False
+    # The crew declaring it cannot proceed: a card it moved to Blocked, or one
+    # carrying `needs:human`. What it asked for, as distinct from what a person
+    # actually did.
+    asked: dict[str, int] = field(default_factory=dict)
     # Work a gate sent back, against the capability that *produced* it.
     rework: dict[str, int] = field(default_factory=dict)
     window_start: datetime | None = None
@@ -250,12 +262,30 @@ def _rework_target(frm: str, to: str) -> str | None:
     return COLUMN_CAPABILITY.get(to)
 
 
+def _charged_to(move: AttributedMove) -> str | None:
+    """The capability a person's move is an intervention in, or None if it is not one.
+
+    Not every move a person makes is the crew needing them. Creating a card is
+    supplying work, and anything in or out of Inbox (Goals) is the Sponsor's
+    gate, which is the one job the Sponsor is meant to have. Otherwise the move
+    is charged to the column the card left; leaving Blocked, which no
+    capability owns, to the column it went back to.
+    """
+    frm, to = move.move.frm, move.move.to
+    if frm is None or INBOX in (frm, to):
+        return None
+    if frm == BLOCKED:
+        return COLUMN_CAPABILITY.get(to or "") or "Unblocking"
+    return COLUMN_CAPABILITY.get(frm) or COLUMN_CAPABILITY.get(to or "")
+
+
 def measure(
     events: list[CrewEvent],
     cards: list[Card],
     *,
     now: datetime | None = None,
     known: frozenset[str] | None = None,
+    moves: list[AttributedMove] | None = None,
 ) -> Measure:
     """Can the crew run each part of the process unattended, and how well?
 
@@ -263,11 +293,12 @@ def measure(
     time in column says where the organisation is weak — `Reviewing: median
     18s` beside `Merging: median 4 days` says it in a way no count can.
 
-    **Intervention is a floor, not a count.** The crew emits events for its own
-    moves only, so a card a person moves by hand is invisible here. What is
-    counted is the crew *declaring* it cannot proceed: a card that reached
-    Blocked, or carries `needs:human`. Good enough to start, and worth knowing
-    it undercounts.
+    **Intervention is counted from the board's own history** when `moves` is
+    given: every Status change GitHub recorded, attributed by
+    `board_moves.attribute`, and each one a person made counts. Without it, the
+    crew's log holds its own moves only, and intervention falls back to what
+    the crew *declared* — a card it moved to Blocked, or one carrying
+    `needs:human` — which is a floor and is reported as one.
     """
     now = now or datetime.now(UTC)
     columns = known if known is not None else frozenset(ALL)
@@ -307,7 +338,7 @@ def measure(
 
         if to == BLOCKED and frm in COLUMN_CAPABILITY:
             capability = COLUMN_CAPABILITY[frm]
-            out.intervention[capability] = out.intervention.get(capability, 0) + 1
+            out.asked[capability] = out.asked.get(capability, 0) + 1
 
         if frm is not None and (target := _rework_target(frm, to)) is not None:
             out.rework[target] = out.rework.get(target, 0) + 1
@@ -324,10 +355,27 @@ def measure(
         # standing, whether or not the crew ever moved it to Blocked.
         capability = COLUMN_CAPABILITY.get(card.status or "")
         if capability and card.needs_human:
-            out.intervention[capability] = out.intervention.get(capability, 0) + 1
+            out.asked[capability] = out.asked.get(capability, 0) + 1
         # A decomposition sent back is rework against the role that wrote it.
         if NEEDS_REWORK in card.labels:
             out.rework["Refinement"] = out.rework.get("Refinement", 0) + 1
+
+    if moves is None:
+        out.intervention = dict(out.asked)
+    else:
+        out.counted = True
+        for attributed in moves:
+            if attributed.source is not Source.PERSON:
+                continue
+            # Before the crew's log begins, its own moves have nothing to be
+            # matched against and would all read as a person's.
+            if out.window_start is not None and attributed.move.at <= out.window_start:
+                continue
+            capability = _charged_to(attributed)
+            if capability is None:
+                continue
+            out.intervention[capability] = out.intervention.get(capability, 0) + 1
+            out.intervened_by[attributed.who] = out.intervened_by.get(attributed.who, 0) + 1
 
     out.columns = [stats[name] for name in FLOW if name in stats]
     return out

@@ -119,6 +119,24 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
+    def workflow_runs(self, repo: str, workflow: str) -> list[dict[str, Any]]:
+        """Every run of one workflow file, newest first. Empty if it has none."""
+        runs: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/repos/{self.owner}/{repo}/actions/workflows/{workflow}/runs",
+                params={"per_page": 100, "page": page},
+            )
+            if response.status_code == 404:
+                return runs
+            response.raise_for_status()
+            batch = response.json().get("workflow_runs") or []
+            runs += batch
+            if len(batch) < 100:
+                return runs
+            page += 1
+
     def pull_diff(self, repo: str, number: int) -> str:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/pulls/{number}",
