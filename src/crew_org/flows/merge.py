@@ -76,14 +76,8 @@ def merge_approved(
     cards: list[Card],
     default_repo: str,
     repos: set[str] | None = None,
-    dry_run: bool = False,
 ) -> MergeResult:
     """Land every story the Sponsor has approved.
-
-    `dry_run` does every read and every classification and none of the writes,
-    so what it reports is what a real run would do. Listing whatever sat in
-    Merging as "would merge" was a guess that read as a promise: two cards were
-    reported as landing when their reviews had requested changes.
 
     A conflict is not something to retry or work around: it means two changes
     disagree and a person has to decide. The card is blocked and labelled so it
@@ -115,8 +109,6 @@ def merge_approved(
         # sprint-metrics #31 and #32 waited a whole tick looking merely slow.
         if issues.review_decision(repo, pull["number"]) == REVIEW_REQUIRED:
             result.unapprovable.append((number, pull["number"]))
-            if dry_run:
-                continue
             move_card(
                 board,
                 sink,
@@ -155,9 +147,6 @@ def merge_approved(
             continue
 
         if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:
-            if dry_run:
-                result.conflicted.append((number, pull["number"]))
-                continue
             # Two changes disagree. No role made that happen, so the card keeps
             # the role whose work is stuck.
             move_card(
@@ -196,10 +185,6 @@ def merge_approved(
                     summary=f"merge conflict on PR #{pull['number']}",
                 )
             )
-            continue
-
-        if dry_run:
-            result.merged.append((number, pull["number"]))
             continue
 
         try:

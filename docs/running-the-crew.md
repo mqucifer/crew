@@ -120,27 +120,23 @@ Start here, in this order. The first two change nothing.
 ```
 uv run crew doctor --base-url http://<host>:8888/v1   # is the model serving, and can it call tools
 uv run crew auth                                      # are both identities correctly scoped
-uv run crew tick                                      # dry: refines, admits, reviews, verifies — lands nothing
-uv run crew tick --land                               # the real thing
+uv run crew tick                                      # the whole loop, and it lands what it produces
 ```
 
 | Command | Changes | Notes |
 | --- | --- | --- |
 | `crew doctor` | nothing | Needs `--base-url` or `--host`. Checks the endpoint, chat, tool calling, constrained JSON, context length and thinking control |
 | `crew auth` | nothing | Verifies the delivery identity's scope and that the reviewing identity is a different one. See the note below |
-| `crew tick` | the board | Dry by default. Refines, admits, reviews and verifies; merges nothing, pushes nothing, opens nothing |
-| `crew tick --land` | the board, GitHub | Opens pull requests and merges approved ones |
+| `crew tick` | the board, GitHub | Refines, admits, reviews, verifies, opens pull requests and merges approved ones |
 | `crew tick --demo` | nothing | Renders the live view from synthetic events. No model needed |
-| `crew tick --passes N` | — | Caps the passes. Useful the first time you run `--land` |
-| `crew deliver`, `review`, `qa` | as above, per phase | The individual phases, still available |
+| `crew tick --passes N` | — | Caps the passes. Useful the first time you run it against a changed board |
+| `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
 | `crew sprint close` | the board, GitHub | The sprint review. A human gate |
 
-**What "dry" means, and why it is going.** Nothing is merged, pushed or opened. Refining, admitting and verifying still happen, because those are board state you can undo by moving a card.
+**It lands what it produces.** There is no dry mode. A rehearsal cost the same inference as the real thing, left nothing that could land, wrote no event log at all, and put cards back where it found them — which was three of the five backward moves in the crew's own log, and noise `crew capability` had to filter out of the crew's self-knowledge.
 
-The justification was that landing is the line you cannot walk back. That is no longer the argument it was: the crew's approvals count, so work lands through its own gate, and a merged change can be reverted through that same gate. Meanwhile a dry run pays the full inference cost and produces nothing landable, writes no event log at all, and puts cards back where it found them — which is three of the five backward moves in the current log, and noise `crew capability` has to filter out of the crew's own self-knowledge.
-
-**crew#82 removes it from `crew tick` and `crew deliver`**, and crew#83 builds the revert that should have been built instead. `crew sprint start --dry-run` stays: it shows what would be admitted and costs nothing.
+What made landing frightening was having no way to undo it. The answer is a revert (crew#83), not a rehearsal. `crew sprint start --dry-run` stays: it shows what would be admitted and costs nothing.
 
 **Two identities.** The delivery app opens pull requests; the reviewing app judges them. GitHub refuses an approval from the identity that opened the pull request, so one app could only ever comment on the crew's own work and every story stalled waiting for a person.
 
