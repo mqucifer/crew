@@ -85,6 +85,11 @@ NEEDS_HUMAN = "needs:human"
 # epics, because nothing about the rejection is an input to anything.
 NEEDS_REWORK = "needs:rework"
 NEEDS_DESIGN = "needs:design"
+# A story held in refinement only because Ready was full. The label is what
+# tells it apart from a story that genuinely needs refining — one filed by
+# hand, or returned by escalation — so the pass that lets it in when Ready
+# drains touches nothing else.
+HELD_FOR_ROOM = "held:wip"
 
 
 @dataclass
@@ -103,6 +108,9 @@ class TickResult:
     # failure that will be retried and one that will not are different news:
     # the first is noise in a run, the second is work for a person.
     parked: list[int] = field(default_factory=list)
+    # Stories held for room: let into Ready this pass, and still waiting.
+    admitted: list[int] = field(default_factory=list)
+    waiting: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -634,6 +642,75 @@ def park_epic(
     )
 
 
+def admit_held_stories(
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    rules: ProcessRules,
+    result: TickResult,
+    *,
+    cards: list[Card],
+    default_repo: str,
+) -> list[Card]:
+    """Let stories held for room into Ready, now that it may have some.
+
+    The hold is decided once, when the story is created. Without this nothing
+    looked again: sprint-metrics #33 and #34 were held while Ready was 10 of 10
+    and still sat in refinement with Ready at 3, until they were moved by hand.
+
+    Returns the cards with the admitted stories' status updated, so the passes
+    after this one count Ready as it now is.
+    """
+    counts = board.counts(cards)
+    admitted: dict[str, Card] = {}
+
+    for card in cards:
+        if (
+            card.status != REFINEMENT
+            or card.state == "CLOSED"
+            or card.work_type != STORY_TYPE
+            or HELD_FOR_ROOM not in card.labels
+        ):
+            continue
+        number = card.number or 0
+        verdict = rules.may_move(frm=REFINEMENT, to=READY, counts=counts)
+        if not verdict.allowed:
+            result.waiting.append((number, verdict.reason))
+            continue
+
+        # Bookkeeping, not judgement: the Business Analyst already decided this
+        # story belongs in Ready, and only the limit said not yet.
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=READY,
+            by=None,
+            card=number,
+            summary=f"{READY} has room — letting in a story held for it",
+        )
+        artifacts.label(
+            issues,
+            sink,
+            repo=card.repo or default_repo,
+            number=number,
+            by=None,
+            remove=[HELD_FOR_ROOM],
+        )
+        counts[READY] = counts.get(READY, 0) + 1
+        admitted[card.item_id] = card.model_copy(
+            update={"status": READY, "labels": card.labels - {HELD_FOR_ROOM}}
+        )
+        result.admitted.append(number)
+
+    if result.waiting:
+        sink.note(
+            EventKind.NOTE,
+            f"waiting for room in {READY}: " + ", ".join(f"#{n}" for n, _ in result.waiting),
+        )
+    return [admitted.get(c.item_id, c) for c in cards]
+
+
 def refine_epics(
     board: ProjectClient,
     issues: IssueClient,
@@ -757,6 +834,9 @@ def refine_epics(
                         summary=f"held in {REFINEMENT}: {verdict.reason}"[:100],
                     )
                 )
+                artifacts.label(
+                    issues, sink, repo=repo, number=issue["number"], by=None, add=[HELD_FOR_ROOM]
+                )
 
             # Nesting is best effort; a missing link is not worth losing the story.
             with contextlib.suppress(Exception):
@@ -844,6 +924,10 @@ def tick(
             EventKind.NOTE,
             f"ignoring untyped cards in {INBOX}: {untyped} — set Work Type",
         )
+
+    cards = admit_held_stories(
+        board, issues, sink, rules, result, cards=cards, default_repo=default_repo
+    )
 
     for card in unauthored_goals(cards, sponsor=sponsor):
         number = card.number or 0
