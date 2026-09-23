@@ -258,7 +258,9 @@ Section 18 *allows* the pilot to become a tool the crew calls. It does not requi
 
 Card movements **no role performs** — a person closing an issue, a pull request
 merged by hand, an item arriving on the board — are handled by
-`.github/workflows/board.yml`, not by the board's built-in workflows.
+`.github/workflows/board.yml` in each delivery repository, not by the board's
+built-in workflows. The crew repository has none: its issues are not on the
+board.
 
 | Trigger | Sets Status to |
 | --- | --- |
@@ -287,7 +289,8 @@ be recorded making it.
 repository-scoped, and its `repository-projects` permission covers classic repo
 projects rather than organization Projects v2 — so it cannot write this board at
 all. The workflow mints a short-lived token from the crew's own App, which
-already holds project write, via `BOARD_APP_ID` and `BOARD_APP_PRIVATE_KEY`.
+already holds project write, from the App's public Client ID (in the workflow's
+`env`) and the `BOARD_APP_PRIVATE_KEY` secret.
 
 **What it does not catch.** Reopening an issue moves nothing, so a card can sit
 in `Done` with its issue open. `crew capability` reports both that and any

@@ -44,7 +44,7 @@ from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import repository_context
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
@@ -891,6 +891,7 @@ def tick(
     org: dict | None = None,
     ws: Workspace | None = None,
     sponsor: str | None = None,
+    repos: set[str] | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
 
@@ -913,7 +914,9 @@ def tick(
     context = RepoContext(ws, sink)
     sink.note(EventKind.TICK_STARTED, "reading board", tick=1)
 
-    cards = board.cards()
+    # Only the repositories the crew works in. A Goal anywhere else is not the
+    # crew's to decompose, however it is typed.
+    cards = within(board.cards(), repos)
     sink.note(EventKind.NOTE, f"{len(cards)} cards on the board", counts=board.counts(cards))
 
     cards = stamp_goal_work_type(board, sink, cards)

@@ -74,13 +74,17 @@ estimation:
   max_story_points: 8           # larger must be split, never admitted
 
 delivery:
-  # Repositories the crew may WORK IN. Cards outside this list still appear on
-  # the board, are refined, and are tracked — they are simply never claimed.
+  # Repositories the crew may WORK IN. Every phase is bounded by this list —
+  # refinement, admission, QA and closing parents as well as claiming — so a
+  # card from any other repository is left alone, however it is typed. Only
+  # claiming used to check it, and refinement split the crew repository's own
+  # Goal #4 into eight epics and stories on the board.
   #
   # The crew's own repository is deliberately absent. An orchestrator editing
   # itself mid-run is a sharp edge: a bad change to the delivery loop breaks the
   # thing making the change, and the failure arrives with no working process to
-  # diagnose it. That work is tracked on the board and done by hand.
+  # diagnose it. That work is done by hand, and tracked as issues on the crew
+  # repository by their P0–P3 labels — not on the board the crew works from.
   repos:
     - sprint-metrics
 

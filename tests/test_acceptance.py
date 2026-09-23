@@ -20,6 +20,7 @@ from crew_org.flows.acceptance import (
     awaiting_qa,
     close_finished_parents,
     render_qa,
+    run_qa,
 )
 from crew_org.tools.github_project import Card
 
@@ -178,6 +179,16 @@ def story(number: int, status: str, work_type: str = "Story") -> Card:
     )
 
 
+def test_qa_leaves_a_card_outside_the_crews_repositories_alone():
+    """Nothing is opened for it: no worktree, no sandbox, which is why both can
+    be None here — reaching either would raise."""
+    own = story(9, "QAing").model_copy(update={"repo": "crew"})
+    result = run_qa(
+        None, None, EventSink(None), None, None, cards=[own], repo="r", repos={"sprint-metrics"}
+    )
+    assert not (result.verified or result.returned or result.failed)
+
+
 def test_only_stories_awaiting_qa_are_verified():
     cards = [story(6, "QAing"), story(7, "Sprint Backlog"), story(3, "QAing", "Epic")]
     assert [c.number for c in awaiting_qa(cards)] == [6]
@@ -295,6 +306,20 @@ def test_a_parent_with_no_children_is_left_alone():
     cards = [story(3, "Needs Refinement", "Epic")]
     board = FakeBoard()
     assert close_finished_parents(board, FakeIssues({}), EventSink(None), cards, repo="r") == []
+
+
+def test_a_parent_outside_the_crews_repositories_is_not_closed():
+    epic = story(3, "Needs Refinement", "Epic").model_copy(update={"repo": "crew"})
+    issues = FakeIssues({3: [{"number": 6}]})
+    board = FakeBoard()
+    cards = [epic, story(6, DONE)]
+    assert (
+        close_finished_parents(
+            board, issues, EventSink(None), cards, repo="r", repos={"sprint-metrics"}
+        )
+        == []
+    )
+    assert issues.closed == [] and board.moves == []
 
 
 def test_a_goal_closes_when_its_epics_are_done():

@@ -228,6 +228,25 @@ def test_a_fresh_goal_gets_a_proposal(monkeypatch):
     assert EPIC_PROPOSAL_MARKER in issues.posted[0][1]
 
 
+def test_a_goal_outside_the_crews_repositories_is_not_decomposed(monkeypatch):
+    """crew#4 was a Goal in the crew's own repository, and refinement split it
+    into eight epics and stories on the board. Only claiming checked
+    `delivery.repos`; now every phase does."""
+    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda goal, **kw: PROPOSAL)
+    own = card(4).model_copy(update={"repo": "crew", "item_id": "C4"})
+    issues = FakeIssues()
+    result = tick(
+        FakeBoard([own, card(1)]),
+        issues,
+        EventSink(None),
+        default_repo="sprint-metrics",
+        sponsor="mquarters",
+        repos={"sprint-metrics"},
+    )
+    assert result.proposed == [1]
+    assert [n for n, _ in issues.posted] == [1]
+
+
 def test_a_second_tick_does_not_propose_again(monkeypatch):
     """Ticks run repeatedly; without this a goal accrues one proposal per tick."""
     issues = FakeIssues({1: EPIC_PROPOSAL_MARKER + " earlier proposal"})

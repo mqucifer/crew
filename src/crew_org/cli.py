@@ -302,74 +302,23 @@ def _synthetic_tick(sink: EventSink) -> None:
 
 @app.command()
 def capability() -> None:
-    """Where the crew's effort has gone, by the capability it advanced.
+    """What the crew can do: time in each column, what was exercised, and who stepped in.
 
-    An investment ledger, not a scorecard. It counts cards, and a card count
-    cannot tell strong from weak: five Implementation cards may mean a lot was
-    built or a lot needed fixing, and Release reads as zero while it works.
-
-    Two ladders (section 18): a card in the crew's own repository advances a
-    capability, a card in a delivery repository advances a product. The ratio
-    between them says whether the orchestrator is still being built.
+    Read off what the crew actually did — its move log and the board's own
+    history — never off how cards were tagged.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.events import replay_dir
     from crew_org.flows.board_audit import audit
-    from crew_org.flows.capability import measure, scorecard
+    from crew_org.flows.capability import measure
     from crew_org.tools.github_issues import IssueClient
     from crew_org.tools.github_project import ProjectClient
 
     env = load_env()
     token, _ = resolve_credentials(env)
     owner = env["GITHUB_OWNER"]
-    crew_repo = env.get("CREW_REPO", "crew")
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
-    card = scorecard(board.cards(), crew_repo=crew_repo)
-
-    table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
-    table.add_column("capability")
-    table.add_column("done", justify="right")
-    table.add_column("open", justify="right")
-    table.add_column("points", justify="right")
-    table.add_column("")
-    for row in card.rows:
-        if row.total == 0:
-            table.add_row(row.capability, "", "", "", "[dim]nothing[/]")
-            continue
-        state = "[green]landed[/]" if row.open == 0 else "[yellow]in flight[/]"
-        table.add_row(
-            row.capability,
-            str(row.done),
-            str(row.open) if row.open else "",
-            f"{row.points_done + row.points_open:g}",
-            state,
-        )
-    console.print()
-    console.print(table)
-
-    crew_total = sum(r.total for r in card.rows)
-    product_total = card.product_done + card.product_open
-    if crew_total or product_total:
-        share = 100 * crew_total / (crew_total + product_total or 1)
-        console.print(
-            f"[dim]{crew_total} crew cards, {product_total} product cards "
-            f"— {share:.0f}% of the work is on the crew itself.[/]"
-        )
-    if card.unattributed:
-        console.print(
-            "[yellow]No capability set:[/] "
-            + ", ".join(f"#{n}" for n in card.unattributed)
-            + " — a scorecard with unattributed cards is not a scorecard."
-        )
-    # Said plainly, because the table invites the opposite reading: an empty row
-    # means no card has advanced that capability, which is not the same as the
-    # capability being absent. Some of what works was built before any card was
-    # attributed to it.
-    console.print(
-        "[dim]Where effort went, not what works. An empty row means no card carried it, "
-        "not that the capability is missing.[/]"
-    )
 
     cards = board.cards()
     # Before the measure, whether the thing being measured is true. `measure`
@@ -786,9 +735,12 @@ def qa(
     ws = Workspace(owner, repo, token, _bot_identity(token, identity))
 
     sink = EventSink(VAR / "events" / "qa.jsonl")
+    repos = set(org.get("delivery", {}).get("repos") or []) or None
     cards = board.cards()
-    result = run_qa(board, issues, sink, ws, box, cards=cards, repo=repo)
-    result.parents_closed = close_finished_parents(board, issues, sink, board.cards(), repo=repo)
+    result = run_qa(board, issues, sink, ws, box, cards=cards, repo=repo, repos=repos)
+    result.parents_closed = close_finished_parents(
+        board, issues, sink, board.cards(), repo=repo, repos=repos
+    )
 
     console.print()
     for outcome in result.verified:
