@@ -50,6 +50,10 @@ class EventKind(StrEnum):
     REVERT_REFUSED = "revert.refused"
     REVERT_LANDED = "revert.landed"
 
+    # The retro, recorded as an issue, and each defect it filed (#50).
+    RETRO_RECORDED = "retro.recorded"
+    DEFECT_FILED = "defect.filed"
+
     ESCALATION_DECIDED = "escalation.decided"
     ESCALATED = "escalation.sent"
 

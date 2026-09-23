@@ -17,6 +17,7 @@ from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
 from crew_org.flows.moves import move_card
+from crew_org.flows.retro import RetroRecord, existing_retro, record_retro
 from crew_org.git_ops import branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -49,6 +50,10 @@ class SprintClose:
     # called it, so a card blocked most of a day went unmentioned.
     aging_blocked: list[tuple[str, int]] = field(default_factory=list)
     retro: Retro | None = None
+    # Where the retro was recorded (#50): the issue on the crew repository, and
+    # whether this close wrote it or found it already written.
+    retro_record: RetroRecord | None = None
+    retro_already: bool = False
 
     @property
     def complete(self) -> bool:
@@ -89,6 +94,8 @@ def close_sprint(
     rules: ProcessRules | None = None,
     events_dir: Path | None = None,
     now: datetime | None = None,
+    crew_repo: str | None = None,
+    delivery_repos: list[str] | None = None,
 ) -> SprintClose:
     """Merge what the Sponsor approved, then report on the sprint.
 
@@ -186,9 +193,39 @@ def close_sprint(
             f"attempts — escalation {ended}. Trigger: {entry.detail[:100]}"
         )
     escalations = "\n".join(lines)
+
+    # One retro per sprint. A close run again finds the one it wrote rather
+    # than paying for a second retro and filing every defect twice.
+    if crew_repo is not None:
+        found = existing_retro(issues, crew_repo, sprint)
+        if found is not None:
+            result.retro_record = RetroRecord(issue=found)
+            result.retro_already = True
+            return result
+
     try:
-        result.retro = write_retro(sprint, board_summary(board.cards(), sprint), escalations)
+        result.retro = write_retro(
+            sprint,
+            board_summary(board.cards(), sprint),
+            escalations,
+            delivery_repos=delivery_repos,
+        )
     except Exception as exc:  # noqa: BLE001
         sink.note(EventKind.NOTE, f"retro could not be written: {exc}"[:120])
+        return result
+
+    if crew_repo is not None and result.retro is not None:
+        try:
+            result.retro_record = record_retro(
+                issues,
+                sink,
+                result.retro,
+                sprint=sprint,
+                crew_repo=crew_repo,
+                delivery_repos=delivery_repos or [],
+            )
+        except Exception as exc:  # noqa: BLE001
+            # The retro is still printed. What failed is the record of it.
+            sink.note(EventKind.NOTE, f"retro could not be recorded: {exc}"[:120])
 
     return result

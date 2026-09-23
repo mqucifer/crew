@@ -8,14 +8,26 @@ a larger budget.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
 
 
 class ProcessDefect(BaseModel):
+    """A defect the retro found. Filed as an issue where the thing it found lives."""
+
     subject: str = Field(description="The story, epic or rule the defect is about")
     problem: str = Field(description="What went wrong, as a fact about this sprint")
-    change: str = Field(description="The specific change to how the crew works")
+    change: str = Field(description="The specific change proposed")
+    about: Literal["process", "product"] = Field(
+        default="process",
+        description="process: how the crew works. product: something the crew built",
+    )
+    repository: str | None = Field(
+        default=None,
+        description="For a product defect, the delivery repository holding what was found",
+    )
 
     @field_validator("change")
     @classmethod
@@ -40,7 +52,13 @@ class Retro(BaseModel):
     )
 
 
-def write_retro(sprint: str, board_summary: str, escalations: str) -> Retro:
+def write_retro(
+    sprint: str,
+    board_summary: str,
+    escalations: str,
+    *,
+    delivery_repos: list[str] | None = None,
+) -> Retro:
     agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
     agents = agents_module.build_agents("scrum_master")
     task = Task(
@@ -52,7 +70,13 @@ def write_retro(sprint: str, board_summary: str, escalations: str) -> Retro:
             "present. Cite cards by number.\n"
             "Where escalation was needed, name the specific story that was too large or "
             "whose criteria were ambiguous, and propose the design change. A larger "
-            "escalation budget is never the answer."
+            "escalation budget is never the answer.\n\n"
+            "Each defect is filed as an issue where the thing it found lives. Mark it "
+            "`process` if it is about how the crew works, or `product` if it is about "
+            "something the crew built, and for a product defect name the repository: "
+            f"{', '.join(delivery_repos or []) or 'none configured'}. One observation can "
+            "be both — a story that should have named its module is a process defect, the "
+            "duplicate it produced is a product defect — so file both rather than choosing."
         ),
         expected_output="A summary and any process defects this sprint argues for.",
         agent=agents["scrum_master"],

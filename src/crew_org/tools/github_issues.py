@@ -65,6 +65,32 @@ class IssueClient:
             labels=labels or [],
         )
 
+    def labelled(self, repo: str, label: str) -> list[dict[str, Any]]:
+        """Every issue carrying `label`, open or closed. Pull requests left out."""
+        out: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/repos/{self.owner}/{repo}/issues",
+                params={"labels": label, "state": "all", "per_page": 100, "page": page},
+            )
+            response.raise_for_status()
+            batch = response.json()
+            out += [i for i in batch if "pull_request" not in i]
+            if len(batch) < 100:
+                return out
+            page += 1
+
+    def ensure_label(self, repo: str, name: str, *, color: str, description: str) -> None:
+        """Create a label if the repository does not have it. An existing one is left as is."""
+        response = self._client.post(
+            f"{API}/repos/{self.owner}/{repo}/labels",
+            json={"name": name, "color": color, "description": description},
+        )
+        # 422 is "already exists", which is the common case and fine.
+        if response.status_code not in (201, 422):
+            response.raise_for_status()
+
     def get(self, repo: str, number: int) -> dict[str, Any]:
         return self._request("GET", f"/repos/{self.owner}/{repo}/issues/{number}")
 
