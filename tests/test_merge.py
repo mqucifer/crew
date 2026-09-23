@@ -53,7 +53,10 @@ class FakeIssues:
     def review_decision(self, repo, number):
         return self._decision
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return {"number": 100} if self._has_pull else None
 
     def pull(self, repo, number):

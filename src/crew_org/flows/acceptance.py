@@ -315,6 +315,12 @@ def close_finished_parents(
         for card in within(cards, repos):
             if card.work_type != parent_type or card.state == "CLOSED":
                 continue
+            # The board's own progress settles "not finished" without a fetch
+            # (#55). It counts closed sub-issues, not Done ones, so 100% only
+            # earns the per-child check below; it never closes anything alone.
+            total, closed_count = card.sub_issues_total, card.sub_issues_closed
+            if total is not None and (total == 0 or (closed_count or 0) < total):
+                continue
             parent_repo = card.repo or repo
             try:
                 children = issues.sub_issues(parent_repo, card.number or 0)

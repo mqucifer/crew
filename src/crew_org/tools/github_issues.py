@@ -246,7 +246,18 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
-    def pull_for_branch(self, repo: str, branch: str) -> dict[str, Any] | None:
+    def pull_for_branch(
+        self, repo: str, branch: str, *, known: Any = None
+    ) -> dict[str, Any] | None:
+        """The open pull request from `branch`.
+
+        `known` is the one the board already links to the card (`Card.open_pull_on`),
+        and costs nothing (#55). Without it — a pull request opened by hand with
+        no `Closes #N`, or one opened since the board was read — every open pull
+        request in the repository is scanned.
+        """
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         for pull in self.open_pulls(repo):
             if pull["head"]["ref"] == branch:
                 return pull

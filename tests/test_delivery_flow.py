@@ -98,7 +98,10 @@ class FakeIssues:
     # Set by a test that wants a card to have a pull request worth landing.
     landable: dict[str, dict] = {}
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return self.landable.get(branch)
 
     def pull(self, repo, number):

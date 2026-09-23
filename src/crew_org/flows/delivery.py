@@ -34,7 +34,7 @@ from crew_org.git_ops import Workspace, branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools import claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
-from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import repository_context
 
 STORY_TYPE = "Story"
@@ -114,7 +114,9 @@ class DeliveryResult:
     rate_limited: bool = False
 
 
-def awaiting_rework(issues: IssueClient, repo: str, branch: str) -> dict | None:
+def awaiting_rework(
+    issues: IssueClient, repo: str, branch: str, card: Card | None = None
+) -> dict | None:
     """The open pull request on `branch` whose *current* head was refused.
 
     The middle of the loop that was missing. Review moves a card back to In
@@ -134,7 +136,8 @@ def awaiting_rework(issues: IssueClient, repo: str, branch: str) -> dict | None:
     changes is owed the same repair.
     """
     try:
-        pull = issues.pull_for_branch(repo, branch)
+        known = card.open_pull_on(branch) if card is not None else None
+        pull = issues.pull_for_branch(repo, branch, known=known)
         if pull is None:
             return None
         head = (pull.get("head") or {}).get("sha")
@@ -169,7 +172,7 @@ def needs_rework(issues: IssueClient, cards: list[Card], *, repo: str) -> list[C
             ),
             key=lambda c: c.number or 0,
         )
-        if awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title))
+        if awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title), c)
     ]
 
 
@@ -209,7 +212,7 @@ def reconcile_orphans(
             # be and the rework pass will claim it. Moving it to Reviewing is
             # what made the ping-pong — review skips it as already judged, and
             # the card never comes back.
-            if awaiting_rework(issues, repo, branch) is not None:
+            if awaiting_rework(issues, repo, branch, card) is not None:
                 continue
             move_card(
                 board,
@@ -258,7 +261,9 @@ def sprint_stories(cards: list[Card], sprint: str, *, repos: set[str] | None = N
     )
 
 
-def prior_verdicts(issues: IssueClient, repo: str, number: int, branch: str) -> str:
+def prior_verdicts(
+    issues: IssueClient, repo: str, number: int, branch: str, *, known: LinkedPull | None = None
+) -> str:
     """What the Reviewer and QA said the last time this story was delivered.
 
     Both, not the most recent: they judge different things — the diff and the
@@ -281,7 +286,7 @@ def prior_verdicts(issues: IssueClient, repo: str, number: int, branch: str) -> 
     except Exception:  # noqa: BLE001, S110
         pass
     try:
-        pull = issues.pull_for_branch(repo, branch)
+        pull = issues.pull_for_branch(repo, branch, known=known)
         if pull:
             reviews = [
                 r
@@ -327,6 +332,7 @@ def prior_context(
     branch: str,
     *,
     resumed: bool,
+    known: LinkedPull | None = None,
 ) -> str:
     """Everything a second attempt needs: what it did, what happened, and where that leaves it.
 
@@ -340,7 +346,7 @@ def prior_context(
     So `resumed` is stated rather than assumed. It is the difference between
     "your previous work is in these files" and "it is not, and here is why".
     """
-    verdicts = prior_verdicts(issues, repo, number, branch)
+    verdicts = prior_verdicts(issues, repo, number, branch, known=known)
     fate = previous_fate(issues, repo, branch)
     if not (verdicts or fate):
         return ""
@@ -476,7 +482,14 @@ def deliver_story(
     feedback = ""
     # What the gates said if this story has been round before. Read once: it is
     # fixed for this delivery, where `feedback` changes on every attempt.
-    prior = prior_context(issues, repo, number, branch, resumed=getattr(ws, "resumed", False))
+    prior = prior_context(
+        issues,
+        repo,
+        number,
+        branch,
+        resumed=getattr(ws, "resumed", False),
+        known=card.open_pull_on(branch),
+    )
     if prior:
         carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
@@ -712,7 +725,7 @@ def deliver_story(
     # request is a different thing — force-pushing under a review in progress
     # would destroy the context the Reviewer is judging — so that blocks
     # instead, with the reason named.
-    open_pull = issues.pull_for_branch(repo, branch)
+    open_pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
     if open_pull is not None and not rework:
         outcome.blocked_reason = (
             f"PR #{open_pull['number']} is still open on `{branch}`. "

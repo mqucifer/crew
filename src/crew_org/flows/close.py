@@ -118,7 +118,8 @@ def close_sprint(
             result.still_open.append(card.name(qualify=qualify))
             continue
 
-        pull = issues.pull_for_branch(repo, branch_name(number, card.title))
+        branch = branch_name(number, card.title)
+        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
         if pull is None:
             result.unmergeable.append((number, "no open pull request"))
             continue
