@@ -292,43 +292,58 @@ def close_finished_parents(
     *,
     repo: str,
 ) -> list[int]:
-    """Move an epic to Done when its stories are, and a goal when its epics are.
+    """Close an epic when its stories are Done, and a goal when its epics are.
 
     Bookkeeping a human should not have to do. Done means every child is Done —
     a parent with one story still open is not finished, however close it looks.
+
+    Closing means both: the card moves to Done and the issue closes. Moving the
+    card alone left finished epics open in the repository, and a parent already
+    in Done with its issue open is closed here rather than skipped.
     """
     closed: list[int] = []
-    by_number = {c.number: c for c in cards}
+    # By repository and number: the board spans repositories, and crew#33 is
+    # not sprint-metrics#33. Now that this closes issues, confusing them would
+    # close one whose children are not done.
+    by_key = {(c.repo, c.number): c for c in cards}
 
     for parent_type in (EPIC_TYPE, GOAL_TYPE):
         for card in cards:
-            if card.work_type != parent_type or card.status == DONE or card.state == "CLOSED":
+            if card.work_type != parent_type or card.state == "CLOSED":
                 continue
+            parent_repo = card.repo or repo
             try:
-                children = issues.sub_issues(card.repo or repo, card.number or 0)
+                children = issues.sub_issues(parent_repo, card.number or 0)
             except Exception:  # noqa: BLE001
                 continue
             if not children:
                 continue
 
-            statuses = [
-                by_number[child["number"]].status
-                for child in children
-                if child["number"] in by_number
-            ]
-            if not statuses or any(status != DONE for status in statuses):
+            statuses = []
+            for child in children:
+                child_repo = child.get("repository_url", parent_repo).rsplit("/", 1)[-1]
+                on_board = by_key.get((child_repo, child["number"]))
+                if on_board:
+                    statuses.append(on_board.status)
+                else:
+                    # A child off the board has no status to read; its issue
+                    # closing is the only sign it is finished.
+                    statuses.append(DONE if child.get("state") == "closed" else None)
+            if any(status != DONE for status in statuses):
                 continue
 
             # Bookkeeping, not judgement: no role decided this, so the parent
             # keeps whichever role last worked on it.
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=DONE,
-                by=None,
-                card=card.number,
-                summary=f"all {len(statuses)} children done — closing {parent_type.lower()}",
-            )
+            if card.status != DONE:
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=DONE,
+                    by=None,
+                    card=card.number,
+                    summary=f"all {len(statuses)} children done — closing {parent_type.lower()}",
+                )
+            issues.close(parent_repo, card.number or 0)
             closed.append(card.number or 0)
     return closed

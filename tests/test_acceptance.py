@@ -201,9 +201,13 @@ class FakeBoard:
 class FakeIssues:
     def __init__(self, children):
         self._children = children
+        self.closed: list[tuple[str, int]] = []
 
     def sub_issues(self, repo, number):
         return self._children.get(number, [])
+
+    def close(self, repo, number, *, reason="completed"):
+        self.closed.append((repo, number))
 
 
 def test_an_epic_closes_when_all_its_stories_are_done():
@@ -213,6 +217,55 @@ def test_an_epic_closes_when_all_its_stories_are_done():
     closed = close_finished_parents(board, issues, EventSink(None), cards, repo="r")
     assert closed == [3]
     assert ("C3", DONE) in board.moves
+    assert issues.closed == [("sprint-metrics", 3)]
+
+
+def test_a_parent_already_in_done_still_has_its_issue_closed():
+    """sprint-metrics#5: moved to Done on 2026-09-19 and left open, because
+    closing a parent used to mean moving its card and nothing else."""
+    cards = [story(5, DONE, "Epic"), story(33, DONE), story(34, DONE)]
+    issues = FakeIssues({5: [{"number": 33}, {"number": 34}]})
+    board = FakeBoard()
+    assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == [5]
+    assert board.moves == []
+    assert issues.closed == [("sprint-metrics", 5)]
+
+
+def test_a_child_is_matched_by_repository_as_well_as_number():
+    """The board spans repositories. crew#33 being Done says nothing about
+    sprint-metrics#33, and now that this closes issues the mix-up would close
+    an epic that is not finished."""
+    other_repo = story(33, DONE).model_copy(update={"repo": "crew", "item_id": "X33"})
+    cards = [story(5, "Needs Refinement", "Epic"), story(33, "In Progress"), other_repo]
+    url = "https://api.github.com/repos/mqucifer/sprint-metrics"
+    issues = FakeIssues({5: [{"number": 33, "repository_url": url}]})
+    board = FakeBoard()
+    assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == []
+    assert issues.closed == []
+
+
+def test_an_open_child_off_the_board_keeps_the_epic_open():
+    cards = [story(3, "Needs Refinement", "Epic"), story(6, DONE)]
+    issues = FakeIssues({3: [{"number": 6}, {"number": 7, "state": "open"}]})
+    board = FakeBoard()
+    assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == []
+    assert issues.closed == []
+
+
+def test_a_closed_child_off_the_board_counts_as_finished():
+    cards = [story(3, "Needs Refinement", "Epic"), story(6, DONE)]
+    issues = FakeIssues({3: [{"number": 6}, {"number": 7, "state": "closed"}]})
+    board = FakeBoard()
+    assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == [3]
+
+
+def test_a_closed_parent_is_left_alone():
+    epic = story(3, DONE, "Epic").model_copy(update={"state": "CLOSED"})
+    cards = [epic, story(6, DONE)]
+    issues = FakeIssues({3: [{"number": 6}]})
+    board = FakeBoard()
+    assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == []
+    assert issues.closed == []
 
 
 def test_a_parent_closing_claims_the_card_for_nobody():
@@ -235,6 +288,7 @@ def test_one_open_story_keeps_the_epic_open():
     board = FakeBoard()
     assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == []
     assert board.moves == []
+    assert issues.closed == []
 
 
 def test_a_parent_with_no_children_is_left_alone():
