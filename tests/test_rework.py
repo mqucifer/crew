@@ -50,7 +50,10 @@ class FakeIssues:
             else None
         )
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return self._pull
 
     def open_pulls(self, repo):
@@ -98,7 +101,9 @@ def test_a_story_with_no_pull_request_is_not_rework():
 
 def test_a_read_failure_does_not_claim_the_card():
     class Broken(FakeIssues):
-        def pull_for_branch(self, repo, branch):
+        def pull_for_branch(self, repo, branch, *, known=None):
+            if known is not None:
+                return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
             raise RuntimeError("502")
 
     assert awaiting_rework(Broken(reviews=[]), "sprint-metrics", "feat/31-x") is None

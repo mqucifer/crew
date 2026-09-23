@@ -57,7 +57,10 @@ class FakeIssues:
         self._reviews, self._decision = reviews, decision
         self.merged = []
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return {"number": 100}
 
     def pull_reviews(self, repo, number):

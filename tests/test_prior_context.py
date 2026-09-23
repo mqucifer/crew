@@ -34,7 +34,10 @@ class FakeIssues:
     def pull_reviews(self, repo, number):
         return self._reviews
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return self._open
 
     def pulls_for_branch(self, repo, branch, *, state="all"):

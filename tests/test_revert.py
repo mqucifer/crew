@@ -159,7 +159,10 @@ class FakeIssues:
     def pull(self, repo, number):
         return self._pulls[number]
 
-    def pull_for_branch(self, repo, branch):
+    def pull_for_branch(self, repo, branch, *, known=None):
+
+        if known is not None:
+            return {"number": known.number, "head": {"ref": known.head, "sha": known.head_sha}}
         return next((p for p in self._open if p["head"]["ref"] == branch), None)
 
     def create_pull(self, repo, *, title, head, base, body):

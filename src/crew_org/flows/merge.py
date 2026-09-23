@@ -89,7 +89,8 @@ def merge_approved(
         number = card.number or 0
         repo = card.repo or default_repo
 
-        pull = issues.pull_for_branch(repo, branch_name(number, card.title))
+        branch = branch_name(number, card.title)
+        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
         if pull is None:
             result.failed.append((number, "no open pull request"))
             continue

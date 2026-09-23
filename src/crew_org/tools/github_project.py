@@ -82,6 +82,15 @@ class BoardSchema(BaseModel):
             raise BoardError(f"{field!r} has no option {option!r}. Options: {known}") from None
 
 
+class LinkedPull(BaseModel):
+    """A pull request GitHub links to a card's issue, because it says `Closes #N`."""
+
+    number: int
+    state: str
+    head: str
+    head_sha: str = ""
+
+
 class BoardMove(BaseModel):
     """One Status change as GitHub recorded it, whoever made it.
 
@@ -137,6 +146,17 @@ class Card(BaseModel):
     points: float | None = None
     escalations: float | None = None
     labels: frozenset[str] = frozenset()
+    # Read off the item query rather than asked for per card (#55). Progress
+    # counts *closed* sub-issues, which is not the same as Done: it can settle
+    # "not finished" without a fetch, never "finished".
+    sub_issues_total: int | None = None
+    sub_issues_closed: int | None = None
+    # Open pull requests GitHub links to this issue, from their `Closes #N`.
+    linked_pulls: tuple[LinkedPull, ...] = ()
+
+    def open_pull_on(self, branch: str) -> LinkedPull | None:
+        """The open pull request linked to this card from `branch`, if the board knows one."""
+        return next((p for p in self.linked_pulls if p.head == branch and p.state == "OPEN"), None)
 
     @property
     def key(self) -> tuple[str, int]:
@@ -249,6 +269,10 @@ query($owner: String!, $number: Int!, $cursor: String) {
               repository { name }
               labels(first: 20) { nodes { name } }
               parent { number }
+              subIssuesSummary { total completed }
+              closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
+                nodes { number state headRefName headRefOid }
+              }
             }
           }
         }
@@ -560,6 +584,18 @@ def _to_card(node: dict[str, Any]) -> Card | None:
         closed=_when(content.get("closedAt")),
         labels=frozenset(
             label["name"] for label in (content.get("labels") or {}).get("nodes") or []
+        ),
+        sub_issues_total=(content.get("subIssuesSummary") or {}).get("total"),
+        sub_issues_closed=(content.get("subIssuesSummary") or {}).get("completed"),
+        linked_pulls=tuple(
+            LinkedPull(
+                number=pull["number"],
+                state=pull.get("state") or "",
+                head=pull.get("headRefName") or "",
+                head_sha=pull.get("headRefOid") or "",
+            )
+            for pull in (content.get("closedByPullRequestsReferences") or {}).get("nodes") or []
+            if pull
         ),
         **values,
     )
