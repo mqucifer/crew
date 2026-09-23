@@ -29,15 +29,18 @@ console = Console()
 VAR = Path("var")
 
 
-def _sink(dry_run: bool) -> EventSink:
-    return EventSink(None if dry_run else VAR / "events" / "tick.jsonl")
+def _sink(demo: bool) -> EventSink:
+    """Where a run is recorded.
+
+    Only the synthetic demo writes nowhere. A real run that left no log was
+    invisible to `crew capability`, which reads exactly that log — so the mode
+    the crew ran in by default was the one mode it could not see itself in.
+    """
+    return EventSink(None if demo else VAR / "events" / "tick.jsonl")
 
 
 @app.command()
 def tick(
-    land: bool = typer.Option(
-        False, "--land", help="Actually merge, push and open PRs. Off by default."
-    ),
     demo: bool = typer.Option(
         False, "--demo", help="Render the live view from synthetic events. Needs no model."
     ),
@@ -48,9 +51,9 @@ def tick(
 ) -> None:
     """Take the board as far as it can go: refine, admit, review, verify, land, deliver.
 
-    Runs to quiescence — a pass that moves nothing ends it. Dry by default: it
-    reads, refines and verifies, and neither merges nor opens a pull request
-    until you pass --land.
+    Runs to quiescence — a pass that moves nothing ends it. It lands what it
+    produces: there is no dry mode, because a rehearsal cost the same inference
+    as the real thing and left nothing that could land. Undo by reverting.
     """
     org = load_org()
     sink = _sink(demo)
@@ -114,7 +117,7 @@ def tick(
 
     console.print(
         f"[dim]acting as {escape(identity)} · reviewing as {escape(review_identity)} · "
-        f"{'LANDING' if land else 'dry run'} · {escape(sprint)} · "
+        f"{escape(sprint)} · "
         f"{escape(', '.join(sorted(allowed)))}[/]"
     )
 
@@ -140,12 +143,12 @@ def tick(
     )
 
     with attach(sink, view):
-        result = loop.run(crew, dry_run=not land, max_passes=passes or loop.MAX_PASSES)
+        result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
 
-    _render_tick(result, land=land)
+    _render_tick(result)
 
 
-def _render_tick(result, *, land: bool) -> None:
+def _render_tick(result) -> None:
     """Report by phase, for the run.
 
     A Sponsor reading card-by-card is back in the work; a Sponsor told the board
@@ -220,8 +223,6 @@ def _render_tick(result, *, land: bool) -> None:
         console.print(f"\n[dim]{passes} — the board is stable. Nothing to do.[/]")
     else:
         console.print(f"\n[green]{passes} — the board is stable.[/]")
-    if not land:
-        console.print("[dim]Dry run: nothing was merged, pushed or opened. Pass --land to act.[/]")
 
 
 def _synthetic_tick(sink: EventSink) -> None:
@@ -728,16 +729,15 @@ def review(
 
 @app.command()
 def deliver(
-    land: bool = typer.Option(
-        False, "--land", help="Actually commit, push and open PRs. Off by default."
-    ),
     limit: int = typer.Option(1, "--limit", help="How many stories to attempt."),
     sprint: str = typer.Option(None, "--sprint", help="Iteration name."),
 ) -> None:
     """Take sprint stories to a pull request.
 
-    Dry by default: the work is implemented and verified in the sandbox, and the
-    diff is shown rather than landed. Pass --land when you want it to push.
+    The work is implemented and verified in the sandbox, then committed, pushed
+    and opened. There is no dry mode — the pull request is where a diff is
+    reviewed before it lands, and writing one to `var/diffs/` instead was a
+    substitute for using that gate.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
@@ -773,10 +773,7 @@ def deliver(
     bot = _bot_identity(token, identity)
     ws = Workspace(owner, repo, token, bot)
 
-    console.print(
-        f"[dim]acting as {escape(identity)} · sandbox {box.mode} · "
-        f"{'LANDING' if land else 'dry run'} · {sprint}[/]"
-    )
+    console.print(f"[dim]acting as {escape(identity)} · sandbox {box.mode} · {sprint}[/]")
 
     sink = EventSink(VAR / "events" / "deliver.jsonl")
     view = LiveView(org["board"]["columns"], budget=org["sprint"]["escalation_budget"])
@@ -791,7 +788,6 @@ def deliver(
             ws,
             sprint=sprint,
             repo=repo,
-            dry_run=not land,
             limit=limit,
             repos=set(org.get("delivery", {}).get("repos") or [repo]),
         )

@@ -65,7 +65,7 @@ def phases(monkeypatch, *specs):
     calls: list[str] = []
 
     def make(name, behaviour):
-        def run(_crew, *, dry_run):
+        def run(_crew):
             calls.append(name)
             if isinstance(behaviour, Exception):
                 raise behaviour
@@ -179,30 +179,10 @@ def deliver_returning(monkeypatch, **kw):
     monkeypatch.setattr(delivery_mod, "deliver", lambda *a, **k: FakeDeliveryResult(**kw))
 
 
-def test_a_dry_delivery_is_not_movement(crew, monkeypatch):
-    """A dry delivery puts every card back where it found it. Counting the
-    round trip as progress kept the loop re-delivering the same stories until
-    the pass cap stopped it — it re-claimed #31 one second after putting it
-    down."""
-    deliver_returning(monkeypatch, delivered=[1, 2, 3])
-
-    outcome = loop._deliver(crew, dry_run=True)
-
-    assert outcome.moved is False
-
-
 def test_a_real_delivery_is_movement(crew, monkeypatch):
     deliver_returning(monkeypatch, delivered=[1])
 
-    assert loop._deliver(crew, dry_run=False).moved is True
-
-
-def test_healing_an_interrupted_run_counts_even_on_a_dry_pass(crew, monkeypatch):
-    """Orphan reconciliation is not gated on dry_run, so it really does move
-    cards and the next pass has something new to act on."""
-    deliver_returning(monkeypatch, recovered=[7])
-
-    assert loop._deliver(crew, dry_run=True).moved is True
+    assert loop._deliver(crew).moved is True
 
 
 # --- the panel is seeded from the board ----------------------------------
@@ -250,7 +230,7 @@ def test_a_phase_reports_the_run_not_the_last_pass(crew, monkeypatch):
     reported zero. Work happened and the report denied it."""
     calls = {"n": 0}
 
-    def admit(_crew, *, dry_run):
+    def admit(_crew):
         calls["n"] += 1
         first = calls["n"] == 1
         return loop.PhaseOutcome(
@@ -271,7 +251,7 @@ def test_what_a_phase_could_not_do_is_carried(crew, monkeypatch):
         awaiting_approval=[(31, 36)],
         waiting_on_a_sibling=[(32, 31)],
     )
-    outcome = loop._deliver(crew, dry_run=False)
+    outcome = loop._deliver(crew)
 
     assert any("#31" in h and "approving review" in h for h in outcome.held)
     assert any("#32" in h and "waits for #31" in h for h in outcome.held)
@@ -283,7 +263,7 @@ def test_nothing_to_do_is_not_the_same_as_nothing_allowed(crew, monkeypatch):
     phases(monkeypatch, ("refine", False))
     assert loop.run(crew).stuck is False
 
-    def blocked(_crew, *, dry_run):
+    def blocked(_crew):
         return loop.PhaseOutcome("deliver", moved=False, held=["#31 — waiting on an approval"])
 
     monkeypatch.setattr(loop, "PHASES", (("deliver", blocked),))
@@ -302,7 +282,7 @@ def test_a_card_blocked_mid_run_is_still_reported(crew, monkeypatch):
     that its sibling was waiting, and never that anything had blocked."""
     calls = {"n": 0}
 
-    def deliver(_crew, *, dry_run):
+    def deliver(_crew):
         calls["n"] += 1
         if calls["n"] == 1:
             return loop.PhaseOutcome("deliver", moved=True, blocked=["#31 — budget exhausted"])
@@ -321,7 +301,7 @@ def test_the_same_block_reported_twice_is_named_once(crew, monkeypatch):
     """A phase can report one block from the outcome and again from the card
     move."""
 
-    def deliver(_crew, *, dry_run):
+    def deliver(_crew):
         return loop.PhaseOutcome("deliver", moved=False, blocked=["#31 — budget exhausted"])
 
     monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
@@ -363,7 +343,7 @@ def test_a_column_over_its_limit_is_reported_on_a_tick(monkeypatch):
     )
     seen = []
     over.sink.subscribe(seen.append)
-    result = loop.run(over, dry_run=True)
+    result = loop.run(over)
 
     assert result.over_limit == {"In Progress": (5, 3)}
     assert any("over its WIP limit" in e.summary for e in seen)
@@ -373,7 +353,7 @@ def test_a_column_at_its_limit_is_not_reported(crew, monkeypatch):
     phases(monkeypatch)
     seen = []
     crew.sink.subscribe(seen.append)
-    result = loop.run(crew, dry_run=True)
+    result = loop.run(crew)
 
     assert result.over_limit == {}
     assert not any("over its WIP limit" in e.summary for e in seen)
@@ -386,5 +366,5 @@ def test_a_tick_bridges_the_model_bus_onto_its_own_log(crew, monkeypatch):
 
     events_mod.reset_bridge()
     phases(monkeypatch)
-    loop.run(crew, dry_run=True)
+    loop.run(crew)
     assert crew.sink in events_mod.bridged_sinks()

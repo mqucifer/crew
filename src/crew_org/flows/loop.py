@@ -13,10 +13,11 @@ A phase that fails does not end the pass. The later phases act on the cards
 they can, and the failure is reported beside what did happen — a tick that
 aborts on the first error leaves the board in a state nobody chose.
 
-`dry_run` draws its line at what cannot be walked back: nothing is merged,
-pushed or opened. Refining, admitting and verifying still happen, because they
-are board state a Sponsor can undo by moving a card, and a dry tick that
-skipped them would show nothing of what the loop does.
+A tick lands what it produces. There is no dry mode: a dry run cost the same
+inference as a real one and left nothing that could land, which made it a
+rehearsal rather than a preview — and its restores injected movement the crew's
+own measurements then had to filter out. What made landing frightening was
+having no way to undo it, so the answer is a revert, not a rehearsal (crew#82).
 """
 
 from __future__ import annotations
@@ -180,7 +181,7 @@ class LoopResult:
         return out
 
 
-def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
+def _refine(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.board_flow import tick as refine  # noqa: PLC0415
 
     result = refine(
@@ -217,7 +218,7 @@ def _refine(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     )
 
 
-def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
+def _admit(crew: Crew) -> PhaseOutcome:
     """Ready to Sprint Backlog.
 
     Approving the epic was the scope decision, so this is arithmetic. It was
@@ -226,10 +227,6 @@ def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     """
     from crew_org.flows.sprint import start_sprint  # noqa: PLC0415
 
-    # Not gated on `dry_run`. Dry means nothing is merged, pushed or opened —
-    # the line a Sponsor cannot walk back. Admitting a story is board state
-    # like refining one, undone by moving the card, and gating it would stop a
-    # dry tick one hop short of showing what the loop actually does.
     plan = start_sprint(
         crew.board,
         crew.issues,
@@ -252,7 +249,7 @@ def _admit(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     )
 
 
-def _review(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
+def _review(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.review import review_open_pulls  # noqa: PLC0415
 
     moved_any = False
@@ -281,7 +278,7 @@ def _review(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     )
 
 
-def _qa(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
+def _qa(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.acceptance import close_finished_parents, run_qa  # noqa: PLC0415
 
     cards = crew.board.cards()
@@ -307,7 +304,7 @@ def _qa(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
     )
 
 
-def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
+def _deliver(crew: Crew) -> PhaseOutcome:
     """Merge what is approved, then claim what fits.
 
     `deliver` merges first by design — a story branching from a default branch
@@ -326,29 +323,12 @@ def _deliver(crew: Crew, *, dry_run: bool) -> PhaseOutcome:
         crew.ws,
         sprint=crew.sprint,
         repo=crew.repo,
-        dry_run=dry_run,
         limit=None,
         repos=crew.repos,
     )
-    if dry_run:
-        # A dry delivery puts every card back where it found it: Sprint Backlog
-        # to In Progress and home again, with the diff shown and nothing
-        # landed. Counting that as movement means the pass always moved, the
-        # loop never reaches quiescence, and it re-delivers the same stories
-        # until the cap stops it — observed doing exactly that, re-claiming #31
-        # one second after putting it down.
-        #
-        # Orphan reconciliation is the exception: it heals an interrupted run
-        # and is not gated on dry_run, so it is real movement either way.
-        moved = bool(result.recovered or result.reworked)
-    else:
-        moved = bool(
-            result.landed
-            or result.delivered
-            or result.blocked
-            or result.recovered
-            or result.reworked
-        )
+    moved = bool(
+        result.landed or result.delivered or result.blocked or result.recovered or result.reworked
+    )
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
@@ -391,7 +371,7 @@ PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
 )
 
 
-def run(crew: Crew, *, dry_run: bool = True, max_passes: int = MAX_PASSES) -> LoopResult:
+def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
 
@@ -439,7 +419,7 @@ def run(crew: Crew, *, dry_run: bool = True, max_passes: int = MAX_PASSES) -> Lo
 
         for name, phase in PHASES:
             try:
-                outcome = phase(crew, dry_run=dry_run)
+                outcome = phase(crew)
             except Exception as exc:  # noqa: BLE001
                 # The pass continues. Later phases act on cards this one never
                 # touched, and a tick that aborts here leaves the board partway

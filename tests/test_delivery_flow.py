@@ -165,7 +165,6 @@ def harness(tmp_path, monkeypatch):
         escalate_result=None,
         cards=None,
         apply=None,
-        dry_run=False,
         limit=None,
         repos=None,
     ):
@@ -222,7 +221,6 @@ def harness(tmp_path, monkeypatch):
             ws,
             sprint=SPRINT,
             repo="sprint-metrics",
-            dry_run=dry_run,
             limit=limit,
             repos=repos,
         )
@@ -403,62 +401,6 @@ def test_the_worktree_closed_is_the_one_that_was_opened(harness):
 # --- dry run -------------------------------------------------------------
 
 
-def test_a_dry_run_verifies_but_lands_nothing(harness, monkeypatch):
-    """Same code path as a real run up to the point of landing, so what it shows
-    is what would land."""
-    monkeypatch.setattr(
-        FakeWorkspace, "diff", lambda self: "--- a/src/m.py\n+++ b/src/m.py\n", raising=False
-    )
-    result, board, issues, ws, _, _ = harness(checks=[green()], dry_run=True)
-    assert len(result.delivered) == 1
-    outcome = result.delivered[0]
-    assert outcome.diff and not outcome.landed
-    assert ws.pushed == 0
-    assert issues.prs == []
-    assert ws.committed == []
-
-
-def test_a_dry_run_leaves_the_board_as_it_found_it(harness, monkeypatch):
-    monkeypatch.setattr(FakeWorkspace, "diff", lambda self: "diff", raising=False)
-    _, board, _, _, _, _ = harness(checks=[green()], dry_run=True)
-    assert [m[1] for m in board.moves] == ["In Progress", "Sprint Backlog"]
-
-
-def test_a_dry_run_still_repairs_and_escalates(harness, monkeypatch):
-    """Dry means 'does not land', not 'does not try'. Local repair alone cannot
-    prove a card is deliverable, so a dry run escalates too — hiding that a card
-    only lands with help would make the preview lie."""
-    monkeypatch.setattr(FakeWorkspace, "diff", lambda self: "diff", raising=False)
-    result, _, _, _, calls, _ = harness(checks=[red(), red(), red(), green()], dry_run=True)
-    assert calls["escalate"] == 1
-    assert result.delivered[0].escalated
-
-
-def test_a_dry_run_escalation_is_isolated_from_the_sprint_budget(tmp_path, harness, monkeypatch):
-    """A dry escalation must not spend the slot the real run depends on. It is
-    tallied under a separate key, so the sprint budget the `--land` run reads is
-    untouched — the bug where a dry run escalated #12 to green and the real #12
-    then found the budget already gone."""
-    monkeypatch.setattr(FakeWorkspace, "diff", lambda self: "diff", raising=False)
-    harness(checks=[red(), red(), red(), green()], dry_run=True)
-    ledger = EscalationLedger(tmp_path / "ledger.jsonl")
-    # The real sprint's budget is untouched...
-    assert ledger.spent(SPRINT) == 0
-    # ...and the dry escalation is recorded under its own isolated key.
-    assert ledger.spent(f"{SPRINT} (dry)") == 1
-
-
-def test_a_dry_run_failure_does_not_block_the_card(harness, monkeypatch):
-    """Nothing was attempted for real, so nothing should be marked blocked."""
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="still broken")
-    result, board, issues, _, _, _ = harness(
-        checks=[red(), red(), red(), red()], escalate_result=failed, dry_run=True
-    )
-    assert len(result.blocked) == 1
-    assert issues.labels == []
-    assert "Blocked" not in [m[1] for m in board.moves]
-
-
 def test_the_limit_caps_how_many_stories_are_attempted(harness):
     result, _, _, _, calls, _ = harness(
         checks=[green(), green()], cards=[story(6), story(7)], limit=1
@@ -628,35 +570,6 @@ def test_a_story_that_could_not_be_landed_says_why(harness):
 
     assert result.landed == []
     assert result.unmergeable == [(6, "no open pull request")]
-
-
-def test_a_dry_run_does_not_merge(harness):
-    """`deliver` merged to the default branch and closed cards whatever dry_run
-    said, under a command whose help reads "dry by default". A flag meaning
-    "change nothing" has to mean it where the change is a merge to main."""
-    approved = story(6).model_copy(update={"status": "Merging"})
-    result, board, issues, _, _, _ = harness(
-        checks=[green()], cards=[approved, story(7)], dry_run=True
-    )
-
-    assert result.landed == [], "nothing merged"
-    assert ("S6", "Done") not in board.moves
-    assert result.unmergeable == [(6, "no open pull request")], "and it says why, honestly"
-
-
-def test_a_dry_run_says_what_would_actually_land(harness, monkeypatch):
-    """Listing whatever sits in Merging as "would merge" was a guess that read
-    as a promise: two cards were reported as landing when their reviews had
-    requested changes."""
-    monkeypatch.setattr(
-        FakeIssues, "landable", {"feat/6-show-metric-6": {"number": 101}}, raising=False
-    )
-    approved = story(6).model_copy(update={"status": "Merging"})
-    result, board, _, _, _, _ = harness(checks=[green()], cards=[approved], dry_run=True)
-
-    assert result.would_land == [6], "classified exactly as a real run would"
-    assert result.landed == [], "and written nowhere"
-    assert ("S6", "Done") not in board.moves
 
 
 # --- a card that comes back carries what was said about it ----------------
@@ -1039,13 +952,3 @@ def test_the_repair_builds_on_the_work_it_is_repairing(harness, refused):
         checks=[green()], cards=[_returned_card("In Progress")]
     )
     assert ws.resumed is True
-
-
-def test_a_dry_run_leaves_a_returned_card_where_it_found_it(harness, refused):
-    """The dry-run restore put every card in Sprint Backlog. For a card that
-    came from Reviewing that is the dry run making the very move this card
-    exists to stop."""
-    _result, board, _issues, _ws, _, _ = harness(
-        checks=[green()], cards=[_returned_card("Reviewing")], dry_run=True
-    )
-    assert board.moves[-1] == ("S31", "Reviewing")
