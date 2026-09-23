@@ -133,6 +133,7 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
 | `crew sprint close` | the board, GitHub | The sprint review. A human gate |
+| `crew moves [--people]` | nothing | Every card movement on the board and who made it: the crew, the platform (`board.yml`), or a person, named. Read from GitHub's own history |
 | `crew revert <pr> --reason "…"` | GitHub | Opens a pull request undoing a merged one. It lands through review and `deliver` like any change |
 
 **It lands what it produces.** There is no dry mode. A rehearsal cost the same inference as the real thing, left nothing that could land, wrote no event log at all, and put cards back where it found them — which was three of the five backward moves in the crew's own log, and noise `crew capability` had to filter out of the crew's self-knowledge.

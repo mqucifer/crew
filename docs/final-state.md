@@ -184,7 +184,9 @@ The crew can measure its own delivery.
 
 **Finished when** time in each column, exercise, intervention and rework are all
 computed from the crew's own record, and a person moving a card by hand is
-visible rather than inferred — today intervention is a floor, not a count.
+visible rather than inferred. The last half landed with #89: intervention is
+counted from the board's own history, each move attributed to the crew, the
+platform or a person (`crew moves`).
 
 ### Retrospective
 The crew learns from a sprint it has finished.

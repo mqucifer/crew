@@ -82,6 +82,22 @@ class BoardSchema(BaseModel):
             raise BoardError(f"{field!r} has no option {option!r}. Options: {known}") from None
 
 
+class BoardMove(BaseModel):
+    """One Status change as GitHub recorded it, whoever made it.
+
+    `actor` is the login GitHub attributes it to, which is the credential used
+    and not necessarily who decided: the board's own workflow and a person
+    running something with the crew's token both appear as the crew.
+    """
+
+    repo: str
+    number: int
+    at: datetime
+    frm: str | None = None
+    to: str | None = None
+    actor: str | None = None
+
+
 class Card(BaseModel):
     """One board item, flattened into the shape the crew reasons about."""
 
@@ -177,6 +193,37 @@ query($owner: String!, $number: Int!) {
   }
 }
 """
+
+# Issues only: a pull request's card is moved by the same workflow as its
+# issue, and GitHub does not record a pull request's project status changes.
+_HISTORY_QUERY = """
+query($owner: String!, $number: Int!, $cursor: String) {
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      items(first: {page_size}, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          content {
+            ... on Issue {
+              number
+              repository { name }
+              timelineItems(first: 100, itemTypes: [PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]) {
+                nodes {
+                  ... on ProjectV2ItemStatusChangedEvent {
+                    createdAt previousStatus status
+                    actor { login }
+                    project { number }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+""".replace("{page_size}", str(PAGE_SIZE))
 
 _ITEMS_QUERY = """
 query($owner: String!, $number: Int!, $cursor: String) {
@@ -364,6 +411,44 @@ class ProjectClient:
             page = items["pageInfo"]
             if not page["hasNextPage"]:
                 return cards
+            cursor = page["endCursor"]
+
+    def status_history(self) -> list[BoardMove]:
+        """Every Status change GitHub recorded on this board's issues, oldest first.
+
+        Whoever made them: the crew, the board's own workflow, or a person
+        dragging a card. GitHub keeps this for the life of the issue, so it
+        reaches back past anything the crew's own event log holds.
+        """
+        moves: list[BoardMove] = []
+        cursor: str | None = None
+        while True:
+            project = self._project(
+                _HISTORY_QUERY, owner=self.owner, number=self.number, cursor=cursor
+            )
+            items = project["items"]
+            for node in items["nodes"]:
+                content = node.get("content") or {}
+                repo = (content.get("repository") or {}).get("name")
+                number = content.get("number")
+                if repo is None or number is None:
+                    continue
+                for event in (content.get("timelineItems") or {}).get("nodes") or []:
+                    if not event or (event.get("project") or {}).get("number") != self.number:
+                        continue
+                    moves.append(
+                        BoardMove(
+                            repo=repo,
+                            number=number,
+                            at=datetime.fromisoformat(event["createdAt"]),
+                            frm=event.get("previousStatus") or None,
+                            to=event.get("status") or None,
+                            actor=(event.get("actor") or {}).get("login"),
+                        )
+                    )
+            page = items["pageInfo"]
+            if not page["hasNextPage"]:
+                return sorted(moves, key=lambda m: m.at)
             cursor = page["endCursor"]
 
     def counts(self, cards: list[Card] | None = None) -> dict[str, int]:

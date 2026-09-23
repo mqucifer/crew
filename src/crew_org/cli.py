@@ -317,6 +317,7 @@ def capability() -> None:
     from crew_org.events import replay_dir
     from crew_org.flows.board_audit import audit
     from crew_org.flows.capability import measure, scorecard
+    from crew_org.tools.github_issues import IssueClient
     from crew_org.tools.github_project import ProjectClient
 
     env = load_env()
@@ -375,7 +376,89 @@ def capability() -> None:
     # reads columns to compute waits; a column holding finished work reports a
     # queue that is not a queue.
     _print_board_audit(audit(cards))
-    _print_measure(measure(replay_dir(VAR / "events"), cards))
+    events = replay_dir(VAR / "events")
+    moves = _attributed_moves(board, IssueClient(token, owner), events, env)
+    _print_measure(measure(events, cards, moves=moves))
+
+
+@app.command()
+def moves(
+    people: bool = typer.Option(False, "--people", help="Only the moves a person made."),
+    limit: int = typer.Option(40, "--limit", help="How many, most recent last."),
+) -> None:
+    """Every card movement on the board, and who made it.
+
+    Read from GitHub's own record of each Status change, not the crew's log, so
+    a card a person moved by hand is here too. Each move is attributed: the
+    crew (it is in the crew's log), the platform (`board.yml` was running), or a
+    person, named, and marked when they acted with the crew's credentials.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.events import replay_dir
+    from crew_org.flows.board_moves import Source
+    from crew_org.tools.github_issues import IssueClient
+    from crew_org.tools.github_project import ProjectClient
+
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    attributed = _attributed_moves(
+        board, IssueClient(token, owner), replay_dir(VAR / "events"), env
+    )
+    if attributed is None:
+        raise typer.Exit(code=1)
+    if people:
+        attributed = [a for a in attributed if a.source is Source.PERSON]
+
+    table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
+    for column in ("when", "card", "from", "to", "who"):
+        table.add_column(column, no_wrap=True)
+    colour = {Source.CREW: "dim", Source.PLATFORM: "cyan", Source.PERSON: "yellow"}
+    for a in attributed[-limit:]:
+        table.add_row(
+            a.move.at.strftime("%m-%d %H:%M"),
+            f"{a.move.repo}#{a.move.number}",
+            a.move.frm or "—",
+            a.move.to or "—",
+            f"[{colour[a.source]}]{escape(a.who)}[/]",
+        )
+    console.print(table)
+
+
+def _crew_logins(env: dict[str, str]) -> set[str]:
+    """The logins GitHub records the crew's two Apps as, without `[bot]`."""
+    from crew_org.auth import REVIEW_APP_PREFIX, resolve_credentials  # noqa: PLC0415
+
+    logins = set()
+    for prefix in ("GITHUB_APP_", REVIEW_APP_PREFIX):
+        try:
+            logins.add(resolve_credentials(env, prefix=prefix)[1].removesuffix("[bot]"))
+        except Exception:  # noqa: BLE001, S112
+            continue
+    return logins
+
+
+def _attributed_moves(board, issues, events, env):
+    """Every Status change on the board, attributed. None if it cannot be read.
+
+    None rather than an empty list, so the measure falls back to what the crew
+    declared and says it is a floor, instead of reporting nobody intervened.
+    """
+    from crew_org.flows.board_moves import BOARD_WORKFLOW, attribute, run_windows  # noqa: PLC0415
+
+    try:
+        moves = board.status_history()
+        runs = [
+            window
+            for repo in sorted({m.repo for m in moves})
+            for window in run_windows(issues.workflow_runs(repo, BOARD_WORKFLOW), repo)
+        ]
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]Could not read the board's history:[/] {exc}")
+        return None
+    return attribute(moves, events, runs, crew_logins=_crew_logins(env))
 
 
 def _print_board_audit(a) -> None:
@@ -457,11 +540,27 @@ def _print_measure(m) -> None:
     console.print()
     console.print(table)
 
-    if m.intervention:
+    if m.intervention and m.counted:
         console.print(
             "[yellow]Needed a person:[/] "
             + ", ".join(f"{cap} ×{n}" for cap, n in sorted(m.intervention.items()))
-            + " [dim]— a floor, not a count: a card a person moves by hand is not logged.[/]"
+            + " [dim]— cards a person moved, by: "
+            + ", ".join(f"{who} ×{n}" for who, n in sorted(m.intervened_by.items()))
+            + "[/]"
+        )
+    elif m.intervention:
+        console.print(
+            "[yellow]Needed a person:[/] "
+            + ", ".join(f"{cap} ×{n}" for cap, n in sorted(m.intervention.items()))
+            + " [dim]— a floor, not a count: the board's history could not be read.[/]"
+        )
+    elif m.counted:
+        console.print("[green]Needed a person:[/] none [dim]— no card was moved by hand.[/]")
+    if m.counted and m.asked:
+        console.print(
+            "[dim]Asked for a person:[/] "
+            + ", ".join(f"{cap} ×{n}" for cap, n in sorted(m.asked.items()))
+            + " [dim]— blocked, or flagged needs:human.[/]"
         )
     if m.rework:
         console.print(
