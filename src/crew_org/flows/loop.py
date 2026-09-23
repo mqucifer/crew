@@ -196,7 +196,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
     # Parking an epic is movement: the card left Needs Refinement, and a pass
     # that reports "nothing moved" over it would hide the one thing that
     # changed.
-    moved = bool(result.epics_created or result.stories_created or result.parked)
+    moved = bool(result.epics_created or result.stories_created or result.parked or result.admitted)
     return PhaseOutcome(
         "refine",
         moved=moved,
@@ -205,12 +205,14 @@ def _refine(crew: Crew) -> PhaseOutcome:
         counts={
             "epics": len(result.epics_created),
             "stories": len(result.stories_created),
+            "admitted": len(result.admitted),
             # What it looked at and left alone, so a quiet pass says why it was
             # quiet rather than only that it was.
             "already answered": sum(1 for _n, why in result.skipped if why == "already answered"),
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
-        + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why],
+        + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why]
+        + [f"#{n} — waiting for room: {why}" for n, why in result.waiting],
         blocked=[
             f"#{n} — the split failed the same way twice; parked for a person"
             for n in result.parked
