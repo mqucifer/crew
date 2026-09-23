@@ -258,3 +258,63 @@ def test_deep_is_opt_in_so_the_plain_gate_costs_nothing(server, monkeypatch):
     )
     checks = [r.check for r in sub.run_all(BASE)]
     assert "crewai round-trip" not in checks
+
+
+# --- through the proxy, as every tick is ------------------------------------------
+
+
+def test_the_window_is_read_from_the_proxys_model_info(monkeypatch):
+    """LiteLLM's /models carries no window; its /model/info does, when the alias
+    declares max_input_tokens."""
+
+    def fake_get(url, **_kw):
+        body = (
+            {"data": [{"model_name": MODEL, "model_info": {"max_input_tokens": 262144}}]}
+            if url.endswith("/model/info")
+            else {"data": [{"id": MODEL}]}
+        )
+        return httpx.Response(200, json=body, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(sub.httpx, "get", fake_get)
+    result = sub.probe_context(BASE, MODEL)
+    assert result.status is Status.PASS and "262,144" in result.detail
+
+
+def test_every_probe_sends_the_proxys_key(monkeypatch):
+    """The doctor sent no key, so the proxy answered 401 and it could only be
+    pointed around the proxy — at a path no agent takes."""
+    monkeypatch.setenv("CREW_LLM_API_KEY", "sk-proxy")
+    sent: list[str | None] = []
+
+    def fake_get(url, *, headers=None, **_kw):
+        sent.append((headers or {}).get("Authorization"))
+        return httpx.Response(
+            200, json={"data": [{"id": MODEL}]}, request=httpx.Request("GET", url)
+        )
+
+    def fake_post(url, *, json=None, headers=None, **_kw):
+        sent.append((headers or {}).get("Authorization"))
+        return chat_response({"content": "ready"})
+
+    monkeypatch.setattr(sub.httpx, "get", fake_get)
+    monkeypatch.setattr(sub.httpx, "post", fake_post)
+    sub.run_all(BASE, MODEL)
+    assert sent and set(sent) == {"Bearer sk-proxy"}
+
+
+def test_the_doctor_probes_the_proxy_by_default(monkeypatch):
+    from typer.testing import CliRunner
+
+    from crew_org import cli
+
+    monkeypatch.setenv("CREW_LLM_BASE_URL", "http://localhost:4000/v1")
+    seen = {}
+
+    def fake_run_all(base_url, model, *, deep=False):
+        seen.update(base_url=base_url, model=model)
+        return []
+
+    monkeypatch.setattr(sub, "run_all", fake_run_all)
+    result = CliRunner().invoke(cli.app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert seen == {"base_url": "http://localhost:4000/v1", "model": "crew-local"}

@@ -567,42 +567,35 @@ def _print_measure(m) -> None:
     console.print(f"[dim]What the crew can do, over {window}{excluded}.[/]")
 
 
+# The alias a tick's thinking roles use. Probing an alias rather than whatever
+# the proxy lists first makes the doctor test what the crew runs.
+DOCTOR_MODEL = "crew-local"
+
+
 @app.command()
 def doctor(
     base_url: str = typer.Option(
-        None, "--base-url", help="OpenAI-compatible endpoint, e.g. http://host:30000/v1"
+        None, "--base-url", help="Defaults to CREW_LLM_BASE_URL, the LiteLLM proxy."
     ),
-    host: str = typer.Option(
-        None, "--host", help="Probe common ports on this host to find the endpoint."
+    model: str = typer.Option(
+        DOCTOR_MODEL, "--model", help="The proxy alias to probe. Defaults to crew-local."
     ),
-    model: str = typer.Option(None, "--model", help="Override the served model name."),
     deep: bool = typer.Option(
         False, "--deep", help="Also run a real CrewAI crew end to end. Costs tokens."
     ),
 ) -> None:
-    """Validate the inference substrate before anything is built on it.
+    """Validate the inference path the crew uses before anything is built on it.
 
-    Proves the two capabilities the architecture depends on: tool calling and
-    constrained JSON decoding. Both are launch-flag dependent under SGLang.
+    Probes through the LiteLLM proxy, with its key, exactly as a tick calls the
+    model: tool calling, constrained JSON, context length and thinking control.
+    Everything goes through the proxy; the doctor used to go around it, and so
+    checked a path no agent takes.
     """
-    from crew_org.substrate import CANDIDATE_PORTS, Status, discover, run_all
+    from crew_org.llm import base_url as proxy_url
+    from crew_org.substrate import Status, run_all
 
-    if not base_url and not host:
-        console.print("Pass [bold]--base-url[/] or [bold]--host[/] to probe.")
-        raise typer.Exit(code=2)
-
-    if not base_url:
-        ports = ", ".join(str(p) for p in CANDIDATE_PORTS)
-        console.print(f"[dim]Probing {host} on ports {ports}…[/]")
-        base_url = discover(host)
-        if not base_url:
-            console.print(
-                f"[red]No OpenAI-compatible endpoint found on {host}.[/] "
-                "Is SGLang running, and is the host reachable?"
-            )
-            raise typer.Exit(code=1)
-        console.print(f"[green]Found[/] {base_url}")
-
+    base_url = base_url or proxy_url()
+    console.print(f"[dim]Probing {base_url} as {model}…[/]")
     results = run_all(base_url, model, deep=deep)
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="dim")

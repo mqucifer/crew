@@ -118,14 +118,14 @@ Roles live in `config/agents.yaml` as data — goal, backstory, model alias, cap
 Start here, in this order. The first two change nothing.
 
 ```
-uv run crew doctor --base-url http://<host>:8888/v1   # is the model serving, and can it call tools
+uv run crew doctor                                    # through the proxy: is the model serving, and can it call tools
 uv run crew auth                                      # are both identities correctly scoped
 uv run crew tick                                      # the whole loop, and it lands what it produces
 ```
 
 | Command | Changes | Notes |
 | --- | --- | --- |
-| `crew doctor` | nothing | Needs `--base-url` or `--host`. Checks the endpoint, chat, tool calling, constrained JSON, context length and thinking control |
+| `crew doctor` | nothing | Probes through the LiteLLM proxy (`CREW_LLM_BASE_URL`, with its key) as `crew-local`, the path every tick takes. Checks the endpoint, chat, tool calling, constrained JSON, context length and thinking control. `--deep` adds a CrewAI round trip |
 | `crew auth` | nothing | Verifies the delivery identity's scope and that the reviewing identity is a different one. See the note below |
 | `crew tick` | the board, GitHub | Refines, admits, reviews, verifies, opens pull requests and merges approved ones. Ends with a standup on the sprint's `standup` issue |
 | `crew tick --demo` | nothing | Renders the live view from synthetic events. No model needed |
