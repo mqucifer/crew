@@ -105,9 +105,6 @@ class DeliveryResult:
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
-    # What a real run would have merged. A dry run must not merge, and must
-    # still say what it declined to do.
-    would_land: list[int] = field(default_factory=list)
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
@@ -445,7 +442,6 @@ def deliver_story(
     sprint: str,
     repo: str,
     default_branch: str,
-    dry_run: bool = False,
     rework: bool = False,
 ) -> DeliveryOutcome:
     """Take one story from Sprint Backlog to a pull request.
@@ -463,15 +459,6 @@ def deliver_story(
     number = card.number or 0
     outcome = DeliveryOutcome(card=number)
     story_text = f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}"
-
-    # A dry run escalates too: local repair alone cannot prove a card is
-    # deliverable, and hiding that a card only lands with help would make a
-    # preview lie. But a dry escalation is isolated from the sprint budget the
-    # real run depends on — it is tallied under a separate key, so a preview is
-    # still bounded and auditable, yet can never spend the escalation slot the
-    # following `--land` run needs. (Sharing the key is what blocked the real
-    # #12 after a dry run escalated it to green.)
-    ledger_sprint = f"{sprint} (dry)" if dry_run else sprint
 
     branch = branch_name(number, card.title)
     outcome.branch = branch
@@ -509,7 +496,7 @@ def deliver_story(
                 attempts=outcome.seen("EDIT"),
                 detail=str(exc)[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
             outcome.count("EDIT")
             sink.emit(
                 CrewEvent(
@@ -545,7 +532,7 @@ def deliver_story(
                 attempts=outcome.seen("OVERWRITE"),
                 detail=f"would overwrite existing files: {', '.join(overwrites)}",
             )
-            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
             outcome.count("OVERWRITE")
             sink.emit(
                 CrewEvent(
@@ -580,7 +567,7 @@ def deliver_story(
                 attempts=outcome.seen("REGRESSION"),
                 detail="; ".join(f"{k}: {was} -> {now}" for k, (was, now) in broken.items())[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
             outcome.count("REGRESSION")
             sink.emit(
                 CrewEvent(
@@ -613,7 +600,7 @@ def deliver_story(
                 attempts=outcome.seen("EDIT"),
                 detail=str(exc)[:400],
             )
-            decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
             outcome.count("EDIT")
             sink.emit(
                 CrewEvent(
@@ -645,7 +632,7 @@ def deliver_story(
             attempts=outcome.seen("VERIFY"),
             detail=check.failure_report[:400],
         )
-        decision = policy.decide(failure, spent=ledger.spent(ledger_sprint))
+        decision = policy.decide(failure, spent=ledger.spent(sprint))
         outcome.count("VERIFY")
         sink.emit(
             CrewEvent(
@@ -671,7 +658,7 @@ def deliver_story(
             ledger.record(
                 EscalationRecord(
                     at=utcnow(),
-                    sprint=ledger_sprint,
+                    sprint=sprint,
                     card=number,
                     role="Developer",
                     failure_class=FailureClass.VERIFY,
@@ -695,34 +682,20 @@ def deliver_story(
             )
             if result.should_park:
                 # Not an outcome yet — the work is unfinished, not failed.
-                ledger.resolve(number, ledger_sprint, "parked on a usage limit")
+                ledger.resolve(number, sprint, "parked on a usage limit")
                 outcome.blocked_reason = result.detail
                 return outcome
             check = workspace.check(worktree)
             if check.ok:
-                ledger.resolve(number, ledger_sprint, "resolved — lint and tests pass")
+                ledger.resolve(number, sprint, "resolved — lint and tests pass")
                 break
-            ledger.resolve(number, ledger_sprint, "escalated but still failing")
+            ledger.resolve(number, sprint, "escalated but still failing")
             outcome.failure_detail = check.failure_report
             outcome.blocked_reason = f"escalation did not resolve it: {check.failure_report[:200]}"
             return outcome
 
         outcome.failure_detail = check.failure_report
         outcome.blocked_reason = decision.reason
-        return outcome
-
-    if dry_run:
-        # Stop at the point of landing. Everything above this line ran exactly
-        # as it would in a real delivery, so the diff is what would have landed.
-        outcome.diff = ws.diff()
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="Developer",
-                card=number,
-                summary=f"verified, not landed — {_touched_count(implementation)} changes",
-            )
-        )
         return outcome
 
     if not ws.commit(
@@ -829,9 +802,7 @@ def _work_one_card(
     sprint: str,
     repo: str,
     default_branch: str,
-    dry_run: bool,
     rework: bool = False,
-    restore_to: str = SPRINT_BACKLOG,
 ) -> None:
     """Deliver one card that is already In Progress, and move it on.
 
@@ -861,7 +832,6 @@ def _work_one_card(
             sprint=sprint,
             repo=card_repo,
             default_branch=default_branch,
-            dry_run=dry_run,
             rework=rework,
         )
     except Exception as exc:  # noqa: BLE001
@@ -879,22 +849,6 @@ def _work_one_card(
         if outcome is not None and not outcome.ok:
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
-
-    if outcome.ok and dry_run:
-        # Put the card back: a dry run must leave the board as it found it.
-        move_card(
-            board,
-            sink,
-            item_id=card.item_id,
-            to=restore_to,
-            by="Developer",
-            card=card.number,
-            frm=IN_PROGRESS,
-            summary="dry run — verified, nothing landed",
-        )
-        counts[IN_PROGRESS] -= 1
-        result.delivered.append(outcome)
-        return
 
     if outcome.ok:
         move_card(
@@ -919,19 +873,6 @@ def _work_one_card(
             by="Developer",
         )
         result.delivered.append(outcome)
-    elif dry_run:
-        move_card(
-            board,
-            sink,
-            item_id=card.item_id,
-            to=restore_to,
-            by="Developer",
-            card=card.number,
-            frm=IN_PROGRESS,
-            summary="dry run — not verified, nothing landed",
-        )
-        counts[IN_PROGRESS] -= 1
-        result.blocked.append(outcome)
     else:
         move_card(
             board,
@@ -985,7 +926,6 @@ def deliver(
     sprint: str,
     repo: str,
     default_branch: str = "main",
-    dry_run: bool = False,
     limit: int | None = None,
     repos: set[str] | None = None,
 ) -> DeliveryResult:
@@ -995,26 +935,14 @@ def deliver(
 
     # Land first, then branch. A story that branches from a main missing its
     # predecessors is a conflict scheduled for later.
-    #
-    # Not on a dry run. This merged to the default branch and closed cards
-    # whatever `dry_run` said, under a command whose help reads "dry by
-    # default: the diff is shown rather than landed" — true of the new work and
-    # never true of the merge. A flag that means "change nothing" has to mean it
-    # everywhere, most of all where the change is a merge to main.
-    landed = merge_approved(
-        board, issues, sink, cards=cards, default_repo=repo, repos=repos, dry_run=dry_run
-    )
+    landed = merge_approved(board, issues, sink, cards=cards, default_repo=repo, repos=repos)
     result.conflicted = [card for card, _pr in landed.conflicted]
     result.awaiting_approval = list(landed.awaiting_approval)
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
-    if dry_run:
-        # Classified exactly as a real run would, and written nowhere.
-        result.would_land = [card for card, _pr in landed.merged]
-    else:
-        result.landed = [card for card, _pr in landed.merged]
-        if landed.merged or landed.conflicted:
-            cards = board.cards()
+    result.landed = [card for card, _pr in landed.merged]
+    if landed.merged or landed.conflicted:
+        cards = board.cards()
 
     # Heal before acting: an interrupted run leaves cards claimed by nobody.
     recovered = reconcile_orphans(board, issues, sink, cards, repo=repo)
@@ -1073,12 +1001,7 @@ def deliver(
             sprint=sprint,
             repo=repo,
             default_branch=default_branch,
-            dry_run=dry_run,
             rework=True,
-            # A dry run leaves the board as it found it, and this card did not
-            # come from the backlog — putting it there would be the dry run
-            # making the very move the fix exists to stop.
-            restore_to=card.status or IN_PROGRESS,
         )
         if result.rate_limited:
             return result
@@ -1129,7 +1052,6 @@ def deliver(
             sprint=sprint,
             repo=repo,
             default_branch=default_branch,
-            dry_run=dry_run,
         )
         if result.rate_limited:
             break

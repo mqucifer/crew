@@ -43,7 +43,6 @@ crew auth                      # verify the crew's credential, and what it must 
 crew tick                      # goals become epics; approved epics become stories
 crew sprint start              # fill the sprint from approved epics
 crew deliver                   # implement a story and show the diff
-crew deliver --land            # ...and actually open the pull request
 crew review                    # review every open pull request
 crew qa                        # verify delivered work against its criteria
 crew sprint close              # merge what you approved, and report
@@ -52,9 +51,11 @@ crew sprint close              # merge what you approved, and report
 A tick runs to quiescence. The human controls when the process runs, not the
 individual transitions between states.
 
-`crew deliver` is **dry by default**: the work is implemented and verified in a
-sandbox, and the diff is written to `var/diffs/` rather than landed. Passing
-`--land` is a deliberate act.
+`crew deliver` **lands what it produces**: the work is implemented and verified
+in a sandbox, then committed, pushed and opened as a pull request. There is no
+dry mode — the pull request is where a diff is read before it lands, and a
+rehearsal that spent the same inference and left nothing landable was a
+substitute for using that gate.
 
 ## The two gates
 

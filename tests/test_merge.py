@@ -215,23 +215,6 @@ def test_an_approval_that_cannot_arrive_is_visible_on_the_event_stream():
     assert any(e.kind == EventKind.CARD_BLOCKED for e in seen)
 
 
-def test_a_dry_run_reports_the_dead_gate_and_moves_nothing():
-    issues = FakeIssues(decision="REVIEW_REQUIRED")
-    board = FakeBoard()
-    sink = EventSink(None)
-    result = merge_approved(
-        board,
-        issues,
-        sink,
-        cards=[card(6)],
-        default_repo="sprint-metrics",
-        dry_run=True,
-    )
-    assert result.unapprovable == [(6, 100)]
-    assert board.moves == []
-    assert issues.comments == []
-
-
 def test_no_approving_review_is_still_ordinary_waiting():
     """The distinction only applies to a card GitHub refuses *despite* an
     approval. A card nobody has approved is waiting, as it always was."""
