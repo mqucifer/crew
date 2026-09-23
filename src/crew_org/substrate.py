@@ -18,9 +18,6 @@ from enum import StrEnum
 import httpx
 from pydantic import BaseModel
 
-# SGLang's own default is 30000 and vLLM's is 8000, but a served instance can
-# be anywhere — this Spark runs on 8888. Assume nothing; probe.
-CANDIDATE_PORTS = (8888, 30000, 8000, 8080, 40000)
 STRUCTURED_TRIALS = 5
 TIMEOUT = 30.0
 
@@ -39,23 +36,22 @@ class ProbeResult(BaseModel):
     hint: str | None = None
 
 
-def discover(host: str, ports: tuple[int, ...] = CANDIDATE_PORTS) -> str | None:
-    """Find an OpenAI-compatible endpoint on `host`. Returns a base URL or None."""
-    for port in ports:
-        url = f"http://{host}:{port}/v1"
-        try:
-            r = httpx.get(f"{url}/models", timeout=3.0)
-            if r.status_code == 200:
-                return url
-        except httpx.HTTPError:
-            continue
-    return None
+def _headers() -> dict[str, str]:
+    """The proxy's key, as every other call the crew makes sends it.
+
+    The probes used to send none, so the doctor could only reach the model
+    server directly and got a 401 from the proxy the crew actually uses. It
+    checks the path a tick takes, or it checks nothing the crew depends on.
+    """
+    from crew_org.llm import api_key  # noqa: PLC0415
+
+    return {"Authorization": f"Bearer {api_key()}"}
 
 
 def probe_models(base_url: str) -> tuple[ProbeResult, str | None]:
     """0a/0b — endpoint reachable, and what is it actually serving?"""
     try:
-        r = httpx.get(f"{base_url}/models", timeout=TIMEOUT)
+        r = httpx.get(f"{base_url}/models", headers=_headers(), timeout=TIMEOUT)
         r.raise_for_status()
         data = r.json().get("data", [])
     except httpx.HTTPError as exc:
@@ -64,7 +60,8 @@ def probe_models(base_url: str) -> tuple[ProbeResult, str | None]:
                 check="endpoint reachable",
                 status=Status.FAIL,
                 detail=f"{type(exc).__name__}: {exc}",
-                hint="Is SGLang running, and is the host/port right? Try --host to auto-discover.",
+                hint="Is the LiteLLM proxy up (docker compose in deploy/litellm), is the "
+                "model server behind it running, and is CREW_LLM_API_KEY its master key?",
             ),
             None,
         )
@@ -93,6 +90,7 @@ def _chat(base_url: str, model: str, **body) -> dict:
     r = httpx.post(
         f"{base_url}/chat/completions",
         json={"model": model, **body},
+        headers=_headers(),
         timeout=TIMEOUT,
     )
     r.raise_for_status()
@@ -155,10 +153,10 @@ def probe_chat(base_url: str, model: str) -> ProbeResult:
 def probe_context(base_url: str, model: str) -> ProbeResult:
     """0e — how much context is there for the constitution plus issue history?"""
     try:
-        r = httpx.get(f"{base_url}/models", timeout=TIMEOUT)
+        r = httpx.get(f"{base_url}/models", headers=_headers(), timeout=TIMEOUT)
         r.raise_for_status()
         entry = next(m for m in r.json()["data"] if m.get("id") == model)
-        length = entry.get("max_model_len")
+        length = entry.get("max_model_len") or _proxy_window(base_url, model)
     except Exception as exc:  # noqa: BLE001
         return ProbeResult(
             check="context length", status=Status.WARN, detail=f"could not determine: {exc}"
@@ -168,8 +166,8 @@ def probe_context(base_url: str, model: str) -> ProbeResult:
             check="context length",
             status=Status.WARN,
             detail="not reported by this endpoint",
-            hint="Expected when probing through a proxy — LiteLLM does not surface the "
-            "backend's window. Probe the backend directly to confirm it.",
+            hint="The proxy does not declare this alias's window. Set "
+            "model_info.max_input_tokens on it in deploy/litellm/config.yaml.",
         )
     if length < 16384:
         return ProbeResult(
@@ -180,6 +178,24 @@ def probe_context(base_url: str, model: str) -> ProbeResult:
             "that look like the model being stupid.",
         )
     return ProbeResult(check="context length", status=Status.PASS, detail=f"{length:,} tokens")
+
+
+def _proxy_window(base_url: str, model: str) -> int | None:
+    """The alias's window as the LiteLLM proxy declares it, or None.
+
+    `/models` through the proxy carries no window. The proxy's own model info
+    does, when the alias sets `model_info.max_input_tokens`, and LiteLLM uses
+    that value itself to check a request fits before sending it.
+    """
+    try:
+        r = httpx.get(f"{base_url}/model/info", headers=_headers(), timeout=TIMEOUT)
+        r.raise_for_status()
+    except httpx.HTTPError:
+        return None
+    for entry in r.json().get("data", []):
+        if entry.get("model_name") == model:
+            return (entry.get("model_info") or {}).get("max_input_tokens")
+    return None
 
 
 def probe_thinking_control(base_url: str, model: str) -> ProbeResult:

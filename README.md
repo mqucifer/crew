@@ -38,7 +38,7 @@ in prose has gone stale silently, so ask the command or read a test.
 ## Usage
 
 ```
-crew doctor --host <spark>     # prove the inference substrate before trusting it
+crew doctor                    # prove the inference path, through the proxy, before trusting it
 crew auth                      # verify the crew's credential, and what it must NOT do
 crew tick                      # goals become epics; approved epics become stories
 crew sprint start              # fill the sprint from approved epics

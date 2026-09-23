@@ -80,9 +80,15 @@ fail with "arguments unparseable" or JSON wrapped in prose.
 ## 2. Prove it before building on it
 
 ```bash
-crew doctor --host <spark-hostname>       # discovers the port
-crew doctor --base-url http://<host>:30000/v1
+crew doctor           # through the proxy, as crew-local
+crew doctor --deep    # and a real CrewAI crew end to end
 ```
+
+**Everything goes through the proxy, the doctor included.** It probes
+`CREW_LLM_BASE_URL` with `CREW_LLM_API_KEY`, which is the path every tick takes.
+`--base-url` overrides the address and still sends the key; `--model` picks
+another alias. There is no direct-to-SGLang mode: a probe that goes around the
+proxy passes while the path the crew actually uses fails.
 
 This is the Phase 0 gate. It checks, in order: endpoint reachable, chat
 round-trip, **tool calling**, and **constrained JSON decoding** — the last run
@@ -147,10 +153,14 @@ An unauthenticated probe answers 401, which looks like a dead proxy and is not
 one. Sign in to the UI at <http://localhost:4000/ui> with `LITELLM_UI_USERNAME`
 and `LITELLM_UI_PASSWORD`.
 
-The proxy centralizes model aliases, request logging, and rate policy. Note the
-ordering: `crew doctor` talks to SGLang **directly**, so if the proxy is the
-thing that is broken, the direct probe still passes and the fault is
-attributable.
+The proxy centralizes model aliases, request logging, and rate policy. The
+context window is declared on each alias (`model_info.max_input_tokens`),
+because LiteLLM's `/v1/models` does not carry the backend's; the doctor reads it
+from `/v1/model/info`.
+
+**When a probe fails, which layer is it?** `docker logs crew-litellm` shows
+whether the proxy reached SGLang at all, and the SGLang log on the Spark
+(`~/sglang-start-*.log`) shows whether the model server answered.
 
 ## 4. Escalation path
 
