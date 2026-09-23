@@ -35,6 +35,10 @@ env:
   # never have worked here.
   ARRIVAL_STATUS: Needs Refinement
   FINISHED_STATUS: Done
+  # mqucifer-crew's Client ID — public, unlike the private key, and readable
+  # from `gh api /apps/mqucifer-crew`. create-github-app-token deprecated
+  # `app-id` in favour of it.
+  BOARD_APP_CLIENT_ID: Iv23lirf0uh3m9vl1vjm
 
 jobs:
   move:
@@ -50,7 +54,7 @@ jobs:
         id: token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.BOARD_APP_ID }}
+          client-id: ${{ env.BOARD_APP_CLIENT_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
           owner: ${{ env.OWNER }}
 
