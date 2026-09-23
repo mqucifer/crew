@@ -314,6 +314,7 @@ def capability() -> None:
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.events import replay_dir
+    from crew_org.flows.board_audit import audit
     from crew_org.flows.capability import measure, scorecard
     from crew_org.tools.github_project import ProjectClient
 
@@ -368,7 +369,43 @@ def capability() -> None:
         "not that the capability is missing.[/]"
     )
 
-    _print_measure(measure(replay_dir(VAR / "events"), board.cards()))
+    cards = board.cards()
+    # Before the measure, whether the thing being measured is true. `measure`
+    # reads columns to compute waits; a column holding finished work reports a
+    # queue that is not a queue.
+    _print_board_audit(audit(cards))
+    _print_measure(measure(replay_dir(VAR / "events"), cards))
+
+
+def _print_board_audit(a) -> None:
+    """What the board says about itself, and contradicts.
+
+    Printed above the measure rather than below it: these are not findings to
+    act on later, they are a reason to distrust the numbers underneath.
+    """
+    if a.ok:
+        return
+    console.print()
+    if a.finished_but_waiting:
+        names = ", ".join(c.name(qualify=True) for c in a.finished_but_waiting[:8])
+        more = (
+            f" and {len(a.finished_but_waiting) - 8} more"
+            if len(a.finished_but_waiting) > 8
+            else ""
+        )
+        console.print(
+            f"[red]{len(a.finished_but_waiting)} closed cards are not in Done[/] — "
+            f"{escape(names)}{more}.\n"
+            "[dim]Those columns read as occupied. Run the board workflow's sweep "
+            "(Actions → board → Run workflow).[/]"
+        )
+    if a.waiting_but_finished:
+        names = ", ".join(c.name(qualify=True) for c in a.waiting_but_finished)
+        console.print(
+            f"[yellow]{len(a.waiting_but_finished)} open cards sit in Done[/] — "
+            f"{escape(names)}.\n"
+            "[dim]Reopening an issue moves nothing, so no workflow catches this.[/]"
+        )
 
 
 def _humanise(delta) -> str:
