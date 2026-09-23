@@ -58,6 +58,7 @@ def write_retro(
     escalations: str,
     *,
     delivery_repos: list[str] | None = None,
+    standups: str = "",
 ) -> Retro:
     agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
     agents = agents_module.build_agents("scrum_master")
@@ -66,6 +67,11 @@ def write_retro(
             f"Write the retro for sprint {sprint}.\n\n"
             f"## What the board says\n\n{board_summary}\n\n"
             f"## The escalation ledger\n\n{escalations or 'No escalations this sprint.'}\n\n"
+            f"## The sprint's standups, one per tick\n\n{standups or 'None recorded.'}\n\n"
+            "The board and the ledger say how the sprint ended; the standups say how it "
+            "went. Read them for what they show over time: cards that stayed blocked or "
+            "waiting across many ticks, long runs where nothing moved, work that stalled "
+            "and restarted.\n\n"
             "Report what happened, including what went badly, for a Sponsor who was not "
             "present. Cite cards by number.\n"
             "Where escalation was needed, name the specific story that was too large or "
