@@ -44,9 +44,11 @@ jobs:
       # covers classic repo projects, not organization Projects v2, so it
       # cannot write this board at all. The crew's own App already holds
       # project write — this borrows it for a few minutes.
+      # v1 targets Node 20, which runners now force onto Node 24 with a
+      # deprecation warning. v3 targets Node 24 directly.
       - name: Mint an App token
         id: token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.BOARD_APP_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
@@ -107,23 +109,57 @@ jobs:
           set -euo pipefail
           # An item the board does not hold is not an error: the crew works
           # repositories whose issues are not all tracked.
-          item_id=$(gh api graphql -f query='
-            query($id:ID!, $number:Int!) {
+          # $number is deliberately not a GraphQL variable: the project is
+          # picked out of the result by jq below, and GraphQL refuses a
+          # declared variable the query does not use. Passing it here failed
+          # every pull_request run while the sweep, which does use it, passed.
+          # $number is deliberately not a GraphQL variable: the project is
+          # picked out of the result by jq below, and GraphQL refuses a
+          # declared variable the query does not use. Passing it here failed
+          # every pull_request run while the sweep, which does use it, passed.
+          item=$(gh api graphql -f query='
+            query($id:ID!) {
               node(id:$id) {
-                ... on Issue       { projectItems(first:20){ nodes { id project { number } } } }
-                ... on PullRequest { projectItems(first:20){ nodes { id project { number } } } }
+                ... on Issue {
+                  projectItems(first:20){ nodes {
+                    id project { number }
+                    fieldValueByName(name:"Status") {
+                      ... on ProjectV2ItemFieldSingleSelectValue { name }
+                    }
+                  } }
+                }
+                ... on PullRequest {
+                  projectItems(first:20){ nodes {
+                    id project { number }
+                    fieldValueByName(name:"Status") {
+                      ... on ProjectV2ItemFieldSingleSelectValue { name }
+                    }
+                  } }
+                }
               }
-            }' -F id="$NODE_ID" -F number="$PROJECT_NUMBER" \
-            | jq -r --argjson n "$PROJECT_NUMBER" \
-              '[.data.node.projectItems.nodes[]? | select(.project.number==$n)][0].id // empty')
+            }' -F id="$NODE_ID" \
+            | jq -c --argjson n "$PROJECT_NUMBER" \
+              '[.data.node.projectItems.nodes[]? | select(.project.number==$n)][0] // empty')
 
-          if [ -z "$item_id" ]; then
+          if [ -z "$item" ]; then
             echo "not on the board — nothing to do"
             exit 0
           fi
+          item_id=$(jq -r '.id' <<<"$item")
+          current=$(jq -r '.fieldValueByName.name // ""' <<<"$item")
 
           case "$ACTION" in
-            opened) option='${{ steps.board.outputs.arrival_option }}' ;;
+            opened)
+              # Give a card a status only if it has none. The crew creates
+              # issues in the repositories it delivers to and sets their status
+              # within seconds; a runner takes far longer to start, so setting
+              # this unconditionally would land *after* the crew and knock a
+              # freshly refined story back to the arrival column.
+              if [ -n "$current" ]; then
+                echo "already in '$current' — leaving it"
+                exit 0
+              fi
+              option='${{ steps.board.outputs.arrival_option }}' ;;
             closed) option='${{ steps.board.outputs.finished_option }}' ;;
             *)      echo "no rule for '$ACTION'"; exit 0 ;;
           esac
