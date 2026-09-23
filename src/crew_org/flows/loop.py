@@ -330,14 +330,28 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         limit=None,
         repos=crew.repos,
     )
+    reverts = result.reverts
     moved = bool(
-        result.landed or result.delivered or result.blocked or result.recovered or result.reworked
+        result.landed
+        or result.delivered
+        or result.blocked
+        or result.recovered
+        or result.reworked
+        or reverts.merged
+        or reverts.returned
     )
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
+        + [f"revert PR #{pr} — waiting on an approving review" for pr in reverts.awaiting_approval]
+        + [f"revert PR #{pr} — conflicts with main, needs a person" for pr in reverts.conflicted]
+        + [
+            f"revert PR #{pr} — approved and GitHub will not count it"
+            for pr in reverts.unapprovable
+        ]
+        + [f"revert PR #{pr} — {why}" for pr, why in reverts.failed]
     )
     # Events: they happened, and the next pass will not see them.
     blocked = (
@@ -356,7 +370,11 @@ def _deliver(crew: Crew) -> PhaseOutcome:
             + (f", {len(result.reworked)} re-worked" if result.reworked else "")
         ),
         result=result,
-        counts={"merged": len(result.landed), "delivered": len(result.delivered)},
+        counts={
+            "merged": len(result.landed),
+            "delivered": len(result.delivered),
+            "reverted": len(reverts.merged),
+        },
         held=held,
         blocked=blocked,
     )

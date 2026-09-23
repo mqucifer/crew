@@ -707,6 +707,55 @@ def qa(
 
 
 @app.command()
+def revert(
+    pull: int = typer.Argument(..., help="The merged pull request to undo."),
+    reason: str = typer.Option(..., "--reason", help="Why. Recorded on the card and the PR."),
+    repo: str = typer.Option(None, "--repo", help="Defaults to the pilot repo."),
+) -> None:
+    """Open a pull request that undoes a merged one.
+
+    Nothing lands here. The revert is reviewed like any other change and merged
+    by the deliver phase once approved; when it lands, the card the work
+    belonged to returns to Needs Refinement. A revert that does not apply
+    cleanly is never forced: the card is blocked with the conflict named.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.flows.revert import request_revert
+    from crew_org.git_ops import Workspace
+    from crew_org.tools.github_issues import IssueClient
+    from crew_org.tools.github_project import ProjectClient
+
+    env = load_env()
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    repo = repo or env.get("PILOT_REPO", "crew")
+    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    issues = IssueClient(token, owner)
+    ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+
+    sink = EventSink(VAR / "events" / "revert.jsonl")
+    result = request_revert(
+        board, issues, sink, ws, cards=board.cards(), repo=repo, pull_number=pull, reason=reason
+    )
+
+    card = f" — card {result.card.name(qualify=True)}" if result.card else " — no card"
+    if result.pr is not None:
+        console.print(f"[green]PR #{result.pr}[/] reverts PR #{pull}{card}")
+        console.print("[dim]It lands through review and the deliver phase, like any change.[/]")
+    elif result.conflict:
+        console.print(f"[red]Not reverted[/] — PR #{pull} conflicts with main{card}")
+        for path in result.conflict:
+            console.print(f"  {path}")
+        if result.card:
+            console.print("[dim]The card is blocked for a person, with the conflict named.[/]")
+        raise typer.Exit(code=1)
+    else:
+        console.print(f"[red]Not reverted[/] — {result.refused}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def review(
     repo: str = typer.Option(None, "--repo", help="Defaults to the pilot repo."),
 ) -> None:

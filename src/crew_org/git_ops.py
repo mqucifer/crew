@@ -15,6 +15,7 @@ It refuses rather than warns, and has deliberately no override flag.
 from __future__ import annotations
 
 import base64
+import contextlib
 import re
 import shutil
 import subprocess
@@ -24,7 +25,9 @@ from pathlib import Path
 # Branches an agent may never write to directly, under any circumstances.
 PROTECTED_BRANCHES = frozenset({"main", "master", "trunk", "release", "develop"})
 
-BRANCH_TYPES = frozenset({"feat", "fix", "chore", "docs", "test", "refactor", "spike"})
+# `revert/<pr>-<summary>` is numbered for the pull request it undoes, not an
+# issue: a revert has no card of its own, and the PR is what it is about.
+BRANCH_TYPES = frozenset({"feat", "fix", "chore", "docs", "test", "refactor", "spike", "revert"})
 
 # <type>/<issue>-<kebab-summary>, per the constitution §8.
 BRANCH_PATTERN = re.compile(
@@ -97,6 +100,14 @@ NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "
 
 class GitError(RuntimeError):
     pass
+
+
+class RevertConflict(GitError):
+    """A revert that does not apply cleanly. It was aborted, never forced."""
+
+    def __init__(self, files: list[str]) -> None:
+        self.files = files
+        super().__init__("revert conflicts in: " + (", ".join(files) or "unknown files"))
 
 
 @dataclass(frozen=True)
@@ -334,6 +345,34 @@ class Workspace:
             cwd=self.path,
         )
         return True
+
+    def revert(self, sha: str) -> None:
+        """Commit the inverse of `sha` onto the open worktree.
+
+        A merge commit is reverted against its first parent, the branch it was
+        merged into; a squash commit has one parent and needs no mainline.
+
+        A conflict means the code has moved on since `sha` landed, and what the
+        right end state is becomes a person's decision. So the revert is
+        aborted, the worktree left clean, and the conflicting paths raised.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        parents = _run(["rev-list", "--parents", "-n", "1", sha], cwd=self.path).split()[1:]
+        mainline = ["-m", "1"] if len(parents) > 1 else []
+        identity = [
+            "-c",
+            f"user.name={self.identity.name}",
+            "-c",
+            f"user.email={self.identity.email}",
+        ]
+        try:
+            _run([*identity, "revert", "--no-edit", *mainline, sha], cwd=self.path)
+        except GitError:
+            files = _run(["diff", "--name-only", "--diff-filter=U"], cwd=self.path).split()
+            with contextlib.suppress(GitError):
+                _run(["revert", "--abort"], cwd=self.path)
+            raise RevertConflict(files) from None
 
     def diff(self) -> str:
         """The change as a patch, without committing it.

@@ -110,6 +110,15 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
+    def closed_pulls(self, repo: str) -> list[dict[str, Any]]:
+        """The most recently updated closed pull requests, merged or not."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/pulls",
+            params={"state": "closed", "sort": "updated", "direction": "desc", "per_page": 100},
+        )
+        response.raise_for_status()
+        return response.json()
+
     def pull_diff(self, repo: str, number: int) -> str:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/pulls/{number}",
@@ -214,6 +223,9 @@ class IssueClient:
             state="closed",
             state_reason=reason,
         )
+
+    def reopen(self, repo: str, number: int) -> dict[str, Any]:
+        return self._request("PATCH", f"/repos/{self.owner}/{repo}/issues/{number}", state="open")
 
     def add_labels(self, repo: str, number: int, labels: list[str]) -> None:
         self._request("POST", f"/repos/{self.owner}/{repo}/issues/{number}/labels", labels=labels)

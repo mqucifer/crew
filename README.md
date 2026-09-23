@@ -46,6 +46,7 @@ crew deliver                   # implement a story and show the diff
 crew review                    # review every open pull request
 crew qa                        # verify delivered work against its criteria
 crew sprint close              # merge what you approved, and report
+crew revert <pr> --reason "…"  # undo a merged change, through review like any other
 ```
 
 A tick runs to quiescence. The human controls when the process runs, not the

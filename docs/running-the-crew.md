@@ -133,10 +133,13 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
 | `crew sprint close` | the board, GitHub | The sprint review. A human gate |
+| `crew revert <pr> --reason "…"` | GitHub | Opens a pull request undoing a merged one. It lands through review and `deliver` like any change |
 
 **It lands what it produces.** There is no dry mode. A rehearsal cost the same inference as the real thing, left nothing that could land, wrote no event log at all, and put cards back where it found them — which was three of the five backward moves in the crew's own log, and noise `crew capability` had to filter out of the crew's self-knowledge.
 
 What made landing frightening was having no way to undo it. The answer is a revert (crew#83), not a rehearsal. `crew sprint start --dry-run` stays: it shows what would be admitted and costs nothing.
+
+**Undoing a change.** `crew revert <pr> --reason "…"` opens a pull request on a `revert/<pr>-…` branch. It is reviewed like any other change, and the deliver phase merges it once approved. When it lands, whoever merged it, the card whose work it undid is reopened and returned to Needs Refinement with `needs:human`, because the work is not done. A revert that does not apply cleanly is never forced: the card is blocked with the conflicting paths named. Each step is a `revert.*` event recording the pull request reverted, its card and the reason.
 
 **Two identities.** The delivery app opens pull requests; the reviewing app judges them. GitHub refuses an approval from the identity that opened the pull request, so one app could only ever comment on the crew's own work and every story stalled waiting for a person.
 
@@ -180,6 +183,7 @@ Escalation is a release valve, never a substitute for task design. The Scrum Mas
 - An epic in Inbox (Goals) — approve by moving it out, reject by closing it
 - A card in Blocked — always, by construction
 - A merge conflict — two changes disagree, and the crew should not decide which wins
+- A card returned by a revert — decide whether to re-scope it, re-deliver it, or close it
 - `crew sprint close` — the sprint review
 
 **Reading what happened.** `var/events/*.jsonl` is the append-only record: every card move carries the acting role and the columns it moved between. Every comment the crew writes is signed with its role. `var/diffs/` keeps the rejected diff and the failure output of a card that blocked — deliberately kept, because the worktree is deleted and the evidence would go with it.
