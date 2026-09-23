@@ -18,6 +18,7 @@ from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import RetroRecord, existing_retro, record_retro
+from crew_org.flows.standup import standups_for_retro
 from crew_org.git_ops import branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -203,12 +204,17 @@ def close_sprint(
             result.retro_already = True
             return result
 
+    # How the sprint went, not only how it ended: every tick left a standup.
+    standup, standups = (
+        standups_for_retro(issues, crew_repo, sprint) if crew_repo is not None else (None, "")
+    )
     try:
         result.retro = write_retro(
             sprint,
             board_summary(board.cards(), sprint),
             escalations,
             delivery_repos=delivery_repos,
+            standups=standups,
         )
     except Exception as exc:  # noqa: BLE001
         sink.note(EventKind.NOTE, f"retro could not be written: {exc}"[:120])
@@ -223,9 +229,19 @@ def close_sprint(
                 sprint=sprint,
                 crew_repo=crew_repo,
                 delivery_repos=delivery_repos or [],
+                standup=standup,
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.
             sink.note(EventKind.NOTE, f"retro could not be recorded: {exc}"[:120])
+        else:
+            # The retro has read them; the sprint's standups are finished.
+            if standup is not None and result.retro_record.issue is not None:
+                issues.comment(
+                    crew_repo,
+                    standup,
+                    f"Sprint closed. The retro that read these is #{result.retro_record.issue}.",
+                )
+                issues.close(crew_repo, standup)
 
     return result

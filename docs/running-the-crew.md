@@ -127,7 +127,7 @@ uv run crew tick                                      # the whole loop, and it l
 | --- | --- | --- |
 | `crew doctor` | nothing | Needs `--base-url` or `--host`. Checks the endpoint, chat, tool calling, constrained JSON, context length and thinking control |
 | `crew auth` | nothing | Verifies the delivery identity's scope and that the reviewing identity is a different one. See the note below |
-| `crew tick` | the board, GitHub | Refines, admits, reviews, verifies, opens pull requests and merges approved ones |
+| `crew tick` | the board, GitHub | Refines, admits, reviews, verifies, opens pull requests and merges approved ones. Ends with a standup on the sprint's `standup` issue |
 | `crew tick --demo` | nothing | Renders the live view from synthetic events. No model needed |
 | `crew tick --passes N` | — | Caps the passes. Useful the first time you run it against a changed board |
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
@@ -206,8 +206,8 @@ The flow from goal to merged code exists end to end and has run unattended. What
 | Merge and release | **Works** | Approval-gated, conflict-aware, ordered |
 | Audit trail | **Works** | Every move and comment carries its role |
 | Sprint review | **Partial** | `crew sprint close` exists; the increment is a list of merged cards |
-| Retrospective | **Partial** | Recorded at sprint close as a `retro` issue on the crew repository, each defect filed where the thing it found lives (#50). The escalation ledger is still all that feeds it |
-| Standup | **Absent** | The Scrum Master is allowed `write_standup` and no function behind it exists (#79) |
+| Retrospective | **Works** | Recorded at sprint close as a `retro` issue on the crew repository, each defect filed where the thing it found lives (#50). Reads the board, the escalation ledger and the sprint's standups (#79) |
+| Standup | **Works** | Every `crew tick` ends with one, written mechanically from what the tick did, as a comment on the sprint's `standup` issue. The retro reads them (#79) |
 | Estimation → velocity | **Partial** | Points are set and capacity is fixed at 20. Velocity is never measured, so capacity never learns |
 | Backlog refinement as a ceremony | **Partial** | Happens continuously in the tick; no dedicated pass over stale cards |
 | Burndown / flow metrics | **Partial** | `crew capability` measures time in each column, what was exercised, rework, and interventions counted from the board's history (#42, #89). No burndown |

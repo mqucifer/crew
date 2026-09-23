@@ -146,6 +146,46 @@ def tick(
         result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
 
     _render_tick(result)
+    _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)
+
+
+def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
+    """Every tick ends with a standup (#79), recorded on the sprint's issue.
+
+    A standup that cannot be recorded is reported and does not fail the tick:
+    the work the tick did has already happened.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from crew_org.flows.standup import (  # noqa: PLC0415
+        aging_blocked,
+        record_standup,
+        waiting_on_a_person,
+        write_standup,
+    )
+    from crew_org.tools.github_project import within  # noqa: PLC0415
+
+    now = datetime.now(UTC)
+    try:
+        cards = within(crew.board.cards(), crew.repos)
+        standup = write_standup(
+            result,
+            sprint=crew.sprint,
+            at=now,
+            waiting=waiting_on_a_person(cards),
+            aging=aging_blocked(cards, crew.rules, VAR / "events", now),
+        )
+        number, commented = record_standup(
+            crew.issues, crew.sink, standup, sprint=crew.sprint, crew_repo=crew_repo
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]Standup not recorded:[/] {escape(str(exc))}")
+        return
+    url = f"https://github.com/{owner}/{crew_repo}/issues/{number}"
+    if commented:
+        console.print(f"[dim]Standup:[/] {url}")
+    else:
+        console.print(f"[dim]Standup: nothing moved, as the last one said — {url}[/]")
 
 
 def _render_tick(result) -> None:

@@ -52,6 +52,7 @@ class EventKind(StrEnum):
 
     # The retro, recorded as an issue, and each defect it filed (#50).
     RETRO_RECORDED = "retro.recorded"
+    STANDUP_WRITTEN = "standup.written"
     DEFECT_FILED = "defect.filed"
 
     ESCALATION_DECIDED = "escalation.decided"
@@ -108,10 +109,9 @@ class EventSink:
     def replay(self) -> list[CrewEvent]:
         """Read back this sink's own log.
 
-        The docstring used to say "used by the standup and by tests". There is
-        no standup: the Scrum Master holds `write_standup` and no flow calls
-        it. Saying so here was the only record that it was meant to exist.
-        `replay_dir` is what reads history across commands.
+        The docstring once said "used by the standup and by tests" when there
+        was no standup. There is one now (#79), and it reads the tick's result,
+        not this log. `replay_dir` is what reads history across commands.
         """
         if self.path is None or not self.path.exists():
             return []

@@ -76,6 +76,7 @@ def record_retro(
     sprint: str,
     crew_repo: str,
     delivery_repos: list[str],
+    standup: int | None = None,
 ) -> RetroRecord:
     """File each defect where it belongs, then the retro issue naming them all."""
     record = RetroRecord()
@@ -113,7 +114,7 @@ def record_retro(
     issue = issues.create(
         crew_repo,
         f"Retro: {sprint}",
-        signed(_retro_body(retro, sprint, lines), ROLE),
+        signed(_retro_body(retro, sprint, lines, standup), ROLE),
         labels=[RETRO_LABEL],
     )
     record.issue = issue["number"]
@@ -153,11 +154,12 @@ def _defect_body(defect: ProcessDefect, sprint: str, note: str) -> str:
     return "\n".join(parts)
 
 
-def _retro_body(retro: Retro, sprint: str, lines: list[str]) -> str:
+def _retro_body(retro: Retro, sprint: str, lines: list[str], standup: int | None) -> str:
+    read = f" It read the sprint's standups, #{standup}." if standup else ""
     return "\n".join(
         [
             marker(sprint),
-            f"The retro for **{sprint}**, written at sprint close.",
+            f"The retro for **{sprint}**, written at sprint close.{read}",
             "",
             retro.summary,
             "",
