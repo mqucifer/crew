@@ -272,3 +272,18 @@ def test_the_page_arrives_with_the_state_so_it_renders_before_polling(page):
     html = httpx.get(url).text
     assert "Nothing here can close the script: <\\/script><b>" in html
     assert html.count("</script>") == 1
+
+
+def test_the_page_shows_proposals_apart_from_the_record(page):
+    """#148 criterion 4."""
+    session, base, _ = page
+    session.show(
+        raw={"intent": {"scope": {"purpose": "Metrics"}}},
+        asking=[],
+        proposed={"intent": {"done": {"bar": "CI is green."}}},
+    )
+    now = state(base, session)
+    assert "bar" not in now["record"]
+    assert "bar: CI is green." in now["proposed"]
+    assert "the bar for done" not in now["missing"]
+    assert "what must be true for a change to count as done" in now["missing"]

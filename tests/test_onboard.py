@@ -36,9 +36,10 @@ from crew_org.flows.onboard import (
     release_line,
     takeaway,
     terminal_ask,
+    unanswered,
 )
 from crew_org.git_ops import ProtectedBranchError
-from crew_org.project import RECORD_PATH, gaps, load_raw, parse, render, validate
+from crew_org.project import RECORD_PATH, gaps, load_raw, lookup, parse, render, validate
 
 PURPOSE = ("intent", "scope", "purpose")
 DEPLOYS = ("intent", "release", "deploys")
@@ -106,6 +107,7 @@ def test_a_project_with_content_is_described_with_its_ci_and_protection(tmp_path
 
 def test_the_product_owner_proposes_when_there_is_content():
     prompt = turn_description(
+        proposed="",
         repository="### README.md\n\nA tool.",
         intent="",
         draft="",
@@ -143,6 +145,7 @@ def test_a_repository_with_no_commits_is_read_as_empty():
 
 def test_the_product_owner_asks_when_there_is_nothing_to_read():
     prompt = turn_description(
+        proposed="",
         repository="",
         intent="",
         draft="(nothing yet)",
@@ -434,7 +437,13 @@ def test_the_product_owner_is_shown_the_projects_goals_first():
     assert "Past sprints, not only this one." in intent
 
     prompt = turn_description(
-        repository="code", intent=intent, draft="", missing={}, problems=[], conversation=""
+        proposed="",
+        repository="code",
+        intent=intent,
+        draft="",
+        missing={},
+        problems=[],
+        conversation="",
     )
     assert "## What the project has been asked for" in prompt and "Past sprints" in prompt
 
@@ -677,3 +686,70 @@ def test_the_takeaway_carries_the_architects_section_untouched(tmp_path: Path):
     text = takeaway(raw, {}, repo="r", path=tmp_path / "r.yaml")
     assert load_raw(text)["design"] == {"checks": ["uv run pytest -q"], "language": "Python"}
     assert "# guidelines: []" in text
+
+
+# --- #148: a proposal is not an answer ------------------------------------------------
+
+
+PROPOSED_BAR = "A change is done when its criteria are met and CI is green."
+
+
+def proposing(**more) -> Turn:
+    return Turn(
+        answers=answers(),
+        proposals=answers(done=DoneAnswers(bar=PROPOSED_BAR)),
+        say="I propose a bar, pending your confirmation.",
+        questions=[Question(about="intent.done.bar", question="Is that the bar?")],
+        **more,
+    )
+
+
+PARTIAL = {"intent": {"scope": {"purpose": "Metrics"}, "release": {"deploys": False}}}
+
+
+def test_a_proposal_does_not_settle_a_required_answer():
+    """Criterion 1: the resumed sprint-metrics interview, as it went wrong."""
+    ended = interview(
+        PARTIAL, repository="code", turn=Script(proposing()), ask=Sponsor("later"), tell=told()[1]
+    )
+
+    assert lookup(ended.raw, BAR) is None
+    assert BAR in gaps(ended.raw)
+    assert ended.proposed == {"intent": {"done": {"bar": PROPOSED_BAR}}}
+
+
+def test_a_confirmed_proposal_becomes_an_answer_and_is_spent():
+    """Criterion 2."""
+    po = Script(
+        proposing(),
+        Turn(answers=answers(done=DoneAnswers(bar=PROPOSED_BAR)), say="Recorded."),
+    )
+    sponsor = Sponsor("yes, that's the bar", "yes")
+
+    ended = interview(PARTIAL, repository="code", turn=po, ask=sponsor, tell=told()[1])
+
+    assert "Your proposals, not yet confirmed" not in turn_description(
+        repository="", intent="", draft="", proposed="", missing={}, problems=[], conversation=""
+    )
+    assert po.shown[1]["proposed"].startswith("intent:")
+    assert ended.settled and ended.raw["intent"]["done"]["bar"] == PROPOSED_BAR
+    assert ended.proposed == {}
+
+
+def test_a_takeaway_shows_a_proposal_commented_out_beside_its_field(tmp_path: Path):
+    """Criterion 3."""
+    ended = interview(
+        PARTIAL, repository="code", turn=Script(proposing()), ask=Sponsor("later"), tell=told()[1]
+    )
+    text = takeaway(
+        ended.raw, ended.questions, repo="r", path=tmp_path / "r.yaml", proposed=ended.proposed
+    )
+
+    assert f"    # Proposed, not confirmed: {PROPOSED_BAR}" in text
+    assert BAR in gaps(load_raw(text)), "resuming must still ask for it"
+
+
+def test_a_proposal_for_something_already_answered_is_dropped():
+    raw = {"intent": {"done": {"bar": "Mine."}}}
+    proposed = {"intent": {"done": {"bar": "Theirs.", "also": ["docs"]}, "priority": 1}}
+    assert unanswered(proposed, raw) == {"intent": {"done": {"also": ["docs"]}, "priority": 1}}

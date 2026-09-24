@@ -59,6 +59,7 @@ class Session:
         self._messages: list[dict[str, str]] = []
         self._asking: list[str] = []
         self._raw: dict[str, Any] = {}
+        self._proposed: dict[str, Any] = {}
         self._prompt: str | None = None
         self._reply: str | None = None
         self._thinking = False
@@ -72,9 +73,12 @@ class Session:
         with self._lock:
             self._messages.append({"who": "Product Owner", "text": text})
 
-    def show(self, *, raw: dict[str, Any], asking: list[str]) -> None:
+    def show(
+        self, *, raw: dict[str, Any], asking: list[str], proposed: dict[str, Any] | None = None
+    ) -> None:
         with self._lock:
             self._raw, self._asking = raw, list(asking)
+            self._proposed = proposed or {}
 
     def thinking(self, on: bool) -> None:
         with self._lock:
@@ -134,6 +138,7 @@ class Session:
                 "stage": {ANSWER: "answer", CONFIRM: "confirm"}.get(self._prompt or ""),
                 "thinking": self._thinking,
                 "record": record,
+                "proposed": _draft(self._proposed),
                 "missing": list(gaps(self._raw).values()),
                 "outcome": self._outcome,
             }

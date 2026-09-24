@@ -71,10 +71,20 @@ class Question(BaseModel):
 class Turn(BaseModel):
     answers: Answers = Field(
         description=(
-            "What this turn settled: what the Sponsor said or confirmed, written clearly "
-            "enough for another role to act on, or what the project plainly shows. Leave "
-            "everything else null."
+            "Only what the Sponsor has said or confirmed in the conversation, written "
+            "clearly enough for another role to act on. Leave everything else null."
         )
+    )
+    # Apart from `answers` on purpose (#148): with one field for both, a proposal
+    # had nowhere to go but the record, and a required answer the Sponsor never
+    # gave counted as settled.
+    proposals: Answers = Field(
+        default_factory=Answers,
+        description=(
+            "What you propose from the project or the conversation, for the Sponsor to "
+            "confirm. It becomes an answer only once they have, and then it goes in "
+            "`answers`."
+        ),
     )
     say: str = Field(
         description=(
@@ -103,6 +113,7 @@ def interview_turn(
     repository: str,
     intent: str,
     draft: str,
+    proposed: str,
     missing: dict[str, str],
     problems: list[str],
     conversation: str,
@@ -115,6 +126,7 @@ def interview_turn(
             repository=repository,
             intent=intent,
             draft=draft,
+            proposed=proposed,
             missing=missing,
             problems=problems,
             conversation=conversation,
@@ -132,6 +144,7 @@ def turn_description(
     repository: str,
     intent: str,
     draft: str,
+    proposed: str,
     missing: dict[str, str],
     problems: list[str],
     conversation: str,
@@ -142,7 +155,8 @@ def turn_description(
             "## The project as it stands\n\n"
             f"{repository}\n\n"
             "The project has content. Read it and **propose** answers from what it shows, "
-            "saying what each proposal is based on, for the Sponsor to confirm or correct.\n\n"
+            "in `proposals`, saying what each is based on, for the Sponsor to confirm or "
+            "correct.\n\n"
         )
     else:
         seen = (
@@ -176,7 +190,12 @@ def turn_description(
     return (
         seen
         + asked
-        + f"## The record so far\n\n```yaml\n{draft}\n```\n\n"
+        + f"## The record so far: the Sponsor's answers\n\n```yaml\n{draft}\n```\n\n"
+        + (
+            f"## Your proposals, not yet confirmed\n\n```yaml\n{proposed}\n```\n\n"
+            if proposed
+            else ""
+        )
         + still
         + wrong
         + f"## The conversation\n\n{conversation or '(it has not started)'}\n\n"

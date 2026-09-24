@@ -101,6 +101,9 @@ class Interview:
     interrupted: str | None = None
     # Everything said, in order, by the Product Owner and the Sponsor.
     transcript: list[str] = field(default_factory=list)
+    # What the Product Owner proposed and the Sponsor has not confirmed (#148).
+    # Never part of `raw`: a proposal is a suggestion for a take-away file.
+    proposed: dict[str, Any] = field(default_factory=dict)
 
 
 Turn = Callable[..., Any]
@@ -152,11 +155,18 @@ def interview(
         return wanted, ([] if wanted else problems(raw))
 
     def stop(**how: Any) -> Interview:
-        return Interview(raw, _questions(gaps(raw), questions), transcript=transcript, **how)
+        return Interview(
+            raw,
+            _questions(gaps(raw), questions),
+            transcript=transcript,
+            proposed=proposed,
+            **how,
+        )
 
+    proposed: dict[str, Any] = {}
     wanted, wrong = unsettled()
     needs_turn = bool(wanted or wrong)
-    show(raw=raw, asking=asking)
+    show(raw=raw, asking=asking, proposed=proposed)
     while True:
         if needs_turn:
             try:
@@ -166,6 +176,9 @@ def interview(
                     draft=yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
                     if raw
                     else "(nothing yet)",
+                    proposed=yaml.safe_dump(proposed, sort_keys=False, allow_unicode=True)
+                    if proposed
+                    else "",
                     missing={key(p): words for p, words in wanted.items()},
                     problems=wrong,
                     conversation="\n\n".join(transcript),
@@ -175,6 +188,12 @@ def interview(
                     interrupted="stopped" if isinstance(exc, KeyboardInterrupt) else str(exc)
                 )
             raw = merge(raw, {"intent": result.answers.model_dump(exclude_none=True)})
+            # Only answers reach the record. A proposal stays a proposal until the
+            # Sponsor confirms it and the Product Owner records it as an answer.
+            proposed = unanswered(
+                merge(proposed, {"intent": result.proposals.model_dump(exclude_none=True)}),
+                raw,
+            )
             wanted, wrong = unsettled()
             by_key = {q.about: q.question for q in result.questions}
             questions = {p: by_key.get(key(p)) or QUESTIONS[p] for p in wanted}
@@ -200,7 +219,7 @@ def interview(
                 message += "\n\n" + "\n".join(f"- {q}" for q in asking)
             tell(message)
             said("Product Owner", message)
-            show(raw=raw, asking=asking)
+            show(raw=raw, asking=asking, proposed=proposed)
 
         if wanted or wrong or asking or conflicts:
             reply = ask(ANSWER)
@@ -220,7 +239,7 @@ def interview(
                     needs_turn = False
                     continue
                 asking, needs_turn = [], False
-                show(raw=raw, asking=asking)
+                show(raw=raw, asking=asking, proposed=proposed)
                 continue
             needs_turn = True
             continue
@@ -233,7 +252,7 @@ def interview(
         if reply.strip().lower() in LATER:
             return stop()
         if reply.strip().lower() in YES:
-            return Interview(raw, settled=True, transcript=transcript)
+            return Interview(raw, settled=True, transcript=transcript, proposed=proposed)
         needs_turn = True
 
 
@@ -241,7 +260,28 @@ def _questions(wanted: dict[Path_, str], asked: dict[Path_, str]) -> dict[Path_,
     return {p: asked.get(p) or QUESTIONS[p] for p in wanted}
 
 
-def takeaway(raw: dict[str, Any], questions: dict[Path_, str], *, repo: str, path: Path) -> str:
+def unanswered(proposed: dict[str, Any], raw: dict[str, Any], at: Path_ = ()) -> dict[str, Any]:
+    """The proposals the record does not answer yet. An answered one is spent."""
+    out: dict[str, Any] = {}
+    for name, value in proposed.items():
+        where = (*at, name)
+        if isinstance(value, dict):
+            rest = unanswered(value, raw, where)
+            if rest:
+                out[name] = rest
+        elif lookup(raw, where) in (None, "", []) and value not in (None, "", []):
+            out[name] = value
+    return out
+
+
+def takeaway(
+    raw: dict[str, Any],
+    questions: dict[Path_, str],
+    *,
+    repo: str,
+    path: Path,
+    proposed: dict[str, Any] | None = None,
+) -> str:
     """The answers so far as a file to finish in any editor.
 
     Every answer given is written as YAML. Every required one still missing is
@@ -270,6 +310,14 @@ def takeaway(raw: dict[str, Any], questions: dict[Path_, str], *, repo: str, pat
                 lines.append(f"    # Required. {questions.get(where) or QUESTIONS[where]}")
             else:
                 lines.append(f"    # Optional. {info.description or name.replace('_', ' ')}")
+            suggestion = lookup(proposed or {}, where)
+            if suggestion is not None:
+                # Commented out, like the field: a proposal is only an answer once
+                # the Sponsor gives it (#148).
+                shown = yaml.safe_dump(suggestion, default_flow_style=True, allow_unicode=True)
+                lines.append(
+                    f"    # Proposed, not confirmed: {shown.strip().removesuffix('...').strip()}"
+                )
             placeholder = "[]" if "list" in str(info.annotation) else ""
             lines.append(f"    # {name}: {placeholder}".rstrip())
     guidelines = lookup(raw, ("intent", "guidelines"))
