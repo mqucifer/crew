@@ -509,3 +509,51 @@ of tagged cards says what someone tagged, not what the crew can do — which
 | Retrospective | The crew learns from a sprint it has finished |
 | Self-diagnosis | The crew finds its own defects without a person reading the code |
 | Audit trail | What happened, who did it, and why — legible without reading the code |
+
+---
+
+## 19. Engineering guidelines
+
+The Sponsor's standing rules for every project the crew builds (crew#142). A
+project's Architect designs within them, and a project's record can add to them
+for that project. **A project can never relax one.** Where a rule is already
+enforced mechanically, the enforcement is named, and the enforcement wins over
+the wording here.
+
+1. **Generated code runs sandboxed.** §14 applies to every project. A project's
+   design may add to the sandbox, such as a service or a tool, but never bypass it.
+   Dependency resolution is the only step with network access.
+   *Enforced:* `tools/sandbox.py`. No container means the check fails, never a host fallback.
+
+2. **No secrets in code, config, tests or logs.** Credentials come from the
+   environment, get the narrowest scope that works, and never reach code a
+   model wrote.
+   *Enforced:* the sandbox passes the container only variables it names, so no
+   credential reaches generated code (§14). Git credentials are passed per
+   command, never written to `.git/config` (`git_ops`). The crew's own tokens are
+   checked not to be admin (`crew auth`).
+
+3. **Dependencies are deliberate.** Locked with a lockfile, added only when a
+   story needs them, and the standard library and existing dependencies come first.
+   Every new dependency is named in its pull request, with why.
+
+4. **Untrusted input is validated at the boundary.** Nothing from a file, the
+   network or a person reaches `eval`, `exec`, a shell (`shell=True`),
+   unpickling or a query without being checked or parameterised.
+
+5. **Checks are never weakened to make a change pass.** CI, lint and test
+   configuration may change, but never so that a §7 check stops running or
+   stops failing. Deleting a test to make the suite pass is the same thing.
+   *Enforced:* merged definitions and their tests can't disappear silently
+   (§15). The same guard for workflow files is crew#140.
+
+6. **Failure is loud.** No silent fallback. A missing tool, sandbox or credential
+   stops the work and names what is missing; it doesn't degrade into
+   something that looks like it worked.
+
+7. **Every project is reproducible.** A build from a clean checkout, a lockfile,
+   and CI running the §7 checks on every pull request.
+   *Enforced:* branch protection's required checks (§8). Nothing merges without them.
+
+Rules 3 and 4 are judgement, not yet mechanism. The Code Reviewer checks every
+diff against them, and a finding cites the rule by number.
