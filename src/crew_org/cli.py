@@ -1245,6 +1245,8 @@ def sprint_close(
                 console.print(f"  filed {defect_repo}#{number}")
             for subject, why in record.failed:
                 console.print(f"  [red]not filed[/] {subject} — {why}")
+            for subject, number in record.explained:
+                console.print(f"  [dim]explained by {crew_repo}#{number}, not filed:[/] {subject}")
 
     if result.complete:
         console.print("\n[green]Sprint complete.[/]")
