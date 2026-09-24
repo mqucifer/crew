@@ -287,13 +287,11 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
 
     try:
         from crewai.events import crewai_event_bus  # noqa: PLC0415
-        from crewai.events.base_events import BaseEvent  # noqa: PLC0415
     except Exception:  # noqa: BLE001
         sink.note(EventKind.NOTE, "CrewAI event bus unavailable; live view uses crew events only.")
         return
 
-    @crewai_event_bus.on(BaseEvent)
-    def _forward(_source: Any, event: Any) -> None:  # pragma: no cover - needs a live crew
+    def _forward(_source: Any, event: Any) -> None:
         kind = _BRIDGE.get(type(event).__name__)
         if kind is None:
             return
@@ -325,4 +323,52 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
                 )
             )
 
+    # One registration per concrete class. The bus dispatches on the event's
+    # exact type — `_sync_handlers.get(type(event))`, no walk up the class
+    # hierarchy — so the single handler this used to register on `BaseEvent`
+    # was never called for any real event, and no tick ever recorded a model
+    # call (#117).
+    classes = _bridged_classes()
+    for cls in classes:
+        crewai_event_bus.on(cls)(_forward)
+    missing = sorted(set(_BRIDGE) - {cls.__name__ for cls in classes})
+    if missing:
+        sink.note(EventKind.NOTE, f"CrewAI no longer has {', '.join(missing)}; not bridged.")
+
     _INSTALLED = True
+
+
+def _bridged_classes() -> list[type]:
+    """The CrewAI event classes `_BRIDGE` names, found wherever CrewAI defines them."""
+    import importlib  # noqa: PLC0415
+    import pkgutil  # noqa: PLC0415
+
+    import crewai.events.types as types  # noqa: PLC0415
+
+    found: dict[str, type] = {}
+    for module in pkgutil.walk_packages(types.__path__, types.__name__ + "."):
+        try:
+            loaded = importlib.import_module(module.name)
+        except Exception:  # noqa: BLE001, S112
+            continue
+        for name in _BRIDGE:
+            cls = getattr(loaded, name, None)
+            if isinstance(cls, type) and name not in found:
+                found[name] = cls
+    return list(found.values())
+
+
+def flush_bridge(timeout: float = 30.0) -> None:
+    """Wait for CrewAI's bus to deliver what it has queued.
+
+    Its handlers run on a thread pool, so the last model call of a tick can
+    still be in flight when the tick returns. Best effort, as the bridge is.
+    """
+    if not _INSTALLED:
+        return
+    try:
+        from crewai.events import crewai_event_bus  # noqa: PLC0415
+
+        crewai_event_bus.flush(timeout=timeout)
+    except Exception:  # noqa: BLE001, S110
+        pass
