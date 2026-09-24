@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from crew_org.crews.retro_crew import ProcessDefect, Retro
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.flows.artifacts import signed
+from crew_org.flows.artifacts import link_references, signed
 from crew_org.tools.github_issues import IssueClient
 
 ROLE = "Scrum Master"
@@ -88,10 +88,17 @@ def record_retro(
     lines: list[str] = []
     for defect, (repo, note) in zip(retro.defects, routed, strict=True):
         try:
+            body = link_references(
+                _defect_body(defect, sprint, note),
+                owner=issues.owner,
+                home=repo,
+                delivery=delivery_repos,
+                known=[crew_repo],
+            )
             issue = issues.create(
                 repo,
                 f"{defect.subject}: {defect.problem}"[:120],
-                signed(_defect_body(defect, sprint, note), ROLE),
+                signed(body, ROLE),
                 labels=[FINDING_LABEL],
             )
         except Exception as exc:  # noqa: BLE001
@@ -114,7 +121,15 @@ def record_retro(
     issue = issues.create(
         crew_repo,
         f"Retro: {sprint}",
-        signed(_retro_body(retro, sprint, lines, standup), ROLE),
+        signed(
+            link_references(
+                _retro_body(retro, sprint, lines, standup),
+                owner=issues.owner,
+                home=crew_repo,
+                delivery=delivery_repos,
+            ),
+            ROLE,
+        ),
         labels=[RETRO_LABEL],
     )
     record.issue = issue["number"]

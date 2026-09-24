@@ -78,3 +78,46 @@ def test_changing_no_labels_says_nothing():
 
     assert issues.added == [] and issues.removed == []
     assert seen == []
+
+
+# --- references link to the card they name (#118) -----------------------------
+
+from crew_org.flows.artifacts import link_references  # noqa: E402
+
+CREW, SM = "crew", "sprint-metrics"
+
+
+def linked(text, *, home=CREW, delivery=(SM,), known=()):
+    return link_references(text, owner="mqucifer", home=home, delivery=list(delivery), known=known)
+
+
+def test_a_bare_card_number_on_the_crew_repo_links_to_the_delivery_card():
+    """The first standup's "#31" linked to crew#31, a different issue."""
+    assert linked("#31 — PR #67 was behind main") == (
+        "mqucifer/sprint-metrics#31 — PR mqucifer/sprint-metrics#67 was behind main"
+    )
+
+
+def test_a_repository_qualified_name_becomes_a_link():
+    """`sprint-metrics#32` is what Card.name(qualify=True) writes, and GitHub does
+    not link it; `owner/repo#N` it does."""
+    assert linked("sprint-metrics#32") == "mqucifer/sprint-metrics#32"
+
+
+def test_in_its_own_repository_a_reference_stays_bare():
+    assert linked("#31 and sprint-metrics#32", home=SM) == "#31 and #32"
+
+
+def test_the_crews_own_issue_is_not_mistaken_for_a_delivery_card():
+    assert linked("crew#9") == "#9"
+    assert linked("see crew#9", home=SM, known=[CREW]) == "see mqucifer/crew#9"
+
+
+def test_what_is_not_a_reference_is_left_alone():
+    text = "## Sprint 4\ncolour #12abc, PR#5, mqucifer/sprint-metrics#5, issue#3"
+    assert linked(text) == text
+
+
+def test_with_several_delivery_repositories_a_bare_number_is_not_guessed():
+    assert linked("#31", delivery=(SM, "other")) == "#31"
+    assert linked("other#4", delivery=(SM, "other")) == "mqucifer/other#4"

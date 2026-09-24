@@ -26,14 +26,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from crew_org.columns import BLOCKED
+from crew_org.columns import BLOCKED, INBOX
 from crew_org.events import CrewEvent, EventKind, EventSink, blocked_since, replay_dir
-from crew_org.flows.artifacts import signed
+from crew_org.flows.artifacts import link_references, signed
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, many_repos
 
 ROLE = "Scrum Master"
+EPIC = "Epic"
 STANDUP_LABEL = "standup"
 QUIET_MARKER = "<!-- crew:standup-quiet -->"
 
@@ -60,6 +61,7 @@ def write_standup(
     at: datetime,
     waiting: list[str],
     aging: list[tuple[str, int]],
+    awaiting: list[str] = (),
 ) -> Standup:
     """The Scrum Master's standup for one tick, from the tick's own result."""
     from crew_org.flows.loop import PHASES  # noqa: PLC0415
@@ -92,6 +94,10 @@ def write_standup(
         ("Waiting", held),
         ("Waiting on a person", [f"- {name}" for name in waiting]),
         (
+            "Awaiting your approval (epics at the gate; they move when you decide)",
+            [f"- {name}" for name in awaiting],
+        ),
+        (
             "Blocked past the threshold",
             [f"- {name}: blocked {days} days" for name, days in aging],
         ),
@@ -103,13 +109,36 @@ def write_standup(
     return Standup(text="\n".join(lines), quiet=quiet)
 
 
+def _at_the_gate(card: Card) -> bool:
+    """An epic waiting for the Sponsor's approval: the one job the Sponsor has."""
+    return card.status == INBOX and card.work_type == EPIC
+
+
 def waiting_on_a_person(cards: list[Card]) -> list[str]:
-    """Open cards in Blocked or flagged `needs:human`, by name."""
+    """Open cards stuck on a person: Blocked, or flagged `needs:human`.
+
+    Not an epic at the Sponsor's gate. It carries `needs:human` too, and was
+    listed here until three standups in a row showed 17 of them "waiting on a
+    person" and the retro concluded they were stuck (#122). Waiting for a
+    decision is what the gate is for.
+    """
     qualify = many_repos(cards)
     return sorted(
         card.name(qualify=qualify)
         for card in cards
-        if card.state != "CLOSED" and (card.status == BLOCKED or card.needs_human)
+        if card.state != "CLOSED"
+        and not _at_the_gate(card)
+        and (card.status == BLOCKED or card.needs_human)
+    )
+
+
+def awaiting_approval(cards: list[Card]) -> list[str]:
+    """Epics at the Sponsor's gate, by name: a queue, not a problem."""
+    qualify = many_repos(cards)
+    return sorted(
+        card.name(qualify=qualify)
+        for card in cards
+        if card.state != "CLOSED" and _at_the_gate(card)
     )
 
 
@@ -141,6 +170,7 @@ def record_standup(
     *,
     sprint: str,
     crew_repo: str,
+    delivery_repos: list[str] | tuple[str, ...] = (),
 ) -> tuple[int, bool]:
     """Add this tick's standup to the sprint's issue. (issue, whether it commented)."""
     number = find_standup(issues, crew_repo, sprint)
@@ -169,7 +199,12 @@ def record_standup(
         if comments and QUIET_MARKER in (comments[-1].get("body") or ""):
             return number, False
 
-    body = f"{QUIET_MARKER}\n{standup.text}" if standup.quiet else standup.text
+    # Written on the crew repository about delivery cards: a bare #31 here
+    # would link to crew#31 (#118).
+    text = link_references(
+        standup.text, owner=issues.owner, home=crew_repo, delivery=list(delivery_repos)
+    )
+    body = f"{QUIET_MARKER}\n{text}" if standup.quiet else text
     issues.comment(crew_repo, number, signed(body, ROLE))
     sink.emit(
         CrewEvent(
