@@ -4,18 +4,26 @@ What the Sponsor decided a project is for, how it is released, and what
 "done" means there, in one file the project owns. Every phase reads the same
 answers instead of inferring them from the code.
 
-Two sections with two owners. `intent` is the Sponsor's, written through the
-`crew onboard` interview (#130). `learned` is the crew's, proposed by pull
-request with evidence and a date (#112); it is empty until then, and exists now
-so adding to it never means migrating the file.
+Three sections with three owners (#143):
 
-Required, decided on #111 on 2026-09-24: purpose and scope, deployment and
-release, definition of done. Build needs and priority are optional.
+- `intent` is the Sponsor's, written through the `crew onboard` interview
+  (#130): purpose and scope, what a release is, the bar for done in words,
+  the project's own guidelines on top of the crew-wide ones (constitution §19),
+  and what agents must not touch.
+- `design` is the project's Architect's, proposed by pull request (#144): the
+  language, build and sandbox needs, the commands that enforce done, and how a
+  release happens. The Sponsor sets the rules; the Architect picks the tools.
+- `learned` is the crew's, proposed by pull request with evidence and a date
+  (#112).
+
+Required, decided on #111 and revised on #143: purpose, whether it deploys,
+and the definition of done in words. Everything in `design` is optional here,
+because a project can be onboarded before it has an Architect's answer, or
+any code at all.
 
 Loading a record that is missing required answers fails with every missing
-answer named in words, all at once. The interview asks about exactly those, and
-a person fixing the file by hand is told everything at once, not one validation
-error per attempt.
+answer named in words, all at once. An unknown field, or a file in an older
+format, is refused by name rather than read with parts of it silently dropped.
 """
 
 from __future__ import annotations
@@ -24,13 +32,20 @@ from datetime import date
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 RECORD_PATH = ".crew/project.yaml"
-FORMAT_VERSION = 1
+# 2 split the Architect's `design` out of the Sponsor's `intent` (#143).
+FORMAT_VERSION = 2
 
 
-class Scope(BaseModel):
+class Section(BaseModel):
+    # A field this crew does not know is a typo or a newer format, and either
+    # way reading past it would drop an answer without a word.
+    model_config = ConfigDict(extra="forbid")
+
+
+class Scope(Section):
     """What the project is for, and where its edges are."""
 
     purpose: str = Field(description="What the project is for, and for whom, in a sentence or two")
@@ -40,12 +55,11 @@ class Scope(BaseModel):
     )
 
 
-class Release(BaseModel):
-    """How the project reaches the people it is for. Answers #90 per project."""
+class Release(Section):
+    """What counts as the project reaching the people it is for. Answers #90 per project."""
 
     deploys: bool = Field(description="Whether anything is deployed, or the merge is the end")
     where: str | None = Field(default=None, description="Where it is deployed, if it is")
-    how: str | None = Field(default=None, description="How a release happens, if it deploys")
 
     @property
     def release_is(self) -> str:
@@ -53,12 +67,10 @@ class Release(BaseModel):
         return "a deployment" if self.deploys else "the merge"
 
 
-class Done(BaseModel):
-    """What 'done' means in this project, beyond the crew's own definition."""
+class Done(Section):
+    """The Sponsor's bar for 'done' in this project. The commands enforcing it are design."""
 
-    checks: list[str] = Field(
-        description="Commands that must pass for a change to be done, e.g. its test suite"
-    )
+    bar: str = Field(description="What must be true for a change to count as done, in words")
     also: list[str] = Field(
         default_factory=list, description="Anything else done requires here, in words"
     )
@@ -67,25 +79,35 @@ class Done(BaseModel):
     )
 
 
-class Build(BaseModel):
-    """Optional: what building and testing the project needs."""
-
-    language: str | None = None
-    dependencies: str | None = None
-    sandbox: str | None = Field(default=None, description="Anything the sandbox must provide")
-
-
-class Intent(BaseModel):
+class Intent(Section):
     """The Sponsor's answers."""
 
     scope: Scope
     release: Release
     done: Done
-    build: Build | None = None
+    guidelines: list[str] = Field(
+        default_factory=list,
+        description=(
+            "This project's own rules, on top of the crew-wide ones (constitution §19). "
+            "They can add to those, never relax one"
+        ),
+    )
     priority: int | None = Field(default=None, description="Against other projects; 1 is first")
 
 
-class Learned(BaseModel):
+class Design(Section):
+    """The Architect's choices for this project (#144). Proposed by pull request."""
+
+    language: str | None = None
+    dependencies: str | None = None
+    sandbox: str | None = Field(default=None, description="Anything the sandbox must provide")
+    checks: list[str] = Field(
+        default_factory=list, description="The commands that enforce the definition of done"
+    )
+    release_how: str | None = Field(default=None, description="How a release happens")
+
+
+class Learned(Section):
     """One thing the crew found out about this project (#112). Proposed by PR."""
 
     fact: str
@@ -93,14 +115,28 @@ class Learned(BaseModel):
     found: date
 
 
-class ProjectRecord(BaseModel):
+class ProjectRecord(Section):
     version: int = FORMAT_VERSION
     intent: Intent
+    design: Design | None = None
     learned: list[Learned] = Field(default_factory=list)
 
     @property
     def release_is(self) -> str:
         return self.intent.release.release_is
+
+    @property
+    def checks(self) -> list[str]:
+        """The commands a change must pass here, from the Architect's design.
+
+        Raises rather than returning nothing: a phase that ran no checks because
+        none were defined would report a change as done that nothing verified.
+        """
+        if self.design is None or not self.design.checks:
+            raise ProjectRecordError(
+                ["no checks are defined: the record has no design section with checks yet (#144)"]
+            )
+        return self.design.checks
 
 
 class ProjectRecordError(ValueError):
@@ -116,7 +152,7 @@ class ProjectRecordError(ValueError):
 REQUIRED: dict[tuple[str, ...], str] = {
     ("intent", "scope", "purpose"): "what the project is for (purpose)",
     ("intent", "release", "deploys"): "whether it deploys, or the merge is the release",
-    ("intent", "done", "checks"): "the checks a change must pass to be done",
+    ("intent", "done", "bar"): "what must be true for a change to count as done",
 }
 
 
@@ -162,6 +198,16 @@ def load_raw(text: str) -> dict[str, Any]:
         raise ProjectRecordError([f"{RECORD_PATH} is not valid YAML: {exc}"]) from None
     if not isinstance(raw, dict):
         raise ProjectRecordError([f"{RECORD_PATH} must be a mapping, not {type(raw).__name__}"])
+    version = raw.get("version", FORMAT_VERSION)
+    if version != FORMAT_VERSION:
+        raise ProjectRecordError(
+            [
+                f"{RECORD_PATH} is format version {version}; this crew reads version "
+                f"{FORMAT_VERSION}. Version 1 kept the Architect's choices (build, check "
+                "commands, how a release happens) in the Sponsor's intent; they now live "
+                "in `design` (#143)."
+            ]
+        )
     return raw
 
 
@@ -201,6 +247,7 @@ def render(record: ProjectRecord) -> str:
     data = _answered(record.model_dump(mode="json", exclude_none=True))
     return (
         "# The project's onboarding record (#111). Intent is the Sponsor's, written\n"
-        "# through `crew onboard`; learned is proposed by the crew, by pull request.\n"
+        "# through `crew onboard`. Design is the project's Architect's, and learned\n"
+        "# is the crew's; both are proposed by pull request.\n"
         + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
     )

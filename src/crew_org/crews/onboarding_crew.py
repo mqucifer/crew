@@ -32,29 +32,33 @@ class ReleaseAnswers(BaseModel):
         None, description="True if anything is deployed; false if the merge is the release"
     )
     where: str | None = Field(None, description="Where it is deployed, if it is")
-    how: str | None = Field(None, description="How a release happens, if it deploys")
 
 
 class DoneAnswers(BaseModel):
-    checks: list[str] | None = Field(
-        None, description="Commands that must pass for a change to be done"
+    bar: str | None = Field(
+        None, description="What must be true for a change to count as done, in words"
     )
     also: list[str] | None = Field(None, description="Anything else done requires, in words")
     never_touch: list[str] | None = Field(None, description="Paths agents must not change")
 
 
-class BuildAnswers(BaseModel):
-    language: str | None = None
-    dependencies: str | None = None
-    sandbox: str | None = Field(None, description="Anything the sandbox must provide")
-
-
+# No tools here, by design (#143): the language, build, sandbox, check commands
+# and release mechanics are the project's Architect's to choose (#144). The
+# interview has nowhere to record them, so it cannot ask the Sponsor to.
 class Answers(BaseModel):
     scope: ScopeAnswers | None = None
     release: ReleaseAnswers | None = None
     done: DoneAnswers | None = None
-    build: BuildAnswers | None = None
+    guidelines: list[str] | None = Field(
+        None, description="This project's own rules, on top of the crew-wide ones"
+    )
     priority: int | None = Field(None, description="Against other projects; 1 is first")
+
+
+class Conflict(BaseModel):
+    guideline: str = Field(description="The project's guideline, as the Sponsor gave it")
+    crew_rule: str = Field(description="The crew-wide rule it would relax, by §19 number")
+    why: str = Field(description="How it would relax that rule")
 
 
 class Question(BaseModel):
@@ -83,6 +87,13 @@ class Turn(BaseModel):
         description=(
             "Every answer still missing, unclear, or at odds with the project, one "
             "question each. Empty only when there is nothing left to ask."
+        ),
+    )
+    conflicts: list[Conflict] = Field(
+        default_factory=list,
+        description=(
+            "Each of the project's guidelines that would relax a crew-wide rule. A "
+            "project can add to those rules, never relax one."
         ),
     )
 

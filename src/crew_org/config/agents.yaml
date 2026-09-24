@@ -52,6 +52,16 @@ product_owner:
       Ask about them rather than assume there are none. A proposal the Sponsor
       has not confirmed is still a proposal. When nothing is left to ask, ask
       nothing, and the Sponsor is shown the record.
+      The Sponsor decides what the project is for and the rules it works
+      within; the project's Architect chooses the tools. Never ask the Sponsor
+      to pick a language, a build or sandbox tool, the commands that enforce
+      done, or how a release is cut. Where the project shows them, you can say
+      what you see as context. Ask instead for the bar done must meet, in
+      words, and for any guidelines this project adds to the crew-wide ones
+      below. A project can add to those, never relax one: report any of its
+      guidelines that would in `conflicts`.
+    # The crew-wide guidelines, so it can tell an addition from a relaxation.
+    constitution: [1, 10, 19]
 
 business_analyst:
   role: Business Analyst

@@ -23,7 +23,6 @@ from crew_org.project import (
     RECORD_PATH,
     REQUIRED,
     WHERE,
-    Build,
     Done,
     ProjectRecord,
     ProjectRecordError,
@@ -45,8 +44,9 @@ QUESTIONS: dict[Path_, str] = {
     ("intent", "release", "deploys"): (
         "When work merges, is anything deployed, or is the merge itself the release?"
     ),
-    ("intent", "done", "checks"): (
-        "Which commands must pass for a change to count as done, e.g. its test suite?"
+    ("intent", "done", "bar"): (
+        "What must be true for a change to count as done here? In words: the tools "
+        "that check it are the Architect's to choose."
     ),
     WHERE: "Where is it deployed?",
 }
@@ -59,7 +59,7 @@ YES = frozenset({"y", "yes"})
 DONE = frozenset({"done", "/done", "/review"})
 
 # The take-away file's layout, in the record's own order.
-SECTIONS: dict[str, type] = {"scope": Scope, "release": Release, "done": Done, "build": Build}
+SECTIONS: dict[str, type] = {"scope": Scope, "release": Release, "done": Done}
 
 
 def key(path: Path_) -> str:
@@ -140,6 +140,9 @@ def interview(
     transcript: list[str] = []
     questions: dict[Path_, str] = {}
     asking: list[str] = []
+    # Project guidelines that would relax a crew-wide one (§19). They hold the
+    # interview open like a missing answer: a project can add, never relax.
+    conflicts: list[str] = []
 
     def said(who: str, text: str) -> None:
         transcript.append(f"**{who}:** {text}")
@@ -180,7 +183,15 @@ def interview(
             asking = [q.question for q in result.questions] + [
                 q for p, q in questions.items() if key(p) not in by_key
             ]
+            conflicts = [
+                f"“{c.guideline}” would relax {c.crew_rule}: {c.why}" for c in result.conflicts
+            ]
             message = result.say.strip()
+            if conflicts:
+                message += (
+                    "\n\nThese would relax a crew-wide guideline, which a project can "
+                    "add to but never relax:\n" + "\n".join(f"- {c}" for c in conflicts)
+                )
             if wrong:
                 message += "\n\nThese don't fit the record yet:\n" + "\n".join(
                     f"- {p}" for p in wrong
@@ -191,7 +202,7 @@ def interview(
             said("Product Owner", message)
             show(raw=raw, asking=asking)
 
-        if wanted or wrong or asking:
+        if wanted or wrong or asking or conflicts:
             reply = ask(ANSWER)
             if reply is None:
                 return stop()
@@ -199,8 +210,8 @@ def interview(
             if reply.strip().lower() in LATER:
                 return stop()
             if reply.strip().lower() in DONE:
-                if wanted or wrong:
-                    left = list(wanted.values()) + wrong
+                if wanted or wrong or conflicts:
+                    left = list(wanted.values()) + wrong + conflicts
                     note = "Not yet. The record can't be written without:\n" + "\n".join(
                         f"- {w}" for w in left
                     )
@@ -261,13 +272,25 @@ def takeaway(raw: dict[str, Any], questions: dict[Path_, str], *, repo: str, pat
                 lines.append(f"    # Optional. {info.description or name.replace('_', ' ')}")
             placeholder = "[]" if "list" in str(info.annotation) else ""
             lines.append(f"    # {name}: {placeholder}".rstrip())
+    guidelines = lookup(raw, ("intent", "guidelines"))
+    if guidelines:
+        lines += _indent(yaml.safe_dump({"guidelines": guidelines}, allow_unicode=True), 2)
+    else:
+        lines += [
+            "  # Optional. This project's own rules, on top of the crew-wide ones",
+            "  # (constitution §19). They can add to those, never relax one.",
+            "  # guidelines: []",
+        ]
     priority = lookup(raw, ("intent", "priority"))
     if priority is not None:
         lines.append(f"  priority: {priority}")
     else:
         lines += ["  # Optional. Against other projects; 1 is first", "  # priority:"]
-    if raw.get("learned"):
-        lines += _indent(yaml.safe_dump({"learned": raw["learned"]}, allow_unicode=True), 0)
+    # The Architect's and the crew's sections are carried through untouched:
+    # the take-away is the Sponsor's to finish, not theirs.
+    for owned in ("design", "learned"):
+        if raw.get(owned):
+            lines += _indent(yaml.safe_dump({owned: raw[owned]}, allow_unicode=True), 0)
     return "\n".join(lines) + "\n"
 
 
@@ -371,7 +394,8 @@ def release_line(record: ProjectRecord) -> str:
     if not release.deploys:
         return "the merge. Nothing is deployed."
     line = f"a deployment. Where: {release.where}"
-    return line + (f" How: {release.how}" if release.how else "")
+    how = record.design.release_how if record.design else None
+    return line + (f" How: {how}" if how else "")
 
 
 def open_record_pr(
@@ -421,7 +445,7 @@ def open_record_pr(
         "with the Sponsor through `crew onboard`.\n\n"
         f"- **Purpose:** {intent.scope.purpose}\n"
         f"- **Release:** {release_line(record)}\n"
-        f"- **Done:** {', '.join(f'`{c}`' for c in intent.done.checks)} must pass\n\n"
+        f"- **Done:** {intent.done.bar}\n\n"
         "## Verification\n\n"
         "The record was loaded by the crew's own record loader (mqucifer/crew#129) "
         "before it was written, and the Sponsor confirmed it in the interview." + conversation

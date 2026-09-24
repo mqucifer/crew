@@ -14,6 +14,7 @@ import pytest
 
 from crew_org.crews.onboarding_crew import (
     Answers,
+    Conflict,
     DoneAnswers,
     Question,
     ReleaseAnswers,
@@ -41,13 +42,13 @@ from crew_org.project import RECORD_PATH, gaps, load_raw, parse, render, validat
 
 PURPOSE = ("intent", "scope", "purpose")
 DEPLOYS = ("intent", "release", "deploys")
-CHECKS = ("intent", "done", "checks")
+BAR = ("intent", "done", "bar")
 
 COMPLETE = {
     "intent": {
         "scope": {"purpose": "Report how the crew performs"},
         "release": {"deploys": False},
-        "done": {"checks": ["pytest"]},
+        "done": {"bar": "tests pass"},
     }
 }
 
@@ -160,7 +161,7 @@ def test_the_interview_runs_until_every_required_answer_is_settled():
             answers=answers(
                 scope=ScopeAnswers(purpose="Report how the crew performs"),
                 release=ReleaseAnswers(deploys=False),
-                done=DoneAnswers(checks=["pytest"]),
+                done=DoneAnswers(bar="tests pass"),
             ),
             say="Got it.",
         ),
@@ -288,10 +289,10 @@ def test_an_unsettled_answer_is_asked_about_again_specifically():
 
     assert not ended.settled
     # The second turn is shown exactly what is still missing, and nothing settled.
-    assert set(po.shown[1]["missing"]) == {"intent.release.deploys", "intent.done.checks"}
+    assert set(po.shown[1]["missing"]) == {"intent.release.deploys", "intent.done.bar"}
     # Its own question is used where it asked one, the standing one where it did not.
     assert "Does it ship anywhere?" in said[0]
-    assert QUESTIONS[CHECKS] in said[1]
+    assert QUESTIONS[BAR] in said[1]
 
 
 def test_an_answer_settled_earlier_is_kept_when_a_turn_leaves_it_out():
@@ -300,12 +301,12 @@ def test_an_answer_settled_earlier_is_kept_when_a_turn_leaves_it_out():
         "purpose": "Report how the crew performs",
         "in_scope": ["cycle time"],
     }
-    assert merge(COMPLETE, {"intent": {"done": None}})["intent"]["done"] == {"checks": ["pytest"]}
+    assert merge(COMPLETE, {"intent": {"done": None}})["intent"]["done"] == {"bar": "tests pass"}
 
 
 def test_a_correction_at_the_confirmation_goes_back_to_the_product_owner():
     po = Script(
-        Turn(answers=answers(done=DoneAnswers(checks=["uv run pytest"])), say="Changed it."),
+        Turn(answers=answers(done=DoneAnswers(bar="tests and lint pass")), say="Changed it."),
     )
     sponsor = Sponsor("the check is uv run pytest", "yes")
     _, tell = told()
@@ -313,7 +314,7 @@ def test_a_correction_at_the_confirmation_goes_back_to_the_product_owner():
     ended = interview(COMPLETE, repository="", turn=po, ask=sponsor, tell=tell)
 
     assert ended.settled
-    assert ended.raw["intent"]["done"]["checks"] == ["uv run pytest"]
+    assert ended.raw["intent"]["done"]["bar"] == "tests and lint pass"
 
 
 # --- 5: stopping early leaves a file to finish offline ----------------------------
@@ -324,7 +325,7 @@ def test_stopping_early_leaves_a_takeaway_with_the_questions_still_open(tmp_path
         Turn(
             answers=answers(scope=ScopeAnswers(purpose="Report how the crew performs")),
             say="Noted.",
-            questions=[Question(about="intent.done.checks", question="What must pass?")],
+            questions=[Question(about="intent.done.bar", question="What must pass?")],
         )
     )
     sponsor = Sponsor("later")
@@ -341,13 +342,13 @@ def test_stopping_early_leaves_a_takeaway_with_the_questions_still_open(tmp_path
     # What was answered reads back; what was not is still missing, by name.
     raw = load_raw(text)
     assert raw["intent"]["scope"]["purpose"] == "Report how the crew performs"
-    assert set(gaps(raw)) == {DEPLOYS, CHECKS}
+    assert set(gaps(raw)) == {DEPLOYS, BAR}
 
 
 def test_ending_the_session_is_the_same_as_later():
     po = Script(Turn(answers=answers(), say="What is it for?"))
     ended = interview({}, repository="", turn=po, ask=Sponsor(None), tell=told()[1])
-    assert not ended.settled and set(ended.questions) == {PURPOSE, DEPLOYS, CHECKS}
+    assert not ended.settled and set(ended.questions) == {PURPOSE, DEPLOYS, BAR}
 
 
 def test_a_failed_turn_keeps_the_answers_so_far():
@@ -358,7 +359,7 @@ def test_a_failed_turn_keeps_the_answers_so_far():
     ended = interview(raw, repository="", turn=broken, ask=Sponsor(), tell=told()[1])
 
     assert ended.interrupted == "proxy went away"
-    assert ended.raw == raw and set(ended.questions) == {DEPLOYS, CHECKS}
+    assert ended.raw == raw and set(ended.questions) == {DEPLOYS, BAR}
 
 
 def test_a_takeaway_finished_by_hand_is_a_complete_record(tmp_path: Path):
@@ -366,7 +367,7 @@ def test_a_takeaway_finished_by_hand_is_a_complete_record(tmp_path: Path):
     finished = (
         text.replace("    # purpose:", "    purpose: A tool")
         .replace("    # deploys:", "    deploys: false")
-        .replace("    # checks: []", "    checks: [pytest]")
+        .replace("    # bar:", "    bar: tests pass")
     )
     assert parse(finished).intent.scope.purpose == "A tool"
 
@@ -378,14 +379,14 @@ def test_carrying_on_asks_only_about_what_is_still_missing():
     partial = {"intent": {"scope": {"purpose": "p"}, "release": {"deploys": False}}}
     po = Script(
         Turn(answers=answers(), say="What must pass?"),
-        Turn(answers=answers(done=DoneAnswers(checks=["pytest"])), say="Thanks."),
+        Turn(answers=answers(done=DoneAnswers(bar="tests pass")), say="Thanks."),
     )
     sponsor = Sponsor("pytest", "yes")
 
     ended = interview(partial, repository="", turn=po, ask=sponsor, tell=told()[1])
 
     assert po.shown[0]["missing"] == {
-        "intent.done.checks": "the checks a change must pass to be done"
+        "intent.done.bar": "what must be true for a change to count as done"
     }
     assert ended.settled
 
@@ -439,7 +440,7 @@ def test_the_product_owner_is_shown_the_projects_goals_first():
 
 
 def test_questions_about_a_filled_answer_keep_the_interview_going():
-    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
             answers=answers(scope=ScopeAnswers(purpose="Current-sprint metrics")),
@@ -461,12 +462,12 @@ def test_questions_about_a_filled_answer_keep_the_interview_going():
 
 
 def test_saying_it_is_fine_goes_back_to_the_product_owner():
-    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
             answers=answers(scope=ScopeAnswers(purpose="Metrics")),
             say="Is pytest enough to call a change done?",
-            questions=[Question(about="intent.done.checks", question="Is pytest enough?")],
+            questions=[Question(about="intent.done.bar", question="Is pytest enough?")],
         ),
         Turn(answers=answers(), say="Understood, leaving it as pytest."),
     )
@@ -480,7 +481,7 @@ def test_saying_it_is_fine_goes_back_to_the_product_owner():
 
 
 def test_done_goes_straight_to_the_record_past_the_product_owners_questions():
-    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
             answers=answers(scope=ScopeAnswers(purpose="Metrics")),
@@ -503,7 +504,7 @@ def test_done_cannot_skip_a_required_answer():
             answers=answers(
                 scope=ScopeAnswers(purpose="Metrics"),
                 release=ReleaseAnswers(deploys=False),
-                done=DoneAnswers(checks=["pytest"]),
+                done=DoneAnswers(bar="tests pass"),
             ),
             say="Thanks.",
         ),
@@ -523,7 +524,7 @@ def test_an_unanswered_optional_answer_is_left_out_not_written_empty():
     written = load_raw(text)
     assert "learned" not in written
     assert set(written["intent"]["scope"]) == {"purpose"}
-    assert set(written["intent"]["done"]) == {"checks"}
+    assert set(written["intent"]["done"]) == {"bar"}
     assert "[]" not in text
     assert parse(text) == validate(COMPLETE)
 
@@ -570,18 +571,23 @@ def test_an_updated_pull_request_gets_the_new_interview_as_a_comment(tmp_path: P
 
 
 @pytest.mark.parametrize(
-    "release, line",
+    "release, design, line",
     [
-        ({"deploys": False}, "the merge. Nothing is deployed."),
+        ({"deploys": False}, None, "the merge. Nothing is deployed."),
+        ({"deploys": True, "where": "A version tag"}, None, "a deployment. Where: A version tag"),
         (
-            {"deploys": True, "where": "A version tag", "how": "Tag vX.Y.Z."},
+            {"deploys": True, "where": "A version tag"},
+            {"release_how": "Tag vX.Y.Z."},
             "a deployment. Where: A version tag How: Tag vX.Y.Z.",
         ),
     ],
 )
-def test_the_release_reads_as_its_own_sentence(release, line):
-    record = validate(merge(COMPLETE, {"intent": {"release": release}}))
-    assert release_line(record) == line
+def test_the_release_reads_as_its_own_sentence(release, design, line):
+    """How a release happens is the Architect's, from the design section (#143)."""
+    raw = merge(COMPLETE, {"intent": {"release": release}})
+    if design:
+        raw["design"] = design
+    assert release_line(validate(raw)) == line
 
 
 # --- #135: the answer prompt edits like a terminal ---------------------------------
@@ -605,3 +611,69 @@ def test_the_prompt_is_given_to_input_with_its_styling_marked_invisible(monkeypa
     # readline counts only what is outside \001…\002, so the wrap point is right.
     visible = re.sub("\001.*?\002", "", prompt)
     assert visible == "\nYour answer › "
+
+
+# --- #143: the Sponsor's intent, not the Architect's tools ---------------------------
+
+
+def test_the_interview_has_nowhere_to_record_a_tool():
+    """Criterion 2, structurally: tools are the Architect's (#144), so no answer holds one."""
+    assert set(Answers.model_fields) == {"scope", "release", "done", "guidelines", "priority"}
+    assert set(DoneAnswers.model_fields) == {"bar", "also", "never_touch"}
+    assert set(ReleaseAnswers.model_fields) == {"deploys", "where"}
+    assert "Architect" in QUESTIONS[BAR]
+
+
+def test_the_product_owner_is_bound_by_the_crew_wide_guidelines():
+    from crew_org.agents import build_agent
+    from crew_org.permissions import load_agents
+
+    spec = load_agents()["product_owner"]
+    agent = build_agent("product_owner", {**spec, **spec["onboarding"]})
+    assert "## 19. Engineering guidelines" in agent.backstory
+
+
+def conflicting(**overrides) -> Turn:
+    params = dict(
+        answers=answers(guidelines=["Tests may call the real GitHub API"]),
+        say="One of these would relax a crew rule.",
+        conflicts=[
+            Conflict(
+                guideline="Tests may call the real GitHub API",
+                crew_rule="§19 rule 1",
+                why="tests run without network",
+            )
+        ],
+    )
+    params.update(overrides)
+    return Turn(**params)
+
+
+def test_a_conflict_holds_the_interview_open_and_done_cannot_skip_it():
+    """Criterion 5: flagged, naming both rules, and the record isn't offered until resolved."""
+    partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
+    po = Script(
+        conflicting(
+            answers=answers(
+                scope=ScopeAnswers(purpose="Metrics"),
+                guidelines=["Tests may call the real GitHub API"],
+            )
+        ),
+        Turn(answers=answers(guidelines=["Tests use recorded responses"]), say="Changed."),
+    )
+    sponsor = Sponsor("done", "fine, recorded responses", "yes")
+    said, tell = told()
+
+    ended = interview(partial, repository="", turn=po, ask=sponsor, tell=tell)
+
+    assert "would relax §19 rule 1" in said[0]
+    assert "can't be written without" in said[1] and "real GitHub API" in said[1]
+    assert sponsor.asked == [ANSWER, ANSWER, CONFIRM]
+    assert ended.settled and ended.raw["intent"]["guidelines"] == ["Tests use recorded responses"]
+
+
+def test_the_takeaway_carries_the_architects_section_untouched(tmp_path: Path):
+    raw = merge(COMPLETE, {"design": {"checks": ["uv run pytest -q"], "language": "Python"}})
+    text = takeaway(raw, {}, repo="r", path=tmp_path / "r.yaml")
+    assert load_raw(text)["design"] == {"checks": ["uv run pytest -q"], "language": "Python"}
+    assert "# guidelines: []" in text
