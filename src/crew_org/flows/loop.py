@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.escalation import EscalationLedger, EscalationPolicy
-from crew_org.events import EventKind, EventSink, bridge_crewai
+from crew_org.events import EventKind, EventSink, bridge_crewai, flush_bridge
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -472,4 +472,7 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         f"{'stable' if result.settled else 'stopped at the pass cap'}, "
         f"{len(result.failed)} failed",
     )
+    # The bus delivers on a thread pool; the tick's last model calls can still
+    # be in flight. Wait for them, or the log loses exactly the end of the run.
+    flush_bridge()
     return result
