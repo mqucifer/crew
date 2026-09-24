@@ -1031,13 +1031,18 @@ def onboard(
     from_file: str = typer.Option(
         None, "--from", help="A take-away file to carry on from, finished or not."
     ),
+    terminal: bool = typer.Option(
+        False, "--terminal", help="Interview in the terminal instead of a local page."
+    ),
 ) -> None:
     """Interview the Sponsor about a project and propose its record (#130).
 
     The Product Owner reads the project, if there is anything to read, and
-    proposes answers; otherwise it asks. Stop at any point with 'later' and
-    the answers so far are written to a file you can finish in any editor.
-    The finished record arrives as a pull request to the project.
+    proposes answers; otherwise it asks. The interview runs in a local page
+    (#138), with a field for each question and the record beside it, or in the
+    terminal with --terminal. Stop at any point with 'later' and the answers
+    so far are written to a file you can finish in any editor. The finished
+    record arrives as a pull request to the project.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
@@ -1092,14 +1097,37 @@ def onboard(
         with console.status("[dim]The Product Owner is thinking…[/]"):
             return interview_turn(**context)
 
-    ended = interview(
-        raw,
-        repository=project.repository,
-        intent=project.intent,
-        turn=turn,
-        ask=terminal_ask,
-        tell=tell,
-    )
+    session = server = None
+    if terminal:
+        hands = {"turn": turn, "ask": terminal_ask, "tell": tell}
+    else:
+        import webbrowser
+
+        from crew_org.flows.onboard_page import Session, serve, thinking_turn
+
+        session = Session(repo)
+        server, url = serve(session)
+        console.print(
+            f"\nThe interview is at [bold]{url}[/]\n"
+            "[dim]Answer there. Ctrl-C here ends it and keeps the answers so far.[/]"
+        )
+        webbrowser.open(url)
+        hands = {
+            "turn": thinking_turn(session, interview_turn),
+            "ask": session.ask,
+            "tell": session.tell,
+            "show": session.show,
+        }
+
+    ended = interview(raw, repository=project.repository, intent=project.intent, **hands)
+
+    def finish(kind: str, text: str, link: str = "") -> None:
+        """Tell the page how it ended, and give it a moment to say so before stopping."""
+        if session is None or server is None:
+            return
+        session.finish(kind, text, link)
+        session.wait_until_seen(timeout=10)
+        server.shutdown()
 
     # Kept however the interview ends: what was said is the evidence for the
     # record, and the only way to see why it came out as it did.
@@ -1119,6 +1147,7 @@ def onboard(
             transcript=ended.transcript,
         )
         console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
+        finish("proposed", "The record is proposed as a pull request:", url)
         return
 
     kept.parent.mkdir(parents=True, exist_ok=True)
@@ -1134,6 +1163,23 @@ def onboard(
         console.print("\n[yellow]Not finished.[/] The answers so far, and what is left, are in:")
     console.print(f"   {kept}\n   [dim]crew onboard {repo} --from {kept}[/]")
     console.print(f"[dim]transcript: {log}[/]")
+    if ended.interrupted:
+        finish(
+            "stopped",
+            f"The interview stopped: {ended.interrupted}. The answers so far are in {kept}.",
+        )
+    elif ended.settled:
+        finish(
+            "kept",
+            f"The record is finished and kept in {kept}: the repository has no commits "
+            "to propose it against yet.",
+        )
+    else:
+        finish(
+            "kept",
+            f"Not finished. The answers so far, and what is left, are in {kept}. "
+            f"Carry on with: crew onboard {repo} --from {kept}",
+        )
 
 
 def _bot_identity(token: str, identity: str):

@@ -119,6 +119,7 @@ def interview(
     ask: Ask,
     tell: Tell,
     intent: str = "",
+    show: Callable[..., None] | None = None,
 ) -> Interview:
     """Interview the Sponsor until the record is settled, or they stop.
 
@@ -131,7 +132,11 @@ def interview(
     say so, and the Product Owner hears it, or reply `done` to go straight to
     the record. `done` cannot skip a required answer. A record that is
     already complete goes straight to the Sponsor's yes.
+
+    `show`, if given, is told the record and the open questions whenever they
+    change, for a front end that shows them as more than lines of text.
     """
+    show = show or (lambda **_: None)
     transcript: list[str] = []
     questions: dict[Path_, str] = {}
     asking: list[str] = []
@@ -148,6 +153,7 @@ def interview(
 
     wanted, wrong = unsettled()
     needs_turn = bool(wanted or wrong)
+    show(raw=raw, asking=asking)
     while True:
         if needs_turn:
             try:
@@ -183,6 +189,7 @@ def interview(
                 message += "\n\n" + "\n".join(f"- {q}" for q in asking)
             tell(message)
             said("Product Owner", message)
+            show(raw=raw, asking=asking)
 
         if wanted or wrong or asking:
             reply = ask(ANSWER)
@@ -202,6 +209,7 @@ def interview(
                     needs_turn = False
                     continue
                 asking, needs_turn = [], False
+                show(raw=raw, asking=asking)
                 continue
             needs_turn = True
             continue
