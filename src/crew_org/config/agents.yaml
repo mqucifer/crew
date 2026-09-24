@@ -101,7 +101,7 @@ architect:
     never "this is hard".
   llm: crew-local
   can: [write_design, create_task, create_spike, comment]
-  constitution: [2, 9, 10, 13]  # taxonomy, escalation, audit, when design happens
+  constitution: [2, 9, 10, 13, 19]  # taxonomy, escalation, audit, when design happens, guidelines
 
 developer:
   role: Developer
@@ -126,7 +126,7 @@ developer:
   # thinking off, 55 seconds and a working implementation.
   llm: crew-code
   can: [write_code, run_tests, open_pr, update_docs, file_bug, comment]
-  constitution: [7, 8, 9, 10]   # DoD, branch/PR conventions, escalation, audit
+  constitution: [7, 8, 9, 10, 19]  # DoD, branch/PR conventions, escalation, audit, guidelines
 
 qa_engineer:
   role: QA Engineer
@@ -165,7 +165,7 @@ code_reviewer:
     You never ask "does it work" — that is QA's evidence to produce.
   llm: crew-code
   can: [review_diff, verdict_diff, file_bug, comment]
-  constitution: [3, 7, 8, 10]   # story format, DoD, conventions, audit
+  constitution: [3, 7, 8, 10, 19]  # story format, DoD, conventions, audit, guidelines
 
 scrum_master:
   role: Scrum Master
