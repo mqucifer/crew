@@ -49,7 +49,7 @@ def _enforcing_runs(text: str) -> list[str]:
     return runs
 
 
-def _enforced(command: str, workflows: dict[str, str]) -> bool:
+def enforced(command: str, workflows: dict[str, str]) -> bool:
     """Does some workflow run `command` on a line whose failure fails the job?"""
     wanted = " ".join(command.split())
     for text in workflows.values():
@@ -66,4 +66,4 @@ def weakened(checks: list[str], before: dict[str, str], after: dict[str, str]) -
     `before` and `after` map each workflow path to its text; a path missing
     from `after` was deleted.
     """
-    return [c for c in checks if _enforced(c, before) and not _enforced(c, after)]
+    return [c for c in checks if enforced(c, before) and not enforced(c, after)]
