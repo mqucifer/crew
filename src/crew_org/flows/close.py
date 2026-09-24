@@ -16,6 +16,7 @@ from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
+from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import RetroRecord, existing_retro, record_retro
 from crew_org.flows.standup import standups_for_retro
@@ -40,6 +41,8 @@ class SprintClose:
     # pull request their approval is not what is missing from.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
+    # (story, PR) behind main and brought up to date; they merge once checks pass.
+    updating: list[tuple[int, int]] = field(default_factory=list)
     # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
     # #32" for six stories in two repositories, and the retro then described
     # one card two ways. A number is not a name where two repositories are on
@@ -59,7 +62,11 @@ class SprintClose:
     @property
     def complete(self) -> bool:
         return not (
-            self.awaiting_approval or self.unapprovable or self.still_open or self.unmergeable
+            self.awaiting_approval
+            or self.unapprovable
+            or self.still_open
+            or self.unmergeable
+            or self.updating
         )
 
 
@@ -142,6 +149,21 @@ def close_sprint(
 
         if not merge:
             result.awaiting_approval.append((number, pull["number"]))
+            continue
+
+        # Behind `main` where protection requires up to date: the merge would be
+        # refused with a 405 about a status check (#116). Update it instead; it
+        # lands on the next tick, or on a second close, once checks pass.
+        detail = issues.pull(repo, pull["number"])
+        if detail.get("mergeable_state") == BEHIND:
+            try:
+                issues.update_branch(
+                    repo, pull["number"], head=(detail.get("head") or {}).get("sha")
+                )
+            except Exception as exc:  # noqa: BLE001
+                result.unmergeable.append((number, f"behind main, and could not update: {exc}"))
+                continue
+            result.updating.append((number, pull["number"]))
             continue
 
         try:

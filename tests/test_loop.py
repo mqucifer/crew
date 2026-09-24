@@ -357,3 +357,10 @@ def test_a_tick_bridges_the_model_bus_onto_its_own_log(crew, monkeypatch):
     phases(monkeypatch)
     loop.run(crew)
     assert crew.sink in events_mod.bridged_sinks()
+
+
+def test_the_tick_says_behind_main_not_a_missing_status_check(crew, monkeypatch):
+    """#116 criterion 4: the 405 read "Required status check tests is expected"."""
+    deliver_returning(monkeypatch, updating=[(31, 67)])
+    held = loop._deliver(crew).held
+    assert "#31 — PR #67 was behind main; brought up to date, merges once checks pass" in held

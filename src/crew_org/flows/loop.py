@@ -351,6 +351,10 @@ def _deliver(crew: Crew) -> PhaseOutcome:
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
+        + [
+            f"#{n} — PR #{pr} was behind main; brought up to date, merges once checks pass"
+            for n, pr in result.updating
+        ]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
         + [f"revert PR #{pr} — waiting on an approving review" for pr in reverts.awaiting_approval]

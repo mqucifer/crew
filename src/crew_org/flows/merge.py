@@ -20,13 +20,16 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
-from crew_org.tools.github_issues import IssueClient
+from crew_org.tools.github_issues import BranchUpdateConflict, IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 
 STORY_TYPE = "Story"
 
 # GitHub's word for "this branch and main have both changed the same lines".
 CONFLICTED = "dirty"
+# GitHub's word for "main has moved on since this branch was cut". Only refused
+# where branch protection requires up-to-date branches, as sprint-metrics does.
+BEHIND = "behind"
 
 # GitHub's word for "branch protection still wants an approving review". Read
 # off `reviewDecision`, which is the verdict protection actually applies —
@@ -44,6 +47,9 @@ class MergeResult:
     # gate no identity the crew holds can satisfy, and waiting will not fix it.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
+    # (card, PR) brought up to date from main this pass; they merge on the next
+    # once their checks pass on the new head.
+    updating: list[tuple[int, int]] = field(default_factory=list)
 
 
 def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
@@ -148,42 +154,31 @@ def merge_approved(
             continue
 
         if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:
-            # Two changes disagree. No role made that happen, so the card keeps
-            # the role whose work is stuck.
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=BLOCKED,
-                by=None,
-                card=number,
-                frm=MERGING,
-                summary=f"merge conflict on PR #{pull['number']}",
-                kind=EventKind.CARD_BLOCKED,
-            )
-            # No role decided this. Two changes disagree, so nothing is
-            # claimed — the same ruling #22 made for the card itself.
-            artifacts.label(
-                issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"]
-            )
-            artifacts.comment(
-                issues,
-                sink,
-                repo=repo,
-                number=number,
-                body=f"**Blocked — merge conflict.** PR #{pull['number']} and `main` have both "
-                "changed the same code, so landing it needs a decision the crew should "
-                "not make on its own.\n\n"
-                "Resolve the conflict on the branch, or close the pull request and let "
-                "the story be re-delivered from current `main`.",
-                by=None,
-            )
+            _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
             result.conflicted.append((number, pull["number"]))
+            continue
+
+        # Behind `main` where branch protection requires up to date. A merge
+        # would be refused with a 405 naming a missing status check, which is
+        # not what is wrong (#116). Bring it up to date instead: GitHub
+        # re-runs the checks on the new head, and the next pass merges it.
+        if detail.get("mergeable_state") == BEHIND:
+            head = (detail.get("head") or {}).get("sha")
+            try:
+                issues.update_branch(repo, pull["number"], head=head)
+            except BranchUpdateConflict:
+                _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
+                result.conflicted.append((number, pull["number"]))
+                continue
+            except Exception as exc:  # noqa: BLE001
+                result.failed.append((number, f"could not update from main: {exc}"[:120]))
+                continue
+            result.updating.append((number, pull["number"]))
             sink.emit(
                 CrewEvent(
-                    kind=EventKind.CARD_BLOCKED,
+                    kind=EventKind.NOTE,
                     card=number,
-                    summary=f"merge conflict on PR #{pull['number']}",
+                    summary=f"PR #{pull['number']} was behind main — brought up to date",
                 )
             )
             continue
@@ -207,3 +202,47 @@ def merge_approved(
         result.merged.append((number, pull["number"]))
 
     return result
+
+
+def _block_on_conflict(
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    repo: str,
+    pull: int,
+) -> None:
+    """Two changes disagree, so landing needs a decision the crew should not make.
+
+    No role made that happen, so nothing is claimed: the card keeps the role
+    whose work is stuck, the ruling #22 made.
+    """
+    number = card.number or 0
+    move_card(
+        board,
+        sink,
+        item_id=card.item_id,
+        to=BLOCKED,
+        by=None,
+        card=number,
+        frm=MERGING,
+        summary=f"merge conflict on PR #{pull}",
+        kind=EventKind.CARD_BLOCKED,
+    )
+    artifacts.label(issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"])
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"**Blocked — merge conflict.** PR #{pull} and `main` have both "
+        "changed the same code, so landing it needs a decision the crew should "
+        "not make on its own.\n\n"
+        "Resolve the conflict on the branch, or close the pull request and let "
+        "the story be re-delivered from current `main`.",
+        by=None,
+    )
+    sink.emit(
+        CrewEvent(kind=EventKind.CARD_BLOCKED, card=number, summary=f"merge conflict on PR #{pull}")
+    )

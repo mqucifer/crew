@@ -102,12 +102,20 @@ class GitError(RuntimeError):
     pass
 
 
-class RevertConflict(GitError):
-    """A revert that does not apply cleanly. It was aborted, never forced."""
+class MergeConflict(GitError):
+    """Two histories that change the same lines. Aborted, never forced."""
+
+    verb = "merge"
 
     def __init__(self, files: list[str]) -> None:
         self.files = files
-        super().__init__("revert conflicts in: " + (", ".join(files) or "unknown files"))
+        super().__init__(f"{self.verb} conflicts in: " + (", ".join(files) or "unknown files"))
+
+
+class RevertConflict(MergeConflict):
+    """A revert that does not apply cleanly. It was aborted, never forced."""
+
+    verb = "revert"
 
 
 @dataclass(frozen=True)
@@ -345,6 +353,35 @@ class Workspace:
             cwd=self.path,
         )
         return True
+
+    def catch_up(self) -> bool:
+        """Bring the open worktree up to date with the default branch.
+
+        A resumed branch was cut from `main` as it was then. Work that has
+        landed since, often the very story this one depends on, is missing
+        from it (#119). Merged in, not rebased: the history the reviewer read
+        stays as it was, so the push that follows is a fast-forward.
+
+        True if `main` had anything new. A conflict aborts the merge, leaves
+        the worktree as it was, and raises with the conflicting paths.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        before = _run(["rev-parse", "HEAD"], cwd=self.path)
+        identity = [
+            "-c",
+            f"user.name={self.identity.name}",
+            "-c",
+            f"user.email={self.identity.email}",
+        ]
+        try:
+            _run([*identity, "merge", "--no-edit", "origin/HEAD"], cwd=self.path)
+        except GitError:
+            files = _run(["diff", "--name-only", "--diff-filter=U"], cwd=self.path).split()
+            with contextlib.suppress(GitError):
+                _run(["merge", "--abort"], cwd=self.path)
+            raise MergeConflict(files) from None
+        return _run(["rev-parse", "HEAD"], cwd=self.path) != before
 
     def revert(self, sha: str) -> None:
         """Commit the inverse of `sha` onto the open worktree.

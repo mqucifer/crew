@@ -233,3 +233,59 @@ def test_a_branch_with_no_review_requirement_still_merges():
     issues = FakeIssues(decision=None)
     result, _, _ = run([card(6)], issues)
     assert result.merged == [(6, 100)]
+
+
+# --- behind main, under protection that requires up to date (#116) ------------
+
+
+class BehindIssues(FakeIssues):
+    """PR #67 on 2026-09-23: approved, green, and behind `main`."""
+
+    def __init__(self, *, update_error=None, **kw):
+        super().__init__(mergeable_state="behind", **kw)
+        self.updated: list[tuple[int, str | None]] = []
+        self._update_error = update_error
+
+    def pull(self, repo, number):
+        return {"mergeable_state": "behind", "mergeable": True, "head": {"sha": "c0ffee"}}
+
+    def update_branch(self, repo, number, *, head=None):
+        if self._update_error is not None:
+            raise self._update_error
+        self.updated.append((number, head))
+
+
+def test_a_pull_request_behind_main_is_brought_up_to_date_not_merged():
+    """Criterion 1: merging it would be refused with a 405 about a status check."""
+    issues = BehindIssues()
+    result, board, _ = run([card(31)], issues)
+    assert issues.merged == []
+    assert issues.updated == [(100, "c0ffee")]
+    assert result.updating == [(31, 100)]
+    assert board.moves == []
+
+
+def test_it_merges_on_the_next_pass_once_up_to_date():
+    """Criterion 2: nothing new is needed; the next attempt finds it current."""
+    issues = FakeIssues(mergeable_state="clean")
+    result, _, _ = run([card(31)], issues)
+    assert issues.merged == [100] and result.merged == [(31, 100)]
+
+
+def test_an_update_that_conflicts_blocks_the_card_like_a_merge_conflict():
+    """Criterion 3: never forced."""
+    from crew_org.tools.github_issues import BranchUpdateConflict
+
+    issues = BehindIssues(update_error=BranchUpdateConflict("merge conflict between base and head"))
+    result, board, _ = run([card(31)], issues)
+    assert issues.merged == []
+    assert result.conflicted == [(31, 100)]
+    assert ("C31", "Blocked") in board.moves
+    assert (31, "needs:human") in issues.labels
+
+
+def test_an_update_that_fails_otherwise_is_reported_not_blocked():
+    issues = BehindIssues(update_error=RuntimeError("502 Bad Gateway"))
+    result, board, _ = run([card(31)], issues)
+    assert board.moves == []
+    assert result.failed and "could not update from main" in result.failed[0][1]

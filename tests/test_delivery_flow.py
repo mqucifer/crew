@@ -13,6 +13,7 @@ from crew_org.crews.delivery_crew import FileEdit, FileWrite, Implementation
 from crew_org.escalation import EscalationLedger, EscalationPolicy, FailureClass
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import delivery
+from crew_org.git_ops import MergeConflict
 from crew_org.process import ProcessRules
 from crew_org.tools.claude_code import EscalationResult, Outcome
 from crew_org.tools.github_project import Card
@@ -141,6 +142,16 @@ class FakeWorkspace:
 
     def commit(self, message):
         self.committed.append(message)
+        return True
+
+    # A resumed branch is brought up to date with main before the work (#119).
+    # Set `conflict` to the paths a test wants the catch-up to conflict on.
+    conflict: list[str] | None = None
+
+    def catch_up(self):
+        self.events.append("catch_up")
+        if self.conflict is not None:
+            raise MergeConflict(self.conflict)
         return True
 
     def push(self, *, force=False):
@@ -958,3 +969,37 @@ def test_the_repair_builds_on_the_work_it_is_repairing(harness, refused):
         checks=[green()], cards=[_returned_card("In Progress")]
     )
     assert ws.resumed is True
+
+
+# --- resume only live rework, and bring it up to date (#119) --------------------
+
+
+def test_a_branch_whose_pull_request_was_closed_starts_from_main(harness, monkeypatch):
+    """sprint-metrics #32: a four-day-old branch from a closed PR, resumed on a
+    base cut before its sibling #31 landed. It produced no change and blocked."""
+    monkeypatch.setattr(FakeWorkspace, "unfinished", True, raising=False)
+    result, _, _, ws, _, _ = harness(checks=[green()])
+    assert ws.resumed is False
+    assert "catch_up" not in ws.events
+    assert result.delivered and ws.forced is True, "the dead branch is overwritten, with lease"
+
+
+def test_live_rework_is_resumed_and_brought_up_to_date_first(harness, refused):
+    """An open pull request returned by review: its feedback is about this code,
+    so it is resumed, but on top of what has landed since."""
+    result, _, _, ws, _, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+    assert ws.resumed is True
+    assert "catch_up" in ws.events
+    assert result.delivered[0].pr == 67 and ws.forced is False
+
+
+def test_a_resumed_branch_that_conflicts_with_main_blocks_with_the_paths(
+    harness, refused, monkeypatch
+):
+    """Criterion 4: never forced."""
+    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
+    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+    assert not result.delivered and ws.pushed == 0
+    assert calls["implement"] == 0, "no work is done on a base it cannot reconcile"
+    reason = result.blocked[0].blocked_reason
+    assert "conflicts with main" in reason and "crew_performance.py" in reason

@@ -1208,6 +1208,11 @@ def sprint_close(
             f"the crew's approval was recorded and not counted. "
             f"https://github.com/{owner}/{repo}/pull/{pull}"
         )
+    for number, pull in result.updating:
+        console.print(
+            f"  [yellow]#{number}[/] PR #{pull} was behind main — brought up to date; "
+            "it merges once its checks pass on the new head"
+        )
     for number, why in result.unmergeable:
         console.print(f"  [red]#{number}[/] {why}")
     if result.still_open:

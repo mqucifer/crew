@@ -30,7 +30,7 @@ from crew_org.flows import artifacts
 from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
-from crew_org.git_ops import Workspace, branch_name
+from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools import claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
@@ -106,6 +106,9 @@ class DeliveryResult:
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
+    # (card, PR) behind main and brought up to date this pass; they merge once
+    # their checks pass on the new head (#116).
+    updating: list[tuple[int, int]] = field(default_factory=list)
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
@@ -471,10 +474,26 @@ def deliver_story(
 
     branch = branch_name(number, card.title)
     outcome.branch = branch
-    # Resume whatever the last attempt left on this branch. `open` decides
-    # whether there is anything to resume; a merged branch is not resumed,
-    # because its commits are already in the default branch.
-    worktree = ws.open(branch, resume=True)
+    # Resume only live rework: a branch whose pull request is still open, so a
+    # gate's feedback is answered on the code it was about. A branch whose pull
+    # request was closed, or never opened, is dead history, and its base can
+    # predate work this story depends on — sprint-metrics #32 was resumed on a
+    # four-day-old branch cut before its sibling #31 landed, and produced
+    # nothing (#119). That starts from current `main` instead.
+    live = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+    worktree = ws.open(branch, resume=live is not None)
+    if getattr(ws, "resumed", False):
+        # Resumed, but `main` has moved since it was cut. Bring it up to date
+        # before the work, not after, so the Developer sees what has landed.
+        try:
+            ws.catch_up()
+        except MergeConflict as conflict:
+            paths = ", ".join(conflict.files) or "unknown files"
+            outcome.blocked_reason = (
+                f"`{branch}` conflicts with main in {paths}; "
+                "resolving that is a decision for a person, not something to force"
+            )
+            return outcome
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -956,6 +975,7 @@ def deliver(
     result.awaiting_approval = list(landed.awaiting_approval)
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
+    result.updating = list(landed.updating)
     result.landed = [card for card, _pr in landed.merged]
     if landed.merged or landed.conflicted:
         cards = board.cards()
