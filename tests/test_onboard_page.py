@@ -264,3 +264,11 @@ def test_the_stage_follows_the_prompt():
         wait_for(lambda stage=stage: session.state()["stage"] == stage)
         session.answer("x")
         wait_for(lambda: session.state()["stage"] is None)
+
+
+def test_the_page_arrives_with_the_state_so_it_renders_before_polling(page):
+    session, base, url = page
+    session.tell("Nothing here can close the script: </script><b>")
+    html = httpx.get(url).text
+    assert "Nothing here can close the script: <\\/script><b>" in html
+    assert html.count("</script>") == 1

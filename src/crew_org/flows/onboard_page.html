@@ -148,9 +148,18 @@ function confirmForm() {
 function render(s) {
   $("title").textContent = "Onboarding " + s.repo;
   const log = $("log");
-  log.replaceChildren(...s.messages.map((m) => {
+  // The current turn's questions are the fields below it, so its bubble leaves
+  // them out. Earlier turns keep theirs: their fields are gone.
+  const block = "\n\n" + s.asking.map((q) => "- " + q).join("\n");
+  const last = s.messages.length - 1;
+  log.replaceChildren(...s.messages.map((m, i) => {
+    let text = m.text;
+    if (i === last && m.who !== "Sponsor" && s.stage === "answer" && s.asking.length
+        && text.endsWith(block)) {
+      text = text.slice(0, -block.length);
+    }
     const node = el("div", { className: "msg " + (m.who === "Sponsor" ? "sponsor" : "po") });
-    node.append(el("span", { className: "who" }, m.who), document.createTextNode(m.text));
+    node.append(el("span", { className: "who" }, m.who), document.createTextNode(text));
     return node;
   }));
   if (s.thinking) log.append(el("p", { className: "thinking" }, "The Product Owner is thinking. A turn takes a few minutes."));
@@ -196,7 +205,11 @@ async function poll() {
     $("status").textContent = "the crew has stopped serving this page";
   }
 }
-poll();
+// The state as it was when the page was served, so it has content on first
+// paint rather than waiting for its first poll.
+const initial = /*STATE*/null;
+if (initial) render(initial);
+timer = setTimeout(poll, initial ? 1500 : 0);
 </script>
 </body>
 </html>

@@ -174,7 +174,7 @@ def handler_for(session: Session) -> type[BaseHTTPRequestHandler]:
                 return
             route = urlparse(self.path).path
             if route == "/":
-                self._send(HTTPStatus.OK, "text/html", PAGE.encode())
+                self._send(HTTPStatus.OK, "text/html", page(session.state()).encode())
             elif route == "/state":
                 self._send(HTTPStatus.OK, "application/json", json.dumps(session.state()).encode())
             else:
@@ -231,3 +231,13 @@ def thinking_turn(session: Session, turn: Callable[..., Any]) -> Callable[..., A
 
 # The page is a file of its own beside this one, read once at import.
 PAGE = (Path(__file__).parent / "onboard_page.html").read_text(encoding="utf-8")
+
+
+def page(state: dict[str, Any]) -> str:
+    """The page, carrying `state` so it renders before its first poll.
+
+    `</` is escaped so nothing the Sponsor or the model wrote can close the
+    script it is embedded in.
+    """
+    embedded = json.dumps(state).replace("</", "<\\/")
+    return PAGE.replace("/*STATE*/null", embedded, 1)
