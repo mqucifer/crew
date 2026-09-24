@@ -102,7 +102,9 @@ class Design(Section):
 
     language: str | None = None
     dependencies: str | None = None
-    sandbox: str | None = Field(default=None, description="Anything the sandbox must provide")
+    sandbox: str | None = Field(
+        default=None, description="What the crew's sandbox must provide to build and test it"
+    )
     checks: list[str] = Field(
         default_factory=list, description="The commands that enforce the definition of done"
     )

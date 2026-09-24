@@ -29,6 +29,9 @@ class Capability(StrEnum):
     WRITE_ACCEPTANCE_CRITERIA = "write_acceptance_criteria"
     ESTIMATE = "estimate"
     WRITE_DESIGN = "write_design"
+    # A project's toolchain, in its record's `design` section (#144).
+    PROPOSE_PROJECT_DESIGN = "propose_project_design"
+    REVIEW_DESIGN = "review_design"
     WRITE_CODE = "write_code"
     RUN_TESTS = "run_tests"
     OPEN_PR = "open_pr"

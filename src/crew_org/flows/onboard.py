@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from crew_org.flows.record_pr import RecordChange, propose
 from crew_org.project import (
     FORMAT_VERSION,
     RECORD_PATH,
@@ -398,6 +399,18 @@ def release_line(record: ProjectRecord) -> str:
     return line + (f" How: {how}" if how else "")
 
 
+ONBOARDING = RecordChange(
+    issue_title=ISSUE_TITLE,
+    issue_body=ISSUE_BODY,
+    branch_summary="project-record",
+    commit_message=(
+        "chore(onboarding): record what the project is for, how it is released, and what done means"
+    ),
+    pr_title="chore: this project's onboarding record",
+    updated_by="`crew onboard`",
+)
+
+
 def open_record_pr(
     ws: Any,
     issues: Any,
@@ -407,53 +420,26 @@ def open_record_pr(
     base: str,
     transcript: list[str] | None = None,
 ) -> str:
-    """Propose the record to the project as a pull request. Returns its URL.
-
-    Run again, it updates the same branch and pull request rather than opening a
-    second: the issue it closes is found by title, and the branch is named for it.
-    """
-    from crew_org.git_ops import branch_name  # noqa: PLC0415
-
-    open_issue = next((i for i in issues.open_issues(repo) if i["title"] == ISSUE_TITLE), None)
-    number = (open_issue or issues.create(repo, ISSUE_TITLE, ISSUE_BODY))["number"]
-    branch = branch_name(number, "project-record", kind="chore")
-
-    ws = ws.for_repo(repo)
-    with ws:
-        path = ws.open(branch)
-        target = path / RECORD_PATH
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render(record))
-        ws.commit(
-            "chore(onboarding): record what the project is for, how it is released, "
-            f"and what done means\n\nRefs #{number}"
-        )
-        ws.push(force=True)
-
+    """Propose the Sponsor's record to the project as a pull request. Returns its URL."""
     conversation = interview_record(transcript or [])
-    existing = next((p for p in issues.open_pulls(repo) if p["head"]["ref"] == branch), None)
-    if existing:
-        # The pull request already says what the record is; what is new is
-        # the conversation that changed it.
-        if conversation:
-            issues.comment(repo, existing["number"], f"Updated by `crew onboard`.{conversation}")
-        return existing["html_url"]
     intent = record.intent
-    body = (
-        f"Closes #{number}\n\n"
-        f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
-        "with the Sponsor through `crew onboard`.\n\n"
-        f"- **Purpose:** {intent.scope.purpose}\n"
-        f"- **Release:** {release_line(record)}\n"
-        f"- **Done:** {intent.done.bar}\n\n"
-        "## Verification\n\n"
-        "The record was loaded by the crew's own record loader (mqucifer/crew#129) "
-        "before it was written, and the Sponsor confirmed it in the interview." + conversation
+
+    def body(number: int) -> str:
+        return (
+            f"Closes #{number}\n\n"
+            f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
+            "with the Sponsor through `crew onboard`.\n\n"
+            f"- **Purpose:** {intent.scope.purpose}\n"
+            f"- **Release:** {release_line(record)}\n"
+            f"- **Done:** {intent.done.bar}\n\n"
+            "## Verification\n\n"
+            "The record was loaded by the crew's own record loader (mqucifer/crew#129) "
+            "before it was written, and the Sponsor confirmed it in the interview." + conversation
+        )
+
+    return propose(
+        ws, issues, repo, record, ONBOARDING, base=base, body=body, update_note=conversation
     )
-    pull = issues.create_pull(
-        repo, title="chore: this project's onboarding record", head=branch, base=base, body=body
-    )
-    return pull["html_url"]
 
 
 def interview_record(transcript: list[str]) -> str:
