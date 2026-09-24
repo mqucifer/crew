@@ -137,6 +137,27 @@ class IssueClient:
             sub_issue_id=child_id,
         )
 
+    def repository(self, repo: str) -> dict[str, Any]:
+        return self._request("GET", f"/repos/{self.owner}/{repo}")
+
+    def branches(self, repo: str) -> list[dict[str, Any]]:
+        """The repository's branches. Empty for a repository with no commits yet."""
+        response = self._client.get(f"{API}/repos/{self.owner}/{repo}/branches?per_page=100")
+        # An empty repository answers 404 on some paths and [] on others.
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        return response.json()
+
+    def branch_protection(self, repo: str, branch: str) -> dict[str, Any] | None:
+        """What protects `branch`, as far as a non-admin can see. None if unprotected.
+
+        The protection endpoint itself needs admin, which the crew deliberately
+        lacks; the branch's own summary is readable with read access.
+        """
+        found = self._request("GET", f"/repos/{self.owner}/{repo}/branches/{branch}")
+        return found.get("protection") if found.get("protected") else None
+
     def create_pull(
         self, repo: str, *, title: str, head: str, base: str, body: str
     ) -> dict[str, Any]:

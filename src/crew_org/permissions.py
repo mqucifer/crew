@@ -21,6 +21,8 @@ class Capability(StrEnum):
     """Everything an agent can be permitted to do."""
 
     PROPOSE_EPIC = "propose_epic"
+    # Writing a project's onboarding record, from an interview with the Sponsor.
+    ONBOARD_PROJECT = "onboard_project"
     CREATE_STORY = "create_story"
     CREATE_TASK = "create_task"
     CREATE_SPIKE = "create_spike"
