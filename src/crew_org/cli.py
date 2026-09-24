@@ -1025,6 +1025,94 @@ def deliver(
         console.print("[dim]Nothing in Sprint Backlog for this sprint.[/]")
 
 
+@app.command()
+def onboard(
+    repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
+    from_file: str = typer.Option(
+        None, "--from", help="A take-away file to carry on from, finished or not."
+    ),
+) -> None:
+    """Interview the Sponsor about a project and propose its record (#130).
+
+    The Product Owner reads the project, if there is anything to read, and
+    proposes answers; otherwise it asks. Stop at any point with 'later' and
+    the answers so far are written to a file you can finish in any editor.
+    The finished record arrives as a pull request to the project.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.onboarding_crew import interview_turn
+    from crew_org.flows.onboard import interview, open_record_pr, read_project, takeaway
+    from crew_org.git_ops import Workspace
+    from crew_org.llm import health
+    from crew_org.permissions import Capability, Permissions
+    from crew_org.project import ProjectRecordError, load_raw, validate
+    from crew_org.tools.github_issues import IssueClient
+
+    Permissions.from_agents().require("Product Owner", Capability.ONBOARD_PROJECT)
+    env = load_env()
+    ok, message = health()
+    if not ok:
+        console.print(f"[red]{message}[/]")
+        raise typer.Exit(code=1)
+
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    issues = IssueClient(token, owner)
+    ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+
+    source = Path(from_file) if from_file else None
+    project = read_project(ws, issues, repo)
+    raw = project.existing or {}
+    if source:
+        try:
+            raw = load_raw(source.read_text())
+        except (OSError, ProjectRecordError) as exc:
+            console.print(f"[red]{escape(str(exc))}[/]")
+            raise typer.Exit(code=1) from None
+    kept = source or VAR / "onboarding" / f"{repo}.yaml"
+
+    if not project.repository:
+        console.print(
+            f"[dim]{owner}/{repo} has nothing to read yet; the Product Owner will ask.[/]"
+        )
+    elif project.existing and not source:
+        console.print(f"[dim]{owner}/{repo} already has a record; starting from it.[/]")
+
+    def ask(prompt: str) -> str | None:
+        try:
+            return console.input(f"\n[bold]{prompt}[/] › ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+    def tell(text: str) -> None:
+        console.print(f"\n[cyan]Product Owner[/]\n{escape(text)}")
+
+    def turn(**context):
+        with console.status("[dim]The Product Owner is thinking…[/]"):
+            return interview_turn(**context)
+
+    ended = interview(raw, repository=project.repository, turn=turn, ask=ask, tell=tell)
+
+    if ended.settled and project.default_branch:
+        url = open_record_pr(ws, issues, repo, validate(ended.raw), base=project.default_branch)
+        console.print(f"\n[green]Record proposed[/] — {url}")
+        return
+
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text(takeaway(ended.raw, ended.questions, repo=repo, path=kept))
+    if ended.interrupted:
+        console.print(f"\n[red]The interview stopped:[/] {escape(ended.interrupted)}")
+    if ended.settled:
+        console.print(
+            f"\n[yellow]{owner}/{repo} has no commits,[/] so there is no branch to propose "
+            "the record against. Push a first commit (a README will do), then run:"
+        )
+    else:
+        console.print("\n[yellow]Not finished.[/] The answers so far, and what is left, are in:")
+    console.print(f"   {kept}\n   [dim]crew onboard {repo} --from {kept}[/]")
+
+
 def _bot_identity(token: str, identity: str):
     """Resolve the bot's numeric id, which GitHub needs for commit attribution."""
     import httpx

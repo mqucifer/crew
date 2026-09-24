@@ -135,6 +135,7 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew sprint close` | the board, GitHub | The sprint review. A human gate. Records the retro as an issue, once per sprint |
 | `crew moves [--people]` | nothing | Every card movement on the board and who made it: the crew, the platform (`board.yml`), or a person, named. Read from GitHub's own history |
 | `crew revert <pr> --reason "…"` | GitHub | Opens a pull request undoing a merged one. It lands through review and `deliver` like any change |
+| `crew onboard <repo> [--from <file>]` | GitHub | The Product Owner interviews you about a project and proposes its record, `.crew/project.yaml`, as a pull request to that project. See below |
 
 **It lands what it produces.** There is no dry mode. A rehearsal cost the same inference as the real thing, left nothing that could land, wrote no event log at all, and put cards back where it found them — which was three of the five backward moves in the crew's own log, and noise `crew capability` had to filter out of the crew's self-knowledge.
 
@@ -159,6 +160,8 @@ What made landing frightening was having no way to undo it. The answer is a reve
 > reports as `REVIEW_REQUIRED` despite an approving review is blocked and
 > labelled for a person rather than waiting forever. That is now a guard
 > against a regression instead of a description of the present.
+
+**Onboarding a project.** `crew onboard <repo>` is an interview in the terminal. If the project has content, the Product Owner reads it (README, code, CI workflows, branch protection) and proposes answers for you to confirm or correct. If it has none, it asks. It keeps going until purpose, release and definition of done are all settled, shows you the record, and on your yes opens a pull request adding `.crew/project.yaml` to the project. Answer `later`, or end the session, and the answers so far go to `var/onboarding/<repo>.yaml`, with each unanswered one commented out under its question. Finish it in any editor, then `crew onboard <repo> --from <file>` asks only about what is still missing. A repository with no commits has no branch to propose against, so the finished record is kept in that file until it has one. Each turn is one model call, several minutes long on crew-local.
 
 **The Sponsor's verbs.** Approve an epic by moving it out of Inbox (Goals). Reject it by closing it. Send a decomposition back by commenting and adding `needs:rework` — the next tick reads the comment, supersedes the old cards, and tries again.
 

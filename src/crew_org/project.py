@@ -120,6 +120,30 @@ REQUIRED: dict[tuple[str, ...], str] = {
 }
 
 
+WHERE = ("intent", "release", "where")
+WHERE_WORDS = "where it is deployed, since it deploys"
+
+
+def lookup(raw: Any, path: tuple[str, ...]) -> Any:
+    """The value at `path` in a raw record, or None if any step is absent."""
+    value: Any = raw
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
+def gaps(raw: Any) -> dict[tuple[str, ...], str]:
+    """Every required answer the raw record lacks, by where it lives, in words."""
+    found: dict[tuple[str, ...], str] = {}
+    for path, words in REQUIRED.items():
+        value = lookup(raw, path)
+        if value is None or (isinstance(value, str) and not value.strip()) or value == []:
+            found[path] = words
+    if lookup(raw, WHERE[:-1] + ("deploys",)) is True and not lookup(raw, WHERE):
+        found[WHERE] = WHERE_WORDS
+    return found
+
+
 def missing(raw: Any) -> list[str]:
     """Every required answer the raw record lacks, in words. Empty when complete.
 
@@ -127,31 +151,30 @@ def missing(raw: Any) -> list[str]:
     section the moment the section itself is absent, and the point is to name
     every gap at once.
     """
-    gaps: list[str] = []
-    for path, words in REQUIRED.items():
-        value: Any = raw
-        for key in path:
-            value = value.get(key) if isinstance(value, dict) else None
-        if value is None or (isinstance(value, str) and not value.strip()) or value == []:
-            gaps.append(words)
-    release = ((raw or {}).get("intent") or {}).get("release") if isinstance(raw, dict) else None
-    if isinstance(release, dict) and release.get("deploys") is True and not release.get("where"):
-        gaps.append("where it is deployed, since it deploys")
-    return gaps
+    return list(gaps(raw).values())
 
 
-def parse(text: str) -> ProjectRecord:
-    """A record from the file's text, or `ProjectRecordError` naming what is wrong."""
+def load_raw(text: str) -> dict[str, Any]:
+    """A record's text as a mapping, however incomplete. For a draft being finished."""
     try:
         raw = yaml.safe_load(text) or {}
     except yaml.YAMLError as exc:
         raise ProjectRecordError([f"{RECORD_PATH} is not valid YAML: {exc}"]) from None
     if not isinstance(raw, dict):
         raise ProjectRecordError([f"{RECORD_PATH} must be a mapping, not {type(raw).__name__}"])
+    return raw
 
-    gaps = missing(raw)
-    if gaps:
-        raise ProjectRecordError([f"missing: {gap}" for gap in gaps])
+
+def parse(text: str) -> ProjectRecord:
+    """A record from the file's text, or `ProjectRecordError` naming what is wrong."""
+    return validate(load_raw(text))
+
+
+def validate(raw: dict[str, Any]) -> ProjectRecord:
+    """A record from its raw mapping, or `ProjectRecordError` naming what is wrong."""
+    absent = missing(raw)
+    if absent:
+        raise ProjectRecordError([f"missing: {gap}" for gap in absent])
     try:
         return ProjectRecord.model_validate(raw)
     except ValidationError as exc:
