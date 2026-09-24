@@ -58,28 +58,39 @@ class Answers(BaseModel):
 
 
 class Question(BaseModel):
-    about: str = Field(description="The missing answer this asks for, by its key, as listed")
-    question: str = Field(description="The question, specific to what is still unsettled")
+    about: str = Field(
+        description="The answer this is about, by its key, e.g. intent.scope.purpose"
+    )
+    question: str = Field(description="The question, specific to what is still unclear or missing")
 
 
 class Turn(BaseModel):
     answers: Answers = Field(
         description=(
-            "What this turn settled or proposes. Only what the Sponsor said, or what the "
-            "repository shows. Leave everything else null."
+            "What this turn settled: what the Sponsor said or confirmed, written clearly "
+            "enough for another role to act on, or what the project plainly shows. Leave "
+            "everything else null."
         )
     )
     say: str = Field(
-        description="What to tell the Sponsor: what you propose and why, or what you understood"
+        description=(
+            "What to tell the Sponsor: what you propose and why, what you understood, "
+            "and what is still unclear"
+        )
     )
     questions: list[Question] = Field(
-        default_factory=list, description="One question for each answer still missing"
+        default_factory=list,
+        description=(
+            "Every answer still missing, unclear, or at odds with the project, one "
+            "question each. Empty only when there is nothing left to ask."
+        ),
     )
 
 
 def interview_turn(
     *,
     repository: str,
+    intent: str,
     draft: str,
     missing: dict[str, str],
     problems: list[str],
@@ -91,12 +102,13 @@ def interview_turn(
     task = Task(
         description=turn_description(
             repository=repository,
+            intent=intent,
             draft=draft,
             missing=missing,
             problems=problems,
             conversation=conversation,
         ),
-        expected_output="The answers this turn settled, what to say, and the next questions.",
+        expected_output="The answers this turn settled, what to say, and what is left to ask.",
         agent=agent,
         output_pydantic=Turn,
     )
@@ -107,6 +119,7 @@ def interview_turn(
 def turn_description(
     *,
     repository: str,
+    intent: str,
     draft: str,
     missing: dict[str, str],
     problems: list[str],
@@ -126,12 +139,21 @@ def turn_description(
             "The repository is empty: no README, no code, nothing to read. There is nothing "
             "to propose from, so **ask**. Probe for what the Sponsor has in mind.\n\n"
         )
+    asked = (
+        "## What the project has been asked for\n\n"
+        "Its open issues, goals included: the Sponsor's intent as written so far. The "
+        "record's answers should agree with them, or say plainly where they part.\n\n"
+        f"{intent}\n\n"
+        if intent
+        else "## What the project has been asked for\n\nNo open issues.\n\n"
+    )
     still = (
-        "## Still missing\n\n"
+        "## Required answers still missing\n\n"
         + "\n".join(f"- `{key}`: {words}" for key, words in missing.items())
-        + "\n\nAsk about each of these, specifically.\n\n"
+        + "\n\n"
         if missing
-        else "## Still missing\n\nNothing required. Confirm the optional answers if useful.\n\n"
+        else "## Required answers still missing\n\nNone. Every required field holds "
+        "something; whether each is clear enough is yours to judge.\n\n"
     )
     wrong = (
         "## Answers that do not fit the record\n\n"
@@ -142,10 +164,11 @@ def turn_description(
     )
     return (
         seen
+        + asked
         + f"## The record so far\n\n```yaml\n{draft}\n```\n\n"
         + still
         + wrong
         + f"## The conversation\n\n{conversation or '(it has not started)'}\n\n"
-        "Take your next turn. Record in `answers` only what the Sponsor has said or "
-        "confirmed, or what the project plainly shows. Never invent an answer."
+        "Take your next turn. Never invent an answer the Sponsor has not given and the "
+        "project does not show."
     )

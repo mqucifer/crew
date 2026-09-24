@@ -183,9 +183,22 @@ def validate(raw: dict[str, Any]) -> ProjectRecord:
         ) from None
 
 
+def _answered(data: Any) -> Any:
+    """`data` without its empty lists and sections.
+
+    An empty list reads as an answer: `never_touch: []` says agents may touch
+    anything, and nobody said that. Unasked is not the same as none, so it is
+    left out, and reads back as the same default.
+    """
+    if isinstance(data, dict):
+        kept = {k: _answered(v) for k, v in data.items()}
+        return {k: v for k, v in kept.items() if v not in ([], {})}
+    return data
+
+
 def render(record: ProjectRecord) -> str:
-    """The file's text, for `crew onboard` to write. Optional sections left out if unset."""
-    data = record.model_dump(mode="json", exclude_none=True)
+    """The file's text, for `crew onboard` to write. Unanswered optional answers left out."""
+    data = _answered(record.model_dump(mode="json", exclude_none=True))
     return (
         "# The project's onboarding record (#111). Intent is the Sponsor's, written\n"
         "# through `crew onboard`; learned is proposed by the crew, by pull request.\n"

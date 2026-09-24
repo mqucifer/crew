@@ -6,6 +6,8 @@ flow does with its answers: when it asks again, when it stops, what it writes.
 
 from __future__ import annotations
 
+import io
+import re
 from pathlib import Path
 
 import pytest
@@ -20,17 +22,22 @@ from crew_org.crews.onboarding_crew import (
     turn_description,
 )
 from crew_org.flows.onboard import (
+    ANSWER,
+    CONFIRM,
     ISSUE_TITLE,
     QUESTIONS,
     describe,
+    describe_intent,
     interview,
     merge,
     open_record_pr,
     read_project,
+    release_line,
     takeaway,
+    terminal_ask,
 )
 from crew_org.git_ops import ProtectedBranchError
-from crew_org.project import RECORD_PATH, gaps, load_raw, parse, validate
+from crew_org.project import RECORD_PATH, gaps, load_raw, parse, render, validate
 
 PURPOSE = ("intent", "scope", "purpose")
 DEPLOYS = ("intent", "release", "deploys")
@@ -98,7 +105,12 @@ def test_a_project_with_content_is_described_with_its_ci_and_protection(tmp_path
 
 def test_the_product_owner_proposes_when_there_is_content():
     prompt = turn_description(
-        repository="### README.md\n\nA tool.", draft="", missing={}, problems=[], conversation=""
+        repository="### README.md\n\nA tool.",
+        intent="",
+        draft="",
+        missing={},
+        problems=[],
+        conversation="",
     )
     assert "**propose**" in prompt
     assert "A tool." in prompt
@@ -115,17 +127,23 @@ def test_a_repository_with_no_commits_is_read_as_empty():
         def branches(self, repo):
             return []
 
+        def open_issues(self, repo):
+            return [{"number": 1, "title": "Goal: a tool", "body": "Make it.", "labels": []}]
+
     class NeverCloned:
         def current(self):
             raise AssertionError("an empty repository has nothing to clone")
 
     project = read_project(NeverCloned(), NoBranches(), "new-thing")
     assert project.repository == "" and project.default_branch is None
+    # A project can be asked for before it has code, and the asking is still shown.
+    assert "Goal: a tool" in project.intent
 
 
 def test_the_product_owner_asks_when_there_is_nothing_to_read():
     prompt = turn_description(
         repository="",
+        intent="",
         draft="(nothing yet)",
         missing={"intent.scope.purpose": "what the project is for (purpose)"},
         problems=[],
@@ -198,6 +216,10 @@ class FakeIssues:
         self._pulls = list(open_pulls)
         self.created: list[str] = []
         self.pulls: list[dict] = []
+        self.comments: list[tuple[int, str]] = []
+
+    def comment(self, repo, number, body):
+        self.comments.append((number, body))
 
     def open_issues(self, repo):
         return self._issues
@@ -390,3 +412,196 @@ def test_a_takeaway_with_a_wrong_type_is_put_to_the_product_owner():
 
     assert any("priority" in p for p in po.shown[0]["problems"])
     assert ended.settled and ended.raw["intent"]["priority"] == 1
+
+
+# --- #136: an interview, not a transcription --------------------------------------
+
+
+def test_the_product_owner_is_shown_the_projects_goals_first():
+    intent = describe_intent(
+        [
+            {"number": 49, "title": "Report a previous sprint", "body": "Story.", "labels": []},
+            {
+                "number": 43,
+                "title": "Goal: the tool remembers",
+                "body": "Past sprints, not only this one.",
+                "labels": [{"name": "goal"}],
+            },
+        ]
+    )
+    assert intent.index("#43 Goal: the tool remembers [goal]") < intent.index("#49")
+    assert "Past sprints, not only this one." in intent
+
+    prompt = turn_description(
+        repository="code", intent=intent, draft="", missing={}, problems=[], conversation=""
+    )
+    assert "## What the project has been asked for" in prompt and "Past sprints" in prompt
+
+
+def test_questions_about_a_filled_answer_keep_the_interview_going():
+    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    po = Script(
+        Turn(
+            answers=answers(scope=ScopeAnswers(purpose="Current-sprint metrics")),
+            say="Noted, but goal #43 asks for past sprints.",
+            questions=[Question(about="intent.scope.purpose", question="Past sprints too?")],
+        ),
+        Turn(answers=answers(scope=ScopeAnswers(purpose="Sprints, past and present")), say="Ok."),
+    )
+    sponsor = Sponsor("yes, past ones too", "yes")
+    said, tell = told()
+
+    ended = interview(partial, repository="", turn=po, ask=sponsor, tell=tell)
+
+    # Every required field held something after the first turn, and the
+    # Sponsor was still asked the question rather than offered the record.
+    assert sponsor.asked == [ANSWER, CONFIRM]
+    assert "Past sprints too?" in said[0]
+    assert ended.settled and ended.raw["intent"]["scope"]["purpose"] == "Sprints, past and present"
+
+
+def test_saying_it_is_fine_goes_back_to_the_product_owner():
+    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    po = Script(
+        Turn(
+            answers=answers(scope=ScopeAnswers(purpose="Metrics")),
+            say="Is pytest enough to call a change done?",
+            questions=[Question(about="intent.done.checks", question="Is pytest enough?")],
+        ),
+        Turn(answers=answers(), say="Understood, leaving it as pytest."),
+    )
+    sponsor = Sponsor("that's fine as it is", "yes")
+
+    ended = interview(partial, repository="", turn=po, ask=sponsor, tell=told()[1])
+
+    assert "**Sponsor:** that's fine as it is" in po.shown[1]["conversation"]
+    assert sponsor.asked == [ANSWER, CONFIRM]
+    assert ended.settled
+
+
+def test_done_goes_straight_to_the_record_past_the_product_owners_questions():
+    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    po = Script(
+        Turn(
+            answers=answers(scope=ScopeAnswers(purpose="Metrics")),
+            say="Anything out of scope?",
+            questions=[Question(about="intent.scope.out_of_scope", question="Out of scope?")],
+        )
+    )
+    sponsor = Sponsor("done", "yes")
+
+    ended = interview(partial, repository="", turn=po, ask=sponsor, tell=told()[1])
+
+    assert sponsor.asked == [ANSWER, CONFIRM]
+    assert len(po.shown) == 1 and ended.settled
+
+
+def test_done_cannot_skip_a_required_answer():
+    po = Script(
+        Turn(answers=answers(), say="What is it for?"),
+        Turn(
+            answers=answers(
+                scope=ScopeAnswers(purpose="Metrics"),
+                release=ReleaseAnswers(deploys=False),
+                done=DoneAnswers(checks=["pytest"]),
+            ),
+            say="Thanks.",
+        ),
+    )
+    sponsor = Sponsor("done", "metrics; no deploy; pytest", "yes")
+    said, tell = told()
+
+    ended = interview({}, repository="", turn=po, ask=sponsor, tell=tell)
+
+    assert sponsor.asked == [ANSWER, ANSWER, CONFIRM]
+    assert "can't be written without" in said[1] and "(purpose)" in said[1]
+    assert len(po.shown) == 2 and ended.settled
+
+
+def test_an_unanswered_optional_answer_is_left_out_not_written_empty():
+    text = render(validate(COMPLETE))
+    written = load_raw(text)
+    assert "learned" not in written
+    assert set(written["intent"]["scope"]) == {"purpose"}
+    assert set(written["intent"]["done"]) == {"checks"}
+    assert "[]" not in text
+    assert parse(text) == validate(COMPLETE)
+
+
+def test_the_transcript_is_kept_however_the_interview_ends():
+    po = Script(Turn(answers=answers(), say="What is it for?"))
+    stopped = interview({}, repository="", turn=po, ask=Sponsor("later"), tell=told()[1])
+    assert stopped.transcript[0].startswith("**Product Owner:** What is it for?")
+    assert stopped.transcript[1] == "**Sponsor:** later"
+
+    confirmed = interview(
+        COMPLETE, repository="", turn=Script(), ask=Sponsor("yes"), tell=told()[1]
+    )
+    assert confirmed.transcript == ["**Sponsor:** yes"]
+
+
+def test_the_pull_request_carries_the_interview(tmp_path: Path):
+    issues = FakeIssues()
+    open_record_pr(
+        FakeWorkspace(tmp_path),
+        issues,
+        "r",
+        validate(COMPLETE),
+        base="main",
+        transcript=["**Product Owner:** What is it for?", "**Sponsor:** Metrics."],
+    )
+    body = issues.pulls[0]["body"]
+    assert "<details><summary>The interview</summary>" in body
+    assert "**Sponsor:** Metrics." in body
+
+
+def test_an_updated_pull_request_gets_the_new_interview_as_a_comment(tmp_path: Path):
+    issues = FakeIssues(
+        open_issues=[{"number": 7, "title": ISSUE_TITLE}],
+        open_pulls=[
+            {"number": 8, "head": {"ref": "chore/7-project-record"}, "html_url": "u/pull/8"}
+        ],
+    )
+    open_record_pr(
+        FakeWorkspace(tmp_path), issues, "r", validate(COMPLETE), base="main", transcript=["x"]
+    )
+    ((number, body),) = issues.comments
+    assert number == 8 and "The interview" in body
+
+
+@pytest.mark.parametrize(
+    "release, line",
+    [
+        ({"deploys": False}, "the merge. Nothing is deployed."),
+        (
+            {"deploys": True, "where": "A version tag", "how": "Tag vX.Y.Z."},
+            "a deployment. Where: A version tag How: Tag vX.Y.Z.",
+        ),
+    ],
+)
+def test_the_release_reads_as_its_own_sentence(release, line):
+    record = validate(merge(COMPLETE, {"intent": {"release": release}}))
+    assert release_line(record) == line
+
+
+# --- #135: the answer prompt edits like a terminal ---------------------------------
+
+
+def test_the_answer_prompt_reads_piped_input(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO("metrics for the crew\n"))
+    assert terminal_ask("Your answer") == "metrics for the crew"
+
+
+def test_the_end_of_input_ends_the_interview(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    assert terminal_ask("Your answer") is None
+
+
+def test_the_prompt_is_given_to_input_with_its_styling_marked_invisible(monkeypatch):
+    seen = []
+    monkeypatch.setattr("builtins.input", lambda prompt: seen.append(prompt) or "ok")
+    terminal_ask("Your answer")
+    (prompt,) = seen
+    # readline counts only what is outside \001…\002, so the wrap point is right.
+    visible = re.sub("\001.*?\002", "", prompt)
+    assert visible == "\nYour answer › "

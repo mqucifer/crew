@@ -1042,7 +1042,13 @@ def onboard(
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.crews.onboarding_crew import interview_turn
-    from crew_org.flows.onboard import interview, open_record_pr, read_project, takeaway
+    from crew_org.flows.onboard import (
+        interview,
+        open_record_pr,
+        read_project,
+        takeaway,
+        terminal_ask,
+    )
     from crew_org.git_ops import Workspace
     from crew_org.llm import health
     from crew_org.permissions import Capability, Permissions
@@ -1079,12 +1085,6 @@ def onboard(
     elif project.existing and not source:
         console.print(f"[dim]{owner}/{repo} already has a record; starting from it.[/]")
 
-    def ask(prompt: str) -> str | None:
-        try:
-            return console.input(f"\n[bold]{prompt}[/] › ")
-        except (EOFError, KeyboardInterrupt):
-            return None
-
     def tell(text: str) -> None:
         console.print(f"\n[cyan]Product Owner[/]\n{escape(text)}")
 
@@ -1092,11 +1092,33 @@ def onboard(
         with console.status("[dim]The Product Owner is thinking…[/]"):
             return interview_turn(**context)
 
-    ended = interview(raw, repository=project.repository, turn=turn, ask=ask, tell=tell)
+    ended = interview(
+        raw,
+        repository=project.repository,
+        intent=project.intent,
+        turn=turn,
+        ask=terminal_ask,
+        tell=tell,
+    )
+
+    # Kept however the interview ends: what was said is the evidence for the
+    # record, and the only way to see why it came out as it did.
+    log = VAR / "onboarding" / f"{repo}.transcript.md"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as fh:
+        stamp = time.strftime("%Y-%m-%d %H:%M")
+        fh.write(f"\n## {stamp}\n\n" + "\n\n".join(ended.transcript) + "\n")
 
     if ended.settled and project.default_branch:
-        url = open_record_pr(ws, issues, repo, validate(ended.raw), base=project.default_branch)
-        console.print(f"\n[green]Record proposed[/] — {url}")
+        url = open_record_pr(
+            ws,
+            issues,
+            repo,
+            validate(ended.raw),
+            base=project.default_branch,
+            transcript=ended.transcript,
+        )
+        console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
         return
 
     kept.parent.mkdir(parents=True, exist_ok=True)
@@ -1111,6 +1133,7 @@ def onboard(
     else:
         console.print("\n[yellow]Not finished.[/] The answers so far, and what is left, are in:")
     console.print(f"   {kept}\n   [dim]crew onboard {repo} --from {kept}[/]")
+    console.print(f"[dim]transcript: {log}[/]")
 
 
 def _bot_identity(token: str, identity: str):

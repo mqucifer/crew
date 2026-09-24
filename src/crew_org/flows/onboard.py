@@ -55,6 +55,8 @@ assert set(REQUIRED) | {WHERE} == set(QUESTIONS)
 # Replies that end the interview early and leave a take-away file.
 LATER = frozenset({"later", "/later", "stop", "/stop", "quit", "/quit"})
 YES = frozenset({"y", "yes"})
+# The Sponsor's way past the Product Owner's questions, to the record itself.
+DONE = frozenset({"done", "/done", "/review"})
 
 # The take-away file's layout, in the record's own order.
 SECTIONS: dict[str, type] = {"scope": Scope, "release": Release, "done": Done, "build": Build}
@@ -97,70 +99,123 @@ class Interview:
     settled: bool = False
     # Why it stopped short, when it was not the Sponsor's choice.
     interrupted: str | None = None
+    # Everything said, in order, by the Product Owner and the Sponsor.
+    transcript: list[str] = field(default_factory=list)
 
 
 Turn = Callable[..., Any]
 Ask = Callable[[str], "str | None"]
 Tell = Callable[[str], None]
 
+ANSWER = "Your answer ('done' to review the record, 'later' to finish offline)"
+CONFIRM = "Open the pull request with this record? yes, or say what to change"
+
 
 def interview(
-    raw: dict[str, Any], *, repository: str, turn: Turn, ask: Ask, tell: Tell
+    raw: dict[str, Any],
+    *,
+    repository: str,
+    turn: Turn,
+    ask: Ask,
+    tell: Tell,
+    intent: str = "",
 ) -> Interview:
     """Interview the Sponsor until the record is settled, or they stop.
 
     `turn` is the Product Owner (`interview_turn`); `ask` returns the Sponsor's
     reply, or None when they end the session; `tell` shows them something.
-    A record that is already complete goes straight to the Sponsor's yes.
+
+    It continues while a required answer is missing or the Product Owner is
+    still asking: a filled-in field is not the same as a clear one, and that
+    judgement is the Product Owner's. The Sponsor has two ways to disagree:
+    say so, and the Product Owner hears it, or reply `done` to go straight to
+    the record. `done` cannot skip a required answer. A record that is
+    already complete goes straight to the Sponsor's yes.
     """
-    conversation: list[str] = []
+    transcript: list[str] = []
     questions: dict[Path_, str] = {}
-    reply: str | None = None
+    asking: list[str] = []
+
+    def said(who: str, text: str) -> None:
+        transcript.append(f"**{who}:** {text}")
 
     def unsettled() -> tuple[dict[Path_, str], list[str]]:
         wanted = gaps(raw)
         return wanted, ([] if wanted else problems(raw))
 
+    def stop(**how: Any) -> Interview:
+        return Interview(raw, _questions(gaps(raw), questions), transcript=transcript, **how)
+
     wanted, wrong = unsettled()
+    needs_turn = bool(wanted or wrong)
     while True:
-        if wanted or wrong or reply is not None:
+        if needs_turn:
             try:
                 result = turn(
                     repository=repository,
+                    intent=intent,
                     draft=yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
                     if raw
                     else "(nothing yet)",
                     missing={key(p): words for p, words in wanted.items()},
                     problems=wrong,
-                    conversation="\n\n".join(conversation),
+                    conversation="\n\n".join(transcript),
                 )
             except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001
-                why = "stopped" if isinstance(exc, KeyboardInterrupt) else str(exc)
-                return Interview(raw, _questions(gaps(raw), questions), interrupted=why)
+                return stop(
+                    interrupted="stopped" if isinstance(exc, KeyboardInterrupt) else str(exc)
+                )
             raw = merge(raw, {"intent": result.answers.model_dump(exclude_none=True)})
             wanted, wrong = unsettled()
-            asked = {q.about: q.question for q in result.questions}
-            questions = {p: asked.get(key(p)) or QUESTIONS[p] for p in wanted}
-            said = result.say.strip()
+            by_key = {q.about: q.question for q in result.questions}
+            questions = {p: by_key.get(key(p)) or QUESTIONS[p] for p in wanted}
+            # Its own questions, then a standing one for any missing answer it
+            # did not ask about: a required answer is never left unasked.
+            asking = [q.question for q in result.questions] + [
+                q for p, q in questions.items() if key(p) not in by_key
+            ]
+            message = result.say.strip()
             if wrong:
-                said += "\n\nThese don't fit the record yet:\n" + "\n".join(f"- {p}" for p in wrong)
-            if questions:
-                said += "\n\n" + "\n".join(f"- {q}" for q in questions.values())
-            tell(said)
-            conversation.append(f"Product Owner: {said}")
+                message += "\n\nThese don't fit the record yet:\n" + "\n".join(
+                    f"- {p}" for p in wrong
+                )
+            if asking:
+                message += "\n\n" + "\n".join(f"- {q}" for q in asking)
+            tell(message)
+            said("Product Owner", message)
 
-        if not wanted and not wrong:
-            tell(render(validate(raw)))
-            reply = ask("Open the pull request with this record? yes, or say what to change")
-            if reply is None or reply.strip().lower() in LATER:
-                return Interview(raw)
-            if reply.strip().lower() in YES:
-                return Interview(raw, settled=True)
-        else:
-            reply = ask("Your answer (or 'later' to finish offline)")
-            if reply is None or reply.strip().lower() in LATER:
-                return Interview(raw, questions)
-        conversation.append(f"Sponsor: {reply}")
+        if wanted or wrong or asking:
+            reply = ask(ANSWER)
+            if reply is None:
+                return stop()
+            said("Sponsor", reply)
+            if reply.strip().lower() in LATER:
+                return stop()
+            if reply.strip().lower() in DONE:
+                if wanted or wrong:
+                    left = list(wanted.values()) + wrong
+                    note = "Not yet. The record can't be written without:\n" + "\n".join(
+                        f"- {w}" for w in left
+                    )
+                    tell(note)
+                    said("crew", note)
+                    needs_turn = False
+                    continue
+                asking, needs_turn = [], False
+                continue
+            needs_turn = True
+            continue
+
+        tell(render(validate(raw)))
+        reply = ask(CONFIRM)
+        if reply is None:
+            return stop()
+        said("Sponsor", reply)
+        if reply.strip().lower() in LATER:
+            return stop()
+        if reply.strip().lower() in YES:
+            return Interview(raw, settled=True, transcript=transcript)
+        needs_turn = True
 
 
 def _questions(wanted: dict[Path_, str], asked: dict[Path_, str]) -> dict[Path_, str]:
@@ -220,8 +275,30 @@ class Project:
     """What the Product Owner is shown, and what the interview starts from."""
 
     repository: str = ""
+    intent: str = ""
     default_branch: str | None = None
     existing: dict[str, Any] | None = None
+
+
+def describe_intent(open_issues: list[dict[str, Any]]) -> str:
+    """The project's open issues, goals first: what it has been asked for so far.
+
+    An answer can only be tested against intent the Product Owner is shown. In
+    sprint-metrics' first onboarding it wrote down "current-sprint" metrics as
+    the purpose while goal #43 asked for sprints past, because it had only
+    ever seen the code.
+    """
+
+    def labels(issue: dict[str, Any]) -> list[str]:
+        return [label["name"] for label in issue.get("labels") or []]
+
+    ordered = sorted(open_issues, key=lambda i: ("goal" not in labels(i), i["number"]))
+    blocks = []
+    for issue in ordered:
+        tags = f" [{', '.join(labels(issue))}]" if labels(issue) else ""
+        body = (issue.get("body") or "").strip() or "(no description)"
+        blocks.append(f"### #{issue['number']} {issue['title']}{tags}\n\n{body}")
+    return "\n\n".join(blocks)
 
 
 def describe(path: Path, *, branch: str, protection: dict[str, Any] | None) -> str:
@@ -254,14 +331,16 @@ def describe(path: Path, *, branch: str, protection: dict[str, Any] | None) -> s
 
 def read_project(ws: Any, issues: Any, repo: str) -> Project:
     """The project as it stands on its default branch. Empty if it has no commits yet."""
+    intent = describe_intent(issues.open_issues(repo))
     if not issues.branches(repo):
-        return Project()
+        return Project(intent=intent)
     path = ws.current()
     branch = issues.repository(repo)["default_branch"]
     existing_file = path / RECORD_PATH
     existing = load_raw(existing_file.read_text()) if existing_file.exists() else None
     return Project(
         repository=describe(path, branch=branch, protection=issues.branch_protection(repo, branch)),
+        intent=intent,
         default_branch=branch,
         existing=existing,
     )
@@ -278,7 +357,24 @@ ISSUE_BODY = (
 )
 
 
-def open_record_pr(ws: Any, issues: Any, repo: str, record: ProjectRecord, *, base: str) -> str:
+def release_line(record: ProjectRecord) -> str:
+    """How the project is released, as a sentence of its own, not an answer pasted into one."""
+    release = record.intent.release
+    if not release.deploys:
+        return "the merge. Nothing is deployed."
+    line = f"a deployment. Where: {release.where}"
+    return line + (f" How: {release.how}" if release.how else "")
+
+
+def open_record_pr(
+    ws: Any,
+    issues: Any,
+    repo: str,
+    record: ProjectRecord,
+    *,
+    base: str,
+    transcript: list[str] | None = None,
+) -> str:
     """Propose the record to the project as a pull request. Returns its URL.
 
     Run again, it updates the same branch and pull request rather than opening a
@@ -302,8 +398,13 @@ def open_record_pr(ws: Any, issues: Any, repo: str, record: ProjectRecord, *, ba
         )
         ws.push(force=True)
 
+    conversation = interview_record(transcript or [])
     existing = next((p for p in issues.open_pulls(repo) if p["head"]["ref"] == branch), None)
     if existing:
+        # The pull request already says what the record is; what is new is
+        # the conversation that changed it.
+        if conversation:
+            issues.comment(repo, existing["number"], f"Updated by `crew onboard`.{conversation}")
         return existing["html_url"]
     intent = record.intent
     body = (
@@ -311,15 +412,51 @@ def open_record_pr(ws: Any, issues: Any, repo: str, record: ProjectRecord, *, ba
         f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
         "with the Sponsor through `crew onboard`.\n\n"
         f"- **Purpose:** {intent.scope.purpose}\n"
-        f"- **Release:** {record.release_is}"
-        + (f", to {intent.release.where}" if intent.release.where else "")
-        + "\n"
+        f"- **Release:** {release_line(record)}\n"
         f"- **Done:** {', '.join(f'`{c}`' for c in intent.done.checks)} must pass\n\n"
         "## Verification\n\n"
         "The record was loaded by the crew's own record loader (mqucifer/crew#129) "
-        "before it was written, and the Sponsor confirmed it in the interview."
+        "before it was written, and the Sponsor confirmed it in the interview." + conversation
     )
     pull = issues.create_pull(
         repo, title="chore: this project's onboarding record", head=branch, base=base, body=body
     )
     return pull["html_url"]
+
+
+def interview_record(transcript: list[str]) -> str:
+    """The interview, folded, for a pull request: the evidence the record came from."""
+    if not transcript:
+        return ""
+    return (
+        "\n\n<details><summary>The interview</summary>\n\n"
+        + "\n\n".join(transcript)
+        + "\n\n</details>"
+    )
+
+
+# --- the Sponsor's side of the terminal ------------------------------------------
+
+# Bold, in the markers readline needs around anything that takes no columns on
+# screen. Without them it counts the escape codes as characters and loses track
+# of the cursor once an answer wraps.
+_BOLD, _PLAIN = "\001\033[1m\002", "\001\033[0m\002"
+
+
+def terminal_ask(prompt: str) -> str | None:
+    """One answer from the Sponsor, with ordinary line editing. None when they end it.
+
+    Line editing is `readline`'s, and Python's `input()` only uses it once the
+    module is imported. The prompt is passed to `input()` rather than printed
+    first, so readline knows where the answer starts: printed separately, as
+    Rich does, backspace cannot reach back past a wrapped line (#135).
+    """
+    import contextlib  # noqa: PLC0415
+
+    with contextlib.suppress(ImportError):  # not on every platform; input() still works
+        import readline  # noqa: F401, PLC0415
+
+    try:
+        return input(f"\n{_BOLD}{prompt}{_PLAIN} › ")
+    except (EOFError, KeyboardInterrupt):
+        return None
