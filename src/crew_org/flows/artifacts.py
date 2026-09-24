@@ -16,12 +16,50 @@ log. Both are recorded; only one is visible on GitHub.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.tools.github_issues import IssueClient
 
 BY_MARKER = "<!-- crew:by "
+
+# `repo#N`, a repository-qualified reference as `Card.name(qualify=True)` writes
+# it. Not preceded by `/`, so an already-linked `owner/repo#N` is left alone.
+_QUALIFIED = re.compile(r"(?<![\w/.-])([A-Za-z0-9][\w.-]*)#(\d+)\b")
+# A bare `#N`, not part of a longer token or a heading's `##`.
+_BARE = re.compile(r"(?<![\w/#])#(\d+)\b")
+
+
+def link_references(
+    text: str, *, owner: str, home: str, delivery: list[str], known: Iterable[str] = ()
+) -> str:
+    """Make every card reference in `text` link to that card from `home`.
+
+    GitHub links a bare `#31` to issue 31 of the repository it is written in.
+    The standup and retro are written on the crew repository and name
+    delivery cards, so a bare `#31` there linked to crew#31, a different issue
+    (#118). `repo#N` does not link at all; `owner/repo#N` does.
+
+    A bare number is qualified only when there is exactly one delivery
+    repository to qualify it with. With several it is ambiguous, and it is left
+    as it was rather than guessed. `known` names other repositories whose
+    `repo#N` should link, such as the crew's own; any other `word#N` is left
+    alone, so `PR#5` is not mistaken for a repository.
+    """
+    repos = {home, *delivery, *known}
+
+    def qualified(match: re.Match[str]) -> str:
+        repo, number = match.group(1), match.group(2)
+        if repo not in repos:
+            return match.group(0)
+        return f"#{number}" if repo == home else f"{owner}/{repo}#{number}"
+
+    # Bare numbers first, while `crew#9` still reads as crew's: done the other
+    # way round, `crew#9` became `#9` and was then taken for a delivery card.
+    if len(delivery) == 1 and delivery[0] != home:
+        text = _BARE.sub(lambda m: f"{owner}/{delivery[0]}#{m.group(1)}", text)
+    return _QUALIFIED.sub(qualified, text)
 
 
 def signed(body: str, by: str | None) -> str:

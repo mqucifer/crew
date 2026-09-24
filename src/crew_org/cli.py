@@ -159,6 +159,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
 
     from crew_org.flows.standup import (  # noqa: PLC0415
         aging_blocked,
+        awaiting_approval,
         record_standup,
         waiting_on_a_person,
         write_standup,
@@ -174,9 +175,15 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             at=now,
             waiting=waiting_on_a_person(cards),
             aging=aging_blocked(cards, crew.rules, VAR / "events", now),
+            awaiting=awaiting_approval(cards),
         )
         number, commented = record_standup(
-            crew.issues, crew.sink, standup, sprint=crew.sprint, crew_repo=crew_repo
+            crew.issues,
+            crew.sink,
+            standup,
+            sprint=crew.sprint,
+            crew_repo=crew_repo,
+            delivery_repos=sorted(crew.repos),
         )
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]Standup not recorded:[/] {escape(str(exc))}")

@@ -284,3 +284,53 @@ def test_the_retro_reads_the_standups_and_closes_them(monkeypatch, ledger):
     assert "#40" in retro_issue["body"]
     assert issues.closed == [40]
     assert f"#{result.retro_record.issue}" in issues.posted[-1][1]
+
+
+# --- links and the approval queue (#118, #122) -------------------------------------
+
+from crew_org.flows.standup import awaiting_approval  # noqa: E402
+
+
+def epic_at_gate(number) -> Card:
+    return Card(
+        item_id=f"E{number}",
+        number=number,
+        status="Inbox (Goals)",
+        state="OPEN",
+        work_type="Epic",
+        repo="sprint-metrics",
+        labels=frozenset({"needs:human"}),
+    )
+
+
+def test_epics_at_the_gate_are_not_waiting_on_a_person():
+    """Sprint 4's standups listed 17 gate epics as waiting on a person, and the
+    retro filed them as stuck (#122)."""
+    cards = [
+        epic_at_gate(49),
+        card(12, "Blocked"),
+        card(2, "QAing", labels=frozenset({"needs:human"})),
+    ]
+    assert waiting_on_a_person(cards) == ["#12", "#2"]
+    assert awaiting_approval(cards) == ["#49"]
+
+
+def test_the_standup_gives_the_approval_queue_its_own_heading():
+    s = write_standup(run(), sprint=SPRINT, at=AT, waiting=["#12"], aging=[], awaiting=["#49"])
+    assert "**Waiting on a person**\n- #12" in s.text
+    assert "**Awaiting your approval" in s.text and "- #49" in s.text
+    assert s.text.index("Waiting on a person") < s.text.index("Awaiting your approval")
+
+
+def test_a_recorded_standup_links_to_the_delivery_cards():
+    issues = FakeIssues()
+    standup_ = write_standup(run(), sprint=SPRINT, at=AT, waiting=["#12"], aging=[])
+    record_standup(
+        issues,
+        EventSink(None),
+        standup_,
+        sprint=SPRINT,
+        crew_repo=CREW,
+        delivery_repos=["sprint-metrics"],
+    )
+    assert "- mqucifer/sprint-metrics#12" in issues.posted[-1][1]

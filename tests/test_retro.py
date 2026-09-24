@@ -243,3 +243,14 @@ def test_a_retro_still_rejects_asking_for_a_bigger_budget():
             change="increase the escalation budget",
             about="process",
         )
+
+
+def test_the_retro_and_a_crew_defect_link_to_the_delivery_cards_they_name():
+    """#118: the Sprint 4 retro cited "#31" and "#32" on the crew repository."""
+    defect = ProcessDefect(
+        subject="#31 escalated", problem="#31 needed a VERIFY escalation", change="x"
+    )
+    _, issues, _ = record(Retro(summary="#32 is done; #31 escalated.", defects=[defect]))
+    *defects, retro = issues.created
+    assert "mqucifer/sprint-metrics#31 needed a VERIFY escalation" in defects[0]["body"]
+    assert "mqucifer/sprint-metrics#32 is done" in retro["body"]
