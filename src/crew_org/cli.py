@@ -121,13 +121,20 @@ def tick(
         f"{escape(', '.join(sorted(allowed)))}[/]"
     )
 
+    # Refinement reads the code it is deciding about, and delivery opens its
+    # worktrees off the same clone.
+    ws = Workspace(owner, default_repo, token, _bot_identity(token, identity))
+    # A repository without a usable record isn't worked (#132).
+    skipped = loop.not_onboarded(ws, allowed)
+    for skipped_repo, why in skipped.items():
+        console.print(f"[yellow]{escape(skipped_repo)} not worked:[/] {escape(why)}")
+    allowed = allowed - set(skipped)
+
     crew = loop.Crew(
         board=board,
         issues=IssueClient(token, owner),
         sink=sink,
-        # Refinement reads the code it is deciding about, and delivery opens its
-        # worktrees off the same clone.
-        ws=Workspace(owner, default_repo, token, _bot_identity(token, identity)),
+        ws=ws,
         sandbox=sandbox,
         rules=ProcessRules.from_config(org),
         policy=EscalationPolicy.from_config(org),
@@ -140,6 +147,7 @@ def tick(
         reviewer=IssueClient(review_token, owner),
         reviewer_login=review_identity,
         sponsor=env.get("GITHUB_SPONSOR") or None,
+        not_onboarded=skipped,
     )
 
     with attach(sink, view):
@@ -176,6 +184,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             waiting=waiting_on_a_person(cards),
             aging=aging_blocked(cards, crew.rules, VAR / "events", now),
             awaiting=awaiting_approval(cards),
+            not_onboarded=crew.not_onboarded,
         )
         number, commented = record_standup(
             crew.issues,
