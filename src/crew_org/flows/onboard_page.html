@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crew onboarding</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
+  --line: #e2e1dc; --accent: #2f5bd3; --accent-ink: #ffffff;
+  --po: #eef2fc; --sponsor: #f1f0ec; --warn: #9a5b00; --ok: #1f7a3f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9c9b95;
+    --line: #34332f; --accent: #7d9cf0; --accent-ink: #10131c;
+    --po: #1f2536; --sponsor: #292825; --warn: #e0a64a; --ok: #6cc98d;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex;
+  gap: 12px; align-items: baseline; flex-wrap: wrap; }
+header h1 { font-size: 17px; margin: 0; }
+header .status { color: var(--muted); font-size: 13px; }
+main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px;
+  padding: 20px; max-width: 1400px; margin: 0 auto; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; min-width: 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  margin: 0 0 12px; }
+.msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; white-space: pre-wrap;
+  overflow-wrap: anywhere; }
+.msg.po { background: var(--po); }
+.msg.sponsor { background: var(--sponsor); margin-left: 32px; }
+.who { font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 2px; }
+.q { margin: 14px 0; }
+.q label { display: block; font-weight: 500; margin-bottom: 6px; }
+textarea { width: 100%; min-height: 64px; resize: vertical; padding: 8px 10px;
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; }
+textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.hint { color: var(--muted); font-size: 13px; }
+pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 ui-monospace,
+  SFMono-Regular, Menlo, monospace; }
+.missing { color: var(--warn); margin: 0 0 12px; padding-left: 18px; }
+.complete { color: var(--ok); margin: 0 0 12px; }
+.thinking { color: var(--muted); font-style: italic; }
+.outcome { padding: 12px; border-radius: 8px; background: var(--po); }
+.outcome a { color: var(--accent); }
+#reply { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 4px; }
+</style>
+</head>
+<body>
+<header><h1 id="title">Onboarding</h1><span class="status" id="status">connecting…</span></header>
+<main>
+  <section>
+    <h2>Interview</h2>
+    <div id="log"></div>
+    <div id="reply"></div>
+  </section>
+  <section>
+    <h2>The record</h2>
+    <div id="gaps"></div>
+    <pre id="record"></pre>
+  </section>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get("t");
+const $ = (id) => document.getElementById(id);
+let shownStage = null, shownQuestions = "", sending = false, timer = null;
+
+function el(tag, attrs, text) {
+  const node = document.createElement(tag);
+  Object.assign(node, attrs || {});
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+async function send(body) {
+  if (sending) return;
+  sending = true;
+  document.querySelectorAll("#reply button").forEach((b) => (b.disabled = true));
+  try {
+    const r = await fetch("/reply?t=" + encodeURIComponent(token), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) alert(await r.text());
+    else { shownStage = null; shownQuestions = ""; }
+  } finally { sending = false; poll(); }
+}
+
+function answerForm(asking) {
+  const box = $("reply");
+  box.replaceChildren();
+  const fields = asking.map((question, i) => {
+    const wrap = el("div", { className: "q" });
+    const label = el("label", { htmlFor: "a" + i }, question);
+    const area = el("textarea", { id: "a" + i, placeholder: "Leave blank to skip" });
+    wrap.append(label, area);
+    box.append(wrap);
+    return { question, area };
+  });
+  const free = el("div", { className: "q" });
+  free.append(el("label", { htmlFor: "free" }, asking.length ? "Anything else" : "Your answer"),
+              el("textarea", { id: "free" }));
+  box.append(free);
+  const actions = el("div", { className: "actions" });
+  const reply = el("button", { className: "primary" }, "Send");
+  reply.onclick = () => send({
+    action: "answer", text: $("free").value,
+    answers: fields.map((f) => ({ question: f.question, text: f.area.value })),
+  });
+  const done = el("button", {}, "Done: show me the record");
+  done.onclick = () => send({ action: "done" });
+  const later = el("button", {}, "Later: finish offline");
+  later.onclick = () => send({ action: "later" });
+  actions.append(reply, done, later);
+  box.append(actions,
+    el("p", { className: "hint" }, "Blank questions are left unanswered. Tell the Product Owner an answer is fine as it is, or use Done to go straight to the record."));
+}
+
+function confirmForm() {
+  const box = $("reply");
+  box.replaceChildren();
+  box.append(el("p", {}, "The record is on the right. Open the pull request with it, or say what to change."));
+  const free = el("div", { className: "q" });
+  free.append(el("label", { htmlFor: "free" }, "What to change"), el("textarea", { id: "free" }));
+  const actions = el("div", { className: "actions" });
+  const yes = el("button", { className: "primary" }, "Open the pull request");
+  yes.onclick = () => send({ action: "yes" });
+  const change = el("button", {}, "Send changes");
+  change.onclick = () => send({ action: "answer", text: $("free").value, answers: [] });
+  const later = el("button", {}, "Later: finish offline");
+  later.onclick = () => send({ action: "later" });
+  actions.append(yes, change, later);
+  box.append(free, actions);
+}
+
+function render(s) {
+  $("title").textContent = "Onboarding " + s.repo;
+  const log = $("log");
+  log.replaceChildren(...s.messages.map((m) => {
+    const node = el("div", { className: "msg " + (m.who === "Sponsor" ? "sponsor" : "po") });
+    node.append(el("span", { className: "who" }, m.who), document.createTextNode(m.text));
+    return node;
+  }));
+  if (s.thinking) log.append(el("p", { className: "thinking" }, "The Product Owner is thinking. A turn takes a few minutes."));
+
+  $("record").textContent = s.record || "(nothing yet)";
+  const gaps = $("gaps");
+  gaps.replaceChildren();
+  if (s.missing.length) {
+    gaps.append(el("p", { className: "hint" }, "Still missing:"));
+    const list = el("ul", { className: "missing" });
+    s.missing.forEach((m) => list.append(el("li", {}, m)));
+    gaps.append(list);
+  } else if (s.record) {
+    gaps.append(el("p", { className: "complete" }, "Every required answer is given."));
+  }
+
+  if (s.outcome) {
+    const box = el("div", { className: "outcome" }, s.outcome.text + " ");
+    if (s.outcome.link) box.append(el("a", { href: s.outcome.link, target: "_blank" }, s.outcome.link));
+    $("reply").replaceChildren(box);
+    $("status").textContent = "finished";
+    return false;
+  }
+  $("status").textContent = s.thinking ? "Product Owner is thinking…" : s.stage ? "your turn" : "working…";
+  const key = JSON.stringify(s.asking);
+  if (s.stage !== shownStage || (s.stage === "answer" && key !== shownQuestions)) {
+    if (s.stage === "answer") answerForm(s.asking);
+    else if (s.stage === "confirm") confirmForm();
+    else $("reply").replaceChildren();
+    shownStage = s.stage; shownQuestions = key;
+  }
+  return true;
+}
+
+async function poll() {
+  clearTimeout(timer);  // one polling loop, however many replies are sent
+  try {
+    const r = await fetch("/state?t=" + encodeURIComponent(token));
+    if (!r.ok) { $("status").textContent = "refused: " + r.status; return; }
+    const keepGoing = render(await r.json());
+    if (keepGoing) timer = setTimeout(poll, 1500);
+  } catch (e) {
+    $("status").textContent = "the crew has stopped serving this page";
+  }
+}
+poll();
+</script>
+</body>
+</html>
