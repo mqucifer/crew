@@ -148,12 +148,12 @@ def test_a_whole_interview_through_the_page(page):
             say="Two things.",
             questions=[
                 Question(about="intent.release.deploys", question="Is the merge the release?"),
-                Question(about="intent.done.checks", question="What must pass?"),
+                Question(about="intent.done.bar", question="What must pass?"),
             ],
         ),
         Turn(
             answers=Answers(
-                release=ReleaseAnswers(deploys=False), done=DoneAnswers(checks=["pytest"])
+                release=ReleaseAnswers(deploys=False), done=DoneAnswers(bar="tests pass")
             ),
             say="Thanks.",
         ),
@@ -164,7 +164,7 @@ def test_a_whole_interview_through_the_page(page):
     now = wait_for(lambda: (s := state(base, session))["stage"] == "answer" and s)
     assert now["asking"] == ["Is the merge the release?", "What must pass?"]
     assert "purpose: Sprint metrics for the crew" in now["record"]
-    assert "the checks a change must pass to be done" in now["missing"]
+    assert "what must be true for a change to count as done" in now["missing"]
 
     post(
         base,
@@ -204,7 +204,7 @@ def test_the_page_says_when_the_product_owner_is_thinking(page):
 @pytest.mark.parametrize("action, settled", [("done", True), ("later", False)])
 def test_done_and_later_from_the_page(page, action, settled):
     session, base, _ = page
-    partial = {"intent": {"release": {"deploys": False}, "done": {"checks": ["pytest"]}}}
+    partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
             answers=Answers(scope=ScopeAnswers(purpose="Metrics")),
