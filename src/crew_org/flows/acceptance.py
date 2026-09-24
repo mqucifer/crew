@@ -25,6 +25,7 @@ from crew_org.flows import artifacts
 from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
+from crew_org.project import brief, read_record
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
@@ -213,6 +214,7 @@ def run_qa(
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
+                project=_project_brief(worktree),
             )
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
@@ -357,3 +359,15 @@ def close_finished_parents(
             issues.close(parent_repo, card.number or 0)
             closed.append(card.number or 0)
     return closed
+
+
+def _project_brief(worktree) -> str:
+    """The project's record for QA (#131), or nothing if it has none.
+
+    Read from the branch under test, where it can't differ from main's:
+    delivery refuses any change to the record (`bounds`). A record that can't
+    be read raises, which fails this card's verification with the reason
+    rather than judging it against rules nobody can see.
+    """
+    record = read_record(worktree)
+    return brief(record) if record else ""

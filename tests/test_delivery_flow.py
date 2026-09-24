@@ -223,7 +223,7 @@ def harness(tmp_path, monkeypatch):
             "sprint": {"blocked_aging_days": 3, "escalation_budget": 3},
             "execution": {"local_repair_attempts": 2},
             "escalation": {
-                "never_escalate": ["SCHEMA", "SCOPE"],
+                "never_escalate": ["SCHEMA", "SCOPE", "REGRESSION"],  # as org.yaml
                 "may_escalate": ["VERIFY", "CAPABILITY"],
                 "require_justification": ["CAPABILITY"],
             },
