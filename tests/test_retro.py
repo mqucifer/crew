@@ -71,6 +71,9 @@ class FakeIssues:
     def labelled(self, repo, label):
         return [i for i in self._existing if label in i.get("labels", [])]
 
+    def open_issues(self, repo):
+        return getattr(self, "open_", [])
+
 
 def record(retro, issues=None, repos=(PRODUCT,)):
     issues = issues or FakeIssues()
@@ -254,3 +257,112 @@ def test_the_retro_and_a_crew_defect_link_to_the_delivery_cards_they_name():
     *defects, retro = issues.created
     assert "mqucifer/sprint-metrics#31 needed a VERIFY escalation" in defects[0]["body"]
     assert "mqucifer/sprint-metrics#32 is done" in retro["body"]
+
+
+# --- the retro knows what is already filed (#124) ----------------------------------
+
+from crew_org.flows.retro import known_issues  # noqa: E402
+
+
+def open_issue(number, title, body="", labels=()):
+    return {"number": number, "title": title, "body": body, "labels": [{"name": n} for n in labels]}
+
+
+def test_the_retro_is_shown_the_crews_open_issues_as_crew_references():
+    """Criterion 1. Written crew#N, so what it copies links correctly (#118)."""
+    issues = FakeIssues()
+    issues.open_ = [
+        open_issue(
+            116,
+            "An approved PR behind main fails to merge",
+            "<!-- x -->\nAs the **Sponsor**, I want...",
+        ),
+        open_issue(115, "Standup: Sprint 4", labels=["standup"]),
+        open_issue(123, "Retro: Sprint 4", labels=["retro"]),
+    ]
+    shown, text = known_issues(issues, CREW)
+    assert shown == {116}
+    assert (
+        text == "- crew#116 — An approved PR behind main fails to merge — As the Sponsor, I want..."
+    )
+
+
+def test_the_known_list_is_bounded_and_says_what_it_left_out(monkeypatch):
+    import crew_org.flows.retro as retro_mod
+
+    monkeypatch.setattr(retro_mod, "MAX_KNOWN_CHARS", 60)
+    issues = FakeIssues()
+    issues.open_ = [open_issue(n, "x" * 40) for n in (130, 129, 128)]
+    shown, text = known_issues(issues, CREW)
+    assert shown == {130} and "2 older issues omitted" in text
+
+
+def explained(subject, by, **kw):
+    return ProcessDefect(subject=subject, problem="p", change="c", explained_by=by, **kw)
+
+
+def test_a_symptom_a_known_issue_explains_is_cited_not_filed():
+    """Criterion 2. Sprint 4 filed #120, #121 and sprint-metrics#78 for causes
+    already filed as #116 and #119."""
+    out, issues, seen = record_known(
+        Retro(summary="s", defects=[explained("#31 merge", 116)]), {116}
+    )
+    retro_issue = issues.created[-1]
+    assert out.filed == [] and out.explained == [("#31 merge", 116)]
+    assert "explained by #116, not filed again" in retro_issue["body"]
+    assert seen[-1].detail["explained"] == ["crew#116"]
+
+
+def test_a_known_issue_the_model_invented_cannot_suppress_a_finding():
+    out, _, _ = record_known(Retro(summary="s", defects=[explained("real", 999)]), {116})
+    assert out.explained == [] and len(out.filed) == 1
+
+
+def test_a_new_finding_says_what_it_was_checked_against():
+    """Criterion 3. Only issues it was shown are named."""
+    defect = ProcessDefect(subject="new", problem="p", change="c", checked_against=[116, 119, 999])
+    _, issues, _ = record_known(Retro(summary="s", defects=[defect]), {116, 119})
+    assert "**Checked against:** #116, #119\n" in issues.created[0]["body"] + "\n"
+    assert "999" not in issues.created[0]["body"]
+
+
+def test_crew_references_in_the_retro_stay_on_the_crew_repository():
+    """#126 wrote a crew-filed defect and the standup as bare #N, and the retro
+    body's link rewrite then pointed them at sprint-metrics."""
+    out, issues, _ = record_known(Retro(summary="s", defects=[process()]), set(), standup=115)
+    body = issues.created[-1]["body"]
+    assert "It read the sprint's standups, #115." in body
+    assert "- #201 — Story sizing (process)" in body
+    assert "sprint-metrics#201" not in body and "sprint-metrics#115" not in body
+
+
+def record_known(retro, known, standup=None):
+    issues = FakeIssues()
+    sink, seen = EventSink(None), []
+    sink.subscribe(seen.append)
+    out = record_retro(
+        issues,
+        sink,
+        retro,
+        sprint=SPRINT,
+        crew_repo=CREW,
+        delivery_repos=[PRODUCT],
+        known=known,
+        standup=standup,
+    )
+    return out, issues, seen
+
+
+def test_the_opening_line_keeps_its_references():
+    from crew_org.flows.retro import _opening
+
+    assert _opening("## Why\n") == "Why"
+    assert _opening("> what #56 set out to record") == "what #56 set out to record"
+
+
+def test_references_in_a_known_issue_are_shown_as_crew_references():
+    """What the retro is shown, it copies. A bare "#56" copied into the retro
+    would be linked to the delivery repository."""
+    issues = FakeIssues()
+    issues.open_ = [open_issue(117, "Bridge", "so that what #56 set out to record is there")]
+    assert "what crew#56 set out" in known_issues(issues, CREW)[1]

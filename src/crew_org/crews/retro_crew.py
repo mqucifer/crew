@@ -28,6 +28,15 @@ class ProcessDefect(BaseModel):
         default=None,
         description="For a product defect, the delivery repository holding what was found",
     )
+    explained_by: int | None = Field(
+        default=None,
+        description="If an issue under 'Known issues' already explains this, its number. "
+        "The defect is then cited as that issue, not filed again",
+    )
+    checked_against: list[int] = Field(
+        default_factory=list,
+        description="The known issues this finding was compared with and is not a duplicate of",
+    )
 
     @field_validator("change")
     @classmethod
@@ -59,6 +68,7 @@ def write_retro(
     *,
     delivery_repos: list[str] | None = None,
     standups: str = "",
+    known: str = "",
 ) -> Retro:
     agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
     agents = agents_module.build_agents("scrum_master")
@@ -74,6 +84,13 @@ def write_retro(
             "and restarted. Epics listed as awaiting approval are the Sponsor's queue at "
             "the gate, not stuck work: they are expected to wait until the Sponsor "
             "decides, and are not a defect.\n\n"
+            f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
+            "These are defects and work already understood and filed. Before proposing a "
+            "defect, check it against them. If one already explains what happened, cite it "
+            "as the cause (write it as it is written above, e.g. crew#116) and set "
+            "`explained_by` to its number rather than proposing it again: the symptom a "
+            "sprint shows is often not the cause. For a finding that is new, list in "
+            "`checked_against` the known issues you compared it with.\n\n"
             "Report what happened, including what went badly, for a Sponsor who was not "
             "present. Cite cards by number.\n"
             "Where escalation was needed, name the specific story that was too large or "

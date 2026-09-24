@@ -155,6 +155,9 @@ class FakeIssues:
     def labelled(self, repo, label):
         return [i for i in self.existing if label in i.get("labels", [])]
 
+    def open_issues(self, repo):
+        return getattr(self, "open_", [])
+
     def ensure_label(self, repo, name, *, color, description):
         pass
 

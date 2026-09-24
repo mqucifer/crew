@@ -85,6 +85,22 @@ class IssueClient:
                 return out
             page += 1
 
+    def open_issues(self, repo: str) -> list[dict[str, Any]]:
+        """Every open issue, newest first. Pull requests left out."""
+        out: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/repos/{self.owner}/{repo}/issues",
+                params={"state": "open", "per_page": 100, "page": page},
+            )
+            response.raise_for_status()
+            batch = response.json()
+            out += [i for i in batch if "pull_request" not in i]
+            if len(batch) < 100:
+                return out
+            page += 1
+
     def ensure_label(self, repo: str, name: str, *, color: str, description: str) -> None:
         """Create a label if the repository does not have it. An existing one is left as is."""
         response = self._client.post(
