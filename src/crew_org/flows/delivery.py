@@ -798,7 +798,9 @@ def deliver_story(
 
 
 def _touched_count(implementation: Implementation) -> int:
-    return len(implementation.new_files) + len(implementation.edits)
+    return (
+        len(implementation.new_files) + len(implementation.edits) + len(implementation.text_edits)
+    )
 
 
 def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcome) -> str:
@@ -819,6 +821,8 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{new.path}` (new)")
     for edit in implementation.edits:
         lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
+    for text_edit in implementation.text_edits:
+        lines.append(f"- `{text_edit.path}` — edited")
     lines += ["", f"Closes #{card.number}"]
     return "\n".join(lines)
 

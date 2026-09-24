@@ -361,6 +361,14 @@ so nothing it does not name can be damaged.
 Operations are `replace`, `add`, `add_method`, `add_import` and `delete`.
 Deleting is something to choose, not something that happens by omission.
 
+**A file that is not Python** (`pyproject.toml`, a README, a CI workflow) has no
+definitions to name. It is changed by quoting: the Developer copies the exact
+text to change, which must occur in the file once, and gives what replaces it
+(crew#140). The same property holds as for named edits: nothing unquoted is
+reproduced, so nothing unquoted can be lost. A quote that doesn't match, or
+matches twice, is refused and no file is changed. A Python file can't be
+changed this way, because the rules above read definitions by name.
+
 This replaced whole-file rewriting, which failed for a reason worth recording.
 Returning a whole file makes every story a transcription exercise: regenerate
 three hundred lines, change four, leave the rest byte-identical. Story #8 could
