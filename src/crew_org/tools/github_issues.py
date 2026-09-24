@@ -22,6 +22,10 @@ class IssueError(RuntimeError):
     pass
 
 
+class BranchUpdateConflict(IssueError):
+    """GitHub could not bring a pull request's branch up to date: they conflict."""
+
+
 _REVIEW_DECISION = """
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -213,6 +217,25 @@ class IssueClient:
             event=event,
             body=body,
         )
+
+    def update_branch(self, repo: str, number: int, *, head: str | None = None) -> None:
+        """Merge the base into a pull request's branch, as GitHub's "Update branch" does.
+
+        Asynchronous: GitHub accepts it (202) and the branch moves shortly
+        after, which re-runs its checks. `head` guards against updating a
+        branch that moved since it was read. A conflict raises
+        `BranchUpdateConflict`, never a forced update.
+        """
+        response = self._client.put(
+            f"{API}/repos/{self.owner}/{repo}/pulls/{number}/update-branch",
+            json={"expected_head_sha": head} if head else {},
+        )
+        if response.status_code == 202:
+            return
+        detail = response.json().get("message", response.text[:120])
+        if response.status_code == 422 and "conflict" in detail.lower():
+            raise BranchUpdateConflict(detail)
+        raise IssueError(f"PUT update-branch #{number} -> {response.status_code}: {detail}")
 
     def merge_pull(self, repo: str, number: int, *, method: str = "squash") -> dict[str, Any]:
         return self._request(

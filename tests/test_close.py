@@ -73,6 +73,12 @@ class FakeIssues:
         self.merged.append(number)
         return {}
 
+    def pull(self, repo, number):
+        return getattr(self, "detail", {})
+
+    def update_branch(self, repo, number, *, head=None):
+        self.updated = getattr(self, "updated", []) + [number]
+
 
 @pytest.fixture(autouse=True)
 def no_retro(monkeypatch):
@@ -207,3 +213,13 @@ def test_a_close_given_no_log_raises_nothing(ledger):
     that only wants the merge still gets one."""
     result, _ = run(FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED"), ledger)
     assert result.aging_blocked == []
+
+
+def test_a_story_behind_main_is_brought_up_to_date_at_close(ledger):
+    """#116: the same 405 as the tick, on the Sponsor's own gate."""
+    issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED")
+    issues.detail = {"mergeable_state": "behind", "head": {"sha": "c0ffee"}}
+    result, board = run(issues, ledger)
+    assert issues.merged == [] and issues.updated == [100]
+    assert result.updating == [(6, 100)]
+    assert not result.complete, "a story still to land is not a finished sprint"
