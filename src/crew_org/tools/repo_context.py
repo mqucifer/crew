@@ -14,6 +14,12 @@ from pathlib import Path
 # Files worth showing an agent so its work fits in with what is there.
 CONTEXT_FILES = ("pyproject.toml", "README.md")
 
+# Every other text file is shown whole too (#140). A non-Python file is changed
+# by quoting the text it replaces, and a quote can only be copied from text the
+# Developer was shown: a CI workflow listed by name alone is one it would have to
+# reconstruct from memory, and a reconstruction doesn't match.
+TEXT_SUFFIXES = frozenset({".toml", ".md", ".yml", ".yaml", ".cfg", ".ini", ".json", ".txt"})
+
 # The whole repository, on every attempt. The window is 262,144 tokens and the
 # pilot repo is 17,195 characters — under 2% of it. Showing a developer the
 # names of three functions and asking it to honour behaviour it has never read
@@ -109,9 +115,20 @@ def repository_context(worktree: Path, *, editing: bool = True) -> str:
         if target.exists():
             lines += ["", f"### {name}", "", "```", target.read_text().strip(), "```"]
 
-    lines += ["", "### Current source", ""]
     budget = CONTEXT_CHAR_CEILING
     omitted: list[str] = []
+    for target in paths:
+        rel = target.relative_to(worktree)
+        if target.suffix not in TEXT_SUFFIXES or str(rel) in CONTEXT_FILES:
+            continue
+        body = target.read_text(encoding="utf-8", errors="ignore")
+        if len(body) > budget:
+            omitted.append(str(rel))
+            continue
+        budget -= len(body)
+        lines += ["", f"### {rel}", "", "```", body.strip(), "```"]
+
+    lines += ["", "### Current source", ""]
     for target in sorted(worktree.glob("src/**/*.py")) + sorted(worktree.glob("tests/**/*.py")):
         if IGNORED_DIRS & set(target.parts):
             continue

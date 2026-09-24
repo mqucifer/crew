@@ -105,6 +105,44 @@ class FileEdit(BaseModel):
         return name.startswith("test_") or name.endswith("_test.py")
 
 
+class TextEdit(BaseModel):
+    """One change to an existing file that is not Python, by quoting what it replaces.
+
+    Python is changed by name (`FileEdit`), which the §15 guards read. Anything
+    else (pyproject.toml, a README, a CI workflow) has no names to address, so
+    the change quotes the text it replaces (#140). Everything outside that text
+    is left as it is by construction: nothing unquoted is reproduced, so nothing
+    unquoted can be lost, and a file can't come back truncated or regenerated.
+    """
+
+    path: str = Field(description="Repository-relative path of an existing non-Python file")
+    find: str = Field(
+        default="",
+        description=(
+            "The exact text to replace, copied from the file as shown, occurring once in "
+            "it. Empty to add `replace` at the end of the file."
+        ),
+    )
+    replace: str = Field(default="", description="What takes its place. Empty to remove it.")
+
+    @field_validator("path")
+    @classmethod
+    def _not_python(cls, value: str) -> str:
+        cleaned = FileWrite._stays_in_the_repository(value)
+        if PurePosixPath(cleaned).suffix == ".py":
+            raise ValueError(
+                f"{cleaned!r} is Python: change it with `edits`, addressed by name, "
+                "not by quoting its text"
+            )
+        return cleaned
+
+    @model_validator(mode="after")
+    def _changes_something(self) -> TextEdit:
+        if self.find == self.replace:
+            raise ValueError(f"the edit to {self.path!r} changes nothing")
+        return self
+
+
 class Implementation(BaseModel):
     summary: str = Field(description="What changed and why, for the pull request body")
     new_files: list[FileWrite] = Field(
@@ -113,12 +151,19 @@ class Implementation(BaseModel):
     )
     edits: list[FileEdit] = Field(
         default_factory=list,
-        description="Changes to files that already exist, one per definition.",
+        description="Changes to Python files that already exist, one per definition.",
+    )
+    text_edits: list[TextEdit] = Field(
+        default_factory=list,
+        description=(
+            "Changes to existing files that are not Python (pyproject.toml, README.md, "
+            "CI workflows), each quoting the text it replaces."
+        ),
     )
 
     @model_validator(mode="after")
     def _does_something(self) -> Implementation:
-        if not self.new_files and not self.edits:
+        if not self.new_files and not self.edits and not self.text_edits:
             raise ValueError("an implementation must create a file or edit one")
         return self
 
@@ -174,11 +219,16 @@ STANDING_INSTRUCTIONS = (
     "If your code uses a name the file does not already import, add an `add_import` "
     "edit for it. A spliced definition referring to something unimported is the most "
     "common way these edits fail.\n\n"
+    "For an existing file that is not Python (pyproject.toml, README.md, a CI "
+    "workflow), return `text_edits`: `find` quotes the exact text to change, copied "
+    "from the file as shown, and must occur in it once; `replace` is what takes its "
+    "place. Quote enough to be unique and no more. An empty `find` adds to the end of "
+    "the file.\n\n"
     "The project's lint rules are in pyproject.toml and are enforced. Write code that "
     "satisfies them rather than code you would then have to fix.\n\n"
     "Match the surrounding code's idiom. Implement only this story - work belonging "
-    "to other stories is not yours to add, even when it looks adjacent. Do not change "
-    "lint or tool configuration."
+    "to other stories is not yours to add, even when it looks adjacent. Configuration "
+    "may change when the story needs it, never to loosen a check so a change passes."
 )
 
 

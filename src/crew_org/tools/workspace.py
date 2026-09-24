@@ -115,7 +115,53 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
 
-    return written
+    return written + apply_text_edits(worktree, implementation.text_edits)
+
+
+def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
+    """Apply quoted replacements to existing non-Python files (#140).
+
+    Every edit is checked before any file is written, so a quote that doesn't
+    match leaves every file as it was rather than half-changed. A quote must
+    occur exactly once: zero means it was not copied from the file, and more
+    than one means the edit doesn't say which it meant.
+    """
+    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
+
+    root = worktree.resolve()
+    changed: dict[str, str] = {}
+    for item in text_edits:
+        target = (root / item.path).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"{item.path!r} resolves outside the worktree")
+        if item.path not in changed:
+            if not target.exists():
+                raise EditError(
+                    f"{item.path!r} does not exist. A file that does not exist yet belongs "
+                    "in new_files, written in full."
+                )
+            changed[item.path] = target.read_text(encoding="utf-8")
+        text = changed[item.path]
+        if not item.find:
+            joiner = "" if not text or text.endswith("\n") else "\n"
+            changed[item.path] = text + joiner + item.replace
+            continue
+        found = text.count(item.find)
+        if found == 0:
+            raise EditError(
+                f"the text to replace in {item.path!r} is not in the file. Quote it exactly "
+                f"as the file has it, including indentation:\n{item.find[:300]}"
+            )
+        if found > 1:
+            raise EditError(
+                f"the text to replace occurs {found} times in {item.path!r}. Quote more of "
+                f"the surrounding text so it names one place:\n{item.find[:300]}"
+            )
+        changed[item.path] = text.replace(item.find, item.replace, 1)
+
+    for path, text in changed.items():
+        (root / path).write_text(text, encoding="utf-8")
+    return list(changed)
 
 
 def apply(worktree: Path, files: list[FileWrite]) -> list[str]:
