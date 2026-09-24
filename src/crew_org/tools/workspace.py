@@ -126,6 +126,18 @@ def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
     occur exactly once: zero means it was not copied from the file, and more
     than one means the edit doesn't say which it meant.
     """
+    changed = plan_text_edits(worktree, text_edits)
+    root = worktree.resolve()
+    for path, text in changed.items():
+        (root / path).write_text(text, encoding="utf-8")
+    return list(changed)
+
+
+def plan_text_edits(worktree: Path, text_edits: list) -> dict[str, str]:
+    """What each file quoted by `text_edits` would hold afterwards. Writes nothing.
+
+    Raises `EditError` for a quote that isn't in the file, or occurs twice.
+    """
     from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
 
     root = worktree.resolve()
@@ -158,10 +170,7 @@ def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
                 f"the surrounding text so it names one place:\n{item.find[:300]}"
             )
         changed[item.path] = text.replace(item.find, item.replace, 1)
-
-    for path, text in changed.items():
-        (root / path).write_text(text, encoding="utf-8")
-    return list(changed)
+    return changed
 
 
 def apply(worktree: Path, files: list[FileWrite]) -> list[str]:
