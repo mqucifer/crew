@@ -219,14 +219,23 @@ class Implementation(BaseModel):
         # would be refused as already defined, so a test the same answer's new
         # file already defines isn't added twice.
         written = {f.path: f.content for f in self.new_files}
+        # Written as an edit too: sprint-metrics#95's first attempt added the same
+        # test in `edits` and here, and the second `add` was refused (#183).
+        edited = {(e.path, e.target) for e in self.edits}
         return [
             *self.edits,
             *(
                 c.as_edit()
                 for c in self.criteria_tests
-                if not re.search(rf"def {re.escape(c.test)}\b", written.get(c.path, ""))
+                if (c.path, c.test) not in edited
+                and not re.search(rf"def {re.escape(c.test)}\b", written.get(c.path, ""))
             ),
         ]
+
+    @property
+    def criteria_edits(self) -> set[tuple[str, str]]:
+        """(path, test) for each criterion's test, as `all_edits` adds them."""
+        return {(c.path, c.test) for c in self.criteria_tests}
 
     def _may_change_nothing(self) -> bool:
         return False

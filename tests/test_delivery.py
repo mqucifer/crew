@@ -295,3 +295,59 @@ def test_a_test_already_in_a_new_test_file_is_not_added_twice(tmp_path):
     assert impl.all_edits == []
     workspace.apply_implementation(tmp_path, impl)
     assert (tmp_path / "tests" / "test_new.py").read_text().count("def test_fresh") == 1
+
+
+# --- #183: a criterion's test is applied once, whatever else carries it ------------------
+
+
+def test_a_repair_resending_its_first_attempts_test_replaces_it(tmp_path):
+    """sprint-metrics#93: a repair sent its criteria tests again; add refused them."""
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sprint_range.py").write_text(
+        "def test_range():\n    assert False\n"
+    )
+    repair = Implementation(
+        summary="fix",
+        criteria_tests=[criterion_test(source="def test_range():\n    assert 1 + 1 == 2\n")],
+    )
+    workspace.apply_implementation(tmp_path, repair)
+    text = (tmp_path / "tests" / "test_sprint_range.py").read_text()
+    assert text.count("def test_range") == 1 and "assert 1 + 1 == 2" in text
+
+
+def test_a_test_in_both_edits_and_criteria_is_applied_once(tmp_path):
+    """sprint-metrics#95: the same test as an add edit and a criterion's test."""
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sprint_range.py").write_text("def test_there():\n    pass\n")
+    source = "def test_range():\n    assert True\n"
+    impl = FirstAttempt(
+        summary="s",
+        criteria_tests=[criterion_test(source=source)],
+        edits=[
+            FileEdit(
+                path="tests/test_sprint_range.py",
+                operation="add",
+                target="test_range",
+                source=source,
+            )
+        ],
+    )
+    assert len(impl.all_edits) == 1
+    workspace.apply_implementation(tmp_path, impl)
+    assert (tmp_path / "tests" / "test_sprint_range.py").read_text().count("def test_range") == 1
+
+
+def test_a_new_criterion_test_is_still_added(tmp_path):
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sprint_range.py").write_text("def test_there():\n    pass\n")
+    workspace.apply_implementation(
+        tmp_path, FirstAttempt(summary="s", criteria_tests=[criterion_test()], new_files=[code()])
+    )
+    text = (tmp_path / "tests" / "test_sprint_range.py").read_text()
+    assert "def test_there" in text and "def test_range" in text
