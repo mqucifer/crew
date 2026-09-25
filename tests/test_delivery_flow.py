@@ -140,8 +140,9 @@ class FakeWorkspace:
         (path / "pyproject.toml").write_text("[project]\nname='x'\n")
         return path
 
-    def commit(self, message):
+    def commit(self, message, *, allow_empty=False):
         self.committed.append(message)
+        self.empty_commits = getattr(self, "empty_commits", 0) + int(allow_empty)
         return True
 
     # A resumed branch is brought up to date with main before the work (#119).
@@ -173,7 +174,14 @@ class FakeWorkspace:
 @pytest.fixture
 def harness(tmp_path, monkeypatch):
     """Everything the loop needs, with the model and the shell faked out."""
-    calls = {"implement": 0, "escalate": 0, "feedback": [], "context": [], "prior": []}
+    calls = {
+        "implement": 0,
+        "escalate": 0,
+        "feedback": [],
+        "context": [],
+        "prior": [],
+        "returned": [],
+    }
 
     def make(
         *,
@@ -190,11 +198,12 @@ def harness(tmp_path, monkeypatch):
         ws = FakeWorkspace(tmp_path)
         sequence = list(checks)
 
-        def fake_implement(story_text, *, context, feedback="", prior=""):
+        def fake_implement(story_text, *, context, feedback="", prior="", returned=False):
             calls["implement"] += 1
             calls["feedback"].append(feedback)
             calls["context"].append(context)
             calls["prior"].append(prior)
+            calls["returned"].append(returned)
             if implement:
                 return implement(calls["implement"])
             return IMPL

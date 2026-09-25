@@ -331,12 +331,17 @@ class Workspace:
             raise GitError("no worktree is open")
         return _run(["rev-parse", "HEAD"], cwd=self.path)
 
-    def commit(self, message: str) -> bool:
-        """Commit everything in the worktree. False if there was nothing to commit."""
+    def commit(self, message: str, *, allow_empty: bool = False) -> bool:
+        """Commit everything in the worktree. False if there was nothing to commit.
+
+        `allow_empty` commits even so: an answer to a review that needs no change
+        still has to move the pull request's head, or the review it answers keeps
+        applying to it (#161).
+        """
         if self.path is None:
             raise GitError("no worktree open")
         _run(["add", "-A"], cwd=self.path)
-        if not _run(["status", "--porcelain"], cwd=self.path):
+        if not allow_empty and not _run(["status", "--porcelain"], cwd=self.path):
             return False
         _run(
             [
@@ -345,6 +350,7 @@ class Workspace:
                 "-c",
                 f"user.email={self.identity.email}",
                 "commit",
+                *(["--allow-empty"] if allow_empty else []),
                 "-m",
                 message,
                 "--author",
