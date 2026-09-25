@@ -20,6 +20,7 @@ from typing import Any
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import NEEDS_DESIGN
+from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_project import Card
 
@@ -114,6 +115,7 @@ def write_notes(
                 repository=repository_context(clone, editing=False),
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"[:200]))
             sink.note(EventKind.NOTE, f"#{number} design note failed: {exc}"[:120])
             continue

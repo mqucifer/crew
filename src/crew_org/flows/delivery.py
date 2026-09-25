@@ -34,6 +34,7 @@ from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
+from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools import bounds, claude_code, regression, workspace
@@ -568,6 +569,7 @@ def deliver_story(
                 story_text, context=context, feedback=feedback, prior=prior, returned=rework
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             # The model could not produce a valid implementation at all.
             failure = LocalFailure(
                 card=number,
@@ -998,6 +1000,7 @@ def _work_one_card(
             rework=rework,
         )
     except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
         # A last resort. Anything deliver_story can attribute it returns on
         # its own outcome; reaching here means it could not, so the card
         # blocks knowing nothing but the error.

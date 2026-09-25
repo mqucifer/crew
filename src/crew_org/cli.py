@@ -21,7 +21,30 @@ from crew_org.config import load_org
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.tui import LiveView, attach
 
-app = typer.Typer(help="An agile engineering organization run as agents.", no_args_is_help=True)
+
+class CrewTyper(typer.Typer):
+    """The crew's command line, which reports a dead model backend in one line (#153).
+
+    Wherever it's found, in a pre-flight or mid-command, a backend that can't be
+    reached says which side is down and stops, rather than a traceback from the
+    depths of a model client.
+    """
+
+    def __call__(self, *args, **kwargs):
+        from crew_org.llm import backend_down, base_url, down  # noqa: PLC0415
+
+        try:
+            return super().__call__(*args, **kwargs)
+        except Exception as exc:
+            if not backend_down(exc):
+                raise
+            Console(stderr=True, soft_wrap=True).print(
+                f"[red]{escape(down(base_url(), str(exc)))}[/]"
+            )
+            raise SystemExit(1) from None
+
+
+app = CrewTyper(help="An agile engineering organization run as agents.", no_args_is_help=True)
 sprint_app = typer.Typer(help="Sprint cadence commands.", no_args_is_help=True)
 app.add_typer(sprint_app, name="sprint")
 

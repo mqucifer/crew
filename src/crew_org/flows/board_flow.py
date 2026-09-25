@@ -42,6 +42,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace
+from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import IssueClient
@@ -778,6 +779,7 @@ def refine_epics(
                 feedback=notes,
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(
                 CrewEvent(
@@ -993,6 +995,7 @@ def tick(
                 feedback=notes,
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(
                 CrewEvent(

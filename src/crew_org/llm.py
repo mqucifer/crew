@@ -120,4 +120,71 @@ def health() -> tuple[bool, str]:
     aliases = [m["id"] for m in r.json().get("data", [])]
     if "crew-local" not in aliases:
         return False, f"Proxy is up but has no 'crew-local' alias. Serving: {aliases}"
-    return True, f"proxy up — {', '.join(aliases)}"
+    # The model list comes from the proxy's own config, whether or not the model
+    # server behind it is up. On 2026-09-25 SGLang on the Spark was stopped, this
+    # passed, and `crew design` failed inside its first model call with a
+    # traceback (#153). One minimal completion, thinking off, proves the path.
+    try:
+        answer = httpx.post(
+            f"{url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key()}"},
+            json={
+                "model": "crew-local",
+                "messages": [{"role": "user", "content": "Reply with the word ready."}],
+                "max_tokens": 8,
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+            timeout=PROBE_TIMEOUT,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, down(url, f"{type(exc).__name__}: {exc}")
+    if answer.status_code >= 400:
+        return False, down(url, f"it answered {answer.status_code}: {answer.text[:160]}")
+    return True, f"proxy up — {', '.join(aliases)}; crew-local answering"
+
+
+# Long enough for a cold model's first token, short enough to fail a pre-flight
+# rather than hang it.
+PROBE_TIMEOUT = 60.0
+
+
+def down(url: str, detail: str) -> str:
+    """The one line that says the proxy is up and the model behind it isn't."""
+    return (
+        f"The LiteLLM proxy at {url} is up, but the model behind 'crew-local' isn't "
+        f"answering ({detail.strip()[:200]}). Check the model server, e.g. SGLang on the Spark."
+    )
+
+
+# How a request fails when the proxy can't reach the model server: a connection
+# error, or the proxy's 5xx for one. Not a timeout: a slow generation isn't a
+# dead backend, and treating it as one would stop a tick that was working.
+_DOWN = ("APIConnectionError", "InternalServerError", "ServiceUnavailableError")
+
+
+def backend_down(exc: BaseException) -> bool:
+    """Is this a model backend that can't be reached, anywhere in the chain?
+
+    A card's model call fails for the card's reasons (bad output, a failed
+    check) or for the infrastructure's. Only the first is the card's: a dead
+    backend recorded as a card failure is retried, then blocked as a prompt
+    defect, and the card is blamed for a server that was switched off (#153).
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if type(current).__name__ in _DOWN or "Connection error" in str(current):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+class ModelUnavailable(RuntimeError):
+    """The model backend can't be reached. The command stops; no card is blamed."""
+
+
+def reraise_if_down(exc: BaseException) -> None:
+    """Called first in a catch around a model call: infrastructure isn't a card's failure."""
+    if backend_down(exc):
+        raise ModelUnavailable(str(exc)) from exc
