@@ -69,6 +69,7 @@ def write_retro(
     delivery_repos: list[str] | None = None,
     standups: str = "",
     known: str = "",
+    retries: str = "",
 ) -> Retro:
     agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
     agents = agents_module.build_agents("scrum_master")
@@ -84,7 +85,17 @@ def write_retro(
             "and restarted. Epics listed as awaiting approval are the Sponsor's queue at "
             "the gate, not stuck work: they are expected to wait until the Sponsor "
             "decides, and are not a defect.\n\n"
-            f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
+            + (
+                "## Why work didn't land first time\n\n"
+                f"{retries}\n\n"
+                "A cause seen on more than one card is filed as a defect by the crew "
+                "itself, with its count and cards as evidence; do not propose those again. "
+                "Read the rest for what they say about how stories were written or "
+                "delivered.\n\n"
+                if retries
+                else ""
+            )
+            + f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
             "These are defects and work already understood and filed. Before proposing a "
             "defect, check it against them. If one already explains what happened, cite it "
             "as the cause (write it as it is written above, e.g. crew#116) and set "

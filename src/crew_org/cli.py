@@ -1297,6 +1297,47 @@ def design(
     console.print(f"\n[green]Design proposed[/] — {url}")
 
 
+@app.command()
+def export(
+    repo: str = typer.Argument(..., help="The delivery repository whose sprint to export."),
+    sprint: str = typer.Option(None, "--sprint", help="Iteration name. Defaults to the current."),
+    out: str = typer.Option(None, "--out", help="Where to write it. Defaults to var/exports/."),
+) -> None:
+    """Export a sprint's stories and their attempts, for sprint-metrics to read (#157).
+
+    Which stories landed on their first attempt, what the others took (each
+    retry's failure class, role and first error line), the causes across them,
+    and the sprint's escalations from the ledger. Nothing is sent anywhere: it
+    writes one JSON file.
+    """
+    import json
+
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.escalation import EscalationLedger
+    from crew_org.flows.attempts import read_attempts, retries_text, sprint_report
+    from crew_org.tools.github_project import ProjectClient
+
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    board = ProjectClient(token, env["GITHUB_OWNER"], int(env["GITHUB_PROJECT_NUMBER"]))
+    sprint = sprint or board.schema.field("Sprint").current_iteration()
+    stories = [
+        c for c in board.cards() if c.sprint == sprint and c.work_type == "Story" and c.repo == repo
+    ]
+    report = sprint_report(
+        sprint,
+        stories,
+        read_attempts(VAR / "events"),
+        EscalationLedger(VAR / "ledger" / "escalations.jsonl").spent(sprint),
+    )
+    path = Path(out) if out else VAR / "exports" / f"{repo}-{sprint.replace(' ', '-')}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    console.print(escape(retries_text(report)))
+    console.print(f"[dim]{report['escalations']} escalations · written to {path}[/]")
+
+
 def _bot_identity(token: str, identity: str):
     """Resolve the bot's numeric id, which GitHub needs for commit attribution."""
     import httpx
