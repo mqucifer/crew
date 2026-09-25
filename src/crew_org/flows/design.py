@@ -41,6 +41,7 @@ DESIGN = RecordChange(
     commit_message="chore(design): the Architect's design for this project",
     pr_title="chore: this project's design",
     updated_by="`crew design`",
+    by="Architect",
 )
 
 

@@ -27,6 +27,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.artifacts import signed
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
@@ -885,10 +886,14 @@ def deliver_story(
         issues.comment(
             repo,
             open_pull["number"],
-            f"{REWORK_MARKER}\n{ANSWERED_MARKER}\n**Re-worked.** {implementation.summary}\n\n{how}"
-            if answered
-            else f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
-            f"{how} Lint and the full test suite pass.",
+            signed(
+                f"{REWORK_MARKER}\n{ANSWERED_MARKER}\n"
+                f"**Re-worked.** {implementation.summary}\n\n{how}"
+                if answered
+                else f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
+                f"{how} Lint and the full test suite pass.",
+                "Developer",
+            ),
         )
     else:
         pr = issues.create_pull(
@@ -937,7 +942,8 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
     for text_edit in implementation.text_edits:
         lines.append(f"- `{text_edit.path}` — edited")
     lines += ["", f"Closes #{card.number}"]
-    return "\n".join(lines)
+    # Signed last, after the Verification section the Code Reviewer is shown.
+    return signed("\n".join(lines), "Developer")
 
 
 def _work_one_card(

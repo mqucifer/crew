@@ -16,6 +16,7 @@ from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
+from crew_org.flows.artifacts import signed
 from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import RetroRecord, existing_retro, known_issues, record_retro
@@ -268,7 +269,11 @@ def close_sprint(
                 issues.comment(
                     crew_repo,
                     standup,
-                    f"Sprint closed. The retro that read these is #{result.retro_record.issue}.",
+                    signed(
+                        f"Sprint closed. The retro that read these is "
+                        f"#{result.retro_record.issue}.",
+                        "Scrum Master",
+                    ),
                 )
                 issues.close(crew_repo, standup)
 

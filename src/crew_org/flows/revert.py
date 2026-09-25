@@ -25,6 +25,7 @@ from crew_org.columns import BLOCKED, DONE
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.artifacts import signed
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import BRANCH_PATTERN, RevertConflict, Workspace, branch_name
 from crew_org.tools.github_issues import IssueClient
@@ -43,6 +44,12 @@ LANDED_MARKER = "<!-- crew:revert-landed pr={pr} -->"
 # GitHub's word for "this branch and main have both changed the same lines".
 CONFLICTED = "dirty"
 REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
+
+# What the Sponsor asked for with `crew revert` is signed as theirs. A comment no
+# one asked for in particular, like the card returning when a revert lands,
+# claims no author (#22).
+SPONSOR = "Sponsor"
 
 
 @dataclass
@@ -152,7 +159,7 @@ def request_revert(
         title=f'Revert "{pull["title"]}"',
         head=branch,
         base=pull["base"]["ref"],
-        body=_render_body(pull, card, reason),
+        body=signed(_render_body(pull, card, reason), SPONSOR),
     )
     request.pr = opened["number"]
     _emit(sink, EventKind.REVERT_OPENED, request, repo=repo, reason=reason)
@@ -166,7 +173,7 @@ def request_revert(
             f"which carried this card's work.\n\n> {reason}\n\n"
             "It goes through review like any other change. When it lands, this card "
             f"returns to {REFINEMENT} for a decision on what should happen instead.",
-            by=None,
+            by=SPONSOR,
         )
     return request
 
@@ -255,7 +262,7 @@ def _block(
         f"Conflicting paths:\n{files}\n\n"
         "Resolve the revert by hand, or decide the change should stay and close this "
         "issue again.",
-        by=None,
+        by=SPONSOR,
     )
 
 
