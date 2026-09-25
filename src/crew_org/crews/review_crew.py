@@ -69,6 +69,7 @@ def review_diff(
     prior_verdicts: str = "",
     checks: str = "",
     imported: str = "",
+    design_note: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -129,6 +130,12 @@ def review_diff(
             f"## Diff\n\n```diff\n{diff}\n```\n\n"
             + (f"{checks}\n\n" if checks else "")
             + (f"{imported}\n\n" if imported else "")
+            + (
+                "## The Architect's design note for this story's epic\n\n"
+                f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"
+                if design_note
+                else ""
+            )
             + "Review for correctness first, then reuse and simplification. Name the file "
             "for every finding and say what to do about it. Reject scope creep: a diff "
             "doing more than its change is not ready, however good the extra is.\n"

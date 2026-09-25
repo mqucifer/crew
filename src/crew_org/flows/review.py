@@ -14,6 +14,7 @@ from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.artifacts import signed
+from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
@@ -148,6 +149,7 @@ def review_open_pulls(
         try:
             diff = issues.pull_diff(repo, number)
             base = (pull.get("base") or {}).get("ref") or "main"
+            story = waiting.get((pull.get("head") or {}).get("ref", ""))
             verdict = review_diff(
                 pull["title"],
                 diff,
@@ -161,6 +163,7 @@ def review_open_pulls(
                     diff,
                     read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
                 ),
+                design_note=story_note(issues, story, repo) if story is not None else "",
             )
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))

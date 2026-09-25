@@ -28,6 +28,7 @@ from crew_org.escalation import (
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.artifacts import signed
+from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
@@ -520,6 +521,8 @@ def deliver_story(
     except ProjectRecordError as exc:
         outcome.blocked_reason = f"the project's record can't be read: {exc}"
         return outcome
+    # The Architect's note for this story's epic, if it has one (#155).
+    note = story_note(issues, card, repo)
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -556,6 +559,8 @@ def deliver_story(
         # Recomputed every pass: a repair must see the files it just wrote, or
         # it is fixing code it cannot read.
         context = repository_context(worktree)
+        if note:
+            context = f"# The design note for this story's epic\n\n{note}\n\n{context}"
         if record is not None:
             context = f"{brief(record)}\n\n{context}"
         try:

@@ -277,6 +277,18 @@ a note on an epic that would otherwise skip it, and `no:design` waives one.
 When both are present, `needs:design` wins — demanding design is the safer
 error.
 
+**How a note happens** (crew#155). Refinement labels an epic `needs:design` when
+it crosses a threshold. The tick's design phase then has the Architect write the
+note as a comment on the epic, from the epic, its stories, the project's record
+and the code. The note covers the approach, the interfaces and data shapes the
+stories share, what would be expensive to reverse, the risks, one direction per
+story, and what it looked at. The Code Reviewer checks it against §19 and the
+project's guidelines, as it checks a project's design. A conflict gets one
+retry, then the epic is blocked for a person with the guideline named, and so is
+a decision the Architect names as beyond its reach. Until the note exists,
+planning holds the epic's stories back. Once it does, the Developer building one
+of them and the Code Reviewer judging its diff are both shown it.
+
 **Why ration it.** Architectural judgment is the work a local model does worst,
 so the Architect is both the likeliest source of escalation and the scarcest
 role in the org. Requiring a design note on every epic would drain the sprint's

@@ -73,6 +73,8 @@ class SprintPlan:
     # the crew's to do, and a card that vanishes from planning without a word
     # is how five of eight admitted points came to be undeliverable.
     not_ours: list[Card] = field(default_factory=list)
+    # Stories whose epic needs a design note it doesn't have yet (#155).
+    waiting_on_design: list[Card] = field(default_factory=list)
 
     @property
     def points(self) -> int:
@@ -106,8 +108,13 @@ def plan_sprint(
     sprint: str,
     capacity: int,
     repos: set[str] | None = None,
+    awaiting_design: set[tuple[str, int]] | None = None,
 ) -> SprintPlan:
     """Choose the sprint's contents. Pure — no I/O, so it is testable.
+
+    `awaiting_design` is the epics labelled `needs:design` with no design note
+    yet (#155). Their stories wait: built without the note, the first story sets
+    the approach and the rest follow it or fight it.
 
     `repos` is the allow-list the crew delivers from, and filling a sprint
     without it spends capacity on work the crew is structurally incapable of
@@ -145,6 +152,9 @@ def plan_sprint(
             key=lambda c: c.number or 0,
         )
         if not stories:
+            continue
+        if epic.key in (awaiting_design or set()):
+            plan.waiting_on_design += stories
             continue
 
         piece = EpicSlice(number=epic.number or 0, title=epic.title)
@@ -211,7 +221,16 @@ def start_sprint(
                 )
             )
 
-    plan = plan_sprint(cards, parents, sprint=sprint, capacity=capacity, repos=repos)
+    from crew_org.flows.design_notes import awaiting_design  # noqa: PLC0415
+
+    plan = plan_sprint(
+        cards,
+        parents,
+        sprint=sprint,
+        capacity=capacity,
+        repos=repos,
+        awaiting_design=awaiting_design(issues, cards, default_repo),
+    )
     counts = board.counts(cards)
 
     for piece in plan.slices:
