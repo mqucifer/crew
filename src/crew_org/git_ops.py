@@ -22,6 +22,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from crew_org.tokens import Token, current
+
 # Branches an agent may never write to directly, under any circumstances.
 PROTECTED_BRANCHES = frozenset({"main", "master", "trunk", "release", "develop"})
 
@@ -182,10 +184,10 @@ class Workspace:
     see or stomp each other's changes.
     """
 
-    def __init__(self, owner: str, repo: str, token: str, identity: BotIdentity) -> None:
+    def __init__(self, owner: str, repo: str, token: Token, identity: BotIdentity) -> None:
         self.owner = owner
         self.repo = repo
-        self.token = token
+        self._token = token
         self.identity = identity
         self.clone = CLONES / repo
         self.path: Path | None = None
@@ -202,7 +204,12 @@ class Workspace:
         """
         if repo == self.repo:
             return self
-        return Workspace(self.owner, repo, self.token, self.identity)
+        return Workspace(self.owner, repo, self._token, self.identity)
+
+    @property
+    def token(self) -> str:
+        """The token as it is now: resolved at each git operation (#182)."""
+        return current(self._token)
 
     @property
     def url(self) -> str:

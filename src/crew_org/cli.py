@@ -89,13 +89,14 @@ def tick(
 
     # The proxy is project-scoped and will not always be running. Say so plainly
     # rather than surfacing a connection error from deep inside an agent.
-    from crew_org.auth import REVIEW_APP_PREFIX, resolve_credentials
+    from crew_org.auth import REVIEW_APP_PREFIX, token_source
     from crew_org.config import load_env
     from crew_org.escalation import EscalationLedger, EscalationPolicy
     from crew_org.flows import loop
     from crew_org.git_ops import Workspace
     from crew_org.llm import health
     from crew_org.process import ProcessRules
+    from crew_org.tokens import current
     from crew_org.tools.github_issues import IssueClient
     from crew_org.tools.github_project import ProjectClient
     from crew_org.tools.sandbox import Sandbox
@@ -114,8 +115,9 @@ def tick(
 
     env = load_env()
     try:
-        token, identity = resolve_credentials(env)
-        review_token, review_identity = resolve_credentials(env, prefix=REVIEW_APP_PREFIX)
+        # Sources, not strings: a tick can outlive an app token's hour (#182).
+        token, identity = token_source(env)
+        review_token, review_identity = token_source(env, prefix=REVIEW_APP_PREFIX)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]{exc}[/]")
         raise typer.Exit(code=2) from exc
@@ -146,7 +148,7 @@ def tick(
 
     # Refinement reads the code it is deciding about, and delivery opens its
     # worktrees off the same clone.
-    ws = Workspace(owner, default_repo, token, _bot_identity(token, identity))
+    ws = Workspace(owner, default_repo, token, _bot_identity(current(token), identity))
     # A repository without a usable record isn't worked (#132).
     skipped = loop.not_onboarded(ws, allowed)
     for skipped_repo, why in skipped.items():
