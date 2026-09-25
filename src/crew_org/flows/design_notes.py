@@ -93,6 +93,11 @@ def write_notes(
         stories = issues.sub_issues(repo, number)
         if not stories:
             continue  # nothing split yet: the note is written against the stories
+        if all(s.get("state") == "closed" for s in stories):
+            # Every story already built. A note is guidance for stories still to
+            # come; the first live tick wrote one for sprint-metrics#50 seconds
+            # before closing it, spending eight minutes on nothing.
+            continue
         try:
             clone = ws.for_repo(repo).current()
             try:
