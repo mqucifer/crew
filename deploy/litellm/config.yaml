@@ -6,6 +6,20 @@
 # There is deliberately NO Anthropic entry here. Escalation runs through
 # headless Claude Code on an existing subscription, so that no configuration
 # mistake can produce a metered API bill.
+#
+# Sampling is the model vendor's, not ours (decided 2026-09-25). Every alias
+# ran at temperature 0.0-0.1 on a guess that process work wants determinism,
+# with nothing else set. Qwen3.8-27B's model card recommends, for thinking mode,
+# temperature 1.0, top_p 0.95, top_k 20, min_p 0, presence_penalty 0,
+# repetition_penalty 1.0; for non-thinking mode, temperature 0.7, top_p 0.80,
+# top_k 20, min_p 0, presence_penalty 1.5, repetition_penalty 1.0
+# (https://huggingface.co/Qwen/Qwen3.8-27B). Each alias takes the set for its
+# mode. This is the baseline to measure from; departing from it is tuning, and
+# tuning waits for evidence.
+#
+# top_k, min_p and repetition_penalty ride extra_body, the path already
+# verified to reach SGLang for enable_thinking. temperature, top_p and
+# presence_penalty are OpenAI parameters and survive drop_params.
 
 model_list:
   # The crew's workhorse. Every discovery and process role uses this alias, so
@@ -18,11 +32,18 @@ model_list:
       api_base: os.environ/SGLANG_BASE_URL
       api_key: "sk-not-used"             # SGLang ignores this; LiteLLM requires a value
       drop_params: true                  # strip params SGLang does not implement
-      temperature: 0.1                   # process work wants determinism, not flair
+      # Qwen3.8's recommended thinking-mode sampling (see the note at the top).
+      temperature: 1.0
+      top_p: 0.95
+      presence_penalty: 0.0
       timeout: 1800
+      extra_body:                        # not OpenAI parameters: drop_params would strip them
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
 
-  # Same backend, looser sampling — for drafting prose (standups, release notes)
-  # where a little variety reads better.
+  # Same backend, for drafting prose (standups, release notes). Its sampling was
+  # looser than crew-local's; both now take the vendor's thinking-mode set.
   - model_name: crew-draft
     model_info:
       max_input_tokens: 262144   # SGLang launches with --context-length 262144
@@ -31,8 +52,15 @@ model_list:
       api_base: os.environ/SGLANG_BASE_URL
       api_key: "sk-not-used"
       drop_params: true
-      temperature: 0.6
+      # Qwen3.8's recommended thinking-mode sampling (see the note at the top).
+      temperature: 1.0
+      top_p: 0.95
+      presence_penalty: 0.0
       timeout: 1800
+      extra_body:                        # not OpenAI parameters: drop_params would strip them
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
 
   # Refinement that has to hold a whole epic in its head. Same backend, same
   # thinking, with the reasoning asked to converge rather than compound.
@@ -59,10 +87,17 @@ model_list:
       api_base: os.environ/SGLANG_BASE_URL
       api_key: "sk-not-used"
       drop_params: true
-      temperature: 0.1
+      # Qwen3.8's recommended thinking-mode sampling (see the note at the top).
+      temperature: 1.0
+      top_p: 0.95
+      presence_penalty: 0.0
       timeout: 1800
       reasoning_effort: medium
       allowed_openai_params: ["reasoning_effort"]  # or drop_params strips it
+      extra_body:                        # not OpenAI parameters: drop_params would strip them
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
 
   # Mechanical work — routing, labelling, field-setting — where reasoning is
   # pure cost. Qwen3 honours enable_thinking=false (verified on the Spark).
@@ -78,11 +113,17 @@ model_list:
       api_base: os.environ/SGLANG_BASE_URL
       api_key: "sk-not-used"
       drop_params: true
-      temperature: 0.0
+      # Qwen3.8's recommended non-thinking sampling (see the note at the top).
+      temperature: 0.7
+      top_p: 0.80
+      presence_penalty: 1.5
       timeout: 1800
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
 
   # Implementation work. Reasoning is switched OFF deliberately, and this is
   # the single largest performance decision in the system.
@@ -103,11 +144,17 @@ model_list:
       api_base: os.environ/SGLANG_BASE_URL
       api_key: "sk-not-used"
       drop_params: true
-      temperature: 0.1
+      # Qwen3.8's recommended non-thinking sampling (see the note at the top).
+      temperature: 0.7
+      top_p: 0.80
+      presence_penalty: 1.5
       timeout: 1800
       extra_body:
         chat_template_kwargs:
           enable_thinking: false
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
 
 litellm_settings:
   drop_params: true
