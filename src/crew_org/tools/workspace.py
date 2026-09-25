@@ -92,15 +92,21 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
     an existing file is only ever changed by name, so nothing the model did not
     name can be touched.
     """
-    from crew_org.tools.ast_edit import Edit, EditError, apply_edits  # noqa: PLC0415
+    from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits  # noqa: PLC0415
 
     root = worktree.resolve()
     written = apply(worktree, implementation.new_files)
 
     by_path: dict[str, list[Edit]] = {}
+    tests = getattr(implementation, "criteria_edits", set())
     for item in implementation.all_edits:
+        operation = item.operation
+        if (item.path, item.target) in tests and _defines(root / item.path, item.target):
+            # A criterion's test the file already has is replaced, not added twice:
+            # sprint-metrics#93's repair sent its first attempt's tests again (#183).
+            operation = Operation.REPLACE
         by_path.setdefault(item.path, []).append(
-            Edit(operation=item.operation, target=item.target, source=item.source)
+            Edit(operation=operation, target=item.target, source=item.source)
         )
 
     for path, edits in by_path.items():
@@ -116,6 +122,16 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         written.append(path)
 
     return written + apply_text_edits(worktree, implementation.text_edits)
+
+
+def _defines(path: Path, name: str) -> bool:
+    """Does the file at `path` already define a top-level function called `name`?"""
+    import re  # noqa: PLC0415
+
+    if not path.exists():
+        return False
+    text = path.read_text(encoding="utf-8")
+    return re.search(rf"^(?:async\s+)?def {re.escape(name)}\b", text, re.MULTILINE) is not None
 
 
 def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
