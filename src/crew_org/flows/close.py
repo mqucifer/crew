@@ -17,6 +17,7 @@ from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
 from crew_org.flows.artifacts import signed
+from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import RetroRecord, existing_retro, known_issues, record_retro
@@ -235,6 +236,19 @@ def close_sprint(
     # What is already filed, so a symptom is cited as its known cause rather
     # than re-diagnosed and filed again (#124).
     known, known_text = known_issues(issues, crew_repo) if crew_repo is not None else (set(), "")
+    # Why work didn't land first time (#157), read from the same event log.
+    report = sprint_report(
+        sprint,
+        [
+            c
+            for c in board.cards()
+            if c.sprint == sprint
+            and c.work_type == "Story"
+            and (not delivery_repos or c.repo in delivery_repos)
+        ],
+        read_attempts(events_dir) if events_dir is not None else [],
+        ledger.spent(sprint),
+    )
     try:
         result.retro = write_retro(
             sprint,
@@ -243,6 +257,7 @@ def close_sprint(
             delivery_repos=delivery_repos,
             standups=standups,
             known=known_text,
+            retries=retries_text(report) if events_dir is not None else "",
         )
     except Exception as exc:  # noqa: BLE001
         sink.note(EventKind.NOTE, f"retro could not be written: {exc}"[:120])
@@ -259,6 +274,7 @@ def close_sprint(
                 delivery_repos=delivery_repos or [],
                 standup=standup,
                 known=known,
+                recurring=causes_of(report),
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.

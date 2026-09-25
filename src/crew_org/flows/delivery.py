@@ -28,6 +28,7 @@ from crew_org.escalation import (
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.artifacts import signed
+from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import merge_approved
@@ -761,6 +762,9 @@ def deliver_story(
                     "reason": decision.reason,
                     "failing_commands": [r.command for r in check.results if not r.ok],
                     "output": check.failure_report[:600],
+                    # From the whole report: the 600 above stop before pytest's
+                    # summary, and the retro counts causes from this (#157).
+                    "first_error": first_error(check.failure_report),
                 },
             )
         )

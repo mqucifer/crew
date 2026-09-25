@@ -130,6 +130,7 @@ def record_retro(
     delivery_repos: list[str],
     standup: int | None = None,
     known: set[int] | frozenset[int] = frozenset(),
+    recurring: list | tuple = (),
 ) -> RetroRecord:
     """File each defect where it belongs, then the retro issue naming them all.
 
@@ -183,6 +184,12 @@ def record_retro(
                 detail={"repo": repo, "sprint": sprint, "about": defect.about},
             )
         )
+
+    # Recurring causes are filed by the crew itself, not left to the model to
+    # notice (#157): a cause on two or more of a sprint's cards is the crew's.
+    lines += _file_recurring(
+        issues, sink, recurring, sprint=sprint, crew_repo=crew_repo, record=record
+    )
 
     issue = issues.create(
         crew_repo,
@@ -260,3 +267,78 @@ def _retro_body(
             *(lines or ["None proposed."]),
         ]
     )
+
+
+CAUSE_MARKER = "<!-- crew:cause:{key} -->"
+
+
+def _file_recurring(
+    issues: IssueClient,
+    sink: EventSink,
+    recurring,
+    *,
+    sprint: str,
+    crew_repo: str,
+    record: RetroRecord,
+) -> list[str]:
+    """File each recurring cause once, with its count and cards as evidence.
+
+    A cause already open as a finding is cited, not filed again. A recurring
+    parse failure is filed as a prompt or schema defect: the escalation policy
+    already reads a persistent SCHEMA failure that way.
+    """
+    causes = [c for c in recurring if c.recurring]
+    if not causes:
+        return []
+    try:
+        open_findings = [
+            i for i in issues.labelled(crew_repo, FINDING_LABEL) if i.get("state") == "open"
+        ]
+    except Exception:  # noqa: BLE001
+        open_findings = []
+    lines: list[str] = []
+    for cause in causes:
+        mark = CAUSE_MARKER.format(key=cause.key)
+        already = next((i for i in open_findings if mark in (i.get("body") or "")), None)
+        cards = ", ".join(f"#{n}" for n in cause.cards)
+        if already is not None:
+            lines.append(
+                f"- {crew_repo}#{already['number']} — recurring again: {cause.cause} "
+                f"({cause.count} times, on {cards})"
+            )
+            continue
+        kind = "a prompt or schema defect" if cause.prompt_defect else "a recurring failure"
+        body = (
+            f"{mark}\n**{kind.capitalize()}, found by the retro for {sprint}.** "
+            f"{cause.failure_class}: {cause.cause}\n\n"
+            f"Seen {cause.count} times, on {len(cause.cards)} of the sprint's cards: {cards}.\n\n"
+            f"An example of what went wrong:\n\n```\n{cause.example}\n```\n\n"
+            + (
+                "A parse failure that recurs is a defect in what the model is asked for, "
+                "not bad luck: look at the prompt and the schema it was held to."
+                if cause.prompt_defect
+                else "A failure that recurs across cards is the crew's, not the cards'."
+            )
+        )
+        try:
+            issue = issues.create(
+                crew_repo,
+                f"Recurring {cause.failure_class}: {cause.cause}"[:120],
+                signed(body, ROLE),
+                labels=[FINDING_LABEL],
+            )
+        except Exception as exc:  # noqa: BLE001
+            record.failed.append((cause.cause, str(exc)[:200]))
+            continue
+        record.filed.append((crew_repo, issue["number"]))
+        lines.append(f"- {crew_repo}#{issue['number']} — recurring: {cause.cause} ({kind})")
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.DEFECT_FILED,
+                role=ROLE,
+                card=issue["number"],
+                summary=f"recurring {cause.failure_class}: {cause.cause}"[:100],
+                detail={"repo": crew_repo, "sprint": sprint, "cards": cause.cards},
+            )
+        )
+    return lines
