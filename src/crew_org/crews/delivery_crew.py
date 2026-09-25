@@ -161,11 +161,53 @@ class Implementation(BaseModel):
         ),
     )
 
+    @property
+    def changes_nothing(self) -> bool:
+        return not (self.new_files or self.edits or self.text_edits)
+
+    def _may_change_nothing(self) -> bool:
+        return False
+
     @model_validator(mode="after")
     def _does_something(self) -> Implementation:
-        if not self.new_files and not self.edits and not self.text_edits:
+        if self.changes_nothing and not self._may_change_nothing():
             raise ValueError("an implementation must create a file or edit one")
         return self
+
+
+class Satisfied(BaseModel):
+    """A finding the code already answers, and the evidence that it does."""
+
+    finding: str = Field(description="The finding, as the gate put it")
+    evidence: str = Field(
+        description=(
+            "Where the code that satisfies it is (file and definition), and which tests exercise it"
+        )
+    )
+
+
+class Rework(Implementation):
+    """The answer to a story a gate sent back (#161).
+
+    Either a change, or evidence that the code as it stands already satisfies
+    the findings. The second used to be impossible to say: sprint-metrics#74 was
+    asked to add an implementation #73 had already landed, answered "it's
+    already there" three times, and was blocked as a SCHEMA failure each time.
+
+    No new test is demanded, as for a repair: the first attempt's tests are
+    already in the branch.
+    """
+
+    already_satisfied: list[Satisfied] = Field(
+        default_factory=list,
+        description=(
+            "Only when no change is needed: for each finding, the evidence that the code "
+            "as it stands already satisfies it. Leave empty if you change anything."
+        ),
+    )
+
+    def _may_change_nothing(self) -> bool:
+        return bool(self.already_satisfied)
 
 
 class FirstAttempt(Implementation):
@@ -233,7 +275,7 @@ STANDING_INSTRUCTIONS = (
 
 
 def implement_story(
-    story: str, *, context: str, feedback: str = "", prior: str = ""
+    story: str, *, context: str, feedback: str = "", prior: str = "", returned: bool = False
 ) -> Implementation:
     """Produce the files that satisfy one story.
 
@@ -290,7 +332,9 @@ def implement_story(
             "A summary, plus the new files and the named edits that implement the story."
         ),
         agent=agents["developer"],
-        output_pydantic=Implementation if feedback else FirstAttempt,
+        # A repair fixes a failure; returned work answers a gate, and may answer
+        # that nothing needs to change (#161); a first attempt builds the story.
+        output_pydantic=Implementation if feedback else (Rework if returned else FirstAttempt),
     )
     crew = Crew(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False

@@ -27,6 +27,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
@@ -558,7 +559,7 @@ def deliver_story(
             context = f"{brief(record)}\n\n{context}"
         try:
             implementation = implement_story(
-                story_text, context=context, feedback=feedback, prior=prior
+                story_text, context=context, feedback=feedback, prior=prior, returned=rework
             )
         except Exception as exc:  # noqa: BLE001
             # The model could not produce a valid implementation at all.
@@ -804,8 +805,33 @@ def deliver_story(
         outcome.blocked_reason = decision.reason
         return outcome
 
+    # Returned work may answer that nothing needs to change, with evidence per
+    # finding (#161). The checks above ran on the branch as it stands, so the
+    # claim is verified before it is sent. It is committed empty: the pull
+    # request's head has to move, or the review it answers keeps applying.
+    satisfied = getattr(implementation, "already_satisfied", None) or []
+    answered = rework and implementation.changes_nothing and bool(satisfied)
+    if answered and live is not None:
+        before = latest_answer(issues, repo, live["number"])
+        if before:
+            # Answered with evidence once already, and sent back again: the gate
+            # and the Developer disagree, and another round would only repeat it.
+            review = _latest_review(issues, repo, live["number"])
+            outcome.failure_detail = (
+                f"## The review\n\n{review}\n\n## The earlier answer\n\n{before}"
+            )
+            outcome.blocked_reason = (
+                f"PR #{live['number']} was answered without a change and sent back again: "
+                "the Code Reviewer and the Developer disagree, which is for a person to settle"
+            )
+            return outcome
     if not ws.commit(
-        f"feat({number}): {card.title}\n\n{implementation.summary}\n\nCloses #{number}"
+        (
+            f"chore({number}): answer the review, no change needed\n\n{implementation.summary}"
+            if answered
+            else f"feat({number}): {card.title}\n\n{implementation.summary}\n\nCloses #{number}"
+        ),
+        allow_empty=answered,
     ):
         outcome.blocked_reason = "the implementation produced no change"
         return outcome
@@ -844,7 +870,11 @@ def deliver_story(
         # the findings and the card's history all hang off this one.
         outcome.pr = open_pull["number"]
         how = (
-            "Rebuilt from main: while this waited, other work merged into the same "
+            "**Answered without a change:** the code as it stands already satisfies "
+            "the findings. Lint and the full test suite pass on this head.\n\n"
+            + "\n".join(f"- **{s.finding}**: {s.evidence}" for s in satisfied)
+            if answered
+            else "Rebuilt from main: while this waited, other work merged into the same "
             "lines of "
             + ", ".join(f"`{p}`" for p in rebuilt_over)
             + ", so the story was written again on current main rather than merged. "
@@ -855,7 +885,9 @@ def deliver_story(
         issues.comment(
             repo,
             open_pull["number"],
-            f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
+            f"{REWORK_MARKER}\n{ANSWERED_MARKER}\n**Re-worked.** {implementation.summary}\n\n{how}"
+            if answered
+            else f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
             f"{how} Lint and the full test suite pass.",
         )
     else:
@@ -1185,3 +1217,11 @@ def deliver(
         if result.rate_limited:
             break
     return result
+
+
+def _latest_review(issues: IssueClient, repo: str, pull: int) -> str:
+    try:
+        reviews = issues.pull_reviews(repo, pull)
+    except Exception:  # noqa: BLE001
+        return ""
+    return (reviews[-1].get("body") or "") if reviews else ""

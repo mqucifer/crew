@@ -67,6 +67,24 @@ def past_qa(issues: Any, repo: str, number: int, *, marker: str) -> str:
     return recent_verdicts(bodies)
 
 
+# On a comment answering a review with evidence instead of a change (#161).
+ANSWERED_MARKER = "<!-- crew:answered -->"
+
+
+def latest_answer(issues: Any, repo: str, pull: int) -> str:
+    """The author's last answer to a review without a change, or ''.
+
+    Shown to the Code Reviewer when it reviews again: an answer it can't see
+    gets the same finding raised a second time.
+    """
+    try:
+        comments = issues.comments(repo, pull)
+    except Exception:  # noqa: BLE001
+        return ""
+    answers = [c.get("body") or "" for c in comments if ANSWERED_MARKER in (c.get("body") or "")]
+    return answers[-1] if answers else ""
+
+
 def past_reviews(issues: Any, repo: str, pull: int, *, marker: str, head: str = "") -> str:
     """The crew's earlier reviews of this pull request, most recent last.
 

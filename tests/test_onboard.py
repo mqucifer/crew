@@ -206,7 +206,7 @@ class FakeWorkspace:
         self.opened = branch
         return self.root
 
-    def commit(self, message):
+    def commit(self, message, *, allow_empty=False):
         self.committed = message
         return True
 

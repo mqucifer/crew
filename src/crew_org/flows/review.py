@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.flows.history import past_reviews
+from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.tools.github_issues import IssueClient
@@ -150,7 +150,10 @@ def review_open_pulls(
             verdict = review_diff(
                 pull["title"],
                 diff,
-                prior_verdicts=past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+                prior_verdicts=_with_answer(
+                    past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+                    latest_answer(issues, repo, number),
+                ),
                 checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
                 imported=imported_code(
                     lambda path, ref=base: issues.file_at(repo, path, ref),
@@ -224,3 +227,14 @@ def review_open_pulls(
                 )
 
     return result
+
+
+def _with_answer(prior: str, answer: str) -> str:
+    """The Reviewer's earlier reviews, and the author's answer to the last, if any (#161)."""
+    if not answer:
+        return prior
+    return (
+        f"{prior}\n\n## The author's answer to your last review\n\n{answer}\n\n"
+        "They answered that the code already satisfies your findings, with the evidence "
+        "above, and made no change. Check that evidence against the code you are shown."
+    )
