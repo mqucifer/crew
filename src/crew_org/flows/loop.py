@@ -417,6 +417,10 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         ]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
+        + [
+            f"#{n} — PR #{pr} was approved and conflicts with main; returned for a rebuild"
+            for n, pr in result.rebuilding
+        ]
         + [f"revert PR #{pr} — waiting on an approving review" for pr in reverts.awaiting_approval]
         + [f"revert PR #{pr} — conflicts with main, needs a person" for pr in reverts.conflicted]
         + [

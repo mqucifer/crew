@@ -31,7 +31,7 @@ from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
-from crew_org.flows.merge import merge_approved
+from crew_org.flows.merge import REBUILD_MARKER, merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
@@ -105,6 +105,8 @@ class DeliveryResult:
     not_ours: list[int] = field(default_factory=list)
     landed: list[int] = field(default_factory=list)
     conflicted: list[int] = field(default_factory=list)
+    # (card, PR) approved, conflicting with main, and returned for a rebuild.
+    rebuilding: list[tuple[int, int]] = field(default_factory=list)
     # Why a story that was ready to land did not. merge_approved has always
     # worked these out and the command printed neither, so a run that silently
     # skipped every merge looked exactly like a run with nothing to merge.
@@ -155,6 +157,10 @@ def awaiting_rework(
         refused = any(
             r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
             for r in issues.pull_reviews(repo, pull["number"])
+        ) or any(
+            # Approved, but conflicting with main at merge: returned for a rebuild.
+            REBUILD_MARKER.format(head=head) in (c.get("body") or "")
+            for c in issues.comments(repo, pull["number"])
         )
     except Exception:  # noqa: BLE001
         return None
@@ -545,8 +551,8 @@ def deliver_story(
         answering = " Answer every finding the gates gave it, above." if prior else ""
         prior = (
             (f"{prior}\n\n" if prior else "") + "## Why you are starting again\n\n"
-            "Your previous attempt was sent back, and while it waited, other work merged "
-            "into the same lines of "
+            "While your previous attempt waited to land, other work merged into the same "
+            "lines of "
             + ", ".join(f"`{p}`" for p in rebuilt_over)
             + ". Rather than merge the two, this story is rebuilt on current main: **your "
             "previous attempt is not in the repository below.** Write it again against "
@@ -1109,12 +1115,13 @@ def deliver(
     # predecessors is a conflict scheduled for later.
     landed = merge_approved(board, issues, sink, cards=cards, default_repo=repo, repos=repos)
     result.conflicted = [card for card, _pr in landed.conflicted]
+    result.rebuilding = list(landed.rebuilding)
     result.awaiting_approval = list(landed.awaiting_approval)
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     result.updating = list(landed.updating)
     result.landed = [card for card, _pr in landed.merged]
-    if landed.merged or landed.conflicted:
+    if landed.merged or landed.conflicted or landed.rebuilding:
         cards = board.cards()
 
     # Reverts land on the same terms, and before new work branches for the
