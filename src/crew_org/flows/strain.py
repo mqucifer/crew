@@ -139,10 +139,22 @@ def _when(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
 
 
-def evidence(strains: list[Strain]) -> str:
-    """The strain, as the reason the Architect is given and the Sponsor reads."""
+def evidence(strains: list[Strain], titles: dict[int, str] | None = None) -> str:
+    """The strain, as the reason the Architect is given and the Sponsor reads.
+
+    Each story with its title: the numbers alone don't say what kind of change
+    keeps landing in the same place, and that is what tells the Architect
+    where to divide the code.
+    """
+    titles = titles or {}
+
+    def named(number: int) -> str:
+        title = titles.get(number)
+        return f"#{number} {title}" if title else f"#{number}"
+
     return "\n".join(
         f"- In {s.sprint}, {len(s.cards)} stories had to be rebuilt from main because "
-        f"their branches conflicted in `{s.path}`: " + ", ".join(f"#{n}" for n in s.cards)
+        f"their branches conflicted in `{s.path}`:\n"
+        + "\n".join(f"  - {named(n)}" for n in s.cards)
         for s in strains
     )

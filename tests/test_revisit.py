@@ -51,8 +51,15 @@ design:
 )
 
 
-def story(number, sprint="Sprint 6", repo=REPO) -> Card:
-    return Card(item_id=f"i{number}", number=number, repo=repo, sprint=sprint, work_type="Story")
+def story(number, sprint="Sprint 6", repo=REPO, title="") -> Card:
+    return Card(
+        item_id=f"i{number}",
+        number=number,
+        title=title,
+        repo=repo,
+        sprint=sprint,
+        work_type="Story",
+    )
 
 
 def epic(number, *, labels=(), status="Needs Refinement", state="OPEN") -> Card:
@@ -69,7 +76,7 @@ def epic(number, *, labels=(), status="Needs Refinement", state="OPEN") -> Card:
 
 
 # Sprint 6, as it happened: four stories rebuilt over the one module.
-SPRINT6 = [story(n) for n in (73, 95, 100, 101)]
+SPRINT6 = [story(73, title="Report a range")] + [story(n) for n in (95, 100, 101)]
 
 
 def rebuilt(card, *paths, at="2026-09-25T21:00:00.000001Z", repo=REPO) -> Rebuild:
@@ -119,7 +126,15 @@ def test_rebuilds_are_read_from_their_detail_and_from_the_older_summaries(tmp_pa
 def test_three_stories_of_one_sprint_in_the_same_file_is_strain():
     (strain,) = strained([rebuilt(n) for n in (73, 95, 100)], SPRINT6, REPO)
     assert (strain.sprint, strain.path, strain.cards) == ("Sprint 6", MODULE, [73, 95, 100])
-    assert "3 stories had to be rebuilt" in evidence([strain]) and "#95" in evidence([strain])
+    assert "3 stories had to be rebuilt" in evidence([strain]) and "  - #95" in evidence([strain])
+
+
+def test_the_evidence_says_what_each_colliding_story_was():
+    """The numbers alone don't say what kind of change keeps landing in one place."""
+    (strain,) = strained([rebuilt(n) for n in (73, 95, 100)], SPRINT6, REPO)
+    text = evidence([strain], {95: "Add prior-period values to sprint-range JSON output"})
+    assert "  - #95 Add prior-period values to sprint-range JSON output" in text
+    assert "  - #73\n" in text, "a story with no title known is still named"
 
 
 def test_two_is_not_and_one_story_rebuilt_twice_counts_once():
@@ -332,7 +347,7 @@ def test_strain_sends_the_architect_back_with_the_evidence_and_the_waiting_epics
     result = revisit(issues, clone, SPRINT6 + [epic(59)], architect, events_dir=sprint6)
 
     reason = architect.calls[0]["reason"]
-    assert f"`{MODULE}`: #73, #95, #100, #101" in reason
+    assert f"`{MODULE}`:\n  - #73 Report a range\n  - #95" in reason
     assert "#59 Epic 59" in reason and "stable JSON API" in reason
     assert architect.calls[0]["current"], "a revision starts from the design in the record"
     (pull,) = issues.pulls

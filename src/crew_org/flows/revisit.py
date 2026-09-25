@@ -222,12 +222,13 @@ def _revise(
         return  # not the Architect's to fix; the standup already says so (#132)
     if record is None:
         return
+    titles = {c.number: c.title for c in cards if (c.repo or repo) == repo and c.number}
     waiting = [
         c for c in approved_epics(cards) if (c.repo or repo) == repo and TECHNICAL not in c.labels
     ]
     reason = (
         "Stories keep colliding in the same files, so work that should run side by "
-        f"side is rebuilt instead:\n{evidence(strains)}"
+        f"side is rebuilt instead:\n{evidence(strains, titles)}"
     )
     if waiting:
         reason += "\n\nApproved epics waiting to be split here, which the design should serve:\n"
@@ -243,7 +244,7 @@ def _revise(
             kind=EventKind.AGENT_STARTED,
             role=BY,
             summary=f"{repo}: revisit the design",
-            detail={"repo": repo, "evidence": evidence(strains)},
+            detail={"repo": repo, "evidence": evidence(strains, titles)},
         )
     )
     designed = design(
