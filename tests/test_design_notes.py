@@ -135,6 +135,18 @@ CONFLICT = DesignReview(
 # --- 1: the note is written, from the epic, its stories, the record and the code --------------
 
 
+def test_an_epic_with_one_story_still_open_gets_its_note(tmp_path):
+    issues = Issues(
+        subs={
+            50: [
+                {"number": 73, "title": "Table", "state": "closed"},
+                {"number": 74, "title": "WIP", "state": "open"},
+            ]
+        }
+    )
+    assert run(tmp_path, issues, Architect(note())).written == [50]
+
+
 def test_an_epic_needing_design_gets_its_note_on_the_epic(tmp_path):
     issues, architect = Issues(), Architect(note())
     result = run(tmp_path, issues, architect)
@@ -162,6 +174,18 @@ def test_a_note_gives_each_story_its_direction():
     [
         ("already has a note", [design_epic()], Issues(comments={50: [{"body": NOTE_MARKER}]})),
         ("no stories split yet", [design_epic()], Issues(subs={})),
+        (
+            "every story already built",
+            [design_epic()],
+            Issues(
+                subs={
+                    50: [
+                        {"number": 73, "title": "Table", "state": "closed"},
+                        {"number": 74, "title": "WIP", "state": "closed"},
+                    ]
+                }
+            ),
+        ),
         ("not labelled needs:design", [design_epic(labels=frozenset())], Issues()),
         (
             "not the crew's repository",
