@@ -1160,7 +1160,9 @@ def onboard(
         return
 
     kept.parent.mkdir(parents=True, exist_ok=True)
-    kept.write_text(takeaway(ended.raw, ended.questions, repo=repo, path=kept))
+    kept.write_text(
+        takeaway(ended.raw, ended.questions, repo=repo, path=kept, proposed=ended.proposed)
+    )
     if ended.interrupted:
         console.print(f"\n[red]The interview stopped:[/] {escape(ended.interrupted)}")
     if ended.settled:
