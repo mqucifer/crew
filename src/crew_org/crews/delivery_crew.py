@@ -12,6 +12,7 @@ rejected by the schema, not noticed later by a reviewer.
 
 from __future__ import annotations
 
+import re
 from pathlib import PurePosixPath
 
 from crewai import Crew, Process, Task
@@ -143,8 +144,49 @@ class TextEdit(BaseModel):
         return self
 
 
+class CriterionTest(BaseModel):
+    """One acceptance criterion, and the test that proves it, written in full (#172).
+
+    The test's source lives here, not in `edits`: named in one place and
+    written in another, a first attempt at sprint-metrics#73 and #75 named its
+    tests and wrote none of them in three runs of six. Here a test can't be
+    named without being written. The crew adds each one to its file.
+    """
+
+    criterion: str = Field(description="The acceptance criterion, briefly, as the story words it")
+    path: str = Field(
+        description="The test file it goes in, e.g. tests/test_sprint_range.py. A new one "
+        "also goes in new_files, with its imports and fixtures"
+    )
+    test: str = Field(description="The test function's name, e.g. test_range_as_json")
+    source: str = Field(description="The complete test function, as it should read in the file")
+
+    @field_validator("path")
+    @classmethod
+    def _stays_in_the_repository(cls, value: str) -> str:
+        return FileWrite._stays_in_the_repository(value)
+
+    @model_validator(mode="after")
+    def _is_that_test(self) -> CriterionTest:
+        if not re.search(rf"def {re.escape(self.test)}\b", self.source):
+            raise ValueError(f"the source for {self.test!r} doesn't define it")
+        name = PurePosixPath(self.path).name
+        if not (name.startswith("test_") or name.endswith("_test.py")):
+            raise ValueError(f"{self.path!r} isn't a test file: name it tests/test_*.py")
+        return self
+
+    def as_edit(self) -> FileEdit:
+        return FileEdit(path=self.path, operation="add", target=self.test, source=self.source)
+
+
 class Implementation(BaseModel):
     summary: str = Field(description="What changed and why, for the pull request body")
+    # Before the code, on purpose: the test is planned first, as the standing
+    # instructions ask. Required only of a first attempt (FirstAttempt).
+    criteria_tests: list[CriterionTest] = Field(
+        default_factory=list,
+        description="For each acceptance criterion, the test in this change that proves it",
+    )
     new_files: list[FileWrite] = Field(
         default_factory=list,
         description="Files that do not exist yet, in full. Never an existing file.",
@@ -163,7 +205,28 @@ class Implementation(BaseModel):
 
     @property
     def changes_nothing(self) -> bool:
-        return not (self.new_files or self.edits or self.text_edits)
+        return not (self.new_files or self.edits or self.text_edits or self.criteria_tests)
+
+    @property
+    def all_edits(self) -> list[FileEdit]:
+        """The named edits, then each criterion's test as an `add` to its file (#172).
+
+        After `new_files` are written, so a test for a new test file is added
+        after that file's own imports and fixtures.
+        """
+        # A new test file often carries its tests already: every first attempt at
+        # sprint-metrics#73 wrote them in the file and here too. Adding them again
+        # would be refused as already defined, so a test the same answer's new
+        # file already defines isn't added twice.
+        written = {f.path: f.content for f in self.new_files}
+        return [
+            *self.edits,
+            *(
+                c.as_edit()
+                for c in self.criteria_tests
+                if not re.search(rf"def {re.escape(c.test)}\b", written.get(c.path, ""))
+            ),
+        ]
 
     def _may_change_nothing(self) -> bool:
         return False
@@ -226,6 +289,20 @@ class FirstAttempt(Implementation):
     claim the schema could never check anyway.
     """
 
+    # Required here, and first among the changes (#172). With tests enforced only
+    # by the check below, a first attempt at sprint-metrics#75 came back with no
+    # test three times out of three: the answer's format asked for source
+    # changes and nothing else, and the rule arrived only as a refusal. A field
+    # the format requires is asked for; a rule that refuses afterwards is not.
+    criteria_tests: list[CriterionTest] = Field(
+        min_length=1,
+        description=(
+            "Before the code: for each acceptance criterion, the test that proves it, "
+            "written in full. The crew adds each test to its file, so don't write these "
+            "tests again in new_files or edits."
+        ),
+    )
+
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:
         """Definition of Done §7.1: every acceptance criterion needs a test.
@@ -233,7 +310,11 @@ class FirstAttempt(Implementation):
         Satisfied by a new test file or by adding to an existing one — a story
         extending a module usually adds cases rather than a whole file.
         """
-        if any(f.is_test for f in self.new_files) or any(e.is_test for e in self.edits):
+        if (
+            self.criteria_tests
+            or any(f.is_test for f in self.new_files)
+            or any(e.is_test for e in self.edits)
+        ):
             return self
         raise ValueError(
             "no test. Every acceptance criterion needs an automated test that proves "
@@ -247,6 +328,9 @@ STANDING_INSTRUCTIONS = (
     "Write the test that expresses each acceptance criterion, then the code that "
     "satisfies it.\n\n"
     "## How to return your work\n\n"
+    "On a first attempt, start with `criteria_tests`: for each acceptance criterion, "
+    "the test that proves it, written in full, with the test file it goes in. The crew "
+    "adds each one to its file.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "

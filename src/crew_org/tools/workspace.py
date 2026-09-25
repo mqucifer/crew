@@ -98,7 +98,7 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
     written = apply(worktree, implementation.new_files)
 
     by_path: dict[str, list[Edit]] = {}
-    for item in implementation.edits:
+    for item in implementation.all_edits:
         by_path.setdefault(item.path, []).append(
             Edit(operation=item.operation, target=item.target, source=item.source)
         )

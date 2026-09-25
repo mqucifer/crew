@@ -16,7 +16,7 @@ from crew_org.tools import ci_guard
 def touched(implementation) -> list[str]:
     """Every path an implementation would write, in the order it names them."""
     paths = [f.path for f in implementation.new_files]
-    paths += [e.path for e in implementation.edits]
+    paths += [e.path for e in implementation.all_edits]
     paths += [t.path for t in implementation.text_edits]
     return list(dict.fromkeys(paths))
 
