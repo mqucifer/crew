@@ -517,9 +517,15 @@ def deliver_story(
             # the review, because #70 had merged into the same lines (#158).
             worktree = ws.open(branch, resume=False)
             rebuilt_over = conflict.files or ["unknown files"]
+            # Structured, for the Architect's evidence (#192): which files keep
+            # colliding, on which project's cards.
             sink.note(
                 EventKind.NOTE,
                 f"#{number} rebuilt from main: its branch conflicted in {paths}",
+                rebuilt=True,
+                repo=repo,
+                card=number,
+                paths=list(conflict.files),
             )
     # The project's own answers (#131). A record that exists but can't be read
     # stops the card: its rules are unknown, and working on without them would

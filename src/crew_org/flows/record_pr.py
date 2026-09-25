@@ -33,6 +33,8 @@ class RecordChange:
     updated_by: str
     # The role that wrote the change, signed on the pull request and its comments.
     by: str
+    # Labels on the issue the pull request closes.
+    labels: tuple[str, ...] = ()
 
 
 def propose(
@@ -54,7 +56,10 @@ def propose(
     from crew_org.git_ops import branch_name  # noqa: PLC0415
 
     found = next((i for i in issues.open_issues(repo) if i["title"] == change.issue_title), None)
-    number = (found or issues.create(repo, change.issue_title, change.issue_body))["number"]
+    number = (
+        found
+        or issues.create(repo, change.issue_title, change.issue_body, labels=list(change.labels))
+    )["number"]
     branch = branch_name(number, change.branch_summary, kind="chore")
 
     ws = ws.for_repo(repo)

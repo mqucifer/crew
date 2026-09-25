@@ -16,6 +16,8 @@ named, and no pull request.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +30,17 @@ from crew_org.project import RECORD_PATH, Design, ProjectRecord, brief
 from crew_org.tools import ci_guard
 
 ATTEMPTS = 2
+
+# On a design pull request: its declared changes, so the crew can turn the ones
+# that need work into technical epics once it merges, whoever merged it (#192).
+CHANGES_MARKER = "<!-- crew:design-changes {} -->"
+_CHANGES = re.compile(r"<!-- crew:design-changes (.*?) -->", re.DOTALL)
+# On the issue a revisit's pull request closes, and on a revisit that changed
+# nothing: when the Architect last looked, so evidence already weighed isn't
+# counted again.
+REVISIT_LABEL = "design:revisit"
+# On a revisit's pull request: the crew merges it, not the Sponsor.
+REVISIT_MARKER = "<!-- crew:design-revisit -->"
 
 DESIGN = RecordChange(
     issue_title="Design this project: the Architect's section of its record",
@@ -42,6 +55,22 @@ DESIGN = RecordChange(
     pr_title="chore: this project's design",
     updated_by="`crew design`",
     by="Architect",
+)
+
+REVISIT = RecordChange(
+    issue_title="Revisit this project's design",
+    issue_body=(
+        "The Architect revisits the `design` section of `.crew/project.yaml` because "
+        "delivery shows the design under strain. The crew reviews and merges the "
+        "revision itself: how the project is built is the Architect's call, and what "
+        "it is for stays the Sponsor's.\n\nSee mqucifer/crew#192."
+    ),
+    branch_summary="design-revisit",
+    commit_message="chore(design): the Architect revisits this project's design",
+    pr_title="chore: revisit this project's design",
+    updated_by="the Architect's revisit",
+    by="Architect",
+    labels=(REVISIT_LABEL,),
 )
 
 
@@ -65,6 +94,7 @@ def to_design(proposal: Any) -> Design:
         sandbox=value(proposal.sandbox),
         checks=[c.value for c in proposal.checks],
         release_how=value(proposal.release_how),
+        structure=value(getattr(proposal, "structure", None)),
     )
 
 
@@ -143,10 +173,43 @@ def design(
     return ended
 
 
+def changes_block(proposal: Any) -> str:
+    """The declared changes, readable back from the pull request once it merges."""
+    changes = [
+        {"what": c.what, "was": c.was, "why": c.why, "needs_work": bool(c.needs_work)}
+        for c in proposal.changes
+    ]
+    # `>` escaped so nothing in a change can close the comment early.
+    return CHANGES_MARKER.format(json.dumps(changes).replace(">", "\\u003e"))
+
+
+def declared_changes(body: str) -> list[dict[str, Any]]:
+    """The changes a design pull request declared, or [] for one that has none."""
+    match = _CHANGES.search(body or "")
+    if match is None:
+        return []
+    try:
+        changes = json.loads(match.group(1))
+    except ValueError:
+        return []
+    return [c for c in changes if isinstance(c, dict) and c.get("what")]
+
+
 def open_design_pr(
-    ws: Any, issues: Any, repo: str, designed: Designed, *, base: str, reason: str = ""
+    ws: Any,
+    issues: Any,
+    repo: str,
+    designed: Designed,
+    *,
+    base: str,
+    reason: str = "",
+    revisit: bool = False,
 ) -> str:
-    """Propose the accepted design to the project as a pull request. Returns its URL."""
+    """Propose the accepted design to the project as a pull request. Returns its URL.
+
+    A revisit (#192) is merged by the crew once CI passes; a design run by hand
+    with `crew design` is the Sponsor's to merge.
+    """
     proposal = designed.proposal
     assert designed.record is not None, "only an accepted design is proposed"
 
@@ -159,6 +222,7 @@ def open_design_pr(
         line("Sandbox", proposal.sandbox),
         *[line("Check", c) for c in proposal.checks],
         line("Release", proposal.release_how),
+        line("Structure", getattr(proposal, "structure", None)),
     ]
     changes = (
         "\n".join(f"- **{c.what}**: was {c.was}. {c.why}" for c in proposal.changes)
@@ -180,6 +244,14 @@ def open_design_pr(
             "- The Code Reviewer checked the design against the crew-wide guidelines "
             "(constitution §19) and the project's own, and found no conflict."
             + (f" It took {designed.attempts} proposals." if designed.attempts > 1 else "")
+            + (
+                "\n- The crew merges this itself once CI passes (mqucifer/crew#192). Each "
+                "change above that needs work becomes a technical epic."
+                if revisit
+                else ""
+            )
+            + f"\n\n{changes_block(proposal)}"
+            + (f"\n{REVISIT_MARKER}" if revisit else "")
         )
 
     return propose(
@@ -187,7 +259,7 @@ def open_design_pr(
         issues,
         repo,
         designed.record,
-        DESIGN,
+        REVISIT if revisit else DESIGN,
         base=base,
         body=body,
         update_note=f"\n\n{proposal.summary}",
