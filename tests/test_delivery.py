@@ -8,6 +8,8 @@ from pydantic import ValidationError
 
 from crew_org.crews.delivery_crew import (
     MAX_FILE_BYTES,
+    CriterionTest,
+    FileEdit,
     FileWrite,
     FirstAttempt,
     Implementation,
@@ -20,6 +22,17 @@ def code(path: str = "src/pkg/mod.py") -> FileWrite:
 
 def a_test(path: str = "tests/test_mod.py") -> FileWrite:
     return FileWrite(path=path, content="def test_f():\n    assert True\n")
+
+
+# A first attempt names the test proving each criterion (#172); test_f is a_test's.
+PROVED = [
+    CriterionTest(
+        criterion="it works",
+        path="tests/test_mod.py",
+        test="test_g",
+        source="def test_g():\n    assert True\n",
+    )
+]
 
 
 # --- the path guard ------------------------------------------------------
@@ -82,18 +95,20 @@ def test_an_enormous_file_is_refused():
 def test_a_first_attempt_without_a_test_is_refused():
     """DoD §7.1 enforced as a schema rule, so it is a SCHEMA failure the repair
     loop handles rather than something a reviewer catches later."""
-    with pytest.raises(ValidationError, match="no test"):
+    with pytest.raises(ValidationError, match="criteria_tests"):
         FirstAttempt(summary="s", new_files=[code()])
 
 
 def test_a_first_attempt_with_a_test_is_accepted():
-    impl = FirstAttempt(summary="s", new_files=[code(), a_test()])
+    impl = FirstAttempt(summary="s", criteria_tests=PROVED, new_files=[code(), a_test()])
     assert len(impl.new_files) == 2
 
 
 @pytest.mark.parametrize("name", ["tests/test_mod.py", "src/pkg/mod_test.py"])
 def test_both_test_naming_conventions_count(name):
-    assert FirstAttempt(summary="s", new_files=[code(), a_test(name)]).new_files
+    assert FirstAttempt(
+        summary="s", criteria_tests=PROVED, new_files=[code(), a_test(name)]
+    ).new_files
 
 
 def test_a_repair_may_return_the_fix_alone():
@@ -120,7 +135,6 @@ def test_an_empty_implementation_is_refused():
 
 def test_a_test_added_to_an_existing_file_satisfies_the_rule():
     """A story extending a module usually adds cases, not a whole test file."""
-    from crew_org.crews.delivery_crew import FileEdit
 
     impl = Implementation(
         summary="s",
@@ -138,7 +152,6 @@ def test_a_test_added_to_an_existing_file_satisfies_the_rule():
 
 
 def test_an_edit_without_source_is_refused_unless_deleting():
-    from crew_org.crews.delivery_crew import FileEdit
 
     with pytest.raises(ValidationError, match="needs source"):
         FileEdit(path="src/m.py", operation="replace", target="f")
@@ -146,7 +159,6 @@ def test_an_edit_without_source_is_refused_unless_deleting():
 
 
 def test_an_edit_path_cannot_escape_the_repository():
-    from crew_org.crews.delivery_crew import FileEdit
 
     with pytest.raises(ValidationError):
         FileEdit(path="../../etc/passwd", operation="add", target="f", source="x = 1")
@@ -197,3 +209,89 @@ def test_a_repair_is_not_asked_for_whole_files():
 def test_a_first_attempt_carries_no_repair_block():
     """The repair text must not enter the cacheable prefix of a fresh attempt."""
     assert "ALREADY BEEN WRITTEN" not in _repair_prompt(feedback="")
+
+
+# --- #172: a first attempt carries the test proving each criterion, before the code -------
+
+
+def criterion_test(path="tests/test_sprint_range.py", test="test_range", source=None):
+    return CriterionTest(
+        criterion="a range is reported",
+        path=path,
+        test=test,
+        source=source or f"def {test}():\n    assert True\n",
+    )
+
+
+def test_a_first_attempt_must_carry_its_criteria_tests():
+    """sprint-metrics#75's first attempt came back without a test three times in three."""
+    with pytest.raises(ValidationError, match="criteria_tests"):
+        FirstAttempt(summary="s", new_files=[code(), a_test()])
+
+
+def test_criteria_tests_come_before_the_code_in_the_answer():
+    schema = FirstAttempt.model_json_schema()
+    fields = list(schema["properties"])
+    assert fields.index("criteria_tests") < fields.index("new_files") < fields.index("edits")
+    assert schema["properties"]["criteria_tests"]["minItems"] == 1
+
+
+def test_a_criterion_test_is_written_not_just_named():
+    """Named in one place and written in another, three of six first attempts wrote none."""
+    with pytest.raises(ValidationError, match="doesn't define it"):
+        criterion_test(source="def something_else():\n    pass\n")
+
+
+def test_a_criterion_test_goes_in_a_test_file():
+    with pytest.raises(ValidationError, match="isn't a test file"):
+        criterion_test(path="src/sprint_metrics/crew_performance.py")
+
+
+def test_a_criterion_test_is_applied_as_an_add_after_the_edits():
+    impl = FirstAttempt(summary="s", criteria_tests=[criterion_test()], new_files=[code()])
+    (edit,) = impl.all_edits
+    assert (edit.path, edit.operation, edit.target) == (
+        "tests/test_sprint_range.py",
+        "add",
+        "test_range",
+    )
+    assert not impl.changes_nothing
+
+
+def test_criteria_tests_land_in_an_existing_and_a_new_test_file(tmp_path):
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_old.py").write_text("def test_there():\n    assert True\n")
+    impl = FirstAttempt(
+        summary="s",
+        criteria_tests=[
+            criterion_test(path="tests/test_old.py", test="test_added"),
+            criterion_test(path="tests/test_new.py", test="test_fresh"),
+        ],
+        new_files=[FileWrite(path="tests/test_new.py", content="import json\n")],
+    )
+    workspace.apply_implementation(tmp_path, impl)
+    old = (tmp_path / "tests" / "test_old.py").read_text()
+    new = (tmp_path / "tests" / "test_new.py").read_text()
+    assert "def test_there" in old and "def test_added" in old
+    assert new.startswith("import json") and "def test_fresh" in new
+
+
+def test_a_repair_is_not_asked_for_criteria_tests_again():
+    assert Implementation(summary="fix", new_files=[code()]).criteria_tests == []
+
+
+def test_a_test_already_in_a_new_test_file_is_not_added_twice(tmp_path):
+    """Every first attempt at sprint-metrics#73 wrote its new test file with the tests in it."""
+    from crew_org.tools import workspace
+
+    fresh = "import json\n\n\ndef test_fresh():\n    assert True\n"
+    impl = FirstAttempt(
+        summary="s",
+        criteria_tests=[criterion_test(path="tests/test_new.py", test="test_fresh")],
+        new_files=[FileWrite(path="tests/test_new.py", content=fresh)],
+    )
+    assert impl.all_edits == []
+    workspace.apply_implementation(tmp_path, impl)
+    assert (tmp_path / "tests" / "test_new.py").read_text().count("def test_fresh") == 1

@@ -674,7 +674,7 @@ def deliver_story(
         # then the model is repairing a symptom several steps from the cause —
         # story #9 changed a return type to None and spent every attempt on the
         # TypeError it produced three functions away.
-        broken = regression.broken_contracts(worktree, implementation.edits)
+        broken = regression.broken_contracts(worktree, implementation.all_edits)
         if broken:
             failure = LocalFailure(
                 card=number,
@@ -928,7 +928,9 @@ def deliver_story(
 
 def _touched_count(implementation: Implementation) -> int:
     return (
-        len(implementation.new_files) + len(implementation.edits) + len(implementation.text_edits)
+        len(implementation.new_files)
+        + len(implementation.all_edits)
+        + len(implementation.text_edits)
     )
 
 
@@ -948,7 +950,7 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
     ]
     for new in implementation.new_files:
         lines.append(f"- `{new.path}` (new)")
-    for edit in implementation.edits:
+    for edit in implementation.all_edits:
         lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
     for text_edit in implementation.text_edits:
         lines.append(f"- `{text_edit.path}` — edited")

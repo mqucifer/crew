@@ -56,7 +56,7 @@ def test_returned_work_with_no_change_and_no_evidence_is_refused():
 
 def test_a_first_attempt_with_nothing_to_deliver_is_still_refused():
     """Criterion 3."""
-    with pytest.raises(ValidationError, match="must create a file or edit one"):
+    with pytest.raises(ValidationError, match="must create a file or edit one|criteria_tests"):
         FirstAttempt(summary="Nothing to do.")
 
 

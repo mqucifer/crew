@@ -373,6 +373,13 @@ so nothing it does not name can be damaged.
 Operations are `replace`, `add`, `add_method`, `add_import` and `delete`.
 Deleting is something to choose, not something that happens by omission.
 
+**A first attempt starts with its tests** (crew#172). Before any code, it lists
+each acceptance criterion with the test that proves it, written in full, and the
+test file it goes in. The crew adds each test to its file. The answer's format
+requires the list, and a test can't be named without being written. Enforced
+only by a check afterwards, a first attempt at sprint-metrics#75 came back
+without a test three times in three.
+
 **A file that is not Python** (`pyproject.toml`, a README, a CI workflow) has no
 definitions to name. It is changed by quoting: the Developer copies the exact
 text to change, which must occur in the file once, and gives what replaces it
