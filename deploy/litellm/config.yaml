@@ -44,16 +44,13 @@ model_list:
   # failure crew-code exists to avoid, arriving in refinement as epics get
   # bigger.
   #
-  # reasoning_effort is an OpenAI-standard parameter and works well in the
-  # Sponsor's other setups, so the lever itself is not in doubt. What is not
-  # measured *here* is narrower: whether it survives this alias's
-  # drop_params: true on the way to SGLang, and whether medium effort is
-  # enough to make a large split converge.
-  #
-  # The check is the split that failed: run sprint-metrics#49 through and
-  # watch reasoning_tokens. If the parameter is being dropped, the larger
-  # max_tokens on the Business Analyst is doing the work on its own — which
-  # may be enough, and is worth knowing either way.
+  # reasoning_effort, measured 2026-09-25: it did NOT survive this alias's
+  # drop_params: true. LiteLLM counts it unsupported for a generic openai/
+  # model and strips it, so from 2026-09-22 this alias ran at SGLang's own
+  # default, xhigh ("Supported types are xhigh (default), medium, and low",
+  # SGLang's answer to an unsupported value). allowed_openai_params lets it
+  # through. Every other alias still gets SGLang's xhigh default; lowering one
+  # is a quality decision to measure first, not a tidy-up.
   - model_name: crew-analysis
     model_info:
       max_input_tokens: 262144   # SGLang launches with --context-length 262144
@@ -65,6 +62,7 @@ model_list:
       temperature: 0.1
       timeout: 1800
       reasoning_effort: medium
+      allowed_openai_params: ["reasoning_effort"]  # or drop_params strips it
 
   # Mechanical work — routing, labelling, field-setting — where reasoning is
   # pure cost. Qwen3 honours enable_thinking=false (verified on the Spark).
