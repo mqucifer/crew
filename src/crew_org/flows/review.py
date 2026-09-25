@@ -18,6 +18,7 @@ from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.review_evidence import checks_section, imported_code
 
 REVIEW_MARKER = "<!-- crew:review -->"
 
@@ -144,10 +145,18 @@ def review_open_pulls(
             )
         )
         try:
+            diff = issues.pull_diff(repo, number)
+            base = (pull.get("base") or {}).get("ref") or "main"
             verdict = review_diff(
                 pull["title"],
-                issues.pull_diff(repo, number),
+                diff,
                 prior_verdicts=past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+                checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
+                imported=imported_code(
+                    lambda path, ref=base: issues.file_at(repo, path, ref),
+                    diff,
+                    read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))

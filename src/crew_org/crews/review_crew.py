@@ -62,7 +62,13 @@ class ReviewVerdict(BaseModel):
 
 
 def review_diff(
-    title: str, diff: str, *, acceptance_criteria: str = "", prior_verdicts: str = ""
+    title: str,
+    diff: str,
+    *,
+    acceptance_criteria: str = "",
+    prior_verdicts: str = "",
+    checks: str = "",
+    imported: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -75,6 +81,11 @@ def review_diff(
     the behaviour and this gate judges the diff; handing this one QA's unproven
     criteria invites it to start asking whether the code works, which is the
     one question §1 says it must never ask.
+
+    `checks` and `imported` are the evidence a diff can't carry (#160): what CI
+    and delivery's own run reported, and the code the diff imports as it is on
+    the base branch. Without them a diff of tests alone looks like tests that
+    must fail, even when the code they exercise has already landed.
     """
     if len(diff) > MAX_DIFF_CHARS:
         return ReviewVerdict(
@@ -116,7 +127,9 @@ def review_diff(
         description=(
             f"Review this pull request.\n\n## Title\n\n{title}{criteria}{previously}\n\n"
             f"## Diff\n\n```diff\n{diff}\n```\n\n"
-            "Review for correctness first, then reuse and simplification. Name the file "
+            + (f"{checks}\n\n" if checks else "")
+            + (f"{imported}\n\n" if imported else "")
+            + "Review for correctness first, then reuse and simplification. Name the file "
             "for every finding and say what to do about it. Reject scope creep: a diff "
             "doing more than its change is not ready, however good the extra is.\n"
             "Do not ask whether it works at runtime — that is QA's evidence to produce. "
