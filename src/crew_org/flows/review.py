@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.flows.artifacts import signed
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
@@ -51,7 +52,7 @@ def render_review(verdict: ReviewVerdict) -> str:
             lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
     if verdict.approve and not verdict.findings:
         lines.append("No findings.")
-    return "\n".join(lines).strip()
+    return signed("\n".join(lines).strip(), "Code Reviewer")
 
 
 def already_reviewed(reviews: list[dict], bot_login: str, head: str = "") -> bool:

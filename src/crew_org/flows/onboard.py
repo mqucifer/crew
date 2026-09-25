@@ -456,6 +456,7 @@ ONBOARDING = RecordChange(
     ),
     pr_title="chore: this project's onboarding record",
     updated_by="`crew onboard`",
+    by="Product Owner",
 )
 
 

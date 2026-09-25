@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from crew_org.flows.artifacts import signed
 from crew_org.project import RECORD_PATH, ProjectRecord, render
 
 
@@ -30,6 +31,8 @@ class RecordChange:
     pr_title: str
     # Who is updating it, for the comment on a pull request that already exists.
     updated_by: str
+    # The role that wrote the change, signed on the pull request and its comments.
+    by: str
 
 
 def propose(
@@ -67,10 +70,12 @@ def propose(
     if existing:
         if update_note:
             issues.comment(
-                repo, existing["number"], f"Updated by {change.updated_by}.{update_note}"
+                repo,
+                existing["number"],
+                signed(f"Updated by {change.updated_by}.{update_note}", change.by),
             )
         return existing["html_url"]
     pull = issues.create_pull(
-        repo, title=change.pr_title, head=branch, base=base, body=body(number)
+        repo, title=change.pr_title, head=branch, base=base, body=signed(body(number), change.by)
     )
     return pull["html_url"]
