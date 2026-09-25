@@ -249,6 +249,34 @@ def _refine(crew: Crew) -> PhaseOutcome:
     )
 
 
+def _design(crew: Crew) -> PhaseOutcome:
+    """Design notes for the epics that need one, before their stories are admitted (#155)."""
+    from crew_org.crews.design_crew import review_design  # noqa: PLC0415
+    from crew_org.crews.design_note_crew import render, write_note  # noqa: PLC0415
+    from crew_org.flows.design_notes import write_notes  # noqa: PLC0415
+
+    result = write_notes(
+        crew.issues,
+        crew.sink,
+        crew.ws,
+        crew.board.cards(),
+        default_repo=crew.repo,
+        repos=crew.repos,
+        write=write_note,
+        review=review_design,
+        render=render,
+    )
+    return PhaseOutcome(
+        "design",
+        moved=bool(result.written or result.blocked),
+        summary=f"{len(result.written)} design notes written",
+        result=result,
+        counts={"notes": len(result.written)},
+        held=[f"epic #{n} — design note failed: {why}" for n, why in result.failed],
+        blocked=[f"epic #{n} — no design note, needs a person: {why}" for n, why in result.blocked],
+    )
+
+
 def _admit(crew: Crew) -> PhaseOutcome:
     """Ready to Sprint Backlog.
 
@@ -278,7 +306,11 @@ def _admit(crew: Crew) -> PhaseOutcome:
             f"{c.name(qualify=many_repos(plan.unestimated))} — no epic and no estimate"
             for c in plan.unestimated
         ]
-        + [f"{c.name(qualify=True)} — ready, and not the crew's to deliver" for c in plan.not_ours],
+        + [f"{c.name(qualify=True)} — ready, and not the crew's to deliver" for c in plan.not_ours]
+        + [
+            f"{c.name(qualify=True)} — waits for its epic's design note"
+            for c in plan.waiting_on_design
+        ],
     )
 
 
@@ -425,6 +457,7 @@ def _deliver(crew: Crew) -> PhaseOutcome:
 # delivery claims more.
 PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
     ("refine", _refine),
+    ("design", _design),
     ("admit", _admit),
     ("review", _review),
     ("qa", _qa),
