@@ -93,6 +93,10 @@ NEEDS_DESIGN = "needs:design"
 # drains touches nothing else.
 HELD_FOR_ROOM = "held:wip"
 
+# Work the crew decided on itself: the Architect's changes to how a project is
+# built (#192). The Sponsor's gate is for what to build, so it skips it.
+TECHNICAL = "technical"
+
 
 @dataclass
 class TickResult:
@@ -113,6 +117,9 @@ class TickResult:
     # Stories held for room: let into Ready this pass, and still waiting.
     admitted: list[int] = field(default_factory=list)
     waiting: list[tuple[int, str]] = field(default_factory=list)
+    # Approved epics not split yet because their project's design is being
+    # revisited, or its technical work is still to land (#192).
+    held_for_design: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -740,14 +747,25 @@ def refine_epics(
     cards: list[Card],
     default_repo: str,
     context: RepoContext,
+    holds: dict[str, str] | None = None,
 ) -> None:
-    """Split approved epics into stories, and decide whether design is warranted."""
+    """Split approved epics into stories, and decide whether design is warranted.
+
+    `holds` names the projects whose design is being revisited, and why. Their
+    epics wait, so their stories are written against the structure the
+    Architect chose rather than piling into the one it is replacing (#192).
+    Technical epics don't wait: they are that change.
+    """
     counts = board.counts(cards)
+    holds = holds or {}
 
     for epic_card in approved_epics(cards):
         repo = epic_card.repo or default_repo
         number = epic_card.number
         assert number is not None
+        if repo in holds and TECHNICAL not in epic_card.labels:
+            result.held_for_design.append((number, holds[repo]))
+            continue
 
         proceed, notes = rework_gate(
             issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
@@ -911,6 +929,7 @@ def tick(
     ws: Workspace | None = None,
     sponsor: str | None = None,
     repos: set[str] | None = None,
+    holds: dict[str, str] | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
 
@@ -1051,6 +1070,7 @@ def tick(
         cards=cards,
         default_repo=default_repo,
         context=context,
+        holds=holds,
     )
 
     sink.note(

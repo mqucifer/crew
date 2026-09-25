@@ -54,6 +54,42 @@ class Standup:
     quiet: bool
 
 
+def decided_by_crew(result) -> list[str]:
+    """What the Architect decided about a project's design, and why (#192).
+
+    Information for the Sponsor, never a question: how a project is built is
+    the crew's call.
+    """
+    lines: list[str] = []
+    for outcome in result.outcomes:
+        found = outcome.result if outcome.name == "revisit" else None
+        if found is None:
+            continue
+        lines += [
+            f"- {repo}: the Architect revised the design, because stories kept colliding "
+            f"in the same files. The crew merges it once CI passes: {url}"
+            for repo, url in found.proposed
+        ]
+        lines += [
+            f"- {repo}: the crew merged the Architect's design revision, PR #{n}"
+            for repo, n in found.merged
+        ]
+        lines += [
+            f"- {repo}#{n}: a technical epic from the design, straight to refinement"
+            for repo, n in found.epics
+        ]
+        lines += [
+            f"- {repo}: the Architect revisited the design and changed nothing (#{n})"
+            for repo, n in found.unchanged
+        ]
+        lines += [
+            f"- {repo}: the Architect's design revision was refused by review, so nothing "
+            f"changed: {why}"
+            for repo, why in found.refused
+        ]
+    return lines
+
+
 def write_standup(
     result,
     *,
@@ -81,7 +117,8 @@ def write_standup(
         f"- {column}: {count} against a limit of {limit}"
         for column, (count, limit) in sorted(result.over_limit.items())
     ]
-    quiet = not (moved or blocked or failed)
+    decided = decided_by_crew(result)
+    quiet = not (moved or blocked or failed or decided)
 
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
     state = "settled" if result.settled else "stopped at the pass cap"
@@ -90,6 +127,7 @@ def write_standup(
         lines += ["", "Nothing moved."]
     sections = [
         ("Moved", moved),
+        ("Decided by the crew", decided),
         ("Blocked this tick", blocked),
         ("Failed", failed),
         ("Waiting", held),

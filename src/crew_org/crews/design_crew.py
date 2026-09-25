@@ -35,6 +35,13 @@ class Change(BaseModel):
     what: str = Field(description="What changes, e.g. 'add a type-check to the checks'")
     was: str = Field(description="What the project does today, or 'nothing'")
     why: str = Field(description="Why it should change")
+    needs_work: bool = Field(
+        False,
+        description=(
+            "True when making it so means changing the project's code, tests or "
+            "configuration, not only this record"
+        ),
+    )
 
 
 class DesignProposal(BaseModel):
@@ -51,6 +58,9 @@ class DesignProposal(BaseModel):
         description="The commands that enforce the definition of done, one per command"
     )
     release_how: Choice | None = Field(None, description="How a release happens")
+    structure: Choice | None = Field(
+        None, description="How the code is divided into modules, and what each module owns"
+    )
     changes: list[Change] = Field(
         default_factory=list,
         description=(
@@ -112,10 +122,11 @@ def propose_design(
             f"{project}\n\n## The project's code\n\n{repository or '(the repository is empty)'}"
             f"\n\n{revising}{refused}"
             "Propose this project's design: language, dependencies, what the sandbox must "
-            "provide, the commands that enforce its definition of done, and how a release "
-            "happens. Give the basis of each choice. Where the project already has an "
-            "answer (its CI, its lockfile, its build), record it; anything that differs "
-            "from what it does today goes in `changes`, with why."
+            "provide, the commands that enforce its definition of done, how a release "
+            "happens, and how its code is divided into modules. Give the basis of each "
+            "choice. Where the project already has an answer (its CI, its lockfile, its "
+            "build, its modules), record it; anything that differs from what it does today "
+            "goes in `changes`, with why, and whether making it so needs work on the code."
         ),
         expected_output="The design, each choice with its basis, and any changes with why.",
         agent=architect,

@@ -67,6 +67,9 @@ class Crew:
     # Repositories in delivery.repos this tick leaves alone, and why: a
     # project without a usable record isn't worked (#132).
     not_onboarded: dict[str, str] = field(default_factory=dict)
+    # Projects whose approved epics wait while the Architect revisits their
+    # design, and why (#192). Set by the revisit phase each pass.
+    design_holds: dict[str, str] = field(default_factory=dict)
 
 
 def not_onboarded(ws: Workspace, repos: set[str]) -> dict[str, str]:
@@ -209,6 +212,49 @@ class LoopResult:
         return out
 
 
+def _revisit(crew: Crew) -> PhaseOutcome:
+    """The Architect revisits a design delivery shows is under strain (#192).
+
+    Before refinement, so an approved epic isn't split against a structure the
+    Architect is about to change.
+    """
+    from crew_org.crews.design_crew import propose_design, review_design  # noqa: PLC0415
+    from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
+    from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
+
+    result = revisit_designs(
+        crew.issues,
+        crew.reviewer,
+        crew.board,
+        crew.sink,
+        crew.ws,
+        crew.board.cards(),
+        repos=crew.repos - set(crew.not_onboarded),
+        events_dir=crew.sink.path.parent if crew.sink.path else None,
+        propose_design=propose_design,
+        review_design=review_design,
+        threshold=int((crew.org.get("design") or {}).get("revisit_conflicts", REVISIT_CONFLICTS)),
+    )
+    crew.design_holds = dict(result.holds)
+    return PhaseOutcome(
+        "revisit",
+        moved=result.moved,
+        summary=(
+            f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
+            f"{len(result.epics)} technical epics"
+        ),
+        result=result,
+        counts={
+            "proposed": len(result.proposed),
+            "unchanged": len(result.unchanged),
+            "merged": len(result.merged),
+            "technical epics": len(result.epics),
+        },
+        held=[f"{repo} — {why}" for repo, why in sorted(result.holds.items())]
+        + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed],
+    )
+
+
 def _refine(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.board_flow import tick as refine  # noqa: PLC0415
 
@@ -221,6 +267,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
         ws=crew.ws,
         sponsor=crew.sponsor,
         repos=crew.repos,
+        holds=crew.design_holds,
     )
     # Parking an epic is movement: the card left Needs Refinement, and a pass
     # that reports "nothing moved" over it would hide the one thing that
@@ -241,7 +288,8 @@ def _refine(crew: Crew) -> PhaseOutcome:
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
         + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why]
-        + [f"#{n} — waiting for room: {why}" for n, why in result.waiting],
+        + [f"#{n} — waiting for room: {why}" for n, why in result.waiting]
+        + [f"#{n} — waits: {why}" for n, why in result.held_for_design],
         blocked=[
             f"#{n} — the split failed the same way twice; parked for a person"
             for n in result.parked
@@ -456,10 +504,12 @@ def _deliver(crew: Crew) -> PhaseOutcome:
     )
 
 
-# Drain-first, in dependency order. Refinement produces stories, admission puts
-# them in a sprint, and the three that follow push started work forward before
-# delivery claims more.
+# Drain-first, in dependency order. The Architect revisits a strained design
+# before refinement splits epics against it. Refinement produces stories,
+# admission puts them in a sprint, and the three that follow push started work
+# forward before delivery claims more.
 PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
+    ("revisit", _revisit),
     ("refine", _refine),
     ("design", _design),
     ("admit", _admit),

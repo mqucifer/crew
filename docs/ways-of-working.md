@@ -17,7 +17,7 @@ negotiate process with each other; they follow what is written here.
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance | n/a |
 | Product Owner | Epics | No |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates | No |
-| Architect | Design notes, Tasks, Spikes | Yes |
+| Architect | A project's design, design notes, technical epics, Tasks, Spikes | Yes |
 | Developer | Code, tests, docs, PRs, Bugs | Yes |
 | QA Engineer | Behaviour verdicts, Bugs | No |
 | Code Reviewer | Diff verdicts, Bugs | Yes |
@@ -64,6 +64,11 @@ The Scrum Master narrates; it has no authority over the board.
 **No agent may move a card out of a human gate.** There are exactly two gates:
 epics awaiting approval in `Inbox (Goals)` carrying `needs:human`, and the
 sprint review at `crew sprint close`.
+
+The first gate is for *what* to build. Work about *how* a project is built
+never goes through it: a technical epic, filed by the crew from the Architect's
+design, starts in `Needs Refinement` (§13, crew#192). The Sponsor sees it in
+the standup as something the crew decided, not as a question.
 
 ### Review and QA are two different gates
 
@@ -288,6 +293,31 @@ retry, then the epic is blocked for a person with the guideline named, and so is
 a decision the Architect names as beyond its reach. Until the note exists,
 planning holds the epic's stories back. Once it does, the Developer building one
 of them and the Code Reviewer judging its diff are both shown it.
+
+**When the Architect revisits a project's design** (crew#192). How a project is
+built is the Architect's call, and the Sponsor is never asked whether a
+refactor is appropriate. The evidence is mechanical. When a story's branch
+conflicts with `main` and is rebuilt, the files it conflicted in are recorded.
+When `design.revisit_conflicts` stories of one sprint (3 by default) have been
+rebuilt over the same file since the Architect last looked, the tick's first
+phase sends the Architect back to the project's design. Its reason is that
+evidence plus the approved epics waiting to be split there, so the design is
+weighed against the work about to land on it. The design includes `structure`:
+how the code is divided into modules, and what each owns.
+
+The number starts a look, not a refactor. The Architect may change nothing,
+which is recorded, and that evidence isn't counted again. A revision is checked
+by the Code Reviewer against §19 and the project's guidelines, then opened as a
+pull request that the crew approves with its reviewing identity and merges once
+CI passes. Only the record's `design` section changes; `intent` stays the
+Sponsor's. Each declared change that needs work on the code becomes a
+`technical` epic in `Needs Refinement`, refined and delivered like any other.
+The same happens for the changes in a design pull request the Sponsor merged
+from `crew design`. While a revision is open, or its technical epics are, the
+project's other approved epics wait to be split. Their stories are then written
+against the structure the Architect chose, rather than piling into the one it
+replaces. The standup's **Decided by the crew** section says what the Architect
+did and why.
 
 **Why ration it.** Architectural judgment is the work a local model does worst,
 so the Architect is both the likeliest source of escalation and the scarcest

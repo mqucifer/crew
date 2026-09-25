@@ -109,6 +109,12 @@ class Design(Section):
         default_factory=list, description="The commands that enforce the definition of done"
     )
     release_how: str | None = Field(default=None, description="How a release happens")
+    # How the code is divided, and what each part owns (#192). The toolchain
+    # alone said nothing about where work lands, so a module every story had to
+    # touch was nobody's decision to split.
+    structure: str | None = Field(
+        default=None, description="How the code is divided into modules, and what each owns"
+    )
 
 
 class Learned(Section):

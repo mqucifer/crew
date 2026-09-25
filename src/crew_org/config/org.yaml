@@ -68,6 +68,10 @@ design:
   min_modules: 3          # distinct modules or packages the epic touches
   force_label: needs:design   # Sponsor or Scrum Master can demand design
   skip_label: no:design       # ...or waive it
+  # Stories of one sprint rebuilt over the same file before the Architect
+  # revisits the project's design (#192). It starts a look, not a refactor: the
+  # Architect may change nothing, and a look costs one proposal and one review.
+  revisit_conflicts: 3
 
 estimation:
   scale: [1, 2, 3, 5, 8]
