@@ -483,6 +483,9 @@ def deliver_story(
     # nothing (#119). That starts from current `main` instead.
     live = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
     worktree = ws.open(branch, resume=live is not None)
+    # Set when a returned story's branch conflicted with main and it was rebuilt
+    # from main instead (#158): the conflicting paths, for the Developer and the PR.
+    rebuilt_over: list[str] | None = None
     if getattr(ws, "resumed", False):
         # Resumed, but `main` has moved since it was cut. Bring it up to date
         # before the work, not after, so the Developer sees what has landed.
@@ -490,11 +493,23 @@ def deliver_story(
             ws.catch_up()
         except MergeConflict as conflict:
             paths = ", ".join(conflict.files) or "unknown files"
-            outcome.blocked_reason = (
-                f"`{branch}` conflicts with main in {paths}; "
-                "resolving that is a decision for a person, not something to force"
+            if not rework:
+                outcome.blocked_reason = (
+                    f"`{branch}` conflicts with main in {paths}; "
+                    "resolving that is a decision for a person, not something to force"
+                )
+                return outcome
+            # Returned by a gate: the code is being rewritten anyway, so a
+            # conflict in it isn't a decision for a person. Rebuild on current
+            # main; the gate's findings carry over as the card's history.
+            # sprint-metrics#73 was blocked here before its Developer ever saw
+            # the review, because #70 had merged into the same lines (#158).
+            worktree = ws.open(branch, resume=False)
+            rebuilt_over = conflict.files or ["unknown files"]
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} rebuilt from main: its branch conflicted in {paths}",
             )
-            return outcome
     # The project's own answers (#131). A record that exists but can't be read
     # stops the card: its rules are unknown, and working on without them would
     # be working on rules nobody chose.
@@ -518,6 +533,18 @@ def deliver_story(
         resumed=getattr(ws, "resumed", False),
         known=card.open_pull_on(branch),
     )
+    if rebuilt_over:
+        # Self-contained: it must read right even when no verdict could be found.
+        answering = " Answer every finding the gates gave it, above." if prior else ""
+        prior = (
+            (f"{prior}\n\n" if prior else "") + "## Why you are starting again\n\n"
+            "Your previous attempt was sent back, and while it waited, other work merged "
+            "into the same lines of "
+            + ", ".join(f"`{p}`" for p in rebuilt_over)
+            + ". Rather than merge the two, this story is rebuilt on current main: **your "
+            "previous attempt is not in the repository below.** Write it again against "
+            "the code as it is now." + answering
+        )
     if prior:
         carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
@@ -799,8 +826,10 @@ def deliver_story(
     try:
         # A repair adds a commit on top of the branch it resumed, so it is a
         # fast-forward and must not be forced: the history the reviewer read is
-        # the history it keeps, with the answer appended to it.
-        ws.push(force=not rework)
+        # the history it keeps, with the answer appended to it. A rebuild is the
+        # exception: it starts from main, so it replaces the branch, with a
+        # lease so only the crew's own refused attempt is overwritten.
+        ws.push(force=not rework or rebuilt_over is not None)
     except Exception as exc:  # noqa: BLE001
         # Landing failed, not the work. Returning the outcome keeps what it
         # already knows — how many repairs it took, the diff it produced — where
@@ -814,12 +843,20 @@ def deliver_story(
         # branch is not possible and would not be wanted: the review thread,
         # the findings and the card's history all hang off this one.
         outcome.pr = open_pull["number"]
+        how = (
+            "Rebuilt from main: while this waited, other work merged into the same "
+            "lines of "
+            + ", ".join(f"`{p}`" for p in rebuilt_over)
+            + ", so the story was written again on current main rather than merged. "
+            "The branch was replaced; the findings above are what it answers."
+            if rebuilt_over
+            else "Pushed on top of the commit that was refused."
+        )
         issues.comment(
             repo,
             open_pull["number"],
             f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
-            "Pushed on top of the commit that was refused; lint and the full "
-            "test suite pass.",
+            f"{how} Lint and the full test suite pass.",
         )
     else:
         pr = issues.create_pull(
