@@ -993,13 +993,35 @@ def test_live_rework_is_resumed_and_brought_up_to_date_first(harness, refused):
     assert result.delivered[0].pr == 67 and ws.forced is False
 
 
-def test_a_resumed_branch_that_conflicts_with_main_blocks_with_the_paths(
+def test_a_returned_branch_that_conflicts_with_main_is_rebuilt_not_blocked(
     harness, refused, monkeypatch
 ):
-    """Criterion 4: never forced."""
+    """#158: sprint-metrics#73 was blocked here before its Developer saw the review."""
     monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
-    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+    result, _, issues, ws, calls, seen = harness(
+        checks=[green()], cards=[_returned_card("In Progress")]
+    )
+
+    assert calls["implement"] == 1 and not result.blocked
+    assert ws.resumed is False, "rebuilt from main, not on the conflicting branch"
+    prior = calls["prior"][0]
+    assert "## Why you are starting again" in prior and "crew_performance.py" in prior
+    assert "not in the repository below" in prior, "told its previous attempt isn't there"
+    assert ws.forced is True, "the rebuilt branch replaces the refused one, with a lease"
+    assert result.delivered[0].pr == refused["number"], "the same pull request, updated"
+    comments = [body for _, body in issues.comments_]
+    (comment,) = [c for c in comments if "Re-worked" in c]
+    assert "Rebuilt from main" in comment and "crew_performance.py" in comment
+    assert any("rebuilt from main" in e.summary for e in seen)
+
+
+def test_a_resumed_branch_nobody_returned_that_conflicts_still_blocks(
+    harness, refused, monkeypatch
+):
+    """Only returned work is rebuilt: anything else keeps its history, and a person decides."""
+    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
+    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("Sprint Backlog")])
     assert not result.delivered and ws.pushed == 0
-    assert calls["implement"] == 0, "no work is done on a base it cannot reconcile"
+    assert calls["implement"] == 0
     reason = result.blocked[0].blocked_reason
     assert "conflicts with main" in reason and "crew_performance.py" in reason
