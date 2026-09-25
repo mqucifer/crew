@@ -25,6 +25,7 @@ from crew_org.flows import artifacts
 from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
+from crew_org.llm import reraise_if_down
 from crew_org.project import brief, read_record
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
@@ -217,6 +218,7 @@ def run_qa(
                 project=_project_brief(worktree),
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(
                 CrewEvent(

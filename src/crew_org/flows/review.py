@@ -18,6 +18,7 @@ from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
+from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import checks_section, imported_code
@@ -166,6 +167,7 @@ def review_open_pulls(
                 design_note=story_note(issues, story, repo) if story is not None else "",
             )
         except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(
                 CrewEvent(

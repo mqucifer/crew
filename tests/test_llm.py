@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from crew_org import llm
+from tests.test_delivery_flow import harness  # noqa: F401
 
 URL = "http://localhost:4000/v1"
 REQUEST = httpx.Request("GET", f"{URL}/models")
@@ -29,7 +30,19 @@ def proxy(monkeypatch):
         aliases = state.get("aliases", ["crew-local", "crew-code"])
         return httpx.Response(200, json={"data": [{"id": a} for a in aliases]}, request=REQUEST)
 
+    def fake_post(url, **kwargs):
+        # The pre-flight's one minimal completion (#153).
+        if state.get("backend_down"):
+            return httpx.Response(
+                500,
+                json={"error": "litellm.InternalServerError: Connection error."},
+                request=httpx.Request("POST", url),
+            )
+        body = {"choices": [{"message": {"content": "ready"}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
     monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "post", fake_post)
     monkeypatch.setenv("CREW_LLM_BASE_URL", URL)
     monkeypatch.setenv("CREW_LLM_API_KEY", "sk-not-used")
     return state
@@ -143,3 +156,72 @@ def test_the_analyst_is_configured_off_the_shared_alias():
     spec = load_agents()["business_analyst"]
     assert spec["llm"] == "crew-analysis"
     assert spec["llm_params"]["max_tokens"] > 16384
+
+
+# --- #153: a dead backend behind a live proxy --------------------------------------
+
+
+def test_a_proxy_up_with_its_model_down_is_not_healthy(proxy):
+    """2026-09-25: SGLang stopped, the proxy's model list still answered."""
+    proxy["backend_down"] = True
+    ok, message = llm.health()
+    assert not ok
+    assert "proxy at http://localhost:4000/v1 is up" in message
+    assert "the model behind 'crew-local' isn't answering" in message
+
+
+def test_a_healthy_backend_says_so(proxy):
+    ok, message = llm.health()
+    assert ok and "crew-local answering" in message
+
+
+class InternalServerError(Exception):
+    """Named as the OpenAI client's is: a proxy's 5xx for an unreachable backend."""
+
+
+def test_a_dead_backend_is_recognised_through_a_wrapping_exception():
+    try:
+        try:
+            raise InternalServerError("Error code: 500 - Connection error.")
+        except InternalServerError as inner:
+            raise RuntimeError("the task failed") from inner
+    except RuntimeError as outer:
+        assert llm.backend_down(outer)
+
+
+def test_a_card_failure_is_not_a_dead_backend():
+    assert not llm.backend_down(ValueError("1 validation error for FirstAttempt"))
+    assert not llm.backend_down(TimeoutError("read timed out"))
+
+
+def test_a_dead_backend_is_reraised_as_unavailable_not_recorded():
+    with pytest.raises(llm.ModelUnavailable):
+        llm.reraise_if_down(InternalServerError("Connection error."))
+    llm.reraise_if_down(ValueError("a card's own failure"))  # returns: the card owns it
+
+
+def test_a_backend_dying_mid_delivery_stops_it_and_blames_no_card(harness):  # noqa: F811
+    """Without this, the card was retried, then blocked as a prompt defect."""
+
+    def dies(n):
+        raise InternalServerError("Error code: 500 - Connection error.")
+
+    with pytest.raises(llm.ModelUnavailable):
+        harness(checks=[], implement=dies)
+
+
+def test_a_command_reports_a_dead_backend_in_one_line(capsys, proxy):
+    from crew_org.cli import CrewTyper
+
+    app = CrewTyper()
+
+    @app.command()
+    def design() -> None:
+        raise InternalServerError("Error code: 500 - Connection error.")
+
+    with pytest.raises(SystemExit) as stopped:
+        app([], standalone_mode=True)
+    assert stopped.value.code == 1
+    err = capsys.readouterr().err
+    assert "the model behind 'crew-local' isn't answering" in err
+    assert "Traceback" not in err
