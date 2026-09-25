@@ -143,6 +143,13 @@ def test_aging_is_read_from_the_move_log(tmp_path):
 
 
 class FakeIssues:
+    def get(self, repo, number):
+        # When the sprint began, for what was fixed during it (#174).
+        return {"created_at": "2026-09-24T00:00:00Z"}
+
+    def closed_since(self, repo, since):
+        return []
+
     def __init__(self, existing=None, comments=None):
         self.owner = "mqucifer"
         self.existing = existing or []

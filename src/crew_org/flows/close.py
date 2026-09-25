@@ -20,8 +20,15 @@ from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
-from crew_org.flows.retro import RetroRecord, existing_retro, known_issues, record_retro
-from crew_org.flows.standup import aging_blocked, standups_for_retro
+from crew_org.flows.retro import (
+    RetroLayout,
+    RetroRecord,
+    existing_retro,
+    fixed_this_sprint,
+    known_issues,
+    record_retro,
+)
+from crew_org.flows.standup import aging_blocked, awaiting_approval, standups_for_retro
 from crew_org.git_ops import branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -228,6 +235,15 @@ def close_sprint(
     # What is already filed, so a symptom is cited as its known cause rather
     # than re-diagnosed and filed again (#124).
     known, known_text = known_issues(issues, crew_repo) if crew_repo is not None else (set(), "")
+    # And what was fixed while the sprint ran: closed by now, so not "known",
+    # and re-filed by the Sprint 6 retro for exactly that reason (#174). The
+    # sprint began when its first tick opened the standup issue.
+    fixed: set[int] = set()
+    fixed_text = ""
+    if crew_repo is not None and standup is not None:
+        began = (issues.get(crew_repo, standup) or {}).get("created_at")
+        if began:
+            fixed, fixed_text = fixed_this_sprint(issues, crew_repo, began)
     # Why work didn't land first time (#157), read from the same event log.
     report = sprint_report(
         sprint,
@@ -250,6 +266,7 @@ def close_sprint(
             standups=standups,
             known=known_text,
             retries=retries_text(report) if events_dir is not None else "",
+            fixed=fixed_text,
         )
     except Exception as exc:  # noqa: BLE001
         sink.note(EventKind.NOTE, f"retro could not be written: {exc}"[:120])
@@ -265,8 +282,19 @@ def close_sprint(
                 crew_repo=crew_repo,
                 delivery_repos=delivery_repos or [],
                 standup=standup,
-                known=known,
+                known=known | fixed,
                 recurring=causes_of(report),
+                layout=RetroLayout(
+                    stories=[
+                        (c.name(qualify=qualify), int(c.points or 0), c.status or "", c.title)
+                        for c in sorted(
+                            sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
+                        )
+                    ],
+                    retries=retries_text(report) if events_dir is not None else "",
+                    blocked=result.aging_blocked,
+                    awaiting=awaiting_approval(cards),
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.

@@ -219,6 +219,14 @@ scrum_master:
     threshold is a defect in task design — name the specific stories that were
     too large or whose criteria were ambiguous, and propose process defects
     against them. Never propose a larger escalation budget.
-  llm: crew-draft
+  # Not crew-draft: the retro is analysis, not prose. It reads the standups,
+  # the retries, and the open and fixed issues, and decides what's a defect.
+  # With #174 and #176 adding to that, crew-draft spent all 16,384 tokens
+  # reasoning and wrote nothing, three times running (2026-09-25). The same
+  # cure as the Business Analyst's: reasoning asked to converge, and room to
+  # finish after it has.
+  llm: crew-analysis
+  llm_params:
+    max_tokens: 32768
   can: [write_standup, write_retro, file_process_defect, file_product_defect, comment]
   constitution: [9, 10, 11, 12] # escalation, audit, WIP, blocked cards

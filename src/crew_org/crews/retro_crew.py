@@ -13,10 +13,21 @@ from typing import Literal
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
 
+# A defect's issue title, and how many bullets "how it went" gets (#176).
+MAX_TITLE = 80
+MAX_WENT = 6
+
 
 class ProcessDefect(BaseModel):
     """A defect the retro found. Filed as an issue where the thing it found lives."""
 
+    title: str = Field(
+        default="",
+        description=(
+            f"The issue title: a short statement of the problem, under {MAX_TITLE} "
+            "characters, e.g. 'A story's first attempt leaves out its tests'"
+        ),
+    )
     subject: str = Field(description="The story, epic or rule the defect is about")
     problem: str = Field(description="What went wrong, as a fact about this sprint")
     change: str = Field(description="The specific change proposed")
@@ -38,6 +49,28 @@ class ProcessDefect(BaseModel):
         description="The known issues this finding was compared with and is not a duplicate of",
     )
 
+    @field_validator("title")
+    @classmethod
+    def _short(cls, value: str) -> str:
+        if len(value) > MAX_TITLE:
+            raise ValueError(
+                f"a title is a short statement of the problem, under {MAX_TITLE} "
+                f"characters; this one is {len(value)}"
+            )
+        return value
+
+    @property
+    def issue_title(self) -> str:
+        """The title, or the problem shortened at a word, never cut mid-word."""
+        if self.title:
+            return self.title
+        words, text = self.problem.split(), ""
+        for word in words:
+            if len(text) + len(word) + 1 > MAX_TITLE - 1:
+                return text + "…"
+            text = f"{text} {word}".strip()
+        return text
+
     @field_validator("change")
     @classmethod
     def _is_a_change(cls, value: str) -> str:
@@ -54,8 +87,30 @@ class ProcessDefect(BaseModel):
 
 class Retro(BaseModel):
     summary: str = Field(
-        description="What the sprint delivered, plainly, including what went badly"
+        description="What the sprint delivered, in one or two sentences. The stories are "
+        "listed for the Sponsor already; don't repeat them"
     )
+    went: list[str] = Field(
+        default_factory=list,
+        description=f"How it went: at most {MAX_WENT} short bullets, the notable events "
+        "and what went badly. Not a replay of every tick",
+    )
+    needs_you: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Anything else that needs the Sponsor to act or decide. Not blocked cards or "
+            "epics at the gate: the crew lists those itself from the board as it is now, "
+            "and the standups can be out of date. Empty if nothing"
+        ),
+    )
+
+    @field_validator("went")
+    @classmethod
+    def _few(cls, value: list[str]) -> list[str]:
+        if len(value) > MAX_WENT:
+            raise ValueError(f"at most {MAX_WENT} bullets: the notable events, not a replay")
+        return value
+
     defects: list[ProcessDefect] = Field(
         default_factory=list, description="Process changes this sprint argues for"
     )
@@ -70,6 +125,7 @@ def write_retro(
     standups: str = "",
     known: str = "",
     retries: str = "",
+    fixed: str = "",
 ) -> Retro:
     agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
     agents = agents_module.build_agents("scrum_master")
@@ -95,6 +151,16 @@ def write_retro(
                 if retries
                 else ""
             )
+            + (
+                "## Closed during this sprint\n\n"
+                f"{fixed}\n\n"
+                "Crew issues closed while the sprint ran. A problem one of these fixed is "
+                "already handled, and one decided against was considered and rejected by the "
+                "Sponsor: either way, cite it with `explained_by` and don't propose it "
+                "again (#174).\n\n"
+                if fixed
+                else ""
+            )
             + f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
             "These are defects and work already understood and filed. Before proposing a "
             "defect, check it against them. If one already explains what happened, cite it "
@@ -103,7 +169,11 @@ def write_retro(
             "sprint shows is often not the cause. For a finding that is new, list in "
             "`checked_against` the known issues you compared it with.\n\n"
             "Report what happened, including what went badly, for a Sponsor who was not "
-            "present. Cite cards by number.\n"
+            "present, and who reads it at a glance. The crew lays the retro out: it lists "
+            "the stories, the first-try causes and what's blocked itself, so don't repeat "
+            f"them. Give `summary` one or two sentences, `went` at most {MAX_WENT} short "
+            "bullets of what was notable, and `needs_you` only what needs the Sponsor. "
+            "Cite cards by number.\n"
             "Where escalation was needed, name the specific story that was too large or "
             "whose criteria were ambiguous, and propose the design change. A larger "
             "escalation budget is never the answer.\n\n"
