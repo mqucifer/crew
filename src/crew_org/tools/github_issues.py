@@ -204,6 +204,26 @@ class IssueClient:
                 return runs
             page += 1
 
+    def check_runs(self, repo: str, sha: str) -> list[dict[str, Any]]:
+        """The checks GitHub ran on a commit: name, status and conclusion."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/commits/{sha}/check-runs?per_page=100"
+        )
+        response.raise_for_status()
+        return response.json().get("check_runs", [])
+
+    def file_at(self, repo: str, path: str, ref: str) -> str | None:
+        """A file's text at `ref`, or None if there is no such file."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/contents/{path}",
+            params={"ref": ref},
+            headers={"Accept": "application/vnd.github.raw+json"},
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.text
+
     def pull_diff(self, repo: str, number: int) -> str:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/pulls/{number}",

@@ -28,6 +28,15 @@ class FakeIssues:
         self._pulls = pulls
         self._reviews = reviews or {}
         self.submitted: list[tuple[int, str, str]] = []
+        # What GitHub reports for a head, and the base branch's files (#160).
+        self.runs: list[dict] = []
+        self.files: dict[str, str] = {}
+
+    def check_runs(self, repo, sha):
+        return self.runs
+
+    def file_at(self, repo, path, ref):
+        return self.files.get(path)
 
     def open_pulls(self, repo):
         return self._pulls
@@ -310,7 +319,7 @@ def test_the_reviewer_is_given_its_earlier_findings(monkeypatch):
     back rejected for another the first review never raised."""
     seen = {}
 
-    def fake_review(title, diff, *, acceptance_criteria="", prior_verdicts=""):
+    def fake_review(title, diff, *, acceptance_criteria="", prior_verdicts="", **_evidence):
         seen["prior"] = prior_verdicts
         return ReviewVerdict(summary="ok", approve=True)
 
