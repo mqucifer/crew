@@ -1518,8 +1518,9 @@ def sprint_close(
             f"https://github.com/{owner}/{repo}/pull/{pull}"
         )
     for card, days in result.aging_blocked:
+        age = "for an unknown time" if days is None else f"{days} days"
         console.print(
-            f"  [red]{card}[/] has been blocked {days} days — past the threshold, "
+            f"  [red]{card}[/] has been blocked {age} — past the threshold, "
             "and still waiting on a person"
         )
     for story, pull in result.unapprovable:

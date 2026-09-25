@@ -337,3 +337,52 @@ def test_a_recorded_standup_links_to_the_delivery_cards():
         delivery_repos=["sprint-metrics"],
     )
     assert "- mqucifer/sprint-metrics#12" in issues.posted[-1][1]
+
+
+# --- #175: only cards that are Blocked now ------------------------------------------
+
+
+def blocked_log(tmp_path, *numbers, days=5):
+    events = tmp_path / "events"
+    events.mkdir(exist_ok=True)
+    (events / "deliver.jsonl").write_text(
+        "".join(
+            CrewEvent(
+                at=AT - timedelta(days=days),
+                kind=EventKind.CARD_MOVED,
+                card=n,
+                detail={"from": "In Progress", "to": "Blocked"},
+            ).model_dump_json()
+            + "\n"
+            for n in numbers
+        )
+    )
+    return events
+
+
+def test_a_card_moved_out_of_blocked_by_hand_is_not_aging(tmp_path):
+    """Sprint 6: sprint-metrics#12 and #31 were raised at every standup after both were Done."""
+    events = blocked_log(tmp_path, 12, 31)
+    rules = ProcessRules.from_config(load_org())
+    cards = [card(12, "Done", state="CLOSED"), card(31, "In Progress")]
+    assert aging_blocked(cards, rules, events, AT) == []
+
+
+def test_a_card_blocked_now_past_the_threshold_is_listed_with_its_age(tmp_path):
+    events = blocked_log(tmp_path, 12)
+    rules = ProcessRules.from_config(load_org())
+    assert aging_blocked([card(12, "Blocked")], rules, events, AT) == [("#12", 5)]
+
+
+def test_a_card_blocked_now_within_the_threshold_is_not_listed(tmp_path):
+    events = blocked_log(tmp_path, 12, days=0)
+    rules = ProcessRules.from_config(load_org())
+    assert aging_blocked([card(12, "Blocked")], rules, events, AT) == []
+
+
+def test_a_card_blocked_with_no_record_of_when_is_listed_as_unknown(tmp_path):
+    events = blocked_log(tmp_path)
+    rules = ProcessRules.from_config(load_org())
+    assert aging_blocked([card(40, "Blocked")], rules, events, AT) == [("#40", None)]
+    text = write_standup(run(), sprint=SPRINT, at=AT, waiting=[], aging=[("#40", None)]).text
+    assert "- #40: blocked for an unknown time (no record of when)" in text

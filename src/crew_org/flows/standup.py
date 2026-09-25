@@ -100,7 +100,7 @@ def write_standup(
         ),
         (
             "Blocked past the threshold",
-            [f"- {name}: blocked {days} days" for name, days in aging],
+            [f"- {name}: {blocked_for(days)}" for name, days in aging],
         ),
         ("Over a WIP limit", breaches),
         (
@@ -149,15 +149,38 @@ def awaiting_approval(cards: list[Card]) -> list[str]:
 
 def aging_blocked(
     cards: list[Card], rules: ProcessRules, events_dir: Path, now: datetime
-) -> list[tuple[str, int]]:
-    """Cards blocked past `blocked_aging_days`, named, as §12 asks every standup to."""
-    blocked = blocked_since(replay_dir(events_dir), blocked_column=rules.blocked_column)
-    aging = rules.aging_blocked(blocked, now=now)
+) -> list[tuple[str, int | None]]:
+    """Cards blocked past `blocked_aging_days`, named, as §12 asks every standup to.
+
+    Only cards that are Blocked now (#175). The event log says when a card went
+    into Blocked, not whether it's still there: a card moved out by a person,
+    which the crew records no event for, or closed since, stayed "blocked"
+    forever, and every standup of Sprint 6 raised sprint-metrics#12 and #31 to
+    the Sponsor after both were Done.
+
+    A card Blocked now with no record of when it got there is listed with an
+    unknown age (None), rather than dropped or given one it doesn't have.
+    """
+    since = blocked_since(replay_dir(events_dir), blocked_column=rules.blocked_column)
+    aged = rules.aging_blocked(since, now=now)
     qualify = many_repos(cards)
-    by_number = {c.number: c for c in cards}
-    return sorted(
-        (by_number[n].name(qualify=qualify) if n in by_number else f"#{n}", days)
-        for n, days in aging.items()
+    found: list[tuple[str, int | None]] = []
+    for card in cards:
+        if card.status != rules.blocked_column or card.state == "CLOSED":
+            continue
+        number = card.number or 0
+        if number in aged:
+            found.append((card.name(qualify=qualify), aged[number]))
+        elif number not in since:
+            found.append((card.name(qualify=qualify), None))
+    return sorted(found, key=lambda item: (item[1] is None, -(item[1] or 0), item[0]))
+
+
+def blocked_for(days: int | None) -> str:
+    return (
+        "blocked for an unknown time (no record of when)"
+        if days is None
+        else (f"blocked {days} days")
     )
 
 
