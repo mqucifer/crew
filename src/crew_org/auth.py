@@ -17,6 +17,8 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel
 
+from crew_org.tokens import Token
+
 API = "https://api.github.com"
 TIMEOUT = 20.0
 
@@ -80,6 +82,32 @@ def app_permissions() -> dict[str, str]:
 # the crew reviewed its own work, GitHub recorded COMMENTED, and every story
 # stopped in Merging waiting for a person.
 REVIEW_APP_PREFIX = "GITHUB_REVIEW_APP_"
+
+
+def token_source(
+    env: dict[str, str] | None = None, *, prefix: str = "GITHUB_APP_"
+) -> tuple[Token, str]:
+    """Like `resolve_credentials`, but the token stays valid for a long run (#182).
+
+    With an app it's the provider's own `token`, which mints a fresh one
+    shortly before the last lapses. A personal access token doesn't expire,
+    so it's returned as it is.
+    """
+    from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.github_app import AppCredentials, AppTokenProvider  # noqa: PLC0415
+
+    env = env if env is not None else load_env()
+    creds = AppCredentials.from_env(env, prefix=prefix)
+    if creds is None and prefix != "GITHUB_APP_":
+        creds = AppCredentials.from_env(env)
+    if creds is not None:
+        provider = AppTokenProvider(creds)
+        provider.token()
+        _LAST_APP_PERMISSIONS.clear()
+        _LAST_APP_PERMISSIONS.update(provider.permissions)
+        return provider.token, provider.identity()
+    token, identity = resolve_credentials(env, prefix=prefix)
+    return token, identity
 
 
 def resolve_credentials(

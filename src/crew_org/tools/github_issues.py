@@ -13,6 +13,8 @@ from typing import Any
 
 import httpx
 
+from crew_org.tokens import BearerAuth, Token
+
 API = "https://api.github.com"
 GRAPHQL = "https://api.github.com/graphql"
 TIMEOUT = 30.0
@@ -36,12 +38,13 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 
 class IssueClient:
-    def __init__(self, token: str, owner: str, *, client: httpx.Client | None = None) -> None:
+    def __init__(self, token: Token, owner: str, *, client: httpx.Client | None = None) -> None:
         self.owner = owner
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
+            # Asked for at every request, so a long run outlives its first token (#182).
+            auth=BearerAuth(token),
             headers={
-                "Authorization": f"Bearer {token}",
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },

@@ -15,6 +15,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, Field
 
+from crew_org.tokens import BearerAuth, Token
+
 GRAPHQL = "https://api.github.com/graphql"
 TIMEOUT = 30.0
 PAGE_SIZE = 50
@@ -358,15 +360,16 @@ def many_repos(cards: list[Card]) -> bool:
 
 
 class ProjectClient:
-    def __init__(self, token: str, owner: str, number: int, *, client: httpx.Client | None = None):
+    def __init__(
+        self, token: Token, owner: str, number: int, *, client: httpx.Client | None = None
+    ):
         self.owner = owner
         self.number = number
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-            },
+            # Asked for at every request, so a long run outlives its first token (#182).
+            auth=BearerAuth(token),
+            headers={"Accept": "application/vnd.github+json"},
         )
 
     # --- transport ------------------------------------------------------
