@@ -15,13 +15,13 @@ from pathlib import Path
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
-from crew_org.events import EventKind, EventSink, blocked_since, replay_dir
+from crew_org.events import EventKind, EventSink
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import RetroRecord, existing_retro, known_issues, record_retro
-from crew_org.flows.standup import standups_for_retro
+from crew_org.flows.standup import aging_blocked, standups_for_retro
 from crew_org.git_ops import branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -54,7 +54,7 @@ class SprintClose:
     # threshold. §12 says these are raised to the Sponsor at sprint review and
     # `process.aging_blocked` has always been able to say which — nothing
     # called it, so a card blocked most of a day went unmentioned.
-    aging_blocked: list[tuple[str, int]] = field(default_factory=list)
+    aging_blocked: list[tuple[str, int | None]] = field(default_factory=list)
     retro: Retro | None = None
     # Where the retro was recorded (#50): the issue on the crew repository, and
     # whether this close wrote it or found it already written.
@@ -192,16 +192,8 @@ def close_sprint(
     # joined them — on 2026-09-19 sprint-metrics#12 had been blocked most of a
     # day and the close did not mention it.
     if rules is not None and events_dir is not None:
-        blocked = blocked_since(replay_dir(events_dir), blocked_column=rules.blocked_column)
-        aging = rules.aging_blocked(blocked, now=now or datetime.now(UTC))
-        by_number = {c.number: c for c in cards}
-        result.aging_blocked = sorted(
-            (
-                (by_number[number].name(qualify=qualify) if number in by_number else f"#{number}"),
-                days,
-            )
-            for number, days in aging.items()
-        )
+        # The standup's own answer, so the two can't disagree (#175).
+        result.aging_blocked = aging_blocked(cards, rules, events_dir, now or datetime.now(UTC))
 
     # Report the outcome alongside the failure. Without it an escalation reads
     # as an unresolved failure and the retro concludes the story was shipped
