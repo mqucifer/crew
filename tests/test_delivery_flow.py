@@ -1034,3 +1034,22 @@ def test_a_resumed_branch_nobody_returned_that_conflicts_still_blocks(
     assert calls["implement"] == 0
     reason = result.blocked[0].blocked_reason
     assert "conflicts with main" in reason and "crew_performance.py" in reason
+
+
+def test_an_approved_pr_returned_at_merge_is_rebuilt_on_main(harness, refused, monkeypatch):
+    """Decided 2026-09-25: an approved PR that conflicts at merge is the crew's to rebuild."""
+    from crew_org.flows.merge import REBUILD_MARKER
+
+    monkeypatch.setattr(FakeIssues, "pull_reviews", lambda self, repo, n: [], raising=False)
+    monkeypatch.setattr(
+        FakeIssues,
+        "comments",
+        lambda self, repo, n: [{"body": REBUILD_MARKER.format(head=REFUSED_HEAD)}],
+        raising=False,
+    )
+    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
+    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+
+    assert calls["returned"] == [True], "claimed as work sent back"
+    assert "While your previous attempt waited to land" in calls["prior"][0]
+    assert ws.forced is True and result.delivered[0].pr == refused["number"]

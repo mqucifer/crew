@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from crew_org.columns import BLOCKED, DONE, MERGING
+from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
@@ -41,6 +41,9 @@ REVIEW_REQUIRED = "REVIEW_REQUIRED"
 class MergeResult:
     merged: list[tuple[int, int]] = field(default_factory=list)
     conflicted: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) approved, conflicting with main, and returned for the crew to
+    # rebuild on main rather than blocked for a person.
+    rebuilding: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
     # Approved by the crew, and GitHub did not count it. A separate list
     # because the Sponsor's response differs: one is waiting, the other is a
@@ -154,8 +157,7 @@ def merge_approved(
             continue
 
         if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:
-            _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
-            result.conflicted.append((number, pull["number"]))
+            _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
             continue
 
         # Behind `main` where branch protection requires up to date. A merge
@@ -167,8 +169,7 @@ def merge_approved(
             try:
                 issues.update_branch(repo, pull["number"], head=head)
             except BranchUpdateConflict:
-                _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
-                result.conflicted.append((number, pull["number"]))
+                _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
                 continue
             except Exception as exc:  # noqa: BLE001
                 result.failed.append((number, f"could not update from main: {exc}"[:120]))
@@ -202,6 +203,65 @@ def merge_approved(
         result.merged.append((number, pull["number"]))
 
     return result
+
+
+# On a pull request whose approved head conflicted with main and was returned for
+# a rebuild. Delivery reads it as work sent back (`awaiting_rework`).
+REBUILD_MARKER = "<!-- crew:rebuild head={head} -->"
+# Parallel work can conflict a rebuilt pull request again. Past this many
+# rebuilds of one pull request, a person decides.
+MAX_REBUILDS = 2
+
+
+def _conflict(
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    repo: str,
+    pull: dict,
+    result: MergeResult,
+) -> None:
+    """An approved story that conflicts with main is rebuilt by the crew.
+
+    Decided 2026-09-25, reversing #158's third criterion for approved work.
+    sprint-metrics is one module, and parallel epics touch it together, so an
+    approved pull request conflicting at merge is routine, not rare: sprint-metrics
+    #95 and #100 both did in one tick. Rebuilding it on main costs model time and
+    no person, and the gates run again on what's rebuilt, so nothing lands
+    unreviewed. Past MAX_REBUILDS of one pull request, a person decides.
+    """
+    number = card.number or 0
+    head = (pull.get("head") or {}).get("sha", "")
+    try:
+        comments = issues.comments(repo, pull["number"])
+    except Exception:  # noqa: BLE001
+        comments = []
+    rebuilt = sum(1 for c in comments if "<!-- crew:rebuild head=" in (c.get("body") or ""))
+    if rebuilt >= MAX_REBUILDS:
+        _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
+        result.conflicted.append((number, pull["number"]))
+        return
+    move_card(
+        board,
+        sink,
+        item_id=card.item_id,
+        to=IN_PROGRESS,
+        by=None,
+        card=number,
+        frm=MERGING,
+        summary=f"approved PR #{pull['number']} conflicts with main — returned for a rebuild",
+    )
+    issues.comment(
+        repo,
+        pull["number"],
+        f"{REBUILD_MARKER.format(head=head)}\n**Conflicts with `main`, returned for a rebuild.** "
+        "This was approved, and other work has since merged into the same lines. The crew "
+        "rebuilds it on current `main` and it goes through review and QA again "
+        f"(rebuild {rebuilt + 1} of {MAX_REBUILDS} before a person is asked).",
+    )
+    result.rebuilding.append((number, pull["number"]))
 
 
 def _block_on_conflict(

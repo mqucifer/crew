@@ -10,7 +10,7 @@ passed it before new work is claimed.
 from __future__ import annotations
 
 from crew_org.events import EventKind, EventSink
-from crew_org.flows.merge import merge_approved, ready_to_land
+from crew_org.flows.merge import REBUILD_MARKER, merge_approved, ready_to_land
 from crew_org.tools.github_project import Card
 
 APPROVED = [{"state": "APPROVED"}]
@@ -48,7 +48,14 @@ class FakeIssues:
         self.owner = "mqucifer"
         self._reviews, self._state, self._has_pull = reviews, mergeable_state, pull
         self._decision = decision
-        self.merged, self.labels, self.comments = [], [], []
+        self.merged, self.labels, self.posted = [], [], []
+        # Comments already on the pull request, e.g. earlier rebuilds.
+        self.earlier: list[str] = []
+
+    def comments(self, repo, number):
+        return [{"body": b} for b in self.earlier] + [
+            {"body": b} for n, b in self.posted if n == number
+        ]
 
     def review_decision(self, repo, number):
         return self._decision
@@ -73,7 +80,7 @@ class FakeIssues:
         self.labels.extend((number, n) for n in labels)
 
     def comment(self, repo, number, body):
-        self.comments.append((number, body))
+        self.posted.append((number, body))
 
 
 def run(cards, issues, repos=None):
@@ -137,34 +144,50 @@ def test_a_story_with_no_pull_request_is_reported():
 # --- conflicts -----------------------------------------------------------
 
 
-def test_a_conflicted_pull_request_blocks_the_card():
-    """A conflict means two changes disagree and a person has to decide. It is
-    not something to retry around."""
+def test_an_approved_conflict_is_returned_for_the_crew_to_rebuild():
+    """Decided 2026-09-25: rebuilding on main costs model time, not a person, and the
+    gates run again on what's rebuilt. sprint-metrics #95 and #100 both hit this."""
     issues = FakeIssues(mergeable_state="dirty")
-    result, board, seen = run([card(6)], issues)
-    assert issues.merged == []
-    assert result.conflicted == [(6, 100)]
+    result, board, _ = run([card(6)], issues)
+    assert issues.merged == [] and result.conflicted == []
+    assert result.rebuilding == [(6, 100)]
+    assert ("C6", "In Progress") in board.moves
+    assert not any(label == "needs:human" for _, label in issues.labels)
+    (_, body) = issues.posted[0]
+    assert REBUILD_MARKER.split("{")[0] in body and "review and QA again" in body
+
+
+def rebuilt_twice() -> FakeIssues:
+    issues = FakeIssues(mergeable_state="dirty")
+    issues.earlier = [REBUILD_MARKER.format(head=h) for h in ("a", "b")]
+    return issues
+
+
+def test_past_the_rebuild_cap_a_conflict_blocks_the_card():
+    """Parallel work can conflict a rebuilt pull request again; it doesn't loop."""
+    issues = rebuilt_twice()
+    result, board, _ = run([card(6)], issues)
+    assert result.conflicted == [(6, 100)] and result.rebuilding == []
     assert ("C6", "Blocked") in board.moves
 
 
-def test_a_conflict_is_labelled_for_a_person():
-    issues = FakeIssues(mergeable_state="dirty")
+def test_a_conflict_past_the_cap_is_labelled_for_a_person():
+    issues = rebuilt_twice()
     run([card(6)], issues)
     assert (6, "blocked") in issues.labels
     assert (6, "needs:human") in issues.labels
 
 
-def test_a_conflict_says_what_to_do_about_it():
-    issues = FakeIssues(mergeable_state="dirty")
+def test_a_conflict_past_the_cap_says_what_to_do_about_it():
+    issues = rebuilt_twice()
     run([card(6)], issues)
-    _number, body = issues.comments[0]
+    _number, body = issues.posted[0]
     assert "merge conflict" in body.lower()
     assert "re-delivered" in body or "Resolve the conflict" in body
 
 
-def test_a_conflict_is_visible_on_the_event_stream():
-    issues = FakeIssues(mergeable_state="dirty")
-    _, _, seen = run([card(6)], issues)
+def test_a_conflict_past_the_cap_is_visible_on_the_event_stream():
+    _, _, seen = run([card(6)], rebuilt_twice())
     assert any(e.kind == EventKind.CARD_BLOCKED for e in seen)
 
 
@@ -206,7 +229,7 @@ def test_an_approval_that_cannot_arrive_is_labelled_for_a_person():
 def test_an_approval_that_cannot_arrive_says_why_and_what_to_do():
     issues = FakeIssues(decision="REVIEW_REQUIRED")
     run([card(6)], issues)
-    _number, body = issues.comments[0]
+    _number, body = issues.posted[0]
     assert "REVIEW_REQUIRED" in body
     assert "write access" in body
     assert "approve the pull request yourself" in body
@@ -272,16 +295,15 @@ def test_it_merges_on_the_next_pass_once_up_to_date():
     assert issues.merged == [100] and result.merged == [(31, 100)]
 
 
-def test_an_update_that_conflicts_blocks_the_card_like_a_merge_conflict():
-    """Criterion 3: never forced."""
+def test_an_update_that_conflicts_is_rebuilt_like_a_merge_conflict():
+    """Criterion 3: never forced. Now rebuilt by the crew, as a merge conflict is."""
     from crew_org.tools.github_issues import BranchUpdateConflict
 
     issues = BehindIssues(update_error=BranchUpdateConflict("merge conflict between base and head"))
     result, board, _ = run([card(31)], issues)
     assert issues.merged == []
-    assert result.conflicted == [(31, 100)]
-    assert ("C31", "Blocked") in board.moves
-    assert (31, "needs:human") in issues.labels
+    assert result.rebuilding == [(31, 100)]
+    assert ("C31", "In Progress") in board.moves
 
 
 def test_an_update_that_fails_otherwise_is_reported_not_blocked():
