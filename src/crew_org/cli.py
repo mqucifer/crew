@@ -121,13 +121,20 @@ def tick(
         f"{escape(', '.join(sorted(allowed)))}[/]"
     )
 
+    # Refinement reads the code it is deciding about, and delivery opens its
+    # worktrees off the same clone.
+    ws = Workspace(owner, default_repo, token, _bot_identity(token, identity))
+    # A repository without a usable record isn't worked (#132).
+    skipped = loop.not_onboarded(ws, allowed)
+    for skipped_repo, why in skipped.items():
+        console.print(f"[yellow]{escape(skipped_repo)} not worked:[/] {escape(why)}")
+    allowed = allowed - set(skipped)
+
     crew = loop.Crew(
         board=board,
         issues=IssueClient(token, owner),
         sink=sink,
-        # Refinement reads the code it is deciding about, and delivery opens its
-        # worktrees off the same clone.
-        ws=Workspace(owner, default_repo, token, _bot_identity(token, identity)),
+        ws=ws,
         sandbox=sandbox,
         rules=ProcessRules.from_config(org),
         policy=EscalationPolicy.from_config(org),
@@ -140,6 +147,7 @@ def tick(
         reviewer=IssueClient(review_token, owner),
         reviewer_login=review_identity,
         sponsor=env.get("GITHUB_SPONSOR") or None,
+        not_onboarded=skipped,
     )
 
     with attach(sink, view):
@@ -176,6 +184,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             waiting=waiting_on_a_person(cards),
             aging=aging_blocked(cards, crew.rules, VAR / "events", now),
             awaiting=awaiting_approval(cards),
+            not_onboarded=crew.not_onboarded,
         )
         number, commented = record_standup(
             crew.issues,
@@ -1182,6 +1191,87 @@ def onboard(
             f"Not finished. The answers so far, and what is left, are in {kept}. "
             f"Carry on with: crew onboard {repo} --from {kept}",
         )
+
+
+@app.command()
+def design(
+    repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
+    reason: str = typer.Option(
+        "", "--reason", help="Why an existing design is being revisited. Required if it has one."
+    ),
+) -> None:
+    """The project's Architect proposes its design section, as a pull request (#144).
+
+    Language, dependencies, sandbox needs, the commands that enforce done, and
+    how a release happens, each with what it is based on. The Code Reviewer
+    checks it against the crew-wide guidelines and the project's own before
+    anything is opened. The project must be onboarded first.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.design_crew import propose_design, review_design
+    from crew_org.flows.design import design as run_design
+    from crew_org.flows.design import open_design_pr, workflows
+    from crew_org.flows.onboard import describe
+    from crew_org.git_ops import Workspace
+    from crew_org.llm import health
+    from crew_org.permissions import Capability, Permissions
+    from crew_org.project import ProjectRecordError, read_record
+    from crew_org.tools.github_issues import IssueClient
+
+    Permissions.from_agents().require("Architect", Capability.PROPOSE_PROJECT_DESIGN)
+    env = load_env()
+    ok, message = health()
+    if not ok:
+        console.print(f"[red]{message}[/]")
+        raise typer.Exit(code=1)
+
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    issues = IssueClient(token, owner)
+    ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+
+    if not issues.branches(repo):
+        console.print(f"[red]{owner}/{repo} has no commits yet, so nothing to design against.[/]")
+        raise typer.Exit(code=1)
+    path = ws.current()
+    branch = issues.repository(repo)["default_branch"]
+    try:
+        record = read_record(path)
+    except ProjectRecordError as exc:
+        console.print(f"[red]{owner}/{repo}'s record can't be read:[/] {escape(str(exc))}")
+        raise typer.Exit(code=1) from None
+    if record is None:
+        console.print(
+            f"[red]{owner}/{repo} isn't onboarded.[/] Its design works within its record, "
+            f"so run [bold]crew onboard {repo}[/] first."
+        )
+        raise typer.Exit(code=1)
+    if record.design and not reason:
+        console.print(
+            f"[red]{owner}/{repo} already has a design.[/] Say why it is being revisited "
+            "with --reason, so the Architect changes only what that calls for."
+        )
+        raise typer.Exit(code=1)
+
+    repository = describe(path, branch=branch, protection=issues.branch_protection(repo, branch))
+    with console.status("[dim]The Architect is designing, and the Code Reviewer checking…[/]"):
+        designed = run_design(
+            record,
+            repository=repository,
+            ci=workflows(path),
+            propose_design=propose_design,
+            review_design=review_design,
+            reason=reason,
+        )
+
+    if designed.record is None:
+        console.print(f"\n[red]Refused after {designed.attempts} proposals.[/] No pull request:")
+        for why in designed.refused:
+            console.print(f"  - {escape(why)}")
+        raise typer.Exit(code=1)
+    url = open_design_pr(ws, issues, repo, designed, base=branch, reason=reason)
+    console.print(f"\n[green]Design proposed[/] — {url}")
 
 
 def _bot_identity(token: str, identity: str):

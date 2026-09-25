@@ -64,6 +64,34 @@ class Crew:
     # The one person who may set a Goal. None means unconfigured, and the old
     # behaviour: anything typed Goal is decomposed.
     sponsor: str | None = None
+    # Repositories in delivery.repos this tick leaves alone, and why: a
+    # project without a usable record isn't worked (#132).
+    not_onboarded: dict[str, str] = field(default_factory=dict)
+
+
+def not_onboarded(ws: Workspace, repos: set[str]) -> dict[str, str]:
+    """Each repository without a usable record, and what's missing (#132).
+
+    A precondition, not a gate (decided on #111): adding a repository to
+    `delivery.repos` is already the Sponsor's decision, and working it on
+    answers nobody gave would be the crew deciding instead. The standup says
+    which, and why, until the project is onboarded.
+    """
+    from crew_org.project import RECORD_PATH, ProjectRecordError, read_record  # noqa: PLC0415
+
+    gaps: dict[str, str] = {}
+    for repo in sorted(repos):
+        try:
+            record = read_record(ws.for_repo(repo).current())
+        except ProjectRecordError as exc:
+            gaps[repo] = f"its record is unusable: {exc}. Finish it with `crew onboard {repo}`"
+            continue
+        except Exception as exc:  # noqa: BLE001
+            gaps[repo] = f"its record couldn't be checked: {exc}"
+            continue
+        if record is None:
+            gaps[repo] = f"it has no `{RECORD_PATH}`. Onboard it with `crew onboard {repo}`"
+    return gaps
 
 
 @dataclass

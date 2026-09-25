@@ -423,6 +423,16 @@ Each was added for a real reason and each degraded in silence. The
 compensation was always the same and always wrong: another sentence in the
 prompt describing what the agent could not see.
 
+**The project's record comes first.** Where a project has a record
+(`.crew/project.yaml`, crew#111), the Product Owner and Business Analyst in
+refinement, the Developer in delivery, and QA are shown it ahead of the code:
+its purpose and scope, what a release is, the bar for done, what agents must
+not touch, its guidelines, and the Architect's design. A record that exists
+but can't be read stops delivery on that card, and is reported in refinement,
+never worked around in silence. Delivery also refuses, before writing, any
+change to a never-touch path or to the record itself, and any change to CI
+that stops a design check running or lets it pass regardless (crew#131).
+
 **What this does not license.** Constraints that bound what a model *writes*
 are a different thing and stay: a file-size validator, a generation token
 limit, a cap on how many epics may be proposed. So do the short slices on

@@ -67,7 +67,7 @@ class QAVerdict(BaseModel):
 
 
 def verify_story(
-    story: str, *, test_output: str, test_code: str, prior_verdicts: str = ""
+    story: str, *, test_output: str, test_code: str, prior_verdicts: str = "", project: str = ""
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
 
@@ -75,6 +75,9 @@ def verify_story(
     attempts. Without it every attempt was judged cold, so a story returned for
     one unproven criterion could come back for a different one that was never
     mentioned — a moving target, and a delivery cycle spent each time it moved.
+
+    `project` is the project's record, as `project.brief` writes it (#131): what
+    done means in this project, and what agents must not touch, beside the story.
     """
     agents = build_agents("qa_engineer")
     # Stable-first for the prefix cache: the story is fixed for this card, the
@@ -92,7 +95,8 @@ def verify_story(
     )
     task = Task(
         description=(
-            f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
+            (f"{project}\n\n" if project else "")
+            + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
             f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
             "For each acceptance criterion, decide whether a test actually exercises it "

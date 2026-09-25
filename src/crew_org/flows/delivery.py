@@ -32,7 +32,8 @@ from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.process import ProcessRules
-from crew_org.tools import claude_code, regression, workspace
+from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.tools import bounds, claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import repository_context
@@ -494,6 +495,14 @@ def deliver_story(
                 "resolving that is a decision for a person, not something to force"
             )
             return outcome
+    # The project's own answers (#131). A record that exists but can't be read
+    # stops the card: its rules are unknown, and working on without them would
+    # be working on rules nobody chose.
+    try:
+        record = read_record(worktree)
+    except ProjectRecordError as exc:
+        outcome.blocked_reason = f"the project's record can't be read: {exc}"
+        return outcome
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -518,6 +527,8 @@ def deliver_story(
         # Recomputed every pass: a repair must see the files it just wrote, or
         # it is fixing code it cannot read.
         context = repository_context(worktree)
+        if record is not None:
+            context = f"{brief(record)}\n\n{context}"
         try:
             implementation = implement_story(
                 story_text, context=context, feedback=feedback, prior=prior
@@ -586,6 +597,39 @@ def deliver_story(
                 )
                 continue
             outcome.blocked_reason = f"kept rewriting existing files: {', '.join(overwrites)}"
+            return outcome
+
+        # The record's bounds, before anything is written: never-touch paths, the
+        # record itself, and CI that stops enforcing a design check. Never
+        # escalated, like a contract break: a stronger model would be spent
+        # getting past a rule the Sponsor set.
+        outside = bounds.out_of_bounds(worktree, implementation, record)
+        if outside:
+            failure = LocalFailure(
+                card=number,
+                role="Developer",
+                failure_class=FailureClass.REGRESSION,
+                attempts=outcome.seen("BOUNDS"),
+                detail="; ".join(outside)[:400],
+            )
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            outcome.count("BOUNDS")
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.ESCALATION_DECIDED,
+                    role="Developer",
+                    card=number,
+                    summary=f"BOUNDS — {decision.disposition}",
+                    detail={"failure_class": "BOUNDS", "reasons": outside},
+                )
+            )
+            if decision.disposition is Disposition.RETRY_LOCAL:
+                feedback = "This change goes outside what the project allows:\n\n" + "\n".join(
+                    f"- {reason}" for reason in outside
+                )
+                continue
+            outcome.failure_detail = "\n".join(outside)
+            outcome.blocked_reason = f"kept changing what the project protects: {outside[0]}"
             return outcome
 
         # Checked before a single byte is written. A contract break is only

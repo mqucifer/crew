@@ -29,6 +29,8 @@ format, is refused by name rather than read with parts of it silently dropped.
 from __future__ import annotations
 
 from datetime import date
+from fnmatch import fnmatch
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -100,7 +102,9 @@ class Design(Section):
 
     language: str | None = None
     dependencies: str | None = None
-    sandbox: str | None = Field(default=None, description="Anything the sandbox must provide")
+    sandbox: str | None = Field(
+        default=None, description="What the crew's sandbox must provide to build and test it"
+    )
     checks: list[str] = Field(
         default_factory=list, description="The commands that enforce the definition of done"
     )
@@ -251,3 +255,81 @@ def render(record: ProjectRecord) -> str:
         "# is the crew's; both are proposed by pull request.\n"
         + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
     )
+
+
+# --- what the phases read (#131) -------------------------------------------------------
+
+
+def read_record(root: Path) -> ProjectRecord | None:
+    """The record in a checkout of the project. None if it has none; raises if unusable."""
+    path = root / RECORD_PATH
+    if not path.exists():
+        return None
+    return parse(path.read_text(encoding="utf-8"))
+
+
+def protected(record: ProjectRecord | None) -> list[str]:
+    """What agents must not change: the record's never-touch list, and the record itself.
+
+    The record is the Sponsor's, the Architect's and the crew's, each by their own
+    pull request. A story's Developer rewriting it would change the rules the story
+    is judged by.
+    """
+    listed = record.intent.done.never_touch if record else []
+    return [*listed, RECORD_PATH]
+
+
+def is_protected(path: str, rules: list[str]) -> str | None:
+    """The rule that protects `path`, or None. A rule is a path, a directory, or a glob."""
+    for rule in rules:
+        stem = rule.rstrip("/")
+        if path == stem or path.startswith(stem + "/") or fnmatch(path, rule):
+            return rule
+    return None
+
+
+def brief(record: ProjectRecord) -> str:
+    """The record as an agent is shown it: what this project is for, and its rules."""
+    intent = record.intent
+
+    def bullets(items: list[str]) -> list[str]:
+        return [f"- {item}" for item in items] or ["- (none given)"]
+
+    release = record.release_is + (f", to {intent.release.where}" if intent.release.where else "")
+    lines = [
+        "## What this project is for: its onboarding record",
+        "",
+        f"The Sponsor's answers for this project, from `{RECORD_PATH}`. Work here is "
+        "judged against them.",
+        "",
+        f"**Purpose:** {intent.scope.purpose}",
+        "",
+        "**In scope:**",
+        *bullets(intent.scope.in_scope),
+        "",
+        "**Out of scope:**",
+        *bullets(intent.scope.out_of_scope),
+        "",
+        f"**A release here is:** {release}",
+        "",
+        f"**Done means:** {intent.done.bar}",
+        *[f"- {also}" for also in intent.done.also],
+        "",
+        "**Agents must not change:**",
+        *bullets(protected(record)),
+    ]
+    if intent.guidelines:
+        lines += [
+            "",
+            "**This project's guidelines**, on top of the crew-wide ones:",
+            *bullets(intent.guidelines),
+        ]
+    if record.design:
+        design = record.design.model_dump(exclude_none=True, exclude_defaults=True)
+        lines += ["", "**The Architect's design:**"]
+        lines += [
+            f"- {name.replace('_', ' ')}: "
+            + (", ".join(f"`{v}`" for v in value) if isinstance(value, list) else str(value))
+            for name, value in design.items()
+        ]
+    return "\n".join(lines)

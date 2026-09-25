@@ -62,6 +62,7 @@ def write_standup(
     waiting: list[str],
     aging: list[tuple[str, int]],
     awaiting: list[str] = (),
+    not_onboarded: dict[str, str] | None = None,
 ) -> Standup:
     """The Scrum Master's standup for one tick, from the tick's own result."""
     from crew_org.flows.loop import PHASES  # noqa: PLC0415
@@ -102,6 +103,10 @@ def write_standup(
             [f"- {name}: blocked {days} days" for name, days in aging],
         ),
         ("Over a WIP limit", breaches),
+        (
+            "Not worked: not onboarded",
+            [f"- {repo}: {why}" for repo, why in sorted((not_onboarded or {}).items())],
+        ),
     ]
     for title, items in sections:
         if items:

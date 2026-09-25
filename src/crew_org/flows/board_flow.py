@@ -43,6 +43,7 @@ from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
+from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import repository_context
@@ -547,7 +548,9 @@ class RepoContext:
         if repo not in self._cache:
             try:
                 clone = self._ws.for_repo(repo).current()
-                self._cache[repo] = repository_context(clone, editing=False)
+                self._cache[repo] = self._record(repo, clone) + repository_context(
+                    clone, editing=False
+                )
             except Exception as exc:  # noqa: BLE001
                 self._sink.note(
                     EventKind.NOTE,
@@ -555,6 +558,20 @@ class RepoContext:
                 )
                 self._cache[repo] = ""
         return self._cache[repo]
+
+    def _record(self, repo: str, clone) -> str:
+        """The project's record, first (#131): what the work is for, before the code.
+
+        Refinement splits epics against the project's purpose and scope. A record
+        that can't be read is reported and refining goes on without it, as it
+        does without code it can't read.
+        """
+        try:
+            record = read_record(clone)
+        except ProjectRecordError as exc:
+            self._sink.note(EventKind.NOTE, f"refining {repo} without its record: {exc}"[:120])
+            return ""
+        return f"{brief(record)}\n\n" if record else ""
 
 
 def failure_fingerprint(exc: Exception) -> str:
