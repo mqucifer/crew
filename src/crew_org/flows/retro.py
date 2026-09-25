@@ -84,6 +84,30 @@ def known_issues(issues: IssueClient, crew_repo: str) -> tuple[set[int], str]:
     return shown, "\n".join(lines)
 
 
+def fixed_this_sprint(issues: IssueClient, crew_repo: str, since: str) -> tuple[set[int], str]:
+    """Crew issues closed while the sprint ran: numbers, and text (#174).
+
+    `known_issues` shows only what's open, so a problem found and fixed inside
+    the sprint was invisible by the time the retro ran, and the Sprint 6 retro
+    filed two of them again (#170, #171). A finding closed as not planned is
+    shown too, as decided against: re-run, that retro proposed #171 again.
+    """
+    try:
+        closed = issues.closed_since(crew_repo, since)
+    except Exception:  # noqa: BLE001
+        return set(), ""
+    shown: set[int] = set()
+    lines: list[str] = []
+    for issue in closed:
+        labels = {label.get("name") for label in issue.get("labels") or []}
+        if labels & {RETRO_LABEL, STANDUP_LABEL}:
+            continue
+        verdict = "decided against" if issue.get("state_reason") == "not_planned" else "fixed"
+        lines.append(f"- {crew_repo}#{issue['number']} ({verdict}) — {issue.get('title', '')}")
+        shown.add(issue["number"])
+    return shown, "\n".join(lines)
+
+
 def _opening(body: str) -> str:
     """The first line of an issue that says something, without markup."""
     for raw in body.splitlines():
@@ -131,6 +155,7 @@ def record_retro(
     standup: int | None = None,
     known: set[int] | frozenset[int] = frozenset(),
     recurring: list | tuple = (),
+    layout: RetroLayout | None = None,
 ) -> RetroRecord:
     """File each defect where it belongs, then the retro issue naming them all.
 
@@ -164,7 +189,7 @@ def record_retro(
             )
             issue = issues.create(
                 repo,
-                f"{defect.subject}: {defect.problem}"[:120],
+                defect.issue_title,
                 signed(body, ROLE),
                 labels=[FINDING_LABEL],
             )
@@ -196,7 +221,7 @@ def record_retro(
         f"Retro: {sprint}",
         signed(
             link_references(
-                _retro_body(retro, sprint, lines, standup, crew_repo),
+                _retro_body(retro, sprint, lines, standup, crew_repo, layout or RetroLayout()),
                 owner=issues.owner,
                 home=crew_repo,
                 delivery=delivery_repos,
@@ -251,22 +276,65 @@ def _defect_body(
     return "\n".join(parts)
 
 
+@dataclass
+class RetroLayout:
+    """What the crew lays out itself, around the model's words (#176)."""
+
+    # (name, points, status, title) per story in the sprint.
+    stories: list[tuple[str, int, str, str]] = field(default_factory=list)
+    retries: str = ""
+    # (card, days blocked, or None when unknown), past the threshold (#175).
+    blocked: list[tuple[str, int | None]] = field(default_factory=list)
+    # Epics at the Sponsor's gate, by name.
+    awaiting: list[str] = field(default_factory=list)
+
+
+def _span(names: list[str]) -> str:
+    """A long list of card names as a count and range; a short one as written."""
+    if len(names) <= 3:
+        return ", ".join(names)
+    return f"{len(names)} of them, {names[0]} to {names[-1]}"
+
+
 def _retro_body(
-    retro: Retro, sprint: str, lines: list[str], standup: int | None, crew_repo: str
+    retro: Retro,
+    sprint: str,
+    lines: list[str],
+    standup: int | None,
+    crew_repo: str,
+    layout: RetroLayout,
 ) -> str:
+    """The retro in sections a Sponsor can scan, the model's words inside the crew's frame."""
     read = f" It read the sprint's standups, {crew_repo}#{standup}." if standup else ""
-    return "\n".join(
-        [
-            marker(sprint),
-            f"The retro for **{sprint}**, written at sprint close.{read}",
-            "",
-            retro.summary,
-            "",
-            "## Defects filed",
-            "",
-            *(lines or ["None proposed."]),
-        ]
-    )
+    body = [marker(sprint), f"The retro for **{sprint}**, written at sprint close.{read}", ""]
+
+    body += ["## Delivered", "", retro.summary, ""]
+    if layout.stories:
+        points = sum(p for _, p, _, _ in layout.stories)
+        body += ["| Card | Points | Status | Story |", "|---|---|---|---|"]
+        body += [f"| {n} | {p} | {st} | {t} |" for n, p, st, t in layout.stories]
+        body += ["", f"{len(layout.stories)} stories, {points} points.", ""]
+
+    if retro.went:
+        body += ["## How it went", "", *[f"- {w}" for w in retro.went], ""]
+
+    if layout.retries:
+        first, *causes = layout.retries.splitlines()
+        body += ["## Why work didn't land first time", "", first, "", *causes, ""]
+
+    needs = [
+        f"- {name}: {'blocked for an unknown time' if days is None else f'blocked {days} days'}"
+        " — past the threshold"
+        for name, days in layout.blocked
+    ] + [f"- {n}" for n in retro.needs_you]
+    if layout.awaiting:
+        needs.append(
+            f"- Epics at your gate, awaiting approval: {_span(layout.awaiting)}. "
+            "A queue, not stuck work."
+        )
+    body += ["## Needs you", "", *(needs or ["Nothing."]), ""]
+    body += ["## Defects filed", "", *(lines or ["None proposed."])]
+    return "\n".join(body)
 
 
 CAUSE_MARKER = "<!-- crew:cause:{key} -->"

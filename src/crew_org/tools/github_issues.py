@@ -85,6 +85,27 @@ class IssueClient:
                 return out
             page += 1
 
+    def closed_since(self, repo: str, since: str) -> list[dict[str, Any]]:
+        """Issues closed at or after `since` (ISO 8601), done or not. Pull requests left out.
+
+        Each carries GitHub's `state_reason`: "completed", or "not_planned".
+        """
+        out: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/repos/{self.owner}/{repo}/issues",
+                params={"state": "closed", "since": since, "per_page": 100, "page": page},
+            )
+            response.raise_for_status()
+            batch = response.json()
+            out += [
+                i for i in batch if "pull_request" not in i and (i.get("closed_at") or "") >= since
+            ]
+            if len(batch) < 100:
+                return out
+            page += 1
+
     def open_issues(self, repo: str) -> list[dict[str, Any]]:
         """Every open issue, newest first. Pull requests left out."""
         out: list[dict[str, Any]] = []

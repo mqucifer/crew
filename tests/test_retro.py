@@ -75,12 +75,18 @@ class FakeIssues:
         return getattr(self, "open_", [])
 
 
-def record(retro, issues=None, repos=(PRODUCT,)):
+def record(retro, issues=None, repos=(PRODUCT,), known=frozenset()):
     issues = issues or FakeIssues()
     sink, seen = EventSink(None), []
     sink.subscribe(seen.append)
     out = record_retro(
-        issues, sink, retro, sprint=SPRINT, crew_repo=CREW, delivery_repos=list(repos)
+        issues,
+        sink,
+        retro,
+        sprint=SPRINT,
+        crew_repo=CREW,
+        delivery_repos=list(repos),
+        known=known,
     )
     return out, issues, seen
 
@@ -160,7 +166,8 @@ def test_the_log_records_the_retro_and_each_defect():
 
 def test_a_defect_that_cannot_be_filed_is_still_in_the_retro():
     """Losing a defect's issue is recoverable; losing the defect is not."""
-    retro = Retro(summary="s", defects=[process("Blocked"), product()])
+    blocked = process("Blocked").model_copy(update={"title": "Blocked cards stall the sprint"})
+    retro = Retro(summary="s", defects=[blocked, product()])
     out, issues, _ = record(retro, FakeIssues(fail_on=["Blocked"]))
     assert out.filed == [(PRODUCT, 201)]
     assert [s for s, _ in out.failed] == ["Blocked"]
