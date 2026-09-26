@@ -48,9 +48,14 @@ class ReviewResult:
 
 def render_review(verdict: ReviewVerdict) -> str:
     lines = [REVIEW_MARKER, verdict.summary, ""]
-    if verdict.findings:
+    blocking = [f for f in verdict.findings if f.blocking]
+    if blocking:
         lines += ["## Findings", ""]
-        for finding in verdict.findings:
+        for finding in blocking:
+            lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
+    if verdict.notes:
+        lines += ["## Notes, not blocking", ""]
+        for finding in verdict.notes:
             lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
     if verdict.approve and not verdict.findings:
         lines.append("No findings.")
@@ -199,7 +204,10 @@ def review_open_pulls(
                 kind=EventKind.AGENT_FINISHED,
                 role="Code Reviewer",
                 card=number,
-                summary=f"{event} — {len(verdict.findings)} findings",
+                summary=f"{event} — {len(verdict.findings) - len(verdict.notes)} findings"
+                + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
+                # Counted by the retro: notes left on approved work (#214).
+                detail={"approved": event == "APPROVE", "notes": len(verdict.notes)},
             )
         )
 
