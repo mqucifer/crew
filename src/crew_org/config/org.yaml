@@ -37,6 +37,10 @@ sprint:
   # this; it is here so the number the board runs on is written down somewhere
   # a person looks.
   length_days: 1
+  # The clock that decides which sprint it is (#193). GitHub's iterations are
+  # bare dates; this says whose dates. One clock for every sprint decision:
+  # the current sprint, admission, and whether a sprint's dates are over.
+  timezone: America/Chicago
   # Starting capacity in points. The Sponsor approves epics, not sprint
   # contents: scope is filled mechanically from approved epics in priority
   # order until this is reached. Replaced by measured velocity once there is

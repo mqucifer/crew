@@ -70,6 +70,8 @@ class Crew:
     # Projects whose approved epics wait while the Architect revisits their
     # design, and why (#192). Set by the revisit phase each pass.
     design_holds: dict[str, str] = field(default_factory=dict)
+    # Where the retro is recorded: a sprint with one takes no more work (#193).
+    crew_repo: str | None = None
 
 
 def not_onboarded(ws: Workspace, repos: set[str]) -> dict[str, str]:
@@ -334,6 +336,10 @@ def _admit(crew: Crew) -> PhaseOutcome:
     """
     from crew_org.flows.sprint import start_sprint  # noqa: PLC0415
 
+    closed = _closed(crew)
+    if closed:
+        return PhaseOutcome("admit", summary="the sprint is closed", held=[closed])
+
     plan = start_sprint(
         crew.board,
         crew.issues,
@@ -368,6 +374,28 @@ def _admit(crew: Crew) -> PhaseOutcome:
             else []
         ),
     )
+
+
+def _closed(crew: Crew) -> str:
+    """Why nothing may be admitted into the current sprint, or '' if it may.
+
+    A sprint whose retro is recorded is over, whatever its dates say. Sprint 6
+    was closed in the afternoon and still took fifteen stories that evening,
+    which its retro never saw (#193).
+    """
+    from crew_org.flows.retro import existing_retro  # noqa: PLC0415
+
+    if not crew.crew_repo:
+        return ""
+    try:
+        retro = existing_retro(crew.issues, crew.crew_repo, crew.sprint)
+    except Exception:  # noqa: BLE001
+        return ""
+    if retro is None:
+        return ""
+    after = crew.board.schema.field("Sprint").next_iteration(crew.sprint)
+    starts = f"{after[0]} starts on {after[1]:%Y-%m-%d}" if after else "no later sprint is set up"
+    return f"{crew.sprint} is closed (retro #{retro}): nothing more is admitted; {starts}"
 
 
 def _review(crew: Crew) -> PhaseOutcome:

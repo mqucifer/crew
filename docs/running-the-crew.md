@@ -136,7 +136,8 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew tick --passes N` | — | Caps the passes. Useful the first time you run it against a changed board |
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
-| `crew sprint close` | the board, GitHub | The sprint review. A human gate. Records the retro as an issue, once per sprint |
+| `crew sprint close [--early]` | the board, GitHub | The sprint review. A human gate. Records the retro as an issue, once per sprint. Refused while the sprint's dates run on, unless `--early`; a sprint with a retro admits nothing more (crew#193) |
+| `crew sprint retro --preview [--sprint NAME] [--out FILE]` | the board, GitHub (reads only) | The retro exactly as it would be recorded, for any sprint, past or current, even one already closed. Records nothing, merges nothing, moves nothing (crew#193) |
 | `crew moves [--people]` | nothing | Every card movement on the board and who made it: the crew, the platform (`board.yml`), or a person, named. Read from GitHub's own history |
 | `crew revert <pr> --reason "…"` | GitHub | Opens a pull request undoing a merged one. It lands through review and `deliver` like any change |
 | `crew onboard <repo> [--from <file>] [--terminal]` | GitHub | The Product Owner interviews you about a project, in a local page (or the terminal), and proposes its record, `.crew/project.yaml`, as a pull request to that project. See below |
