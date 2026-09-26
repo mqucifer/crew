@@ -27,6 +27,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts, story_problem
+from crew_org.flows.acceptance import qa_marker
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
@@ -160,13 +161,29 @@ def awaiting_rework(
         head = (pull.get("head") or {}).get("sha")
         if not head:
             return None
-        refused = any(
-            r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
-            for r in issues.pull_reviews(repo, pull["number"])
-        ) or any(
-            # Approved, but conflicting with main at merge: returned for a rebuild.
-            REBUILD_MARKER.format(head=head) in (c.get("body") or "")
-            for c in issues.comments(repo, pull["number"])
+        refused = (
+            any(
+                r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
+                for r in issues.pull_reviews(repo, pull["number"])
+            )
+            or any(
+                # Approved, but conflicting with main at merge: returned for a rebuild.
+                REBUILD_MARKER.format(head=head) in (c.get("body") or "")
+                for c in issues.comments(repo, pull["number"])
+            )
+            or (
+                # QA returned this head: its verdict is on the story, not the pull
+                # request. Unseen, the card looked stranded and went straight back
+                # to review with its approval standing, and the Developer never
+                # fixed the unproven criterion (sprint-metrics#145).
+                card is not None
+                and card.number is not None
+                and any(
+                    qa_marker(head) in (c.get("body") or "")
+                    and "## QA — not accepted" in (c.get("body") or "")
+                    for c in issues.comments(repo, card.number)
+                )
+            )
         )
     except Exception:  # noqa: BLE001
         return None
