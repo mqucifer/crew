@@ -123,10 +123,20 @@ def write_notes(
         number = epic.number or 0
         if repo not in repos or not needs_note(epic) or note_for(issues, repo, number):
             continue
-        stories = issues.sub_issues(repo, number)
-        if not stories:
+        children = issues.sub_issues(repo, number)
+        if not children:
             continue  # nothing split yet: the note is written against the stories
-        if all(s.get("state") == "closed" for s in stories):
+        # Only the stories still to build. A superseded story (closed as not
+        # planned) isn't the epic's any more: given #145 and #146 after #59's
+        # re-split, the Architect designed #146's error-on-stdout contract that
+        # the Product Owner's decision had ruled out (#250).
+        stories = [s for s in children if s.get("state") != "closed"]
+        built = [
+            s
+            for s in children
+            if s.get("state") == "closed" and s.get("state_reason") != "not_planned"
+        ]
+        if not stories:
             # Every story already built. A note is guidance for stories still to
             # come; the first live tick wrote one for sprint-metrics#50 seconds
             # before closing it, spending eight minutes on nothing.
@@ -149,6 +159,10 @@ def write_notes(
                 f"### #{s['number']} {s['title']}\n\n{s.get('body') or ''}"
                 for s in sorted(stories, key=lambda s: s["number"])
             )
+            if built:
+                story_text += "\n\nAlready built in this epic: " + ", ".join(
+                    f"#{s['number']} {s['title']}" for s in sorted(built, key=lambda s: s["number"])
+                )
             outcome = _write_one(
                 write=write,
                 review=review,
