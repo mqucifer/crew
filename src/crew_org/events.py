@@ -11,7 +11,9 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -182,6 +184,50 @@ def blocked_since(events: list[CrewEvent], *, blocked_column: str) -> dict[int, 
     return since
 
 
+# --- What the crew is working on -----------------------------------------
+
+# The card, repository, sprint and attempt a model call is for, or what it's
+# for when there's no card (#179). The llm.* events had the role and nothing
+# else, so token use couldn't be joined to an outcome. A context variable,
+# because CrewAI copies the caller's context onto the thread that delivers its
+# events, and the crew makes its calls on one thread.
+_WORKING: ContextVar[dict[str, Any]] = ContextVar("crew_working_on", default={})  # noqa: B039
+_WORKING_KEYS = ("card", "repo", "sprint", "attempt", "for")
+
+
+@contextmanager
+def working_on(
+    *,
+    card: int | None = None,
+    repo: str | None = None,
+    sprint: str | None = None,
+    attempt: int | None = None,
+    purpose: str | None = None,
+) -> Iterator[None]:
+    """Attribute every model call made inside this block. Nested blocks add to the outer one."""
+    given = {"card": card, "repo": repo, "sprint": sprint, "attempt": attempt, "for": purpose}
+    token = _WORKING.set({**_WORKING.get(), **{k: v for k, v in given.items() if v is not None}})
+    try:
+        yield
+    finally:
+        _WORKING.reset(token)
+
+
+def attributed(fn: Callable[..., Any], **what: Any) -> Callable[..., Any]:
+    """`fn`, with every model call it makes attributed as `working_on(**what)` says."""
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        with working_on(**what):
+            return fn(*args, **kwargs)
+
+    return call
+
+
+def working() -> dict[str, Any]:
+    """What the current model calls are for. For tests, and the bridge."""
+    return dict(_WORKING.get())
+
+
 # --- CrewAI bridge -------------------------------------------------------
 
 # CrewAI event payload attributes differ between versions, so every field is
@@ -324,13 +370,24 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         if kind is EventKind.LLM_CALL_FAILED and (error := _first_attr(event, "error")):
             detail["error"] = str(error)[:400]
         detail.update(_usage(event))
+        # Which call this is, and the provider's id for its response: the key
+        # the proxy stores the call's prompt and reasoning under (#179).
+        for field, value in (
+            ("call_id", _first_attr(event, "call_id")),
+            ("response_id", _first_attr(event, "response_id")),
+        ):
+            if value is not None:
+                detail[field] = str(value)
+        detail.update(_duration(kind, detail.get("call_id"), _first_attr(event, "timestamp")))
+        about = working()
+        detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
 
         for target, target_card in list(_TARGETS):
             target.emit(
                 CrewEvent(
                     kind=kind,
                     role=str(role) if role else None,
-                    card=target_card,
+                    card=about.get("card", target_card),
                     summary=str(name)[:120],
                     detail=detail,
                 )
@@ -349,6 +406,29 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         sink.note(EventKind.NOTE, f"CrewAI no longer has {', '.join(missing)}; not bridged.")
 
     _INSTALLED = True
+
+
+# When each call in flight started, by call id, for its duration. Measured,
+# not computed from: a raw number the export carries (#179).
+# The events' own timestamps, not when a handler ran: the bus delivers on a
+# thread pool, and a queued handler would stretch the call.
+_STARTED: dict[str, datetime] = {}
+_STARTED_LOCK = threading.Lock()
+
+
+def _duration(kind: EventKind, call_id: str | None, at: Any) -> dict[str, float]:
+    if call_id is None or not isinstance(at, datetime):
+        return {}
+    with _STARTED_LOCK:
+        if kind is EventKind.LLM_CALL_STARTED:
+            _STARTED[call_id] = at
+            return {}
+        if kind in (EventKind.LLM_CALL_FINISHED, EventKind.LLM_CALL_FAILED):
+            began = _STARTED.pop(call_id, None)
+            if began is None:
+                return {}
+            return {"duration_s": round((at - began).total_seconds(), 3)}
+    return {}
 
 
 def _bridged_classes() -> list[type]:

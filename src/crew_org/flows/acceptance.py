@@ -20,7 +20,7 @@ from pathlib import Path
 
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews.qa_crew import QAVerdict, verify_story
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
@@ -210,7 +210,7 @@ def run_qa(
         )
         try:
             check = workspace.check(worktree, sandbox=sandbox)
-            verdict = verify_story(
+            verdict = attributed(verify_story, card=number, repo=card_repo)(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}",
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),

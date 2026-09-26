@@ -26,7 +26,7 @@ from crew_org.escalation import (
     LocalFailure,
     utcnow,
 )
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import qa_marker
 from crew_org.flows.artifacts import signed
@@ -592,8 +592,10 @@ def deliver_story(
         carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
+    attempt = 0
 
     while True:
+        attempt += 1
         # Recomputed every pass: a repair must see the files it just wrote, or
         # it is fixing code it cannot read.
         context = repository_context(worktree)
@@ -602,9 +604,9 @@ def deliver_story(
         if record is not None:
             context = f"{brief(record)}\n\n{context}"
         try:
-            implementation = implement_story(
-                story_text, context=context, feedback=feedback, prior=prior, returned=rework
-            )
+            implementation = attributed(
+                implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
+            )(story_text, context=context, feedback=feedback, prior=prior, returned=rework)
             _keep_proposal(sink, repo, number, implementation)
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)

@@ -96,3 +96,53 @@ def test_a_failed_call_says_why(seen):
     failed = seen[-1]
     assert failed.kind is EventKind.LLM_CALL_FAILED
     assert failed.detail["error"] == "Invalid response from LLM call"
+
+
+# --- #179: each call says what it was for --------------------------------------
+
+
+def finished(call_id="c9", **kw):
+    return LLMCallCompletedEvent(
+        model="crew-code-think",
+        call_id=call_id,
+        messages=[],
+        response="ok",
+        call_type=LLMCallType.LLM_CALL,
+        usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+        finish_reason="stop",
+        response_id="chatcmpl-abc",
+        **kw,
+    )
+
+
+def test_a_call_carries_the_card_repo_sprint_and_attempt_it_was_for(seen):
+    """#179, criterion 1: emitted where the call is made, inside the phase's context."""
+    from crew_org.events import working_on
+
+    with (
+        working_on(sprint="Sprint 7", purpose="deliver"),
+        working_on(card=147, repo="sprint-metrics", attempt=2),
+    ):
+        emit(LLMCallStartedEvent(model="crew-code-think", call_id="c9", messages=[]))
+        emit(finished())
+    done = seen[-1]
+    assert done.card == 147, "the card worked, not the bridge's default"
+    assert {k: done.detail[k] for k in ("repo", "sprint", "attempt", "for")} == {
+        "repo": "sprint-metrics",
+        "sprint": "Sprint 7",
+        "attempt": 2,
+        "for": "deliver",
+    }
+    assert done.detail["call_id"] == "c9"
+    assert done.detail["response_id"] == "chatcmpl-abc", "joins the proxy's stored call"
+    assert done.detail["duration_s"] >= 0
+
+
+def test_a_call_for_no_card_says_what_it_was_for(seen):
+    """#179, criterion 2."""
+    from crew_org.events import working_on
+
+    with working_on(sprint="Sprint 7", purpose="retro"):
+        emit(finished(call_id="c10"))
+    done = seen[-1]
+    assert done.detail["for"] == "retro" and "attempt" not in done.detail

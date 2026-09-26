@@ -39,7 +39,7 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.design import DesignPolicy, EpicShape
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
@@ -322,7 +322,7 @@ def product_step(
         return replied
 
     try:
-        reply = answer_story_problem(
+        reply = attributed(answer_story_problem, card=number, repo=repo)(
             epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
             goal=goal,
             evidence=since[problems[-1]].replace(STORY_PROBLEM_MARKER, "").strip(),
@@ -1053,7 +1053,7 @@ def refine_epics(
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
             body = _goal_body(issues, repo, number)
-            proposal = split_epic(
+            proposal = attributed(split_epic, card=number, repo=repo)(
                 epic_card.title,
                 body,
                 repository=context.for_repo(repo),
@@ -1287,7 +1287,7 @@ def tick(
             )
         )
         try:
-            proposal = propose_epics(
+            proposal = attributed(propose_epics, card=number, repo=repo)(
                 f"{card.title}\n\n{_goal_body(issues, repo, number)}",
                 repository=context.for_repo(repo),
                 feedback=notes,

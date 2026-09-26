@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org.events import EventKind, EventSink
+from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import (
     NEEDS_DESIGN,
@@ -163,7 +163,7 @@ def write_notes(
                 story_text += "\n\nAlready built in this epic: " + ", ".join(
                     f"#{s['number']} {s['title']}" for s in sorted(built, key=lambda s: s["number"])
                 )
-            outcome = _write_one(
+            outcome = attributed(_write_one, card=number, repo=repo)(
                 write=write,
                 review=review,
                 render=render,
