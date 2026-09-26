@@ -136,13 +136,29 @@ def propose_design(
     return crew.kickoff().pydantic
 
 
-def review_design(*, project: str, design: str) -> DesignReview:
-    """The Code Reviewer's check of a proposed design against the guidelines."""
+def review_design(*, project: str, design: str, stories: str = "") -> DesignReview:
+    """The Code Reviewer's check of a proposed design against the guidelines.
+
+    With `stories`, a design note is also checked against the criteria of the
+    stories it directs (#258). Epic sprint-metrics#59's note told #145's test to
+    leave out the assertion #145's criterion required, and nothing at design
+    review could see it: the reviewer was shown the note, never the stories.
+    """
     reviewer = _role("code_reviewer", "design_review")
+    against = (
+        "## The stories this note directs, with their acceptance criteria\n\n"
+        f"{stories}\n\n"
+        "The acceptance criteria are the product's decisions. Also report, as a conflict "
+        "whose `guideline` names the story and quotes its criterion, every place the note "
+        "has a story drop, weaken or defer what that story's own criterion requires.\n\n"
+        if stories
+        else ""
+    )
     task = Task(
         description=(
             f"{project}\n\n## The proposed design\n\n```yaml\n{design}\n```\n\n"
-            "Check each choice against the crew-wide guidelines (§19, in your rules) and "
+            + against
+            + "Check each choice against the crew-wide guidelines (§19, in your rules) and "
             "the project's own guidelines above. Report every choice that contradicts one, "
             "naming the guideline. A choice that is merely different from what you would "
             "pick is not a conflict."
