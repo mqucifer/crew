@@ -41,9 +41,10 @@ def card(number: int, status: str) -> Card:
 
 
 class FakeIssues:
-    def __init__(self, *, reviews, pull=True):
+    def __init__(self, *, reviews, pull=True, story_comments=()):
         self.owner = "mqucifer"
         self._reviews = reviews
+        self._story_comments = list(story_comments)
         self._pull = (
             {"number": 67, "head": {"ref": "feat/31-scrape-endpoint", "sha": HEAD}}
             if pull
@@ -61,6 +62,10 @@ class FakeIssues:
 
     def pull_reviews(self, repo, number):
         return self._reviews
+
+    def comments(self, repo, number):
+        # The story (31) carries QA's verdicts; the pull request (67) nothing.
+        return [{"body": b} for b in self._story_comments] if number == 31 else []
 
 
 class FakeBoard:
@@ -205,3 +210,47 @@ def test_a_pull_request_nobody_has_judged_is_new_work():
 def test_another_reviewers_verdict_is_not_the_crews():
     other = dict(_verdict(HEAD), user={"login": "someone-else"})
     assert already_reviewed([other], BOT, HEAD) is False
+
+
+# --- QA's return is work for the Developer too (sprint-metrics#145) --------------
+
+
+def qa_verdict(sha: str, accepted: bool) -> str:
+    from crew_org.flows.acceptance import QA_MARKER, qa_marker
+
+    word = "accepted" if accepted else "not accepted"
+    return f"{QA_MARKER}\n{qa_marker(sha)}\n## QA — {word}\n\n1 unproven"
+
+
+def test_a_qa_return_of_the_current_head_is_work_for_the_developer():
+    """#145: QA returned it, and reconciliation moved it back to review with its
+    approval standing. The Developer never fixed the unproven criterion."""
+    issues = FakeIssues(reviews=APPROVED, story_comments=[qa_verdict(HEAD, accepted=False)])
+    assert awaiting_rework(
+        issues, "sprint-metrics", "feat/31-scrape-endpoint", card(31, "In Progress")
+    )
+
+
+def test_a_qa_returned_card_is_not_bounced_back_to_review():
+    board = FakeBoard()
+    issues = FakeIssues(reviews=APPROVED, story_comments=[qa_verdict(HEAD, accepted=False)])
+    reconcile_orphans(
+        board, issues, EventSink(None), [card(31, "In Progress")], repo="sprint-metrics"
+    )
+    assert board.moves == []
+
+
+def test_a_card_already_bounced_to_review_by_a_qa_return_is_found():
+    """Where #145 sits now: Reviewing, approved, QA's return unanswered."""
+    issues = FakeIssues(reviews=APPROVED, story_comments=[qa_verdict(HEAD, accepted=False)])
+    assert [
+        c.number for c in needs_rework(issues, [card(31, "Reviewing")], repo="sprint-metrics")
+    ] == [31]
+
+
+def test_a_qa_return_of_an_earlier_head_or_an_acceptance_is_not():
+    for comments in ([qa_verdict(OLD_HEAD, accepted=False)], [qa_verdict(HEAD, accepted=True)]):
+        issues = FakeIssues(reviews=APPROVED, story_comments=comments)
+        assert not awaiting_rework(
+            issues, "sprint-metrics", "feat/31-scrape-endpoint", card(31, "In Progress")
+        )
