@@ -162,8 +162,17 @@ def design(
             shown = yaml.safe_dump(
                 candidate.model_dump(exclude_none=True, exclude_defaults=True), sort_keys=False
             )
-            review = review_design(project=project, design=shown)
+            declared = "\n".join(f"- {c.what} (was: {c.was}): {c.why}" for c in proposal.changes)
+            review = review_design(
+                project=project, design=shown, repository=repository, changes=declared
+            )
             reasons = [f"{c.choice} contradicts {c.guideline}: {c.why}" for c in review.conflicts]
+            # A new practice not declared as one (#154): declare it, with why.
+            reasons += [
+                f"{u.choice} is a new practice (the project does this today: {u.today}). "
+                "List it in `changes`: what, what the project does now, and why."
+                for u in getattr(review, "undeclared", [])
+            ]
             if not reasons:
                 ended.record = record.model_copy(update={"design": candidate})
                 ended.refused = []
