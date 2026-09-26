@@ -106,6 +106,10 @@ class Interview:
     # What the Product Owner proposed and the Sponsor has not confirmed (#148).
     # Never part of `raw`: a proposal is a suggestion for a take-away file.
     proposed: dict[str, Any] = field(default_factory=dict)
+    # Every question still open when it ended, required or not, as (about,
+    # question) (#181). An optional one was lost with the session: #46's scope
+    # question never reached GitHub.
+    open: list[tuple[str, str]] = field(default_factory=list)
 
 
 Turn = Callable[..., Any]
@@ -125,6 +129,7 @@ def interview(
     tell: Tell,
     intent: str = "",
     show: Callable[..., None] | None = None,
+    still_open: list[tuple[str, str]] | None = None,
 ) -> Interview:
     """Interview the Sponsor until the record is settled, or they stop.
 
@@ -140,6 +145,9 @@ def interview(
 
     `show`, if given, is told the record and the open questions whenever they
     change, for a front end that shows them as more than lines of text.
+
+    `still_open` is what an earlier session left unanswered (#181). The Product
+    Owner is shown it until it's answered or asked again.
     """
     show = show or (lambda **_: None)
     transcript: list[str] = []
@@ -156,18 +164,24 @@ def interview(
         wanted = gaps(raw)
         return wanted, ([] if wanted else problems(raw))
 
+    open_now: list[tuple[str, str]] = list(still_open or [])
+    earlier = "\n".join(f"- `{about}`: {question}" for about, question in open_now)
+
     def stop(**how: Any) -> Interview:
         return Interview(
             raw,
             _questions(gaps(raw), questions),
             transcript=transcript,
             proposed=proposed,
+            open=open_now,
             **how,
         )
 
     proposed: dict[str, Any] = {}
     wanted, wrong = unsettled()
-    needs_turn = bool(wanted or wrong)
+    # A question an earlier session left open gets the Product Owner a turn,
+    # even on a complete record, or it's never asked again (#181).
+    needs_turn = bool(wanted or wrong or open_now)
     show(raw=raw, asking=asking, proposed=proposed)
     while True:
         if needs_turn:
@@ -184,6 +198,7 @@ def interview(
                     missing={key(p): words for p, words in wanted.items()},
                     problems=wrong,
                     conversation="\n\n".join(transcript),
+                    **({"still_open": earlier} if earlier else {}),
                 )
             except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001
                 return stop(
@@ -204,6 +219,12 @@ def interview(
             asking = [q.question for q in result.questions] + [
                 q for p, q in questions.items() if key(p) not in by_key
             ]
+            # This turn's questions are what's open now: an earlier one it
+            # didn't ask again, it judged answered.
+            open_now = [(q.about, q.question) for q in result.questions] + [
+                (key(p), q) for p, q in questions.items() if key(p) not in by_key
+            ]
+            earlier = ""
             conflicts = [
                 f"“{c.guideline}” would relax {c.crew_rule}: {c.why}" for c in result.conflicts
             ]
@@ -254,7 +275,9 @@ def interview(
         if reply.strip().lower() in LATER:
             return stop()
         if reply.strip().lower() in YES:
-            return Interview(raw, settled=True, transcript=transcript, proposed=proposed)
+            return Interview(
+                raw, settled=True, transcript=transcript, proposed=proposed, open=open_now
+            )
         needs_turn = True
 
 
@@ -283,6 +306,7 @@ def takeaway(
     repo: str,
     path: Path,
     proposed: dict[str, Any] | None = None,
+    open_questions: list[tuple[str, str]] | None = None,
 ) -> str:
     """The answers so far as a file to finish in any editor.
 
@@ -290,13 +314,33 @@ def takeaway(
     a commented-out line under the question the Product Owner would have asked,
     and the optional ones are commented out under what they mean, so the file
     explains itself to someone who has never seen the interview.
+
+    Every question still open is kept too (#181), under the field it's about,
+    or under "Still open" at the top when it isn't about one field.
     """
     wanted = {**gaps(raw), **{p: "" for p in questions}}
+    fields = {
+        f"intent.{section}.{name}"
+        for section, model in SECTIONS.items()
+        for name in model.model_fields
+    }
+    by_field: dict[str, list[str]] = {}
+    elsewhere: list[str] = []
+    for about, question in open_questions or []:
+        if about in fields:
+            by_field.setdefault(about, []).append(question)
+        else:
+            elsewhere.append(f"{question} (about {about})" if about else question)
     lines = [
         f"# {repo}'s onboarding record, not finished yet (#130).",
         "# Answer what is commented out, in any editor: remove the `# ` before a",
         "# field and give it a value. Then carry on from where this left off with:",
         f"#   crew onboard {repo} --from {path}",
+    ]
+    if elsewhere:
+        lines += ["#", "# Still open, from the interview:"]
+        lines += [f"#   - {q}" for q in elsewhere]
+    lines += [
         f"version: {raw.get('version', FORMAT_VERSION)}",
         "intent:",
     ]
@@ -305,6 +349,12 @@ def takeaway(
         for name, info in model.model_fields.items():
             where = ("intent", section, name)
             value = lookup(raw, where)
+            asked = questions.get(where) or (QUESTIONS.get(where) if where in wanted else None)
+            lines += [
+                f"    # Open question: {q}"
+                for q in by_field.get(f"intent.{section}.{name}", [])
+                if q != asked
+            ]
             if value is not None:
                 lines += _indent(yaml.safe_dump({name: value}, allow_unicode=True), 4)
                 continue
@@ -472,9 +522,15 @@ def open_record_pr(
     *,
     base: str,
     transcript: list[str] | None = None,
+    open_questions: list[tuple[str, str]] | None = None,
 ) -> str:
-    """Propose the Sponsor's record to the project as a pull request. Returns its URL."""
-    conversation = interview_record(transcript or [])
+    """Propose the Sponsor's record to the project as a pull request. Returns its URL.
+
+    `transcript` is every session since the record was last proposed, and
+    `open_questions` what's still unanswered, listed on its own so the Sponsor
+    sees it before merging (#181).
+    """
+    conversation = still_open_section(open_questions or []) + interview_record(transcript or [])
     intent = record.intent
 
     def body(number: int) -> str:
@@ -492,6 +548,25 @@ def open_record_pr(
 
     return propose(
         ws, issues, repo, record, ONBOARDING, base=base, body=body, update_note=conversation
+    )
+
+
+# Written into the transcript log when a record is proposed, so the next
+# proposal carries every session since this one (#181).
+PROPOSED_MARKER = "<!-- crew:record-proposed -->"
+
+
+def sessions_since_proposed(log: str) -> str:
+    """Every session in the transcript log after the last one that proposed a record."""
+    return log.rsplit(PROPOSED_MARKER, 1)[-1].strip()
+
+
+def still_open_section(open_questions: list[tuple[str, str]]) -> str:
+    if not open_questions:
+        return ""
+    return "\n\n## Still open from the interview\n\n" + "\n".join(
+        f"- {question}" + (f" (about `{about}`)" if about else "")
+        for about, question in open_questions
     )
 
 
