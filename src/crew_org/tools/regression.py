@@ -273,6 +273,11 @@ def broken_contracts(
     return found
 
 
+def _is_test_path(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return path.startswith("tests/") or "/tests/" in path or name.startswith("test_")
+
+
 def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
     """What the Developer is told. Written so the repair is obvious."""
     lines = [
@@ -296,6 +301,14 @@ def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
         "field it already has, in the order it has them. If you need a new "
         "field, append it with a default.",
     ]
+    # A merged test is deleted only by retiring it (#274): the refusal says how.
+    if any(_is_test_path(key.split("::", 1)[0]) for key in broken):
+        lines += [
+            "",
+            "A merged test isn't deleted by removing it. If this story deliberately ends "
+            "what a test above pins, list it in `retired_tests`, with what the story ends, "
+            "and the crew deletes it for you.",
+        ]
     if any(broke.startswith(REMOVED) for _was, broke in broken.values()):
         lines += [
             "",
@@ -723,6 +736,8 @@ def lost_names(
     # The changed files too, deleted ones included: an import naming a deleted
     # module must resolve to it, or whoever still asks it is never seen.
     files = set(after) | changed
+    # A module this story deletes can't keep a re-export (#273).
+    deleting = set(getattr(implementation, "deleted_files", []))
     found: dict[str, tuple[str, str]] = {}
     for path in sorted(changed):
         old = before.get(path)
@@ -741,6 +756,18 @@ def lost_names(
             if not askers:
                 continue
             home = was.removeprefix("imported from ")
+            if path in deleting:
+                where = (
+                    f"from `{home}`"
+                    if was.startswith("imported from ")
+                    else "from where it lives now"
+                )
+                found[f"{path}::{name}"] = (
+                    was,
+                    f"is no longer provided: this story deletes `{path}`, and `{askers[0]}` "
+                    f"still imports it from there. Change `{askers[0]}` to import it {where}",
+                )
+                continue
             found[f"{path}::{name}"] = (
                 was,
                 f"is no longer provided, and `{askers[0]}` still imports it from `{path}`. "
