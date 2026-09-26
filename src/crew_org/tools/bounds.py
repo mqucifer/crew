@@ -19,6 +19,8 @@ def touched(implementation) -> list[str]:
     paths += [e.path for e in implementation.all_edits]
     paths += [t.path for t in implementation.text_edits]
     paths += list(getattr(implementation, "deleted_files", []))
+    for move in getattr(implementation, "moves", []):
+        paths += [move.from_path, move.to_path]
     return list(dict.fromkeys(paths))
 
 

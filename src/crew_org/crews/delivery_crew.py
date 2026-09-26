@@ -106,6 +106,28 @@ class FileEdit(BaseModel):
         return name.startswith("test_") or name.endswith("_test.py")
 
 
+class Move(BaseModel):
+    """Move a top-level definition to another module, in one step (#216)."""
+
+    name: str = Field(description="The function, class or constant to move, by name")
+    from_path: str = Field(description="The file it's in now")
+    to_path: str = Field(description="The file it moves to; created if it doesn't exist")
+
+    @field_validator("from_path", "to_path")
+    @classmethod
+    def _stays_in_the_repository(cls, value: str) -> str:
+        cleaned = FileWrite._stays_in_the_repository(value)
+        if PurePosixPath(cleaned).suffix != ".py":
+            raise ValueError(f"{cleaned!r} isn't a Python file; only Python definitions move")
+        return cleaned
+
+    @model_validator(mode="after")
+    def _somewhere_else(self) -> Move:
+        if self.from_path == self.to_path:
+            raise ValueError(f"`{self.name}` would move to the file it's already in")
+        return self
+
+
 class TextEdit(BaseModel):
     """One change to an existing file by quoting what it replaces.
 
@@ -237,6 +259,13 @@ class Implementation(BaseModel):
             "CI workflows), each quoting the text it replaces."
         ),
     )
+    moves: list[Move] = Field(
+        default_factory=list,
+        description=(
+            "Definitions moving to another module. The crew moves each whole, carries the "
+            "imports it uses, and imports it back where anything still uses it"
+        ),
+    )
     deleted_files: list[str] = Field(
         default_factory=list,
         description="Existing files this story removes entirely",
@@ -255,6 +284,7 @@ class Implementation(BaseModel):
     def changes_nothing(self) -> bool:
         return not (
             self.new_files
+            or self.moves
             or self.edits
             or self.text_edits
             or self.criteria_tests
@@ -417,6 +447,10 @@ STANDING_INSTRUCTIONS = (
     "__name__` block, its docstring) have no name, so they change with `text_edits` "
     "too: repointing an import, or removing one nothing uses any more. Functions and "
     "classes always change with `edits`.\n\n"
+    "To move a definition to another module, list it in `moves` (its name, the file "
+    "it's in, the file it goes to). The crew moves it whole, brings the imports it "
+    "uses, and imports it back where anything still uses it. Don't also delete it or "
+    "write it yourself. Move together the definitions that use each other.\n"
     "To remove a file entirely, list it in `deleted_files`; whatever it defined must "
     "live elsewhere by then and nothing may still import it.\n"
     "A merged test that pins behaviour this story deliberately ends goes in "
