@@ -18,6 +18,7 @@ from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
+from crew_org.flows.loops import from_comments, loops_text, read_loops, sprint_window
 from crew_org.flows.merge import BEHIND
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import (
@@ -83,6 +84,18 @@ class SprintClose:
         )
 
 
+# A story's status in the retro once it went back to be split again (#253).
+BACK = "Back to refinement"
+
+
+def _sprint_dates(board: ProjectClient, sprint: str):
+    """The sprint's first and last day, or None where the board can't say."""
+    try:
+        return board.schema.field("Sprint").iteration_dates(sprint)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def sprint_cards(cards: list[Card], sprint: str) -> list[Card]:
     return [c for c in cards if c.sprint == sprint and c.work_type == STORY_TYPE]
 
@@ -118,6 +131,7 @@ def close_sprint(
     crew_repo: str | None = None,
     delivery_repos: list[str] | None = None,
     preview: bool = False,
+    tz: str = "UTC",
 ) -> SprintClose:
     """Merge what the Sponsor approved, then report on the sprint.
 
@@ -252,16 +266,24 @@ def close_sprint(
         began = (issues.get(crew_repo, standup) or {}).get("created_at")
         if began:
             fixed, fixed_text = fixed_this_sprint(issues, crew_repo, began)
+    # Loops the crew broke (#253): a story sent back to refinement lost its
+    # Sprint field on the way, so only the event log still says it was here.
+    chains = []
+    dates = _sprint_dates(board, sprint)
+    if events_dir is not None and dates is not None:
+        chains = read_loops(events_dir, *sprint_window(*dates, tz))
+        from_comments(chains, issues, repo)
+    ours = [
+        c
+        for c in cards
+        if c.work_type == STORY_TYPE and (not delivery_repos or c.repo in delivery_repos)
+    ]
+    returned = {ch.card for ch in chains}
+    went_back = [c for c in ours if c.number in returned and c.sprint != sprint]
     # Why work didn't land first time (#157), read from the same event log.
     report = sprint_report(
         sprint,
-        [
-            c
-            for c in board.cards()
-            if c.sprint == sprint
-            and c.work_type == "Story"
-            and (not delivery_repos or c.repo in delivery_repos)
-        ],
+        [c for c in ours if c.sprint == sprint] + went_back,
         read_attempts(events_dir) if events_dir is not None else [],
         ledger.spent(sprint),
     )
@@ -273,7 +295,8 @@ def close_sprint(
             delivery_repos=delivery_repos,
             standups=standups,
             known=known_text,
-            retries=retries_text(report) if events_dir is not None else "",
+            retries=(retries_text(report) if events_dir is not None else "")
+            + ("\n\nLoops broken:\n" + "\n".join(loops_text(chains, {})) if chains else ""),
             fixed=fixed_text,
         )
     except Exception as exc:  # noqa: BLE001
@@ -286,7 +309,12 @@ def close_sprint(
             for c in sorted(
                 sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
             )
+        ]
+        + [
+            (c.name(qualify=qualify), int(c.points or 0), BACK, c.title)
+            for c in sorted(went_back, key=lambda c: (c.repo or "", c.number or 0))
         ],
+        loops=loops_text(chains, {c.number or 0: int(c.points or 0) for c in ours}),
         retries=retries_text(report) if events_dir is not None else "",
         blocked=result.aging_blocked,
         awaiting=awaiting_approval(cards),

@@ -343,3 +343,22 @@ def test_the_reviewer_is_given_its_earlier_findings(monkeypatch):
     }
     review_open_pulls(FakeIssues(pulls, reviews), EventSink(None), repo="r", bot_login=BOT)
     assert "name the file" in seen["prior"]
+
+
+def test_a_return_records_its_first_finding_for_the_retro(monkeypatch, tmp_path):
+    """The retro counts a review's return as an attempt, caused by what it
+    found (#254). The move is the event that names the story."""
+    from crew_org.flows.attempts import read_attempts
+
+    monkeypatch.setattr(review_flow, "review_diff", lambda *a, **k: REJECTION)
+    review_open_pulls(
+        FakeIssues([crew_pull()]),
+        EventSink(tmp_path / "tick.jsonl"),
+        repo="sprint-metrics",
+        bot_login=BOT,
+        board=FakeBoard(),
+        cards=[waiting_card()],
+    )
+    (attempt,) = read_attempts(tmp_path)
+    assert (attempt.card, attempt.failure_class) == (6, "REVIEW")
+    assert attempt.error == "src/a.py: unused import"

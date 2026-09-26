@@ -262,3 +262,83 @@ def test_the_first_real_error_is_taken_from_the_whole_report():
         + "\nFAILED tests/t.py::test_a - NameError: name 'x' is not defined\n"
     )
     assert first_error(report) == "FAILED tests/t.py::test_a - NameError: name 'x' is not defined"
+
+
+# --- #254: a gate returning a story is an attempt -------------------------------------------
+
+
+def test_a_review_or_qa_return_is_an_attempt_and_the_story_is_not_first_try(tmp_path):
+    events = write_events(
+        tmp_path,
+        [
+            {
+                "at": "2026-09-26T13:43:51",
+                "kind": "card.moved",
+                "role": "Code Reviewer",
+                "card": 145,
+                "summary": "changes requested — 1 findings",
+                "detail": {
+                    "from": "Reviewing",
+                    "to": "In Progress",
+                    "finding": "tests/test_prior.py: the design note says omit the stdout check. "
+                    "More.",
+                },
+            },
+            {
+                "at": "2026-09-26T13:19:43",
+                "kind": "agent.finished",
+                "role": "QA Engineer",
+                "card": 145,
+                "summary": "returned — 1 unproven",
+                "detail": {"accepted": False, "unproven": ["Given 2024-02 only …"]},
+            },
+            {
+                "at": "2026-09-26T13:16:39",
+                "kind": "agent.finished",
+                "role": "QA Engineer",
+                "card": 145,
+                "detail": {"accepted": True, "unproven": []},
+            },
+            # The review's own event names the pull request, not the story.
+            {
+                "at": "2026-09-26T13:43:50",
+                "kind": "agent.finished",
+                "role": "Code Reviewer",
+                "card": 164,
+                "detail": {"approved": False},
+            },
+        ],
+    )
+    report = sprint_report("Sprint 7", [story(145, "Sprint 7")], read_attempts(events), 0)
+    (s,) = report["stories"]
+    assert not s["first_try"]
+    assert [a["class"] for a in s["attempts"]] == ["QA", "REVIEW"]
+    text = retries_text(report)
+    assert "- REVIEW: tests/test_prior.py: the design note says omit the stdout check (once" in text
+    assert "- QA: an acceptance criterion unproven (once, on #145" in text
+
+
+def test_an_unproven_criterion_is_the_cards_own_and_never_filed():
+    unproven = Cause("QA", "an acceptance criterion unproven", 2, [145, 147])
+    assert not unproven.recurring
+
+
+def test_a_review_whose_finding_was_not_recorded_is_counted_and_never_filed(tmp_path):
+    events = write_events(
+        tmp_path,
+        [
+            {
+                "at": "2026-09-26T13:43:51",
+                "kind": "card.moved",
+                "role": "Code Reviewer",
+                "card": n,
+                "detail": {"from": "Reviewing", "to": "In Progress"},
+            }
+            for n in (145, 147)
+        ],
+    )
+    (cause,) = causes_of(
+        sprint_report("S", [story(145), story(147)], read_attempts(events), escalations=0)
+    )
+    assert cause.cause == "changes requested; its cause wasn't recorded"
+    assert not cause.recurring

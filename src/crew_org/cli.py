@@ -1327,9 +1327,15 @@ def export(
     token, _ = resolve_credentials(env)
     board = ProjectClient(token, env["GITHUB_OWNER"], int(env["GITHUB_PROJECT_NUMBER"]))
     sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
-    stories = [
-        c for c in board.cards() if c.sprint == sprint and c.work_type == "Story" and c.repo == repo
-    ]
+    from crew_org.flows.loops import read_loops, sprint_window
+
+    cards = [c for c in board.cards() if c.work_type == "Story" and c.repo == repo]
+    # A story sent back to refinement lost its Sprint field; the event log
+    # still says it was in this sprint (#253).
+    dates = board.schema.field("Sprint").iteration_dates(sprint)
+    window = sprint_window(*dates, clock_zone(load_org())) if dates else None
+    returned = {ch.card for ch in read_loops(VAR / "events", *window)} if window else set()
+    stories = [c for c in cards if c.sprint == sprint or c.number in returned]
     report = sprint_report(
         sprint,
         stories,
@@ -1521,6 +1527,7 @@ def sprint_retro(
             crew_repo=env.get("CREW_REPO", "crew"),
             delivery_repos=list(org.get("delivery", {}).get("repos") or []),
             preview=True,
+            tz=clock_zone(org),
         )
     if result.preview is None:
         console.print(f"[red]No retro could be written for {sprint}.[/]")
@@ -1592,6 +1599,7 @@ def sprint_close(
         events_dir=VAR / "events",
         crew_repo=crew_repo,
         delivery_repos=list(org.get("delivery", {}).get("repos") or []),
+        tz=clock_zone(org),
     )
 
     console.print(f"\n[bold]{result.sprint}[/]")
