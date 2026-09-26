@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.escalation import EscalationLedger, EscalationPolicy
-from crew_org.events import EventKind, EventSink, bridge_crewai, flush_bridge
+from crew_org.events import EventKind, EventSink, attributed, bridge_crewai, flush_bridge
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -615,7 +615,9 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
 
         for name, phase in PHASES:
             try:
-                outcome = phase(crew)
+                # Every model call a phase makes says which phase, and which
+                # sprint, even one made for no card (#179).
+                outcome = attributed(phase, sprint=crew.sprint, purpose=name)(crew)
             except Exception as exc:  # noqa: BLE001
                 # The pass continues. Later phases act on cards this one never
                 # touched, and a tick that aborts here leaves the board partway

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
@@ -170,7 +170,12 @@ def review_open_pulls(
             diff = issues.pull_diff(repo, number)
             base = (pull.get("base") or {}).get("ref") or "main"
             story = waiting.get((pull.get("head") or {}).get("ref", ""))
-            verdict = review_diff(
+            verdict = attributed(
+                review_diff,
+                card=story.number if story is not None else None,
+                repo=repo,
+                purpose="review" if story is not None else f"review PR #{number}",
+            )(
                 pull["title"],
                 diff,
                 prior_verdicts=_with_answer(
