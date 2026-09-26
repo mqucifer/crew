@@ -15,7 +15,7 @@ negotiate process with each other; they follow what is written here.
 | Role | Produces | May escalate |
 |---|---|---|
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance | n/a |
-| Product Owner | Epics | No |
+| Product Owner | Epics; answers to questions about product intent (crew#189) | No |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates | No |
 | Architect | A project's design, design notes, technical epics, Tasks, Spikes | Yes |
 | Developer | Code, tests, docs, PRs, Bugs | Yes |
@@ -64,6 +64,13 @@ The Scrum Master narrates; it has no authority over the board.
 **No agent may move a card out of a human gate.** There are exactly two gates:
 epics awaiting approval in `Inbox (Goals)` carrying `needs:human`, and the
 sprint review at `crew sprint close`.
+
+When a story goes back to refinement because it changes behaviour merged
+tests pin and doesn't say whether it should (crew#189), the Product Owner
+answers that from what the project already has: the Goal, the record,
+delivered stories. When nothing written down answers it, the Sponsor is asked
+one question on the epic, and the reply is what the re-split reads. No board
+moves are asked of the Sponsor.
 
 The first gate is for *what* to build. Work about *how* a project is built
 never goes through it: a technical epic, filed by the crew from the Architect's

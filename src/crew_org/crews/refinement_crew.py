@@ -154,6 +154,74 @@ class StoryProposal(BaseModel):
         return self
 
 
+class ProductAnswer(BaseModel):
+    """The Product Owner's answer to the question a story problem raised (#189).
+
+    Either a decision grounded in what the project already has, or one question
+    for the Sponsor when nothing written down answers it. Never both.
+    """
+
+    answer: str = Field(
+        default="",
+        description="What the stories should do, when the project already answers it",
+    )
+    based_on: list[str] = Field(
+        default_factory=list,
+        description=(
+            "What the answer follows: the Goal, the project's record, or a delivered story "
+            "by number, e.g. '#100 made threshold flags opt-in via --thresholds'"
+        ),
+    )
+    question: str = Field(
+        default="",
+        description=(
+            "When nothing written down answers it: one clear question for the Sponsor, "
+            "answerable in a sentence"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_or_the_other(self) -> ProductAnswer:
+        if bool(self.answer.strip()) == bool(self.question.strip()):
+            raise ValueError("give an answer grounded in the project, or one question; not both")
+        if self.answer.strip() and not self.based_on:
+            raise ValueError("an answer names what it follows: the Goal, the record, or a story")
+        return self
+
+
+def answer_story_problem(
+    *, epic: str, goal: str, evidence: str, project: str = "", delivered: str = ""
+) -> ProductAnswer:
+    """Product Owner only: answer the question a story problem raised, or ask the Sponsor.
+
+    Answering the team's questions about product intent is the Product Owner's
+    job. sprint-metrics#97's question, opt-in or default flags, was answerable
+    from merged work (#100 and #102 already flagged opt-in via --thresholds),
+    and took the Sponsor to settle.
+    """
+    agents = build_agents("product_owner")
+    task = Task(
+        description=(
+            (f"{project}\n\n" if project else "")
+            + _delivered_block(delivered, "a choice that contradicts what these delivered")
+            + f"## The Goal\n\n{goal}\n\n## The epic\n\n{epic}\n\n"
+            f"## Why it came back\n\n{evidence}\n\n"
+            "A story of this epic kept breaking merged tests, because the epic doesn't "
+            "say what the product should do here. Decide it, if the Goal, the project's "
+            "record or what's already delivered answers it, and name what you followed. "
+            "If none of them does, ask the Sponsor one question instead: the one whose "
+            "answer settles it."
+        ),
+        expected_output="A grounded answer with what it follows, or one question.",
+        agent=agents["product_owner"],
+        output_pydantic=ProductAnswer,
+    )
+    crew = Crew(
+        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    )
+    return crew.kickoff().pydantic
+
+
 REWORK = (
     "\n\n## The Sponsor sent your last answer back\n\n"
     "{feedback}\n\n"

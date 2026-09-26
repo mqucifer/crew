@@ -34,6 +34,7 @@ from crew_org.crews.refinement_crew import (
     EpicProposal,
     Story,
     StoryProposal,
+    answer_story_problem,
     propose_epics,
     split_epic,
 )
@@ -89,6 +90,9 @@ NEEDS_HUMAN = "needs:human"
 NEEDS_REWORK = "needs:rework"
 # On an epic: a story of it went back to refinement as a story problem (#189).
 STORY_PROBLEM_MARKER = "<!-- crew:story-problem -->"
+# The Product Owner's answer to it, or its one question for the Sponsor.
+PRODUCT_ANSWER_MARKER = "<!-- crew:product-answer -->"
+PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
 NEEDS_DESIGN = "needs:design"
 # A story held in refinement only because Ready was full. The label is what
 # tells it apart from a story that genuinely needs refining — one filed by
@@ -259,8 +263,92 @@ def story_problem_evidence(issues: IssueClient, repo: str, number: int) -> str:
     since = [
         c.get("body") or "" for c in comments[_last_marked(comments, STORY_SPLIT_MARKER) + 1 :]
     ]
-    found = [body for body in since if STORY_PROBLEM_MARKER in body]
-    return found[-1].replace(STORY_PROBLEM_MARKER, "").strip() if found else ""
+    found = [i for i, body in enumerate(since) if STORY_PROBLEM_MARKER in body]
+    if not found:
+        return ""
+    parts = [since[found[-1]].replace(STORY_PROBLEM_MARKER, "").strip()]
+    answers = [b for b in since[found[-1] :] if PRODUCT_ANSWER_MARKER in b]
+    if answers:
+        parts.append(answers[-1].replace(PRODUCT_ANSWER_MARKER, "").strip())
+    return "\n\n".join(parts)
+
+
+def product_step(
+    issues: IssueClient,
+    sink: EventSink,
+    result: TickResult,
+    epic: Card,
+    repo: str,
+    *,
+    goal: str,
+    project: str,
+    delivered: str,
+) -> bool:
+    """Before an epic sent back as a story problem is split again (#189).
+
+    The Product Owner answers the question it raised from what the project
+    already has (the Goal, its record, delivered stories), or asks the Sponsor
+    one question and the epic waits. The Sponsor's reply comment is what the
+    re-split reads: no board moves. True when the split may go ahead.
+    """
+    number = epic.number or 0
+    if NEEDS_REWORK not in epic.labels:
+        return True
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return True
+    bodies = [c.get("body") or "" for c in comments]
+    since = bodies[_last_marked(comments, STORY_SPLIT_MARKER) + 1 :]
+    problems = [i for i, b in enumerate(since) if STORY_PROBLEM_MARKER in b]
+    if not problems:
+        return True  # the Sponsor's own rework: theirs to explain
+    after = since[problems[-1] :]
+    if any(PRODUCT_ANSWER_MARKER in b for b in after):
+        return True
+    asked = [i for i, b in enumerate(after) if PRODUCT_QUESTION_MARKER in b]
+    if asked:
+        replied = any("<!-- crew:" not in b for b in after[asked[-1] + 1 :])
+        if not replied:
+            result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
+        return replied
+
+    try:
+        reply = answer_story_problem(
+            epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
+            goal=goal,
+            evidence=since[problems[-1]].replace(STORY_PROBLEM_MARKER, "").strip(),
+            project=project,
+            delivered=delivered,
+        )
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        result.failed.append((number, f"the Product Owner couldn't answer: {exc}"[:200]))
+        return False
+    if reply.answer.strip():
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=f"{PRODUCT_ANSWER_MARKER}\n**Decided:** {reply.answer.strip()}\n\n"
+            "Following: " + "; ".join(reply.based_on),
+            by="Product Owner",
+        )
+        return True
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"{PRODUCT_QUESTION_MARKER}\n**A question for the Sponsor.** "
+        f"{reply.question.strip()}\n\nNothing the project has written down answers it. "
+        "Reply here; the epic is split again with your answer.",
+        by="Product Owner",
+    )
+    artifacts.label(issues, sink, repo=repo, number=number, by="Product Owner", add=[NEEDS_HUMAN])
+    result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
+    return False
 
 
 def _last_marked(comments: list[dict], marker: str) -> int:
@@ -650,6 +738,15 @@ class RepoContext:
                 self._cache[repo] = ""
         return self._cache[repo]
 
+    def record_for(self, repo: str) -> str:
+        """Only the project's record, for a role that decides without the code."""
+        if self._ws is None:
+            return ""
+        try:
+            return self._record(repo, self._ws.for_repo(repo).current())
+        except Exception:  # noqa: BLE001
+            return ""
+
     def _record(self, repo: str, clone) -> str:
         """The project's record, first (#131): what the work is for, before the code.
 
@@ -851,6 +948,19 @@ def refine_epics(
             result.held_for_design.append((number, holds[repo]))
             continue
 
+        done = known.for_repo(repo) if known else Delivered()
+        if not product_step(
+            issues,
+            sink,
+            result,
+            epic_card,
+            repo,
+            goal=_goal_body(issues, repo, epic_card.parent) if epic_card.parent else "",
+            project=context.record_for(repo),
+            delivered=done.render(),
+        ):
+            continue
+
         proceed, notes = rework_gate(
             issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
         )
@@ -874,7 +984,6 @@ def refine_epics(
             # Owner one step earlier was given its goal whole — and the Business
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
-            done = known.for_repo(repo) if known else Delivered()
             proposal = split_epic(
                 epic_card.title,
                 _goal_body(issues, repo, number),
