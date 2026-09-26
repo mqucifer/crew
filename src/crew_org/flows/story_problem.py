@@ -19,7 +19,7 @@ import re
 from typing import Any
 
 from crew_org.columns import READY
-from crew_org.events import EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, started
 from crew_org.flows.moves import move_card
@@ -91,8 +91,13 @@ def return_to_refinement(
     repo: str,
     cards: list[Card],
     comment: str,
+    reason: str = "pinned tests",
 ) -> bool:
     """Send the story's epic back to be split again. False if it has no epic.
+
+    `reason` is why, for the event: "pinned tests" (the same merged tests
+    broke again, #189) or "gate round trips" (the gates kept returning it,
+    #242).
 
     The story and its unbuilt siblings go back to Ready, out of their sprint,
     so the rework supersedes them and they stop counting against capacity. The
@@ -138,6 +143,22 @@ def return_to_refinement(
     )
     artifacts.label(issues, sink, repo=repo, number=epic, by="Developer", add=[NEEDS_REWORK])
     artifacts.comment(issues, sink, repo=repo, number=epic, body=comment, by="Developer")
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.STORY_RETURNED,
+            role="Developer",
+            card=card.number,
+            summary=f"#{card.number} back to refinement ({reason}); epic #{epic} to split again"[
+                :120
+            ],
+            detail={
+                "repo": repo,
+                "epic": epic,
+                "reason": reason,
+                "with": [s.number for s in back if s.number != card.number],
+            },
+        )
+    )
     return True
 
 
