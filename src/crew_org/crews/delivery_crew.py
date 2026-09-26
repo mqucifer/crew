@@ -415,6 +415,65 @@ class FirstAttempt(Implementation):
         )
 
 
+class CriterionMet(BaseModel):
+    """One acceptance criterion the code already meets, and the proof (#221)."""
+
+    criterion: str = Field(description="The acceptance criterion, as the story states it")
+    code: str = Field(description="The code that meets it: file and definition")
+    test: str = Field(
+        description="The existing test that proves it, as path::test_name, e.g. "
+        "tests/test_cli.py::test_schema_flag"
+    )
+
+
+class FirstOrDone(FirstAttempt):
+    """A first attempt that may answer that the story is already done (#221).
+
+    Only rework could say "the code already satisfies this" (#161). A first
+    attempt had to change something, so a story that duplicated delivered work,
+    like sprint-metrics#149 to #155, forced redundant code or a fight with the
+    regression guards. Offered once per story: an answer QA refuses isn't given
+    this choice again.
+    """
+
+    criteria_tests: list[CriterionTest] = Field(
+        default_factory=list,
+        description=(
+            "Before the code: for each acceptance criterion, the test that proves it, "
+            "written in full. The crew adds each test to its file, so don't write these "
+            "tests again in new_files or edits. Empty only for an already-done answer."
+        ),
+    )
+    already_done: list[CriterionMet] = Field(
+        default_factory=list,
+        description=(
+            "Only when the code as it stands already meets every acceptance criterion: for "
+            "each one, the code that meets it and the existing test that proves it. Change "
+            "nothing, then. Leave empty if you change anything."
+        ),
+    )
+
+    def _may_change_nothing(self) -> bool:
+        return bool(self.already_done)
+
+    @model_validator(mode="after")
+    def _has_a_test(self) -> FirstOrDone:
+        if self.already_done:
+            if not self.changes_nothing:
+                raise ValueError(
+                    "an already-done answer changes nothing. Either change the code and leave "
+                    "`already_done` empty, or name the existing code and tests and change nothing."
+                )
+            return self
+        if not self.criteria_tests:
+            raise ValueError(
+                "no test. For each acceptance criterion, give the test that proves it in "
+                "`criteria_tests` — or, if the code already meets every criterion, say so in "
+                "`already_done`."
+            )
+        return self
+
+
 # Identical for every story and every repair, so it is the cacheable prefix.
 STANDING_INSTRUCTIONS = (
     "Implement one story.\n\n"
@@ -465,7 +524,13 @@ STANDING_INSTRUCTIONS = (
 
 
 def implement_story(
-    story: str, *, context: str, feedback: str = "", prior: str = "", returned: bool = False
+    story: str,
+    *,
+    context: str,
+    feedback: str = "",
+    prior: str = "",
+    returned: bool = False,
+    may_be_done: bool = False,
 ) -> Implementation:
     """Produce the files that satisfy one story.
 
@@ -524,7 +589,14 @@ def implement_story(
         agent=agents["developer"],
         # A repair fixes a failure; returned work answers a gate, and may answer
         # that nothing needs to change (#161); a first attempt builds the story.
-        output_pydantic=Implementation if feedback else (Rework if returned else FirstAttempt),
+        # A first attempt may instead answer that the story is already done (#221).
+        output_pydantic=Implementation
+        if feedback
+        else Rework
+        if returned
+        else FirstOrDone
+        if may_be_done
+        else FirstAttempt,
     )
     crew = Crew(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False

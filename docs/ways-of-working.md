@@ -99,6 +99,14 @@ refinement on that first review, for the Product Owner to settle (crew#252).
 If the gates still disagree, the limit of three round trips (crew#243) sends
 it back.
 
+A story the code already satisfies needs no change. On its first attempt the
+Developer may answer that it's already done, naming, for each criterion, the
+code that meets it and the existing test that proves it. A named test that
+doesn't exist is refused. There's no diff, so the story skips review and goes
+straight to QA, which judges it like any other. If QA accepts it, the story
+closes with no pull request. If QA refuses it, it comes back to be built, and
+isn't offered the answer again (crew#221).
+
 
 ---
 
