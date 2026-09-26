@@ -1342,11 +1342,18 @@ def export(
         read_attempts(VAR / "events"),
         EscalationLedger(VAR / "ledger" / "escalations.jsonl").spent(sprint),
     )
+    from crew_org.flows.model_calls import read_model_calls
+
+    # Each model call for these stories, raw (#179), for the performance project.
+    report["model_calls"] = read_model_calls(VAR / "events", stories, repo)
     path = Path(out) if out else VAR / "exports" / f"{repo}-{sprint.replace(' ', '-')}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     console.print(escape(retries_text(report)))
-    console.print(f"[dim]{report['escalations']} escalations · written to {path}[/]")
+    console.print(
+        f"[dim]{report['escalations']} escalations · {len(report['model_calls'])} model calls"
+        f" · written to {path}[/]"
+    )
 
 
 def _bot_identity(token: str, identity: str):
@@ -1587,10 +1594,15 @@ def sprint_close(
         )
         raise typer.Exit(code=2)
 
+    from crew_org.events import bridge_crewai, flush_bridge
+
+    # The retro's model calls are recorded like a tick's (#179).
+    close_sink = EventSink(VAR / "events" / "close.jsonl")
+    bridge_crewai(close_sink)
     result = close_sprint(
         board,
         IssueClient(token, owner),
-        EventSink(VAR / "events" / "close.jsonl"),
+        close_sink,
         EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         sprint=sprint,
         repo=repo,
@@ -1601,6 +1613,7 @@ def sprint_close(
         delivery_repos=list(org.get("delivery", {}).get("repos") or []),
         tz=clock_zone(org),
     )
+    flush_bridge()
 
     console.print(f"\n[bold]{result.sprint}[/]")
     for number in result.merged:

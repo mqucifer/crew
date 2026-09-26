@@ -15,7 +15,7 @@ from pathlib import Path
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
-from crew_org.events import EventKind, EventSink
+from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.loops import from_comments, loops_text, read_loops, sprint_window
@@ -288,7 +288,7 @@ def close_sprint(
         ledger.spent(sprint),
     )
     try:
-        result.retro = write_retro(
+        result.retro = attributed(write_retro, sprint=sprint, purpose="retro")(
             sprint,
             board_summary(board.cards(), sprint),
             escalations,
