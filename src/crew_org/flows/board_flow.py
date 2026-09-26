@@ -244,6 +244,11 @@ def started(issues: IssueClient, repo: str, cards: list[Card]) -> set[int]:
     for card in cards:
         if card.number is None:
             continue
+        # Back in Ready (or before it) isn't in flight, whatever is left on
+        # GitHub: a story returned to refinement keeps its branch, and sprint-
+        # metrics#145 refused its own epic's re-split that way (#244).
+        if card.status in (INBOX, REFINEMENT, READY):
+            continue
         prefix = f"feat/{card.number}-"
         if card.linked_pulls or any(b.startswith(prefix) for b in branches):
             out.add(card.number)
