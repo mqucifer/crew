@@ -1,6 +1,7 @@
-"""Changing an existing file that is not Python, by quoting what it replaces (#140).
+"""Changing an existing file by quoting what it replaces (#140, #204).
 
-Python is changed by name, which is what the §15 guards read. pyproject.toml, a
+Python definitions are changed by name, which is what the §15 guards read; a
+Python file's imports and entry block, which have no name, are quoted. pyproject.toml, a
 README or a CI workflow has no names, so the Developer could not change one at
 all: its only other route, a new file, is refused for a file that exists.
 """
@@ -104,12 +105,103 @@ def test_the_developer_is_shown_the_text_it_would_quote(repo):
     assert "      - run: uv run pytest -q" in context
 
 
-# --- 2: Python is still changed by name ----------------------------------------------
+# --- 2: Python definitions are still changed by name ----------------------------------------------
 
 
-def test_a_python_file_cannot_be_changed_by_quoting():
-    with pytest.raises(ValidationError, match="is Python: change it with `edits`"):
-        TextEdit(path="src/metrics.py", find="return 0", replace="return 1")
+# A Python file's module-level lines have no name, so they are quoted (#204).
+# sprint-metrics#133 could not repoint `__main__.py`'s one import any other way.
+
+MAIN = """\"\"\"Allow the command to run as ``python -m sprint_metrics``.\"\"\"
+
+import sys
+
+from sprint_metrics.crew_performance import main
+
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+
+MODULE = """from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass
+class Card:
+    created: date
+
+
+def throughput(cards):
+    return 0
+"""
+
+
+def python(repo: Path, name: str, text: str) -> Path:
+    (repo / name).write_text(text)
+    return repo
+
+
+def plan(repo: Path, *edits: TextEdit) -> dict[str, str]:
+    return workspace.plan_text_edits(repo, list(edits))
+
+
+def test_an_import_in_a_python_file_is_repointed_by_quoting(repo):
+    """What sprint-metrics#133 needed."""
+    edit = TextEdit(
+        path="__main__.py",
+        find="from sprint_metrics.crew_performance import main",
+        replace="from sprint_metrics.cli import main",
+    )
+    after = plan(python(repo, "__main__.py", MAIN), edit)["__main__.py"]
+    assert "from sprint_metrics.cli import main" in after and "crew_performance" not in after
+
+
+def test_an_import_nothing_uses_any_more_can_be_removed(repo):
+    """After a move, the old module's leftover imports fail lint (F401)."""
+    edit = TextEdit(path="metrics.py", find="from dataclasses import dataclass\n", replace="")
+    after = plan(python(repo, "metrics.py", MODULE), edit)["metrics.py"]
+    assert after.startswith("from datetime import date")
+
+
+def test_the_entry_block_is_module_level_too(repo):
+    edit = TextEdit(
+        path="__main__.py", find="    sys.exit(main())", replace="    raise SystemExit(main())"
+    )
+    assert "raise SystemExit" in plan(python(repo, "__main__.py", MAIN), edit)["__main__.py"]
+
+
+@pytest.mark.parametrize(
+    "find",
+    ["    return 0", "def throughput(cards):", "@dataclass\nclass Card:", "date\n\n\n@dataclass"],
+)
+def test_a_quote_reaching_into_a_definition_is_refused(repo, find):
+    edit = TextEdit(path="metrics.py", find=find, replace=find.replace("0", "1") + " ")
+    with pytest.raises(EditError, match="reaches into `(Card|throughput)`.*with `edits`, by name"):
+        plan(python(repo, "metrics.py", MODULE), edit)
+
+
+def test_a_definition_cannot_be_brought_in_by_quoting(repo):
+    edit = TextEdit(path="metrics.py", find="", replace="def cycle_time(cards):\n    return 0\n")
+    with pytest.raises(EditError, match="brings in a definition"):
+        plan(python(repo, "metrics.py", MODULE), edit)
+
+
+def test_a_misquoted_python_edit_says_it_is_not_in_the_file(repo):
+    edit = TextEdit(path="__main__.py", find="import os", replace="import sys")
+    with pytest.raises(EditError, match="is not in the file"):
+        plan(python(repo, "__main__.py", MAIN), edit)
+
+
+def test_a_python_file_left_invalid_is_refused(repo):
+    edit = TextEdit(path="__main__.py", find="import sys", replace="import (")
+    with pytest.raises(EditError, match="no longer valid Python"):
+        plan(python(repo, "__main__.py", MAIN), edit)
+
+
+def test_the_developer_is_told_which_to_use_for_python():
+    from crew_org.crews.delivery_crew import STANDING_INSTRUCTIONS
+
+    text = " ".join(STANDING_INSTRUCTIONS.split())
+    assert "outside any function or class" in text and "always change with `edits`" in text
 
 
 def test_a_python_file_returned_whole_is_still_an_overwrite(repo):

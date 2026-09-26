@@ -8,8 +8,10 @@ container — see docs/ways-of-working.md and the note in `check`.
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -170,6 +172,8 @@ def plan_text_edits(worktree: Path, text_edits: list) -> dict[str, str]:
                 )
             changed[item.path] = target.read_text(encoding="utf-8")
         text = changed[item.path]
+        if item.path.endswith(".py"):
+            _outside_definitions(item, text)
         if not item.find:
             joiner = "" if not text or text.endswith("\n") else "\n"
             changed[item.path] = text + joiner + item.replace
@@ -186,7 +190,58 @@ def plan_text_edits(worktree: Path, text_edits: list) -> dict[str, str]:
                 f"the surrounding text so it names one place:\n{item.find[:300]}"
             )
         changed[item.path] = text.replace(item.find, item.replace, 1)
+    for path, text in changed.items():
+        if path.endswith(".py"):
+            try:
+                ast.parse(text)
+            except SyntaxError as exc:
+                raise EditError(
+                    f"after the text edits, {path!r} is no longer valid Python: {exc.msg} "
+                    f"on line {exc.lineno}"
+                ) from None
     return changed
+
+
+def _outside_definitions(item, text: str) -> None:
+    """A text edit to Python may change module-level lines only (#204).
+
+    Imports, an `if __name__ == "__main__":` block, a docstring: a file's lines
+    outside any function or class, which have no name for `edits` to address.
+    sprint-metrics#133 could not repoint one import in `__main__.py` any other
+    way. A definition is still changed by name, where the contract check (§15)
+    sees it, so an edit reaching into one, or bringing one in, is refused.
+    """
+    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
+
+    how = (
+        f"Text edits to a Python file ({item.path!r}) are for its module-level lines: "
+        "imports, an `if __name__` block, the docstring. Change or add a function or "
+        "class with `edits`, by name."
+    )
+    try:
+        added = ast.parse(textwrap.dedent(item.replace)) if item.replace.strip() else None
+    except SyntaxError:
+        added = None  # a fragment; the whole file is parsed once every edit is in
+    if added is not None and any(
+        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for node in ast.walk(added)
+    ):
+        raise EditError(f"this text edit brings in a definition. {how}")
+    if not item.find or item.find not in text:
+        return  # an append, or a quote the caller reports as not in the file
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return  # nothing to locate definitions in; the file is refused as a whole later
+    start = text.index(item.find)
+    first = text.count("\n", 0, start) + 1
+    last = first + item.find.count("\n")
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        top = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+        if first <= (node.end_lineno or node.lineno) and top <= last:
+            raise EditError(f"this text edit reaches into `{node.name}`. {how}")
 
 
 def apply(worktree: Path, files: list[FileWrite]) -> list[str]:

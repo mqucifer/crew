@@ -424,8 +424,13 @@ definitions to name. It is changed by quoting: the Developer copies the exact
 text to change, which must occur in the file once, and gives what replaces it
 (crew#140). The same property holds as for named edits: nothing unquoted is
 reproduced, so nothing unquoted can be lost. A quote that doesn't match, or
-matches twice, is refused and no file is changed. A Python file can't be
-changed this way, because the rules above read definitions by name.
+matches twice, is refused and no file is changed. In a Python file, only the
+lines outside any function or class can be changed this way: its imports, an
+`if __name__` block, its docstring (crew#204). They have no name to address,
+and a refactor has to repoint and tidy them. A quote reaching into a
+definition, or a replacement that brings one in, is refused, because the rules
+above read definitions by name. So is a change that leaves the file invalid
+Python.
 
 This replaced whole-file rewriting, which failed for a reason worth recording.
 Returning a whole file makes every story a transcription exercise: regenerate

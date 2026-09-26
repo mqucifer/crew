@@ -107,16 +107,22 @@ class FileEdit(BaseModel):
 
 
 class TextEdit(BaseModel):
-    """One change to an existing file that is not Python, by quoting what it replaces.
+    """One change to an existing file by quoting what it replaces.
 
-    Python is changed by name (`FileEdit`), which the §15 guards read. Anything
-    else (pyproject.toml, a README, a CI workflow) has no names to address, so
-    the change quotes the text it replaces (#140). Everything outside that text
+    Python definitions are changed by name (`FileEdit`), which the §15 guards
+    read. What has no name to address (pyproject.toml, a README, a CI workflow,
+    or a Python file's imports and entry block, #204) is changed by quoting
+    the text it replaces (#140). Everything outside that text
     is left as it is by construction: nothing unquoted is reproduced, so nothing
     unquoted can be lost, and a file can't come back truncated or regenerated.
     """
 
-    path: str = Field(description="Repository-relative path of an existing non-Python file")
+    path: str = Field(
+        description=(
+            "Repository-relative path of an existing file: not Python, or a Python file's "
+            "module-level lines"
+        )
+    )
     find: str = Field(
         default="",
         description=(
@@ -128,14 +134,10 @@ class TextEdit(BaseModel):
 
     @field_validator("path")
     @classmethod
-    def _not_python(cls, value: str) -> str:
-        cleaned = FileWrite._stays_in_the_repository(value)
-        if PurePosixPath(cleaned).suffix == ".py":
-            raise ValueError(
-                f"{cleaned!r} is Python: change it with `edits`, addressed by name, "
-                "not by quoting its text"
-            )
-        return cleaned
+    def _stays_in_the_repository(cls, value: str) -> str:
+        # Python is allowed for its module-level lines only; that needs the
+        # file's text to judge, so it's checked where the edit is applied (#204).
+        return FileWrite._stays_in_the_repository(value)
 
     @model_validator(mode="after")
     def _changes_something(self) -> TextEdit:
@@ -358,7 +360,11 @@ STANDING_INSTRUCTIONS = (
     "workflow), return `text_edits`: `find` quotes the exact text to change, copied "
     "from the file as shown, and must occur in it once; `replace` is what takes its "
     "place. Quote enough to be unique and no more. An empty `find` adds to the end of "
-    "the file.\n\n"
+    "the file.\n"
+    "A Python file's lines outside any function or class (its imports, an `if "
+    "__name__` block, its docstring) have no name, so they change with `text_edits` "
+    "too: repointing an import, or removing one nothing uses any more. Functions and "
+    "classes always change with `edits`.\n\n"
     "The project's lint rules are in pyproject.toml and are enforced. Write code that "
     "satisfies them rather than code you would then have to fix.\n\n"
     "Match the surrounding code's idiom. Implement only this story - work belonging "
