@@ -1081,13 +1081,17 @@ def onboard(
     so far are written to a file you can finish in any editor. The finished
     record arrives as a pull request to the project.
     """
+    import json
+
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.crews.onboarding_crew import interview_turn
     from crew_org.flows.onboard import (
+        PROPOSED_MARKER,
         interview,
         open_record_pr,
         read_project,
+        sessions_since_proposed,
         takeaway,
         terminal_ask,
     )
@@ -1156,7 +1160,22 @@ def onboard(
             "show": session.show,
         }
 
-    ended = interview(raw, repository=project.repository, intent=project.intent, **hands)
+    # What an earlier session left open (#181): shown to the Product Owner again.
+    open_file = VAR / "onboarding" / f"{repo}.open.json"
+    try:
+        still_open = [tuple(q) for q in json.loads(open_file.read_text())]
+    except (OSError, ValueError, TypeError):
+        still_open = []
+
+    ended = interview(
+        raw,
+        repository=project.repository,
+        intent=project.intent,
+        still_open=still_open,
+        **hands,
+    )
+    open_file.parent.mkdir(parents=True, exist_ok=True)
+    open_file.write_text(json.dumps([list(q) for q in ended.open], indent=1))
 
     def finish(kind: str, text: str, link: str = "") -> None:
         """Tell the page how it ended, and give it a moment to say so before stopping."""
@@ -1175,21 +1194,32 @@ def onboard(
         fh.write(f"\n## {stamp}\n\n" + "\n\n".join(ended.transcript) + "\n")
 
     if ended.settled and project.default_branch:
+        # Every session since the record was last proposed, not only this one (#181).
         url = open_record_pr(
             ws,
             issues,
             repo,
             validate(ended.raw),
             base=project.default_branch,
-            transcript=ended.transcript,
+            transcript=[sessions_since_proposed(log.read_text(encoding="utf-8"))],
+            open_questions=ended.open,
         )
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(f"\n{PROPOSED_MARKER} {url}\n")
         console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
         finish("proposed", "The record is proposed as a pull request:", url)
         return
 
     kept.parent.mkdir(parents=True, exist_ok=True)
     kept.write_text(
-        takeaway(ended.raw, ended.questions, repo=repo, path=kept, proposed=ended.proposed)
+        takeaway(
+            ended.raw,
+            ended.questions,
+            repo=repo,
+            path=kept,
+            proposed=ended.proposed,
+            open_questions=ended.open,
+        )
     )
     if ended.interrupted:
         console.print(f"\n[red]The interview stopped:[/] {escape(ended.interrupted)}")

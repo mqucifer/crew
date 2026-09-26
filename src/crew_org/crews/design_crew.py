@@ -87,10 +87,24 @@ class Conflict(BaseModel):
     why: str
 
 
+class Undeclared(BaseModel):
+    """A practice the design introduces without saying so (#154)."""
+
+    choice: str = Field(description="The design choice, as it reads")
+    today: str = Field(description="What the project actually does today, from its code")
+
+
 class DesignReview(BaseModel):
     conflicts: list[Conflict] = Field(
         default_factory=list,
         description="Every design choice that contradicts a guideline. Empty if none does.",
+    )
+    undeclared: list[Undeclared] = Field(
+        default_factory=list,
+        description=(
+            "Every choice that introduces a practice the project doesn't follow today and "
+            "that isn't among the declared changes. Empty if none does."
+        ),
     )
 
 
@@ -136,13 +150,21 @@ def propose_design(
     return crew.kickoff().pydantic
 
 
-def review_design(*, project: str, design: str, stories: str = "") -> DesignReview:
+def review_design(
+    *, project: str, design: str, stories: str = "", repository: str = "", changes: str = ""
+) -> DesignReview:
     """The Code Reviewer's check of a proposed design against the guidelines.
 
     With `stories`, a design note is also checked against the criteria of the
     stories it directs (#258). Epic sprint-metrics#59's note told #145's test to
     leave out the assertion #145's criterion required, and nothing at design
     review could see it: the reviewer was shown the note, never the stories.
+
+    With `repository`, a project's design is also checked for new practices it
+    doesn't declare (#154). sprint-metrics' first design added "the version in
+    pyproject.toml is updated to match the tag" under "Changes: None", and a
+    new practice arrived looking like a record of existing fact. The role that
+    proposes doesn't grade itself.
     """
     reviewer = _role("code_reviewer", "design_review")
     against = (
@@ -154,10 +176,20 @@ def review_design(*, project: str, design: str, stories: str = "") -> DesignRevi
         if stories
         else ""
     )
+    new = (
+        f"## The project's code as it stands\n\n{repository}\n\n"
+        f"## The changes the design declares\n\n{changes or '(none)'}\n\n"
+        "Also report, in `undeclared`, every choice that introduces a practice the code "
+        "above doesn't show and the declared changes don't list, with what the project "
+        "does today. Recording what already exists is not a change.\n\n"
+        if repository
+        else ""
+    )
     task = Task(
         description=(
             f"{project}\n\n## The proposed design\n\n```yaml\n{design}\n```\n\n"
             + against
+            + new
             + "Check each choice against the crew-wide guidelines (§19, in your rules) and "
             "the project's own guidelines above. Report every choice that contradicts one, "
             "naming the guideline. A choice that is merely different from what you would "

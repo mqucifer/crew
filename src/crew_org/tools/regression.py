@@ -18,6 +18,7 @@ a prompt asking the model not to do it is a request rather than a guarantee.
 from __future__ import annotations
 
 import ast
+import contextlib
 import textwrap
 from collections.abc import Callable
 from pathlib import Path
@@ -769,6 +770,58 @@ def _passed_along(tree: ast.Module) -> dict[str, str]:
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             found[node.target.id] = "a constant assigned here"
     return found
+
+
+def importers(root: Path, names: dict[str, set[str]]) -> dict[str, dict[str, list[str]]]:
+    """For each file's names, the other files that import each one from it (#215).
+
+    `names` is {path: {name, ...}}, repository-relative. Resolved the way
+    `lost_names` resolves them, so the reviewer and the regression guard agree
+    on what a module passes along.
+    """
+    modules = _modules(root)
+    files = set(modules)
+    found: dict[str, dict[str, list[str]]] = {}
+    for path, wanted in names.items():
+        for name in sorted(wanted):
+            users = sorted(
+                importer
+                for importer, tree in modules.items()
+                if importer != path and path in _binds_from(tree, importer, name, files)
+            )
+            if users:
+                found.setdefault(path, {})[name] = users
+    return found
+
+
+def passed_along(root: Path, path: str, name: str) -> bool:
+    """Does `path` import `name` only to hand it on: imported there, and used nowhere in it?"""
+    tree = _parse(root / path)
+    if tree is None:
+        return False
+    how = _passed_along(tree).get(name, "")
+    return how.startswith("imported") and not used_in_own_file(root, path, name)
+
+
+def used_in_own_file(root: Path, path: str, name: str) -> bool:
+    """Does `path` use `name` anywhere other than binding it? False if it can't be read."""
+    tree = _parse(root / path)
+    if tree is None:
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load):
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == name:
+            return True
+    # Re-exported on purpose: listed in `__all__`.
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets
+        ):
+            with contextlib.suppress(ValueError):
+                if name in ast.literal_eval(node.value):
+                    return True
+    return False
 
 
 def _provided(tree: ast.Module) -> set[str]:
