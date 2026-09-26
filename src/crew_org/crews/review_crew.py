@@ -28,6 +28,13 @@ class Finding(BaseModel):
     file: str = Field(description="The file the finding is in")
     concern: str = Field(description="What is wrong, stated as a fact about the diff")
     action: str = Field(description="What to do about it, specifically")
+    blocking: bool = Field(
+        default=True,
+        description=(
+            "True when the change can't merge until this is done. False for a note worth "
+            "having that doesn't hold it up"
+        ),
+    )
 
     @field_validator("action")
     @classmethod
@@ -49,12 +56,26 @@ class ReviewVerdict(BaseModel):
 
     @model_validator(mode="after")
     def _a_rejection_must_say_why(self) -> ReviewVerdict:
-        if not self.approve and not self.findings:
+        blocking = [f for f in self.findings if f.blocking]
+        if not self.approve and not blocking:
             raise ValueError(
-                "requesting changes with no findings is not a review. Name what is "
-                "wrong and what to do, or approve."
+                "requesting changes with no finding that blocks is not a review. Name "
+                "what must change and what to do, or approve."
+            )
+        # sprint-metrics PR #139 was approved with five findings saying "remove
+        # these imports", and nothing acted on them: an approval's findings were
+        # dropped. Here they were wrong; next time they'd be right (#214).
+        if self.approve and blocking:
+            raise ValueError(
+                "an approval can't carry a finding that blocks. Request changes, or mark "
+                "it `blocking: false` if it's a note that doesn't hold the merge up."
             )
         return self
+
+    @property
+    def notes(self) -> list[Finding]:
+        """Findings that don't hold the merge up."""
+        return [f for f in self.findings if not f.blocking]
 
     @property
     def event(self) -> str:
