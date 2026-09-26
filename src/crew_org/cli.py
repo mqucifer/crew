@@ -1333,6 +1333,61 @@ def design(
 
 
 @app.command()
+def diagnose(
+    repo: str = typer.Argument(..., help="The repository the failing card is in."),
+    card: int = typer.Argument(..., help="The card whose failure to diagnose."),
+    offer: bool = typer.Option(
+        True, "--offer/--no-offer", help="Ask, per finding, whether to file it as a crew issue."
+    ),
+) -> None:
+    """The Senior Engineer diagnoses the crew's own code from a card's failure (#9).
+
+    It reads an index of the crew's source, names the files it needs, and says
+    what's wrong: file, line, and the change. It changes nothing. The report is
+    kept in var/diagnoses/; each finding you accept becomes a crew issue.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.diagnosis_crew import choose_files
+    from crew_org.crews.diagnosis_crew import diagnose as diagnose_files
+    from crew_org.flows.diagnose import (
+        crew_root,
+        failure_of,
+        file_finding,
+        render,
+        run_diagnosis,
+    )
+    from crew_org.llm import health
+    from crew_org.permissions import Capability, Permissions
+    from crew_org.tools.github_issues import IssueClient
+
+    Permissions.from_agents().require("Senior Engineer", Capability.DIAGNOSE_CREW)
+    env = load_env()
+    ok, message = health()
+    if not ok:
+        console.print(f"[red]{message}[/]")
+        raise typer.Exit(code=1)
+    token, _ = resolve_credentials(env)
+    issues = IssueClient(token, env["GITHUB_OWNER"])
+    failure = failure_of(VAR / "events", issues, repo, card)
+    with console.status("[dim]The Senior Engineer is reading…[/]"):
+        report = run_diagnosis(crew_root(), failure, choose=choose_files, diagnose=diagnose_files)
+    text = render(report, repo=repo, card=card)
+    path = VAR / "diagnoses" / f"{repo}-{card}-{time.strftime('%Y%m%dT%H%M%S')}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    console.print(escape(text))
+    console.print(f"[dim]kept in {path}[/]")
+    if not offer:
+        return
+    crew_repo = env.get("CREW_REPO", "crew")
+    for n, finding in enumerate(report.findings, 1):
+        if typer.confirm(f"File finding {n} ({finding.file}:{finding.line}) as a crew issue?"):
+            issue = file_finding(issues, crew_repo, finding, repo=repo, card=card)
+            console.print(f"[green]filed[/] {crew_repo}#{issue['number']}")
+
+
+@app.command()
 def export(
     repo: str = typer.Argument(..., help="The delivery repository whose sprint to export."),
     sprint: str = typer.Option(None, "--sprint", help="Iteration name. Defaults to the current."),

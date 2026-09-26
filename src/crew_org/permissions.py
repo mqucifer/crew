@@ -50,6 +50,9 @@ class Capability(StrEnum):
     WRITE_STANDUP = "write_standup"
     WRITE_RETRO = "write_retro"
     COMMENT = "comment"
+    # Reading the crew's own code and saying what's wrong with it (#9). Nothing
+    # else: the role that holds it can't write, commit or change anything.
+    DIAGNOSE_CREW = "diagnose_crew"
 
 
 class PermissionError_(PermissionError):

@@ -22,6 +22,7 @@ negotiate process with each other; they follow what is written here.
 | QA Engineer | Behaviour verdicts, Bugs | No |
 | Code Reviewer | Diff verdicts, Bugs | Yes |
 | Scrum Master | Standups, retros, defects — in the process or in the product | No |
+| Senior Engineer | Diagnoses of the crew's own code, on the Sponsor's request (`crew diagnose`); it changes nothing (crew#9) | No |
 
 These boundaries are structural, not prompt wording — a boundary that depends on
 granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
