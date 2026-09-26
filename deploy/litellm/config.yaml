@@ -99,32 +99,6 @@ model_list:
         min_p: 0.0
         repetition_penalty: 1.0
 
-  # Mechanical work — routing, labelling, field-setting — where reasoning is
-  # pure cost. Qwen3 honours enable_thinking=false (verified on the Spark).
-  #
-  # UNVERIFIED THROUGH THE PROXY: chat_template_kwargs is non-standard, and
-  # drop_params may strip it. Confirm reasoning_tokens is 0 through :4000
-  # before trusting this alias, or the saving is imaginary.
-  - model_name: crew-mechanical
-    model_info:
-      max_input_tokens: 262144   # SGLang launches with --context-length 262144
-    litellm_params:
-      model: openai/qwen3.8-27b-sglang
-      api_base: os.environ/SGLANG_BASE_URL
-      api_key: "sk-not-used"
-      drop_params: true
-      # Qwen3.8's recommended non-thinking sampling (see the note at the top).
-      temperature: 0.7
-      top_p: 0.80
-      presence_penalty: 1.5
-      timeout: 1800
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-        top_k: 20
-        min_p: 0.0
-        repetition_penalty: 1.0
-
   # Implementation work. Reasoning is switched OFF deliberately, and this is
   # the single largest performance decision in the system.
   #

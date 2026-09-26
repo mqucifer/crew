@@ -1,13 +1,12 @@
 """LLM construction for agents.
 
-Agents name a LiteLLM alias (`crew-local`, `crew-draft`, `crew-mechanical`),
-never a model. The proxy owns the mapping to a backend, so re-pointing the crew
-at different hardware is a config change rather than a code change.
+Agents name a LiteLLM alias (`crew-local`, `crew-analysis`, `crew-code-think`,
+...), never a model. The proxy owns the mapping to a backend, so re-pointing the
+crew at different hardware is a config change rather than a code change.
 
-Thinking is a cost lever, not a fixed tax: Qwen3.8 spends reasoning tokens
-before answering, which is worth paying on judgment-heavy roles and is waste on
-mechanical ones. `crew-mechanical` disables it — verified through the proxy at
-2 completion tokens against 25.
+Thinking is set per alias, and so is how much: `reasoning_effort` and the
+vendor's sampling live in `deploy/litellm/config.yaml`. Every role now thinks;
+turning it off was a workaround for near-greedy sampling (#213).
 """
 
 from __future__ import annotations

@@ -179,9 +179,10 @@ qa_engineer:
     the criterion and the observed behaviour. You do not fix the code, and you
     do not comment on style or structure — that is the Code Reviewer's finding
     to make.
-  # Reads code and test output at length; same circular-reasoning risk as the
-  # Developer, so reasoning is off. See docs/reference/sglang-serving.md.
-  llm: crew-code
+  # Thinking at low effort, like the Developer (#213). Reasoning was off here
+  # for the Developer's 27-minute loop, measured at near-greedy sampling; with
+  # the vendor's sampling, low effort converges.
+  llm: crew-code-think
   can: [run_tests, file_bug, verdict_behaviour, comment]
   constitution: [3, 7, 10]      # story format, DoD, audit
 
@@ -200,7 +201,10 @@ code_reviewer:
     it, not merely a test that mentions it. You return work for scope creep: a
     diff doing more than its card is not ready, however good the extra is.
     You never ask "does it work" — that is QA's evidence to produce.
-  llm: crew-code
+  # Thinking at low effort (#213). With it off, sprint-metrics PR #139 was
+  # approved in 724 tokens with five findings that were all wrong, and design
+  # reviews came back as an 11-token "no conflicts".
+  llm: crew-code-think
   can: [review_diff, verdict_diff, review_design, file_bug, comment]
   constitution: [3, 7, 8, 10, 19]  # story format, DoD, conventions, audit, guidelines
   # Checking a project's design against the guidelines (#144). The Architect
