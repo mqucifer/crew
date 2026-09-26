@@ -341,3 +341,33 @@ def test_an_epic_without_needs_design_holds_nothing_back():
     assert awaiting_design(Issues(), cards, REPO) == set()
     plan = plan_sprint(cards, parents({70: 49}), sprint="S1", capacity=20, awaiting_design=set())
     assert [c.number for c in plan.admitted] == [70] and plan.waiting_on_design == []
+
+
+def test_a_note_is_written_against_the_live_stories_only(tmp_path):
+    """#250: after sprint-metrics#59's re-split the Architect was given the superseded
+    #145 and #146 too, and designed #146's contract that the decision had ruled out."""
+    issues = Issues(
+        subs={
+            50: [
+                {
+                    "number": 143,
+                    "title": "api_version",
+                    "state": "closed",
+                    "state_reason": "completed",
+                },
+                {
+                    "number": 146,
+                    "title": "Error on stdout",
+                    "state": "closed",
+                    "state_reason": "not_planned",
+                },
+                {"number": 166, "title": "Prior sprint in JSON", "state": "open"},
+            ]
+        }
+    )
+    architect = Architect(note())
+    run(tmp_path, issues, architect)
+    shown = architect.calls[0]["stories"]
+    assert "### #166 Prior sprint in JSON" in shown
+    assert "Error on stdout" not in shown, "superseded: not the epic's any more"
+    assert "Already built in this epic: #143 api_version" in shown
