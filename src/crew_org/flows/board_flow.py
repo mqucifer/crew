@@ -127,6 +127,9 @@ class TickResult:
     # Approved epics not split yet because their project's design is being
     # revisited, or its technical work is still to land (#192).
     held_for_design: list[tuple[int, str]] = field(default_factory=list)
+    # Epic -> the stories its rework supersedes, (number, title), for the
+    # re-split to account for (#248).
+    superseded: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
 
     @property
     def quiescent(self) -> bool:
@@ -458,6 +461,8 @@ def rework_gate(
         )
         return False, ""
 
+    titles = {c.number: c.title for c in cards if (c.repo or repo) == repo}
+    result.superseded[number] = [(child, titles.get(child, "")) for child in closable]
     for child in closable:
         with contextlib.suppress(Exception):
             issues.close(repo, child, reason="not_planned")
@@ -709,6 +714,10 @@ def render_split(
         number = numbers.get(story.title)
         ref = f" — #{number}" if number else ""
         lines.append(f"- **[{story.points}]** {story.title}{ref}")
+    dropped = [a for a in proposal.accounted if a.how == "dropped"]
+    if dropped:
+        lines += ["", "### Dropped from the earlier split", ""]
+        lines += [f"- #{a.number}: {a.note}" for a in dropped]
     if proposal.already_delivered:
         lines += ["", "### Already delivered, not written again", ""]
         lines += [
@@ -1049,6 +1058,7 @@ def refine_epics(
                 body,
                 repository=context.for_repo(repo),
                 pinning=context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes),
+                superseded=result.superseded.get(number),
                 feedback=notes,
                 delivered=done.render(),
                 delivered_numbers=done.numbers if known else None,
