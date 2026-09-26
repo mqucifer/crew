@@ -19,7 +19,12 @@ from typing import Any
 
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
-from crew_org.flows.board_flow import NEEDS_DESIGN
+from crew_org.flows.board_flow import (
+    NEEDS_DESIGN,
+    PRODUCT_ANSWER_MARKER,
+    PRODUCT_QUESTION_MARKER,
+    STORY_SPLIT_MARKER,
+)
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_project import Card
@@ -44,13 +49,41 @@ def needs_note(card: Card) -> bool:
 
 
 def note_for(issues: Any, repo: str, epic: int) -> str:
-    """The epic's design note, as posted, or '' if it has none."""
+    """The epic's design note for its current stories, or '' if it has none.
+
+    Only a note posted since the epic was last split: a note is written against
+    the stories, and a re-split makes it stale. sprint-metrics#59 was re-split
+    after its note told the reviewer to reject what its criterion required
+    (#145), and the old note would have told the new stories the same (#244).
+    """
     try:
         comments = issues.comments(repo, epic)
     except Exception:  # noqa: BLE001
         return ""
-    notes = [c.get("body") or "" for c in comments if NOTE_MARKER in (c.get("body") or "")]
+    bodies = [c.get("body") or "" for c in comments]
+    splits = [i for i, b in enumerate(bodies) if STORY_SPLIT_MARKER in b]
+    since = bodies[splits[-1] + 1 :] if splits else bodies
+    notes = [b for b in since if NOTE_MARKER in b]
     return notes[-1] if notes else ""
+
+
+def decided(issues: Any, repo: str, epic: int) -> str:
+    """The latest decision on the epic about what its stories should do (#189).
+
+    The Product Owner's answer, or the Sponsor's reply to its question. A new
+    design note has to follow it, or it can contradict the stories again.
+    """
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, epic)]
+    except Exception:  # noqa: BLE001
+        return ""
+    for i in range(len(bodies) - 1, -1, -1):
+        if PRODUCT_ANSWER_MARKER in bodies[i]:
+            return bodies[i].replace(PRODUCT_ANSWER_MARKER, "").split("<!-- crew:by")[0].strip()
+        if PRODUCT_QUESTION_MARKER in bodies[i]:
+            replies = [b for b in bodies[i + 1 :] if "<!-- crew:" not in b]
+            return "\n\n".join(replies).strip()
+    return ""
 
 
 def awaiting_design(issues: Any, cards: list[Card], default_repo: str) -> set[tuple[str, int]]:
@@ -106,6 +139,12 @@ def write_notes(
                 record = None
             project = brief(record) if record else ""
             epic_text = f"#{number} {epic.title}\n\n{issues.get(repo, number).get('body') or ''}"
+            ruling = decided(issues, repo, number)
+            if ruling:
+                epic_text += (
+                    "\n\n## Decided for this epic\n\n"
+                    f"{ruling}\n\nThe design note follows this; it doesn't contradict it."
+                )
             story_text = "\n\n".join(
                 f"### #{s['number']} {s['title']}\n\n{s.get('body') or ''}"
                 for s in sorted(stories, key=lambda s: s["number"])
