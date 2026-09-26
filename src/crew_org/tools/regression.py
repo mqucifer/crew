@@ -217,7 +217,7 @@ def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
         "field it already has, in the order it has them. If you need a new "
         "field, append it with a default.",
     ]
-    if any(broke == REMOVED for _was, broke in broken.values()):
+    if any(broke.startswith(REMOVED) for _was, broke in broken.values()):
         lines += [
             "",
             "Moving a definition to another module is fine, and is not removing it. "
@@ -417,20 +417,30 @@ def without_moves(
         shutil.copytree(worktree, after, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
         try:
             apply_implementation(after, implementation)
-        except Exception:  # noqa: BLE001
-            # It won't apply; the edit machinery says why when it's applied for
-            # real. Nothing here can show a move, so the removals stand.
-            return broken
+        except Exception as exc:  # noqa: BLE001
+            # It won't apply, so nothing here can show a move. Say so: reported
+            # only as "removed entirely", the edit error that is the real fault
+            # was never seen.
+            why = f"the change doesn't apply, so it couldn't be checked as a move: {exc}"
+            return {
+                key: (value[0], f"{REMOVED}; {why}") if key in removals else value
+                for key, value in broken.items()
+            }
         modules = _modules(after)
         before = {
             path: _parse(worktree / path) for path in {k.partition("::")[0] for k in removals}
         }
-        kept = {key for key in removals if _moved(key, before, modules)}
+        why = {key: _moved(key, before, modules) for key in removals}
+    kept = {key for key, reason in why.items() if not reason}
     # A method goes where its class went: `Card.is_completed` removed with
     # `Card`, and `Card` moved whole, is part of that move. The class's own
     # check already compared every method.
     kept |= {key for key in broken if _owner(key) in kept}
-    return {key: value for key, value in broken.items() if key not in kept}
+    return {
+        key: (value[0], f"{REMOVED}; not a move: {why[key]}") if why.get(key) else value
+        for key, value in broken.items()
+        if key not in kept
+    }
 
 
 def _owner(key: str) -> str:
@@ -518,33 +528,54 @@ def _imports_whole(tree: ast.Module, importer: str, module_file: str, files: set
     return False
 
 
-def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.Module]) -> bool:
+def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.Module]) -> str:
+    """'' if the removal at `key` is a move callers survive; otherwise why it isn't.
+
+    The why names the one step that's missing, so a repair can make it: a
+    bare "removed entirely" left sprint-metrics#127 repeating the same move
+    three times without learning which part was wrong.
+    """
     path, _, name = key.partition("::")
     old_tree = before.get(path)
     old = _top_level(old_tree, name) if old_tree is not None else None
     if old is None:
-        return False
+        return f"`{path}` had no top-level `{name}` to move"
     files = set(after)
-    # Where it lives now, in a shape its callers can still use.
-    homes = {
+    elsewhere = {
+        file: new
+        for file, tree in after.items()
+        if file != path and (new := _top_level(tree, name)) is not None
+    }
+    if not elsewhere:
+        return f"no other module defines `{name}`, so this deletes it rather than moving it"
+    homes = {file for file, new in elsewhere.items() if contract_break(old, new) is None}
+    if not homes:
+        file, new = sorted(elsewhere.items())[0]
+        return f"`{file}` defines `{name}`, but it {contract_break(old, new)}"
+    home = sorted(homes)[0]
+    module = home.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+    module = module.removeprefix("src.")
+    # The old module still hands it out: callers of A.name are untouched.
+    if path in after and _binds_from(after[path], path, name, files) & homes:
+        return ""
+    askers = sorted(
         file
         for file, tree in after.items()
         if file != path
-        and (new := _top_level(tree, name)) is not None
-        and contract_break(old, new) is None
-    }
-    if not homes:
-        return False
-    # The old module still hands it out: callers of A.name are untouched.
-    if path in after and _binds_from(after[path], path, name, files) & homes:
-        return True
-    # The old module no longer hands it out: fine only if nobody asks it for
-    # this name, and its package hands the name out instead.
-    if any(
-        path in _binds_from(tree, file, name, files) or _imports_whole(tree, file, path, files)
-        for file, tree in after.items()
-        if file != path
-    ):
-        return False
+        and (
+            path in _binds_from(tree, file, name, files) or _imports_whole(tree, file, path, files)
+        )
+    )
+    if askers:
+        return (
+            f"`{home}` has it, but `{path}` doesn't import it back "
+            f"(add `from {module} import {name}` to `{path}`), and "
+            f"`{askers[0]}` still gets it from `{path}`"
+        )
     package = f"{path.rpartition('/')[0]}/__init__.py" if "/" in path else "__init__.py"
-    return package in after and bool(_binds_from(after[package], package, name, files) & homes)
+    if package in after and _binds_from(after[package], package, name, files) & homes:
+        return ""
+    return (
+        f"`{home}` has it and nothing asks `{path}` for it any more, but `{package}` "
+        f"doesn't import it from `{home}`"
+    )

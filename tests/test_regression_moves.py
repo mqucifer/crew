@@ -103,7 +103,10 @@ def test_a_move_the_old_module_doesnt_import_back_is_still_a_removal(repo: Path)
     """The test file still imports Card from the old module; it would break."""
     broken = check(repo, moved_to_card())
     assert set(broken) == {f"{OLD}::Card", f"{OLD}::parse_card"}
-    assert all(now == REMOVED for _was, now in broken.values())
+    now = broken[f"{OLD}::Card"][1]
+    assert now.startswith(REMOVED) and "doesn't import it back" in now
+    assert f"add `from sprint_metrics.card import Card` to `{OLD}`" in now
+    assert f"still gets it from `{OLD}`" in now
 
 
 def test_moving_is_no_way_round_keeping_a_shape(repo: Path):
@@ -116,7 +119,8 @@ def test_moving_is_no_way_round_keeping_a_shape(repo: Path):
 
 def test_a_real_removal_is_still_refused(repo: Path):
     broken = check(repo, impl(edits=[delete("calculate_throughput")]))
-    assert [now for _was, now in broken.values()] == [REMOVED]
+    (now,) = [now for _was, now in broken.values()]
+    assert now.startswith(REMOVED) and "no other module defines `calculate_throughput`" in now
     assert set(broken) == {f"{OLD}::calculate_throughput"}
 
 
@@ -225,3 +229,28 @@ def test_naming_a_files_entry_block_points_at_text_edits():
     main = 'import sys\n\nfrom x import main\n\nif __name__ == "__main__":\n    sys.exit(main())\n'
     with pytest.raises(EditError, match="quote the lines in `text_edits`"):
         apply_edits(main, [Edit(operation=Operation.REPLACE, target="__main__", source="x")])
+
+
+# --- a refused move says which step is missing (sprint-metrics#127) ---------------------------
+
+
+def test_a_move_whose_shape_changed_says_how(repo: Path):
+    reshaped = CARD.replace("    started: str | None = None\n", "")
+    broken = check(
+        repo,
+        moved_to_card(import_back("from .card import Card, parse_card"), card=reshaped),
+    )
+    now = broken[f"{OLD}::Card"][1]
+    assert f"`{PKG}/card.py` defines `Card`, but it" in now and "fields" in now
+
+
+def test_a_change_that_wont_apply_says_so_instead_of_only_removed(repo: Path):
+    """#127 was refused three times as "removed entirely"; an edit error would be hidden."""
+    broken = check(repo, moved_to_card(delete("no_such_thing")))
+    now = broken[f"{OLD}::Card"][1]
+    assert "the change doesn't apply" in now and "no_such_thing" in now
+
+
+def test_the_developer_sees_the_reason(repo: Path):
+    text = describe_contracts(check(repo, moved_to_card()))
+    assert "doesn't import it back" in text and "Moving a definition" in text
