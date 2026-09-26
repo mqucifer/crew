@@ -58,6 +58,15 @@ class EventKind(StrEnum):
     ESCALATION_DECIDED = "escalation.decided"
     ESCALATED = "escalation.sent"
 
+    # Breaking a loop, step by step (#189, #242): a story sent back because its
+    # failures were the story's, the Product Owner deciding or asking, and the
+    # epic split again with that to read. Each its own kind, so the chain can be
+    # found, counted and replayed.
+    STORY_RETURNED = "story.returned"
+    PRODUCT_ANSWERED = "product.answered"
+    PRODUCT_ASKED = "product.asked"
+    EPIC_RESPLIT = "epic.resplit"
+
     NOTE = "note"
 
 

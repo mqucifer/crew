@@ -1112,7 +1112,14 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     number = pull["number"] if pull else None
     comment = story_problem.round_trip_evidence(issues, repo, card, number, rounds)
     if not story_problem.return_to_refinement(
-        board, issues, sink, card, repo=repo, cards=board.cards(), comment=comment
+        board,
+        issues,
+        sink,
+        card,
+        repo=repo,
+        cards=board.cards(),
+        comment=comment,
+        reason="gate round trips",
     ):
         return False
     if number is not None:

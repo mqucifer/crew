@@ -331,6 +331,15 @@ def product_step(
         result.failed.append((number, f"the Product Owner couldn't answer: {exc}"[:200]))
         return False
     if reply.answer.strip():
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.PRODUCT_ANSWERED,
+                role="Product Owner",
+                card=number,
+                summary=f"epic #{number}: decided — {reply.answer.strip()}"[:120],
+                detail={"repo": repo, "answer": reply.answer.strip(), "based_on": reply.based_on},
+            )
+        )
         artifacts.comment(
             issues,
             sink,
@@ -352,8 +361,24 @@ def product_step(
         by="Product Owner",
     )
     artifacts.label(issues, sink, repo=repo, number=number, by="Product Owner", add=[NEEDS_HUMAN])
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.PRODUCT_ASKED,
+            role="Product Owner",
+            card=number,
+            summary=f"epic #{number}: asks the Sponsor — {reply.question.strip()}"[:120],
+            detail={"repo": repo, "question": reply.question.strip()},
+        )
+    )
     result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
     return False
+
+
+def _all_bodies(issues: IssueClient, repo: str, number: int) -> str:
+    try:
+        return "\n".join(c.get("body") or "" for c in issues.comments(repo, number))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _last_marked(comments: list[dict], marker: str) -> int:
@@ -447,6 +472,21 @@ def rework_gate(
     with contextlib.suppress(Exception):
         # The Sponsor's label, spent. Nobody's role to claim.
         artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_REWORK])
+    evidence = story_problem_evidence(issues, repo, number)
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.EPIC_RESPLIT,
+            card=number,
+            summary=f"epic #{number} split again"
+            + (" after a story problem" if evidence else " at the Sponsor's request"),
+            detail={
+                "repo": repo,
+                "superseded": closable,
+                "because": "story problem" if evidence else "sponsor",
+                "reads_decision": PRODUCT_ANSWER_MARKER in _all_bodies(issues, repo, number),
+            },
+        )
+    )
     return True, "\n\n".join(
         part
         for part in (
