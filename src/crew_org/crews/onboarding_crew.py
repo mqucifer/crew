@@ -31,7 +31,16 @@ class ReleaseAnswers(BaseModel):
     deploys: bool | None = Field(
         None, description="True if anything is deployed; false if the merge is the release"
     )
-    where: str | None = Field(None, description="Where it is deployed, if it is")
+    publishes: bool | None = Field(
+        None,
+        description=(
+            "True if a release is a published version a user installs and pins, such as a "
+            "tag; that is not a deployment"
+        ),
+    )
+    where: str | None = Field(
+        None, description="Where it is deployed, or where the version is published"
+    )
 
 
 class DoneAnswers(BaseModel):
