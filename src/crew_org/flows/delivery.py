@@ -690,6 +690,9 @@ def deliver_story(
         # A definition moved to another module, and still reachable where
         # callers look for it, isn't removed (#202).
         broken = regression.without_moves(worktree, implementation, broken)
+        # A name the module passes along, or a constant, that another file
+        # still imports from it (sprint-metrics#129).
+        broken |= regression.lost_names(worktree, implementation)
         if broken:
             failure = LocalFailure(
                 card=number,

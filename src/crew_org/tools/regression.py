@@ -579,3 +579,103 @@ def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.
         f"`{home}` has it and nothing asks `{path}` for it any more, but `{package}` "
         f"doesn't import it from `{home}`"
     )
+
+
+# --- a name a module passes along is a promise too ---------------------------------------------
+#
+# `crew_performance.py` imported `calculate_blocked_aging` from `metrics.py`
+# and the package's `__init__.py` imported it from there. sprint-metrics#129
+# removed that import as unused (lint's F401), the package broke, and putting
+# it back failed lint: the Developer went round between the two until it
+# blocked. The contract check only knew definitions, so it never said which
+# file still asked, or how to keep the name and satisfy lint.
+
+
+def lost_names(worktree: Path, implementation) -> dict[str, tuple[str, str]]:
+    """Names a changed module stops providing that another file still imports from it.
+
+    Covers what `broken_contracts` doesn't: a name the module imported and
+    passed along, or a constant it assigned. Keyed `path::name` like a broken
+    contract, valued (what it was, what goes wrong). Judged with the change
+    applied to a scratch copy; a change that won't apply reports nothing here,
+    since `without_moves` already says so.
+    """
+    import shutil  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
+
+    changed = {e.path for e in implementation.all_edits if e.path.endswith(".py")} | {
+        t.path for t in implementation.text_edits if t.path.endswith(".py")
+    }
+    changed = {p for p in changed if (worktree / p).is_file()}
+    if not changed:
+        return {}
+    before = {path: _parse(worktree / path) for path in changed}
+    with tempfile.TemporaryDirectory() as scratch:
+        after_root = Path(scratch) / "after"
+        shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
+        try:
+            apply_implementation(after_root, implementation)
+        except Exception:  # noqa: BLE001
+            return {}
+        after = _modules(after_root)
+    files = set(after)
+    found: dict[str, tuple[str, str]] = {}
+    for path in sorted(changed):
+        old = before.get(path)
+        if old is None:
+            continue
+        had = _passed_along(old)
+        has = _provided(after[path]) if path in after else set()
+        for name, was in sorted(had.items()):
+            if name in has:
+                continue
+            askers = sorted(
+                file
+                for file, tree in after.items()
+                if file != path and path in _binds_from(tree, file, name, files)
+            )
+            if not askers:
+                continue
+            home = was.removeprefix("imported from ")
+            found[f"{path}::{name}"] = (
+                was,
+                f"is no longer provided, and `{askers[0]}` still imports it from `{path}`. "
+                f"Keep it in `{path}` as `from {home} import {name} as {name}` (the `as` "
+                f"marks it as passed along, so lint doesn't call it unused), or change "
+                f"`{askers[0]}` to import it from where it lives now",
+            )
+    return found
+
+
+def _passed_along(tree: ast.Module) -> dict[str, str]:
+    """Top-level names bound by an import or an assignment, and how."""
+    found: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom):
+            source = "." * node.level + (node.module or "")
+            for alias in node.names:
+                if alias.name != "*":
+                    found[alias.asname or alias.name] = f"imported from {source}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                found[alias.asname or alias.name.split(".")[0]] = f"imported as {alias.name}"
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found[target.id] = "a constant assigned here"
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            found[node.target.id] = "a constant assigned here"
+    return found
+
+
+def _provided(tree: ast.Module) -> set[str]:
+    """Every top-level name the module binds: definitions, imports, assignments."""
+    names = set(_passed_along(tree))
+    names |= {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    }
+    return names
