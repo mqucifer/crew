@@ -477,10 +477,18 @@ it. Ask that first, before adding a rule.
 
 Three rules for every limit on prompt content:
 
-1. **Trim for churn, not for bytes.** A limit is justified when the content
-   changes between attempts and invalidates the cached prefix. Size alone costs
-   nothing: the window is 262,144 tokens against a pilot repository of under
-   22,000 characters. Stable content can be large and cache perfectly.
+1. **Trim for churn, and for relevance at size.** A limit is justified when
+   the content changes between attempts and invalidates the cached prefix.
+   This rule was written when size cost nothing: a pilot repository of under
+   22,000 characters in a 262,144-token window. By 2026-09-26 sprint-metrics
+   was about 200,000 characters of context, and the Architect's design-note
+   prompt about 56k tokens, more than half of it test bodies it doesn't use.
+   Now a role is shown what its job needs: roles that decide see the source in
+   full and tests by name (crew#230); the Developer, which edits tests, sees
+   them whole; the Business Analyst is also shown, in full, the tests that pin
+   behaviour an epic touches (crew#189). What is left out is still said out
+   loud (rule 3). Where this is heading, a role asking for what it needs, is
+   crew#231.
 2. **A ceiling is a guard, not a budget.** Set it where a tree genuinely stops
    fitting, not where a prompt feels long. It should never fire in normal work.
 3. **When it fires, fail loudly.** Drop whole files and name them, keep the end
