@@ -368,6 +368,10 @@ def _admit(crew: Crew) -> PhaseOutcome:
             f"{c.name(qualify=True)} — waits for its epic's design note"
             for c in plan.waiting_on_design
         ]
+        + [
+            f"{c.name(qualify=True)} — waits for its epic to be split again"
+            for c in plan.waiting_on_rework
+        ]
         + (
             [f"{plan.sprint} is full: {plan.committed} of {plan.capacity} points"]
             if plan.full and any(s.deferred for s in plan.slices)

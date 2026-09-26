@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from crew_org.columns import INBOX, READY, SPRINT_BACKLOG
 from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.moves import move_card
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -75,6 +76,9 @@ class SprintPlan:
     not_ours: list[Card] = field(default_factory=list)
     # Stories whose epic needs a design note it doesn't have yet (#155).
     waiting_on_design: list[Card] = field(default_factory=list)
+    # Stories whose epic is waiting to be split again (`needs:rework`): they're
+    # about to be superseded (#189, #242).
+    waiting_on_rework: list[Card] = field(default_factory=list)
     # Points already in the sprint before this run, whatever their column (#222).
     committed: int = 0
 
@@ -175,6 +179,12 @@ def plan_sprint(
             continue
         if epic.key in (awaiting_design or set()):
             plan.waiting_on_design += stories
+            continue
+        # Sent back to be split again: its stories are about to be superseded.
+        # sprint-metrics#59's were re-admitted the tick they went back, and
+        # #145 was rebuilt against the design note that had caused its loop.
+        if NEEDS_REWORK in epic.labels:
+            plan.waiting_on_rework += stories
             continue
 
         piece = EpicSlice(number=epic.number or 0, title=epic.title)

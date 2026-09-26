@@ -297,3 +297,13 @@ def test_another_repositorys_points_are_not_counted_when_the_crew_is_bounded():
     cards = [epic(59), other, story(10, 5)]
     plan = plan_sprint(cards, parents({10: 59}), sprint="Sprint 6", capacity=20, repos={REPO})
     assert plan.committed == 0 and [c.number for c in plan.admitted] == [10]
+
+
+def test_an_epic_waiting_to_be_split_again_admits_nothing():
+    """sprint-metrics#59's stories were re-admitted the tick they went back."""
+    reworked = epic(59)
+    reworked.labels = frozenset({"needs:rework"})
+    cards = [reworked, story(146, 3), story(147, 2)]
+    plan = plan_sprint(cards, parents({146: 59, 147: 59}), sprint="Sprint 7", capacity=20)
+    assert plan.admitted == []
+    assert [c.number for c in plan.waiting_on_rework] == [146, 147]
