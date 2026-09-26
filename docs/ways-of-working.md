@@ -387,6 +387,13 @@ asks the old module for it any more, it's kept when the package's
 change applied, since a move spans files. Without this, no refactor the
 Architect proposes (§13) could land: a split by concern is nothing but moves.
 
+**A name a module passes along is protected too** (sprint-metrics#129). If
+another file imports a name from a module (a function it imported from
+elsewhere, or a constant), that module keeps providing it, or the other file
+is changed to import it from where it lives now. Lint calls a pass-along
+import unused; `from x import name as name` marks it deliberate and lint
+accepts it. The Developer is told which file still asks, and both ways out.
+
 **Why this is a check and not an instruction.** The Developer returns whole
 files, which is what makes its output easy to validate and repair. The cost is
 that extending a module means rewriting it, and a model asked to add one metric
