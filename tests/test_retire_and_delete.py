@@ -134,3 +134,25 @@ def test_a_deleted_file_counts_as_touched_for_the_projects_protections():
 
 def test_a_deletion_alone_is_a_change():
     assert not removal(deleted_files=[OLD]).changes_nothing
+
+
+def test_retiring_a_test_deletes_it(repo: Path):
+    """#132 retired tests and sent no delete for them; the one still asking was retired."""
+    implementation = removal(
+        deleted_files=[OLD], text_edits=[REPOINT, DROP_IMPORT], retired_tests=[RETIRE]
+    )
+    assert judge(repo, implementation) == {}
+    apply_implementation(repo, implementation)
+    assert RETIRE.test not in (repo / PINS).read_text()
+    assert "def test_throughput" in (repo / PINS).read_text()
+
+
+def test_a_retired_test_already_deleted_by_name_is_fine(repo: Path):
+    implementation = removal(
+        deleted_files=[OLD],
+        edits=[UNPIN],
+        text_edits=[REPOINT, DROP_IMPORT],
+        retired_tests=[RETIRE],
+    )
+    apply_implementation(repo, implementation)
+    assert RETIRE.test not in (repo / PINS).read_text()

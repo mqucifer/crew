@@ -131,6 +131,21 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         written.append(path)
 
     written += apply_text_edits(worktree, implementation.text_edits, before=before)
+    # Retiring a test removes it: sprint-metrics#132 named three tests as
+    # retired and sent no delete for them, twice, and the one still importing
+    # the deleted module was one of them. What's retired is gone.
+    for retired in getattr(implementation, "retired_tests", []):
+        target = (root / retired.path).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            continue  # its file deleted outright, or never there: nothing to remove
+        if _defines(target, retired.test):
+            text = target.read_text(encoding="utf-8")
+            target.write_text(
+                apply_edits(text, [Edit(operation=Operation.DELETE, target=retired.test)]),
+                encoding="utf-8",
+            )
+            if retired.path not in written:
+                written.append(retired.path)
     for path in getattr(implementation, "deleted_files", []):
         target = (root / path).resolve()
         if not target.is_relative_to(root):
@@ -260,7 +275,9 @@ def _outside_definitions(item, text: str) -> None:
         return  # nothing to locate definitions in; the file is refused as a whole later
     start = text.index(item.find)
     first = text.count("\n", 0, start) + 1
-    last = first + item.find.count("\n")
+    # The quote's last line with text: a trailing newline ends a line, it doesn't
+    # reach into the next one (an import directly above a function was refused).
+    last = first + item.find.rstrip("\n").count("\n")
     for node in tree.body:
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             continue

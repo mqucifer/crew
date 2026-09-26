@@ -643,7 +643,7 @@ def deliver_story(
                 feedback = (
                     f"These already exist: {', '.join(overwrites)}. Change them with "
                     "`edits`, addressed by name, rather than rewriting them as new "
-                    "files. Only a file that does not exist yet belongs in new_files."
+                    "files. Only a file that does not exist yet belongs in new_files." + NOT_APPLIED
                 )
                 continue
             outcome.blocked_reason = f"kept rewriting existing files: {', '.join(overwrites)}"
@@ -674,8 +674,10 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = "This change goes outside what the project allows:\n\n" + "\n".join(
-                    f"- {reason}" for reason in outside
+                feedback = (
+                    "This change goes outside what the project allows:\n\n"
+                    + "\n".join(f"- {reason}" for reason in outside)
+                    + NOT_APPLIED
                 )
                 continue
             outcome.failure_detail = "\n".join(outside)
@@ -730,7 +732,7 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = regression.describe_contracts(broken)
+                feedback = regression.describe_contracts(broken) + NOT_APPLIED
                 continue
             outcome.failure_detail = regression.describe_contracts(broken)
             outcome.blocked_reason = decision.reason
@@ -954,6 +956,17 @@ def deliver_story(
         )
     )
     return outcome
+
+
+# Said on every refusal made before anything is written. A repair is told to
+# send only what fixes the failure, so after a refusal the Developer sent only
+# the new piece and dropped the rest, taking it as already applied:
+# sprint-metrics#132's third attempt left out the `__init__.py` change its
+# first two had carried, and blocked on it.
+NOT_APPLIED = (
+    "\n\nNothing from this attempt was applied: the repository is as it was before it. "
+    "Send the whole change again, corrected, not only the part that was wrong."
+)
 
 
 def _keep_proposal(sink: EventSink, repo: str, number: int, implementation) -> None:
