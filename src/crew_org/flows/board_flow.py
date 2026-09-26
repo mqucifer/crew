@@ -40,6 +40,7 @@ from crew_org.crews.refinement_crew import (
 from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
@@ -518,6 +519,11 @@ def render_split(
         number = numbers.get(story.title)
         ref = f" — #{number}" if number else ""
         lines.append(f"- **[{story.points}]** {story.title}{ref}")
+    if proposal.already_delivered:
+        lines += ["", "### Already delivered, not written again", ""]
+        lines += [
+            f"- {d.title} — delivered by #{d.by}: {d.why}" for d in proposal.already_delivered
+        ]
     lines += [
         "",
         "### Design",
@@ -531,6 +537,28 @@ def render_split(
             "implementation begins."
         )
     return "\n".join(lines)
+
+
+class KnownDelivered:
+    """Each repository's delivered stories, read once per tick (#220).
+
+    Best effort, like the repository context: a history that can't be read
+    leaves the roles working as they did, and says so.
+    """
+
+    def __init__(self, issues: IssueClient, sink: EventSink) -> None:
+        self._issues, self._sink = issues, sink
+        self.cards: list[Card] = []
+        self._cache: dict[str, Delivered] = {}
+
+    def for_repo(self, repo: str) -> Delivered:
+        if repo not in self._cache:
+            try:
+                self._cache[repo] = delivered(self._issues, self.cards, repo)
+            except Exception as exc:  # noqa: BLE001
+                self._sink.note(EventKind.NOTE, f"{repo}: delivered stories unread: {exc}"[:120])
+                self._cache[repo] = Delivered()
+        return self._cache[repo]
 
 
 class RepoContext:
@@ -748,6 +776,7 @@ def refine_epics(
     default_repo: str,
     context: RepoContext,
     holds: dict[str, str] | None = None,
+    known: KnownDelivered | None = None,
 ) -> None:
     """Split approved epics into stories, and decide whether design is warranted.
 
@@ -790,11 +819,14 @@ def refine_epics(
             # Owner one step earlier was given its goal whole — and the Business
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
+            done = known.for_repo(repo) if known else Delivered()
             proposal = split_epic(
                 epic_card.title,
                 _goal_body(issues, repo, number),
                 repository=context.for_repo(repo),
                 feedback=notes,
+                delivered=done.render(),
+                delivered_numbers=done.numbers if known else None,
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -908,6 +940,16 @@ def refine_epics(
         artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
 
         result.epics_refined.append(number)
+        # Everything it asked for already exists: nothing will ever close it
+        # from below, so it closes now, citing what delivered it (#220).
+        if not proposal.stories:
+            issues.close(repo, number, reason="completed")
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} closed: already delivered by "
+                + ", ".join(f"#{d.by}" for d in proposal.already_delivered),
+                card=number,
+            )
         sink.emit(
             CrewEvent(
                 kind=EventKind.AGENT_FINISHED,
@@ -950,11 +992,13 @@ def tick(
 
     result = TickResult()
     context = RepoContext(ws, sink)
+    known = KnownDelivered(issues, sink)
     sink.note(EventKind.TICK_STARTED, "reading board", tick=1)
 
     # Only the repositories the crew works in. A Goal anywhere else is not the
     # crew's to decompose, however it is typed.
     cards = within(board.cards(), repos)
+    known.cards = cards
     sink.note(EventKind.NOTE, f"{len(cards)} cards on the board", counts=board.counts(cards))
 
     cards = stamp_goal_work_type(board, sink, cards)
@@ -1012,6 +1056,7 @@ def tick(
                 f"{card.title}\n\n{_goal_body(issues, repo, number)}",
                 repository=context.for_repo(repo),
                 feedback=notes,
+                delivered=known.for_repo(repo).render(),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -1071,6 +1116,7 @@ def tick(
         default_repo=default_repo,
         context=context,
         holds=holds,
+        known=known,
     )
 
     sink.note(
