@@ -46,6 +46,23 @@ class Story(BaseModel):
         description=f"At least {MIN_CRITERIA}; one must cover a failure or edge case"
     )
     points: int = Field(description=f"One of {POINT_SCALE}")
+    pinned_behaviour: str = Field(
+        default="",
+        description=(
+            "Only when this story changes what a merged test asserts: 'opt-in' (the "
+            "existing tests keep passing) or 'contract change: <the tests it updates>'"
+        ),
+    )
+
+    @field_validator("pinned_behaviour")
+    @classmethod
+    def _opt_in_or_contract(cls, value: str) -> str:
+        text = value.strip()
+        if text and not (
+            text.lower().startswith("opt-in") or text.lower().startswith("contract change")
+        ):
+            raise ValueError("say 'opt-in' or 'contract change: <the tests it updates>' (#189)")
+        return text
 
     @field_validator("points")
     @classmethod
@@ -301,6 +318,7 @@ def split_epic(
     feedback: str = "",
     delivered: str = "",
     delivered_numbers: set[int] | None = None,
+    pinning: str = "",
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -318,6 +336,7 @@ def split_epic(
     task = Task(
         description=(
             repo_block
+            + (f"{pinning}\n\n" if pinning else "")
             + _delivered_block(
                 delivered,
                 "a story these already deliver: list it in `already_delivered`, with the "
