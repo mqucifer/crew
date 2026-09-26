@@ -687,6 +687,9 @@ def deliver_story(
         # story #9 changed a return type to None and spent every attempt on the
         # TypeError it produced three functions away.
         broken = regression.broken_contracts(worktree, implementation.all_edits)
+        # A definition moved to another module, and still reachable where
+        # callers look for it, isn't removed (#202).
+        broken = regression.without_moves(worktree, implementation, broken)
         if broken:
             failure = LocalFailure(
                 card=number,

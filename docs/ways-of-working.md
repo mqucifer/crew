@@ -378,6 +378,15 @@ mechanically rather than asked for:
 Private helpers are exempt — how a module organises itself internally is the
 author's business.
 
+**Moving a definition is not deleting it** (crew#202). What callers rely on is
+that a name reaches them with the same shape, not which file defines it. A
+definition deleted from one module and defined, unchanged in shape, in another
+is kept when the old module imports it back. Or, when nothing in the repository
+asks the old module for it any more, it's kept when the package's
+`__init__.py` hands it out instead. Judged on a scratch copy with the whole
+change applied, since a move spans files. Without this, no refactor the
+Architect proposes (§13) could land: a split by concern is nothing but moves.
+
 **Why this is a check and not an instruction.** The Developer returns whole
 files, which is what makes its output easy to validate and repair. The cost is
 that extending a module means rewriting it, and a model asked to add one metric
