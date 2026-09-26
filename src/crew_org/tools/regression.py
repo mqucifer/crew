@@ -426,7 +426,17 @@ def without_moves(
             path: _parse(worktree / path) for path in {k.partition("::")[0] for k in removals}
         }
         kept = {key for key in removals if _moved(key, before, modules)}
+    # A method goes where its class went: `Card.is_completed` removed with
+    # `Card`, and `Card` moved whole, is part of that move. The class's own
+    # check already compared every method.
+    kept |= {key for key in broken if _owner(key) in kept}
     return {key: value for key, value in broken.items() if key not in kept}
+
+
+def _owner(key: str) -> str:
+    """`path::Class.method` -> `path::Class`; a top-level key is its own owner."""
+    path, _, target = key.partition("::")
+    return f"{path}::{target.split('.')[0]}"
 
 
 def _parse(path: Path) -> ast.Module | None:

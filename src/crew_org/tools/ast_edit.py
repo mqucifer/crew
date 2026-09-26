@@ -167,7 +167,11 @@ def apply_edit(source: str, edit: Edit) -> str:
     node = definitions.get(edit.target)
     if node is None:
         known = ", ".join(sorted(definitions)[:12]) or "nothing"
-        raise EditError(f"no definition named {edit.target!r}. This file defines: {known}")
+        raise EditError(
+            f"no definition named {edit.target!r}. This file defines: {known}. A file's "
+            "imports and its `if __name__` block have no name: to change those, quote the "
+            "lines in `text_edits` (#204)."
+        )
 
     start, end = _span(node)
 
@@ -182,7 +186,20 @@ def apply_edit(source: str, edit: Edit) -> str:
 
 
 def apply_edits(source: str, edits: list[Edit]) -> str:
-    """Apply edits in order, re-parsing between each."""
+    """Apply edits in order, re-parsing between each.
+
+    A delete the others already make is dropped rather than failed: removing
+    `Card.is_completed` when `Card` itself is removed, or removing the same
+    name twice. sprint-metrics#125 deleted a class and then each of its methods,
+    and was refused for the methods being gone.
+    """
+    deleted = {e.target for e in edits if e.operation is Operation.DELETE}
+    seen: set[str] = set()
     for edit in edits:
+        if edit.operation is Operation.DELETE:
+            owner = edit.target.split(".")[0]
+            if edit.target in seen or (owner != edit.target and owner in deleted):
+                continue
+            seen.add(edit.target)
         source = apply_edit(source, edit)
     return source
