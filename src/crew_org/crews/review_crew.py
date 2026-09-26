@@ -35,6 +35,13 @@ class Finding(BaseModel):
             "having that doesn't hold it up"
         ),
     )
+    conflicts_with: str = Field(
+        default="",
+        description=(
+            "The acceptance criterion, quoted, that the code would break if the author did "
+            "what this finding asks. Empty when it breaks none"
+        ),
+    )
 
     @field_validator("action")
     @classmethod
@@ -71,6 +78,11 @@ class ReviewVerdict(BaseModel):
                 "it `blocking: false` if it's a note that doesn't hold the merge up."
             )
         return self
+
+    @property
+    def conflicts(self) -> list[Finding]:
+        """Findings the story's own criteria contradict: the Product Owner's to settle (#252)."""
+        return [f for f in self.findings if f.blocking and f.conflicts_with.strip()]
 
     @property
     def notes(self) -> list[Finding]:
@@ -155,6 +167,14 @@ def review_diff(
                 "## The Architect's design note for this story's epic\n\n"
                 f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"
                 if design_note
+                else ""
+            )
+            + (
+                "The acceptance criteria are the product's decisions. If a finding would "
+                "have the author break one of them, whatever the design note says, set its "
+                "`conflicts_with` to that criterion: the story goes to the Product Owner to "
+                "settle, not back to the author.\n"
+                if acceptance_criteria
                 else ""
             )
             + "Review for correctness first, then reuse and simplification. Name the file "

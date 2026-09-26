@@ -8,12 +8,15 @@ same property that lets the Sponsor approve the crew's.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
+from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
@@ -24,6 +27,7 @@ from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import checks_section, imported_code
 
 REVIEW_MARKER = "<!-- crew:review -->"
+CRITERIA = "## Acceptance criteria"
 
 
 @dataclass
@@ -44,6 +48,8 @@ class ReviewResult:
     reviewed: list[ReviewOutcome] = field(default_factory=list)
     skipped: list[ReviewOutcome] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
+    # (story, epic) sent back to refinement over a conflict with its own criteria.
+    returned: list[tuple[int, int]] = field(default_factory=list)
 
 
 def render_review(verdict: ReviewVerdict) -> str:
@@ -53,6 +59,8 @@ def render_review(verdict: ReviewVerdict) -> str:
         lines += ["## Findings", ""]
         for finding in blocking:
             lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
+            if finding.conflicts_with.strip():
+                lines += [f"Conflicts with the story's criterion: {finding.conflicts_with}", ""]
     if verdict.notes:
         lines += ["## Notes, not blocking", ""]
         for finding in verdict.notes:
@@ -117,6 +125,7 @@ def review_open_pulls(
     bot_login: str,
     board: ProjectClient | None = None,
     cards: list[Card] | None = None,
+    writer: IssueClient | None = None,
 ) -> ReviewResult:
     """Review every open pull request that the crew has not yet judged.
 
@@ -125,6 +134,10 @@ def review_open_pulls(
     A queue a phase never drains is not a queue, and until this existed review
     was the one phase that read the board without ever touching it — invisible
     to the orchestrator, and uncapped while the columns either side were not.
+
+    `writer` is the identity that hands a story back to refinement (#252): the
+    epic's label and evidence, and closing the pull request, are delivery's
+    acts, not a review. Defaults to `issues`.
     """
     result = ReviewResult()
     waiting = cards_by_branch(cards or []) if board is not None else {}
@@ -170,6 +183,7 @@ def review_open_pulls(
                     read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
                 ),
                 design_note=story_note(issues, story, repo) if story is not None else "",
+                acceptance_criteria=story_criteria(issues, story, repo),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -228,6 +242,20 @@ def review_open_pulls(
                     frm=REVIEWING,
                     summary="diff approved",
                 )
+            elif (
+                event == "REQUEST_CHANGES"
+                and verdict.conflicts
+                and _to_product_owner(
+                    card,
+                    verdict,
+                    number,
+                    board=board,
+                    issues=writer or issues,
+                    sink=sink,
+                    repo=repo,
+                )
+            ):
+                result.returned.append((card.number or 0, card.parent or 0))
             elif event == "REQUEST_CHANGES":
                 move_card(
                     board,
@@ -245,6 +273,74 @@ def review_open_pulls(
                 )
 
     return result
+
+
+def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) -> str:
+    """The story's acceptance criteria, as its issue states them.
+
+    The reviewer was shown the epic's design note and never the story: on
+    sprint-metrics#145 it asked, three times, for the assertion the story's own
+    criterion required, because the note said so (#252).
+    """
+    if card is None:
+        return ""
+    try:
+        body = issues.get(card.repo or default_repo, card.number or 0).get("body") or ""
+    except Exception:  # noqa: BLE001
+        return ""
+    start = body.find(CRITERIA)
+    if start == -1:
+        return ""
+    section = body[start + len(CRITERIA) :]
+    for end in ("\n**Estimate**", "\n---"):
+        section = section.split(end, 1)[0]
+    return section.strip()
+
+
+def _to_product_owner(
+    card: Card, verdict: ReviewVerdict, pull: int, *, board, issues, sink, repo: str
+) -> bool:
+    """A finding the story's criteria contradict goes back to refinement at once (#252).
+
+    Asking the author to break a criterion can't settle the story, and a repair
+    round only finds that out slowly: #145 went round six times. The Product
+    Owner decides which holds, and the epic is split again. True if it went back.
+    """
+    repo = card.repo or repo
+    found = "\n\n".join(
+        f"**`{f.file}`**: {f.concern}\n→ {f.action}\n\nThe criterion: {f.conflicts_with}"
+        for f in verdict.conflicts
+    )
+    comment = (
+        f"{STORY_PROBLEM_MARKER}\n"
+        f"**#{card.number} went back to refinement: its review conflicts with its criteria.**"
+        f"\n\nThe Code Reviewer asked for a change to *{card.title}* (PR #{pull}) that the "
+        "story's own acceptance criterion rules out.\n\n"
+        f"{found}\n\nSettle which holds before this epic is split again."
+    )
+    if not story_problem.return_to_refinement(
+        board,
+        issues,
+        sink,
+        card,
+        repo=repo,
+        cards=board.cards(),
+        comment=comment,
+        reason="review conflicts with a criterion",
+    ):
+        return False
+    with contextlib.suppress(Exception):
+        issues.comment(
+            repo,
+            pull,
+            signed(
+                f"Closed: #{card.number} went back to refinement. Its review asked for a "
+                "change its own criteria rule out. See its epic.",
+                "Code Reviewer",
+            ),
+        )
+        issues.close_pull(repo, pull)
+    return True
 
 
 def _with_answer(prior: str, answer: str) -> str:
