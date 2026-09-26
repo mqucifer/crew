@@ -84,3 +84,15 @@ def test_a_tool_call_is_recorded(seen):
     emit(ToolUsageStartedEvent(tool_name="read_file", tool_args={"path": "a.py"}))
     assert [e.kind for e in seen] == [EventKind.TOOL_STARTED]
     assert seen[-1].detail["tool"] == "read_file"
+
+
+def test_a_failed_call_says_why(seen):
+    """#223: three design notes failed at ten minutes each and the log said only "failed"."""
+    from crewai.events.types.llm_events import LLMCallFailedEvent
+
+    emit(
+        LLMCallFailedEvent(model="crew-local", call_id="c3", error="Invalid response from LLM call")
+    )
+    failed = seen[-1]
+    assert failed.kind is EventKind.LLM_CALL_FAILED
+    assert failed.detail["error"] == "Invalid response from LLM call"
