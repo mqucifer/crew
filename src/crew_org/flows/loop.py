@@ -408,6 +408,7 @@ def _review(crew: Crew) -> PhaseOutcome:
     moved_any = False
     reviewed = skipped = 0
     failed: list[str] = []
+    returned: list[str] = []
     cards = crew.board.cards()
     for repo in sorted(crew.repos):
         result = review_open_pulls(
@@ -417,16 +418,23 @@ def _review(crew: Crew) -> PhaseOutcome:
             bot_login=crew.reviewer_login,
             board=crew.board,
             cards=cards,
+            writer=crew.issues,
         )
         reviewed += len(result.reviewed)
+        returned += [f"#{n}" for n, _epic in result.returned]
         skipped += len(result.skipped)
         failed += [f"PR #{n} — {why}" for n, why in result.failed]
         moved_any = moved_any or bool(result.reviewed)
     return PhaseOutcome(
         "review",
         moved=moved_any,
-        summary=f"{reviewed} reviewed, {skipped} already judged",
-        counts={"reviewed": reviewed, "already judged": skipped},
+        summary=f"{reviewed} reviewed, {skipped} already judged"
+        + (
+            f"; {', '.join(returned)} back to refinement: review conflicts with its criteria"
+            if returned
+            else ""
+        ),
+        counts={"reviewed": reviewed, "already judged": skipped, "returned": len(returned)},
         held=failed,
     )
 
