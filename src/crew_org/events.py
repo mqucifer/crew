@@ -310,6 +310,10 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         ):
             if value is not None:
                 detail[field] = str(value)[:120]
+        # Why a call failed. Dropped until #223: three of the Architect's design
+        # notes failed at ten minutes each and the log said only "failed".
+        if kind is EventKind.LLM_CALL_FAILED and (error := _first_attr(event, "error")):
+            detail["error"] = str(error)[:400]
         detail.update(_usage(event))
 
         for target, target_card in list(_TARGETS):

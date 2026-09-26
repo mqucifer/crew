@@ -126,18 +126,32 @@ class EpicProposal(BaseModel):
         return value
 
 
+class AlreadyDelivered(BaseModel):
+    """A story this epic would need that the project has already delivered (#220)."""
+
+    title: str = Field(description="The story you would otherwise have written")
+    by: int = Field(description="The delivered story that already does it, by number")
+    why: str = Field(description="Which of its outcomes covers this story's criteria")
+
+
 class StoryProposal(BaseModel):
     """What the Business Analyst proposes for one epic."""
 
     epic_title: str
-    stories: list[Story]
+    stories: list[Story] = Field(default_factory=list)
+    already_delivered: list[AlreadyDelivered] = Field(
+        default_factory=list,
+        description=(
+            "Stories this epic needs that the project has already delivered, each with "
+            "the delivered story that did it. Not written again."
+        ),
+    )
 
-    @field_validator("stories")
-    @classmethod
-    def _not_empty(cls, value: list[Story]) -> list[Story]:
-        if not value:
+    @model_validator(mode="after")
+    def _not_empty(self) -> StoryProposal:
+        if not self.stories and not self.already_delivered:
             raise ValueError("an epic must decompose into at least one story")
-        return value
+        return self
 
 
 REWORK = (
@@ -148,7 +162,9 @@ REWORK = (
 )
 
 
-def propose_epics(goal: str, *, repository: str = "", feedback: str = "") -> EpicProposal:
+def propose_epics(
+    goal: str, *, repository: str = "", feedback: str = "", delivered: str = ""
+) -> EpicProposal:
     """Product Owner only: a goal becomes a set of epics.
 
     `repository` is the code the goal is about. A role deciding what should
@@ -161,6 +177,7 @@ def propose_epics(goal: str, *, repository: str = "", feedback: str = "") -> Epi
     task = Task(
         description=(
             repo_block
+            + _delivered_block(delivered, "an epic whose outcome these already deliver")
             + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
             + sent_back
             + f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
@@ -180,8 +197,42 @@ def propose_epics(goal: str, *, repository: str = "", feedback: str = "") -> Epi
     return crew.kickoff().pydantic
 
 
+def check_delivered(proposal: StoryProposal, numbers: set[int] | None) -> None:
+    """Refuse an `already_delivered` naming a story the project hasn't delivered.
+
+    Mechanical, because it can be: a split that leaves work out on the strength
+    of a story that doesn't exist, or isn't done, loses that work silently.
+    """
+    if numbers is None:
+        return
+    unknown = sorted({d.by for d in proposal.already_delivered} - numbers)
+    if unknown:
+        raise ValueError(
+            "already_delivered names "
+            + ", ".join(f"#{n}" for n in unknown)
+            + ", which the project has not delivered. Name a delivered story, or write "
+            "the story."
+        )
+
+
+def _delivered_block(delivered: str, instead: str) -> str:
+    if not delivered:
+        return ""
+    return (
+        "## What this project has already delivered\n\n"
+        "Each story, and the outcomes its acceptance criteria promised:\n\n"
+        f"{delivered}\n\nDon't propose {instead}.\n\n"
+    )
+
+
 def split_epic(
-    title: str, context: str = "", *, repository: str = "", feedback: str = ""
+    title: str,
+    context: str = "",
+    *,
+    repository: str = "",
+    feedback: str = "",
+    delivered: str = "",
+    delivered_numbers: set[int] | None = None,
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -198,7 +249,14 @@ def split_epic(
     sent_back = REWORK.format(feedback=feedback) if feedback else ""
     task = Task(
         description=(
-            repo_block + sent_back + "Split this epic into stories.\n\n"
+            repo_block
+            + _delivered_block(
+                delivered,
+                "a story these already deliver: list it in `already_delivered`, with the "
+                "story that did it",
+            )
+            + sent_back
+            + "Split this epic into stories.\n\n"
             f"Epic: {title}\n\n{context}\n\n"
             "Each story must satisfy INVEST and carry acceptance criteria a test can be "
             "written from directly. Split by workflow step, by business rule, or by "
@@ -219,4 +277,6 @@ def split_epic(
     crew = Crew(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
     )
-    return crew.kickoff().pydantic
+    proposal = crew.kickoff().pydantic
+    check_delivered(proposal, delivered_numbers)
+    return proposal

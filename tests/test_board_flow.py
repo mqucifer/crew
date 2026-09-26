@@ -575,7 +575,7 @@ def test_refinement_is_shown_the_code_it_is_deciding_about(monkeypatch, tmp_path
 
     shown = {}
 
-    def spy(title, context="", *, repository="", feedback=""):
+    def spy(title, context="", *, repository="", feedback="", **_kw):
         shown["repository"] = repository
         return SPLIT
 

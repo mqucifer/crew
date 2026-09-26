@@ -109,7 +109,13 @@ architect:
     When a decision genuinely exceeds your reach, you declare a CAPABILITY
     failure and justify it by naming what specifically you could not resolve —
     never "this is hard".
-  llm: crew-local
+  # Medium effort, with room to finish (#223). On crew-local, SGLang's xhigh
+  # default, design notes for sprint-metrics#59-61 ran ten minutes each and
+  # failed with the budget spent before the answer, the failure that moved the
+  # Business Analyst here. Same alias, same headroom.
+  llm: crew-analysis
+  llm_params:
+    max_tokens: 32768
   can: [write_design, propose_project_design, create_task, create_spike, comment]
   constitution: [2, 9, 10, 13, 19]  # taxonomy, escalation, audit, when design happens, guidelines
   # A project's design (#144): the same role, choosing a project's toolchain
