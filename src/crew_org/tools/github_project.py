@@ -62,6 +62,26 @@ class BoardField(BaseModel):
                 upcoming.append((start, str(it["title"])))
         return min(upcoming)[1] if upcoming else str(self.iterations[-1]["title"])
 
+    def iteration_dates(self, title: str) -> tuple[date, date] | None:
+        """(first day, last day) of the named iteration, or None if there's no such one."""
+        for it in self.iterations:
+            if str(it["title"]) == title:
+                start = date.fromisoformat(it["startDate"])
+                return start, start + timedelta(days=int(it.get("duration", 14)) - 1)
+        return None
+
+    def next_iteration(self, title: str) -> tuple[str, date] | None:
+        """The iteration after the named one, and the day it starts."""
+        dates = self.iteration_dates(title)
+        if dates is None:
+            return None
+        later = sorted(
+            (date.fromisoformat(it["startDate"]), str(it["title"]))
+            for it in self.iterations
+            if date.fromisoformat(it["startDate"]) > dates[1]
+        )
+        return (later[0][1], later[0][0]) if later else None
+
 
 class BoardSchema(BaseModel):
     project_id: str

@@ -17,6 +17,8 @@ from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
+from crew_org.clock import sprint_today
+from crew_org.clock import timezone as clock_zone
 from crew_org.config import load_org
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.tui import LiveView, attach
@@ -135,7 +137,7 @@ def tick(
     allowed = {repo} if repo else allowed
     default_repo = repo or env.get("PILOT_REPO", "crew")
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
-    sprint = board.schema.field("Sprint").current_iteration()
+    sprint = board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
     if not sprint:
         console.print("[red]No iterations configured on the Sprint field.[/]")
         raise typer.Exit(code=1)
@@ -173,6 +175,7 @@ def tick(
         reviewer_login=review_identity,
         sponsor=env.get("GITHUB_SPONSOR") or None,
         not_onboarded=skipped,
+        crew_repo=env.get("CREW_REPO", "crew"),
     )
 
     with attach(sink, view):
@@ -979,7 +982,7 @@ def deliver(
     repo = env.get("PILOT_REPO", "crew")
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     issues = IssueClient(token, owner)
-    sprint = sprint or board.schema.field("Sprint").current_iteration()
+    sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
 
     bot = _bot_identity(token, identity)
     ws = Workspace(owner, repo, token, bot)
@@ -1323,7 +1326,7 @@ def export(
     env = load_env()
     token, _ = resolve_credentials(env)
     board = ProjectClient(token, env["GITHUB_OWNER"], int(env["GITHUB_PROJECT_NUMBER"]))
-    sprint = sprint or board.schema.field("Sprint").current_iteration()
+    sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
     stories = [
         c for c in board.cards() if c.sprint == sprint and c.work_type == "Story" and c.repo == repo
     ]
@@ -1383,7 +1386,7 @@ def sprint_start(
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     issues = IssueClient(token, owner)
 
-    sprint = sprint or board.schema.field("Sprint").current_iteration()
+    sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
     if not sprint:
         console.print("[red]No iterations configured on the Sprint field.[/]")
         raise typer.Exit(code=1)
@@ -1465,10 +1468,77 @@ def _render_plan(plan, *, dry_run: bool) -> None:
         )
 
 
+@sprint_app.command("retro")
+def sprint_retro(
+    preview: bool = typer.Option(
+        False, "--preview", help="Write the retro without recording it. Required for now."
+    ),
+    sprint: str = typer.Option(None, "--sprint", help="Iteration name. Defaults to the current."),
+    out: str = typer.Option(None, "--out", help="Write it to this file instead of the terminal."),
+) -> None:
+    """Preview a sprint's retro, exactly as it would be recorded, without closing anything.
+
+    Closing a real sprint to try a retro is how Sprint 6 was closed early
+    (#193). A preview opens no issue, files no defects, merges nothing and
+    moves no card, and runs on any sprint, past or current, even one whose
+    retro is already recorded, so the two can be compared.
+    """
+    from pathlib import Path
+
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.escalation import EscalationLedger
+    from crew_org.flows.close import close_sprint
+    from crew_org.llm import health
+    from crew_org.process import ProcessRules
+    from crew_org.tools.github_issues import IssueClient
+    from crew_org.tools.github_project import ProjectClient
+
+    if not preview:
+        console.print("Only a preview is available: `crew sprint retro --preview`.")
+        raise typer.Exit(code=2)
+    env = load_env()
+    ok, message = health()
+    if not ok:
+        console.print(f"[red]{message}[/]")
+        raise typer.Exit(code=1)
+    token, _ = resolve_credentials(env)
+    owner, repo = env["GITHUB_OWNER"], env.get("PILOT_REPO", "crew")
+    org = load_org()
+    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(org))
+    with console.status(f"[dim]The Scrum Master is writing {sprint}'s retro…[/]"):
+        result = close_sprint(
+            board,
+            IssueClient(token, owner),
+            EventSink(None),
+            EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
+            sprint=sprint,
+            repo=repo,
+            merge=False,
+            rules=ProcessRules.from_config(org),
+            events_dir=VAR / "events",
+            crew_repo=env.get("CREW_REPO", "crew"),
+            delivery_repos=list(org.get("delivery", {}).get("repos") or []),
+            preview=True,
+        )
+    if result.preview is None:
+        console.print(f"[red]No retro could be written for {sprint}.[/]")
+        raise typer.Exit(code=1)
+    if out:
+        Path(out).write_text(result.preview, encoding="utf-8")
+        console.print(f"{sprint}'s retro preview written to {out}. Nothing was recorded.")
+    else:
+        console.print(result.preview, markup=False)
+
+
 @sprint_app.command("close")
 def sprint_close(
     sprint: str = typer.Option(None, "--sprint", help="Iteration name."),
     no_merge: bool = typer.Option(False, "--no-merge", help="Report without merging."),
+    early: bool = typer.Option(
+        False, "--early", help="Close before the sprint's dates are over: it ends now."
+    ),
 ) -> None:
     """Close the sprint: merge what you approved, and report on the increment.
 
@@ -1495,7 +1565,20 @@ def sprint_close(
     crew_repo = env.get("CREW_REPO", "crew")
     org = load_org()
     board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
-    sprint = sprint or board.schema.field("Sprint").current_iteration()
+    sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(org))
+
+    # A sprint closed while its dates run on keeps taking work its retro never
+    # sees: Sprint 6, twice in one day (#193). Its dates are over, or `--early`.
+    dates = board.schema.field("Sprint").iteration_dates(sprint)
+    today = sprint_today(org)
+    if dates and today <= dates[1] and not early:
+        console.print(
+            f"[yellow]{sprint} runs until {dates[1]:%Y-%m-%d} "
+            f"({clock_zone(org)}); today is {today:%Y-%m-%d}.[/] Closing it now ends it "
+            "early, and nothing more is admitted into it. Pass --early to do that, or "
+            "preview its retro with `crew sprint retro --preview`."
+        )
+        raise typer.Exit(code=2)
 
     result = close_sprint(
         board,

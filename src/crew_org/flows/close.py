@@ -23,6 +23,7 @@ from crew_org.flows.moves import move_card
 from crew_org.flows.retro import (
     RetroLayout,
     RetroRecord,
+    _retro_body,
     existing_retro,
     fixed_this_sprint,
     known_issues,
@@ -67,6 +68,9 @@ class SprintClose:
     # whether this close wrote it or found it already written.
     retro_record: RetroRecord | None = None
     retro_already: bool = False
+    # `crew sprint retro --preview` (#193): the retro as it would be recorded,
+    # rendered and not recorded.
+    preview: str | None = None
 
     @property
     def complete(self) -> bool:
@@ -113,6 +117,7 @@ def close_sprint(
     now: datetime | None = None,
     crew_repo: str | None = None,
     delivery_repos: list[str] | None = None,
+    preview: bool = False,
 ) -> SprintClose:
     """Merge what the Sponsor approved, then report on the sprint.
 
@@ -126,7 +131,8 @@ def close_sprint(
     cards = board.cards()
     qualify = many_repos(cards)
 
-    for card in sorted(sprint_cards(cards, sprint), key=lambda c: c.number or 0):
+    # A preview touches nothing: no merges, no board moves, no issues (#193).
+    for card in [] if preview else sorted(sprint_cards(cards, sprint), key=lambda c: c.number or 0):
         number = card.number or 0
         if card.status == DONE:
             continue
@@ -221,7 +227,9 @@ def close_sprint(
 
     # One retro per sprint. A close run again finds the one it wrote rather
     # than paying for a second retro and filing every defect twice.
-    if crew_repo is not None:
+    # A preview is written even when a retro exists: comparing a new retro with
+    # the recorded one is the point of it.
+    if crew_repo is not None and not preview:
         found = existing_retro(issues, crew_repo, sprint)
         if found is not None:
             result.retro_record = RetroRecord(issue=found)
@@ -272,6 +280,28 @@ def close_sprint(
         sink.note(EventKind.NOTE, f"retro could not be written: {exc}"[:120])
         return result
 
+    layout = RetroLayout(
+        stories=[
+            (c.name(qualify=qualify), int(c.points or 0), c.status or "", c.title)
+            for c in sorted(
+                sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
+            )
+        ],
+        retries=retries_text(report) if events_dir is not None else "",
+        blocked=result.aging_blocked,
+        awaiting=awaiting_approval(cards),
+    )
+    if preview:
+        would_file = [
+            f"- would file: {defect.issue_title}"
+            for defect in (result.retro.defects if result.retro else [])
+        ]
+        if result.retro is not None:
+            result.preview = _retro_body(
+                result.retro, sprint, would_file, standup, crew_repo or "crew", layout
+            )
+        return result
+
     if crew_repo is not None and result.retro is not None:
         try:
             result.retro_record = record_retro(
@@ -284,17 +314,7 @@ def close_sprint(
                 standup=standup,
                 known=known | fixed,
                 recurring=causes_of(report),
-                layout=RetroLayout(
-                    stories=[
-                        (c.name(qualify=qualify), int(c.points or 0), c.status or "", c.title)
-                        for c in sorted(
-                            sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
-                        )
-                    ],
-                    retries=retries_text(report) if events_dir is not None else "",
-                    blocked=result.aging_blocked,
-                    awaiting=awaiting_approval(cards),
-                ),
+                layout=layout,
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.
