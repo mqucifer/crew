@@ -148,8 +148,8 @@ def test_the_retro_is_told_the_first_try_rate_and_the_causes():
     ]
     text = retries_text(sprint_report("S", [story(n) for n in (73, 74, 75, 76)], attempts, 0))
     assert text.startswith("1 of 4 stories landed on their first attempt.")
-    assert "- SCHEMA: no test (2 times, on #73, #75)" in text
-    assert "(once, on #74)" in text
+    assert "- SCHEMA: no test (2 times, on #73, #75; cause " in text
+    assert "(once, on #74; cause " in text, "each cause with its key, for a fix to cite (#199)"
 
 
 # --- 2: escalations come from the ledger ----------------------------------------------------
