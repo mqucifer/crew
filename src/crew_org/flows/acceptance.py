@@ -160,6 +160,23 @@ def collect_output(results) -> str:
     return "…earlier output trimmed…\n" + joined[-QA_OUTPUT_CHAR_CEILING:]
 
 
+# A story the Developer answered is already done (#221): no pull request, the
+# evidence on the story. QA judges it like any story; accepted, it closes.
+ALREADY_DONE_MARKER = "<!-- crew:already-done -->"
+
+
+def _already_done(issues: IssueClient, repo: str, number: int) -> str:
+    """The Developer's already-done evidence, if the story's latest delivery was that."""
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return ""
+    latest = [b for b in bodies if ALREADY_DONE_MARKER in b or b.startswith("Implemented in #")]
+    if not latest or ALREADY_DONE_MARKER not in latest[-1]:
+        return ""
+    return latest[-1].replace(ALREADY_DONE_MARKER, "").split("<!-- crew:by")[0].strip()
+
+
 def run_qa(
     board: ProjectClient,
     issues: IssueClient,
@@ -210,8 +227,16 @@ def run_qa(
         )
         try:
             check = workspace.check(worktree, sandbox=sandbox)
+            done = _already_done(issues, card_repo, number)
+            answered = (
+                "\n\n## The Developer answered that this is already done\n\n"
+                f"{done}\n\nNothing was changed. Judge each criterion against the code "
+                "and the tests named, as for any story."
+                if done
+                else ""
+            )
             verdict = attributed(verify_story, card=number, repo=card_repo)(
-                f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}",
+                f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
@@ -241,7 +266,21 @@ def run_qa(
             by="QA Engineer",
         )
 
-        if verdict.accepted:
+        if verdict.accepted and done:
+            # Nothing to merge (#221): the story closes, proven against main.
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=DONE,
+                by="QA Engineer",
+                card=number,
+                frm=QAING,
+                summary="already done — every criterion proven, no pull request",
+            )
+            issues.close(card_repo, number)
+            result.verified.append(QAOutcome(card=number, accepted=True))
+        elif verdict.accepted:
             move_card(
                 board,
                 sink,

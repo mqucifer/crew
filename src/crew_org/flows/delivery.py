@@ -15,7 +15,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field
 
-from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, REVIEWING, SPRINT_BACKLOG
+from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
 from crew_org.crews.delivery_crew import Implementation, implement_story
 from crew_org.escalation import (
     Disposition,
@@ -28,7 +28,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, story_problem
-from crew_org.flows.acceptance import qa_marker
+from crew_org.flows.acceptance import ALREADY_DONE_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
@@ -80,6 +80,9 @@ class DeliveryOutcome:
     # and the merged tests the last attempt broke, to see them break again.
     returned: str | None = None
     last_pinned: set[str] = field(default_factory=set)
+    # A first attempt that answered the story is already done (#221): each
+    # criterion with the code that meets it and the test that proves it.
+    already_done: list = field(default_factory=list)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -90,7 +93,7 @@ class DeliveryOutcome:
 
     @property
     def ok(self) -> bool:
-        return self.pr is not None or self.diff is not None
+        return self.pr is not None or self.diff is not None or bool(self.already_done)
 
     @property
     def landed(self) -> bool:
@@ -593,6 +596,9 @@ def deliver_story(
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
     attempt = 0
+    # Offered once per story (#221): an already-done answer QA refused isn't
+    # offered again, or the story would go round between the two.
+    may_be_done = not rework and not _answered_done(issues, repo, number)
 
     while True:
         attempt += 1
@@ -606,8 +612,28 @@ def deliver_story(
         try:
             implementation = attributed(
                 implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
-            )(story_text, context=context, feedback=feedback, prior=prior, returned=rework)
+            )(
+                story_text,
+                context=context,
+                feedback=feedback,
+                prior=prior,
+                returned=rework,
+                may_be_done=may_be_done,
+            )
             _keep_proposal(sink, repo, number, implementation)
+            missing = [
+                met.test
+                for met in getattr(implementation, "already_done", None) or []
+                if not names_a_test(worktree, met.test)
+            ]
+            if missing:
+                # Refused, naming each (#221, criterion 3): evidence that
+                # doesn't exist is no evidence.
+                raise ValueError(
+                    "already_done names tests that don't exist in the repository: "
+                    + ", ".join(missing)
+                    + ". Name existing tests, or implement the story."
+                )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             # The model could not produce a valid implementation at all.
@@ -917,6 +943,7 @@ def deliver_story(
     # claim is verified before it is sent. It is committed empty: the pull
     # request's head has to move, or the review it answers keeps applying.
     satisfied = getattr(implementation, "already_satisfied", None) or []
+    done = [] if rework else getattr(implementation, "already_done", None) or []
     answered = rework and implementation.changes_nothing and bool(satisfied)
     if answered and live is not None:
         before = latest_answer(issues, repo, live["number"])
@@ -936,9 +963,11 @@ def deliver_story(
         (
             f"chore({number}): answer the review, no change needed\n\n{implementation.summary}"
             if answered
+            else f"chore({number}): already done, no change needed\n\n{implementation.summary}"
+            if done
             else f"feat({number}): {card.title}\n\n{implementation.summary}\n\nCloses #{number}"
         ),
-        allow_empty=answered,
+        allow_empty=answered or bool(done),
     ):
         outcome.blocked_reason = "the implementation produced no change"
         return outcome
@@ -969,6 +998,20 @@ def deliver_story(
         # letting this propagate discards all of it and the card blocks saying
         # "Attempts: 0". That is #10's defect in a path #10 did not cover.
         outcome.blocked_reason = f"could not push `{branch}`: {exc}"[:400]
+        return outcome
+
+    if done:
+        # No pull request: there's no diff to review (#221). The branch is pushed
+        # so QA can check it out and run the named tests; QA decides.
+        outcome.already_done = list(done)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.AGENT_FINISHED,
+                role="Developer",
+                card=number,
+                summary=f"already done: {len(done)} criteria met by existing code",
+            )
+        )
         return outcome
 
     if open_pull is not None:
@@ -1019,6 +1062,40 @@ def deliver_story(
         )
     )
     return outcome
+
+
+def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:
+    """Has this story been answered as already done before? Unknown counts as yes."""
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return True
+    return any(ALREADY_DONE_MARKER in (c.get("body") or "") for c in comments)
+
+
+def names_a_test(worktree, test: str) -> bool:
+    """Does `path::name` (or `path::Class::name`) name a test that exists in the worktree?"""
+    import re  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    path, _, rest = test.partition("::")
+    name = rest.rsplit("::", 1)[-1].split("[", 1)[0]
+    target = Path(worktree) / path
+    if not name or not target.is_file():
+        return False
+    text = target.read_text(encoding="utf-8", errors="ignore")
+    return re.search(rf"^\s*(?:async\s+)?def\s+{re.escape(name)}\s*\(", text, re.M) is not None
+
+
+def already_done_comment(done: list) -> str:
+    """The Developer's evidence, on the story, for QA and for whoever reads it (#221)."""
+    rows = "\n".join(f"| {m.criterion} | {m.code} | `{m.test}` |" for m in done)
+    return (
+        f"{ALREADY_DONE_MARKER}\n**Already done.** The code as it stands meets every acceptance "
+        "criterion, so nothing was changed and no pull request was opened. Lint and the full "
+        "test suite pass. QA judges it like any story.\n\n"
+        "| Criterion | The code that meets it | The test that proves it |\n|---|---|---|\n" + rows
+    )
 
 
 # Said on every refusal made before anything is written. A repair is told to
@@ -1208,7 +1285,30 @@ def _work_one_card(
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
 
-    if outcome.ok:
+    if outcome.already_done:
+        # Straight to QA with the evidence (#221): no diff, so nothing to review.
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=QAING,
+            by="Developer",
+            card=card.number,
+            frm=IN_PROGRESS,
+            summary="already done — every criterion met by existing code",
+        )
+        counts[IN_PROGRESS] -= 1
+        counts[QAING] = counts.get(QAING, 0) + 1
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=card.number or 0,
+            body=already_done_comment(outcome.already_done),
+            by="Developer",
+        )
+        result.delivered.append(outcome)
+    elif outcome.ok:
         move_card(
             board,
             sink,

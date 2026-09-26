@@ -210,8 +210,11 @@ def harness(tmp_path, monkeypatch):
         ws = FakeWorkspace(tmp_path)
         sequence = list(checks)
 
-        def fake_implement(story_text, *, context, feedback="", prior="", returned=False):
+        def fake_implement(
+            story_text, *, context, feedback="", prior="", returned=False, may_be_done=False
+        ):
             calls["implement"] += 1
+            calls.setdefault("may_be_done", []).append(may_be_done)
             calls["feedback"].append(feedback)
             calls["context"].append(context)
             calls["prior"].append(prior)
