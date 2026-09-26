@@ -12,7 +12,7 @@ import contextlib
 from dataclasses import dataclass, field
 
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
-from crew_org.crews.review_crew import ReviewVerdict, review_diff
+from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
@@ -22,9 +22,10 @@ from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
+from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.tools.review_evidence import checks_section, imported_code
+from crew_org.tools.review_evidence import checks_section, imported_code, undocumented_options
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
@@ -198,6 +199,15 @@ def review_open_pulls(
             )
             continue
 
+        # A mechanical finding, not the model's (#191): an option the diff adds
+        # that the project's user docs never mention.
+        verdict = with_docs_finding(
+            verdict,
+            diff,
+            user_docs(issues, repo, head),
+            lambda p, ref=head: issues.file_at(repo, p, ref),
+        )
+
         # GitHub refuses an approval from the identity that opened the pull
         # request. The crew reviews as a second app for exactly this reason, so
         # this downgrade now only fires where it should: a pull request the
@@ -273,6 +283,47 @@ def review_open_pulls(
                 )
 
     return result
+
+
+def user_docs(issues: IssueClient, repo: str, head: str) -> list[str]:
+    """Where the project's user docs live, from its record at the head; else the README."""
+    try:
+        text = issues.file_at(repo, RECORD_PATH, head)
+        return parse(text).user_docs if text else [DEFAULT_DOCS]
+    except Exception:  # noqa: BLE001
+        return [DEFAULT_DOCS]
+
+
+def with_docs_finding(
+    verdict: ReviewVerdict, diff: str, docs: list[str], read_head
+) -> ReviewVerdict:
+    """The verdict, plus a blocking finding for each option no user doc mentions (#191).
+
+    sprint-metrics shipped `--sprint-range`, `--thresholds` and four output
+    formats in a day with a 14-line README. The Definition of Done asked for
+    docs in the same pull request; nothing checked.
+    """
+    try:
+        missing = undocumented_options(diff, docs, read_head)
+    except Exception:  # noqa: BLE001
+        return verdict
+    if not missing:
+        return verdict
+    named = ", ".join(f"`{d}`" for d in docs)
+    found = [
+        Finding(
+            file=docs[0],
+            concern=f"`{option}` is added by this change, and no user doc ({named}) mentions it",
+            action=f"Document `{option}` in {named} in this pull request: what it does, and an "
+            "example of using it",
+        )
+        for option in missing
+    ]
+    return ReviewVerdict(
+        summary=verdict.summary,
+        approve=False,
+        findings=[*verdict.findings, *found],
+    )
 
 
 def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) -> str:

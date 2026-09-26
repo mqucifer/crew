@@ -52,6 +52,46 @@ def imported_modules(text: str) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+# An option added to an argparse parser: `add_argument("--thresholds", …)` (#191).
+_OPTION = re.compile(r"""add_argument\(\s*(?:["']-\w["']\s*,\s*)?["'](--[A-Za-z0-9][\w-]*)["']""")
+_FILE = re.compile(r"^\+\+\+ b/(\S+)$")
+
+
+def _is_test(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return path.startswith("tests/") or "/tests/" in path or name.startswith("test_")
+
+
+def added_options(diff: str) -> list[str]:
+    """Command-line options a diff adds, outside its tests. Hidden ones are left out."""
+    found: list[str] = []
+    path = ""
+    for line in diff.splitlines():
+        header = _FILE.match(line)
+        if header:
+            path = header.group(1)
+            continue
+        if not line.startswith("+") or line.startswith("+++") or _is_test(path):
+            continue
+        if "SUPPRESS" in line:
+            continue
+        found += [o for o in _OPTION.findall(line) if o not in found]
+    return found
+
+
+def undocumented_options(diff: str, docs: list[str], read_head) -> list[str]:
+    """Options the diff adds that no user doc mentions at the pull request's head (#191).
+
+    `read_head(path)` returns a file's text at the head, or None. A doc that
+    doesn't exist documents nothing.
+    """
+    options = added_options(diff)
+    if not options:
+        return []
+    text = "\n".join(t for path in docs if (t := read_head(path)))
+    return [o for o in options if o not in text]
+
+
 def changed_python_files(diff: str) -> list[str]:
     return list(dict.fromkeys(_CHANGED.findall(diff)))
 
