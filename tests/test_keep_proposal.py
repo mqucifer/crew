@@ -28,3 +28,11 @@ def test_without_a_log_nothing_is_written(tmp_path: Path):
     )
     _keep_proposal(EventSink(), "r", 1, proposal)
     assert not (tmp_path / "proposals").exists()
+
+
+def test_a_refusal_says_nothing_was_applied():
+    """#132's third attempt sent only the new piece, taking the rest as applied."""
+    from crew_org.flows.delivery import NOT_APPLIED
+
+    assert "Nothing from this attempt was applied" in NOT_APPLIED
+    assert "Send the whole change again" in NOT_APPLIED
