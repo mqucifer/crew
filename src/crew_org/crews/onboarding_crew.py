@@ -126,6 +126,7 @@ def interview_turn(
     missing: dict[str, str],
     problems: list[str],
     conversation: str,
+    still_open: str = "",
 ) -> Turn:
     """The Product Owner's next turn in an onboarding interview."""
     spec = load_agents()["product_owner"]
@@ -139,6 +140,7 @@ def interview_turn(
             missing=missing,
             problems=problems,
             conversation=conversation,
+            still_open=still_open,
         ),
         expected_output="The answers this turn settled, what to say, and what is left to ask.",
         agent=agent,
@@ -157,6 +159,7 @@ def turn_description(
     missing: dict[str, str],
     problems: list[str],
     conversation: str,
+    still_open: str = "",
 ) -> str:
     """What the Product Owner is told for one turn: propose from the project, or ask."""
     if repository:
@@ -207,6 +210,14 @@ def turn_description(
         )
         + still
         + wrong
+        + (
+            "## Asked in an earlier session, and not answered then\n\n"
+            f"{still_open}\n\n"
+            "Each is still open unless the record or the conversation has answered it "
+            "since. Ask again any that is still open.\n\n"
+            if still_open
+            else ""
+        )
         + f"## The conversation\n\n{conversation or '(it has not started)'}\n\n"
         "Take your next turn. Never invent an answer the Sponsor has not given and the "
         "project does not show."
