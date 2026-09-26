@@ -43,13 +43,14 @@ Path_ = tuple[str, ...]
 QUESTIONS: dict[Path_, str] = {
     ("intent", "scope", "purpose"): "What is this project for, and who is it for?",
     ("intent", "release", "deploys"): (
-        "When work merges, is anything deployed, or is the merge itself the release?"
+        "When work merges, is anything deployed, is a version published for people to "
+        "install, or is the merge itself the release?"
     ),
     ("intent", "done", "bar"): (
         "What must be true for a change to count as done here? In words: the tools "
         "that check it are the Architect's to choose."
     ),
-    WHERE: "Where is it deployed?",
+    WHERE: "Where is it deployed, or where is the version published?",
 }
 assert set(REQUIRED) | {WHERE} == set(QUESTIONS)
 
@@ -440,9 +441,12 @@ ISSUE_BODY = (
 def release_line(record: ProjectRecord) -> str:
     """How the project is released, as a sentence of its own, not an answer pasted into one."""
     release = record.intent.release
-    if not release.deploys:
+    if release.publishes:
+        line = f"a published version. Where: {release.where}"
+    elif not release.deploys:
         return "the merge. Nothing is deployed."
-    line = f"a deployment. Where: {release.where}"
+    else:
+        line = f"a deployment. Where: {release.where}"
     how = record.design.release_how if record.design else None
     return line + (f" How: {how}" if how else "")
 

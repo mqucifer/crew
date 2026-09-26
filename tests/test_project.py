@@ -47,7 +47,7 @@ def test_every_missing_answer_is_named_at_once():
     """Criterion 2: not one validation error per attempt."""
     assert problems("") == [
         "missing: what the project is for (purpose)",
-        "missing: whether it deploys, or the merge is the release",
+        "missing: whether it deploys, publishes a version, or the merge is the release",
         "missing: what must be true for a change to count as done",
     ]
 
@@ -74,6 +74,36 @@ def test_a_project_that_deploys_must_say_where():
         text.replace("deploys: true", "deploys: true\n    where: staging on the Spark")
     )
     assert deployed.release_is == "a deployment"
+
+
+def test_a_published_version_is_its_own_kind_of_release():
+    """#141, criterion 1: a tag users install is not a deployment."""
+    text = SPRINT_METRICS.replace(
+        "deploys: false", "publishes: true\n    where: a tag vX.Y.Z on main"
+    )
+    record = parse(text)
+    assert record.release_is == "a published version"
+    assert not record.intent.release.deploys, "publishing answers the deploy question"
+
+
+def test_a_published_version_must_say_where():
+    text = SPRINT_METRICS.replace("deploys: false", "publishes: true")
+    assert problems(text) == ["missing: where the version is published, since it publishes one"]
+
+
+def test_a_release_is_one_kind_not_both():
+    text = SPRINT_METRICS.replace(
+        "deploys: false", "deploys: true\n    publishes: true\n    where: somewhere"
+    )
+    assert any("not both" in p for p in problems(text))
+
+
+def test_a_record_written_before_publishing_existed_still_loads():
+    """#141, criterion 2: sprint-metrics' record says `deploys: true` for its tag."""
+    text = SPRINT_METRICS.replace(
+        "deploys: false", "deploys: true\n    where: A version tag on the repo"
+    )
+    assert parse(text).release_is == "a deployment"
 
 
 def test_the_crew_has_its_own_section_for_what_it_learns():
@@ -166,3 +196,17 @@ def test_a_version_1_record_is_refused_and_told_why():
     text = "version: 1\n" + SPRINT_METRICS
     (problem,) = problems(text)
     assert "format version 1" in problem and "`design`" in problem
+
+
+def test_the_interview_can_record_a_published_version_directly():
+    """#141, criterion 3: no choosing between deploying and the merge first."""
+    from crew_org.project import missing
+
+    raw = {
+        "intent": {
+            "scope": {"purpose": "p"},
+            "release": {"publishes": True, "where": "a tag on main"},
+            "done": {"bar": "tests pass"},
+        }
+    }
+    assert missing(raw) == []

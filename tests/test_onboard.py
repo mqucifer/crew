@@ -589,6 +589,16 @@ def test_an_updated_pull_request_gets_the_new_interview_as_a_comment(tmp_path: P
             {"release_how": "Tag vX.Y.Z."},
             "a deployment. Where: A version tag How: Tag vX.Y.Z.",
         ),
+        (
+            {"deploys": False, "publishes": True, "where": "A version tag"},
+            None,
+            "a published version. Where: A version tag",
+        ),
+        (
+            {"publishes": True, "where": "A version tag"},
+            {"release_how": "Tag vX.Y.Z."},
+            "a published version. Where: A version tag How: Tag vX.Y.Z.",
+        ),
     ],
 )
 def test_the_release_reads_as_its_own_sentence(release, design, line):
@@ -629,7 +639,7 @@ def test_the_interview_has_nowhere_to_record_a_tool():
     """Criterion 2, structurally: tools are the Architect's (#144), so no answer holds one."""
     assert set(Answers.model_fields) == {"scope", "release", "done", "guidelines", "priority"}
     assert set(DoneAnswers.model_fields) == {"bar", "also", "never_touch"}
-    assert set(ReleaseAnswers.model_fields) == {"deploys", "where"}
+    assert set(ReleaseAnswers.model_fields) == {"deploys", "publishes", "where"}
     assert "Architect" in QUESTIONS[BAR]
 
 

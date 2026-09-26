@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 RECORD_PATH = ".crew/project.yaml"
 # 2 split the Architect's `design` out of the Sponsor's `intent` (#143).
@@ -61,11 +61,38 @@ class Release(Section):
     """What counts as the project reaching the people it is for. Answers #90 per project."""
 
     deploys: bool = Field(description="Whether anything is deployed, or the merge is the end")
-    where: str | None = Field(default=None, description="Where it is deployed, if it is")
+    # A version a user installs and pins, such as a tag on main (#141). Not a
+    # deployment: sprint-metrics had to be recorded as one, and a phase reading
+    # "a deployment" goes looking for a server.
+    publishes: bool = Field(
+        default=False, description="Whether a release is a published version, such as a tag"
+    )
+    where: str | None = Field(
+        default=None, description="Where it is deployed, or where the version is published"
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _publishing_is_not_deploying(cls, value: Any) -> Any:
+        # A project that publishes a version has answered the deploy question.
+        if isinstance(value, dict) and value.get("publishes") is True:
+            value = {"deploys": False, **value}
+        return value
+
+    @model_validator(mode="after")
+    def _one_kind_of_release(self) -> Release:
+        if self.deploys and self.publishes:
+            raise ValueError(
+                "a release is either a deployment or a published version, not both: "
+                "say which one the release is"
+            )
+        return self
 
     @property
     def release_is(self) -> str:
-        """What counts as a release. A project that doesn't deploy releases on merge."""
+        """What counts as a release. Neither deploying nor publishing, it's the merge."""
+        if self.publishes:
+            return "a published version"
         return "a deployment" if self.deploys else "the merge"
 
 
@@ -161,13 +188,17 @@ class ProjectRecordError(ValueError):
 # error use. Keyed by where each lives in the file.
 REQUIRED: dict[tuple[str, ...], str] = {
     ("intent", "scope", "purpose"): "what the project is for (purpose)",
-    ("intent", "release", "deploys"): "whether it deploys, or the merge is the release",
+    ("intent", "release", "deploys"): (
+        "whether it deploys, publishes a version, or the merge is the release"
+    ),
     ("intent", "done", "bar"): "what must be true for a change to count as done",
 }
 
 
 WHERE = ("intent", "release", "where")
 WHERE_WORDS = "where it is deployed, since it deploys"
+PUBLISHED_WORDS = "where the version is published, since it publishes one"
+PUBLISHES = ("intent", "release", "publishes")
 
 
 def lookup(raw: Any, path: tuple[str, ...]) -> Any:
@@ -181,12 +212,17 @@ def lookup(raw: Any, path: tuple[str, ...]) -> Any:
 def gaps(raw: Any) -> dict[tuple[str, ...], str]:
     """Every required answer the raw record lacks, by where it lives, in words."""
     found: dict[tuple[str, ...], str] = {}
+    publishes = lookup(raw, PUBLISHES) is True
     for path, words in REQUIRED.items():
         value = lookup(raw, path)
+        if path == WHERE[:-1] + ("deploys",) and publishes:
+            continue  # publishing a version answers it (#141)
         if value is None or (isinstance(value, str) and not value.strip()) or value == []:
             found[path] = words
     if lookup(raw, WHERE[:-1] + ("deploys",)) is True and not lookup(raw, WHERE):
         found[WHERE] = WHERE_WORDS
+    elif publishes and not lookup(raw, WHERE):
+        found[WHERE] = PUBLISHED_WORDS
     return found
 
 
