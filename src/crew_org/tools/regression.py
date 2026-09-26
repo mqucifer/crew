@@ -622,7 +622,9 @@ def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.
     old = _top_level(old_tree, name) if old_tree is not None else None
     if old is None:
         return f"`{path}` had no top-level `{name}` to move"
-    files = set(after)
+    # With `path` itself, deleted or not: an import naming a deleted module
+    # still asks it for the name, and must resolve to it to be seen.
+    files = set(after) | {path}
     elsewhere = {
         file: new
         for file, tree in after.items()
@@ -695,6 +697,7 @@ def lost_names(
     changed = {e.path for e in implementation.all_edits if e.path.endswith(".py")} | {
         t.path for t in implementation.text_edits if t.path.endswith(".py")
     }
+    changed |= {p for p in getattr(implementation, "deleted_files", []) if p.endswith(".py")}
     if merged is not None:
         # Including what an earlier attempt changed: its damage still counts.
         changed |= merged.changed()
@@ -715,7 +718,9 @@ def lost_names(
                 on_skip(f"couldn't check what the change stops providing: {exc}")
             return {}
         after = _modules(after_root)
-    files = set(after)
+    # The changed files too, deleted ones included: an import naming a deleted
+    # module must resolve to it, or whoever still asks it is never seen.
+    files = set(after) | changed
     found: dict[str, tuple[str, str]] = {}
     for path in sorted(changed):
         old = before.get(path)
@@ -796,7 +801,11 @@ def draft_breaks(
 
     if merged is None:
         return {}
-    paths = merged.changed()
+    # What earlier attempts changed, and what this one deletes outright: a
+    # deleted module's every definition is judged, as a move or a removal.
+    paths = merged.changed() | {
+        p for p in getattr(implementation, "deleted_files", []) if p.endswith(".py")
+    }
     if not paths:
         return {}
     with tempfile.TemporaryDirectory() as scratch:
@@ -830,3 +839,11 @@ def draft_breaks(
             elif (broke := contract_break(node, new)) is not None:
                 found[f"{path}::{node.name}"] = (was, broke)
     return found
+
+
+def without_retired(
+    broken: dict[str, tuple[str, str]], implementation
+) -> dict[str, tuple[str, str]]:
+    """`broken`, less the merged tests this story declares it retires (§15)."""
+    retired = {f"{t.path}::{t.test}" for t in getattr(implementation, "retired_tests", [])}
+    return {key: value for key, value in broken.items() if key not in retired}

@@ -702,6 +702,9 @@ def deliver_story(
         # A name the module passes along, or a constant, that another file
         # still imports from it (sprint-metrics#129).
         broken |= regression.lost_names(worktree, implementation, merged, skipped)
+        # A merged test the story declares it retires, with why, may go: the
+        # pull request lists it for the Code Reviewer (sprint-metrics#132).
+        broken = regression.without_retired(broken, implementation)
         if broken:
             failure = LocalFailure(
                 card=number,
@@ -1004,6 +1007,11 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
     for text_edit in implementation.text_edits:
         lines.append(f"- `{text_edit.path}` — edited")
+    for path in implementation.deleted_files:
+        lines.append(f"- `{path}` (deleted)")
+    if implementation.retired_tests:
+        lines += ["", "## Tests retired", ""]
+        lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
     lines += ["", f"Closes #{card.number}"]
     # Signed last, after the Verification section the Code Reviewer is shown.
     return signed("\n".join(lines), "Developer")
