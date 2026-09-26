@@ -9,6 +9,8 @@ reviewer has to notice later.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -151,11 +153,30 @@ class AlreadyDelivered(BaseModel):
     why: str = Field(description="Which of its outcomes covers this story's criteria")
 
 
+class Accounted(BaseModel):
+    """What became of one story a re-split supersedes (#248)."""
+
+    number: int = Field(description="The superseded story's number")
+    how: Literal["rewritten", "delivered", "dropped"] = Field(
+        description="rewritten as a story in this split, already delivered, or dropped"
+    )
+    note: str = Field(
+        description=(
+            "rewritten: the new story's title. delivered: the story that delivered it. "
+            "dropped: why, e.g. the decision that rules it out"
+        )
+    )
+
+
 class StoryProposal(BaseModel):
     """What the Business Analyst proposes for one epic."""
 
     epic_title: str
     stories: list[Story] = Field(default_factory=list)
+    accounted: list[Accounted] = Field(
+        default_factory=list,
+        description="On a re-split: what became of each superseded story, every one of them",
+    )
     already_delivered: list[AlreadyDelivered] = Field(
         default_factory=list,
         description=(
@@ -319,6 +340,7 @@ def split_epic(
     delivered: str = "",
     delivered_numbers: set[int] | None = None,
     pinning: str = "",
+    superseded: list[tuple[int, str]] | None = None,
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -337,6 +359,15 @@ def split_epic(
         description=(
             repo_block
             + (f"{pinning}\n\n" if pinning else "")
+            + (
+                "## The stories this split replaces\n\n"
+                + "\n".join(f"- #{n} {title}" for n, title in superseded)
+                + "\n\nAccount for every one in `accounted`: rewritten here (name the new "
+                "story), already delivered (name the story), or dropped (say why). None may "
+                "be left out.\n\n"
+                if superseded
+                else ""
+            )
             + _delivered_block(
                 delivered,
                 "a story these already deliver: list it in `already_delivered`, with the "
@@ -366,4 +397,20 @@ def split_epic(
     )
     proposal = crew.kickoff().pydantic
     check_delivered(proposal, delivered_numbers)
+    check_accounted(proposal, superseded or [])
     return proposal
+
+
+def check_accounted(proposal: StoryProposal, superseded: list[tuple[int, str]]) -> None:
+    """Refuse a re-split that drops a superseded story without a word (#248).
+
+    sprint-metrics#59's re-split dropped `--schema` and `/json` silently; the
+    Sponsor wanted both.
+    """
+    missing = sorted({n for n, _ in superseded} - {a.number for a in proposal.accounted})
+    if missing:
+        raise ValueError(
+            "the split doesn't say what became of "
+            + ", ".join(f"#{n}" for n in missing)
+            + ". Account for each: rewritten here, already delivered, or dropped and why."
+        )
