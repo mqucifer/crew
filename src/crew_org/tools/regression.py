@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from collections.abc import Callable
 from pathlib import Path
 
 # How a contract reads when its definition is deleted. A move reads the same
@@ -673,7 +674,10 @@ def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.
 
 
 def lost_names(
-    worktree: Path, implementation, merged: Merged | None = None
+    worktree: Path,
+    implementation,
+    merged: Merged | None = None,
+    on_skip: Callable[[str], None] | None = None,
 ) -> dict[str, tuple[str, str]]:
     """Names a changed module stops providing that another file still imports from it.
 
@@ -704,7 +708,11 @@ def lost_names(
         shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
         try:
             apply_implementation(after_root, implementation)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # Said out loud: returning nothing reads as "nothing lost", and
+            # sprint-metrics#129 went through with a broken import that way.
+            if on_skip is not None:
+                on_skip(f"couldn't check what the change stops providing: {exc}")
             return {}
         after = _modules(after_root)
     files = set(after)
@@ -769,7 +777,10 @@ def _provided(tree: ast.Module) -> set[str]:
 
 
 def draft_breaks(
-    worktree: Path, implementation, merged: Merged | None
+    worktree: Path,
+    implementation,
+    merged: Merged | None,
+    on_skip: Callable[[str], None] | None = None,
 ) -> dict[str, tuple[str, str]]:
     """Merged definitions an earlier attempt already broke, and this one leaves broken.
 
@@ -793,7 +804,11 @@ def draft_breaks(
         shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
         try:
             apply_implementation(after_root, implementation)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            # Said out loud: returning nothing reads as "nothing lost", and
+            # sprint-metrics#129 went through with a broken import that way.
+            if on_skip is not None:
+                on_skip(f"couldn't check what the change stops providing: {exc}")
             return {}
         after = _modules(after_root)
     found: dict[str, tuple[str, str]] = {}

@@ -127,3 +127,12 @@ def test_a_draft_move_is_still_a_move(repo: Path):
     implementation = impl(edits=[elsewhere])
     broken = draft_breaks(repo, implementation, merged)
     assert without_moves(repo, implementation, broken, merged) == {}
+
+
+def test_a_scratch_copy_that_wont_apply_is_said_out_loud(repo: Path):
+    """Returning nothing silently read as "nothing lost" (sprint-metrics#129)."""
+    heard: list[str] = []
+    bad = FileEdit(path=OLD, operation="delete", target="no_such_thing")
+    assert lost_names(repo, impl(edits=[bad]), merged_base(repo), heard.append) == {}
+    assert heard and "couldn't check what the change stops providing" in heard[0]
+    assert "no_such_thing" in heard[0]
