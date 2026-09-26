@@ -37,6 +37,10 @@ _KIND_STYLE = {
     EventKind.ESCALATION_DECIDED: "magenta",
     EventKind.CARD_MOVED: "green",
     EventKind.TASK_COMPLETED: "green",
+    EventKind.STORY_RETURNED: "cyan",
+    EventKind.PRODUCT_ANSWERED: "cyan",
+    EventKind.PRODUCT_ASKED: "yellow",
+    EventKind.EPIC_RESPLIT: "cyan",
 }
 
 
