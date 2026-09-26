@@ -92,6 +92,94 @@ def undocumented_options(diff: str, docs: list[str], read_head) -> list[str]:
     return [o for o in options if o not in text]
 
 
+_DEF = re.compile(r"^(?:async\s+)?def\s+(\w+)|^class\s+(\w+)")
+_ASSIGN = re.compile(r"^(\w+)\s*(?::[^=]+)?=(?!=)")
+_FROM = re.compile(r"^from\s+\S+\s+import\s+(.*)$")
+_IMPORT_LINE = re.compile(r"^import\s+(.*)$")
+
+
+def _imported_names(text: str) -> list[str]:
+    names = []
+    for part in text.replace("(", " ").replace(")", " ").split(","):
+        words = part.split()
+        if not words or words[0].startswith("#"):
+            continue
+        # `a as b` binds b; `import a.b` binds a.
+        names.append(words[-1] if len(words) == 3 and words[1] == "as" else words[0].split(".")[0])
+    return names
+
+
+def changed_names(diff: str) -> dict[str, set[str]]:
+    """The top-level names each changed Python file's diff adds or removes (#215).
+
+    Read from the diff's own lines: definitions, assignments and imports at
+    column 0, and the names inside a parenthesised import the diff touches.
+    """
+    found: dict[str, set[str]] = {}
+    path = ""
+    in_import = False
+    for line in diff.splitlines():
+        header = _FILE.match(line)
+        if header:
+            path, in_import = header.group(1), False
+            continue
+        if not path.endswith(".py") or line.startswith(("---", "+++", "@@", "diff ")):
+            continue
+        sign, text = line[:1], line[1:]
+        if in_import:
+            if sign in "+-" and text.strip():
+                found.setdefault(path, set()).update(_imported_names(text))
+            in_import = ")" not in text
+            continue
+        if text.startswith("from ") and "(" in text and ")" not in text:
+            in_import = True
+        if sign not in "+-":
+            continue
+        names: list[str] = []
+        if match := _DEF.match(text):
+            names = [match.group(1) or match.group(2)]
+        elif (match := _FROM.match(text)) or (match := _IMPORT_LINE.match(text)):
+            names = _imported_names(match.group(1))
+        elif match := _ASSIGN.match(text):
+            names = [match.group(1)]
+        if names:
+            found.setdefault(path, set()).update(n for n in names if n.isidentifier())
+    return found
+
+
+def importers_section(root, diff: str) -> str:
+    """Who imports the names this diff changes, from the clone at the base branch (#215).
+
+    On sprint-metrics PR #139 the reviewer called nine imports "unused". They
+    were pass-throughs `__init__.py` imports from there, and a diff can't show
+    that.
+    """
+    from crew_org.tools.regression import importers, passed_along  # noqa: PLC0415
+
+    found = importers(root, changed_names(diff))
+    if not found:
+        return ""
+    lines = [
+        "## Who imports the names this diff changes, on the base branch",
+        "",
+        "A name another file imports from a module is part of that module's interface: "
+        "removing or renaming it breaks them.",
+        "",
+    ]
+    for path, names in sorted(found.items()):
+        for name, users in names.items():
+            by = ", ".join(f"`{u}`" for u in users)
+            if passed_along(root, path, name):
+                verb = "imports" if len(users) == 1 else "import"
+                lines.append(
+                    f"- `{path}` `{name}`: passed along, not unused. Nothing in this file "
+                    f"uses it, and {by} {verb} it from here"
+                )
+            else:
+                lines.append(f"- `{path}` `{name}`: imported from here by {by}")
+    return "\n".join(lines)
+
+
 def changed_python_files(diff: str) -> list[str]:
     return list(dict.fromkeys(_CHANGED.findall(diff)))
 

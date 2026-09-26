@@ -402,6 +402,15 @@ def _closed(crew: Crew) -> str:
     return f"{crew.sprint} is closed (retro #{retro}): nothing more is admitted; {starts}"
 
 
+def _clone(crew: Crew, repo: str):
+    """The repository at its base branch, or None: the review goes ahead without it."""
+    try:
+        return crew.ws.for_repo(repo).current()
+    except Exception as exc:  # noqa: BLE001
+        crew.sink.note(EventKind.NOTE, f"{repo}: no clone for the review: {exc}"[:120])
+        return None
+
+
 def _review(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.review import review_open_pulls  # noqa: PLC0415
 
@@ -419,6 +428,7 @@ def _review(crew: Crew) -> PhaseOutcome:
             board=crew.board,
             cards=cards,
             writer=crew.issues,
+            clone=_clone(crew, repo),
         )
         reviewed += len(result.reviewed)
         returned += [f"#{n}" for n, _epic in result.returned]
