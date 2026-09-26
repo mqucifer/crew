@@ -26,7 +26,7 @@ from crew_org.escalation import (
     utcnow,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
@@ -74,6 +74,10 @@ class DeliveryOutcome:
     # carries. A pytest run with thirteen failures does not fit in 400
     # characters, and the part that identifies the defect is rarely the front.
     failure_detail: str | None = None
+    # A story whose failures are the story's (#189): the evidence for its epic,
+    # and the merged tests the last attempt broke, to see them break again.
+    returned: str | None = None
+    last_pinned: set[str] = field(default_factory=set)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -102,6 +106,8 @@ class DeliveryResult:
     # pass that started something and one that finally finished something the
     # loop had been dropping is the whole point of the card that added it.
     reworked: list[int] = field(default_factory=list)
+    # (story, epic) sent back to refinement as a story problem (#189).
+    returned: list[tuple[int, int]] = field(default_factory=list)
     not_ours: list[int] = field(default_factory=list)
     landed: list[int] = field(default_factory=list)
     conflicted: list[int] = field(default_factory=list)
@@ -773,6 +779,43 @@ def deliver_story(
         if check.ok:
             break
 
+        # The same merged tests, not this story's, failing again: the story is
+        # changing behaviour other work pinned and doesn't say whether it
+        # should. More attempts, or escalation, won't fix a story (#189).
+        pinned = story_problem.pinned_failures(
+            check.failure_report, regression.merged_base(worktree), implementation
+        )
+        repeated = bool(pinned) and set(pinned) == outcome.last_pinned
+        outcome.last_pinned = set(pinned)
+        if repeated:
+            failure = LocalFailure(
+                card=number,
+                role="Developer",
+                failure_class=FailureClass.SCOPE,
+                attempts=outcome.seen("VERIFY"),
+                detail="breaks the same merged tests again: " + ", ".join(sorted(pinned))[:360],
+            )
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.ESCALATION_DECIDED,
+                    role="Developer",
+                    card=number,
+                    summary=f"SCOPE — {decision.disposition}",
+                    detail={
+                        "failure_class": FailureClass.SCOPE,
+                        "reason": decision.reason,
+                        "pinned": sorted(pinned),
+                        "first_error": first_error(check.failure_report),
+                    },
+                )
+            )
+            outcome.failure_detail = check.failure_report
+            outcome.blocked_reason = decision.reason
+            if decision.disposition is Disposition.RETURN_TO_REFINEMENT:
+                outcome.returned = story_problem.evidence(card, pinned, outcome.seen("VERIFY") + 1)
+            return outcome
+
         failure = LocalFailure(
             card=number,
             role="Developer",
@@ -1116,6 +1159,17 @@ def _work_one_card(
             by="Developer",
         )
         result.delivered.append(outcome)
+    elif outcome.returned and story_problem.return_to_refinement(
+        board,
+        issues,
+        sink,
+        card,
+        repo=repo,
+        cards=board.cards(),
+        comment=outcome.returned,
+    ):
+        counts[IN_PROGRESS] -= 1
+        result.returned.append((card.number or 0, card.parent or 0))
     else:
         move_card(
             board,

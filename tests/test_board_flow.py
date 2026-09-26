@@ -630,10 +630,11 @@ def test_a_repository_it_cannot_read_does_not_stop_refinement(monkeypatch):
 class ReworkIssues(FakeIssues):
     """Tracks what a rework closed and which label it dropped."""
 
-    def __init__(self, comments=None, children=None):
+    def __init__(self, comments=None, children=None, branches=()):
         super().__init__()
         self._comments = comments or []
         self._children = children or []
+        self._branches = list(branches)
         self.closed: list[tuple[int, str]] = []
         self.unlabelled: list[tuple[int, str]] = []
 
@@ -642,6 +643,9 @@ class ReworkIssues(FakeIssues):
 
     def sub_issues(self, repo, number):
         return [{"number": n} for n in self._children]
+
+    def branches(self, repo):
+        return [{"name": name} for name in self._branches]
 
     def has_comment_marked(self, repo, number, marker):
         return any(marker in (c.get("body") or "") for c in self._comments)
@@ -720,6 +724,7 @@ def test_a_rework_that_would_throw_away_work_is_refused(monkeypatch):
     issues = ReworkIssues(
         comments=[marked(board_flow.EPIC_PROPOSAL_MARKER), sponsor("try again")],
         children=[7],
+        branches=["feat/7-report-a-range"],
     )
     board = FakeBoard([reworked(1), card(7, status="In Progress")])
     result, _ = run(board, issues, monkeypatch)
@@ -728,6 +733,23 @@ def test_a_rework_that_would_throw_away_work_is_refused(monkeypatch):
     assert issues.closed == [], "nothing thrown away"
     assert any("rework refused" in why for _, why in result.skipped)
     assert any("#7" in why for _, why in result.skipped), "and it names the card"
+
+
+def test_a_story_admitted_but_not_built_is_not_work_in_flight(monkeypatch):
+    """#189: sprint-metrics#97's siblings sat in the Sprint Backlog with nothing
+    built, and the gate refused the rework until the Sponsor moved them by hand."""
+    issues = ReworkIssues(
+        comments=[marked(board_flow.EPIC_PROPOSAL_MARKER), sponsor("try again")],
+        children=[7, 8],
+        branches=["feat/99-something-else"],
+    )
+    board = FakeBoard(
+        [reworked(1), card(7, status="Sprint Backlog"), card(8, status="In Progress")]
+    )
+    result, _ = run(board, issues, monkeypatch)
+
+    assert not any("rework refused" in why for _, why in result.skipped)
+    assert sorted(n for n, _ in issues.closed) == [7, 8], "superseded: neither has a branch or PR"
 
 
 # --- a Goal is the Sponsor's ---------------------------------------------

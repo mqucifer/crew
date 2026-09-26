@@ -310,6 +310,14 @@ mutation($project: ID!, $item: ID!, $field: ID!, $iteration: String!) {
 }
 """
 
+_CLEAR_FIELD = """
+mutation($project: ID!, $item: ID!, $field: ID!) {
+  clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) {
+    projectV2Item { id }
+  }
+}
+"""
+
 _ADD_ITEM = """
 mutation($project: ID!, $content: ID!) {
   addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
@@ -536,6 +544,15 @@ class ProjectClient:
             item=item_id,
             field=self.schema.field(field).id,
             iteration=self.schema.option_id(field, title),
+        )
+
+    def clear_field(self, item_id: str, field: str) -> None:
+        """Empty one field on a card, e.g. take a story out of its sprint."""
+        self._call(
+            _CLEAR_FIELD,
+            project=self.schema.project_id,
+            item=item_id,
+            field=self.schema.field(field).id,
         )
 
     def add_issue(self, issue_node_id: str) -> str:
