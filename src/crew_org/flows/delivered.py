@@ -5,9 +5,10 @@ work Sprint 6 had already delivered (#73, #70, #75, #76, #91, #92). The
 Business Analyst was shown the code, and a CLI flag in the code doesn't read
 as "this criterion is met". What was delivered, and what it promised, does.
 
-Each delivered story is its title and the outcomes its criteria promised (the
-**Then** lines), kept short: the project's history grows with every sprint,
-and the whole of every story would crowd out the code.
+Each delivered story is its title and what its criteria promised, each as the
+action and its outcome (**When** and **Then**), kept short: the project's
+history grows with every sprint, and the whole of every story would crowd out
+the code.
 """
 
 from __future__ import annotations
@@ -21,7 +22,11 @@ from crew_org.tools.github_project import Card
 # Every closed issue since this, which is all of them.
 SINCE = "2000-01-01T00:00:00Z"
 STORY_TYPE = "Story"
-_THEN = re.compile(r"^\s*\**Then\**\s+(.+?)\s*$", re.MULTILINE)
+# Each criterion's action and outcome together. The outcome alone lost its
+# condition: sprint-metrics#100's "then the output contains '7 days ⚠️'" read as
+# flags by default, where every criterion ran "with --thresholds" (#189's replay).
+_WHEN_THEN = re.compile(r"^\s*\**When\**\s+(.+?)\s*\n\s*\**Then\**\s+(.+?)\s*$", re.MULTILINE)
+MAX_WHEN = 120
 MAX_THEN = 160
 
 
@@ -47,7 +52,7 @@ class Delivered:
         lines = []
         for story in self.stories:
             lines.append(f"- #{story.number} {story.title}")
-            lines += [f"  - then {outcome}" for outcome in story.outcomes]
+            lines += [f"  - {outcome}" for outcome in story.outcomes]
         return "\n".join(lines)
 
 
@@ -67,7 +72,10 @@ def delivered(issues: Any, cards: list[Card], repo: str) -> Delivered:
         DeliveredStory(
             number=issue["number"],
             title=issue.get("title") or "",
-            outcomes=tuple(then[:MAX_THEN] for then in _THEN.findall(issue.get("body") or "")),
+            outcomes=tuple(
+                f"when {when[:MAX_WHEN]}, then {then[:MAX_THEN]}"
+                for when, then in _WHEN_THEN.findall(issue.get("body") or "")
+            ),
         )
         for issue in issues.closed_since(repo, SINCE)
         if issue.get("state_reason") == "completed" and issue.get("number") in stories

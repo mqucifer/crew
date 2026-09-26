@@ -62,15 +62,18 @@ def test_only_completed_stories_count_as_delivered():
         "a duplicate closed not planned delivered nothing; a Goal isn't a story"
     )
     (story,) = found.stories
-    assert story.outcomes == ("the table has one row per sprint", "it exits 2 naming the range")
+    assert story.outcomes == (
+        "when I pass `--sprint-range 1..3`, then the table has one row per sprint",
+        "when I pass `--sprint-range 3..1`, then it exits 2 naming the range",
+    ), "each outcome with the action that triggers it"
 
 
 def test_the_block_names_each_story_and_what_it_promised():
     text = delivered(History(), [story_card(73)], REPO).render()
     assert text.splitlines() == [
         "- #73 Report a range",
-        "  - then the table has one row per sprint",
-        "  - then it exits 2 naming the range",
+        "  - when I pass `--sprint-range 1..3`, then the table has one row per sprint",
+        "  - when I pass `--sprint-range 3..1`, then it exits 2 naming the range",
     ]
 
 
