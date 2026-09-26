@@ -145,3 +145,33 @@ def test_a_failing_edit_does_not_corrupt_the_file():
     with pytest.raises(EditError):
         apply_edits(SOURCE, [Edit(Operation.REPLACE, "absent", "def absent():\n    pass")])
     assert parses(SOURCE)
+
+
+# --- a constant with a type annotation is addressable too -----------------------------------------
+
+ANNOTATED = """DEFAULT_THRESHOLDS: dict[str, float] = {
+    "cycle_time": 5.0,
+}
+
+
+def calculate_flags(cards):
+    return DEFAULT_THRESHOLDS
+"""
+
+
+def test_an_annotated_constant_can_be_deleted_by_name():
+    """sprint-metrics#127 was told `DEFAULT_THRESHOLDS` didn't exist."""
+    from crew_org.tools.ast_edit import Edit, Operation, apply_edits
+
+    after = apply_edits(ANNOTATED, [Edit(operation=Operation.DELETE, target="DEFAULT_THRESHOLDS")])
+    assert "DEFAULT_THRESHOLDS:" not in after and "def calculate_flags" in after
+
+
+def test_an_annotated_constant_can_be_replaced_by_name():
+    from crew_org.tools.ast_edit import Edit, Operation, apply_edits
+
+    source = 'DEFAULT_THRESHOLDS: dict[str, float] = {"cycle_time": 3.0}'
+    after = apply_edits(
+        ANNOTATED, [Edit(operation=Operation.REPLACE, target="DEFAULT_THRESHOLDS", source=source)]
+    )
+    assert '{"cycle_time": 3.0}' in after and '"cycle_time": 5.0' not in after
