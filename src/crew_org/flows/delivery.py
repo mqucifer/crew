@@ -686,13 +686,17 @@ def deliver_story(
         # then the model is repairing a symptom several steps from the cause —
         # story #9 changed a return type to None and spent every attempt on the
         # TypeError it produced three functions away.
-        broken = regression.broken_contracts(worktree, implementation.all_edits)
+        # Judged against what's merged, not this story's draft: an earlier
+        # attempt's changes are the story's own, and its damage still counts.
+        merged = regression.merged_base(worktree)
+        broken = regression.broken_contracts(worktree, implementation.all_edits, merged)
+        broken = regression.draft_breaks(worktree, implementation, merged) | broken
         # A definition moved to another module, and still reachable where
         # callers look for it, isn't removed (#202).
-        broken = regression.without_moves(worktree, implementation, broken)
+        broken = regression.without_moves(worktree, implementation, broken, merged)
         # A name the module passes along, or a constant, that another file
         # still imports from it (sprint-metrics#129).
-        broken |= regression.lost_names(worktree, implementation)
+        broken |= regression.lost_names(worktree, implementation, merged)
         if broken:
             failure = LocalFailure(
                 card=number,
