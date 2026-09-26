@@ -238,6 +238,10 @@ def review_open_pulls(
                     card=card.number,
                     frm=REVIEWING,
                     summary=f"changes requested — {len(verdict.findings)} findings",
+                    # What the retro counts the return as (#254).
+                    finding=next(
+                        (f"{f.file}: {f.concern}" for f in verdict.findings if f.blocking), ""
+                    )[:300],
                 )
 
     return result

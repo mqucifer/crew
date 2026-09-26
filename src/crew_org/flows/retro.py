@@ -288,6 +288,8 @@ class RetroLayout:
     blocked: list[tuple[str, int | None]] = field(default_factory=list)
     # Epics at the Sponsor's gate, by name.
     awaiting: list[str] = field(default_factory=list)
+    # Loops broken this sprint (#253): each return, decision and re-split.
+    loops: list[str] = field(default_factory=list)
 
 
 def _span(names: list[str]) -> str:
@@ -318,6 +320,9 @@ def _retro_body(
 
     if retro.went:
         body += ["## How it went", "", *[f"- {w}" for w in retro.went], ""]
+
+    if layout.loops:
+        body += ["## Loops the crew broke", "", *layout.loops, ""]
 
     if layout.retries:
         first, *causes = layout.retries.splitlines()

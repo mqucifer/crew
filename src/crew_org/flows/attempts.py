@@ -32,6 +32,15 @@ RECURRING_CARDS = 2
 # many cards it happens on. An ImportError or NameError on several is systemic.
 UNRECORDED = "; its cause wasn't recorded"
 CARD_OWN = "a test's assertion failed"
+# QA finding a criterion unproven is that story's, like a failed assertion.
+UNPROVEN = "an acceptance criterion unproven"
+CARDS_OWN = frozenset({CARD_OWN, UNPROVEN})
+
+# A gate returning a story is an attempt too (#254), and the costlier kind:
+# each is a full delivery, review and QA. The Developer's local retries never
+# see them — sprint-metrics#145 was returned five times and counted first try.
+REVIEW = "REVIEW"
+QA = "QA"
 
 # A parse failure is a defect in what the model is asked for (the escalation
 # policy's own reading of a persistent SCHEMA failure), not bad luck.
@@ -96,8 +105,47 @@ def cause_of(failure_class: str, detail: dict[str, Any]) -> tuple[str, str]:
     return _mask(first) or failure_class.lower(), first
 
 
+def _gate_return(event: dict[str, Any]) -> Attempt | None:
+    """A review that requested changes, or QA returning a story, as an attempt."""
+    detail = event.get("detail") or {}
+    role = event.get("role") or ""
+    at = event.get("at") or ""
+    # The review's own event names the pull request, not the story; the move
+    # it makes names the story.
+    if (
+        event.get("kind") == "card.moved"
+        and role == "Code Reviewer"
+        and detail.get("to") == "In Progress"
+    ):
+        finding = str(detail.get("finding") or "")
+        cause = _mask(re.split(r"\. ", finding, maxsplit=1)[0]) if finding else ""
+        return Attempt(
+            card=int(event["card"]),
+            role=role,
+            failure_class=REVIEW,
+            cause=cause or f"changes requested{UNRECORDED}",
+            error=finding[:300],
+            at=at,
+        )
+    if (
+        event.get("kind") == "agent.finished"
+        and role == "QA Engineer"
+        and detail.get("accepted") is False
+    ):
+        unproven = detail.get("unproven") or []
+        return Attempt(
+            card=int(event["card"]),
+            role=role,
+            failure_class=QA,
+            cause=UNPROVEN,
+            error=str(unproven[0] if unproven else "")[:300],
+            at=at,
+        )
+    return None
+
+
 def read_attempts(events_dir: Path) -> list[Attempt]:
-    """Every retry the event log recorded, oldest first."""
+    """Every retry the event log recorded, and every gate return, oldest first."""
     found: list[Attempt] = []
     for path in sorted(events_dir.glob("*.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -105,7 +153,13 @@ def read_attempts(events_dir: Path) -> list[Attempt]:
                 event = json.loads(line)
             except ValueError:
                 continue
-            if event.get("kind") != "escalation.decided" or event.get("card") is None:
+            if event.get("card") is None:
+                continue
+            gate = _gate_return(event)
+            if gate is not None:
+                found.append(gate)
+                continue
+            if event.get("kind") != "escalation.decided":
                 continue
             detail = event.get("detail") or {}
             failure_class = str(
@@ -146,7 +200,7 @@ class Cause:
         return (
             len(self.cards) >= RECURRING_CARDS
             and not self.cause.endswith(UNRECORDED)
-            and self.cause != CARD_OWN
+            and self.cause not in CARDS_OWN
         )
 
     @property
