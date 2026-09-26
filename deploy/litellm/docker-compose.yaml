@@ -26,11 +26,13 @@ services:
       # DATABASE_URL below must agree with it, and two literals silently
       # drifting apart is a harder failure to read than a missing password.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-litellm-local-only}
-    # CRITICAL: No "volumes" are defined here.
-    # Everything lives in temporary container memory and vanishes when stopped.
-    # LiteLLM needs a database to serve the Admin UI at all; it is not storage
-    # the crew depends on, and `store_model_in_db: false` in config.yaml keeps
-    # it that way. Anything created through the UI dies with the container.
+    # Kept across restarts since 2026-09-26: it now holds every request and
+    # response, reasoning included (`store_prompts_in_spend_logs` in
+    # config.yaml), so a thinking block can be read after the fact. Until then
+    # it had no volume and was wiped on every restart. Models still come from
+    # config.yaml only (`store_model_in_db: false`); retention is set there.
+    volumes:
+      - litellm-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm_admin -d litellm"]
       interval: 2s
@@ -61,6 +63,11 @@ services:
       # leaking should not hand over the other.
       - UI_USERNAME=${LITELLM_UI_USERNAME:?set LITELLM_UI_USERNAME in the root .env}
       - UI_PASSWORD=${LITELLM_UI_PASSWORD:?set LITELLM_UI_PASSWORD in the root .env}
+      # LiteLLM cuts every string it stores at 2,048 characters by default, which
+      # would keep the first paragraph of a thinking block and nothing else. A
+      # full-context call is a few hundred thousand characters; this is above
+      # any call the 262,144-token context allows.
+      - MAX_STRING_LENGTH_PROMPT_IN_DB=4000000
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
@@ -69,3 +76,6 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+
+volumes:
+  litellm-db:

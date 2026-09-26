@@ -174,3 +174,10 @@ litellm_settings:
 general_settings:
   # Keeps a local record of every request for the audit trail.
   store_model_in_db: false
+  # Every request and response is kept, reasoning included, so a thinking block
+  # can be read to see whether it converged or went in circles; token counts
+  # can't tell those apart. Browsable in the admin UI (/ui, Logs), queryable in
+  # Postgres. The database has a volume for this (docker-compose.yaml).
+  store_prompts_in_spend_logs: true
+  # Full prompts are large; a month is enough to look back on a sprint's runs.
+  maximum_spend_logs_retention_period: "30d"
