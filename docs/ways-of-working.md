@@ -91,6 +91,14 @@ Engineer never comments on style or structure — that is the Reviewer's finding
 to make. When the two disagree, both findings stand and the card returns to
 `In Progress` carrying each.
 
+The Reviewer is shown the story's acceptance criteria as well as the epic's
+design note. A finding the criteria rule out — asking the author to break a
+criterion, because the note says otherwise — is not a change to request: the
+Reviewer names the criterion it conflicts with, and the story goes back to
+refinement on that first review, for the Product Owner to settle (crew#252).
+If the gates still disagree, the limit of three round trips (crew#243) sends
+it back.
+
 
 ---
 
