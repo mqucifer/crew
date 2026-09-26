@@ -147,10 +147,15 @@ developer:
     else. When a card turns out to be larger or vaguer than it looked, that is
     a SCOPE failure and it goes back to refinement — it is never a reason to
     escalate.
-  # Reasoning off: this model reasons circularly on long structured output.
-  # Measured on one story — thinking on, 27 minutes and no valid result;
-  # thinking off, 55 seconds and a working implementation.
-  llm: crew-code
+  # Reasoning at low effort, on its own alias so every call says which setting
+  # made it (2026-09-26). It was switched off after one story: thinking on, 27
+  # minutes and no valid result; off, 55 seconds and a working implementation.
+  # That run was at xhigh and temperature 0.1, near the greedy decoding the
+  # model's vendor warns loops in thinking mode. With the vendor's sampling,
+  # low effort is tried again: a move across files is the planning the
+  # non-thinking Developer kept getting half right (sprint-metrics#125, #126).
+  # Back to crew-code is this one line.
+  llm: crew-code-think
   can: [write_code, run_tests, open_pr, update_docs, file_bug, comment]
   constitution: [7, 8, 9, 10, 19]  # DoD, branch/PR conventions, escalation, audit, guidelines
 

@@ -156,6 +156,31 @@ model_list:
         min_p: 0.0
         repetition_penalty: 1.0
 
+  # The Developer, thinking at low effort (2026-09-26). crew-code turned
+  # thinking off after a 27-minute loop measured at xhigh and temperature 0.1;
+  # this retries it with the vendor's thinking-mode sampling and the lowest
+  # effort, under its own name so the event log attributes each call to it.
+  # reasoning_effort needs allowed_openai_params, or drop_params strips it.
+  - model_name: crew-code-think
+    model_info:
+      max_input_tokens: 262144   # SGLang launches with --context-length 262144
+    litellm_params:
+      model: openai/qwen3.8-27b-sglang
+      api_base: os.environ/SGLANG_BASE_URL
+      api_key: "sk-not-used"
+      drop_params: true
+      # Qwen3.8's recommended thinking-mode sampling (see the note at the top).
+      temperature: 1.0
+      top_p: 0.95
+      presence_penalty: 0.0
+      timeout: 1800
+      reasoning_effort: low
+      allowed_openai_params: ["reasoning_effort"]  # or drop_params strips it
+      extra_body:                        # not OpenAI parameters: drop_params would strip them
+        top_k: 20
+        min_p: 0.0
+        repetition_penalty: 1.0
+
 litellm_settings:
   drop_params: true
   # A timeout must outlast the generation it carries, or the proxy kills work
