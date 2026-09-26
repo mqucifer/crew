@@ -250,3 +250,50 @@ def test_no_allow_list_admits_everything():
     plan = plan_sprint(cards, parents({6: 3}) | parents({7: 3}, CREW), sprint="S1", capacity=20)
     assert sorted(c.number for c in plan.admitted) == [6, 7]
     assert plan.not_ours == []
+
+
+# --- capacity is the sprint's, not the run's (#222) -------------------------------------------
+
+
+def in_sprint(number: int, points: int, status: str = "Done", sprint: str = "Sprint 6") -> Card:
+    card = story(number, points, status=status)
+    card.sprint = sprint
+    return card
+
+
+def test_points_already_in_the_sprint_are_counted_first():
+    cards = [
+        epic(59),
+        in_sprint(1, 8, "Done"),
+        in_sprint(2, 5, "In Progress"),
+        story(10, 5),
+        story(11, 5),
+    ]
+    plan = plan_sprint(cards, parents({10: 59, 11: 59}), sprint="Sprint 6", capacity=20)
+    assert plan.committed == 13
+    assert [c.number for c in plan.admitted] == [10], "13 + 5 fits; another 5 would not"
+    assert plan.total == 18
+
+
+def test_a_full_sprint_admits_nothing():
+    """Sprint 6's real shape: 22 done stories with 63 points, 9 more with 17."""
+    done = [in_sprint(100 + n, 3, "Done") for n in range(21)] + [in_sprint(121, 0, "Done")]
+    split = [in_sprint(125 + n, 2, "Done") for n in range(8)] + [in_sprint(133, 1, "Done")]
+    cards = [epic(59), *done, *split, story(143, 3), story(144, 2)]
+    plan = plan_sprint(cards, parents({143: 59, 144: 59}), sprint="Sprint 6", capacity=20)
+    assert plan.committed == 63 + 17 and plan.full
+    assert plan.admitted == [] and [c.number for c in plan.slices[0].deferred] == [143, 144]
+
+
+def test_another_sprints_points_are_not_this_ones():
+    cards = [epic(59), in_sprint(1, 20, "Done", sprint="Sprint 6"), story(10, 5)]
+    plan = plan_sprint(cards, parents({10: 59}), sprint="Sprint 7", capacity=20)
+    assert plan.committed == 0 and [c.number for c in plan.admitted] == [10]
+
+
+def test_another_repositorys_points_are_not_counted_when_the_crew_is_bounded():
+    other = in_sprint(1, 20)
+    other.repo = "elsewhere"
+    cards = [epic(59), other, story(10, 5)]
+    plan = plan_sprint(cards, parents({10: 59}), sprint="Sprint 6", capacity=20, repos={REPO})
+    assert plan.committed == 0 and [c.number for c in plan.admitted] == [10]
