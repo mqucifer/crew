@@ -139,3 +139,57 @@ def return_to_refinement(
     artifacts.label(issues, sink, repo=repo, number=epic, by="Developer", add=[NEEDS_REWORK])
     artifacts.comment(issues, sink, repo=repo, number=epic, body=comment, by="Developer")
     return True
+
+
+# A story delivered this many times and returned again goes back to refinement
+# instead of being reworked once more (#242).
+MAX_ROUND_TRIPS = 3
+DELIVERED = "Implemented in #"
+
+
+def round_trips(issues: Any, repo: str, number: int) -> int:
+    """How many times the Developer has delivered this story: its own comments say."""
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return 0
+    return sum(1 for c in comments if (c.get("body") or "").startswith(DELIVERED))
+
+
+def round_trip_evidence(issues: Any, repo: str, card: Card, pull: int | None, rounds: int) -> str:
+    """Both gates' latest word, for the epic: where they disagree is the question."""
+    qa = ""
+    try:
+        verdicts = [
+            c.get("body") or ""
+            for c in issues.comments(repo, card.number or 0)
+            if "## QA — not accepted" in (c.get("body") or "")
+        ]
+        if verdicts:
+            qa = "\n".join(line for line in verdicts[-1].splitlines() if "not proven" in line)
+    except Exception:  # noqa: BLE001
+        pass
+    review = ""
+    if pull is not None:
+        try:
+            asked = [
+                r.get("body") or ""
+                for r in issues.pull_reviews(repo, pull)
+                if r.get("state") == "CHANGES_REQUESTED"
+            ]
+            if asked:
+                body = asked[-1]
+                review = body[body.find("## Findings") :] if "## Findings" in body else body
+                review = review.split("<!-- crew:by")[0].strip()
+        except Exception:  # noqa: BLE001
+            pass
+    return (
+        f"{STORY_PROBLEM_MARKER}\n"
+        f"**#{card.number} went back to refinement: the gates kept returning it.**\n\n"
+        f"*{card.title}* was delivered {rounds} times and returned again. When QA and "
+        "the Code Reviewer keep sending it back, repairing it won't settle it: the "
+        "story, its criteria and the epic's design note don't agree.\n\n"
+        f"**QA's latest:**\n\n{qa or '(no QA return recorded)'}\n\n"
+        f"**The Code Reviewer's latest:**\n\n{review or '(no changes requested)'}\n\n"
+        "Settle which holds before this epic is split again."
+    )

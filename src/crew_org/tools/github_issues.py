@@ -383,6 +383,10 @@ class IssueClient:
             state_reason=reason,
         )
 
+    def close_pull(self, repo: str, number: int) -> dict[str, Any]:
+        """Close a pull request without merging it."""
+        return self._request("PATCH", f"/repos/{self.owner}/{repo}/pulls/{number}", state="closed")
+
     def reopen(self, repo: str, number: int) -> dict[str, Any]:
         return self._request("PATCH", f"/repos/{self.owner}/{repo}/issues/{number}", state="open")
 
