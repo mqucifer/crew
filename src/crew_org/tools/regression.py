@@ -28,6 +28,76 @@ REMOVED = "removed entirely"
 _SKIP = {".git", ".venv", "__pycache__", "node_modules", ".mypy_cache", ".ruff_cache"}
 
 
+class Merged:
+    """The default branch where this story's branch left it: what's merged.
+
+    The guards protect merged work, not a story's own draft. A failed
+    attempt's changes stay in the worktree for the repair to build on, and
+    judged against that draft the guards went wrong both ways: sprint-metrics
+    #126 couldn't delete a test its own first attempt had added, and #129's
+    first attempt removed imports `__init__.py` needed, after which nothing
+    was ever "lost" again and the tests failed without the guard saying why.
+    """
+
+    def __init__(self, worktree: Path, sha: str) -> None:
+        self.worktree, self.sha = worktree, sha
+
+    def text(self, path: str) -> str | None:
+        """`path` as merged, or None if it isn't on the default branch."""
+        import subprocess  # noqa: PLC0415
+
+        shown = subprocess.run(
+            ["git", "show", f"{self.sha}:{path}"],
+            cwd=self.worktree,
+            capture_output=True,
+            text=True,
+        )
+        return shown.stdout if shown.returncode == 0 else None
+
+    def changed(self) -> set[str]:
+        """Python files the worktree has changed since, committed or not."""
+        import subprocess  # noqa: PLC0415
+
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", self.sha],
+            cwd=self.worktree,
+            capture_output=True,
+            text=True,
+        )
+        return {p for p in diff.stdout.split() if p.endswith(".py")}
+
+
+def merged_base(worktree: Path) -> Merged | None:
+    """The merged state for `worktree`, or None where there's no git to ask."""
+    import subprocess  # noqa: PLC0415
+
+    found = subprocess.run(
+        ["git", "merge-base", "HEAD", "origin/HEAD"],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    sha = found.stdout.strip()
+    return Merged(worktree, sha) if found.returncode == 0 and sha else None
+
+
+def _before(worktree: Path, path: str, merged: Merged | None) -> str | None:
+    """`path` as the guards compare against: merged, else the file as it stands."""
+    if merged is not None:
+        return merged.text(path)
+    target = worktree / path
+    return target.read_text(encoding="utf-8") if target.is_file() else None
+
+
+def _parse_text(text: str | None) -> ast.Module | None:
+    if text is None:
+        return None
+    try:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+
+
 def overwrites_existing(worktree: Path, new_files: list) -> list[str]:
     """New files that would overwrite something already there.
 
@@ -136,7 +206,9 @@ def _first_definition(source: str) -> ast.stmt | None:
     return None
 
 
-def broken_contracts(worktree: Path, edits: list) -> dict[str, tuple[str, str]]:
+def broken_contracts(
+    worktree: Path, edits: list, merged: Merged | None = None
+) -> dict[str, tuple[str, str]]:
     """Edits that would change or remove a contract other code depends on.
 
     Keyed by `path::target`, valued by what the signature was and what it would
@@ -164,11 +236,16 @@ def broken_contracts(worktree: Path, edits: list) -> dict[str, tuple[str, str]]:
         if leaf.startswith("_") and leaf != "__init__":
             continue
 
-        existing = worktree / edit.path
-        if not existing.exists():
-            continue
         if edit.path not in cache:
-            cache[edit.path] = definitions(existing.read_text(encoding="utf-8"))
+            # As merged: a definition only this story's draft added is its own
+            # to change or delete (sprint-metrics#126).
+            text = _before(worktree, edit.path, merged)
+            if text is None:
+                continue
+            try:
+                cache[edit.path] = definitions(text)
+            except SyntaxError:
+                continue
 
         old_node = cache[edit.path].get(edit.target)
         if old_node is None:
@@ -389,7 +466,10 @@ def contract_break(old: ast.stmt, new: ast.stmt) -> str | None:
 
 
 def without_moves(
-    worktree: Path, implementation, broken: dict[str, tuple[str, str]]
+    worktree: Path,
+    implementation,
+    broken: dict[str, tuple[str, str]],
+    merged: Merged | None = None,
 ) -> dict[str, tuple[str, str]]:
     """`broken`, less the removals that are really moves.
 
@@ -428,7 +508,8 @@ def without_moves(
             }
         modules = _modules(after)
         before = {
-            path: _parse(worktree / path) for path in {k.partition("::")[0] for k in removals}
+            path: _parse_text(_before(worktree, path, merged))
+            for path in {k.partition("::")[0] for k in removals}
         }
         why = {key: _moved(key, before, modules) for key in removals}
     kept = {key for key, reason in why.items() if not reason}
@@ -591,7 +672,9 @@ def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.
 # file still asked, or how to keep the name and satisfy lint.
 
 
-def lost_names(worktree: Path, implementation) -> dict[str, tuple[str, str]]:
+def lost_names(
+    worktree: Path, implementation, merged: Merged | None = None
+) -> dict[str, tuple[str, str]]:
     """Names a changed module stops providing that another file still imports from it.
 
     Covers what `broken_contracts` doesn't: a name the module imported and
@@ -608,10 +691,14 @@ def lost_names(worktree: Path, implementation) -> dict[str, tuple[str, str]]:
     changed = {e.path for e in implementation.all_edits if e.path.endswith(".py")} | {
         t.path for t in implementation.text_edits if t.path.endswith(".py")
     }
-    changed = {p for p in changed if (worktree / p).is_file()}
-    if not changed:
+    if merged is not None:
+        # Including what an earlier attempt changed: its damage still counts.
+        changed |= merged.changed()
+    before = {path: _parse_text(_before(worktree, path, merged)) for path in changed}
+    before = {path: tree for path, tree in before.items() if tree is not None}
+    if not before:
         return {}
-    before = {path: _parse(worktree / path) for path in changed}
+    changed = set(before)
     with tempfile.TemporaryDirectory() as scratch:
         after_root = Path(scratch) / "after"
         shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
@@ -679,3 +766,52 @@ def _provided(tree: ast.Module) -> set[str]:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
     }
     return names
+
+
+def draft_breaks(
+    worktree: Path, implementation, merged: Merged | None
+) -> dict[str, tuple[str, str]]:
+    """Merged definitions an earlier attempt already broke, and this one leaves broken.
+
+    `broken_contracts` reads this attempt's edits; a definition the draft
+    deleted or reshaped before it isn't in them, so it was never reported.
+    Keyed and valued like a broken contract, and judged like one: a removal
+    here is still a move if `without_moves` finds its new home.
+    """
+    import shutil  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
+
+    if merged is None:
+        return {}
+    paths = merged.changed()
+    if not paths:
+        return {}
+    with tempfile.TemporaryDirectory() as scratch:
+        after_root = Path(scratch) / "after"
+        shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
+        try:
+            apply_implementation(after_root, implementation)
+        except Exception:  # noqa: BLE001
+            return {}
+        after = _modules(after_root)
+    found: dict[str, tuple[str, str]] = {}
+    for path in sorted(paths):
+        old_tree = _parse_text(merged.text(path))
+        if old_tree is None:
+            continue
+        for node in old_tree.body:
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                continue
+            if node.name.startswith("_"):
+                continue
+            was = signature_of(node)
+            if was is None:
+                continue
+            new = _top_level(after[path], node.name) if path in after else None
+            if new is None:
+                found[f"{path}::{node.name}"] = (was, REMOVED)
+            elif (broke := contract_break(node, new)) is not None:
+                found[f"{path}::{node.name}"] = (was, broke)
+    return found
