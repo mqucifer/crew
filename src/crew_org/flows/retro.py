@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from crew_org.crews.retro_crew import ProcessDefect, Retro
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.artifacts import link_references, signed
+from crew_org.flows.attempts import RECURRING_CARDS, Cause
 from crew_org.flows.standup import STANDUP_LABEL
 from crew_org.tools.github_issues import IssueClient
 
@@ -340,6 +341,40 @@ def _retro_body(
 CAUSE_MARKER = "<!-- crew:cause:{key} -->"
 
 
+_CAUSE_KEY = re.compile(r"<!-- crew:cause:(\w+) -->")
+
+
+def fixes_by_cause(
+    issues: IssueClient, crew_repo: str, findings: list[dict]
+) -> dict[str, tuple[str, str]]:
+    """Each cause's latest fix: (what fixed it, when), from the crew repository (#199).
+
+    Two sources, both mechanical. A retro finding carrying the cause's marker,
+    closed as completed: filed, then fixed. And a merged crew pull request
+    whose body carries the marker: a fix made before any finding was filed, as
+    #183 was before #195. The retro prints each cause's key for that.
+    """
+    found: dict[str, tuple[str, str]] = {}
+
+    def note(key: str, ref: str, at: str) -> None:
+        if at and (key not in found or at > found[key][1]):
+            found[key] = (ref, at)
+
+    for issue in findings:
+        if issue.get("state") == "closed" and issue.get("state_reason") == "completed":
+            for key in _CAUSE_KEY.findall(issue.get("body") or ""):
+                note(key, f"{crew_repo}#{issue['number']}", issue.get("closed_at") or "")
+    try:
+        pulls = issues.closed_pulls(crew_repo)
+    except Exception:  # noqa: BLE001
+        pulls = []
+    for pull in pulls:
+        if pull.get("merged_at"):
+            for key in _CAUSE_KEY.findall(pull.get("body") or ""):
+                note(key, f"{crew_repo} PR #{pull['number']}", pull["merged_at"])
+    return found
+
+
 def _file_recurring(
     issues: IssueClient,
     sink: EventSink,
@@ -359,11 +394,11 @@ def _file_recurring(
     if not causes:
         return []
     try:
-        open_findings = [
-            i for i in issues.labelled(crew_repo, FINDING_LABEL) if i.get("state") == "open"
-        ]
+        findings = issues.labelled(crew_repo, FINDING_LABEL)
     except Exception:  # noqa: BLE001
-        open_findings = []
+        findings = []
+    open_findings = [i for i in findings if i.get("state") == "open"]
+    fixes = fixes_by_cause(issues, crew_repo, findings)
     lines: list[str] = []
     for cause in causes:
         mark = CAUSE_MARKER.format(key=cause.key)
@@ -375,6 +410,28 @@ def _file_recurring(
                 f"({cause.count} times, on {cards})"
             )
             continue
+        fix = fixes.get(cause.key)
+        if fix is not None:
+            ref, fixed_at = fix
+            after = [(at, card) for at, card in cause.occurrences if at and at > fixed_at]
+            if len({card for _at, card in after}) < RECURRING_CARDS:
+                # Every occurrence, or all but one card's, came before the fix
+                # merged: fixed during the sprint, not recurring (#199).
+                lines.append(
+                    f"- recurred, and was fixed during the sprint by {ref}: {cause.cause}"
+                    + (f" (once since, on #{after[0][1]})" if after else "")
+                )
+                continue
+            # Recurring after the fix: only what happened since is evidence.
+            cause = Cause(
+                cause.failure_class,
+                cause.cause,
+                len(after),
+                sorted({card for _at, card in after}),
+                cause.example,
+                after,
+            )
+            cards = ", ".join(f"#{n}" for n in cause.cards)
         kind = "a prompt or schema defect" if cause.prompt_defect else "a recurring failure"
         body = (
             f"{mark}\n**{kind.capitalize()}, found by the retro for {sprint}.** "

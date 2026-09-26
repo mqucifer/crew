@@ -132,6 +132,9 @@ class Cause:
     count: int = 0
     cards: list[int] = field(default_factory=list)
     example: str = ""
+    # (when, card) for each occurrence: a fix merged mid-sprint is judged
+    # against when the failures happened, not the sprint as a whole (#199).
+    occurrences: list[tuple[str, int]] = field(default_factory=list)
 
     @property
     def key(self) -> str:
@@ -164,6 +167,7 @@ def sprint_report(
             (a.failure_class, a.cause), Cause(a.failure_class, a.cause, example=a.error)
         )
         entry.count += 1
+        entry.occurrences.append((a.at, a.card))
         if a.card not in entry.cards:
             entry.cards.append(a.card)
     return {
@@ -198,6 +202,8 @@ def sprint_report(
                 "cards": c.cards,
                 "example": c.example,
                 "recurring": c.recurring,
+                "key": c.key,
+                "occurrences": c.occurrences,
             }
             for c in sorted(causes.values(), key=lambda c: (-len(c.cards), -c.count, c.cause))
         ],
@@ -206,7 +212,14 @@ def sprint_report(
 
 def causes_of(report: dict[str, Any]) -> list[Cause]:
     return [
-        Cause(c["class"], c["cause"], c["count"], list(c["cards"]), c["example"])
+        Cause(
+            c["class"],
+            c["cause"],
+            c["count"],
+            list(c["cards"]),
+            c["example"],
+            [tuple(o) for o in c.get("occurrences", [])],
+        )
         for c in report["causes"]
     ]
 
@@ -221,7 +234,9 @@ def retries_text(report: dict[str, Any]) -> str:
     for c in report["causes"]:
         cards = ", ".join(f"#{n}" for n in c["cards"])
         times = "once" if c["count"] == 1 else f"{c['count']} times"
-        lines.append(f"- {c['class']}: {c['cause']} ({times}, on {cards})")
+        # The key is how a fix names the cause it fixes (#199).
+        key = f"; cause {c['key']}" if c.get("key") else ""
+        lines.append(f"- {c['class']}: {c['cause']} ({times}, on {cards}{key})")
     return "\n".join(lines)
 
 
