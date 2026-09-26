@@ -21,6 +21,12 @@ import ast
 import textwrap
 from pathlib import Path
 
+# How a contract reads when its definition is deleted. A move reads the same
+# until `without_moves` looks across files (#202).
+REMOVED = "removed entirely"
+# Not the project's code: a move is never judged against these.
+_SKIP = {".git", ".venv", "__pycache__", "node_modules", ".mypy_cache", ".ruff_cache"}
+
 
 def overwrites_existing(worktree: Path, new_files: list) -> list[str]:
     """New files that would overwrite something already there.
@@ -175,7 +181,7 @@ def broken_contracts(worktree: Path, edits: list) -> dict[str, tuple[str, str]]:
 
         key = f"{edit.path}::{edit.target}"
         if operation == "delete":
-            found[key] = (was, "removed entirely")
+            found[key] = (was, REMOVED)
             continue
 
         new_node = _first_definition(edit.source)
@@ -211,6 +217,16 @@ def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
         "field it already has, in the order it has them. If you need a new "
         "field, append it with a default.",
     ]
+    if any(broke == REMOVED for _was, broke in broken.values()):
+        lines += [
+            "",
+            "Moving a definition to another module is fine, and is not removing it. "
+            "Define it there with the same shape, delete it here, and import it back "
+            "into this module so its callers still find it. Only when nothing imports "
+            "this module any more may it stop providing the name, and then the "
+            "package's `__init__.py` must import it from its new home. Never keep "
+            "both copies.",
+        ]
     return "\n".join(lines)
 
 
@@ -361,3 +377,164 @@ def contract_break(old: ast.stmt, new: ast.stmt) -> str | None:
     if isinstance(old, ast.ClassDef):
         return _class_break(old, new)
     return _function_break(old, new)
+
+
+# --- a definition moved, not removed (#202) ------------------------------------------------------
+#
+# The contract check reads one file at a time, so moving a definition to
+# another module looked exactly like deleting it. The Architect's first
+# refactor, sprint-metrics#123, is nothing but moves, and its first story was
+# refused twice for "removing" `Card`. What callers rely on is that the name
+# still reaches them with the same shape, not which file defines it.
+
+
+def without_moves(
+    worktree: Path, implementation, broken: dict[str, tuple[str, str]]
+) -> dict[str, tuple[str, str]]:
+    """`broken`, less the removals that are really moves.
+
+    A top-level definition deleted from module A is kept when, once the change
+    is applied, a definition of the same name and a compatible shape exists in
+    another module B, and either A still binds the name by importing it from
+    B, or nothing in the repository asks A for the name any more and A's
+    package binds it from B. Judged on a scratch copy with the change applied, because
+    a move is spread across files: the new module, the deletion, the import.
+    """
+    import shutil  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
+
+    removals = {
+        key: value
+        for key, value in broken.items()
+        if value[1] == REMOVED and "." not in key.partition("::")[2]
+    }
+    if not removals:
+        return broken
+    with tempfile.TemporaryDirectory() as scratch:
+        after = Path(scratch) / "after"
+        shutil.copytree(worktree, after, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
+        try:
+            apply_implementation(after, implementation)
+        except Exception:  # noqa: BLE001
+            # It won't apply; the edit machinery says why when it's applied for
+            # real. Nothing here can show a move, so the removals stand.
+            return broken
+        modules = _modules(after)
+        before = {
+            path: _parse(worktree / path) for path in {k.partition("::")[0] for k in removals}
+        }
+        kept = {key for key in removals if _moved(key, before, modules)}
+    return {key: value for key, value in broken.items() if key not in kept}
+
+
+def _parse(path: Path) -> ast.Module | None:
+    try:
+        return ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return None
+
+
+def _modules(root: Path) -> dict[str, ast.Module]:
+    """Every parseable Python file under `root`, by repository-relative path."""
+    found: dict[str, ast.Module] = {}
+    for path in root.rglob("*.py"):
+        if _SKIP & set(path.relative_to(root).parts):
+            continue
+        tree = _parse(path)
+        if tree is not None:
+            found[path.relative_to(root).as_posix()] = tree
+    return found
+
+
+def _top_level(tree: ast.Module, name: str) -> ast.stmt | None:
+    for node in tree.body:
+        if (
+            isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            and node.name == name
+        ):
+            return node
+    return None
+
+
+def _resolve(importer: str, module: str | None, level: int, files: set[str]) -> str | None:
+    """The repository file an import names, or None if it isn't one of ours."""
+    parts = [p for p in (module or "").split(".") if p]
+    if level:
+        base = Path(importer).parent
+        for _ in range(level - 1):
+            base = base.parent
+        stem = base.joinpath(*parts) if parts else base
+        candidates = [f"{stem.as_posix()}.py", f"{stem.as_posix()}/__init__.py"]
+        return next((c for c in candidates if c in files), None)
+    if not parts:
+        return None
+    tail = "/".join(parts)
+    for suffix in (f"{tail}.py", f"{tail}/__init__.py"):
+        matches = [f for f in files if f == suffix or f.endswith(f"/{suffix}")]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def _binds_from(tree: ast.Module, importer: str, name: str, files: set[str]) -> set[str]:
+    """The files `importer` imports `name` from, under its own name."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            if alias.name == name and (alias.asname in (None, name)):
+                target = _resolve(importer, node.module, node.level, files)
+                if target is not None:
+                    found.add(target)
+    return found
+
+
+def _imports_whole(tree: ast.Module, importer: str, module_file: str, files: set[str]) -> bool:
+    """Does `importer` import `module_file` as a module, so any name in it may be used?"""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(_resolve(importer, a.name, 0, files) == module_file for a in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            # `from pkg import module` names the module as an attribute.
+            package = _resolve(importer, node.module, node.level, files)
+            if package and package.endswith("__init__.py"):
+                folder = package.rpartition("/")[0]
+                if any(f"{folder}/{a.name}.py" == module_file for a in node.names):
+                    return True
+    return False
+
+
+def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.Module]) -> bool:
+    path, _, name = key.partition("::")
+    old_tree = before.get(path)
+    old = _top_level(old_tree, name) if old_tree is not None else None
+    if old is None:
+        return False
+    files = set(after)
+    # Where it lives now, in a shape its callers can still use.
+    homes = {
+        file
+        for file, tree in after.items()
+        if file != path
+        and (new := _top_level(tree, name)) is not None
+        and contract_break(old, new) is None
+    }
+    if not homes:
+        return False
+    # The old module still hands it out: callers of A.name are untouched.
+    if path in after and _binds_from(after[path], path, name, files) & homes:
+        return True
+    # The old module no longer hands it out: fine only if nobody asks it for
+    # this name, and its package hands the name out instead.
+    if any(
+        path in _binds_from(tree, file, name, files) or _imports_whole(tree, file, path, files)
+        for file, tree in after.items()
+        if file != path
+    ):
+        return False
+    package = f"{path.rpartition('/')[0]}/__init__.py" if "/" in path else "__init__.py"
+    return package in after and bool(_binds_from(after[package], package, name, files) & homes)
