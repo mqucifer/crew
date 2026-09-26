@@ -111,6 +111,13 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
             Edit(operation=operation, target=item.target, source=item.source)
         )
 
+    # As each file read before its named edits: a quoted deletion of text a
+    # named delete already removed is already done (sprint-metrics#125).
+    before = {
+        t.path: (root / t.path).read_text(encoding="utf-8")
+        for t in implementation.text_edits
+        if (root / t.path).is_file()
+    }
     for path, edits in by_path.items():
         target = (root / path).resolve()
         if not target.is_relative_to(root):
@@ -123,7 +130,7 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
 
-    return written + apply_text_edits(worktree, implementation.text_edits)
+    return written + apply_text_edits(worktree, implementation.text_edits, before=before)
 
 
 def _defines(path: Path, name: str) -> bool:
@@ -136,7 +143,9 @@ def _defines(path: Path, name: str) -> bool:
     return re.search(rf"^(?:async\s+)?def {re.escape(name)}\b", text, re.MULTILINE) is not None
 
 
-def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
+def apply_text_edits(
+    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+) -> list[str]:
     """Apply quoted replacements to existing non-Python files (#140).
 
     Every edit is checked before any file is written, so a quote that doesn't
@@ -144,18 +153,23 @@ def apply_text_edits(worktree: Path, text_edits: list) -> list[str]:
     occur exactly once: zero means it was not copied from the file, and more
     than one means the edit doesn't say which it meant.
     """
-    changed = plan_text_edits(worktree, text_edits)
+    changed = plan_text_edits(worktree, text_edits, before=before)
     root = worktree.resolve()
     for path, text in changed.items():
         (root / path).write_text(text, encoding="utf-8")
     return list(changed)
 
 
-def plan_text_edits(worktree: Path, text_edits: list) -> dict[str, str]:
+def plan_text_edits(
+    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+) -> dict[str, str]:
     """What each file quoted by `text_edits` would hold afterwards. Writes nothing.
 
     Raises `EditError` for a quote that isn't in the file, or occurs twice.
+    `before` is each file as it was before the named edits: a deletion quoting
+    text that was there and that they already removed is skipped, not failed.
     """
+    before = before or {}
     from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
 
     root = worktree.resolve()
@@ -179,6 +193,8 @@ def plan_text_edits(worktree: Path, text_edits: list) -> dict[str, str]:
             changed[item.path] = text + joiner + item.replace
             continue
         found = text.count(item.find)
+        if found == 0 and not item.replace and item.find in before.get(item.path, ""):
+            continue  # removing what a named edit already removed
         if found == 0:
             raise EditError(
                 f"the text to replace in {item.path!r} is not in the file. Quote it exactly "

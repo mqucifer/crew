@@ -171,3 +171,57 @@ def test_a_signature_change_says_nothing_about_moving():
 def test_the_move_is_judged_on_a_copy_and_the_worktree_is_untouched(repo: Path):
     check(repo, moved_to_card(import_back("from .card import Card, parse_card")))
     assert (repo / OLD).read_text() == MODULE and not (repo / PKG / "card.py").exists()
+
+
+# --- the shapes sprint-metrics#125 actually sent -------------------------------------------------
+
+
+def test_a_class_and_each_of_its_methods_deleted_is_one_move(repo: Path):
+    """#125 deleted `Card`, then `Card.is_completed`, and was refused for both."""
+    implementation = moved_to_card(
+        delete("Card.is_completed"),
+        import_back("from sprint_metrics.card import Card, parse_card"),
+    )
+    assert check(repo, implementation) == {}
+
+
+def test_a_method_deleted_from_a_class_that_stays_is_still_a_removal(repo: Path):
+    broken = check(repo, impl(edits=[delete("Card.is_completed")]))
+    assert set(broken) == {f"{OLD}::Card.is_completed"}
+
+
+def test_a_quoted_deletion_a_named_delete_already_made_is_done(repo: Path):
+    """#125 also quoted `@dataclass(frozen=True)` for deletion after deleting `Card` by name."""
+    from crew_org.crews.delivery_crew import TextEdit
+    from crew_org.tools.workspace import apply_implementation
+
+    implementation = moved_to_card(
+        import_back("from sprint_metrics.card import Card, parse_card"),
+    )
+    implementation.text_edits = [
+        TextEdit(path=OLD, find="@dataclass(frozen=True)\nclass Card:\n", replace="")
+    ]
+    apply_implementation(repo, implementation)
+    assert "class Card" not in (repo / OLD).read_text()
+
+
+def test_a_quoted_change_to_text_that_is_gone_is_still_refused(repo: Path):
+    from crew_org.crews.delivery_crew import TextEdit
+    from crew_org.tools.ast_edit import EditError
+    from crew_org.tools.workspace import apply_implementation
+
+    implementation = moved_to_card(import_back("from .card import Card, parse_card"))
+    implementation.text_edits = [
+        TextEdit(path=OLD, find="@dataclass(frozen=True)\n", replace="@dataclass\n")
+    ]
+    with pytest.raises(EditError, match="not in the file"):
+        apply_implementation(repo, implementation)
+
+
+def test_naming_a_files_entry_block_points_at_text_edits():
+    """#133 aimed at `__main__` and `__init__` by name, three times."""
+    from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits
+
+    main = 'import sys\n\nfrom x import main\n\nif __name__ == "__main__":\n    sys.exit(main())\n'
+    with pytest.raises(EditError, match="quote the lines in `text_edits`"):
+        apply_edits(main, [Edit(operation=Operation.REPLACE, target="__main__", source="x")])
