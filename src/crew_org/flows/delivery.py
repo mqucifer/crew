@@ -12,6 +12,7 @@ SCOPE failure means the story was not ready and goes back to refinement.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, REVIEWING, SPRINT_BACKLOG
@@ -1092,6 +1093,44 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
     return signed("\n".join(lines), "Developer")
 
 
+def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bool:
+    """A story returned again after MAX_ROUND_TRIPS deliveries goes back to refinement (#242).
+
+    sprint-metrics#145 went round six times: QA returned it because the test
+    didn't assert stdout was empty, as its criterion said; the reviewer asked
+    for that assertion to go, as the epic's design note said. Repairing can't
+    settle a story that contradicts its own design. True if it went back.
+    """
+    rounds = story_problem.round_trips(issues, repo, card.number or 0)
+    if rounds < story_problem.MAX_ROUND_TRIPS:
+        return False
+    branch = branch_name(card.number or 0, card.title)
+    try:
+        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+    except Exception:  # noqa: BLE001
+        pull = None
+    number = pull["number"] if pull else None
+    comment = story_problem.round_trip_evidence(issues, repo, card, number, rounds)
+    if not story_problem.return_to_refinement(
+        board, issues, sink, card, repo=repo, cards=board.cards(), comment=comment
+    ):
+        return False
+    if number is not None:
+        with contextlib.suppress(Exception):
+            issues.comment(
+                repo,
+                number,
+                signed(
+                    f"Closed: #{card.number} went back to refinement after {rounds} "
+                    "deliveries the gates kept returning. See its epic.",
+                    "Developer",
+                ),
+            )
+            issues.close_pull(repo, number)
+    result.returned.append((card.number or 0, card.parent or 0))
+    return True
+
+
 def _work_one_card(
     card: Card,
     *,
@@ -1123,6 +1162,11 @@ def _work_one_card(
     # repository differs, so closing `ws` would leak the worktree that was
     # opened and close one that never was.
     card_ws = ws.for_repo(card_repo)
+    if rework and _gates_disagree(
+        card, board=board, issues=issues, sink=sink, repo=card_repo, result=result
+    ):
+        counts[IN_PROGRESS] -= 1
+        return
     outcome = None
     try:
         outcome = deliver_story(
