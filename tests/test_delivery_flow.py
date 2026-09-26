@@ -72,6 +72,9 @@ class FakeBoard:
     def set_owner_agent(self, item_id, role):
         self.owners.append((item_id, role))
 
+    def clear_field(self, item_id, field):
+        self.moves.append((item_id, f"cleared {field}"))
+
 
 class FakeIssues:
     def __init__(self):
@@ -113,6 +116,15 @@ class FakeIssues:
 
     def review_decision(self, repo, number):
         return "APPROVED"
+
+    def sub_issues(self, repo, number):
+        return [{"number": 6}]
+
+    def branches(self, repo):
+        return []
+
+    def ensure_label(self, repo, name, *, color, description):
+        self.labels.append((0, f"ensured {name}"))
 
 
 class FakeWorkspace:
@@ -1053,3 +1065,43 @@ def test_an_approved_pr_returned_at_merge_is_rebuilt_on_main(harness, refused, m
     assert calls["returned"] == [True], "claimed as work sent back"
     assert "While your previous attempt waited to land" in calls["prior"][0]
     assert ws.forced is True and result.delivered[0].pr == refused["number"]
+
+
+# --- a story problem goes back to refinement (#189) ------------------------------
+
+
+PINNED = "FAILED tests/test_table.py::test_default_table_rows - AssertionError: rows changed"
+
+
+class MergedTable:
+    def changed(self):
+        return set()
+
+    def text(self, path):
+        return (
+            "def test_default_table_rows():\n    ...\n" if path == "tests/test_table.py" else None
+        )
+
+
+def test_the_same_merged_tests_failing_twice_sends_the_story_back(harness, monkeypatch):
+    """sprint-metrics#97: every attempt broke the table's merged tests, and it blocked."""
+    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    child = story()
+    child.parent = 54
+    result, board, issues, _, calls, seen = harness(
+        checks=[red(PINNED), red(PINNED), green()], cards=[child]
+    )
+    assert calls["implement"] == 2, "sent back on the repeat, not repaired a third time"
+    assert calls["escalate"] == 0 and result.blocked == []
+    assert result.returned == [(6, 54)]
+    assert ("S6", "Ready") in board.moves and ("S6", "cleared Sprint") in board.moves
+    assert any(n == 54 and "test_default_table_rows" in body for n, body in issues.comments_)
+    assert (54, "needs:rework") in issues.labels
+    decided = [e for e in seen if e.kind is EventKind.ESCALATION_DECIDED]
+    assert decided[-1].detail["failure_class"] == FailureClass.SCOPE
+
+
+def test_different_failures_each_time_are_repaired_as_usual(harness, monkeypatch):
+    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    result, _, _, _, calls, _ = harness(checks=[red(PINNED), red("1 failed"), green()])
+    assert calls["implement"] == 3 and result.returned == [] and result.delivered

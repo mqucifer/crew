@@ -87,6 +87,8 @@ NEEDS_HUMAN = "needs:human"
 # teaches the crew nothing: the same goal decomposed again produces the same
 # epics, because nothing about the rejection is an input to anything.
 NEEDS_REWORK = "needs:rework"
+# On an epic: a story of it went back to refinement as a story problem (#189).
+STORY_PROBLEM_MARKER = "<!-- crew:story-problem -->"
 NEEDS_DESIGN = "needs:design"
 # A story held in refinement only because Ready was full. The label is what
 # tells it apart from a story that genuinely needs refining — one filed by
@@ -223,6 +225,49 @@ def sponsor_notes(issues: IssueClient, repo: str, number: int) -> str:
     ).strip()
 
 
+def started(issues: IssueClient, repo: str, cards: list[Card]) -> set[int]:
+    """Stories with work on GitHub: a branch or a pull request (#189).
+
+    Admitted to a sprint isn't started. sprint-metrics#97's siblings sat in the
+    Sprint Backlog with nothing built, and the rework gate refused to supersede
+    them; the Sponsor moved them back to Ready by hand.
+    """
+    try:
+        branches = [b.get("name") or "" for b in issues.branches(repo)]
+    except Exception:  # noqa: BLE001
+        branches = []
+    out: set[int] = set()
+    for card in cards:
+        if card.number is None:
+            continue
+        prefix = f"feat/{card.number}-"
+        if card.linked_pulls or any(b.startswith(prefix) for b in branches):
+            out.add(card.number)
+    return out
+
+
+def story_problem_evidence(issues: IssueClient, repo: str, number: int) -> str:
+    """The latest story-problem comment on an epic, since it was last split (#189).
+
+    Written by the crew, so `sponsor_notes` skips it, and the re-split would
+    never read why it was sent back.
+    """
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return ""
+    since = [
+        c.get("body") or "" for c in comments[_last_marked(comments, STORY_SPLIT_MARKER) + 1 :]
+    ]
+    found = [body for body in since if STORY_PROBLEM_MARKER in body]
+    return found[-1].replace(STORY_PROBLEM_MARKER, "").strip() if found else ""
+
+
+def _last_marked(comments: list[dict], marker: str) -> int:
+    marked = [i for i, c in enumerate(comments) if marker in (c.get("body") or "")]
+    return marked[-1] if marked else -1
+
+
 def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number: int):
     """(closable, started) — the cards a rework would supersede, and those it
     must not.
@@ -240,13 +285,16 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
     except Exception:  # noqa: BLE001
         return [], []
 
-    closable, started = [], []
-    for child in children:
-        card = by_key.get((repo, child))
-        if card is None or card.state == "CLOSED":
-            continue
-        (started if card.status not in (INBOX, REFINEMENT, READY) else closable).append(child)
-    return closable, started
+    live = [
+        card
+        for child in children
+        if (card := by_key.get((repo, child))) is not None and card.state != "CLOSED"
+    ]
+    busy = started(issues, repo, live)
+    closable, in_flight = [], []
+    for card in live:
+        (in_flight if card.number in busy else closable).append(card.number)
+    return closable, in_flight
 
 
 def rework_gate(
@@ -306,7 +354,14 @@ def rework_gate(
     with contextlib.suppress(Exception):
         # The Sponsor's label, spent. Nobody's role to claim.
         artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_REWORK])
-    return True, sponsor_notes(issues, repo, number)
+    return True, "\n\n".join(
+        part
+        for part in (
+            story_problem_evidence(issues, repo, number),
+            sponsor_notes(issues, repo, number),
+        )
+        if part
+    )
 
 
 def goals_missing_work_type(cards: list[Card]) -> list[Card]:
