@@ -189,7 +189,7 @@ A card may enter `Done` only when **all** hold:
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.
-5. Documentation affected by the change is updated in the same PR.
+5. Documentation affected by the change is updated in the same PR. A story that changes what a user sees carries a criterion naming the doc change, and QA holds it to it. The Code Reviewer's verdict mechanically requests changes for any command-line option the diff adds that the project's user docs don't mention. The user docs are where the record's `design.docs` says, or `README.md` by default (crew#191).
 6. The card's audit trail (§10) is complete.
 
 **Done means merged and green.** There is no "done except for tests."

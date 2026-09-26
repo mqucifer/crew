@@ -37,6 +37,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 RECORD_PATH = ".crew/project.yaml"
+DEFAULT_DOCS = "README.md"
 # 2 split the Architect's `design` out of the Sponsor's `intent` (#143).
 FORMAT_VERSION = 2
 
@@ -142,6 +143,10 @@ class Design(Section):
     structure: str | None = Field(
         default=None, description="How the code is divided into modules, and what each owns"
     )
+    # Where a user reads how to use it (#191). The README when unset.
+    docs: list[str] = Field(
+        default_factory=list, description="The files a user reads to use the project"
+    )
 
 
 class Learned(Section):
@@ -161,6 +166,11 @@ class ProjectRecord(Section):
     @property
     def release_is(self) -> str:
         return self.intent.release.release_is
+
+    @property
+    def user_docs(self) -> list[str]:
+        """Where this project's user docs live: the design's answer, else the README (#191)."""
+        return (self.design.docs if self.design else []) or [DEFAULT_DOCS]
 
     @property
     def checks(self) -> list[str]:
@@ -359,6 +369,8 @@ def brief(record: ProjectRecord) -> str:
         "",
         "**Agents must not change:**",
         *bullets(protected(record)),
+        "",
+        "**A user reads how to use it in:** " + ", ".join(f"`{path}`" for path in record.user_docs),
     ]
     if intent.guidelines:
         lines += [
