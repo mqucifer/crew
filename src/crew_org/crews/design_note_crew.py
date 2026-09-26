@@ -92,7 +92,9 @@ def write_note(
             "Write the design note for this epic: the least design that settles its open "
             "questions. Name the interfaces and data shapes the stories share, so each "
             "story builds on the one before instead of re-deciding it, and give each story "
-            "its direction. Say what you looked at."
+            "its direction. Say what you looked at.\n"
+            "The stories' acceptance criteria are the product's decisions: direct how each "
+            "is met, never drop, weaken or defer one."
         ),
         expected_output="The approach, interfaces, costly decisions, risks, and per-story work.",
         agent=architect,

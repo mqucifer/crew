@@ -212,9 +212,12 @@ def _write_one(*, write, review, render, epic, stories, project, repository):
         if note.beyond_reach:
             return (f"The Architect could not resolve: {note.beyond_reach}",)
         shown = render(note)
-        checked = review(project=project, design=shown)
+        # The stories too: a note can't overrule their criteria (#258).
+        checked = review(project=project, design=shown, stories=stories)
         reasons = [f"{c.choice} contradicts {c.guideline}: {c.why}" for c in checked.conflicts]
         if not reasons:
             return shown
         feedback = "\n".join(f"- {r}" for r in reasons)
-    return ("It contradicts a guideline after a retry: " + "; ".join(reasons),)
+    return (
+        "It contradicts a guideline or a story's criterion after a retry: " + "; ".join(reasons),
+    )
