@@ -581,6 +581,7 @@ def deliver_story(
             implementation = implement_story(
                 story_text, context=context, feedback=feedback, prior=prior, returned=rework
             )
+            _keep_proposal(sink, repo, number, implementation)
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             # The model could not produce a valid implementation at all.
@@ -690,13 +691,17 @@ def deliver_story(
         # attempt's changes are the story's own, and its damage still counts.
         merged = regression.merged_base(worktree)
         broken = regression.broken_contracts(worktree, implementation.all_edits, merged)
-        broken = regression.draft_breaks(worktree, implementation, merged) | broken
+
+        def skipped(why: str) -> None:
+            sink.note(EventKind.NOTE, f"#{number} {why}"[:300], card=number)
+
+        broken = regression.draft_breaks(worktree, implementation, merged, skipped) | broken
         # A definition moved to another module, and still reachable where
         # callers look for it, isn't removed (#202).
         broken = regression.without_moves(worktree, implementation, broken, merged)
         # A name the module passes along, or a constant, that another file
         # still imports from it (sprint-metrics#129).
-        broken |= regression.lost_names(worktree, implementation, merged)
+        broken |= regression.lost_names(worktree, implementation, merged, skipped)
         if broken:
             failure = LocalFailure(
                 card=number,
@@ -946,6 +951,29 @@ def deliver_story(
         )
     )
     return outcome
+
+
+def _keep_proposal(sink: EventSink, repo: str, number: int, implementation) -> None:
+    """Save what the Developer proposed, applied or not, beside the event log.
+
+    A refusal records only why; what was refused was lost. Three blocks of
+    sprint-metrics#127 and #129 could only be guessed at because of it. Best
+    effort: a proposal that can't be saved never costs the attempt.
+    """
+    if sink.path is None:
+        return
+    import json  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    try:
+        folder = sink.path.parent.parent / "proposals" / repo / str(number)
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        target = folder / f"{stamp}.json"
+        target.write_text(json.dumps(implementation.model_dump(mode="json"), indent=1))
+        sink.note(EventKind.NOTE, f"#{number} proposal kept", card=number, path=str(target))
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _touched_count(implementation: Implementation) -> int:
