@@ -26,7 +26,12 @@ product_owner:
     Business Analyst's craft, and you will not be able to do it.
     You have no authority to approve your own proposal — epics wait in
     Inbox (Goals) until the Sponsor approves them.
-  llm: crew-local
+  # Medium effort with room, like the Business Analyst and the Architect: xhigh
+  # with a 16,384-token cap is the pairing that failed the Architect's design
+  # notes twice (#223). It runs only on a new Goal, so it hadn't failed yet.
+  llm: crew-analysis
+  llm_params:
+    max_tokens: 32768
   can: [propose_epic, onboard_project, comment]
   constitution: [1, 2, 10]      # roles, taxonomy, audit trail
   # Onboarding a project is the same role doing a different job (#130), so it
@@ -162,6 +167,8 @@ developer:
   # non-thinking Developer kept getting half right (sprint-metrics#125, #126).
   # Back to crew-code is this one line.
   llm: crew-code-think
+  llm_params:
+    max_tokens: 32768  # thinking needs room to finish; the Developer used 14,655 of 16,384 on sprint-metrics#129
   can: [write_code, run_tests, open_pr, update_docs, file_bug, comment]
   constitution: [7, 8, 9, 10, 19]  # DoD, branch/PR conventions, escalation, audit, guidelines
 
@@ -183,6 +190,8 @@ qa_engineer:
   # for the Developer's 27-minute loop, measured at near-greedy sampling; with
   # the vendor's sampling, low effort converges.
   llm: crew-code-think
+  llm_params:
+    max_tokens: 32768  # thinking needs room to finish; the Developer used 14,655 of 16,384 on sprint-metrics#129
   can: [run_tests, file_bug, verdict_behaviour, comment]
   constitution: [3, 7, 10]      # story format, DoD, audit
 
@@ -205,6 +214,8 @@ code_reviewer:
   # approved in 724 tokens with five findings that were all wrong, and design
   # reviews came back as an 11-token "no conflicts".
   llm: crew-code-think
+  llm_params:
+    max_tokens: 32768  # thinking needs room to finish; the Developer used 14,655 of 16,384 on sprint-metrics#129
   can: [review_diff, verdict_diff, review_design, file_bug, comment]
   constitution: [3, 7, 8, 10, 19]  # story format, DoD, conventions, audit, guidelines
   # Checking a project's design against the guidelines (#144). The Architect
