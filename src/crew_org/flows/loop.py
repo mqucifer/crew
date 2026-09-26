@@ -347,7 +347,10 @@ def _admit(crew: Crew) -> PhaseOutcome:
     return PhaseOutcome(
         "admit",
         moved=bool(plan.admitted),
-        summary=f"{len(plan.admitted)} stories, {plan.points} points",
+        summary=(
+            f"{len(plan.admitted)} stories, {plan.points} points; "
+            f"{plan.total} of {plan.capacity} in {plan.sprint}"
+        ),
         result=plan,
         counts={"stories": len(plan.admitted), "points": plan.points},
         held=[
@@ -358,7 +361,12 @@ def _admit(crew: Crew) -> PhaseOutcome:
         + [
             f"{c.name(qualify=True)} — waits for its epic's design note"
             for c in plan.waiting_on_design
-        ],
+        ]
+        + (
+            [f"{plan.sprint} is full: {plan.committed} of {plan.capacity} points"]
+            if plan.full and any(s.deferred for s in plan.slices)
+            else []
+        ),
     )
 
 

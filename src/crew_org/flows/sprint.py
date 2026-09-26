@@ -75,10 +75,22 @@ class SprintPlan:
     not_ours: list[Card] = field(default_factory=list)
     # Stories whose epic needs a design note it doesn't have yet (#155).
     waiting_on_design: list[Card] = field(default_factory=list)
+    # Points already in the sprint before this run, whatever their column (#222).
+    committed: int = 0
 
     @property
     def points(self) -> int:
+        """Points this run admitted."""
         return sum(s.points for s in self.slices)
+
+    @property
+    def total(self) -> int:
+        """Points in the sprint once this run's admissions are in."""
+        return self.committed + self.points
+
+    @property
+    def full(self) -> bool:
+        return self.committed >= self.capacity
 
     @property
     def admitted(self) -> list[Card]:
@@ -145,7 +157,15 @@ def plan_sprint(
         key=lambda c: (c.repo or "", c.number or 0),
     )
 
-    remaining = capacity
+    # Capacity is the sprint's, not this run's. Every pass of every tick runs
+    # admission, and each started from the full capacity: Sprint 6, capacity
+    # 20, held 80 points and was about to take the API work on top (#222).
+    plan.committed = sum(
+        int(c.points or 0)
+        for c in cards
+        if c.sprint == sprint and c.work_type == STORY_TYPE and (repos is None or c.repo in repos)
+    )
+    remaining = max(capacity - plan.committed, 0)
     for epic in approved_epics(cards):
         stories = sorted(
             (c for key, c in ready.items() if parents.get(key) == epic.key),
@@ -260,6 +280,7 @@ def start_sprint(
 
     sink.note(
         EventKind.TICK_FINISHED,
-        f"{sprint}: {len(plan.admitted)} stories, {plan.points} of {capacity} points",
+        f"{sprint}: {len(plan.admitted)} stories admitted ({plan.points} points); "
+        f"{plan.total} of {capacity} points in the sprint",
     )
     return plan
