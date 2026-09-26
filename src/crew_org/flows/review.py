@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
@@ -25,7 +26,12 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.tools.review_evidence import checks_section, imported_code, undocumented_options
+from crew_org.tools.review_evidence import (
+    checks_section,
+    imported_code,
+    importers_section,
+    undocumented_options,
+)
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
@@ -127,6 +133,7 @@ def review_open_pulls(
     board: ProjectClient | None = None,
     cards: list[Card] | None = None,
     writer: IssueClient | None = None,
+    clone: Path | None = None,
 ) -> ReviewResult:
     """Review every open pull request that the crew has not yet judged.
 
@@ -139,6 +146,9 @@ def review_open_pulls(
     `writer` is the identity that hands a story back to refinement (#252): the
     epic's label and evidence, and closing the pull request, are delivery's
     acts, not a review. Defaults to `issues`.
+
+    `clone` is the repository at its base branch, where the reviewer is shown
+    who imports the names a diff changes (#215). Without one it isn't shown.
     """
     result = ReviewResult()
     waiting = cards_by_branch(cards or []) if board is not None else {}
@@ -190,6 +200,7 @@ def review_open_pulls(
                 ),
                 design_note=story_note(issues, story, repo) if story is not None else "",
                 acceptance_criteria=story_criteria(issues, story, repo),
+                importers=_importers(clone, diff),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -288,6 +299,15 @@ def review_open_pulls(
                 )
 
     return result
+
+
+def _importers(clone: Path | None, diff: str) -> str:
+    if clone is None:
+        return ""
+    try:
+        return importers_section(clone, diff)
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def user_docs(issues: IssueClient, repo: str, head: str) -> list[str]:

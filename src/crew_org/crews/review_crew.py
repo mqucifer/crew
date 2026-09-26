@@ -103,6 +103,7 @@ def review_diff(
     checks: str = "",
     imported: str = "",
     design_note: str = "",
+    importers: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -163,6 +164,7 @@ def review_diff(
             f"## Diff\n\n```diff\n{diff}\n```\n\n"
             + (f"{checks}\n\n" if checks else "")
             + (f"{imported}\n\n" if imported else "")
+            + (f"{importers}\n\n" if importers else "")
             + (
                 "## The Architect's design note for this story's epic\n\n"
                 f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"
