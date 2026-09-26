@@ -181,6 +181,39 @@ class CriterionTest(BaseModel):
         return FileEdit(path=self.path, operation="add", target=self.test, source=self.source)
 
 
+class RetiredTest(BaseModel):
+    """A merged test this story deliberately ends, and why.
+
+    §15: declared changes are fine; accidents are not. A test that pins
+    behaviour the story is meant to end (sprint-metrics#132 removes the
+    module whose pass-throughs earlier tests checked) can only go by being
+    named here, with the reason, where the Code Reviewer reads it.
+    """
+
+    path: str = Field(description="The test file, e.g. tests/test_report.py")
+    test: str = Field(description="The test function's name")
+    why: str = Field(description="What this story ends that the test pinned")
+
+    @field_validator("path")
+    @classmethod
+    def _a_test_file(cls, value: str) -> str:
+        cleaned = FileWrite._stays_in_the_repository(value)
+        name = PurePosixPath(cleaned).name
+        if not (name.startswith("test_") or name.endswith("_test.py")):
+            raise ValueError(
+                f"{cleaned!r} isn't a test file: only tests can be retired. Code that "
+                "still has callers moves, it isn't retired"
+            )
+        return cleaned
+
+    @field_validator("why")
+    @classmethod
+    def _says_why(cls, value: str) -> str:
+        if len(value.strip()) < 10:
+            raise ValueError("say what this story ends that the test pinned")
+        return value.strip()
+
+
 class Implementation(BaseModel):
     summary: str = Field(description="What changed and why, for the pull request body")
     # Before the code, on purpose: the test is planned first, as the standing
@@ -204,10 +237,29 @@ class Implementation(BaseModel):
             "CI workflows), each quoting the text it replaces."
         ),
     )
+    deleted_files: list[str] = Field(
+        default_factory=list,
+        description="Existing files this story removes entirely",
+    )
+    retired_tests: list[RetiredTest] = Field(
+        default_factory=list,
+        description="Merged tests this story deliberately ends, each with why",
+    )
+
+    @field_validator("deleted_files")
+    @classmethod
+    def _deleted_stay_in_the_repository(cls, value: list[str]) -> list[str]:
+        return [FileWrite._stays_in_the_repository(v) for v in value]
 
     @property
     def changes_nothing(self) -> bool:
-        return not (self.new_files or self.edits or self.text_edits or self.criteria_tests)
+        return not (
+            self.new_files
+            or self.edits
+            or self.text_edits
+            or self.criteria_tests
+            or self.deleted_files
+        )
 
     @property
     def all_edits(self) -> list[FileEdit]:
@@ -365,6 +417,11 @@ STANDING_INSTRUCTIONS = (
     "__name__` block, its docstring) have no name, so they change with `text_edits` "
     "too: repointing an import, or removing one nothing uses any more. Functions and "
     "classes always change with `edits`.\n\n"
+    "To remove a file entirely, list it in `deleted_files`; whatever it defined must "
+    "live elsewhere by then and nothing may still import it.\n"
+    "A merged test that pins behaviour this story deliberately ends goes in "
+    "`retired_tests`, with what the story ends. That is the only way a merged test "
+    "may be deleted.\n\n"
     "The project's lint rules are in pyproject.toml and are enforced. Write code that "
     "satisfies them rather than code you would then have to fix.\n\n"
     "Match the surrounding code's idiom. Implement only this story - work belonging "

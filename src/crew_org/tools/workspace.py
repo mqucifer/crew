@@ -130,7 +130,16 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
 
-    return written + apply_text_edits(worktree, implementation.text_edits, before=before)
+    written += apply_text_edits(worktree, implementation.text_edits, before=before)
+    for path in getattr(implementation, "deleted_files", []):
+        target = (root / path).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"{path!r} resolves outside the worktree")
+        if not target.is_file():
+            raise EditError(f"{path!r} can't be deleted: it isn't a file in the repository")
+        target.unlink()
+        written.append(path)
+    return written
 
 
 def _defines(path: Path, name: str) -> bool:

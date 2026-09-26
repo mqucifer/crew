@@ -394,6 +394,14 @@ is changed to import it from where it lives now. Lint calls a pass-along
 import unused; `from x import name as name` marks it deliberate and lint
 accepts it. The Developer is told which file still asks, and both ways out.
 
+**Retiring on purpose** (sprint-metrics#132). A story can delete a file, and
+every name it defined is judged as a move or a removal: it may go once each
+lives elsewhere and nothing imports the file. A merged test that pins
+behaviour the story deliberately ends may be deleted only by naming it as
+retired, with what the story ends; the pull request lists each one under
+**Tests retired** for the Code Reviewer. Only tests are retired this way:
+code that still has callers moves.
+
 **Why this is a check and not an instruction.** The Developer returns whole
 files, which is what makes its output easy to validate and repair. The cost is
 that extending a module means rewriting it, and a model asked to add one metric
