@@ -98,6 +98,12 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
 
     root = worktree.resolve()
     written = apply(worktree, implementation.new_files)
+    # Moves before edits: an edit to the new module can then address what moved in.
+    moves = getattr(implementation, "moves", [])
+    if moves:
+        from crew_org.tools.move_code import apply_moves  # noqa: PLC0415
+
+        written += apply_moves(root, moves)
 
     by_path: dict[str, list[Edit]] = {}
     tests = getattr(implementation, "criteria_edits", set())

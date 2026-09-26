@@ -1080,6 +1080,8 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
     for text_edit in implementation.text_edits:
         lines.append(f"- `{text_edit.path}` — edited")
+    for move in implementation.moves:
+        lines.append(f"- `{move.name}` moved from `{move.from_path}` to `{move.to_path}`")
     for path in implementation.deleted_files:
         lines.append(f"- `{path}` (deleted)")
     if implementation.retired_tests:

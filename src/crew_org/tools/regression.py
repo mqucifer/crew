@@ -698,6 +698,7 @@ def lost_names(
         t.path for t in implementation.text_edits if t.path.endswith(".py")
     }
     changed |= {p for p in getattr(implementation, "deleted_files", []) if p.endswith(".py")}
+    changed |= {m.from_path for m in getattr(implementation, "moves", [])}
     if merged is not None:
         # Including what an earlier attempt changed: its damage still counts.
         changed |= merged.changed()
