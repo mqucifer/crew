@@ -71,6 +71,11 @@ def _definitions(tree: ast.Module) -> dict[str, ast.stmt]:
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     found[target.id] = node
+        # `DEFAULT_THRESHOLDS: dict[str, float] = {...}`: a constant with a type.
+        # Left out, sprint-metrics#127 was told to change it by name and then
+        # that the name didn't exist.
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            found[node.target.id] = node
     return found
 
 
