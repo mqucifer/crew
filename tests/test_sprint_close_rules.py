@@ -87,3 +87,35 @@ def test_a_preview_records_nothing_even_for_a_sprint_that_has_a_retro(monkeypatc
     assert result.preview is not None
     assert "## Delivered" in result.preview and "Delivered the split." in result.preview
     assert "- would file:" in result.preview
+
+
+def test_a_preview_cites_what_a_known_issue_explains_as_the_close_would(monkeypatch, tmp_path):
+    """Sprint 7's preview said it "would file" a defect #252 already covered;
+    the close itself cites a known issue and files nothing."""
+    from crew_org.escalation import EscalationLedger
+
+    explained = process("A design note can contradict a criterion").model_copy(
+        update={"explained_by": 252}
+    )
+    monkeypatch.setattr(
+        close_mod,
+        "write_retro",
+        lambda *a, **k: Retro(summary="s", defects=[explained, process()]),
+    )
+    issues = FakeIssues()
+    issues.open_ = [{"number": 252, "title": "A review conflict goes to the PO", "labels": []}]
+    result = close_sprint(
+        CloseBoard(),
+        issues,
+        close_mod.EventSink(None),
+        EscalationLedger(tmp_path / "ledger.jsonl"),
+        sprint=SPRINT,
+        repo=PRODUCT,
+        crew_repo=CREW,
+        delivery_repos=[PRODUCT],
+        preview=True,
+    )
+    assert f"- would cite {CREW}#252 for: A design note can contradict a criterion" in (
+        result.preview or ""
+    )
+    assert "- would file:" in (result.preview or ""), "an unexplained defect is still filed"

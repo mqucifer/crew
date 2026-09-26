@@ -320,8 +320,12 @@ def close_sprint(
         awaiting=awaiting_approval(cards),
     )
     if preview:
+        # What the close would do with each, not only what the model proposed:
+        # a defect a known issue explains is cited, not filed (#124).
         would_file = [
-            f"- would file: {defect.issue_title}"
+            f"- would cite {crew_repo}#{defect.explained_by} for: {defect.subject}"
+            if defect.explained_by is not None and defect.explained_by in (known | fixed)
+            else f"- would file: {defect.issue_title}"
             for defect in (result.retro.defects if result.retro else [])
         ]
         if result.retro is not None:
