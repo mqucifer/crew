@@ -130,6 +130,10 @@ So thinking really is a per-request lever rather than a fixed tax. Route
 mechanical work — routing, labelling, field-setting — through
 `crew-mechanical`, and keep `crew-local` for judgment.
 
+*Removed 2026-09-26 (crew#213).* No role ever used `crew-mechanical`, and every
+role now thinks, at an effort set per alias. The measurement above still holds:
+`enable_thinking: false` via `extra_body` reaches SGLang, and `crew-code` uses it.
+
 The context-length warning is expected and benign: LiteLLM does not surface the
 backend's window. The Spark reports 262,144 when probed directly.
 
