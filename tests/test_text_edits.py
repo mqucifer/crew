@@ -273,3 +273,10 @@ def test_an_edit_that_changes_nothing_is_refused():
 def test_a_path_outside_the_repository_is_refused():
     with pytest.raises(ValidationError, match="escapes the repository"):
         TextEdit(path="../elsewhere/config.toml", find="a", replace="b")
+
+
+def test_an_import_directly_above_a_function_can_be_removed(repo):
+    """The quote's trailing newline ends its last line; it doesn't reach the def below."""
+    source = "import os\nimport sys\ndef main():\n    return os.sep\n"
+    edit = TextEdit(path="entry.py", find="import sys\n", replace="")
+    assert plan(python(repo, "entry.py", source), edit)["entry.py"].startswith("import os\ndef")
