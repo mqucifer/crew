@@ -129,16 +129,29 @@ def repository_context(worktree: Path, *, editing: bool = True) -> str:
         lines += ["", f"### {rel}", "", "```", body.strip(), "```"]
 
     lines += ["", "### Current source", ""]
+    tests_named_only = False
     for target in sorted(worktree.glob("src/**/*.py")) + sorted(worktree.glob("tests/**/*.py")):
         if IGNORED_DIRS & set(target.parts):
             continue
         rel = target.relative_to(worktree)
+        # A role deciding what to build needs the code, and the tests only by
+        # name, which the index above lists. On the Architect's design note for
+        # sprint-metrics#59, test bodies were 123k of a 225k-character prompt
+        # (#230). The Developer, which edits tests, still sees them whole.
+        if not editing and _is_test(rel):
+            tests_named_only = True
+            continue
         body = target.read_text(encoding="utf-8", errors="ignore")
         if len(body) > budget:
             omitted.append(str(rel))
             continue
         budget -= len(body)
         lines += [f"`{rel}`", "", "```python", body.strip(), "```", ""]
+    if tests_named_only:
+        lines += [
+            "Test files are shown above by the tests they define, not in full.",
+            "",
+        ]
     if omitted:
         lines += [
             "These files exist and are not shown, because the tree did not fit: "
@@ -148,3 +161,9 @@ def repository_context(worktree: Path, *, editing: bool = True) -> str:
         ]
 
     return "\n".join(lines)
+
+
+def _is_test(rel: Path) -> bool:
+    """A test module: under tests/, or named like one."""
+    name = rel.name
+    return rel.parts[0] == "tests" or name.startswith("test_") or name.endswith("_test.py")
