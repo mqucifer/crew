@@ -20,6 +20,7 @@ from crew_org.tools.ast_edit import EditError
 from crew_org.tools.bounds import touched
 from crew_org.tools.regression import (
     broken_contracts,
+    describe_contracts,
     draft_breaks,
     lost_names,
     merged_base,
@@ -156,3 +157,41 @@ def test_a_retired_test_already_deleted_by_name_is_fine(repo: Path):
     )
     apply_implementation(repo, implementation)
     assert RETIRE.test not in (repo / PINS).read_text()
+
+
+# --- the feedback names the way out (#273, #274) -------------------------------------------
+
+
+def test_a_name_lost_from_a_deleted_module_is_repointed_not_kept(repo: Path):
+    """#273: #132 was offered a re-export in the file it had to delete."""
+    implementation = removal(
+        deleted_files=[OLD], edits=[UNPIN], text_edits=[DROP_IMPORT], retired_tests=[RETIRE]
+    )
+    _was, told = judge(repo, implementation)[f"{OLD}::throughput"]
+    assert f"this story deletes `{OLD}`" in told
+    assert f"Change `{PKG}/__init__.py` to import it from `sprint_metrics.metrics`" in told
+    assert "Keep it in" not in told
+
+
+def test_a_name_lost_from_a_module_that_stays_may_still_be_kept(repo: Path):
+    implementation = removal(
+        text_edits=[TextEdit(path=OLD, find=OLD_LINE, replace="")],
+    )
+    _was, told = lost_names(repo, implementation, merged_base(repo))[f"{OLD}::throughput"]
+    assert f"Keep it in `{OLD}`" in told
+
+
+def test_a_deleted_merged_test_is_told_about_retiring_it(repo: Path):
+    """#274: refused twice on #132 without being told how a test is deleted."""
+    broken = judge(
+        repo, removal(deleted_files=[OLD], edits=[UNPIN], text_edits=[REPOINT, DROP_IMPORT])
+    )
+    assert "list it in `retired_tests`" in describe_contracts(broken)
+
+
+def test_a_broken_contract_in_code_is_not_told_about_tests():
+    broken = {f"{PKG}/metrics.py::throughput": ("def throughput(cards)", "removed entirely")}
+    assert "retired_tests" not in describe_contracts(broken)
+
+
+OLD_LINE = "from sprint_metrics.metrics import throughput as throughput\n"
