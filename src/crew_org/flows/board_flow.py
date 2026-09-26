@@ -635,6 +635,8 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
             f"   **Then** {ac.then}",
             "",
         ]
+    if story.pinned_behaviour:
+        lines += [f"**Behaviour merged tests pin** — {story.pinned_behaviour}", ""]
     lines += [
         f"**Estimate** — {story.points} points",
         "",
@@ -737,6 +739,18 @@ class RepoContext:
                 )
                 self._cache[repo] = ""
         return self._cache[repo]
+
+    def pinning_for(self, repo: str, epic_text: str, evidence: str = "") -> str:
+        """The merged tests pinning what an epic names, in full (#189)."""
+        from crew_org.tools.pinning import pinning_tests  # noqa: PLC0415
+
+        if self._ws is None:
+            return ""
+        try:
+            return pinning_tests(self._ws.for_repo(repo).current(), epic_text, evidence)
+        except Exception as exc:  # noqa: BLE001
+            self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
+            return ""
 
     def record_for(self, repo: str) -> str:
         """Only the project's record, for a role that decides without the code."""
@@ -984,10 +998,12 @@ def refine_epics(
             # Owner one step earlier was given its goal whole — and the Business
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
+            body = _goal_body(issues, repo, number)
             proposal = split_epic(
                 epic_card.title,
-                _goal_body(issues, repo, number),
+                body,
                 repository=context.for_repo(repo),
+                pinning=context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes),
                 feedback=notes,
                 delivered=done.render(),
                 delivered_numbers=done.numbers if known else None,
