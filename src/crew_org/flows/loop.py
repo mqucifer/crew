@@ -532,6 +532,7 @@ def _deliver(crew: Crew) -> PhaseOutcome:
             f"#{n} — PR #{pr} was behind main; brought up to date, merges once checks pass"
             for n, pr in result.updating
         ]
+        + [f"#{n} — PR #{pr} is in the merge queue" for n, pr in result.queued]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
         + [

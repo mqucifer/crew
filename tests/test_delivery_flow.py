@@ -16,6 +16,7 @@ from crew_org.flows import delivery
 from crew_org.git_ops import MergeConflict
 from crew_org.process import ProcessRules
 from crew_org.tools.claude_code import EscalationResult, Outcome
+from crew_org.tools.github_issues import QueueState
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult
 
@@ -110,6 +111,12 @@ class FakeIssues:
 
     def pull(self, repo, number):
         return {"mergeable_state": "clean", "mergeable": True}
+
+    def queue_state(self, repo, number, *, branch):
+        return QueueState()
+
+    def pulls_for_branch(self, repo, branch, *, state="all"):
+        return []
 
     def pull_reviews(self, repo, number):
         return [{"state": "APPROVED"}]

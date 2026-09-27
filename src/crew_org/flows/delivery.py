@@ -131,6 +131,8 @@ class DeliveryResult:
     # (card, PR) behind main and brought up to date this pass; they merge once
     # their checks pass on the new head (#116).
     updating: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) in the merge queue; GitHub merges it in its turn (#302).
+    queued: list[tuple[int, int]] = field(default_factory=list)
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
@@ -1475,6 +1477,7 @@ def deliver(
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     result.updating = list(landed.updating)
+    result.queued = list(landed.queued)
     result.landed = [card for card, _pr in landed.merged]
     if landed.merged or landed.conflicted or landed.rebuilding:
         cards = board.cards()

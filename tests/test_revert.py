@@ -24,6 +24,7 @@ from crew_org.flows.revert import (
     request_revert,
 )
 from crew_org.git_ops import BotIdentity, RevertConflict, Workspace
+from crew_org.tools.github_issues import QueueState
 from crew_org.tools.github_project import Card
 
 REPO = "sprint-metrics"
@@ -157,7 +158,14 @@ class FakeIssues:
         self.comments: list[tuple[int, str]] = []
 
     def pull(self, repo, number):
-        return self._pulls[number]
+        pull = self._pulls[number]
+        return {"mergeable": pull.get("mergeable_state") != "dirty", **pull}
+
+    def queue_state(self, repo, number, *, branch):
+        return QueueState()
+
+    def pulls_for_branch(self, repo, branch, *, state="all"):
+        return []
 
     def pull_for_branch(self, repo, branch, *, known=None):
 

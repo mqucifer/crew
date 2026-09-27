@@ -42,7 +42,7 @@ from crew_org.flows.design import (
     open_design_pr,
     workflows,
 )
-from crew_org.flows.merge import BEHIND
+from crew_org.flows.merge import Landing, land
 from crew_org.flows.moves import move_card
 from crew_org.flows.strain import REVISIT_CONFLICTS, evidence, read_rebuilds, strained
 from crew_org.llm import reraise_if_down
@@ -330,15 +330,16 @@ def _merge(issues, reviewer, sink, *, repo: str, pull: dict, result: Revisits) -
                 "Code Reviewer",
             ),
         )
-    detail = issues.pull(repo, number)
-    if detail.get("mergeable_state") == BEHIND:
-        issues.update_branch(repo, number, head=(detail.get("head") or {}).get("sha"))
-        return False
     try:
-        issues.merge_pull(repo, number)
+        landed = land(issues, repo, number)
     except Exception as exc:  # noqa: BLE001
         # Checks still running, most often. Tried again next pass.
         sink.note(EventKind.NOTE, f"{repo} PR #{number} not merged yet: {exc}"[:120])
+        return False
+    # Queued or brought up to date: a later pass finds it merged.
+    if landed.how != Landing.MERGED:
+        if landed.reason:
+            sink.note(EventKind.NOTE, f"{repo} PR #{number} not merged yet: {landed.reason}"[:120])
         return False
     result.merged.append((repo, number))
     sink.note(EventKind.NOTE, f"{repo}: merged the Architect's design revision, PR #{number}")

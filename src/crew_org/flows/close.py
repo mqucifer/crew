@@ -19,7 +19,7 @@ from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.loops import from_comments, loops_text, read_loops, sprint_window
-from crew_org.flows.merge import BEHIND
+from crew_org.flows.merge import Landing, land
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import (
     RetroLayout,
@@ -54,6 +54,8 @@ class SprintClose:
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
     # (story, PR) behind main and brought up to date; they merge once checks pass.
     updating: list[tuple[int, int]] = field(default_factory=list)
+    # (story, PR) in the merge queue; GitHub merges it in its turn (#302).
+    queued: list[tuple[int, int]] = field(default_factory=list)
     # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
     # #32" for six stories in two repositories, and the retro then described
     # one card two ways. A number is not a name where two repositories are on
@@ -81,6 +83,7 @@ class SprintClose:
             or self.still_open
             or self.unmergeable
             or self.updating
+            or self.queued
         )
 
 
@@ -180,25 +183,28 @@ def close_sprint(
             result.awaiting_approval.append((number, pull["number"]))
             continue
 
-        # Behind `main` where protection requires up to date: the merge would be
-        # refused with a 405 about a status check (#116). Update it instead; it
-        # lands on the next tick, or on a second close, once checks pass.
-        detail = issues.pull(repo, pull["number"])
-        if detail.get("mergeable_state") == BEHIND:
-            try:
-                issues.update_branch(
-                    repo, pull["number"], head=(detail.get("head") or {}).get("sha")
-                )
-            except Exception as exc:  # noqa: BLE001
-                result.unmergeable.append((number, f"behind main, and could not update: {exc}"))
-                continue
-            result.updating.append((number, pull["number"]))
-            continue
-
+        # Queued, brought up to date, or merged — whichever the repository's
+        # protection calls for (#116, #302). The rest lands on the next tick,
+        # or on a second close.
         try:
-            issues.merge_pull(repo, pull["number"])
+            landed = land(issues, repo, pull["number"])
         except Exception as exc:  # noqa: BLE001
             result.unmergeable.append((number, str(exc)[:120]))
+            continue
+        if landed.how == Landing.QUEUED:
+            result.queued.append((number, pull["number"]))
+            continue
+        if landed.how == Landing.UPDATING:
+            result.updating.append((number, pull["number"]))
+            continue
+        if landed.how == Landing.CONFLICTED:
+            result.unmergeable.append((number, "conflicts with main"))
+            continue
+        if landed.how == Landing.REMOVED:
+            result.unmergeable.append((number, f"left the merge queue: {landed.reason}"))
+            continue
+        if landed.how == Landing.UNSETTLED:
+            result.unmergeable.append((number, landed.reason))
             continue
 
         move_card(

@@ -28,6 +28,7 @@ from crew_org.flows.revisit import EPICS_MARKER, Revisits, file_technical_epics,
 from crew_org.flows.standup import decided_by_crew
 from crew_org.flows.strain import Rebuild, evidence, read_rebuilds, strained
 from crew_org.project import RECORD_PATH, parse, render
+from crew_org.tools.github_issues import QueueState
 from crew_org.tools.github_project import Card
 from tests.test_onboard import FakeWorkspace
 
@@ -270,7 +271,13 @@ class Issues:
 
     def pull(self, repo, number):
         found = next(p for p in self._open_pulls + self._closed_pulls if p["number"] == number)
-        return {**found, "mergeable_state": "clean", "merged_at": "now"}
+        return {**found, "mergeable_state": "clean", "mergeable": True, "merged_at": "now"}
+
+    def queue_state(self, repo, number, *, branch):
+        return QueueState()
+
+    def pulls_for_branch(self, repo, branch, *, state="all"):
+        return []
 
     def pull_reviews(self, repo, number):
         return self.reviews.get(number, [])

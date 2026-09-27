@@ -9,6 +9,7 @@ present.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -36,6 +37,45 @@ query($owner: String!, $repo: String!, $number: Int!) {
   }
 }
 """
+
+
+# Where a pull request stands with its base branch's merge queue, in one read.
+# The last of these timeline items says whether the queue removed it since its
+# code last changed: a new commit (a rebuild, or `main` merged in) comes after.
+_QUEUE_STATE = """
+query($owner: String!, $repo: String!, $number: Int!, $branch: String!) {
+  repository(owner: $owner, name: $repo) {
+    mergeQueue(branch: $branch) { id }
+    pullRequest(number: $number) {
+      mergeQueueEntry { state }
+      timelineItems(last: 1, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT,
+          REMOVED_FROM_MERGE_QUEUE_EVENT, PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
+        nodes { __typename ... on RemovedFromMergeQueueEvent { reason } }
+      }
+    }
+  }
+}
+"""
+
+_ENQUEUE = """
+mutation($id: ID!, $head: GitObjectID) {
+  enqueuePullRequest(input: {pullRequestId: $id, expectedHeadOid: $head}) {
+    mergeQueueEntry { id }
+  }
+}
+"""
+
+
+@dataclass(frozen=True)
+class QueueState:
+    """A pull request and its base branch's merge queue."""
+
+    # The base branch has a merge queue: pull requests join it, not merge.
+    has_queue: bool = False
+    queued: bool = False
+    # Why the queue removed it, when nothing has changed in it since. None when
+    # it was never removed, or has new commits since it was.
+    removed: str | None = None
 
 
 class IssueClient:
@@ -320,6 +360,43 @@ class IssueClient:
         if response.status_code == 422 and "conflict" in detail.lower():
             raise BranchUpdateConflict(detail)
         raise IssueError(f"PUT update-branch #{number} -> {response.status_code}: {detail}")
+
+    def _graphql(self, query: str, **variables: Any) -> dict[str, Any]:
+        response = self._client.post(GRAPHQL, json={"query": query, "variables": variables})
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise IssueError(payload["errors"][0].get("message", "unknown GraphQL error"))
+        return payload.get("data") or {}
+
+    def queue_state(self, repo: str, number: int, *, branch: str) -> QueueState:
+        """Whether `branch` has a merge queue, and where this pull request stands in it.
+
+        GitHub's merge queue lands approved pull requests one after another,
+        each tested on top of those ahead of it, so none is left behind `main`
+        by the merge before it (#302). There is no REST field for any of this.
+        """
+        data = self._graphql(
+            _QUEUE_STATE, owner=self.owner, repo=repo, number=number, branch=branch
+        )
+        repository = data.get("repository") or {}
+        if not repository.get("mergeQueue"):
+            return QueueState()
+        pull = repository.get("pullRequest") or {}
+        if pull.get("mergeQueueEntry"):
+            return QueueState(has_queue=True, queued=True)
+        last = ((pull.get("timelineItems") or {}).get("nodes") or [{}])[-1] or {}
+        if last.get("__typename") == "RemovedFromMergeQueueEvent":
+            return QueueState(has_queue=True, removed=str(last.get("reason") or "no reason given"))
+        return QueueState(has_queue=True)
+
+    def enqueue(self, pull_id: str, *, head: str | None = None) -> None:
+        """Add a pull request to its base branch's merge queue.
+
+        `pull_id` is the pull request's GraphQL node id (`node_id` in REST).
+        `head` refuses the enqueue if the branch moved since it was read.
+        """
+        self._graphql(_ENQUEUE, id=pull_id, head=head)
 
     def merge_pull(self, repo: str, number: int, *, method: str = "squash") -> dict[str, Any]:
         return self._request(

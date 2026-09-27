@@ -10,7 +10,8 @@ passed it before new work is claimed.
 from __future__ import annotations
 
 from crew_org.events import EventKind, EventSink
-from crew_org.flows.merge import REBUILD_MARKER, merge_approved, ready_to_land
+from crew_org.flows.merge import REBUILD_MARKER, Landing, land, merge_approved, ready_to_land
+from crew_org.tools.github_issues import QueueState
 from crew_org.tools.github_project import Card
 
 APPROVED = [{"state": "APPROVED"}]
@@ -75,6 +76,20 @@ class FakeIssues:
     def merge_pull(self, repo, number, **kw):
         self.merged.append(number)
         return {}
+
+    # The base branch's merge queue, and what is in it (#302).
+    queue = QueueState()
+    enqueued: list = []
+    merged_pulls: list = []
+
+    def queue_state(self, repo, number, *, branch):
+        return self.queue
+
+    def enqueue(self, pull_id, *, head=None):
+        self.enqueued = [*self.enqueued, (pull_id, head)]
+
+    def pulls_for_branch(self, repo, branch, *, state="all"):
+        return self.merged_pulls
 
     def add_labels(self, repo, number, labels):
         self.labels.extend((number, n) for n in labels)
@@ -311,3 +326,107 @@ def test_an_update_that_fails_otherwise_is_reported_not_blocked():
     result, board, _ = run([card(31)], issues)
     assert board.moves == []
     assert result.failed and "could not update from main" in result.failed[0][1]
+
+
+# --- the merge queue (#302) -----------------------------------------------
+#
+# 2026-09-27: sprint-metrics PRs #220 and #221 were approved and green, and
+# every merge ahead of them left them behind `main` again. Where the base
+# branch has a merge queue, GitHub lands them in turn instead.
+
+
+class QueueIssues(FakeIssues):
+    def __init__(self, queue: QueueState, **kw):
+        super().__init__(**kw)
+        self.queue = queue
+
+    def pull(self, repo, number):
+        return {**super().pull(repo, number), "node_id": "PR_x", "head": {"sha": "c0ffee"}}
+
+
+def test_an_approved_story_joins_the_merge_queue_rather_than_merging():
+    issues = QueueIssues(QueueState(has_queue=True))
+    result, board, _ = run([card(6)], issues)
+    assert issues.enqueued == [("PR_x", "c0ffee")] and issues.merged == []
+    assert result.queued == [(6, 100)] and board.moves == []
+
+
+def test_behind_main_is_no_reason_to_wait_where_there_is_a_queue():
+    """The queue tests it on top of what is ahead of it; updating it is wasted checks."""
+    issues = QueueIssues(QueueState(has_queue=True), mergeable_state="behind")
+    result, _, _ = run([card(6)], issues)
+    assert issues.enqueued and result.queued == [(6, 100)] and result.updating == []
+
+
+def test_a_story_already_queued_keeps_its_place():
+    issues = QueueIssues(QueueState(has_queue=True, queued=True))
+    result, _, _ = run([card(6)], issues)
+    assert issues.enqueued == [] and result.queued == [(6, 100)]
+
+
+def test_a_story_the_queue_removed_is_rebuilt_on_main():
+    """Removed for a conflict or for checks failing on top of what landed first:
+    either way it does not work on `main` as it is, which is what a rebuild is for."""
+    issues = QueueIssues(QueueState(has_queue=True, removed="CI failed"))
+    result, board, seen = run([card(6)], issues)
+    assert issues.enqueued == [] and result.rebuilding == [(6, 100)]
+    assert ("C6", "In Progress") in board.moves
+    assert any("left the merge queue: CI failed" in (e.summary or "") for e in seen)
+
+
+def test_a_story_the_queue_merged_is_recorded_done():
+    """GitHub merged it between passes, so the crew never saw it open."""
+    issues = FakeIssues(pull=False)
+    issues.merged_pulls = [{"number": 100, "merged_at": "2026-09-27T19:00:00Z"}]
+    result, board, seen = run([card(6)], issues)
+    assert result.merged == [(6, 100)] and result.failed == []
+    assert ("C6", "Done") in board.moves
+    assert any(e.summary == "merged PR #100" for e in seen)
+
+
+def test_a_closed_card_still_in_merging_is_recorded_done_once_its_pull_merged():
+    """Its `Closes #N` closed the card when the queue merged it."""
+    closed = card(6)
+    closed.state = "CLOSED"
+    issues = FakeIssues()
+    issues.merged_pulls = [{"number": 100, "merged_at": "2026-09-27T19:00:00Z"}]
+    result, board, _ = run([closed], issues)
+    assert result.merged == [(6, 100)] and ("C6", "Done") in board.moves
+
+
+def test_a_closed_card_with_no_merged_pull_is_left_alone():
+    closed = card(6)
+    closed.state = "CLOSED"
+    result, board, _ = run([closed], FakeIssues())
+    assert result.merged == [] and result.failed == [] and board.moves == []
+
+
+# --- mergeability GitHub has not worked out yet (#302) --------------------
+
+
+class Settling(FakeIssues):
+    """`mergeable` null for the first reads, as GitHub reports just after `main` moves."""
+
+    def __init__(self, unknown_reads: int, **kw):
+        super().__init__(**kw)
+        self.reads, self._unknown = 0, unknown_reads
+
+    def pull(self, repo, number):
+        self.reads += 1
+        if self.reads <= self._unknown:
+            return {"mergeable_state": "unknown", "mergeable": None}
+        return super().pull(repo, number)
+
+
+def test_a_merge_waits_for_github_to_work_out_mergeability():
+    """sprint-metrics #220: read as `unknown`, merged blind, refused with a 405."""
+    issues = Settling(2)
+    waited: list[float] = []
+    landed = land(issues, "sprint-metrics", 100, sleep=waited.append)
+    assert landed.how == Landing.MERGED and issues.merged == [100] and len(waited) == 2
+
+
+def test_mergeability_never_worked_out_is_not_merged_blind():
+    issues = Settling(99)
+    landed = land(issues, "sprint-metrics", 100, sleep=lambda _: None)
+    assert landed.how == Landing.UNSETTLED and issues.merged == []

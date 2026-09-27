@@ -26,6 +26,7 @@ from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.artifacts import signed
+from crew_org.flows.merge import Landing, land
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import BRANCH_PATTERN, RevertConflict, Workspace, branch_name
 from crew_org.tools.github_issues import IssueClient
@@ -41,8 +42,6 @@ _MARKER = re.compile(r"<!-- crew:revert pr=(?P<pr>\d+) card=(?P<card>[\w.-]+#\d+
 # is later re-delivered and Done again from being returned a second time.
 LANDED_MARKER = "<!-- crew:revert-landed pr={pr} -->"
 
-# GitHub's word for "this branch and main have both changed the same lines".
-CONFLICTED = "dirty"
 REVIEW_REQUIRED = "REVIEW_REQUIRED"
 
 
@@ -312,14 +311,20 @@ def _land(issues: IssueClient, result: RevertLanding, pull: dict, *, repo: str) 
     if issues.review_decision(repo, number) == REVIEW_REQUIRED:
         result.unapprovable.append(number)
         return False
-    detail = issues.pull(repo, number)
-    if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:
-        result.conflicted.append(number)
-        return False
     try:
-        issues.merge_pull(repo, number)
+        landed = land(issues, repo, number)
     except Exception as exc:  # noqa: BLE001
         result.failed.append((number, str(exc)[:120]))
+        return False
+    if landed.how in (Landing.CONFLICTED, Landing.REMOVED):
+        result.conflicted.append(number)
+        return False
+    if landed.how == Landing.UNSETTLED:
+        result.failed.append((number, landed.reason))
+        return False
+    # Queued or brought up to date: it merges without the crew, and the pass
+    # over merged reverts returns its card then.
+    if landed.how != Landing.MERGED:
         return False
     parsed = parse_marker(pull.get("body"))
     result.merged.append((number, parsed[0] if parsed else 0))
