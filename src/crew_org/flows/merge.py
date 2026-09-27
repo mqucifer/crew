@@ -65,6 +65,8 @@ class Landing(StrEnum):
 class Landed:
     how: Landing
     reason: str = ""
+    # Queued by this call, not found already queued: the moment the crew acted.
+    joined: bool = False
 
 
 def settled(
@@ -109,7 +111,7 @@ def land(
         return Landed(Landing.REMOVED, queue.removed)
     if queue.has_queue:
         issues.enqueue(detail["node_id"], head=head)
-        return Landed(Landing.QUEUED)
+        return Landed(Landing.QUEUED, joined=True)
     # Behind `main` where branch protection requires up to date. A merge
     # would be refused with a 405 naming a missing status check, which is
     # not what is wrong (#116). Bring it up to date instead: GitHub
@@ -250,13 +252,6 @@ def merge_approved(
                 "push, and is a trade only you can make.",
                 by=None,
             )
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.CARD_BLOCKED,
-                    card=number,
-                    summary=f"PR #{pull['number']} cannot be approved by any crew identity",
-                )
-            )
             continue
 
         try:
@@ -285,6 +280,17 @@ def merge_approved(
             continue
         if landed.how == Landing.QUEUED:
             result.queued.append((number, pull["number"]))
+            # GitHub merges it later, often before the crew looks again, and
+            # the board's own automation then moves the card to Done. Joining
+            # is the crew's act, so that is what the event log records.
+            if landed.joined:
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.NOTE,
+                        card=number,
+                        summary=f"PR #{pull['number']} joined the merge queue",
+                    )
+                )
             continue
         if landed.how == Landing.UPDATING:
             result.updating.append((number, pull["number"]))
@@ -436,7 +442,4 @@ def _block_on_conflict(
         "Resolve the conflict on the branch, or close the pull request and let "
         "the story be re-delivered from current `main`.",
         by=None,
-    )
-    sink.emit(
-        CrewEvent(kind=EventKind.CARD_BLOCKED, card=number, summary=f"merge conflict on PR #{pull}")
     )

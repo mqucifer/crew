@@ -430,3 +430,22 @@ def test_mergeability_never_worked_out_is_not_merged_blind():
     issues = Settling(99)
     landed = land(issues, "sprint-metrics", 100, sleep=lambda _: None)
     assert landed.how == Landing.UNSETTLED and issues.merged == []
+
+
+def test_joining_the_queue_is_on_the_event_stream_once():
+    """The queue often merges before the crew looks again, and the board's
+    automation moves the card to Done. Joining is the crew's own act."""
+    issues = QueueIssues(QueueState(has_queue=True))
+    _, _, seen = run([card(6)], issues)
+    assert [e.summary for e in seen if "merge queue" in (e.summary or "")] == [
+        "PR #100 joined the merge queue"
+    ]
+    issues.queue = QueueState(has_queue=True, queued=True)
+    _, _, seen = run([card(6)], issues)
+    assert not any("merge queue" in (e.summary or "") for e in seen)
+
+
+def test_a_blocked_conflict_is_reported_once():
+    """It was reported twice: once by the move, once again by hand."""
+    _, _, seen = run([card(6)], rebuilt_twice())
+    assert sum(e.kind == EventKind.CARD_BLOCKED for e in seen) == 1

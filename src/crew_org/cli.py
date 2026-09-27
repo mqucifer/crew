@@ -919,7 +919,11 @@ def review(
     sink = EventSink(VAR / "events" / "review.jsonl")
     # The board moves with the verdict: a card leaves Reviewing for QAing or
     # goes back to In Progress. A pull request with no card still gets reviewed.
-    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    # Moved as the delivery identity, as a tick moves it: the reviewing app is
+    # granted pull requests, not the board, and a verdict it had just posted
+    # ended in PermissionDenied (2026-09-27, sprint-metrics#225).
+    board_token, _ = resolve_credentials(env)
+    board = ProjectClient(board_token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
     result = review_open_pulls(
         IssueClient(token, owner),
         sink,

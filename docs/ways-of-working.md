@@ -335,7 +335,10 @@ rebuilt over the same file since the Architect last looked, the tick's first
 phase sends the Architect back to the project's design. Its reason is that
 evidence plus the approved epics waiting to be split there, so the design is
 weighed against the work about to land on it. The design includes `structure`:
-how the code is divided into modules, and what each owns.
+how the code is divided into modules, and what each owns. It also includes
+`docs`: the files a user reads to use the project (crew#306). Without an answer
+it is the README, and in Sprint 8 parallel documentation stories all wrote to
+that one file and collided.
 
 The number starts a look, not a refactor. The Architect may change nothing,
 which is recorded, and that evidence isn't counted again. A revision is checked
