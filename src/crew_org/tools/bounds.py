@@ -35,8 +35,27 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
         if (rule := is_protected(path, rules))
     ]
 
+    paths = touched(implementation)
+    workflows = [p for p in paths if ci_guard.is_workflow(p)]
+    if workflows:
+        before, after = _workflows(worktree, implementation)
+        # A crew-written workflow doesn't get what a pull request's code
+        # shouldn't have (#279): secrets on untrusted code, broad writes, or
+        # secrets the design doesn't name.
+        allowed = set(record.design.secrets) if record and record.design else set()
+        for path in workflows:
+            if path in after and after[path] != before.get(path):
+                reasons += ci_guard.unsafe(path, after[path], allowed)
+        # CI changes travel alone, so a review sees them for what they are.
+        code = [p for p in paths if p.endswith(".py")]
+        if code:
+            reasons.append(
+                f"a CI workflow ({', '.join(workflows)}) and Python code "
+                f"({', '.join(code[:3])}) change in the same pull request. A CI change "
+                "travels alone: split it into its own story."
+            )
     checks = record.design.checks if record and record.design else []
-    if checks and any(ci_guard.is_workflow(p) for p in touched(implementation)):
+    if checks and workflows:
         before, after = _workflows(worktree, implementation)
         reasons += [
             f"CI would no longer enforce `{check}`, a check the project's design requires "
