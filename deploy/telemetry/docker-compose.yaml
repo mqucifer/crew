@@ -4,7 +4,7 @@
 # It sees only `var/telemetry` (attributes, never content), read-only, and
 # runs a single standard-library script. Start it from this directory:
 #
-#   docker compose up -d
+#   docker compose --env-file ../../.env up -d
 #
 # Collected by an OpenTelemetry Collector on this Mac (crew-otelcol, below),
 # which the Sponsor owns: otelcol.yaml says where everything goes. It reads the
@@ -39,12 +39,12 @@ services:
     image: otel/opentelemetry-collector-contrib:0.161.0
     container_name: crew-otelcol
     command: ["--config=/etc/otelcol/config.yaml"]
-    # Credentials for whichever exporter otelcol.yaml enables, from the
-    # repository-root .env (gitignored): docker compose --env-file ../../.env up -d
+    # Grafana Cloud's endpoint and Authorization header, from the repository-root
+    # .env (gitignored). Start the stack with it, or these refuse to be empty:
+    #   docker compose --env-file ../../.env up -d
     environment:
-      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
-      GRAFANA_INSTANCE_ID: ${GRAFANA_INSTANCE_ID:-}
-      GRAFANA_API_TOKEN: ${GRAFANA_API_TOKEN:-}
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:?set GRAFANA_OTLP_ENDPOINT in the repository-root .env}
+      GRAFANA_OTLP_AUTH: ${GRAFANA_OTLP_AUTH:?set GRAFANA_OTLP_AUTH in the repository-root .env}
     volumes:
       - ./otelcol.yaml:/etc/otelcol/config.yaml:ro
       - ../../var/telemetry:/telemetry:ro
