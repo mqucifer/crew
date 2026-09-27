@@ -74,6 +74,16 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # Grafana Cloud's Loki refuses an entry older than 7 days, and one refused
+  # entry fails the whole batch it's in: the first backfill lost 3,755 logs
+  # that way, recent ones included. Older records are dropped here, a day
+  # inside the limit. var/telemetry keeps them, and the exporter's counters
+  # still count them.
+  filter/loki-window:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'time_unix_nano < UnixNano(Now()) - 518400000000000'  # 6 days, in ns
   memory_limiter:
     check_interval: 1s
     limit_mib: 200
@@ -124,7 +134,7 @@ service:
   pipelines:
     logs:
       receivers: [filelog/crew]
-      processors: [memory_limiter, transform/no-content, resource/logs, resource/crew, batch]
+      processors: [memory_limiter, filter/loki-window, transform/no-content, resource/logs, resource/crew, batch]
       exporters: [otlphttp/grafana]  # add debug to see it locally
     metrics:
       receivers: [prometheus/crew]
