@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
 from crew_org.tools.ast_edit import Operation
+from crew_org.tools.fixtures import declare_fixtures
 
 MAX_FILE_BYTES = 120_000
 
@@ -67,6 +68,13 @@ class FileWrite(BaseModel):
         name = PurePosixPath(self.path).name
         return name.startswith("test_") or name.endswith("_test.py")
 
+    @model_validator(mode="after")
+    def _tests_declare_their_fixtures(self) -> FileWrite:
+        # A test using tmp_path without taking it failed four first attempts (#196).
+        if self.is_test and self.path.endswith(".py"):
+            self.content = declare_fixtures(self.content)
+        return self
+
 
 class FileEdit(BaseModel):
     """One change to an existing file, addressed by name rather than position."""
@@ -98,6 +106,8 @@ class FileEdit(BaseModel):
     def _source_matches_the_operation(self) -> FileEdit:
         if self.operation is not Operation.DELETE and not self.source.strip():
             raise ValueError(f"{self.operation} needs source. Only delete may omit it.")
+        if self.is_test and self.operation is not Operation.DELETE:
+            self.source = declare_fixtures(self.source)  # #196
         return self
 
     @property
@@ -194,6 +204,7 @@ class CriterionTest(BaseModel):
     def _is_that_test(self) -> CriterionTest:
         if not re.search(rf"def {re.escape(self.test)}\b", self.source):
             raise ValueError(f"the source for {self.test!r} doesn't define it")
+        self.source = declare_fixtures(self.source)  # #196
         name = PurePosixPath(self.path).name
         if not (name.startswith("test_") or name.endswith("_test.py")):
             raise ValueError(f"{self.path!r} isn't a test file: name it tests/test_*.py")
