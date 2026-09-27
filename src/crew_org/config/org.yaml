@@ -63,6 +63,13 @@ sprint:
   escalation_budget: 1
   blocked_aging_days: 3         # raise to Sponsor at sprint review beyond this
 
+telemetry:
+  # Where the crew sends its traces (#283): the OpenTelemetry Collector in
+  # deploy/telemetry, on this Mac, which forwards to Grafana. Passed to the
+  # exporter directly, never through OTEL_EXPORTER_OTLP_*, so no SDK can pick
+  # up a Grafana address and go around the collector. Remove to send nothing.
+  otlp_endpoint: http://localhost:4318
+
 design:
   # The Architect is the role a 27B model is weakest at, and therefore the one
   # most likely to drain the escalation budget. Small epics skip design
