@@ -357,11 +357,15 @@ def file_technical_epics(
     issues.ensure_label(repo, TECHNICAL, color=color, description=description)
     filed: list[int] = []
     for change in changes:
+        # The work, not the record edit, is what refinement splits (#309). A
+        # design declared before `work` existed falls back to `what`.
+        work = str(change.get("work") or change["what"])
         issue = issues.create(
             repo,
-            str(change["what"])[:200],
+            work[:200],
             artifacts.signed(
-                f"**What changes:** {change['what']}\n\n"
+                f"**The work:** {work}\n\n"
+                f"**What changes in the design:** {change['what']}\n\n"
                 f"**What the project does now:** {change.get('was') or 'nothing'}\n\n"
                 f"**Why:** {change.get('why') or ''}\n\n"
                 f"From the design merged in #{pull['number']}. Technical work: the crew "
@@ -379,7 +383,7 @@ def file_technical_epics(
             to=NEEDS_REFINEMENT,
             by=BY,
             card=issue["number"],
-            summary=f"technical epic — {str(change['what'])[:50]}",
+            summary=f"technical epic — {work[:50]}",
         )
         board.set_select(item, "Work Type", EPIC_TYPE)
         filed.append(issue["number"])

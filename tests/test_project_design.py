@@ -248,3 +248,11 @@ def test_no_docs_answer_leaves_the_readme_default():
         checks=[Choice(value="uv run pytest -q", basis="tests.yml")], summary="x"
     )
     assert to_design(proposal).docs == []
+
+
+def test_the_docs_choice_carries_the_parallel_stories_goal():
+    """#306's first wording asked only which files. The Architect split the one
+    line that had collided and left two shared files."""
+    description = DesignProposal.model_fields["docs"].description
+    assert "the way `structure` divides the code" in description
+    assert "parallel stories land in different files" in description

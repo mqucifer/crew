@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from crew_org.crews.design_crew import Change, Choice, Conflict, DesignProposal, DesignReview
 from crew_org.events import EventSink
@@ -186,6 +187,7 @@ SPLIT = Change(
     was="one module every story edits",
     why="four stories of Sprint 6 were rebuilt over it",
     needs_work=True,
+    work="Split crew_performance.py into card, metrics and report modules",
 )
 NOTED = Change(what="Record the module layout", was="unwritten", why="so stories name files")
 
@@ -507,7 +509,7 @@ def test_merged_design_pull_requests_are_found_among_the_closed(clone):
 
 
 def test_a_change_cannot_close_the_comment_it_is_carried_in():
-    tricky = Change(what="Rename --> to ->", was="a -->", why="x", needs_work=True)
+    tricky = Change(what="Rename --> to ->", was="a -->", why="x", needs_work=True, work="-->")
     assert declared_changes(changes_block(proposal(changes=[tricky])))[0]["what"] == tricky.what
 
 
@@ -579,3 +581,40 @@ def test_the_standup_says_what_the_architect_decided():
     assert f"{REPO}#300: a technical epic" in lines
     assert "changed nothing (#12)" in lines
     assert "?" not in lines, "information, never a question"
+
+
+# --- a technical epic is the work, not the record edit (#309) --------------------------------
+#
+# 2026-09-27: sprint-metrics#233 was titled "Add a docs field to the design…", which
+# its own design PR had already done, and refinement answered "already delivered".
+
+DOCS = Change(
+    what="Add a docs field to the design, naming README.md and docs/metrics.md",
+    was="nothing",
+    why="parallel docs stories collided in the README",
+    needs_work=True,
+    work="Move the metric definitions from README.md into docs/metrics.md, with their tests",
+)
+
+
+def test_a_technical_epic_is_titled_with_the_work():
+    issues = Issues()
+    pull = {"number": 82, "body": changes_block(proposal(changes=[DOCS]))}
+    file_technical_epics(issues, Board(), EventSink(), repo=REPO, pull=pull, result=Revisits())
+    (filed,) = issues.created
+    assert filed["title"] == DOCS.work
+    assert filed["body"].startswith(f"**The work:** {DOCS.work}")
+    assert DOCS.what in filed["body"], "the design edit stays, as the reason"
+
+
+def test_a_design_declared_before_work_existed_still_files_its_what():
+    issues = Issues()
+    block = changes_block(proposal(changes=[DOCS]))
+    pull = {"number": 82, "body": block.replace(f'"work": "{DOCS.work}"', '"work": null')}
+    file_technical_epics(issues, Board(), EventSink(), repo=REPO, pull=pull, result=Revisits())
+    assert issues.created[0]["title"] == DOCS.what
+
+
+def test_a_change_that_needs_work_must_say_what_the_work_is():
+    with pytest.raises(ValidationError, match="say what that work is"):
+        Change(what="Add a docs field", was="nothing", why="collisions", needs_work=True)
