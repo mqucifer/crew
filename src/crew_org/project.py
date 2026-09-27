@@ -143,6 +143,11 @@ class Design(Section):
     structure: str | None = Field(
         default=None, description="How the code is divided into modules, and what each owns"
     )
+    # The repository secrets CI may read (#279), by name, e.g. PYPI_TOKEN. A
+    # crew-written workflow may use GITHUB_TOKEN and these, and nothing else.
+    secrets: list[str] = Field(
+        default_factory=list, description="The repository secrets CI may use, by name"
+    )
     # Where a user reads how to use it (#191). The README when unset.
     docs: list[str] = Field(
         default_factory=list, description="The files a user reads to use the project"

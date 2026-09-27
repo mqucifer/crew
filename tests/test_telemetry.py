@@ -164,5 +164,15 @@ def test_the_exporter_counts_calls_tokens_moves_and_retries_with_no_card_label(t
     assert "card=" not in text, "a label per card grows without bound"
 
 
+def test_the_exporter_shows_github_s_budget_and_throttles(tmp_path):
+    """#293."""
+    sink = EventSink(tmp_path / "events" / "tick.jsonl")
+    sink.emit(CrewEvent(kind=EventKind.TICK_STARTED, detail={"tick": 1, "github_remaining": 4321}))
+    sink.emit(CrewEvent(kind=EventKind.GITHUB_THROTTLED, detail={"wait_s": 30.0, "status": 403}))
+    text = exporter.render(tmp_path / "telemetry")
+    assert "crew_github_requests_remaining 4321" in text
+    assert 'crew_events_total{kind="github.throttled",role=""} 1' in text
+
+
 def test_the_exporter_reads_an_empty_or_missing_log(tmp_path):
     assert "crew_ticks_total 0" in exporter.render(tmp_path / "nothing-here")

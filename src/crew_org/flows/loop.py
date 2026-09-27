@@ -27,9 +27,18 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.escalation import EscalationLedger, EscalationPolicy
-from crew_org.events import EventKind, EventSink, attributed, bridge_crewai, flush_bridge
+from crew_org.events import (
+    CrewEvent,
+    EventKind,
+    EventSink,
+    attributed,
+    bridge_crewai,
+    flush_bridge,
+)
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
+from crew_org.tools import github_http
+from crew_org.tools.github_http import GitHubThrottled
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import ProjectClient, many_repos
 from crew_org.tools.sandbox import Sandbox
@@ -125,6 +134,8 @@ class PhaseOutcome:
 class LoopResult:
     passes: int = 0
     outcomes: list[PhaseOutcome] = field(default_factory=list)
+    # GitHub throttled past what a tick waits (#293): stopped, to resume next tick.
+    throttled: bool = False
     # True only when a pass moved nothing. Hitting the cap is not the same as
     # the board being stable, and reporting it as such tells the Sponsor the
     # work is finished when it was merely stopped.
@@ -585,6 +596,16 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     # the whole tick: the bridge existed and nothing called it, so every real
     # run's log was blind to everything the model did.
     bridge_crewai(crew.sink)
+    # Every throttle GitHub asks for, waited out, is seen (#293).
+    github_http.observe(
+        lambda wait, detail: crew.sink.emit(
+            CrewEvent(
+                kind=EventKind.GITHUB_THROTTLED,
+                summary=f"GitHub asked for {wait:.0f}s; waiting",
+                detail={"wait_s": round(wait, 1), **detail},
+            )
+        )
+    )
 
     for _ in range(max_passes):
         result.passes += 1
@@ -606,6 +627,8 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             tick=result.passes,
             sprint=crew.sprint,
             counts=counts,
+            # What GitHub last said is left of the crew's budget (#293).
+            github_remaining=github_http.BUDGET.get("core", {}).get("remaining"),
         )
 
         # A breach is reported, not merely prevented. `over_limit` has always
@@ -628,6 +651,20 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                 # Every model call a phase makes says which phase, and which
                 # sprint, even one made for no card (#179).
                 outcome = attributed(phase, sprint=crew.sprint, purpose=name)(crew)
+            except GitHubThrottled as exc:
+                # GitHub asked for longer than a tick waits (#293). Stop here:
+                # every further request would only be refused, and the next
+                # tick resumes from the board as it stands.
+                crew.sink.emit(
+                    CrewEvent(
+                        kind=EventKind.GITHUB_THROTTLED,
+                        summary=f"{name}: {exc}"[:120],
+                        detail={"wait_s": round(exc.wait, 1), "stopped": True},
+                    )
+                )
+                result.outcomes.append(PhaseOutcome(name, error=str(exc)[:200]))
+                result.throttled = True
+                break
             except Exception as exc:  # noqa: BLE001
                 # The pass continues. Later phases act on cards this one never
                 # touched, and a tick that aborts here leaves the board partway
@@ -636,6 +673,8 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                 crew.sink.note(EventKind.NOTE, f"{name} failed: {outcome.error}"[:120])
             result.outcomes.append(outcome)
             moved_this_pass = moved_this_pass or outcome.moved
+        if result.throttled:
+            break
 
         if not moved_this_pass:
             result.settled = True

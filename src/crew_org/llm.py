@@ -184,6 +184,19 @@ class ModelUnavailable(RuntimeError):
 
 
 def reraise_if_down(exc: BaseException) -> None:
-    """Called first in a catch around a model call: infrastructure isn't a card's failure."""
+    """Called first in a catch around a model call: infrastructure isn't a card's failure.
+
+    GitHub throttling for longer than a tick waits is infrastructure too (#293):
+    it passes through to stop the tick, rather than failing the card it hit.
+    """
+    from crew_org.tools.github_http import GitHubThrottled  # noqa: PLC0415
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, GitHubThrottled):
+            raise current
+        current = current.__cause__ or current.__context__
     if backend_down(exc):
         raise ModelUnavailable(str(exc)) from exc

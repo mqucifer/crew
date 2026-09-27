@@ -729,6 +729,15 @@ def deliver_story(
         # record itself, and CI that stops enforcing a design check. Never
         # escalated, like a contract break: a stronger model would be spent
         # getting past a rule the Sponsor set.
+        # A workflow change the app can't push (#279): GitHub refuses a push
+        # that touches .github/workflows without the `workflows` permission,
+        # and it would fail at the very end looking like a crew bug. Say so
+        # now. Blocked, not retried: no retry grants a permission.
+        missing = workflows_not_permitted(implementation)
+        if missing:
+            outcome.blocked_reason = missing
+            return outcome
+
         outside = bounds.out_of_bounds(worktree, implementation, record)
         if outside:
             failure = LocalFailure(
@@ -1087,6 +1096,22 @@ def deliver_story(
         )
     )
     return outcome
+
+
+def workflows_not_permitted(implementation, permissions: dict[str, str] | None = None) -> str:
+    """Why a workflow change can't be pushed, or "" if it can or we can't tell (#279)."""
+    from crew_org.auth import app_permissions  # noqa: PLC0415
+    from crew_org.tools import ci_guard  # noqa: PLC0415
+
+    held = app_permissions() if permissions is None else permissions
+    changed = [p for p in bounds.touched(implementation) if ci_guard.is_workflow(p)]
+    if not changed or not held or held.get("workflows") == "write":
+        return ""
+    return (
+        f"this change edits {', '.join(changed)}, and the crew's GitHub App has no "
+        "`workflows: write` permission, so GitHub would refuse the push. The Sponsor grants "
+        "it on the app and accepts it on the installation (crew#279)"
+    )
 
 
 def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:

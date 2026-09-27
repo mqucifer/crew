@@ -61,6 +61,13 @@ DETAIL = frozenset(
         "superseded",
         "because",
         "reads_decision",
+        # GitHub's limits (#293): how long, what, and the budget left.
+        "wait_s",
+        "status",
+        "resource",
+        "stopped",
+        "path",
+        "github_remaining",
     }
 )
 
