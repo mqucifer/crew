@@ -27,7 +27,9 @@ def transport(responses, clock):
 
     def handler(request):
         status, headers, body = next(replies)
-        return httpx.Response(status, headers=headers, content=body, request=request)
+        # No `request=`: a real transport's response doesn't carry it yet, and
+        # reading it there raised (the crash this guards against).
+        return httpx.Response(status, headers=headers, content=body)
 
     return GitHubTransport(
         httpx.MockTransport(handler), sleep=clock.sleep, clock=clock.time, monotonic=clock.time
@@ -141,5 +143,11 @@ def test_a_throttle_passes_through_a_card_s_catch_to_stop_the_tick():
 
 def test_only_throttles_count_as_throttles():
     request = httpx.Request("GET", "https://api.github.com/x")
-    assert not throttled(httpx.Response(404, request=request))
-    assert throttled(httpx.Response(429, request=request))
+    assert not throttled(request, httpx.Response(404))
+    assert throttled(request, httpx.Response(429))
+
+
+def test_a_graphql_answer_is_read_without_the_response_carrying_its_request():
+    """The crash: the first tick on #294 raised on every GraphQL answer."""
+    request = httpx.Request("POST", "https://api.github.com/graphql")
+    assert not throttled(request, httpx.Response(200, content=b'{"data": {}}'))

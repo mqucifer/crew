@@ -83,8 +83,14 @@ def _record_budget(response: httpx.Response) -> None:
         }
 
 
-def throttled(response: httpx.Response) -> bool:
-    """Is this GitHub saying slow down, rather than no?"""
+def throttled(request: httpx.Request, response: httpx.Response) -> bool:
+    """Is this GitHub saying slow down, rather than no?
+
+    The request is passed in, not read off the response: inside a transport
+    the client hasn't attached it yet, and `response.request` raises. That
+    crashed the first tick on this code; tests with a mock transport that set
+    it themselves hadn't seen it.
+    """
     if response.status_code == 429:
         return True
     if response.status_code == 403:
@@ -94,7 +100,7 @@ def throttled(response: httpx.Response) -> bool:
             return True
         text = response.text.lower()
         return "rate limit" in text or "abuse" in text
-    if response.status_code == 200 and response.request.url.path.endswith("/graphql"):
+    if response.status_code == 200 and request.url.path.endswith("/graphql"):
         try:
             errors = response.json().get("errors") or []
         except (ValueError, json.JSONDecodeError):
@@ -145,7 +151,7 @@ class GitHubTransport(httpx.BaseTransport):
             response = self._inner.handle_request(request)
             response.read()
             _record_budget(response)
-            if not throttled(response):
+            if not throttled(request, response):
                 return response
             wait = wait_for(response, attempt, self._clock())
             detail = {
