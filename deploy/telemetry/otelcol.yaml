@@ -23,9 +23,13 @@ extensions:
 
 receivers:
   # The crew's telemetry log: one JSON object a line, attributes only.
-  filelog/crew:
+  # New lines only. Grafana Cloud accepts back-dated entries with a 204 and
+  # never shows them (tried 2026-09-27: one stamped two days back vanished,
+  # one stamped now appeared), and its retention is 7 days anyway. History
+  # stays local, in var/events and var/telemetry.
+  file_log/crew:
     include: [/telemetry/*.jsonl]
-    start_at: beginning
+    start_at: end
     storage: file_storage
     include_file_name: true
     operators:
@@ -83,7 +87,7 @@ processors:
     error_mode: ignore
     logs:
       log_record:
-        - 'time_unix_nano < UnixNano(Now()) - 518400000000000'  # 6 days, in ns
+        - 'log.time_unix_nano < UnixNano(Now()) - 518400000000000'  # 6 days, in ns
   memory_limiter:
     check_interval: 1s
     limit_mib: 200
@@ -109,14 +113,14 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - delete_matching_keys(attributes, "^(gen_ai\\.(prompt|completion|input|output|system_instructions).*|gen_ai\\.content.*|llm\\.(input|output)_messages.*|llm\\.prompts?.*|input\\.value|output\\.value|.*\\.messages.*)$")
+          - delete_matching_keys(span.attributes, "^(gen_ai\\.(prompt|completion|input|output|system_instructions).*|gen_ai\\.content.*|llm\\.(input|output)_messages.*|llm\\.prompts?.*|input\\.value|output\\.value|.*\\.messages.*)$")
       - context: spanevent
         statements:
-          - delete_matching_keys(attributes, "^(gen_ai\\..*content.*|gen_ai\\.(prompt|completion).*|.*\\.messages.*)$")
+          - delete_matching_keys(spanevent.attributes, "^(gen_ai\\..*content.*|gen_ai\\.(prompt|completion).*|.*\\.messages.*)$")
     log_statements:
       - context: log
         statements:
-          - delete_matching_keys(attributes, "^(summary|error|output|first_error|unproven|answer|question|reason_text)$")
+          - delete_matching_keys(log.attributes, "^(summary|error|output|first_error|unproven|answer|question|reason_text)$")
 
 exporters:
   debug:
@@ -124,7 +128,7 @@ exporters:
   # Grafana Cloud's OTLP gateway. The endpoint ends in /otlp; the exporter adds
   # /v1/traces, /v1/metrics and /v1/logs. The header is "Basic <base64 of
   # instance ID:token>", as the stack's OpenTelemetry page gives it.
-  otlphttp/grafana:
+  otlp_http/grafana:
     endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
     headers:
       Authorization: ${env:GRAFANA_OTLP_AUTH}
@@ -133,14 +137,14 @@ service:
   extensions: [health_check, file_storage]
   pipelines:
     logs:
-      receivers: [filelog/crew]
+      receivers: [file_log/crew]
       processors: [memory_limiter, filter/loki-window, transform/no-content, resource/logs, resource/crew, batch]
-      exporters: [otlphttp/grafana]  # add debug to see it locally
+      exporters: [otlp_http/grafana]  # add debug to see it locally
     metrics:
       receivers: [prometheus/crew]
       processors: [memory_limiter, resource/crew, batch]
-      exporters: [otlphttp/grafana]  # add debug to see it locally
+      exporters: [otlp_http/grafana]  # add debug to see it locally
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/no-content, resource/crew, batch]
-      exporters: [otlphttp/grafana]  # add debug to see it locally
+      exporters: [otlp_http/grafana]  # add debug to see it locally
