@@ -22,8 +22,10 @@ board:
 
 wip_limits:
   Needs Refinement: 8
-  Ready: 10
-  Sprint Backlog: 10
+  # A sprint's worth each, at about 2.5 points a story: 40 points is ~16
+  # stories, and a limit of 10 would stop admission ~30 points in (2026-09-26).
+  Ready: 16
+  Sprint Backlog: 16
   In Progress: 3
   Reviewing: 3
   QAing: 3
@@ -44,8 +46,10 @@ sprint:
   # Starting capacity in points. The Sponsor approves epics, not sprint
   # contents: scope is filled mechanically from approved epics in priority
   # order until this is reached. Replaced by measured velocity once there is
-  # history to measure.
-  capacity_points: 20
+  # history to measure. Doubled from 20 by the Sponsor on 2026-09-26: Sprint 7
+  # delivered all 20 in an afternoon of ticks, loop-breaking included (#88
+  # is still where it becomes learned rather than typed).
+  capacity_points: 40
   # Cards per sprint permitted to escalate. One a day: at fortnightly sprints
   # this was 3 per fortnight, and moving the board to daily iterations would
   # have made the same number roughly fourteen times the spend without anyone

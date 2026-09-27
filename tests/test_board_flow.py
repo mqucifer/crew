@@ -4,6 +4,7 @@ and a failure on one card does not abandon the rest."""
 
 from __future__ import annotations
 
+from crew_org.config import load_org
 from crew_org.crews.refinement_crew import Epic, EpicProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import board_flow
@@ -17,6 +18,9 @@ from crew_org.flows.board_flow import (
     unauthored_goals,
 )
 from crew_org.tools.github_project import Card
+
+# From org.yaml, so a change to the limit doesn't break what these prove.
+READY_LIMIT = load_org()["wip_limits"]["Ready"]
 
 PROPOSAL = EpicProposal(
     epics=[
@@ -457,7 +461,7 @@ def test_a_full_ready_column_holds_stories_in_refinement(monkeypatch):
             state="OPEN",
             work_type="Story",
         )
-        for i in range(10)
+        for i in range(READY_LIMIT)
     ]
     board, issues = FakeBoard([epic_card(3), *existing]), FakeIssues()
     result = run_split(board, issues, monkeypatch)
@@ -499,7 +503,7 @@ def test_a_held_story_enters_ready_when_it_has_room(monkeypatch):
 
 
 def test_a_held_story_waits_while_ready_is_full(monkeypatch):
-    board, issues = FakeBoard([story_card(33), *in_ready(10)]), FakeIssues()
+    board, issues = FakeBoard([story_card(33), *in_ready(READY_LIMIT)]), FakeIssues()
     result = run_split(board, issues, monkeypatch)
     assert result.admitted == []
     assert board.moves == []
@@ -508,7 +512,8 @@ def test_a_held_story_waits_while_ready_is_full(monkeypatch):
 
 
 def test_only_as_many_are_let_in_as_there_is_room(monkeypatch):
-    board, issues = FakeBoard([story_card(33), story_card(34), *in_ready(9)]), FakeIssues()
+    board = FakeBoard([story_card(33), story_card(34), *in_ready(READY_LIMIT - 1)])
+    issues = FakeIssues()
     result = run_split(board, issues, monkeypatch)
     assert result.admitted == [33]
     assert [n for n, _why in result.waiting] == [34]
@@ -523,9 +528,9 @@ def test_a_story_not_held_for_room_is_left_in_refinement(monkeypatch):
 
 
 def test_a_story_let_in_counts_against_ready_for_the_rest_of_the_tick(monkeypatch):
-    """Ready at 9: the held story takes the last place, so the epic split in the
-    same tick is held rather than pushing Ready past its limit."""
-    board = FakeBoard([story_card(33), epic_card(3), *in_ready(9)])
+    """Ready one short of its limit: the held story takes the last place, so the
+    epic split in the same tick is held rather than pushing Ready past it."""
+    board = FakeBoard([story_card(33), epic_card(3), *in_ready(READY_LIMIT - 1)])
     issues = FakeIssues()
     result = run_split(board, issues, monkeypatch)
     assert result.admitted == [33]
