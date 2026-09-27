@@ -95,7 +95,15 @@ def to_design(proposal: Any) -> Design:
         checks=[c.value for c in proposal.checks],
         release_how=value(proposal.release_how),
         structure=value(getattr(proposal, "structure", None)),
+        docs=doc_paths(getattr(proposal, "docs", None)),
     )
+
+
+def doc_paths(choice: Any) -> list[str]:
+    """The paths in the Architect's docs choice, which names them among its prose."""
+    if not choice:
+        return []
+    return list(dict.fromkeys(re.findall(r"[\w./-]+\.(?:md|rst|txt)\b", choice.value)))
 
 
 def workflows(root: Path) -> dict[str, str]:
@@ -232,6 +240,7 @@ def open_design_pr(
         *[line("Check", c) for c in proposal.checks],
         line("Release", proposal.release_how),
         line("Structure", getattr(proposal, "structure", None)),
+        line("User docs", getattr(proposal, "docs", None)),
     ]
     changes = (
         "\n".join(f"- **{c.what}**: was {c.was}. {c.why}" for c in proposal.changes)

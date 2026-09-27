@@ -222,3 +222,29 @@ def test_delivery_cannot_change_the_design(tmp_path: Path):
     )
     (reason,) = bounds.out_of_bounds(tmp_path, change, record)
     assert "the record itself" in reason
+
+
+# --- where the user docs live (#306) --------------------------------------
+#
+# Sprint 8: `docs` was in the record and not in what the Architect proposes,
+# so every sprint-metrics documentation story wrote to one README.
+
+
+def test_the_architect_can_say_where_the_user_docs_live():
+    proposal = DesignProposal(
+        checks=[Choice(value="uv run pytest -q", basis="tests.yml")],
+        docs=Choice(
+            value="README.md is the front page; docs/usage.md covers the flags, "
+            "docs/metrics.md the six metrics",
+            basis="parallel docs stories collided in the README",
+        ),
+        summary="Docs split by topic.",
+    )
+    assert to_design(proposal).docs == ["README.md", "docs/usage.md", "docs/metrics.md"]
+
+
+def test_no_docs_answer_leaves_the_readme_default():
+    proposal = DesignProposal(
+        checks=[Choice(value="uv run pytest -q", basis="tests.yml")], summary="x"
+    )
+    assert to_design(proposal).docs == []

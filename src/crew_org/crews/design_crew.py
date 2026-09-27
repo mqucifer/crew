@@ -61,6 +61,15 @@ class DesignProposal(BaseModel):
     structure: Choice | None = Field(
         None, description="How the code is divided into modules, and what each module owns"
     )
+    # Where a user reads how to use it (#306). Unasked, every project's user
+    # docs were the README, and parallel stories all wrote to one file.
+    docs: Choice | None = Field(
+        None,
+        description=(
+            "The files a user reads to use the project, as paths separated by commas, "
+            "and what each covers"
+        ),
+    )
     changes: list[Change] = Field(
         default_factory=list,
         description=(
@@ -137,7 +146,8 @@ def propose_design(
             f"\n\n{revising}{refused}"
             "Propose this project's design: language, dependencies, what the sandbox must "
             "provide, the commands that enforce its definition of done, how a release "
-            "happens, and how its code is divided into modules. Give the basis of each "
+            "happens, how its code is divided into modules, and which files its user "
+            "documentation lives in. Give the basis of each "
             "choice. Where the project already has an answer (its CI, its lockfile, its "
             "build, its modules), record it; anything that differs from what it does today "
             "goes in `changes`, with why, and whether making it so needs work on the code."
