@@ -163,6 +163,21 @@ def collect_output(results) -> str:
 # A story the Developer answered is already done (#221): no pull request, the
 # evidence on the story. QA judges it like any story; accepted, it closes.
 ALREADY_DONE_MARKER = "<!-- crew:already-done -->"
+# Criteria a delivery says the existing tests prove (#217): QA runs and cites them.
+EXISTING_PROOF_MARKER = "<!-- crew:existing-proof -->"
+
+
+def _existing_proof(issues: IssueClient, repo: str, number: int) -> str:
+    """The criteria the latest delivery named existing tests for, as it wrote them."""
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return ""
+    latest = [b for b in bodies if b.startswith("Implemented in #")]
+    if not latest or EXISTING_PROOF_MARKER not in latest[-1]:
+        return ""
+    block = latest[-1].split(EXISTING_PROOF_MARKER, 1)[1]
+    return block.split("<!-- crew:by")[0].strip()
 
 
 def _already_done(issues: IssueClient, repo: str, number: int) -> str:
@@ -228,12 +243,21 @@ def run_qa(
         try:
             check = workspace.check(worktree, sandbox=sandbox)
             done = _already_done(issues, card_repo, number)
+            proof = _existing_proof(issues, card_repo, number)
+            if proof:
+                done_or_proof = (
+                    "\n\n## Criteria the Developer says the existing tests prove\n\n"
+                    f"{proof}\n\nThese have no new test. Judge each from the named tests' "
+                    "results in the test run, and cite them as the evidence."
+                )
+            else:
+                done_or_proof = ""
             answered = (
                 "\n\n## The Developer answered that this is already done\n\n"
                 f"{done}\n\nNothing was changed. Judge each criterion against the code "
                 "and the tests named, as for any story."
                 if done
-                else ""
+                else done_or_proof
             )
             verdict = attributed(verify_story, card=number, repo=card_repo)(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
