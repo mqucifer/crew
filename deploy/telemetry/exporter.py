@@ -56,6 +56,7 @@ def render(folder: Path) -> str:
     seconds = Counter()
     retries = Counter()
     ticks = 0
+    budget = None
     board: dict = {}
     last = 0.0
     for e in _events(folder):
@@ -84,6 +85,8 @@ def render(folder: Path) -> str:
             ticks += 1
         if kind == "tick.started" and isinstance(e.get("counts"), dict):
             board = e["counts"]
+        if kind == "tick.started" and isinstance(e.get("github_remaining"), int):
+            budget = e["github_remaining"]
 
     out = [
         "# HELP crew_events_total Events the crew recorded, by kind and role.",
@@ -128,6 +131,9 @@ def render(folder: Path) -> str:
         "# HELP crew_board_cards Cards per column, as the latest pass read the board.",
         "# TYPE crew_board_cards gauge",
         *(_series("crew_board_cards", {"column": c}, n) for c, n in board.items()),
+        "# HELP crew_github_requests_remaining GitHub requests left, as last seen.",
+        "# TYPE crew_github_requests_remaining gauge",
+        *([_series("crew_github_requests_remaining", {}, budget)] if budget is not None else []),
         "# HELP crew_last_event_timestamp_seconds When the crew last recorded anything.",
         "# TYPE crew_last_event_timestamp_seconds gauge",
         _series("crew_last_event_timestamp_seconds", {}, last),
