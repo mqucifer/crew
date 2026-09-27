@@ -96,6 +96,10 @@ class EventSink:
         self.path = path
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
+        # Beside `var/events`, attributes only, for the Sponsor's Alloy (#283).
+        from crew_org import telemetry  # noqa: PLC0415
+
+        self.telemetry = telemetry.path_for(path)
         self._subscribers: list[Subscriber] = []
         self._lock = threading.Lock()
 
@@ -109,6 +113,15 @@ class EventSink:
             if self.path is not None:
                 with self.path.open("a", encoding="utf-8") as fh:
                     fh.write(event.model_dump_json() + "\n")
+            if self.telemetry is not None:
+                # Never at the cost of the work: telemetry that can't be
+                # written is skipped, and `var/events` still has it all.
+                with contextlib.suppress(Exception):
+                    from crew_org import telemetry  # noqa: PLC0415
+
+                    self.telemetry.parent.mkdir(parents=True, exist_ok=True)
+                    with self.telemetry.open("a", encoding="utf-8") as fh:
+                        fh.write(telemetry.line(event))
         for fn in subscribers:
             # A broken view must never take down the run that feeds it.
             with contextlib.suppress(Exception):

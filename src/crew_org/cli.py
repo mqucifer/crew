@@ -1333,6 +1333,27 @@ def design(
 
 
 @app.command()
+def telemetry(
+    backfill: bool = typer.Option(
+        False, "--backfill", help="Rewrite var/telemetry from var/events, history included."
+    ),
+) -> None:
+    """The attributes-only telemetry log the Sponsor's Alloy collects (#283).
+
+    Every event is written to var/telemetry as it happens, with no prompt,
+    output or free text. --backfill rebuilds it from the whole event history.
+    """
+    from crew_org import telemetry as telemetry_log
+
+    if not backfill:
+        console.print(f"Telemetry is written to {VAR / 'telemetry'} as events happen.")
+        console.print("[dim]--backfill rebuilds it from var/events, history included.[/]")
+        return
+    written = telemetry_log.backfill(VAR / "events", VAR / "telemetry")
+    console.print(f"[green]{written} events[/] written to {VAR / 'telemetry'}, attributes only.")
+
+
+@app.command()
 def diagnose(
     repo: str = typer.Argument(..., help="The repository the failing card is in."),
     card: int = typer.Argument(..., help="The card whose failure to diagnose."),
