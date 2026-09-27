@@ -82,7 +82,7 @@ def test_a_split_citing_a_story_that_isnt_delivered_is_refused():
         epic_title="Ranges",
         already_delivered=[AlreadyDelivered(title="Range table", by=999, why="it does")],
     )
-    with pytest.raises(ValueError, match="#999, which the project has not delivered"):
+    with pytest.raises(ValueError, match="#999, which the project has neither delivered"):
         check_delivered(proposal, {73})
     check_delivered(proposal, None)  # nothing known: nothing to check against
 

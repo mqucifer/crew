@@ -13,6 +13,7 @@ SCOPE failure means the story was not ready and goes back to refinement.
 from __future__ import annotations
 
 import contextlib
+import re
 from dataclasses import dataclass, field
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
@@ -454,6 +455,25 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
         and (c.number or 0) < (story.number or 0)
         and c.state != "CLOSED"
         and c.status != DONE
+    ]
+    return min(blockers, key=lambda c: c.number or 0) if blockers else None
+
+
+def held_by_what_it_builds_on(cards: list[Card], story: Card, body: str) -> Card | None:
+    """A story in another epic this one builds on, not landed yet (#295).
+
+    The same wait `held_by_a_sibling` gives an epic's own stories, across
+    epics: the split names them in the story (`**Builds on** — #189, #190`),
+    and a story built before them writes their foundation a second time.
+    """
+    from crew_org.flows.board_flow import BUILDS_ON  # noqa: PLC0415
+
+    line = next((ln for ln in body.splitlines() if ln.startswith(BUILDS_ON)), "")
+    wanted = {int(n) for n in re.findall(r"#(\d+)", line)}
+    blockers = [
+        c
+        for c in cards
+        if c.repo == story.repo and c.number in wanted and c.state != "CLOSED" and c.status != DONE
     ]
     return min(blockers, key=lambda c: c.number or 0) if blockers else None
 
@@ -1542,6 +1562,18 @@ def deliver(
             sink.note(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{blocker.number} in the same epic",
+            )
+            continue
+        try:
+            body = issues.get(card.repo or repo, card.number or 0).get("body") or ""
+        except Exception:  # noqa: BLE001
+            body = ""
+        needed = held_by_what_it_builds_on(cards, card, body)
+        if needed is not None:
+            result.waiting_on_a_sibling.append((card.number or 0, needed.number or 0))
+            sink.note(
+                EventKind.NOTE,
+                f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
             )
             continue
 

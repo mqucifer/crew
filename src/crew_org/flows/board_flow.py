@@ -76,6 +76,8 @@ IDENTICAL_FAILURES_BEFORE_PARKING = 2
 GOAL_TYPE = "Goal"
 EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
+# A story's line naming stories in other epics it needs first (#295).
+BUILDS_ON = "**Builds on** —"
 # The label a person can actually apply when filing a Goal. Work Type is a
 # project field, and nothing that creates an issue can set one — not the issue
 # template's front matter, not `gh issue create`, not the new-issue form. A
@@ -670,6 +672,30 @@ def approved_epics(cards: list[Card]) -> list[Card]:
     ]
 
 
+def planned_elsewhere(
+    cards: list[Card], split_now: list[tuple[str, int, str, int]], *, repo: str, epic: int
+) -> list[tuple[int, str, int]]:
+    """Open stories other epics in this repository already hold, as (number, title, epic).
+
+    What a split must not write again (#295). Goal sprint-metrics#87's epics
+    #175 and #176 shared a foundation; split a pass apart, #176 wrote #195 and
+    #196 again, duplicating #175's #189 and #190 while those were still in Ready.
+    """
+    found = [
+        (c.number or 0, c.title, c.parent or 0)
+        for c in cards
+        if c.work_type == STORY_TYPE
+        and (c.repo or repo) == repo
+        and c.state != "CLOSED"
+        and c.status != "Done"
+        and c.parent not in (None, epic)
+    ]
+    found += [
+        (n, title, parent) for r, n, title, parent in split_now if r == repo and parent != epic
+    ]
+    return sorted(dict.fromkeys(found), key=lambda t: t[0])
+
+
 def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
     """A story issue, written so a test can be derived from it directly."""
     lines = [
@@ -687,6 +713,12 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
         ]
     if story.pinned_behaviour:
         lines += [f"**Behaviour merged tests pin** — {story.pinned_behaviour}", ""]
+    if story.builds_on:
+        # Read back by delivery, which holds this story until they've landed (#295).
+        lines += [
+            f"{BUILDS_ON} " + ", ".join(f"#{n}" for n in sorted(set(story.builds_on))),
+            "",
+        ]
     lines += [
         f"**Estimate** — {story.points} points",
         "",
@@ -1007,6 +1039,9 @@ def refine_epics(
     """
     counts = board.counts(cards)
     holds = holds or {}
+    # Stories split earlier in this same pass: not on `cards` yet, and exactly
+    # what a sibling epic splitting next would otherwise duplicate (#295).
+    split_now: list[tuple[str, int, str, int]] = []
 
     for epic_card in approved_epics(cards):
         repo = epic_card.repo or default_repo
@@ -1053,6 +1088,7 @@ def refine_epics(
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
             body = _goal_body(issues, repo, number)
+            planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
             proposal = attributed(split_epic, card=number, repo=repo)(
                 epic_card.title,
                 body,
@@ -1062,6 +1098,8 @@ def refine_epics(
                 feedback=notes,
                 delivered=done.render(),
                 delivered_numbers=done.numbers if known else None,
+                planned="\n".join(f"- #{n} {title} (epic #{epic})" for n, title, epic in planned),
+                planned_numbers={n for n, _t, _e in planned},
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -1109,6 +1147,7 @@ def refine_epics(
                 repo, story.title, render_story_body(story, number, epic_card.title)
             )
             numbers[story.title] = issue["number"]
+            split_now.append((repo, issue["number"], story.title, number))
 
             item = board.add_issue(issue["node_id"])
             board.set_select(item, "Work Type", STORY_TYPE)

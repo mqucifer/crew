@@ -83,6 +83,13 @@ class Story(BaseModel):
         description=f"At least {MIN_CRITERIA}; one must cover a failure or edge case"
     )
     points: int = Field(description=f"One of {POINT_SCALE}")
+    builds_on: list[int] = Field(
+        default_factory=list,
+        description=(
+            "Stories in other epics, already planned or delivered, this one needs first, by "
+            "number. Delivery waits for them to land"
+        ),
+    )
     pinned_behaviour: str = Field(
         default="",
         description=(
@@ -184,7 +191,9 @@ class AlreadyDelivered(BaseModel):
     """A story this epic would need that the project has already delivered (#220)."""
 
     title: str = Field(description="The story you would otherwise have written")
-    by: int = Field(description="The delivered story that already does it, by number")
+    by: int = Field(
+        description="The story that already does it, delivered or already planned, by number"
+    )
     why: str = Field(description="Which of its outcomes covers this story's criteria")
 
 
@@ -338,7 +347,9 @@ def propose_epics(
     return crew.kickoff().pydantic
 
 
-def check_delivered(proposal: StoryProposal, numbers: set[int] | None) -> None:
+def check_delivered(
+    proposal: StoryProposal, numbers: set[int] | None, planned: set[int] | frozenset = frozenset()
+) -> None:
     """Refuse an `already_delivered` naming a story the project hasn't delivered.
 
     Mechanical, because it can be: a split that leaves work out on the strength
@@ -346,13 +357,13 @@ def check_delivered(proposal: StoryProposal, numbers: set[int] | None) -> None:
     """
     if numbers is None:
         return
-    unknown = sorted({d.by for d in proposal.already_delivered} - numbers)
+    unknown = sorted({d.by for d in proposal.already_delivered} - numbers - set(planned))
     if unknown:
         raise ValueError(
             "already_delivered names "
             + ", ".join(f"#{n}" for n in unknown)
-            + ", which the project has not delivered. Name a delivered story, or write "
-            "the story."
+            + ", which the project has neither delivered nor planned. Name a delivered or "
+            "planned story, or write the story."
         )
 
 
@@ -376,6 +387,8 @@ def split_epic(
     delivered_numbers: set[int] | None = None,
     pinning: str = "",
     superseded: list[tuple[int, str]] | None = None,
+    planned: str = "",
+    planned_numbers: set[int] | None = None,
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -408,6 +421,14 @@ def split_epic(
                 "a story these already deliver: list it in `already_delivered`, with the "
                 "story that did it",
             )
+            + (
+                "## Stories other epics already plan, not yet built\n\n"
+                f"{planned}\n\n"
+                "Don't write these again. A story they cover goes in `already_delivered`, "
+                "naming the planned story; a story that needs one names it in `builds_on`.\n\n"
+                if planned
+                else ""
+            )
             + sent_back
             + "Split this epic into stories.\n\n"
             f"Epic: {title}\n\n{context}\n\n"
@@ -435,7 +456,7 @@ def split_epic(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
     )
     proposal = crew.kickoff().pydantic
-    check_delivered(proposal, delivered_numbers)
+    check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
     check_accounted(proposal, superseded or [])
     return proposal
 
