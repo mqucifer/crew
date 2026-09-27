@@ -1,0 +1,124 @@
+# OpenTelemetry Collector for the crew (#283). The Sponsor owns this file.
+#
+# In:  the crew's attributes-only telemetry log (logs), the exporter's
+#      /metrics (metrics), and OTLP from the crew (traces, once they exist).
+# Out: `debug` until an exporter is chosen. Grafana Cloud is sketched below,
+#      commented out; forwarding to the Home Assistant Alloy is the other road.
+#
+# Nothing with content should ever arrive here: the crew sends attributes only.
+# `transform/no-content` is a second lock on that door, for anything an
+# instrumentation library adds that the crew didn't write.
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # Where filelog remembers how far it read, so a restart doesn't re-send
+  # every line. On a volume, in the compose file.
+  file_storage:
+    directory: /var/lib/otelcol
+  # For Grafana Cloud's OTLP gateway: instance ID and an access-policy token
+  # with write scopes, from the environment, never from this file.
+  # basicauth/grafana:
+  #   client_auth:
+  #     username: ${env:GRAFANA_INSTANCE_ID}
+  #     password: ${env:GRAFANA_API_TOKEN}
+
+receivers:
+  # The crew's telemetry log: one JSON object a line, attributes only.
+  filelog/crew:
+    include: [/telemetry/*.jsonl]
+    start_at: beginning
+    storage: file_storage
+    include_file_name: true
+    operators:
+      - type: json_parser
+        parse_to: attributes
+        timestamp:
+          parse_from: attributes.at
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.999999999Z07:00"
+      # The event's kind reads as the log body; everything else stays attributes.
+      - type: copy
+        from: attributes.kind
+        to: body
+      - type: remove
+        field: attributes.at
+
+  # The exporter's counts and totals.
+  prometheus/crew:
+    config:
+      scrape_configs:
+        - job_name: crew
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["crew-telemetry:9464"]
+
+  # Spans from the crew, and LiteLLM's if it's pointed here too.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+  batch: {}
+  resource/crew:
+    attributes:
+      - key: service.namespace
+        value: crew
+        action: upsert
+      - key: deployment.environment
+        value: local
+        action: upsert
+  resource/logs:
+    attributes:
+      - key: service.name
+        value: crew
+        action: upsert
+  # The second lock: drop any attribute that could carry prompt or response
+  # content. The OpenInference and OpenLLMetry instrumentors, and the GenAI
+  # conventions' opt-in content capture, use these names.
+  transform/no-content:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_matching_keys(attributes, "^(gen_ai\\.(prompt|completion|input|output|system_instructions).*|gen_ai\\.content.*|llm\\.(input|output)_messages.*|llm\\.prompts?.*|input\\.value|output\\.value|.*\\.messages.*)$")
+      - context: spanevent
+        statements:
+          - delete_matching_keys(attributes, "^(gen_ai\\..*content.*|gen_ai\\.(prompt|completion).*|.*\\.messages.*)$")
+    log_statements:
+      - context: log
+        statements:
+          - delete_matching_keys(attributes, "^(summary|error|output|first_error|unproven|answer|question|reason_text)$")
+
+exporters:
+  debug:
+    verbosity: basic
+  # Grafana Cloud's OTLP gateway, once the Sponsor chooses it. Endpoint from
+  # the stack's "OpenTelemetry" page, e.g.
+  # https://otlp-gateway-prod-us-east-0.grafana.net/otlp
+  # otlphttp/grafana:
+  #   endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+  #   auth:
+  #     authenticator: basicauth/grafana
+
+service:
+  extensions: [health_check, file_storage]  # add basicauth/grafana with the exporter
+  pipelines:
+    logs:
+      receivers: [filelog/crew]
+      processors: [memory_limiter, transform/no-content, resource/logs, resource/crew, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [prometheus/crew]
+      processors: [memory_limiter, resource/crew, batch]
+      exporters: [debug]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/no-content, resource/crew, batch]
+      exporters: [debug]
