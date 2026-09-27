@@ -103,6 +103,8 @@ def land(
     base = (detail.get("base") or {}).get("ref") or "main"
     head = (detail.get("head") or {}).get("sha")
     queue = issues.queue_state(repo, number, branch=base)
+    if queue.merged:
+        return Landed(Landing.MERGED)
     if queue.queued:
         return Landed(Landing.QUEUED)
     if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:

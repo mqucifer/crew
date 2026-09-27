@@ -47,6 +47,7 @@ query($owner: String!, $repo: String!, $number: Int!, $branch: String!) {
   repository(owner: $owner, name: $repo) {
     mergeQueue(branch: $branch) { id }
     pullRequest(number: $number) {
+      merged
       mergeQueueEntry { state }
       timelineItems(last: 1, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT,
           REMOVED_FROM_MERGE_QUEUE_EVENT, PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
@@ -76,6 +77,10 @@ class QueueState:
     # Why the queue removed it, when nothing has changed in it since. None when
     # it was never removed, or has new commits since it was.
     removed: str | None = None
+    # Merged, as GraphQL says it. REST's `merged` lags the queue by a second or
+    # so, and a pull request read in that second looked approved and unqueued:
+    # sprint-metrics#224 was queued again one second after it merged.
+    merged: bool = False
 
 
 class IssueClient:
@@ -383,11 +388,17 @@ class IssueClient:
         if not repository.get("mergeQueue"):
             return QueueState()
         pull = repository.get("pullRequest") or {}
+        if pull.get("merged"):
+            return QueueState(has_queue=True, merged=True)
         if pull.get("mergeQueueEntry"):
             return QueueState(has_queue=True, queued=True)
         last = ((pull.get("timelineItems") or {}).get("nodes") or [{}])[-1] or {}
         if last.get("__typename") == "RemovedFromMergeQueueEvent":
-            return QueueState(has_queue=True, removed=str(last.get("reason") or "no reason given"))
+            reason = str(last.get("reason") or "no reason given")
+            # The queue's own word for landing it. Not a failure to rebuild.
+            if reason.strip().lower() == "merged":
+                return QueueState(has_queue=True, merged=True)
+            return QueueState(has_queue=True, removed=reason)
         return QueueState(has_queue=True)
 
     def enqueue(self, pull_id: str, *, head: str | None = None) -> None:
