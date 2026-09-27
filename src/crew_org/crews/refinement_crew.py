@@ -9,6 +9,7 @@ reviewer has to notice later.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from crewai import Crew, Process, Task
@@ -31,12 +32,46 @@ MAX_EPICS = 5
 MIN_JUSTIFICATION = 40
 
 
+# Words that name a quality, not something a test can see (#281). An epic may
+# say "a five-second scan"; a story's criterion has to say what that scan finds.
+SUBJECTIVE = re.compile(
+    r"\b(clear(?:ly)?|at a glance|easy|easily|readable|intuitive|obvious(?:ly)?|"
+    r"user-friendly|friendly|visible|prominent(?:ly)?|nice(?:ly)?|clean(?:ly)?)\b",
+    re.IGNORECASE,
+)
+# What makes it checkable anyway: an exact string, a number, or a position or order.
+OBSERVABLE = re.compile(
+    r"[\"`“”]|(?:^|\s)'[^']+'|\d|\b(first|second|third|last|top|bottom|before|after|above|below|"
+    r"order|begins? with|starts? with|ends? with|contains?|equals?|exactly|empty|"
+    r"line|row|column|heading|section|exit code)\b",
+    re.IGNORECASE,
+)
+
+
 class AcceptanceCriterion(BaseModel):
     """One Given/When/Then scenario, per constitution §3."""
 
     given: str = Field(description="The precondition")
     when: str = Field(description="The action taken")
-    then: str = Field(description="The observable outcome a test can assert")
+    then: str = Field(
+        description=(
+            "The observable outcome a test can assert: an exact string, a line or position, "
+            "an order, or a value. Not a quality like 'clear' or 'at a glance'"
+        )
+    )
+
+    @field_validator("then")
+    @classmethod
+    def _names_what_to_check(cls, value: str) -> str:
+        """A quality alone isn't a criterion: QA can't prove "clear" (#281)."""
+        found = SUBJECTIVE.search(value)
+        if found and not OBSERVABLE.search(SUBJECTIVE.sub("", value)):
+            raise ValueError(
+                f"'{found.group(0)}' names a quality, not something a test can check. Say "
+                "what a reader would see instead: the exact text, the line or position it "
+                "appears in, the order of sections, or a value."
+            )
+        return value
 
 
 class Story(BaseModel):
