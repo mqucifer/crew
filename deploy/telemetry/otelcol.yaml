@@ -64,6 +64,17 @@ receivers:
           static_configs:
             - targets: ["host.docker.internal:4000"]
           metric_relabel_configs:
+            # A keep-list, not everything: LiteLLM exposes ~100 metric names,
+            # mostly for features the crew doesn't use (budgets, teams,
+            # batches, MCP, guardrails, spend-log cleanup), plus `_created`
+            # timestamps and deprecated duplicates. These answer the crew's
+            # questions: calls and failures; how long the Spark takes and to
+            # the first token; whether calls queue; tokens in, out, reasoning
+            # and prefix-cached; whether the model is healthy or cooling down;
+            # and how many calls run at once. 516 series became 140 (2026-09-27).
+            - action: keep
+              source_labels: [__name__]
+              regex: "litellm_(proxy_total_requests_metric_total|proxy_failed_requests_metric_total|llm_api_latency_metric_(bucket|sum|count)|llm_api_time_to_first_token_metric_(bucket|sum|count)|request_queue_time_seconds_(bucket|sum|count)|input_tokens_metric_total|output_tokens_metric_total|output_reasoning_tokens_metric_total|input_cached_tokens_metric_total|deployment_state|deployment_failure_responses_total|deployment_cooled_down_total|in_flight_requests)"
             # Who called (empty today, identifying the day keys or users
             # exist), from where, with what, and the Spark's internal address.
             - action: labeldrop
