@@ -16,6 +16,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from crew_org.tokens import BearerAuth, Token
+from crew_org.tools.github_http import GitHubTransport
 
 GRAPHQL = "https://api.github.com/graphql"
 TIMEOUT = 30.0
@@ -395,6 +396,8 @@ class ProjectClient:
         self.number = number
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
+            # Paced writes and throttles waited out (#293).
+            transport=GitHubTransport(),
             # Asked for at every request, so a long run outlives its first token (#182).
             auth=BearerAuth(token),
             headers={"Accept": "application/vnd.github+json"},

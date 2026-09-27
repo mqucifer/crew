@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from crew_org.tokens import BearerAuth, Token
+from crew_org.tools.github_http import GitHubTransport
 
 API = "https://api.github.com"
 GRAPHQL = "https://api.github.com/graphql"
@@ -42,6 +43,8 @@ class IssueClient:
         self.owner = owner
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
+            # Paced writes and throttles waited out (#293).
+            transport=GitHubTransport(),
             # Asked for at every request, so a long run outlives its first token (#182).
             auth=BearerAuth(token),
             headers={

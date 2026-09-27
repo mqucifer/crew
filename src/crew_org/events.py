@@ -69,6 +69,9 @@ class EventKind(StrEnum):
     PRODUCT_ASKED = "product.asked"
     EPIC_RESPLIT = "epic.resplit"
 
+    # GitHub asked the crew to slow down (#293): waited out, or the tick stopped.
+    GITHUB_THROTTLED = "github.throttled"
+
     NOTE = "note"
 
 
