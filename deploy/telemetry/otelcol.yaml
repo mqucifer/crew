@@ -1,7 +1,8 @@
 # OpenTelemetry Collector for the crew (#283). The Sponsor owns this file.
 #
-# In:  the crew's attributes-only telemetry log (logs), the exporter's
-#      /metrics (metrics), and OTLP from the crew (traces, once they exist).
+# In:  the crew's attributes-only telemetry log (logs), the exporter's and
+#      LiteLLM's /metrics (metrics), and OTLP from the crew (traces, once they
+#      exist).
 # Out: `debug` until an exporter is chosen. Grafana Cloud is sketched below,
 #      commented out; forwarding to the Home Assistant Alloy is the other road.
 #
@@ -52,6 +53,20 @@ receivers:
           scrape_interval: 30s
           static_configs:
             - targets: ["crew-telemetry:9464"]
+        # LiteLLM's own metrics: requests, latency, tokens and failures by
+        # model alias. No content is ever in them; what's dropped is identity
+        # and internal detail. It runs in its own compose stack, so it's reached
+        # through the host. /metrics redirects to /metrics/.
+        - job_name: litellm
+          scrape_interval: 30s
+          metrics_path: /metrics/
+          static_configs:
+            - targets: ["host.docker.internal:4000"]
+          metric_relabel_configs:
+            # Who called (empty today, identifying the day keys or users
+            # exist), from where, with what, and the Spark's internal address.
+            - action: labeldrop
+              regex: "user_email|user|end_user|team|team_alias|org_id|org_alias|api_key_alias|hashed_api_key|client_ip|user_agent|api_base"
 
   # Spans from the crew, and LiteLLM's if it's pointed here too.
   otlp:
