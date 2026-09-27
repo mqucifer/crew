@@ -178,6 +178,22 @@ class TextEdit(BaseModel):
         return self
 
 
+class ExistingProof(BaseModel):
+    """A criterion the tests already in the repository prove (#217).
+
+    "The full existing test suite continues to pass" needs no new test: the
+    suite is the proof. A first attempt had to write one anyway (#172), and
+    invented `test_full_suite_passes` bodies failed validation on
+    sprint-metrics#127 and got stuck behind the regression guard on #126.
+    """
+
+    criterion: str = Field(description="The acceptance criterion, briefly, as the story words it")
+    tests: list[str] = Field(
+        min_length=1,
+        description="The existing tests that prove it, each as path::test_name",
+    )
+
+
 class CriterionTest(BaseModel):
     """One acceptance criterion, and the test that proves it, written in full (#172).
 
@@ -398,12 +414,21 @@ class FirstAttempt(Implementation):
     # test three times out of three: the answer's format asked for source
     # changes and nothing else, and the rule arrived only as a refusal. A field
     # the format requires is asked for; a rule that refuses afterwards is not.
+    # Still required, so the format asks for it; it may be empty only when every
+    # criterion rests on existing tests (#217), which is a pure refactor.
     criteria_tests: list[CriterionTest] = Field(
-        min_length=1,
         description=(
-            "Before the code: for each acceptance criterion, the test that proves it, "
+            "Before the code: for each acceptance criterion a new test proves, that test, "
             "written in full. The crew adds each test to its file, so don't write these "
             "tests again in new_files or edits."
+        ),
+    )
+    proven_by_existing: list[ExistingProof] = Field(
+        default_factory=list,
+        description=(
+            "Each acceptance criterion the tests already in the repository prove, e.g. "
+            "'existing behaviour is unchanged', with those tests named. Don't write a new "
+            "test for it."
         ),
     )
 
@@ -412,10 +437,12 @@ class FirstAttempt(Implementation):
         """Definition of Done §7.1: every acceptance criterion needs a test.
 
         Satisfied by a new test file or by adding to an existing one — a story
-        extending a module usually adds cases rather than a whole file.
+        extending a module usually adds cases rather than a whole file — or, for
+        a criterion the existing suite already proves, by naming those tests (#217).
         """
         if (
             self.criteria_tests
+            or self.proven_by_existing
             or any(f.is_test for f in self.new_files)
             or any(e.is_test for e in self.edits)
         ):
@@ -476,11 +503,11 @@ class FirstOrDone(FirstAttempt):
                     "`already_done` empty, or name the existing code and tests and change nothing."
                 )
             return self
-        if not self.criteria_tests:
+        if not (self.criteria_tests or self.proven_by_existing):
             raise ValueError(
                 "no test. For each acceptance criterion, give the test that proves it in "
-                "`criteria_tests` — or, if the code already meets every criterion, say so in "
-                "`already_done`."
+                "`criteria_tests`, or name the existing tests in `proven_by_existing` — or, if "
+                "the code already meets every criterion, say so in `already_done`."
             )
         return self
 
@@ -493,7 +520,9 @@ STANDING_INSTRUCTIONS = (
     "## How to return your work\n\n"
     "On a first attempt, start with `criteria_tests`: for each acceptance criterion, "
     "the test that proves it, written in full, with the test file it goes in. The crew "
-    "adds each one to its file.\n"
+    "adds each one to its file. A criterion the tests already in the repository prove "
+    "(such as 'existing behaviour is unchanged') goes in `proven_by_existing` instead, "
+    "naming those tests.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "

@@ -28,7 +28,7 @@ from crew_org.escalation import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, story_problem
-from crew_org.flows.acceptance import ALREADY_DONE_MARKER, qa_marker
+from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.design_notes import story_note
@@ -83,6 +83,8 @@ class DeliveryOutcome:
     # A first attempt that answered the story is already done (#221): each
     # criterion with the code that meets it and the test that proves it.
     already_done: list = field(default_factory=list)
+    # Criteria the Developer named existing tests for (#217), for QA.
+    proven_by_existing: list = field(default_factory=list)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -621,18 +623,20 @@ def deliver_story(
                 may_be_done=may_be_done,
             )
             _keep_proposal(sink, repo, number, implementation)
-            missing = [
-                met.test
-                for met in getattr(implementation, "already_done", None) or []
-                if not names_a_test(worktree, met.test)
+            named = [met.test for met in getattr(implementation, "already_done", None) or []]
+            named += [
+                test
+                for proof in getattr(implementation, "proven_by_existing", None) or []
+                for test in proof.tests
             ]
+            missing = [test for test in named if not names_a_test(worktree, test)]
             if missing:
-                # Refused, naming each (#221, criterion 3): evidence that
-                # doesn't exist is no evidence.
+                # Refused, naming each (#221, #217): evidence that doesn't
+                # exist is no evidence.
                 raise ValueError(
-                    "already_done names tests that don't exist in the repository: "
-                    + ", ".join(missing)
-                    + ". Name existing tests, or implement the story."
+                    "these named tests don't exist in the repository: "
+                    + ", ".join(dict.fromkeys(missing))
+                    + ". Name existing tests, or write the test in `criteria_tests`."
                 )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -1053,6 +1057,7 @@ def deliver_story(
             body=_pr_body(card, implementation, outcome),
         )
         outcome.pr = pr["number"]
+        outcome.proven_by_existing = list(getattr(implementation, "proven_by_existing", None) or [])
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
@@ -1071,6 +1076,15 @@ def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:
     except Exception:  # noqa: BLE001
         return True
     return any(ALREADY_DONE_MARKER in (c.get("body") or "") for c in comments)
+
+
+def existing_proof_block(proven: list) -> str:
+    """The criteria existing tests prove, on the story, for QA (#217)."""
+    if not proven:
+        return ""
+    return f"\n\n{EXISTING_PROOF_MARKER}\n**Proven by existing tests:**\n" + "\n".join(
+        f"- {p.criterion}: " + ", ".join(f"`{t}`" for t in p.tests) for p in proven
+    )
 
 
 def names_a_test(worktree, test: str) -> bool:
@@ -1164,6 +1178,10 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{move.name}` moved from `{move.from_path}` to `{move.to_path}`")
     for path in implementation.deleted_files:
         lines.append(f"- `{path}` (deleted)")
+    proven = getattr(implementation, "proven_by_existing", None) or []
+    if proven:
+        lines += ["", "## Criteria the existing tests prove", ""]
+        lines += [f"- {p.criterion}: " + ", ".join(f"`{t}`" for t in p.tests) for p in proven]
     if implementation.retired_tests:
         lines += ["", "## Tests retired", ""]
         lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
@@ -1327,6 +1345,7 @@ def _work_one_card(
             repo=repo,
             number=card.number or 0,
             body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass."
+            + existing_proof_block(outcome.proven_by_existing)
             + (" Escalated to finish." if outcome.escalated else ""),
             by="Developer",
         )

@@ -233,7 +233,9 @@ def test_criteria_tests_come_before_the_code_in_the_answer():
     schema = FirstAttempt.model_json_schema()
     fields = list(schema["properties"])
     assert fields.index("criteria_tests") < fields.index("new_files") < fields.index("edits")
-    assert schema["properties"]["criteria_tests"]["minItems"] == 1
+    # Required, so the format asks for it (#172); empty only when existing
+    # tests prove every criterion (#217).
+    assert "criteria_tests" in schema["required"]
 
 
 def test_a_criterion_test_is_written_not_just_named():
