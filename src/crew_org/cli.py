@@ -178,8 +178,13 @@ def tick(
         crew_repo=env.get("CREW_REPO", "crew"),
     )
 
-    with attach(sink, view):
+    from crew_org import tracing
+
+    # A trace per tick, to the Sponsor's collector, when org.yaml names it (#283).
+    tracing.start(org)
+    with attach(sink, view), tracing.span("tick", **{"crew.sprint": sprint}):
         result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
+    tracing.stop()
 
     _render_tick(result)
     _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)

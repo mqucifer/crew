@@ -233,8 +233,19 @@ def attributed(fn: Callable[..., Any], **what: Any) -> Callable[..., Any]:
     """`fn`, with every model call it makes attributed as `working_on(**what)` says."""
 
     def call(*args: Any, **kwargs: Any) -> Any:
+        from crew_org import tracing  # noqa: PLC0415
+
         with working_on(**what):
-            return fn(*args, **kwargs)
+            about = working()
+            # A span for the phase, or for the card within it (#283): the
+            # same attributes the model calls carry, and no content.
+            name = (
+                f"#{about['card']} {about.get('for', '')}".strip()
+                if "card" in what and what["card"] is not None
+                else str(about.get("for") or "crew")
+            )
+            with tracing.span(name, **{f"crew.{k}": v for k, v in about.items()}):
+                return fn(*args, **kwargs)
 
     return call
 
@@ -397,6 +408,8 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         detail.update(_duration(kind, detail.get("call_id"), _first_attr(event, "timestamp")))
         about = working()
         detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
+        if kind in (EventKind.LLM_CALL_FINISHED, EventKind.LLM_CALL_FAILED):
+            _trace_call(kind, event, detail, role, about)
 
         for target, target_card in list(_TARGETS):
             target.emit(
@@ -422,6 +435,38 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         sink.note(EventKind.NOTE, f"CrewAI no longer has {', '.join(missing)}; not bridged.")
 
     _INSTALLED = True
+
+
+def _trace_call(kind: EventKind, event: Any, detail: dict, role: Any, about: dict) -> None:
+    """A finished model call as a span, under the card or phase that made it (#283).
+
+    Run in the caller's context (CrewAI copies it onto the thread that delivers
+    the event), so the current span is the card's. Attributes, never content.
+    """
+    with contextlib.suppress(Exception):
+        from crew_org import tracing  # noqa: PLC0415
+
+        at = _first_attr(event, "timestamp")
+        if not isinstance(at, datetime):
+            return
+        end_ns = int(at.timestamp() * 1e9)
+        start_ns = end_ns - int(float(detail.get("duration_s") or 0) * 1e9)
+        tracing.model_call(
+            start_ns=start_ns,
+            end_ns=end_ns,
+            failed=kind is EventKind.LLM_CALL_FAILED,
+            attributes={
+                "gen_ai.operation.name": "chat",
+                "gen_ai.request.model": detail.get("model"),
+                "gen_ai.response.id": detail.get("response_id"),
+                "gen_ai.response.finish_reasons": detail.get("finish_reason"),
+                "gen_ai.usage.input_tokens": detail.get("prompt_tokens"),
+                "gen_ai.usage.output_tokens": detail.get("completion_tokens"),
+                "crew.reasoning_tokens": detail.get("reasoning_tokens"),
+                "crew.role": str(role) if role else None,
+                **{f"crew.{k}": v for k, v in about.items()},
+            },
+        )
 
 
 # When each call in flight started, by call id, for its duration. Measured,
