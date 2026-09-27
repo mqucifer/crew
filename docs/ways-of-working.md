@@ -145,6 +145,10 @@ Then <observable outcome>
 Rules:
 - Every criterion must be **observable** — assertable by a test without reading
   the implementation. "Works correctly" is not a criterion.
+  *Enforced:* a `Then` that leans on a subjective word ("clear", "at a
+  glance") is refused, naming the word, unless it also names something
+  observable — an exact string, a number, a position or an order. Epics may
+  still state qualities; only a story's criteria are held to this (crew#281).
 - Minimum 2 criteria per Story; at least one must be a failure or edge case.
 - Criteria are written before estimation, never after.
 
@@ -194,7 +198,11 @@ prefer splitting. A Story that cannot be estimated is a Spike in disguise.
 A card may enter `Done` only when **all** hold:
 
 1. Every acceptance criterion has a corresponding automated test, and that test
-   passes.
+   passes. A criterion an existing test already proves — "the full suite still
+   passes" needs no new one — may cite that test by name instead of a new one
+   written for it, but at least one criterion in the story still needs a new
+   or newly-named test, so a pure refactor can't rest on the suite alone
+   (crew#217).
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.
@@ -410,6 +418,12 @@ asks the old module for it any more, it's kept when the package's
 `__init__.py` hands it out instead. Judged on a scratch copy with the whole
 change applied, since a move spans files. Without this, no refactor the
 Architect proposes (§13) could land: a split by concern is nothing but moves.
+
+**A move is one step, not a delete and an add** (crew#241). The Developer
+names the definition, the file it's in, and the file it moves to; the crew
+moves it whole, carries the imports it uses, and imports it back into the old
+module wherever something there still asks for it. `to_path` must differ from
+`from_path`, and only a Python definition can move this way.
 
 **A name a module passes along is protected too** (sprint-metrics#129). If
 another file imports a name from a module (a function it imported from
@@ -659,7 +673,13 @@ the wording here.
    *Enforced:* the sandbox passes the container only variables it names, so no
    credential reaches generated code (§14). Git credentials are passed per
    command, never written to `.git/config` (`git_ops`). The crew's own tokens are
-   checked not to be admin (`crew auth`).
+   checked not to be admin (`crew auth`). A CI workflow the crew writes is
+   refused, before anything is written, if it runs on `pull_request_target`,
+   asks to write anything beyond `contents`, `packages`, `id-token` or
+   `attestations`, or reads a secret other than `GITHUB_TOKEN` and those the
+   project's record names in `design.secrets` (crew#279). A CI change travels
+   alone, without Python code. `crew auth` says whether the crew's own token
+   can change workflow files at all.
 
 3. **Dependencies are deliberate.** Locked with a lockfile, added only when a
    story needs them, and the standard library and existing dependencies come first.

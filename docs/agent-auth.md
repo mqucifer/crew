@@ -141,6 +141,14 @@ rather than holding a long-lived credential.
 
 Not Administration.
 
+**Workflows is optional, and checked, not assumed** (crew#279). A story that
+adds or changes a `.github/workflows/*.yml` file needs the App's `Contents`
+permission raised to include `Workflows: Read and write`; without it, such a
+story is refused up front, naming the missing permission, rather than failing
+at push time. Grant it once a project is expected to need a CI change.
+`crew auth` reports which way it is: "can change CI workflows" or "can't
+change CI workflows: a story that edits .github/workflows is refused."
+
 ### Install and configure
 
 1. Create the app, then **Install App** → the `mqucifer` organization → *Only

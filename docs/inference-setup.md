@@ -162,6 +162,13 @@ context window is declared on each alias (`model_info.max_input_tokens`),
 because LiteLLM's `/v1/models` does not carry the backend's; the doctor reads it
 from `/v1/model/info`.
 
+**Every request and response is kept, reasoning included.** Token counts can't
+tell a thinking block that converged from one that circled apart; reading it
+can. The proxy's spend logs store full prompts and responses
+(`store_prompts_in_spend_logs`), browsable in the admin UI's Logs and
+queryable in the Postgres behind it, which now has a volume so it survives a
+restart. Retention is 30 days.
+
 **When a probe fails, which layer is it?** `docker logs crew-litellm` shows
 whether the proxy reached SGLang at all, and the SGLang log on the Spark
 (`~/sglang-start-*.log`) shows whether the model server answered.
