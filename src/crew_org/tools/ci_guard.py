@@ -67,3 +67,69 @@ def weakened(checks: list[str], before: dict[str, str], after: dict[str, str]) -
     from `after` was deleted.
     """
     return [c for c in checks if enforced(c, before) and not enforced(c, after)]
+
+
+# --- what a workflow the crew writes may not do (#279) ----------------------------------
+
+# Write scopes a release plausibly needs: a tag and release (contents), an image
+# (packages), trusted publishing (id-token), provenance (attestations). Any
+# other write, or write-all, is refused.
+RELEASE_WRITES = frozenset({"contents", "packages", "id-token", "attestations"})
+_SECRET = re.compile(r"\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
+def _triggers(doc: dict) -> set[str]:
+    # YAML reads a bare `on:` key as the boolean True.
+    on = doc.get("on", doc.get(True))
+    if isinstance(on, str):
+        return {on}
+    if isinstance(on, list):
+        return {str(t) for t in on}
+    if isinstance(on, dict):
+        return {str(t) for t in on}
+    return set()
+
+
+def _write_scopes(permissions: Any) -> list[str]:
+    if permissions in ("write-all",):
+        return ["write-all"]
+    if isinstance(permissions, dict):
+        return [str(k) for k, v in permissions.items() if str(v) == "write"]
+    return []
+
+
+def unsafe(path: str, text: str, allowed_secrets: set[str]) -> list[str]:
+    """Why this workflow may not be written by the crew, one line per reason."""
+    try:
+        doc: Any = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return [f"`{path}` isn't valid YAML"]
+    if not isinstance(doc, dict):
+        return []
+    reasons = []
+    if "pull_request_target" in _triggers(doc):
+        reasons.append(
+            f"`{path}` runs on `pull_request_target`, which gives a pull request's own "
+            "code the repository's secrets. Use `pull_request`."
+        )
+    scopes = [("the workflow", doc.get("permissions"))]
+    scopes += [
+        (f"job `{name}`", job.get("permissions"))
+        for name, job in (doc.get("jobs") or {}).items()
+        if isinstance(job, dict)
+    ]
+    for where, permissions in scopes:
+        broad = [w for w in _write_scopes(permissions) if w not in RELEASE_WRITES]
+        if broad:
+            reasons.append(
+                f"`{path}`: {where} asks to write {', '.join(broad)}. A crew workflow may "
+                f"write only {', '.join(sorted(RELEASE_WRITES))}, and only where it needs to."
+            )
+    allowed = allowed_secrets | {"GITHUB_TOKEN"}
+    unnamed = sorted({s for s in _SECRET.findall(text) if s not in allowed})
+    if unnamed:
+        reasons.append(
+            f"`{path}` reads secrets the project's design doesn't name: {', '.join(unnamed)}. "
+            "Only GITHUB_TOKEN and the secrets listed in the record's `design.secrets` may be used."
+        )
+    return reasons

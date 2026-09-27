@@ -160,8 +160,17 @@ def test_a_fine_grained_token_now_warns_about_attribution():
 
 
 def test_a_complete_grant_set_passes():
+    """Nothing fails. Changing CI workflows is optional, so its absence only warns (#279)."""
     checks = auth.check_app_permissions(GOOD_APP_PERMISSIONS)
-    assert all(c.status is Status.PASS for c in checks)
+    assert not any(c.status is Status.FAIL for c in checks)
+    assert {c.check for c in checks if c.status is Status.WARN} == {"workflows"}
+
+
+def test_auth_says_whether_the_crew_can_change_ci_workflows():
+    """#279, criterion 3."""
+    granted = auth.check_app_permissions({**GOOD_APP_PERMISSIONS, "workflows": "write"})
+    (workflows,) = [c for c in granted if c.check == "workflows"]
+    assert workflows.status is Status.PASS and "can change" in workflows.detail
 
 
 def test_a_missing_permission_names_which_one():

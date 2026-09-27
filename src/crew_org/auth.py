@@ -69,12 +69,14 @@ def load_token(env_path: Path | None = None) -> str | None:
 
 
 # Populated by resolve_credentials when a GitHub App is in use, so callers can
-# report the grant set without re-minting a token.
-_LAST_APP_PERMISSIONS: dict[str, str] = {}
+# report the grant set without re-minting a token. By app (its env prefix): a
+# tick mints the delivery app's token and then the reviewer's, and one shared
+# record answered "what may the crew's app do?" with the reviewer's grant.
+_APP_PERMISSIONS: dict[str, dict[str, str]] = {}
 
 
-def app_permissions() -> dict[str, str]:
-    return dict(_LAST_APP_PERMISSIONS)
+def app_permissions(prefix: str = "GITHUB_APP_") -> dict[str, str]:
+    return dict(_APP_PERMISSIONS.get(prefix, {}))
 
 
 # The reviewing identity. GitHub refuses an approval from the app that opened
@@ -103,8 +105,7 @@ def token_source(
     if creds is not None:
         provider = AppTokenProvider(creds)
         provider.token()
-        _LAST_APP_PERMISSIONS.clear()
-        _LAST_APP_PERMISSIONS.update(provider.permissions)
+        _APP_PERMISSIONS[prefix] = dict(provider.permissions)
         return provider.token, provider.identity()
     token, identity = resolve_credentials(env, prefix=prefix)
     return token, identity
@@ -134,8 +135,7 @@ def resolve_credentials(
     if creds is not None:
         provider = AppTokenProvider(creds)
         token = provider.token()
-        _LAST_APP_PERMISSIONS.clear()
-        _LAST_APP_PERMISSIONS.update(provider.permissions)
+        _APP_PERMISSIONS[prefix] = dict(provider.permissions)
         return token, provider.identity()
 
     token = load_token()
@@ -282,6 +282,22 @@ def check_app_permissions(permissions: dict[str, str]) -> list[AuthCheck]:
             else None,
         )
     )
+    # Whether the crew may change a CI workflow (#279). Not required: without
+    # it, delivery refuses a workflow change up front, naming the permission.
+    checks.append(
+        AuthCheck(
+            check="workflows",
+            status=Status.PASS if permissions.get("workflows") == "write" else Status.WARN,
+            detail="can change CI workflows"
+            if permissions.get("workflows") == "write"
+            else "can't change CI workflows: a story that edits .github/workflows is refused",
+            hint=None
+            if permissions.get("workflows") == "write"
+            else "Grant Workflows: Read and write on the app, then accept it on the "
+            "installation, if the crew should change CI.",
+        )
+    )
+
     return checks
 
 
