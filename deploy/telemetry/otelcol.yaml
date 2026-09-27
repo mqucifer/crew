@@ -3,8 +3,11 @@
 # In:  the crew's attributes-only telemetry log (logs), the exporter's and
 #      LiteLLM's /metrics (metrics), and OTLP from the crew (traces, once they
 #      exist).
-# Out: `debug` until an exporter is chosen. Grafana Cloud is sketched below,
-#      commented out; forwarding to the Home Assistant Alloy is the other road.
+# Out: Grafana Cloud's OTLP gateway, with the endpoint and Authorization
+#      header from the repository-root .env (GRAFANA_OTLP_ENDPOINT and
+#      GRAFANA_OTLP_AUTH). Deliberately not the standard OTEL_EXPORTER_OTLP_*
+#      names: every OTel SDK reads those, and would send straight to Grafana
+#      around this collector and its content filter.
 #
 # Nothing with content should ever arrive here: the crew sends attributes only.
 # `transform/no-content` is a second lock on that door, for anything an
@@ -17,12 +20,6 @@ extensions:
   # every line. On a volume, in the compose file.
   file_storage:
     directory: /var/lib/otelcol
-  # For Grafana Cloud's OTLP gateway: instance ID and an access-policy token
-  # with write scopes, from the environment, never from this file.
-  # basicauth/grafana:
-  #   client_auth:
-  #     username: ${env:GRAFANA_INSTANCE_ID}
-  #     password: ${env:GRAFANA_API_TOKEN}
 
 receivers:
   # The crew's telemetry log: one JSON object a line, attributes only.
@@ -114,26 +111,26 @@ processors:
 exporters:
   debug:
     verbosity: basic
-  # Grafana Cloud's OTLP gateway, once the Sponsor chooses it. Endpoint from
-  # the stack's "OpenTelemetry" page, e.g.
-  # https://otlp-gateway-prod-us-east-0.grafana.net/otlp
-  # otlphttp/grafana:
-  #   endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
-  #   auth:
-  #     authenticator: basicauth/grafana
+  # Grafana Cloud's OTLP gateway. The endpoint ends in /otlp; the exporter adds
+  # /v1/traces, /v1/metrics and /v1/logs. The header is "Basic <base64 of
+  # instance ID:token>", as the stack's OpenTelemetry page gives it.
+  otlphttp/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+    headers:
+      Authorization: ${env:GRAFANA_OTLP_AUTH}
 
 service:
-  extensions: [health_check, file_storage]  # add basicauth/grafana with the exporter
+  extensions: [health_check, file_storage]
   pipelines:
     logs:
       receivers: [filelog/crew]
       processors: [memory_limiter, transform/no-content, resource/logs, resource/crew, batch]
-      exporters: [debug]
+      exporters: [otlphttp/grafana]  # add debug to see it locally
     metrics:
       receivers: [prometheus/crew]
       processors: [memory_limiter, resource/crew, batch]
-      exporters: [debug]
+      exporters: [otlphttp/grafana]  # add debug to see it locally
     traces:
       receivers: [otlp]
       processors: [memory_limiter, transform/no-content, resource/crew, batch]
-      exporters: [debug]
+      exporters: [otlphttp/grafana]  # add debug to see it locally
