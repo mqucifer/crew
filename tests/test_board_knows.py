@@ -154,8 +154,9 @@ def test_merging_uses_the_linked_pull_request(monkeypatch):
     card = story(31, status="Merging", linked_pulls=(linked(),))
     client = ScanCountingClient()
     looked_at: list[int] = []
-    monkeypatch.setattr(client, "pull", lambda repo, n: looked_at.append(n) or {}, raising=False)
-    monkeypatch.setattr(client, "pull_reviews", lambda repo, n: [], raising=False)
+    monkeypatch.setattr(
+        client, "pull_reviews", lambda repo, n: looked_at.append(n) or [], raising=False
+    )
     result = merge_approved(
         Board(), client, EventSink(None), cards=[card], default_repo="sprint-metrics"
     )
