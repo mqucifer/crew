@@ -6,13 +6,10 @@
 #
 #   docker compose up -d
 #
-# The Sponsor's Alloy runs as a Home Assistant add-on, on another machine, so it
-# scrapes this over the LAN: http://<this Mac's address>:9464/metrics.
-#
-# Logs: that Alloy can't tail files on this Mac. How var/telemetry reaches Loki
-# is still to decide (#283). The log itself is one JSON object a line; `kind`,
-# `role` and `repo` make sensible labels, and `card` belongs in structured
-# metadata, not a label.
+# Collected by an OpenTelemetry Collector on this Mac (crew-otelcol, below),
+# which the Sponsor owns: otelcol.yaml says where everything goes. It reads the
+# telemetry log, scrapes this exporter over the compose network, and receives
+# the crew's OTLP. The crew itself ships nothing anywhere.
 
 services:
   crew-telemetry:
@@ -25,10 +22,10 @@ services:
     volumes:
       - ./exporter.py:/app/exporter.py:ro
       - ../../var/telemetry:/telemetry:ro
-    # On the LAN, for the Home Assistant Alloy. It serves counts and totals only,
-    # never content. TELEMETRY_BIND=127.0.0.1 keeps it on this Mac alone.
+    # The collector scrapes it over the compose network. Published on loopback
+    # too, for a look by hand; TELEMETRY_BIND=0.0.0.0 would open it to the LAN.
     ports:
-      - "${TELEMETRY_BIND:-0.0.0.0}:9464:9464"
+      - "${TELEMETRY_BIND:-127.0.0.1}:9464:9464"
     user: "65534:65534"
     read_only: true
     cap_drop: [ALL]
@@ -36,3 +33,37 @@ services:
     mem_limit: 128m
     pids_limit: 64
     restart: unless-stopped
+
+  crew-otelcol:
+    # Pinned: a collector upgrade is a deliberate change, like LiteLLM's.
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    container_name: crew-otelcol
+    command: ["--config=/etc/otelcol/config.yaml"]
+    # Credentials for whichever exporter otelcol.yaml enables, from the
+    # repository-root .env (gitignored): docker compose --env-file ../../.env up -d
+    environment:
+      GRAFANA_OTLP_ENDPOINT: ${GRAFANA_OTLP_ENDPOINT:-}
+      GRAFANA_INSTANCE_ID: ${GRAFANA_INSTANCE_ID:-}
+      GRAFANA_API_TOKEN: ${GRAFANA_API_TOKEN:-}
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol/config.yaml:ro
+      - ../../var/telemetry:/telemetry:ro
+      - otelcol-storage:/var/lib/otelcol
+    # OTLP for the crew and LiteLLM on this Mac; health on 13133.
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:13133:13133"
+    depends_on: [crew-telemetry]
+    # Root in the container, with every capability dropped: a fresh named volume
+    # is root-owned, and the image's own user (10001) couldn't keep its read
+    # offsets there. Read-only everywhere but that volume.
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    restart: unless-stopped
+
+volumes:
+  otelcol-storage:
