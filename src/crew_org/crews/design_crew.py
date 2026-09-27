@@ -14,7 +14,7 @@ against it, so it judges this too.
 from __future__ import annotations
 
 from crewai import Crew, Process, Task
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agent
 from crew_org.permissions import load_agents
@@ -42,6 +42,26 @@ class Change(BaseModel):
             "configuration, not only this record"
         ),
     )
+    # What becomes the technical epic (#309). `what` says what changes in the
+    # record, which the design pull request itself does: an epic titled with
+    # it was answered "already delivered".
+    work: str | None = Field(
+        None,
+        description=(
+            "When needs_work: the change to the project's code, tests, docs or "
+            "configuration that makes it match this design, as one sentence of work "
+            "to be done. Not the edit to this record"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _work_is_said(self) -> Change:
+        if self.needs_work and not (self.work or "").strip():
+            raise ValueError(
+                f"'{self.what}' needs work on the project: say what that work is in "
+                "`work`, as distinct from the edit to the design record"
+            )
+        return self
 
 
 class DesignProposal(BaseModel):
@@ -62,12 +82,15 @@ class DesignProposal(BaseModel):
         None, description="How the code is divided into modules, and what each module owns"
     )
     # Where a user reads how to use it (#306). Unasked, every project's user
-    # docs were the README, and parallel stories all wrote to one file.
+    # docs were the README, and parallel stories all wrote to one file. The goal
+    # was left out of the first wording, and the Architect split only the one
+    # line that had collided, leaving two shared files.
     docs: Choice | None = Field(
         None,
         description=(
             "The files a user reads to use the project, as paths separated by commas, "
-            "and what each covers"
+            "and what each covers. Divided the way `structure` divides the code, so "
+            "that parallel stories land in different files"
         ),
     )
     changes: list[Change] = Field(

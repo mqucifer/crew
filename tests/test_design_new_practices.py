@@ -26,6 +26,7 @@ DECLARED = Change(
     was="version 0.0.0, never tagged",
     why="a released version should say what it is",
     needs_work=True,
+    work="Set pyproject.toml's version to the tag's before each release is cut",
 )
 
 

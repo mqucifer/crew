@@ -193,7 +193,13 @@ def design(
 def changes_block(proposal: Any) -> str:
     """The declared changes, readable back from the pull request once it merges."""
     changes = [
-        {"what": c.what, "was": c.was, "why": c.why, "needs_work": bool(c.needs_work)}
+        {
+            "what": c.what,
+            "was": c.was,
+            "why": c.why,
+            "needs_work": bool(c.needs_work),
+            "work": getattr(c, "work", None),
+        }
         for c in proposal.changes
     ]
     # `>` escaped so nothing in a change can close the comment early.
@@ -243,7 +249,11 @@ def open_design_pr(
         line("User docs", getattr(proposal, "docs", None)),
     ]
     changes = (
-        "\n".join(f"- **{c.what}**: was {c.was}. {c.why}" for c in proposal.changes)
+        "\n".join(
+            f"- **{c.what}**: was {c.was}. {c.why}"
+            + (f"  \n  _The work:_ {c.work}" if getattr(c, "work", None) else "")
+            for c in proposal.changes
+        )
         if proposal.changes
         else "None. This records what the project already does."
     )
