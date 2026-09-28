@@ -78,6 +78,11 @@ EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
 # A story's line naming stories in other epics it needs first (#295).
 BUILDS_ON = "**Builds on** —"
+# A story's line saying what it does to merged tests (#189). Delivery reads a
+# declared contract change back from it (#316); the old wording read as "this
+# story's tests are optional" (#311), and stories written with it still exist.
+EXISTING_TESTS = "**Existing tests** —"
+EXISTING_TESTS_BEFORE_311 = "**Behaviour merged tests pin** —"
 # The label a person can actually apply when filing a Goal. Work Type is a
 # project field, and nothing that creates an issue can set one — not the issue
 # template's front matter, not `gh issue create`, not the new-issue form. A
@@ -696,6 +701,21 @@ def planned_elsewhere(
     return sorted(dict.fromkeys(found), key=lambda t: t[0])
 
 
+def existing_tests_line(pinned: str) -> str:
+    """What a story does to merged tests, in words nobody reads as "tests optional" (#311).
+
+    sprint-metrics#238's design note read "opt-in" as the story's own tests
+    being optional, and the Code Reviewer rightly refused the note.
+    """
+    text = pinned.strip()
+    rest = text.split(":", 1)[1].strip() if ":" in text else ""
+    if text.lower().startswith("contract change"):
+        return f"{EXISTING_TESTS} this story changes what they assert: {rest}"
+    return f"{EXISTING_TESTS} unchanged: the new behaviour is opt-in" + (
+        f" ({rest})" if rest else ""
+    )
+
+
 def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
     """A story issue, written so a test can be derived from it directly."""
     lines = [
@@ -712,7 +732,7 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
             "",
         ]
     if story.pinned_behaviour:
-        lines += [f"**Behaviour merged tests pin** — {story.pinned_behaviour}", ""]
+        lines += [existing_tests_line(story.pinned_behaviour), ""]
     if story.builds_on:
         # Read back by delivery, which holds this story until they've landed (#295).
         lines += [

@@ -443,6 +443,16 @@ retired, with what the story ends; the pull request lists each one under
 **Tests retired** for the Code Reviewer. Only tests are retired this way:
 code that still has callers moves.
 
+**A story can declare it too** (crew#316). A story whose **Existing tests**
+line says it changes what they assert (`contract change: <the tests or test
+files it updates>`) may remove or reshape the merged tests it names there.
+The Business Analyst writes that line; a rename of anything a merged test
+asserts (a label, a key, a column, a flag) is a contract change. A removal
+the story doesn't name is still refused, and nothing but tests is excused. The
+pull request lists what the declaration let go for the Code Reviewer. When
+the guard refuses a removed test, it shows the test as merged, so a repair can
+add it back rather than guess at code it was never shown (sprint-metrics#200).
+
 **Why this is a check and not an instruction.** The Developer returns whole
 files, which is what makes its output easy to validate and repair. The cost is
 that extending a module means rewriting it, and a model asked to add one metric

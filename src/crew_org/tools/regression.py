@@ -278,7 +278,7 @@ def _is_test_path(path: str) -> bool:
     return path.startswith("tests/") or "/tests/" in path or name.startswith("test_")
 
 
-def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
+def describe_contracts(broken: dict[str, tuple[str, str]], merged: Merged | None = None) -> str:
     """What the Developer is told. Written so the repair is obvious."""
     lines = [
         "This changes what existing code promises its callers. Other stories "
@@ -307,8 +307,21 @@ def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
             "",
             "A merged test isn't deleted by removing it. If this story deliberately ends "
             "what a test above pins, list it in `retired_tests`, with what the story ends, "
-            "and the crew deletes it for you.",
+            "and the crew deletes it for you. If the story only changes what it asserts "
+            "(a renamed label, a new key), keep the test and update its assertion.",
         ]
+        restore = removed_tests_source(broken, merged)
+        if restore:
+            # On a repair the deletion is already in the files, so the test isn't
+            # in anything the Developer is shown: sprint-metrics#200 was asked to
+            # restore code it had never seen, three times (#316).
+            lines += [
+                "",
+                "The removed tests, as merged. To keep one, add it back with an `add` "
+                "edit from this source, changing only what the story changes:",
+                "",
+                restore,
+            ]
     if any(broke.startswith(REMOVED) for _was, broke in broken.values()):
         lines += [
             "",
@@ -320,6 +333,48 @@ def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
             "both copies.",
         ]
     return "\n".join(lines)
+
+
+# Generous, not a budget (§16): a test is short, and a repair needs all of it.
+RESTORE_CHAR_CEILING = 20_000
+
+
+def removed_tests_source(broken: dict[str, tuple[str, str]], merged: Merged | None) -> str:
+    """Each merged test the change removes, in full, from the merged base (#316)."""
+    if merged is None:
+        return ""
+    from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
+
+    blocks: list[str] = []
+    budget, left_out = RESTORE_CHAR_CEILING, []
+    texts: dict[str, str | None] = {}
+    for key, (_was, broke) in sorted(broken.items()):
+        path, _, target = key.partition("::")
+        if not (_is_test_path(path) and broke.startswith(REMOVED)):
+            continue
+        if path not in texts:
+            texts[path] = merged.text(path)
+        text = texts[path]
+        if text is None:
+            continue
+        node = definitions(text).get(target)
+        if node is None:
+            continue
+        # Decorators included: a parametrised test without its parameters isn't it.
+        decorators = getattr(node, "decorator_list", None)
+        start = (decorators[0].lineno if decorators else node.lineno) - 1
+        lines = text.splitlines()[start : node.end_lineno or node.lineno]
+        source = textwrap.dedent("\n".join(lines))
+        if len(source) > budget:
+            left_out.append(f"`{target}` in `{path}`")
+            continue
+        budget -= len(source)
+        blocks += [f"`{target}` in `{path}`:", "```python", source, "```"]
+    if left_out:
+        blocks.append(
+            "Also removed, and not shown because they did not fit: " + ", ".join(left_out)
+        )
+    return "\n".join(blocks)
 
 
 def render_signature(node: ast.stmt) -> str | None:
@@ -928,3 +983,41 @@ def without_retired(
     """`broken`, less the merged tests this story declares it retires (§15)."""
     retired = {f"{t.path}::{t.test}" for t in getattr(implementation, "retired_tests", [])}
     return {key: value for key, value in broken.items() if key not in retired}
+
+
+def _declares(declared: set[str], key: str) -> bool:
+    """Whether a story's declared contract change names this test, or its file."""
+    path, _, target = key.partition("::")
+    if not _is_test_path(path):
+        return False
+    names = {target, target.split(".")[0], target.rpartition(".")[2]}
+    for entry in declared:
+        where, _, test = entry.partition("::")
+        if not where.endswith(".py"):
+            if entry in names:
+                return True
+            continue
+        if not (path == where or path.endswith(f"/{where}")):
+            continue
+        if not test or test in names:
+            return True
+    return False
+
+
+def without_declared(
+    broken: dict[str, tuple[str, str]], declared: set[str]
+) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    """`broken`, less the merged tests the story's declared contract change names (#316).
+
+    The Business Analyst writes `contract change: <the tests it updates>` when a
+    story changes what merged tests assert, and the Code Reviewer sees it in the
+    story. Until #316 nothing here read it, so the story that declared it was
+    refused like one that hadn't: sprint-metrics's docs redesign ends by
+    removing `tests/test_readme.py`, declared, and would have blocked as #200
+    did. Only tests, and only those named; a removal nobody declared is still
+    refused. Also returns what it excused, for the pull request.
+    """
+    if not declared:
+        return broken, []
+    excused = sorted(key for key in broken if _declares(declared, key))
+    return {k: v for k, v in broken.items() if k not in excused}, excused
