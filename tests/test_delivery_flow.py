@@ -524,7 +524,7 @@ def test_the_first_attempt_is_shown_the_bodies_too(tmp_path):
     """Story #11 rewrote a function it had only ever seen the signature of, and
     was refused for breaking behaviour that lives in the body. Names say what to
     target; only the body says what the code currently promises."""
-    from crew_org.flows.delivery import repository_context
+    from crew_org.tools.repo_context import repository_context
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src/mod.py").write_text(
@@ -537,7 +537,7 @@ def test_the_first_attempt_is_shown_the_bodies_too(tmp_path):
 
 def test_methods_are_shown_qualified(tmp_path):
     """The model has to know that a method is addressed as Class.method."""
-    from crew_org.flows.delivery import repository_context
+    from crew_org.tools.repo_context import repository_context
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src/mod.py").write_text("class Card:\n    def age(self):\n        return 0\n")
@@ -548,7 +548,7 @@ def test_the_context_warns_against_targeting_a_file(tmp_path):
     """Story #8 tried to edit a definition called __init__ in __init__.py."""
     (tmp_path / "src").mkdir()
     (tmp_path / "src/__init__.py").write_text('__all__ = ["f"]\n')
-    from crew_org.flows.delivery import repository_context
+    from crew_org.tools.repo_context import repository_context
 
     assert "__all__" in repository_context(tmp_path)
     assert "not `__init__`" in repository_context(tmp_path)
@@ -558,7 +558,7 @@ def test_a_repair_is_shown_the_current_file_contents(tmp_path):
     """Regression: repairs were given the pre-implementation listing, so they
     were fixing code they could not read — two attempts failed identically
     before escalation was reached."""
-    from crew_org.flows.delivery import repository_context
+    from crew_org.tools.repo_context import repository_context
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src/mod.py").write_text("SENTINEL = 1\n")

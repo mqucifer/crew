@@ -45,7 +45,7 @@ from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools import bounds, claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
-from crew_org.tools.repo_context import repository_context
+from crew_org.tools.repo_context import focused_context
 
 STORY_TYPE = "Story"
 
@@ -477,6 +477,10 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
 _DECLARED = re.compile(r"[\w/.-]+\.py(?:::[\w.]+)?|\btest_\w+")
 
 
+# How often one delivery may ask to see more files before it must work with what it has.
+ASK_LIMIT = 2
+
+
 def declared_contract(body: str) -> set[str]:
     """The merged tests a story declares it changes, from its **Existing tests** line (#316).
 
@@ -694,6 +698,9 @@ def deliver_story(
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
     attempt = 0
+    # Files the Developer asked to see in full (#231), and how often it asked.
+    asked: list[str] = []
+    asks = 0
     # Offered once per story (#221): an already-done answer QA refused isn't
     # offered again, or the story would go round between the two.
     may_be_done = not rework and not _answered_done(issues, repo, number)
@@ -701,8 +708,22 @@ def deliver_story(
     while True:
         attempt += 1
         # Recomputed every pass: a repair must see the files it just wrote, or
-        # it is fixing code it cannot read.
-        context = repository_context(worktree)
+        # it is fixing code it cannot read. Focused on what the work names
+        # when the repository is large (#231): the story, the gates' verdicts,
+        # the last failure, and what the Developer asked for.
+        context, focus = focused_context(
+            worktree, about="\n\n".join([story_text, prior, feedback]), extra=asked
+        )
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} context: {focus.chars:,} chars"
+            + (f", {len(focus.shown)} files in full" if focus.focused else ", whole repository"),
+            card=number,
+            context_chars=focus.chars,
+            focused=focus.focused,
+            shown=focus.shown,
+            asked=focus.asked,
+        )
         if note:
             context = f"# The design note for this story's epic\n\n{note}\n\n{context}"
         if record is not None:
@@ -768,6 +789,34 @@ def deliver_story(
                 continue
             outcome.blocked_reason = decision.reason
             return outcome
+
+        # It asked to see files first (#231). Not a failure, and not applied:
+        # it's asked again with them shown, up to ASK_LIMIT times a delivery.
+        if implementation.asks:
+            wanted = [f.strip().lstrip("./") for f in implementation.need_files]
+            fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
+            exists = [f for f in fresh if (worktree / f).is_file()]
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} asked to see {', '.join(wanted)[:200]}",
+                card=number,
+                need_files=wanted,
+            )
+            if exists and asks < ASK_LIMIT:
+                asks += 1
+                asked += exists
+                continue
+            missing = [f for f in fresh if f not in exists]
+            feedback = (
+                (f"These aren't files in the repository: {', '.join(missing)}. " if missing else "")
+                + (
+                    "You've been shown what you asked for. "
+                    if not fresh or asks >= ASK_LIMIT
+                    else ""
+                )
+                + "Do the work now with the files you can see, and leave `need_files` empty."
+            )
+            continue
 
         # A "new file" that already exists is a whole-file rewrite wearing a
         # different name, which is the thing editing by name exists to prevent.
