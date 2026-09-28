@@ -240,9 +240,14 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     Architect is about to change.
     """
     from crew_org.crews.design_crew import propose_design, review_design  # noqa: PLC0415
+    from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
 
+    # A workflow red on a default branch becomes a technical epic first, so the
+    # holds below see it and this pass refines it (#335).
+    repos = crew.repos - set(crew.not_onboarded)
+    red = watch_default_branches(crew.issues, crew.board, crew.sink, repos=repos)
     result = revisit_designs(
         crew.issues,
         crew.reviewer,
@@ -250,7 +255,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         crew.sink,
         crew.ws,
         crew.board.cards(),
-        repos=crew.repos - set(crew.not_onboarded),
+        repos=repos,
         events_dir=crew.sink.path.parent if crew.sink.path else None,
         propose_design=propose_design,
         review_design=review_design,
@@ -259,10 +264,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     crew.design_holds = dict(result.holds)
     return PhaseOutcome(
         "revisit",
-        moved=result.moved,
+        moved=result.moved or bool(red.filed or red.closed),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
+            + (f", {len(red.filed)} for a red default branch" if red.filed else "")
         ),
         result=result,
         counts={
@@ -272,7 +278,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             "technical epics": len(result.epics),
         },
         held=[f"{repo} — {why}" for repo, why in sorted(result.holds.items())]
-        + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed],
+        + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
+        + [f"{repo} — default branch unread: {why}" for repo, why in red.failed],
     )
 
 
