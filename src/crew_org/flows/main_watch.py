@@ -83,12 +83,13 @@ def _file(issues, board, sink, *, repo, branch, run, result) -> None:
     except Exception:  # noqa: BLE001
         failed = []
     log = report(issues, repo, failed) if failed else "_No failed job could be read._"
-    color, description = LABELS[TECHNICAL]
-    issues.ensure_label(repo, TECHNICAL, color=color, description=description)
-    issue = issues.create(
-        repo,
-        f"Fix: `{name}` fails on {branch}",
-        (
+    number = file_technical_epic(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        title=f"Fix: `{name}` fails on {branch}",
+        body=(
             f"{RED_MARKER.format(workflow=workflow)}\n"
             f"**The work:** make `{workflow}` pass on `{branch}` again. Its latest run on "
             f"`{branch}` ([run]({run.get('html_url', '')}), commit `{sha}`) failed after "
@@ -99,8 +100,15 @@ def _file(issues, board, sink, *, repo, branch, run, result) -> None:
             "lands (mqucifer/crew#192, #335). Closed when its stories are done, or by the "
             "watcher if the workflow passes again before any work starts."
         ),
-        labels=[TECHNICAL],
     )
+    result.filed.append((repo, number))
+
+
+def file_technical_epic(issues, board, sink, *, repo: str, title: str, body: str) -> int:
+    """A technical epic in Needs Refinement: the crew found the work, so no Sponsor gate (#192)."""
+    color, description = LABELS[TECHNICAL]
+    issues.ensure_label(repo, TECHNICAL, color=color, description=description)
+    issue = issues.create(repo, title, body, labels=[TECHNICAL])
     item = board.add_issue(issue["node_id"])
     move_card(
         board,
@@ -110,10 +118,10 @@ def _file(issues, board, sink, *, repo, branch, run, result) -> None:
         # No role performed it: a DevOps role doesn't exist yet (#335).
         by=None,
         card=issue["number"],
-        summary=f"technical epic — `{name}` fails on {branch}"[:100],
+        summary=f"technical epic — {title}"[:100],
     )
     board.set_select(item, "Work Type", EPIC_TYPE)
-    result.filed.append((repo, issue["number"]))
+    return issue["number"]
 
 
 def _close_if_untouched(issues, sink, *, repo, epic, run, result) -> None:
