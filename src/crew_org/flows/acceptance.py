@@ -195,6 +195,21 @@ def collect_docs(worktree: Path) -> str:
     return "\n\n".join(parts)
 
 
+def ci_checks(issues: IssueClient, repo: str, sha: str) -> str:
+    """The CI checks on the commit QA judges (#325), or "" where none can be read.
+
+    What only CI runs (an image build, a workflow) has no test in the sandbox:
+    its passing check is the evidence.
+    """
+    from crew_org.tools.review_evidence import checks_section  # noqa: PLC0415
+
+    try:
+        runs = issues.check_runs(repo, sha)
+    except Exception:  # noqa: BLE001
+        return ""
+    return checks_section(runs, "") if runs else ""
+
+
 def collect_output(results) -> str:
     """What running the suite produced, keeping the end rather than the front."""
     joined = "\n\n".join(f"$ {r.command}\n{r.output}" for r in results)
@@ -307,6 +322,7 @@ def run_qa(
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
                 docs=collect_docs(worktree),
+                checks=ci_checks(issues, card_repo, revision),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
                 project=_project_brief(worktree),
             )

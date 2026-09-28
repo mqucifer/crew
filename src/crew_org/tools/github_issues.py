@@ -83,6 +83,12 @@ class QueueState:
     merged: bool = False
 
 
+# A check that ran and did not pass. `neutral` and `skipped` are not failures.
+FAILED_CONCLUSIONS = frozenset(
+    {"failure", "timed_out", "cancelled", "startup_failure", "action_required"}
+)
+
+
 class IssueClient:
     def __init__(self, token: Token, owner: str, *, client: httpx.Client | None = None) -> None:
         self.owner = owner
@@ -283,6 +289,60 @@ class IssueClient:
         )
         response.raise_for_status()
         return response.json().get("check_runs", [])
+
+    def failed_checks(self, repo: str, sha: str) -> list[dict[str, Any]]:
+        """The checks on a commit that finished and failed (#325)."""
+        return [
+            run
+            for run in self.check_runs(repo, sha)
+            if run.get("status") == "completed" and run.get("conclusion") in FAILED_CONCLUSIONS
+        ]
+
+    def job_log(self, repo: str, job_id: int) -> str:
+        """One Actions job's log, or "" where it can't be read (#325).
+
+        GitHub answers with a redirect to short-lived storage; httpx drops the
+        token when it follows one to another host. A 403 is an App without
+        Actions read access, and a 410 or 404 an expired log: said as "" so the
+        caller can say which, rather than failing the pass.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/jobs/{job_id}/logs", follow_redirects=True
+        )
+        if response.status_code in (403, 404, 410):
+            return ""
+        response.raise_for_status()
+        return response.text
+
+    def merge_group_failures(self, repo: str, pull: int) -> list[dict[str, Any]]:
+        """The failed jobs of the latest failed merge-group run that carried `pull` (#325).
+
+        The queue tests a pull request on a temporary branch named
+        `gh-readonly-queue/<base>/pr-<N>-<sha>`, so its checks aren't on the
+        pull request's head, and the removal event doesn't say which run failed.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/runs",
+            params={"event": "merge_group", "status": "failure", "per_page": 50},
+        )
+        response.raise_for_status()
+        runs = [
+            run
+            for run in response.json().get("workflow_runs") or []
+            if f"/pr-{pull}-" in (run.get("head_branch") or "")
+        ]
+        if not runs:
+            return []
+        jobs = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/runs/{runs[0]['id']}/jobs",
+            params={"filter": "latest", "per_page": 100},
+        )
+        jobs.raise_for_status()
+        return [
+            job
+            for job in jobs.json().get("jobs") or []
+            if job.get("conclusion") in FAILED_CONCLUSIONS
+        ]
 
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         """A file's text at `ref`, or None if there is no such file."""

@@ -82,6 +82,22 @@ class FakeIssues:
     enqueued: list = []
     merged_pulls: list = []
 
+    # What CI said (#325): set by a test that wants a check to have failed.
+    failed_on_head: list = []
+    failed_in_queue: list = []
+
+    def failed_checks(self, repo, sha):
+        return list(self.failed_on_head)
+
+    def merge_group_failures(self, repo, pull):
+        return list(self.failed_in_queue)
+
+    def job_log(self, repo, job_id):
+        return (
+            "2026-09-28T03:00:00.0000000Z step ran\n"
+            f"2026-09-28T03:00:01.0000000Z ERROR job {job_id}\n"
+        )
+
     def queue_state(self, repo, number, *, branch):
         return self.queue
 

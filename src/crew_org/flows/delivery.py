@@ -32,6 +32,7 @@ from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
+from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
 from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import REBUILD_MARKER, merge_approved
@@ -180,9 +181,11 @@ def awaiting_rework(
                 for r in issues.pull_reviews(repo, pull["number"])
             )
             or any(
-                # Approved, but conflicting with main at merge: returned for a rebuild.
-                REBUILD_MARKER.format(head=head) in (c.get("body") or "")
+                # Approved, but conflicting with main at merge: returned for a
+                # rebuild. Or a CI check failed on this head (#325).
+                marker in (c.get("body") or "")
                 for c in issues.comments(repo, pull["number"])
+                for marker in (REBUILD_MARKER.format(head=head), CI_MARKER.format(head=head))
             )
             or (
                 # QA returned this head: its verdict is on the story, not the pull
@@ -346,6 +349,10 @@ def prior_verdicts(
             ]
             if reviews:
                 parts.append(reviews[-1]["body"])
+            # What CI said, when only CI could say it (#325).
+            ci = latest_ci_verdict(issues, repo, pull["number"])
+            if ci:
+                parts.append(ci)
     except Exception:  # noqa: BLE001, S110
         pass
     return "\n\n---\n\n".join(parts)

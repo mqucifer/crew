@@ -21,6 +21,7 @@ from enum import StrEnum
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.tools.github_issues import BranchUpdateConflict, IssueClient, IssueError
@@ -139,6 +140,9 @@ class MergeResult:
     # (card, PR) approved, conflicting with main, and returned for the crew to
     # rebuild on main rather than blocked for a person.
     rebuilding: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) approved, with a CI check that failed on its head or in the
+    # merge queue: returned to the Developer with the log (#325).
+    ci_failed: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
     # Approved by the crew, and GitHub did not count it. A separate list
     # because the Sponsor's response differs: one is waiting, the other is a
@@ -261,6 +265,16 @@ def merge_approved(
             )
             continue
 
+        # A check that failed on the head can't join the queue, and said
+        # nothing: the Developer is shown why instead (#325).
+        failed = _failed(issues.failed_checks, repo, (pull.get("head") or {}).get("sha", ""))
+        if failed:
+            return_for_ci(
+                board, issues, sink, card, repo=repo, pull=pull, failed=failed, where="on its head"
+            )
+            result.ci_failed.append((number, pull["number"]))
+            continue
+
         try:
             landed = land(issues, repo, pull["number"])
         except Exception as exc:  # noqa: BLE001
@@ -270,8 +284,8 @@ def merge_approved(
             _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
             continue
         # Taken out of the queue: a conflict with what landed ahead of it, or
-        # checks that failed on top of it. Either way it does not work on
-        # `main` as it now is, so it is rebuilt there like any conflict.
+        # checks that failed on top of it. A failed check goes back with its
+        # log (#325); a conflict is rebuilt on `main` as it now is.
         if landed.how == Landing.REMOVED:
             sink.emit(
                 CrewEvent(
@@ -280,6 +294,20 @@ def merge_approved(
                     summary=f"PR #{pull['number']} left the merge queue: {landed.reason}"[:120],
                 )
             )
+            failed = _failed(issues.merge_group_failures, repo, pull["number"])
+            if failed:
+                return_for_ci(
+                    board,
+                    issues,
+                    sink,
+                    card,
+                    repo=repo,
+                    pull=pull,
+                    failed=failed,
+                    where="in the merge queue",
+                )
+                result.ci_failed.append((number, pull["number"]))
+                continue
             _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
             continue
         if landed.how == Landing.UNSETTLED:
@@ -314,6 +342,16 @@ def merge_approved(
         _done(board, sink, card, pull=pull, result=result)
 
     return result
+
+
+def _failed(read: Callable, repo: str, key) -> list[dict]:
+    """What failed, or nothing where it can't be read: a read never fails the pass."""
+    if not key:
+        return []
+    try:
+        return list(read(repo, key))
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[Card]:

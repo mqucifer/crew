@@ -275,6 +275,12 @@ class Issues:
         found = next(p for p in self._open_pulls + self._closed_pulls if p["number"] == number)
         return {**found, "mergeable_state": "clean", "mergeable": True, "merged_at": "now"}
 
+    def failed_checks(self, repo, sha):
+        return []
+
+    def merge_group_failures(self, repo, pull):
+        return []
+
     def queue_state(self, repo, number, *, branch):
         return QueueState()
 
