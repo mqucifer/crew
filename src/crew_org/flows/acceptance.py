@@ -156,6 +156,32 @@ def collect_tests(worktree: Path) -> str:
 QA_DOCS_CHAR_CEILING = 60_000
 
 
+def changed_paths(worktree: Path) -> list[str]:
+    """Every file the branch changed since it left the default branch."""
+    import subprocess  # noqa: PLC0415
+
+    from crew_org.tools.regression import merged_base  # noqa: PLC0415
+
+    merged = merged_base(worktree)
+    if merged is None:
+        return []
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", merged.sha],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    return diff.stdout.split()
+
+
+def ci_only(worktree: Path) -> bool:
+    """The branch changes CI workflows and nothing else (crew#333)."""
+    from crew_org.tools.ci_guard import is_workflow  # noqa: PLC0415
+
+    changed = changed_paths(worktree)
+    return bool(changed) and all(is_workflow(p) for p in changed)
+
+
 def collect_docs(worktree: Path) -> str:
     """The docs this change edits, as they now read (§7.1, crew#324).
 
@@ -163,24 +189,13 @@ def collect_docs(worktree: Path) -> str:
     QA reads it. Only documentation files the branch changed since it left the
     default branch; a doc that doesn't fit is named rather than cut.
     """
-    import subprocess  # noqa: PLC0415
-
     from crew_org.crews.delivery_crew import is_doc  # noqa: PLC0415
-    from crew_org.tools.regression import merged_base  # noqa: PLC0415
 
-    merged = merged_base(worktree)
-    if merged is None:
-        return ""
-    diff = subprocess.run(
-        ["git", "diff", "--name-only", merged.sha],
-        cwd=worktree,
-        capture_output=True,
-        text=True,
-    )
+    changed = changed_paths(worktree)
     parts: list[str] = []
     left_out: list[str] = []
     budget = QA_DOCS_CHAR_CEILING
-    for rel in sorted(p for p in diff.stdout.split() if is_doc(p)):
+    for rel in sorted(p for p in changed if is_doc(p)):
         path = worktree / rel
         if not path.is_file():
             continue
@@ -288,6 +303,38 @@ def run_qa(
 
         if issues.has_comment_marked(card_repo, number, qa_marker(revision)):
             result.skipped.append((number, f"already judged at {revision[:7]}"))
+            continue
+
+        # Only CI workflows, which travel alone: QA can observe nothing of what
+        # they do until they run on `main`. The Code Reviewer judged the
+        # workflow; its run is the proof (§7.1, crew#333).
+        if ci_only(worktree):
+            card_ws.close()
+            artifacts.comment(
+                issues,
+                sink,
+                repo=card_repo,
+                number=number,
+                body=f"{QA_MARKER}\n{qa_marker(revision)}\n"
+                "## QA — not applicable: a CI-only change\n\n"
+                "This pull request changes CI workflows and nothing else. What a workflow "
+                "does can only be observed when it runs, mostly on `main`, so it is judged "
+                "by the Code Reviewer and proven by its own run (constitution §7.1). "
+                "A check that fails on the pull request or in the merge queue still sends "
+                "it back with the log.",
+                by="QA Engineer",
+            )
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=MERGING,
+                by="QA Engineer",
+                card=number,
+                frm=QAING,
+                summary="CI-only change: judged by review, proven by its run",
+            )
+            result.verified.append(QAOutcome(card=number, accepted=True))
             continue
 
         sink.emit(
