@@ -213,6 +213,10 @@ A card may enter `Done` only when **all** hold:
    runs is still tested: a command example whose output a doc shows, and a
    section generated from the code, are checked by the project's tests
    (crew#324).
+
+   **So is a CI workflow change.** It travels alone, with no code or tests in
+   the same pull request, so a review sees it for what it is. It needs no new
+   test: it is proven by its own run in CI, and QA cites the check (crew#331).
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.
