@@ -217,6 +217,9 @@ A card may enter `Done` only when **all** hold:
    **So is a CI workflow change.** It travels alone, with no code or tests in
    the same pull request, so a review sees it for what it is. It needs no new
    test: it is proven by its own run in CI, and QA cites the check (crew#331).
+   A pull request that changes only CI workflows isn't put through QA at all:
+   most of what a workflow does is only observable when it runs on `main`,
+   so it's judged by the Code Reviewer and proven by its run (crew#333).
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.
