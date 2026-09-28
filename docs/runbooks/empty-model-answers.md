@@ -133,8 +133,9 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 | Arm | Image | Cache | Runs | Empty | Notes |
 |---|---|---|---|---|---|
 | warm | 09-09 nightly, DFlash2 | hit | 5 | **5** | 8,211–16,833 thinking tokens, 0 answer tokens, `stop` |
-| cold | 09-09 nightly, DFlash2 | miss | 5 | *running: 2 of 3 so far* | Truly cold: `#cached-token: 0` on every chunk. Run 1 answered: 15,582 thinking, 5,468 answer tokens. So the cache isn't the whole story. |
-| warm | v0.5.20-cu130, DFlash2 | hit | 5 | *next* | |
+| cold | 09-09 nightly, DFlash2 | miss | 5 | **2** | Truly cold (`#cached-token: 0` on every chunk). Runs 1, 4 and 5 answered, with about 15,600–17,600 thinking and 5,100–5,800 answer tokens. The cache makes it worse, but it isn't the only cause. |
+| warm | v0.5.20-cu130, DFlash2 | hit | 5 | *running* | Started 2026-09-28 20:08 UTC. `crew doctor` passes. Run 1 is cold, because the server was freshly started. |
+| cold | v0.5.20-cu130, DFlash2 | miss | 5 | *next* | |
 
 **The request:** sprint-metrics#268, the Developer, 115,867 prompt tokens, `crew-code-think`, JSON schema `FirstOrDone`.
 
