@@ -16,6 +16,26 @@ This is the process we followed and the evidence at each step, so the next perso
 - **Since crew#341,** each empty answer is recorded as an `llm.empty` event in `var/events/*.jsonl`.
 - **The cost:** throughput. sprint-metrics#268 spent about 24 of its 35 minutes on three empty answers, all from the same prompt.
 
+## What the settings being tested actually do
+Both are supposed to change only speed, never output. That's why they make good tests: if changing one changes whether answers come back, the fault is in that machinery, not the model.
+
+- **Speculative decoding** (`--speculative-algorithm`).
+  - A small helper guesses the next several tokens. The 27B model checks them all in one step and keeps the ones it agrees with, so correct guesses are free speed. It always has the final say, so in theory the output is identical.
+  - The options differ only in who guesses:
+    - **MTP:** the model's own built-in head, 3 tokens at a time; the slowest.
+    - **DSpark:** a separate small model, blocks of 7.
+    - **DFlash2:** a block-diffusion helper, 8 at once; the fastest, with known upstream bugs where checking can leave the model's internal memory out of step.
+  - Switching between them swaps the guesser, and the code that keeps that memory in step while checking.
+- **The radix (prefix) cache.**
+  - SGLang reuses the work for a prompt start it has already seen. The crew orders every prompt stable-first to hit it.
+  - For this hybrid model, reuse also means SGLang takes periodic snapshots of the second, running (GDN) memory while it generates. That snapshot bookkeeping is where sglang #37818 was.
+  - `--disable-radix-cache` turns off both reuse and snapshots. Every request recomputes its whole prompt, about 90 seconds at 116k tokens. It needs 1 state slot per request.
+
+**How to read the results:**
+- DSpark answers, DFlash2 doesn't: DFlash2's checking is at fault.
+- DFlash2 answers with the radix cache off: the snapshot bookkeeping is at fault.
+- Neither makes a difference: the model itself struggles on very long thinking prompts, and the fix is shorter, focused prompts (#231).
+
 ## Where to look (read-only)
 
 ### 1. The crew's events
