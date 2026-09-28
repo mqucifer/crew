@@ -154,8 +154,9 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 |---|---|---|---|---|---|
 | warm | 09-09 nightly, DFlash2 | hit | 5 | **5** | 8,211–16,833 thinking tokens, 0 answer tokens, `stop` |
 | cold | 09-09 nightly, DFlash2 | miss | 5 | **2** | Truly cold (`#cached-token: 0` on every chunk). Runs 1, 4 and 5 answered, with about 15,600–17,600 thinking and 5,100–5,800 answer tokens. The cache makes it worse, but it isn't the only cause. |
-| warm | v0.5.20-cu130, DFlash2 | hit | 5 | *running* | Started 2026-09-28 20:08 UTC. `crew doctor` passes. Run 1 is cold, because the server was freshly started. |
-| cold | v0.5.20-cu130, DFlash2 | miss | 5 | *next* | |
+| warm | v0.5.20-cu130, DFlash2 | hit | 5 | **4** | Contains sglang #37818. Run 1 was cold (fresh server) and empty. Only run 5 answered: 12,096 thinking, 4,095 answer tokens. **Not fixed.** Cold arm skipped. |
+| warm | v0.5.20-cu130, **DSpark** | hit | 5 | **3** | Run 1 was cold and empty. Runs 2 and 4 answered (4,923 and 4,292 answer tokens); runs 3 and 5 were empty. Better than DFlash2, but not fixed, so the fault isn't DFlash2-only. Cold arm skipped. |
+| cold | 09-09 nightly, DFlash2, `--disable-radix-cache` | none | 5 | *running* | Production settings plus that one flag, via `DF_EXTRA` at launch; `.env` is unchanged. No prefix reuse and no GDN snapshots. |
 
 **The request:** sprint-metrics#268, the Developer, 115,867 prompt tokens, `crew-code-think`, JSON schema `FirstOrDone`.
 
