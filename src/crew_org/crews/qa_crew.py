@@ -116,8 +116,11 @@ def verify_story(
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
             + (
                 f"{checks}\n\nA criterion only CI can run (an image build, a workflow) "
-                "is proven by naming its passing check above. A check that failed or is "
-                "still running proves nothing yet.\n\n"
+                "is proven by naming the passing check above **that runs it**. A check "
+                "proves only what its steps execute: a `tests` check that runs lint and "
+                "pytest proves nothing about a workflow it never runs, and a test the run "
+                "skipped proves nothing at all. A check that failed or is still running "
+                "proves nothing yet. If no check runs it, the criterion is unproven.\n\n"
                 if checks
                 else ""
             )
