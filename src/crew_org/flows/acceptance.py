@@ -152,6 +152,49 @@ def collect_tests(worktree: Path) -> str:
     return "\n\n".join(parts)
 
 
+# Generous, not a budget (§16): docs a story edits are read whole or named.
+QA_DOCS_CHAR_CEILING = 60_000
+
+
+def collect_docs(worktree: Path) -> str:
+    """The docs this change edits, as they now read (§7.1, crew#324).
+
+    A criterion about what a doc says is proven by the doc, not by a test, so
+    QA reads it. Only documentation files the branch changed since it left the
+    default branch; a doc that doesn't fit is named rather than cut.
+    """
+    import subprocess  # noqa: PLC0415
+
+    from crew_org.crews.delivery_crew import is_doc  # noqa: PLC0415
+    from crew_org.tools.regression import merged_base  # noqa: PLC0415
+
+    merged = merged_base(worktree)
+    if merged is None:
+        return ""
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", merged.sha],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    parts: list[str] = []
+    left_out: list[str] = []
+    budget = QA_DOCS_CHAR_CEILING
+    for rel in sorted(p for p in diff.stdout.split() if is_doc(p)):
+        path = worktree / rel
+        if not path.is_file():
+            continue
+        body = path.read_text(encoding="utf-8", errors="ignore")
+        if len(body) > budget:
+            left_out.append(rel)
+            continue
+        budget -= len(body)
+        parts.append(f"# {rel}\n{body}")
+    if left_out:
+        parts.append("Also edited, and not shown because they did not fit: " + ", ".join(left_out))
+    return "\n\n".join(parts)
+
+
 def collect_output(results) -> str:
     """What running the suite produced, keeping the end rather than the front."""
     joined = "\n\n".join(f"$ {r.command}\n{r.output}" for r in results)
@@ -263,6 +306,7 @@ def run_qa(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
                 test_output=collect_output(check.results),
                 test_code=collect_tests(worktree),
+                docs=collect_docs(worktree),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
                 project=_project_brief(worktree),
             )

@@ -22,10 +22,17 @@ MIN_EVIDENCE_CHARS = 20
 class CriterionVerdict(BaseModel):
     criterion: str = Field(description="The acceptance criterion, quoted")
     proven: bool = Field(
-        description="Is this criterion proven by a test that actually exercises it?"
+        description=(
+            "Is this criterion proven by a test that actually exercises it? A criterion "
+            "about what a user doc says is proven by the doc itself, when it says it "
+            "and says it correctly"
+        )
     )
     evidence: str = Field(
-        description="Which test proves it, or what is missing. Name the test function."
+        description=(
+            "Which test proves it, or what is missing. Name the test function; for a "
+            "doc criterion, quote the passage and name the file"
+        )
     )
 
     @field_validator("evidence")
@@ -57,7 +64,8 @@ class QAVerdict(BaseModel):
         if self.accepted and unproven:
             raise ValueError(
                 f"cannot accept with {len(unproven)} unproven criteria. "
-                "Definition of Done requires every criterion proven by a test."
+                "Definition of Done requires every criterion proven: by a test, or a "
+                "doc criterion by the doc."
             )
         return self
 
@@ -67,7 +75,13 @@ class QAVerdict(BaseModel):
 
 
 def verify_story(
-    story: str, *, test_output: str, test_code: str, prior_verdicts: str = "", project: str = ""
+    story: str,
+    *,
+    test_output: str,
+    test_code: str,
+    prior_verdicts: str = "",
+    project: str = "",
+    docs: str = "",
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
 
@@ -99,7 +113,16 @@ def verify_story(
             + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
             f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
-            "For each acceptance criterion, decide whether a test actually exercises it "
+            + (
+                f"## The docs this change edits, as they now read\n\n{docs}\n\n"
+                "A criterion about what a doc says is proven by the doc, not a test "
+                "(Definition of Done §7.1). Read it: quote the passage that meets the "
+                "criterion as your evidence, and hold it unproven if the doc doesn't say "
+                "it or says something the code doesn't do.\n\n"
+                if docs
+                else ""
+            )
+            + "For each acceptance criterion, decide whether a test actually exercises it "
             "and name that test. A passing suite is not the same claim as a proven "
             "criterion — a test that exists but checks something adjacent proves nothing. "
             "Report what you found, including what went badly. Do not soften a failure."
