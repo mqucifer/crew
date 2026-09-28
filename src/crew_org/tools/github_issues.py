@@ -314,6 +314,35 @@ class IssueClient:
         response.raise_for_status()
         return response.text
 
+    def failed_jobs(self, repo: str, run_id: int) -> list[dict[str, Any]]:
+        """The jobs of one Actions run that failed, on its latest attempt."""
+        jobs = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/runs/{run_id}/jobs",
+            params={"filter": "latest", "per_page": 100},
+        )
+        jobs.raise_for_status()
+        return [
+            job
+            for job in jobs.json().get("jobs") or []
+            if job.get("conclusion") in FAILED_CONCLUSIONS
+        ]
+
+    def latest_runs(self, repo: str, branch: str) -> dict[str, dict[str, Any]]:
+        """The newest finished push run of each workflow on `branch`, by workflow path.
+
+        What the branch is now, per workflow: a red run followed by a green one
+        of the same workflow is fixed.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/runs",
+            params={"branch": branch, "event": "push", "status": "completed", "per_page": 50},
+        )
+        response.raise_for_status()
+        latest: dict[str, dict[str, Any]] = {}
+        for run in response.json().get("workflow_runs") or []:  # newest first
+            latest.setdefault(run.get("path") or run.get("name") or "", run)
+        return latest
+
     def merge_group_failures(self, repo: str, pull: int) -> list[dict[str, Any]]:
         """The failed jobs of the latest failed merge-group run that carried `pull` (#325).
 
@@ -333,16 +362,7 @@ class IssueClient:
         ]
         if not runs:
             return []
-        jobs = self._client.get(
-            f"{API}/repos/{self.owner}/{repo}/actions/runs/{runs[0]['id']}/jobs",
-            params={"filter": "latest", "per_page": 100},
-        )
-        jobs.raise_for_status()
-        return [
-            job
-            for job in jobs.json().get("jobs") or []
-            if job.get("conclusion") in FAILED_CONCLUSIONS
-        ]
+        return self.failed_jobs(repo, runs[0]["id"])
 
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         """A file's text at `ref`, or None if there is no such file."""
