@@ -312,6 +312,16 @@ class Implementation(BaseModel):
         default_factory=list,
         description="Merged tests this story deliberately ends, each with why",
     )
+    # Asked for, not guessed at (#231): the context shows the files the work
+    # names in full and the rest by name and signature only.
+    need_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Only when you can't do the work correctly without seeing files listed by "
+            "name but not shown in full: their paths. Naming any means this answer isn't "
+            "applied, and you're asked again with them shown. Leave empty otherwise."
+        ),
+    )
 
     @field_validator("deleted_files")
     @classmethod
@@ -362,9 +372,14 @@ class Implementation(BaseModel):
     def _may_change_nothing(self) -> bool:
         return False
 
+    @property
+    def asks(self) -> bool:
+        """It asks to see files first (#231): not applied, so nothing else is required of it."""
+        return bool(self.need_files)
+
     @model_validator(mode="after")
     def _does_something(self) -> Implementation:
-        if self.changes_nothing and not self._may_change_nothing():
+        if self.changes_nothing and not self._may_change_nothing() and not self.asks:
             raise ValueError("an implementation must create a file or edit one")
         return self
 
@@ -467,6 +482,8 @@ class FirstAttempt(Implementation):
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:
+        if self.asks:
+            return self
         """Definition of Done §7.1: every acceptance criterion needs a test.
 
         Satisfied by a new test file or by adding to an existing one — a story
@@ -531,6 +548,8 @@ class FirstOrDone(FirstAttempt):
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstOrDone:
+        if self.asks:
+            return self
         if self.already_done:
             if not self.changes_nothing:
                 raise ValueError(
@@ -562,6 +581,9 @@ STANDING_INSTRUCTIONS = (
     "the Code Reviewer and QA read it. Don't write a test that matches a doc's wording. "
     "A command example a doc shows is still run by the project's doc tests, where it "
     "has them.\n"
+    "The repository below may show some files only by name and signature. If you need "
+    "one in full to do the work correctly, don't guess at it: name it in `need_files` "
+    "(and nothing else), and you'll be asked again with it shown.\n"
     "A change to a CI workflow travels alone: no code or tests in the same change. It "
     "needs no test either: it's judged by review, and proven when it runs. Leave "
     "`criteria_tests` and `proven_by_existing` empty for it: a CI run isn't a test "

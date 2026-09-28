@@ -9,6 +9,9 @@ to know that the board already had an Owner Agent field sitting empty.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Files worth showing an agent so its work fits in with what is there.
@@ -46,7 +49,7 @@ CONTEXT_CHAR_CEILING = 600_000
 IGNORED_DIRS = frozenset({".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache"})
 
 
-def repository_context(worktree: Path, *, editing: bool = True) -> str:
+def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = True) -> str:
     """What the repository looks like, and what each file defines.
 
     Editing works by name, so the names are the context that matters. Listing
@@ -115,6 +118,11 @@ def repository_context(worktree: Path, *, editing: bool = True) -> str:
         if target.exists():
             lines += ["", f"### {name}", "", "```", target.read_text().strip(), "```"]
 
+    if not bodies:
+        # The map alone, and the always-shown files: a focused context adds the
+        # bodies the work names (#231).
+        return "\n".join(lines)
+
     budget = CONTEXT_CHAR_CEILING
     omitted: list[str] = []
     for target in paths:
@@ -161,6 +169,148 @@ def repository_context(worktree: Path, *, editing: bool = True) -> str:
         ]
 
     return "\n".join(lines)
+
+
+# Above this, the Developer is shown a focused context rather than everything
+# (#231). Everything was right for the 17k-character pilot; at sprint-metrics'
+# ~400k characters (#268: ~100k tokens, over half of it the whole test suite)
+# it's mostly noise, and long prompts are where the model answers nothing
+# (#312: none under 50k tokens in 99 calls, 62% empty over 90k served warm).
+# ~40k tokens: small repositories keep the full view, whose reasons (#9, #11,
+# #140) are cheapest to honour there.
+FOCUS_ABOVE_CHARS = 160_000
+_BACKTICKED = re.compile(r"`([A-Za-z_][\w.]*)(?:\(\))?`")
+_CALLED = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\(")
+
+
+@dataclass
+class Focus:
+    """What a focused context showed, for the event log and for measuring #231."""
+
+    focused: bool = False
+    shown: list[str] = field(default_factory=list)
+    asked: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)
+    chars: int = 0
+
+
+def _files(worktree: Path) -> list[Path]:
+    return sorted(
+        p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
+    )
+
+
+def _module_of(rel: Path) -> str:
+    """`src/pkg/mod.py` -> `pkg.mod`; the dotted name imports use."""
+    parts = list(rel.with_suffix("").parts)
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def select_files(
+    worktree: Path, about: str, extra: Iterable[str] = ()
+) -> tuple[list[str], list[str]]:
+    """The files a piece of work names (#231).
+
+    `about` is what's written about this piece of work: the story and its
+    criteria, earlier verdicts, the last failure. A file is chosen when it's
+    named there by path, by file name (when that's unique), by module, or by a
+    definition at most two files define, plus each chosen module's own test
+    file. The epic's design note chooses nothing: it describes the whole epic,
+    and on sprint-metrics#268 it named every source file. It's still shown, as
+    text. Imports aren't followed; the map carries every signature, and the
+    Developer asks for a body it needs. `extra` is what it asked for by path.
+    Returns (chosen, unknown asks).
+    """
+    from crew_org.tools.regression import signatures_for_context  # noqa: PLC0415
+
+    rels = {str(p.relative_to(worktree)): p for p in _files(worktree)}
+    by_name: dict[str, list[str]] = {}
+    for rel in rels:
+        by_name.setdefault(Path(rel).name, []).append(rel)
+
+    def named_in(text: str) -> set[str]:
+        found = {rel for rel in rels if rel in text}
+        found |= {
+            owners[0]
+            for name, owners in by_name.items()
+            if len(owners) == 1 and name != "__init__.py" and name in text
+        }
+        return found
+
+    chosen = named_in(about)
+    for rel in rels:
+        module = _module_of(Path(rel)) if rel.endswith(".py") else ""
+        if "." in module and module in about:
+            chosen.add(rel)
+
+    defined: dict[str, list[str]] = {}
+    for rel, path in rels.items():
+        if rel.endswith(".py") and not _is_test(Path(rel)):
+            for name in signatures_for_context(path.read_text(encoding="utf-8", errors="ignore")):
+                defined.setdefault(name.split(".")[0], []).append(rel)
+    for word in set(_BACKTICKED.findall(about)) | set(_CALLED.findall(about)):
+        owners = sorted(set(defined.get(word.split(".")[0], [])))
+        if 0 < len(owners) <= 2:
+            chosen |= set(owners)
+
+    unknown: list[str] = []
+    for ask in extra:
+        ask = ask.strip().lstrip("./")
+        if ask in rels:
+            chosen.add(ask)
+        else:
+            unknown.append(ask)
+
+    for rel in [r for r in chosen if r.endswith(".py") and not _is_test(Path(r))]:
+        paired = f"tests/test_{Path(rel).stem}.py"
+        if paired in rels:
+            chosen.add(paired)
+    return sorted(chosen), unknown
+
+
+def focused_context(
+    worktree: Path,
+    *,
+    about: str,
+    extra: Iterable[str] = (),
+    above: int | None = None,
+) -> tuple[str, Focus]:
+    """The repository for a Developer: all of it when small, the named part when not (#231)."""
+    full = repository_context(worktree)
+    if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
+        return full, Focus(focused=False, chars=len(full))
+
+    chosen, unknown = select_files(worktree, about, extra)
+    index = repository_context(worktree, editing=True, bodies=False)
+    lines = [index, "", "### The files this work names, in full", ""]
+    shown: list[str] = []
+    for rel in chosen:
+        path = worktree / rel
+        if path.suffix == ".py":
+            fence = "python"
+        elif path.suffix in TEXT_SUFFIXES:
+            fence = ""
+        else:
+            continue
+        if rel in CONTEXT_FILES:
+            shown.append(rel)
+            continue  # already shown in full above
+        body = path.read_text(encoding="utf-8", errors="ignore").strip()
+        lines += [f"`{rel}`", "", f"```{fence}", body, "```", ""]
+        shown.append(rel)
+    lines += [
+        "Every other file is listed above by name and what it defines, and not shown in "
+        "full. If the work needs one you can't see, don't guess at it: name it in "
+        "`need_files` and you'll be asked again with it shown.",
+        "",
+    ]
+    text = "\n".join(lines)
+    asked = [a.strip().lstrip("./") for a in extra if a.strip().lstrip("./") in chosen]
+    return text, Focus(focused=True, shown=shown, asked=asked, unknown=unknown, chars=len(text))
 
 
 def _is_test(rel: Path) -> bool:

@@ -554,8 +554,30 @@ Three rules for every limit on prompt content:
    full and tests by name (crew#230); the Developer, which edits tests, sees
    them whole; the Business Analyst is also shown, in full, the tests that pin
    behaviour an epic touches (crew#189). What is left out is still said out
-   loud (rule 3). Where this is heading, a role asking for what it needs, is
-   crew#231.
+   loud (rule 3).
+
+   **The Developer sees the files its work names, and asks for the rest**
+   (crew#231, 2026-09-28). When the whole repository would come to more than
+   about 40k tokens, the Developer is shown:
+   - the map, meaning every file and every signature
+   - `pyproject.toml` and `README.md`
+   - in full, the files its story, criteria, the gates' verdicts or the last
+     failure name, whether by path, file name, module or definition, plus each
+     chosen module's own test file
+
+   The epic's design note is still shown, but it doesn't choose files: it
+   describes the whole epic. Imports aren't followed, because the map carries
+   every signature. A file the Developer needs and can't see, it names in
+   `need_files`: that answer isn't applied, and it's asked again with them
+   shown. It may ask twice per delivery, and asking isn't a failure. Every
+   attempt records its context size and which files it was shown.
+
+   Why: long prompts are where the model thinks and then answers nothing
+   (crew#312). There were none under 50k tokens in 99 calls, and
+   sprint-metrics#268's 100k-token prompt came back empty on every serving
+   setup tried. Over half of that prompt was the whole test suite. Focused, it
+   is about 26k tokens. Smaller repositories are still shown whole, where the
+   reasons for showing everything (#9, #11, #140) cost least.
 2. **A ceiling is a guard, not a budget.** Set it where a tree genuinely stops
    fitting, not where a prompt feels long. It should never fire in normal work.
 3. **When it fires, fail loudly.** Drop whole files and name them, keep the end
