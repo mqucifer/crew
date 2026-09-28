@@ -133,7 +133,7 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 | Arm | Image | Cache | Runs | Empty | Notes |
 |---|---|---|---|---|---|
 | warm | 09-09 nightly, DFlash2 | hit | 5 | **5** | 8,211–16,833 thinking tokens, 0 answer tokens, `stop` |
-| cold | 09-09 nightly, DFlash2 | miss | 5 | *running* | |
+| cold | 09-09 nightly, DFlash2 | miss | 5 | *running: 2 of 3 so far* | Truly cold: `#cached-token: 0` on every chunk. Run 1 answered: 15,582 thinking, 5,468 answer tokens. So the cache isn't the whole story. |
 | warm | v0.5.20-cu130, DFlash2 | hit | 5 | *next* | |
 
 **The request:** sprint-metrics#268, the Developer, 115,867 prompt tokens, `crew-code-think`, JSON schema `FirstOrDone`.
@@ -177,6 +177,21 @@ If the recurrent GDN state sometimes sits at a different position from the atten
 - **No switch to MTP** until the Sponsor has weighed its impact. It's slower than DFlash2: 2.25× slower for code and 1.41× for prose on this box, per the repo's measurements.
 - **Prefer a released SGLang to a nightly** when re-pinning.
 
+## Serving options, if DFlash2 can't be fixed
+From the MiaAI-Lab README's measurements on this box, in tokens per second. Their MTP column is marked stale.
+
+| Mode | Script | Code | Long essay | Affected by the DFlash2 bugs? |
+|---|---|---|---|---|
+| DFlash2 (current) | `start-dflash.sh` | ~54.6 | ~25.6 | yes (sglang #38009, #36548) |
+| DSpark | `start-dspark.sh` | ~51.5 | ~18 | no |
+| MTP | `start.sh` | 24–35 | 18–24 | no |
+
+- **DSpark** uses a trained drafter, `RadixArk/Qwen3.8-27B-DSpark` (about 2.7 GB, downloaded once), proposing 7-token blocks.
+  - It uses `extra_buffer_lazy`.
+  - It defaults to the image `lmsysorg/sglang:qwen38-27b` (August 14) and takes the same `IMAGE=` override.
+  - It must keep `YARN=0` and a context of 262144.
+- **For the crew,** whose work is mostly long code and JSON, DSpark is about 6% slower than DFlash2. MTP is 35–55% slower.
+
 ## Next steps
 1. Finish the cold arm. If cold answers and warm stays empty, the #37818 mechanism is confirmed on this box.
 2. Restart on v0.5.20 and repeat the warm arm:
@@ -185,4 +200,6 @@ If the recurrent GDN state sometimes sits at a different position from the atten
    ```
    To roll back, run `./start-dflash.sh` with no override.
 3. If v0.5.20 answers, pin it in `.env` and run a normal tick to confirm the `llm.empty` count falls.
+4. If v0.5.20 still goes empty, test **DSpark** the same way, warm and cold, preferably on v0.5.20. The Sponsor agreed this interim order on 2026-09-28.
+5. Test **MTP** only if both fail, and only after the Sponsor has weighed the slowdown.
 4. Either way: keep the Developer's prompts focused (#231). Huge prompts trigger this, and they're also noise for the model.
