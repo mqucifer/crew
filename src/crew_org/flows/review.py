@@ -108,6 +108,19 @@ def already_reviewed(reviews: list[dict], bot_login: str, head: str = "") -> boo
     return any(r.get("commit_id") == head for r in ours)
 
 
+def approved_at(reviews: list[dict], bot_login: str, head: str) -> bool:
+    """Is the crew's latest verdict on `head` an approval?"""
+    ours = [
+        r
+        for r in reviews
+        if (r.get("user") or {}).get("login") == bot_login
+        and REVIEW_MARKER in (r.get("body") or "")
+        and head
+        and r.get("commit_id") == head
+    ]
+    return bool(ours) and ours[-1].get("state") == "APPROVED"
+
+
 def cards_by_branch(cards: list[Card]) -> dict[str, Card]:
     """The cards waiting for review, indexed by the branch carrying their work.
 
@@ -162,7 +175,25 @@ def review_open_pulls(
             continue
 
         head = (pull.get("head") or {}).get("sha", "")
-        if already_reviewed(issues.pull_reviews(repo, number), bot_login, head):
+        reviews = issues.pull_reviews(repo, number)
+        if already_reviewed(reviews, bot_login, head):
+            # The crew's own approval already covers this head, and the card
+            # still waits in Reviewing. GitHub carries an approval forward to a
+            # commit with the same tree, so the empty commit that answers a QA
+            # return without a change (#161) lands already approved, and the
+            # card was never moved on (crew#321, sprint-metrics#261).
+            card = waiting.get((pull.get("head") or {}).get("ref", ""))
+            if card is not None and board is not None and approved_at(reviews, bot_login, head):
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=QAING,
+                    by="Code Reviewer",
+                    card=card.number,
+                    frm=REVIEWING,
+                    summary="its approval stands at this head",
+                )
             result.skipped.append(
                 ReviewOutcome(pr=number, approved=False, skipped="already reviewed at this head")
             )
