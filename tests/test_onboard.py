@@ -239,6 +239,11 @@ class FakeIssues:
         self.pulls.append(kwargs)
         return {"html_url": "https://github.com/o/r/pull/8"}
 
+    edited: list = []
+
+    def edit_pull(self, repo, number, *, body):
+        self.edited = [*self.edited, (number, body)]
+
 
 def test_the_record_arrives_as_a_pull_request(tmp_path: Path):
     ws, issues = FakeWorkspace(tmp_path), FakeIssues()
@@ -258,12 +263,30 @@ def test_running_again_updates_the_same_pull_request(tmp_path: Path):
     ws = FakeWorkspace(tmp_path)
     issues = FakeIssues(
         open_issues=[{"number": 7, "title": ISSUE_TITLE}],
-        open_pulls=[{"head": {"ref": "chore/7-project-record"}, "html_url": "u/pull/8"}],
+        open_pulls=[
+            {"number": 8, "head": {"ref": "chore/7-project-record"}, "html_url": "u/pull/8"}
+        ],
     )
 
     assert open_record_pr(ws, issues, "r", validate(COMPLETE), base="main") == "u/pull/8"
     assert issues.created == [] and issues.pulls == []
     assert ws.pushed
+
+
+def test_running_again_rewrites_the_description_too(tmp_path: Path):
+    """sprint-metrics#250: a re-run pushed the revised record and only commented.
+    The description kept the first version's declared changes, and those are
+    what become technical epics when the design merges."""
+    ws = FakeWorkspace(tmp_path)
+    issues = FakeIssues(
+        open_issues=[{"number": 7, "title": ISSUE_TITLE}],
+        open_pulls=[
+            {"number": 8, "head": {"ref": "chore/7-project-record"}, "html_url": "u/pull/8"}
+        ],
+    )
+    open_record_pr(ws, issues, "r", validate(COMPLETE), base="main")
+    ((number, body),) = issues.edited
+    assert number == 8 and "Closes #7" in body
 
 
 def test_the_workspace_refuses_to_write_the_default_branch(tmp_path: Path):

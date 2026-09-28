@@ -73,6 +73,11 @@ def propose(
 
     existing = next((p for p in issues.open_pulls(repo) if p["head"]["ref"] == branch), None)
     if existing:
+        # The description is rewritten, not only commented on. A design's
+        # declared changes live in it and become technical epics when it
+        # merges; left as the first version, sprint-metrics#250 would have
+        # filed the epics its revision corrected.
+        issues.edit_pull(repo, existing["number"], body=signed(body(number), change.by))
         if update_note:
             issues.comment(
                 repo,
