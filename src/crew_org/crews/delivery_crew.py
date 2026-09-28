@@ -138,6 +138,16 @@ class Move(BaseModel):
         return self
 
 
+# What a person reads, not what runs: judged by reading it (§7.1, crew#324).
+DOC_SUFFIXES = (".md", ".rst", ".txt")
+
+
+def is_doc(path: str) -> bool:
+    """A documentation file: prose, outside the tests."""
+    pure = PurePosixPath(path)
+    return pure.suffix.lower() in DOC_SUFFIXES and "tests" not in pure.parts
+
+
 class TextEdit(BaseModel):
     """One change to an existing file by quoting what it replaces.
 
@@ -432,6 +442,15 @@ class FirstAttempt(Implementation):
         ),
     )
 
+    @property
+    def docs_only(self) -> bool:
+        """Every change is to documentation: judged by reading it, not by a test (§7.1)."""
+        if self.edits or self.moves:
+            return False
+        paths = [f.path for f in self.new_files] + [t.path for t in self.text_edits]
+        paths += list(self.deleted_files)
+        return bool(paths) and all(is_doc(p) for p in paths)
+
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:
         """Definition of Done §7.1: every acceptance criterion needs a test.
@@ -445,6 +464,7 @@ class FirstAttempt(Implementation):
             or self.proven_by_existing
             or any(f.is_test for f in self.new_files)
             or any(e.is_test for e in self.edits)
+            or self.docs_only
         ):
             return self
         raise ValueError(
@@ -503,7 +523,7 @@ class FirstOrDone(FirstAttempt):
                     "`already_done` empty, or name the existing code and tests and change nothing."
                 )
             return self
-        if not (self.criteria_tests or self.proven_by_existing):
+        if not (self.criteria_tests or self.proven_by_existing or self.docs_only):
             raise ValueError(
                 "no test. For each acceptance criterion, give the test that proves it in "
                 "`criteria_tests`, or name the existing tests in `proven_by_existing` — or, if "
@@ -523,6 +543,10 @@ STANDING_INSTRUCTIONS = (
     "adds each one to its file. A criterion the tests already in the repository prove "
     "(such as 'existing behaviour is unchanged') goes in `proven_by_existing` instead, "
     "naming those tests.\n"
+    "A criterion about what a user doc says needs no test: the doc is the proof, and "
+    "the Code Reviewer and QA read it. Don't write a test that matches a doc's wording. "
+    "A command example a doc shows is still run by the project's doc tests, where it "
+    "has them.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "

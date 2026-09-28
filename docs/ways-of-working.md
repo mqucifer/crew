@@ -203,6 +203,16 @@ A card may enter `Done` only when **all** hold:
    written for it, but at least one criterion in the story still needs a new
    or newly-named test, so a pure refactor can't rest on the suite alone
    (crew#217).
+
+   **Documentation is the exception.** A criterion about what a user doc
+   says (prose a person reads) is proven by the doc itself: the Code Reviewer
+   and QA read it and judge whether it says what the criterion asks, and
+   whether it is right. It needs no test, and a test that matches the doc's
+   wording is not wanted: it pins the prose and proves nothing a reader
+   needs. A change that touches only documentation needs no new test. What
+   runs is still tested: a command example whose output a doc shows, and a
+   section generated from the code, are checked by the project's tests
+   (crew#324).
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.
