@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
 from crew_org.tools.ast_edit import Operation
+from crew_org.tools.ci_guard import is_workflow
 from crew_org.tools.fixtures import declare_fixtures
 
 MAX_FILE_BYTES = 120_000
@@ -442,14 +443,27 @@ class FirstAttempt(Implementation):
         ),
     )
 
-    @property
-    def docs_only(self) -> bool:
-        """Every change is to documentation: judged by reading it, not by a test (§7.1)."""
+    def _touched_only(self, kind) -> bool:
         if self.edits or self.moves:
             return False
         paths = [f.path for f in self.new_files] + [t.path for t in self.text_edits]
         paths += list(self.deleted_files)
-        return bool(paths) and all(is_doc(p) for p in paths)
+        return bool(paths) and all(kind(p) for p in paths)
+
+    @property
+    def docs_only(self) -> bool:
+        """Every change is to documentation: judged by reading it, not by a test (§7.1)."""
+        return self._touched_only(is_doc)
+
+    @property
+    def ci_only(self) -> bool:
+        """Every change is to a CI workflow: proven by its own run, not by a test (§7.1).
+
+        A CI change travels alone (`bounds`), so it can't carry a test with it,
+        and sprint-metrics#260 was refused both ways: with a test for mixing, and
+        without one for having none (crew#331).
+        """
+        return self._touched_only(is_workflow)
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:
@@ -465,6 +479,7 @@ class FirstAttempt(Implementation):
             or any(f.is_test for f in self.new_files)
             or any(e.is_test for e in self.edits)
             or self.docs_only
+            or self.ci_only
         ):
             return self
         raise ValueError(
@@ -523,7 +538,7 @@ class FirstOrDone(FirstAttempt):
                     "`already_done` empty, or name the existing code and tests and change nothing."
                 )
             return self
-        if not (self.criteria_tests or self.proven_by_existing or self.docs_only):
+        if not (self.criteria_tests or self.proven_by_existing or self.docs_only or self.ci_only):
             raise ValueError(
                 "no test. For each acceptance criterion, give the test that proves it in "
                 "`criteria_tests`, or name the existing tests in `proven_by_existing` — or, if "
@@ -547,6 +562,8 @@ STANDING_INSTRUCTIONS = (
     "the Code Reviewer and QA read it. Don't write a test that matches a doc's wording. "
     "A command example a doc shows is still run by the project's doc tests, where it "
     "has them.\n"
+    "A change to a CI workflow travels alone: no code or tests in the same change. It "
+    "needs no test either: its own run in CI is the proof, and QA cites the check.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "
