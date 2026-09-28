@@ -82,6 +82,7 @@ def verify_story(
     prior_verdicts: str = "",
     project: str = "",
     docs: str = "",
+    checks: str = "",
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
 
@@ -113,6 +114,13 @@ def verify_story(
             + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
             f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
+            + (
+                f"{checks}\n\nA criterion only CI can run (an image build, a workflow) "
+                "is proven by naming its passing check above. A check that failed or is "
+                "still running proves nothing yet.\n\n"
+                if checks
+                else ""
+            )
             + (
                 f"## The docs this change edits, as they now read\n\n{docs}\n\n"
                 "A criterion about what a doc says is proven by the doc, not a test "

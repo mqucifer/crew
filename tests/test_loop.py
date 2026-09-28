@@ -379,6 +379,12 @@ class Queue:
     def __init__(self, for_polls: int):
         self.polls, self.for_polls = 0, for_polls
 
+    def failed_checks(self, repo, sha):
+        return []
+
+    def merge_group_failures(self, repo, pull):
+        return []
+
     def queue_state(self, repo, number, *, branch):
         from crew_org.tools.github_issues import QueueState
 

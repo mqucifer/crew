@@ -161,6 +161,12 @@ class FakeIssues:
         pull = self._pulls[number]
         return {"mergeable": pull.get("mergeable_state") != "dirty", **pull}
 
+    def failed_checks(self, repo, sha):
+        return []
+
+    def merge_group_failures(self, repo, pull):
+        return []
+
     def queue_state(self, repo, number, *, branch):
         return QueueState()
 
