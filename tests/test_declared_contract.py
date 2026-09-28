@@ -14,10 +14,16 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileEdit, Implementation
+from crew_org.crews.delivery_crew import FileEdit, Implementation, RetiredTest
 from crew_org.events import EventKind
 from crew_org.flows.board_flow import existing_tests_line, render_story_body
-from crew_org.flows.delivery import DeliveryOutcome, _pr_body, declared_contract
+from crew_org.flows.delivery import (
+    DeliveryOutcome,
+    _pr_body,
+    branch_name,
+    carried_retirements,
+    declared_contract,
+)
 from crew_org.tools.regression import (
     REMOVED,
     broken_contracts,
@@ -184,12 +190,12 @@ def test_the_pull_request_lists_what_the_declaration_let_go():
         card=6, contract_changed=[f"{README_TESTS}::test_readme_installation"]
     )
     body = _pr_body(story(), IMPL, outcome)
-    assert "declared contract change" in body
+    assert "## Tests the story declares it changes" in body
     assert f"`{README_TESTS}::test_readme_installation`" in body
 
 
 def test_a_pull_request_without_one_says_nothing_about_it():
-    assert "declared contract change" not in _pr_body(story(), IMPL, DeliveryOutcome(card=6))
+    assert "declares it changes" not in _pr_body(story(), IMPL, DeliveryOutcome(card=6))
 
 
 def test_a_refused_removal_shows_the_test_as_merged_decorators_and_all(repo: Path):
@@ -213,7 +219,7 @@ def test_without_the_merged_base_the_refusal_still_reads(repo: Path):
 # --- delivery reads it from the story it is building ---------------------------------------
 
 
-def _through_delivery(harness, monkeypatch, tmp_path, body):  # noqa: F811
+def _through_delivery(harness, monkeypatch, tmp_path, body, cards=None):  # noqa: F811
     def seeded_open(self, branch, *, resume=False):
         self.resumed = False
         path = tmp_path / branch.replace("/", "__")
@@ -229,7 +235,7 @@ def _through_delivery(harness, monkeypatch, tmp_path, body):  # noqa: F811
     removal = change(
         edits=[FileEdit(path=README_TESTS, operation="delete", target="test_readme_installation")]
     )
-    result, _, _, _, _, seen = harness(checks=[green()], implement=lambda n: removal)
+    result, _, _, _, _, seen = harness(checks=[green()], implement=lambda n: removal, cards=cards)
     refused = [
         e
         for e in seen
@@ -248,3 +254,103 @@ def test_a_story_that_does_not_is_refused(harness, monkeypatch, tmp_path):  # no
     result, refused = _through_delivery(harness, monkeypatch, tmp_path, "Story\n")
     assert refused
     assert not result.delivered
+
+
+# --- a rework keeps what its pull request already retired (sprint-metrics#200) --------------
+
+PR_247 = """Change the markdown label.
+
+## Changes
+
+- `tests/test_prior_sprint.py` — add `test_prior_sprint_markdown_first_attempt_rate_with_change`
+
+## Criteria the existing tests prove
+
+- AC2: `tests/test_prior_sprint.py::test_markdown_without_prior_sprint_has_no_was`
+
+## Tests retired
+
+- `tests/test_crew_performance.py::test_flags_low_rate`: Pins the old label
+- `tests/test_crew_performance.py::test_prior_rate_change`: Pins it
+
+## Tests the story declares it changes
+
+- `tests/test_readme.py::test_readme_installation`
+
+Closes #200
+"""
+
+
+class PullWithBody:
+    def __init__(self, body):
+        self.body = body
+
+    def pull(self, repo, number):
+        return {"body": self.body}
+
+
+def test_a_rework_reads_back_what_its_pull_request_retired():
+    assert carried_retirements(PullWithBody(PR_247), "sprint-metrics", 247) == {
+        "tests/test_crew_performance.py::test_flags_low_rate",
+        "tests/test_crew_performance.py::test_prior_rate_change",
+        "tests/test_readme.py::test_readme_installation",
+    }
+
+
+def test_only_those_sections_are_read():
+    """`Criteria the existing tests prove` names a test too, and it isn't let go."""
+    found = carried_retirements(PullWithBody(PR_247), "sprint-metrics", 247)
+    assert "tests/test_prior_sprint.py::test_markdown_without_prior_sprint_has_no_was" not in found
+
+
+def test_a_pull_request_that_cannot_be_read_carries_nothing():
+    class Down:
+        def pull(self, repo, number):
+            raise RuntimeError("502")
+
+    assert carried_retirements(Down(), "sprint-metrics", 247) == set()
+
+
+def test_what_the_pr_body_writes_the_rework_reads():
+    retired = RetiredTest(
+        path=REPORT_TESTS, test=LABEL_TEST, why="pins the old label, which this story changes"
+    )
+    outcome = DeliveryOutcome(card=6, contract_changed=[f"{README_TESTS}::test_readme_basic"])
+    body = _pr_body(story(), IMPL.model_copy(update={"retired_tests": [retired]}), outcome)
+    assert carried_retirements(PullWithBody(body), "r", 1) == {
+        f"{REPORT_TESTS}::{LABEL_TEST}",
+        f"{README_TESTS}::test_readme_basic",
+    }
+
+
+def test_the_rework_of_200_is_not_refused_for_what_its_review_let_go(
+    harness,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+):
+    """The fifth test: retired in the pull request, allowed by the review, deleted on the branch."""
+    branch = branch_name(6, story().title)
+    pull = {"number": 247, "head": {"ref": branch, "sha": "abc"}}
+    monkeypatch.setattr(FakeIssues, "landable", {branch: pull}, raising=False)
+    monkeypatch.setattr(FakeIssues, "open_pulls", lambda self, repo: [pull], raising=False)
+    retired = f"{README_TESTS}::test_readme_installation"
+    monkeypatch.setattr(
+        FakeIssues,
+        "pull",
+        lambda self, repo, n: {
+            "body": f"## Tests retired\n\n- `{retired}`: the story ends it\n",
+            "mergeable_state": "clean",
+            "mergeable": True,
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        FakeIssues,
+        "pull_reviews",
+        lambda self, repo, n: [{"state": "CHANGES_REQUESTED", "commit_id": "abc"}],
+        raising=False,
+    )
+    returned = story().model_copy(update={"status": "In Progress"})
+    result, refused = _through_delivery(harness, monkeypatch, tmp_path, "Story\n", cards=[returned])
+    assert refused == []
+    assert [o.pr for o in result.delivered] == [247]

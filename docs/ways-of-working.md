@@ -449,7 +449,10 @@ files it updates>`) may remove or reshape the merged tests it names there.
 The Business Analyst writes that line; a rename of anything a merged test
 asserts (a label, a key, a column, a flag) is a contract change. A removal
 the story doesn't name is still refused, and nothing but tests is excused. The
-pull request lists what the declaration let go for the Code Reviewer. When
+pull request lists what the declaration let go for the Code Reviewer, and a
+rework keeps what its pull request already listed: that list is what the
+review read (sprint-metrics#200 was refused three times for a retirement its
+review had allowed, because the rework didn't repeat it). When
 the guard refuses a removed test, it shows the test as merged, so a repair can
 add it back rather than guess at code it was never shown (sprint-metrics#200).
 
