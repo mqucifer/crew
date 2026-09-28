@@ -276,6 +276,13 @@ escalates:
 
 An escalation without a justification is rejected and treated as `SCOPE`.
 
+**A first attempt with no usable answer is retried in steps** (crew#276). When the Developer's first attempt at a story produces nothing usable (an empty answer, or output that doesn't validate), its next attempt doesn't repeat the same one-shot request.
+- **A short plan first:** the files the change touches, in order, with each file's intent; the new names and signatures they share; and which test proves each criterion. The plan is checked against the repository before any code is written.
+- **Then one small answer per file,** each shown the story, the plan, that file in full, and what the earlier steps wrote. A step may only change its own file.
+- **The pieces are merged into one ordinary answer,** which the guards, the checks, review and QA judge as any other.
+
+It's the same attempt count and the same SCHEMA budget. It happens once per delivery; if it fails too, the usual repairs follow. An answer that arrived but failed a check (a named test that doesn't exist, say) is repaired as before, because its problem is its content, not its size. Why: sprint-metrics#268's one answer (rewrite the README, move ~20 tests, delete a file) stopped mid-thought 3 times in 5 even on a focused prompt (#312). Splitting the work from its tests, the other option #276 records, is still to be compared.
+
 Each sprint has a fixed escalation budget. When it is exhausted, further
 eligible cards are parked as `Blocked` rather than escalated. **A high
 escalation rate is a defect in task design, not a request for more budget** —

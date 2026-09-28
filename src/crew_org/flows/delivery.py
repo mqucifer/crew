@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
 from crew_org.crews.delivery_crew import Implementation, implement_story
@@ -481,6 +482,63 @@ _DECLARED = re.compile(r"[\w/.-]+\.py(?:::[\w.]+)?|\btest_\w+")
 ASK_LIMIT = 2
 
 
+def _deliver_in_steps(
+    story: str,
+    *,
+    worktree: Path,
+    header: str,
+    about: str,
+    why: str,
+    sink: EventSink,
+    number: int,
+    repo: str,
+    sprint: str,
+    attempt: int,
+) -> Implementation:
+    """A plan, then one small answer per file, merged into one ordinary answer (#276).
+
+    Each piece is shown the story, the plan, the file it writes in full, and
+    what the steps before it wrote. The merged answer goes through the same
+    guards, checks, review and QA as any other. A step's error fails the whole
+    attempt, as a one-shot answer's would.
+    """
+    from crew_org.crews import stepped  # noqa: PLC0415
+
+    context, _ = focused_context(worktree, about=about)
+    plan = attributed(stepped.plan_story, card=number, repo=repo, sprint=sprint, attempt=attempt)(
+        story, context=header + context, why=why
+    )
+    problems = stepped.check_plan(plan, worktree)
+    if problems:
+        raise ValueError("the plan doesn't fit the repository: " + "; ".join(problems))
+    sink.note(
+        EventKind.NOTE,
+        f"#{number} planned {len(plan.files)} files: "
+        + ", ".join(f.path for f in plan.files)[:160],
+        card=number,
+        plan=[f.path for f in plan.files],
+        contracts=plan.contracts,
+    )
+    answers: list = []
+    for index, step in enumerate(plan.files):
+        extra = [step.path] if step.kind != "new" else []
+        step_context, focus = focused_context(
+            worktree, about=f"{story}\n\n{step.path}", extra=extra
+        )
+        earlier = "\n\n".join(stepped.describe(a) for a in answers)
+        answer = attributed(
+            stepped.implement_file, card=number, repo=repo, sprint=sprint, attempt=attempt
+        )(story, plan=plan, step=index, context=header + step_context, earlier=earlier)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} step {index + 1}/{len(plan.files)}: {step.path}",
+            card=number,
+            context_chars=focus.chars,
+        )
+        answers.append(answer)
+    return stepped.merge(plan, answers)
+
+
 def declared_contract(body: str) -> set[str]:
     """The merged tests a story declares it changes, from its **Existing tests** line (#316).
 
@@ -701,6 +759,9 @@ def deliver_story(
     # Files the Developer asked to see in full (#231), and how often it asked.
     asked: list[str] = []
     asks = 0
+    # A first attempt with no usable answer is followed by one in steps (#276).
+    in_steps = False
+    stepped = False
     # Offered once per story (#221): an already-done answer QA refused isn't
     # offered again, or the story would go round between the two.
     may_be_done = not rework and not _answered_done(issues, repo, number)
@@ -724,21 +785,41 @@ def deliver_story(
             shown=focus.shown,
             asked=focus.asked,
         )
-        if note:
-            context = f"# The design note for this story's epic\n\n{note}\n\n{context}"
+        header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
         if record is not None:
-            context = f"{brief(record)}\n\n{context}"
+            header = f"{brief(record)}\n\n{header}"
+        context = header + context
+        # Set once an answer arrives and validates: what fails after that is the
+        # answer's content, which a repair handles, not the answer's absence.
+        answered = False
         try:
-            implementation = attributed(
-                implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
-            )(
-                story_text,
-                context=context,
-                feedback=feedback,
-                prior=prior,
-                returned=rework,
-                may_be_done=may_be_done,
-            )
+            if in_steps:
+                in_steps = False
+                stepped = True
+                implementation = _deliver_in_steps(
+                    story_text,
+                    worktree=worktree,
+                    header=header,
+                    about="\n\n".join([story_text, prior, feedback]),
+                    why=feedback,
+                    sink=sink,
+                    number=number,
+                    repo=repo,
+                    sprint=sprint,
+                    attempt=attempt,
+                )
+            else:
+                implementation = attributed(
+                    implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
+                )(
+                    story_text,
+                    context=context,
+                    feedback=feedback,
+                    prior=prior,
+                    returned=rework,
+                    may_be_done=may_be_done,
+                )
+            answered = True
             _keep_proposal(sink, repo, number, implementation)
             named = [met.test for met in getattr(implementation, "already_done", None) or []]
             named += [
@@ -786,6 +867,16 @@ def deliver_story(
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
                 feedback = f"Your output did not validate:\n{exc}"
+                # One answer was too much to produce (#312): the next attempt plans
+                # the work and answers a file at a time (#276). Once per delivery,
+                # and only after a first attempt, whose answer is the whole story.
+                if attempt == 1 and not answered and not rework and not stepped:
+                    in_steps = True
+                    sink.note(
+                        EventKind.NOTE,
+                        f"#{number} no usable answer: the next attempt goes in steps",
+                        card=number,
+                    )
                 continue
             outcome.blocked_reason = decision.reason
             return outcome
