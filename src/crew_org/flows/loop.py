@@ -22,6 +22,7 @@ having no way to undo it, so the answer is a revert, not a rehearsal (crew#82).
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -47,6 +48,11 @@ from crew_org.tools.sandbox import Sandbox
 # past what a real board needs: refinement feeds admission feeds delivery, and
 # each is one pass deep.
 MAX_PASSES = 5
+# How long a pass that moved nothing waits for pull requests it left in the
+# merge queue (#314). GitHub lands one in about a minute; its own check timeout
+# is 60. Past this, the tick ends and the next one picks up what landed.
+QUEUE_WAIT = 600.0
+QUEUE_POLL = 15.0
 
 
 @dataclass
@@ -589,6 +595,35 @@ PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
 )
 
 
+def wait_for_queue(
+    crew: Crew,
+    queued: list[tuple[str, int, str]],
+    *,
+    sleep: Callable[[float], None] | None = None,
+    clock: Callable[[], float] | None = None,
+) -> tuple[int, float]:
+    """Wait until the merge queue lets go of `queued`, or QUEUE_WAIT passes.
+
+    Returns how many left it (merged or removed, the next pass tells which)
+    and how long it waited. A lookup that fails counts as still queued.
+    """
+    # Looked up when called, not bound at import, so a test's stand-in is seen.
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    pending = set(queued)
+    start = clock()
+    while pending and clock() - start < QUEUE_WAIT:
+        sleep(QUEUE_POLL)
+        for repo, pull, base in sorted(pending):
+            try:
+                state = crew.issues.queue_state(repo, pull, branch=base)
+            except Exception:  # noqa: BLE001
+                continue
+            if not state.queued:
+                pending.discard((repo, pull, base))
+    return len(queued) - len(pending), clock() - start
+
+
 def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
@@ -678,6 +713,26 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             break
 
         if not moved_this_pass:
+            # Nothing moved, but the queue may be about to land what the next
+            # story waits for: #198 merged one second after tick G called the
+            # board stable, and each tick finished one story of an epic (#314).
+            queued = [
+                q
+                for o in result.outcomes[-len(PHASES) :]
+                if o.name == "deliver" and o.result is not None
+                for q in getattr(o.result, "in_queue", [])
+            ]
+            if queued and result.passes < max_passes:
+                left, waited = wait_for_queue(crew, queued)
+                crew.sink.note(
+                    EventKind.NOTE,
+                    f"waited {waited:.0f}s for the merge queue: {left} of {len(queued)} left it",
+                    waited_s=round(waited, 1),
+                    left=left,
+                    queued=len(queued),
+                )
+                if left:
+                    continue
             result.settled = True
             break
 

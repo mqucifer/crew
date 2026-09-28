@@ -67,6 +67,8 @@ class Landed:
     reason: str = ""
     # Queued by this call, not found already queued: the moment the crew acted.
     joined: bool = False
+    # The branch whose queue holds it, for whoever waits on the queue (#314).
+    base: str = ""
 
 
 def settled(
@@ -106,14 +108,14 @@ def land(
     if queue.merged:
         return Landed(Landing.MERGED)
     if queue.queued:
-        return Landed(Landing.QUEUED)
+        return Landed(Landing.QUEUED, base=base)
     if detail.get("mergeable_state") == CONFLICTED or detail.get("mergeable") is False:
         return Landed(Landing.CONFLICTED)
     if queue.removed:
         return Landed(Landing.REMOVED, queue.removed)
     if queue.has_queue:
         issues.enqueue(detail["node_id"], head=head)
-        return Landed(Landing.QUEUED, joined=True)
+        return Landed(Landing.QUEUED, joined=True, base=base)
     # Behind `main` where branch protection requires up to date. A merge
     # would be refused with a 405 naming a missing status check, which is
     # not what is wrong (#116). Bring it up to date instead: GitHub
@@ -148,6 +150,9 @@ class MergeResult:
     updating: list[tuple[int, int]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn.
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # (repo, PR, base branch) of each queued pull request, so the tick can
+    # wait for the queue rather than stop while it is about to land (#314).
+    in_queue: list[tuple[str, int, str]] = field(default_factory=list)
 
 
 def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
@@ -282,6 +287,7 @@ def merge_approved(
             continue
         if landed.how == Landing.QUEUED:
             result.queued.append((number, pull["number"]))
+            result.in_queue.append((repo, pull["number"], landed.base or "main"))
             # GitHub merges it later, often before the crew looks again, and
             # the board's own automation then moves the card to Done. Joining
             # is the crew's act, so that is what the event log records.
