@@ -343,6 +343,37 @@ class IssueClient:
             latest.setdefault(run.get("path") or run.get("name") or "", run)
         return latest
 
+    def head_sha(self, repo: str, branch: str) -> str:
+        """The commit `branch` points at."""
+        response = self._client.get(f"{API}/repos/{self.owner}/{repo}/commits/{branch}")
+        response.raise_for_status()
+        return response.json()["sha"]
+
+    def tag_exists(self, repo: str, tag: str) -> bool:
+        response = self._client.get(f"{API}/repos/{self.owner}/{repo}/git/ref/tags/{tag}")
+        if response.status_code == 404:
+            return False
+        response.raise_for_status()
+        return True
+
+    def release_for_tag(self, repo: str, tag: str) -> dict[str, Any] | None:
+        """The GitHub Release on `tag`, or None."""
+        response = self._client.get(f"{API}/repos/{self.owner}/{repo}/releases/tags/{tag}")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
+    def attestations(self, repo: str, digest: str) -> list[dict[str, Any]]:
+        """GitHub artifact attestations for a subject digest (`sha256:…`), or none."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/attestations/{digest}", params={"per_page": 10}
+        )
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        return response.json().get("attestations") or []
+
     def merge_group_failures(self, repo: str, pull: int) -> list[dict[str, Any]]:
         """The failed jobs of the latest failed merge-group run that carried `pull` (#325).
 

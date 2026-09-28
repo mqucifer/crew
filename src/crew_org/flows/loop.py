@@ -241,6 +241,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     """
     from crew_org.crews.design_crew import propose_design, review_design  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
+    from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
 
@@ -248,6 +249,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     # holds below see it and this pass refines it (#335).
     repos = crew.repos - set(crew.not_onboarded)
     red = watch_default_branches(crew.issues, crew.board, crew.sink, repos=repos)
+    # And what the last release actually published (#335).
+    released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
     result = revisit_designs(
         crew.issues,
         crew.reviewer,
@@ -264,11 +267,12 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     crew.design_holds = dict(result.holds)
     return PhaseOutcome(
         "revisit",
-        moved=result.moved or bool(red.filed or red.closed),
+        moved=result.moved or bool(red.filed or red.closed or released.filed),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
+            + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
         ),
         result=result,
         counts={
@@ -279,7 +283,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         },
         held=[f"{repo} — {why}" for repo, why in sorted(result.holds.items())]
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
-        + [f"{repo} — default branch unread: {why}" for repo, why in red.failed],
+        + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
+        + [f"{repo} — release unchecked: {why}" for repo, why in released.failed],
     )
 
 
