@@ -11,6 +11,7 @@ turning it off was a workaround for near-greedy sampling (#213).
 
 from __future__ import annotations
 
+import contextlib
 import os
 from typing import Any
 
@@ -75,7 +76,49 @@ def build_llm(alias: str = "crew-local", **overrides: Any) -> LLM:
         "timeout": DEFAULT_TIMEOUT,
     }
     params.update(overrides)
-    return LLM(**params)
+    llm = LLM(**params)
+    with contextlib.suppress(TypeError):
+        # Same object, one method wrapped: CrewAI chooses the client class.
+        llm.__class__ = _recording(type(llm))
+    return llm
+
+
+def _empty(answer: Any) -> bool:
+    return answer is None or (isinstance(answer, str) and not answer.strip())
+
+
+_RECORDING: dict[type, type] = {}
+
+
+def _recording(base: type) -> type:
+    """`base`, with an empty answer recorded as an event (#312). Behaviour is unchanged.
+
+    The model can think for thousands of tokens and answer nothing; CrewAI
+    then resends the same prompt, and the crew's log showed only a call
+    finishing and another starting. Measured first, because the cause isn't
+    known and making the call weaker isn't an acceptable fix.
+    """
+    if base in _RECORDING:
+        return _RECORDING[base]
+
+    class Recording(base):  # type: ignore[misc, valid-type]
+        def call(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+            answer = super().call(messages, *args, **kwargs)
+            if _empty(answer):
+                from crew_org.events import EventKind, record  # noqa: PLC0415
+
+                response_model = kwargs.get("response_model")
+                record(
+                    EventKind.LLM_CALL_EMPTY,
+                    f"{self.model} answered nothing",
+                    model=str(self.model),
+                    structured=bool(response_model),
+                )
+            return answer
+
+    Recording.__name__ = f"Recording{base.__name__}"
+    _RECORDING[base] = Recording
+    return Recording
 
 
 def health() -> tuple[bool, str]:
