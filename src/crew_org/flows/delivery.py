@@ -494,6 +494,35 @@ def declared_contract(body: str) -> set[str]:
     return set(_DECLARED.findall(line))
 
 
+# The pull request's sections naming merged tests it lets go, read back on a rework.
+RETIRED_HEADING = "## Tests retired"
+DECLARED_HEADING = "## Tests the story declares it changes"
+_LISTED_TEST = re.compile(r"^- `([^`\s]+\.py::[\w.]+)`", re.MULTILINE)
+
+
+def carried_retirements(issues: IssueClient, repo: str, pull: int) -> set[str]:
+    """The merged tests a story's open pull request already let go, by `path::test` (#316).
+
+    sprint-metrics#200's pull request retired five tests. Its review asked for
+    four back and let the fifth go; the rework restored four and, not listing
+    the fifth again, was refused for it by the regression guard three times:
+    the guard read only the rework's own retirements. The pull request's list
+    is the declaration the review read, so a rework keeps it.
+    """
+    try:
+        body = issues.pull(repo, pull).get("body") or ""
+    except Exception:  # noqa: BLE001
+        return set()
+    found: set[str] = set()
+    for heading in (RETIRED_HEADING, DECLARED_HEADING):
+        start = body.find(f"{heading}\n")
+        if start == -1:
+            continue
+        section = body[start + len(heading) :].split("\n## ", 1)[0]
+        found |= set(_LISTED_TEST.findall(section))
+    return found
+
+
 def held_by_what_it_builds_on(cards: list[Card], story: Card, body: str) -> Card | None:
     """A story in another epic this one builds on, not landed yet (#295).
 
@@ -567,7 +596,6 @@ def deliver_story(
     number = card.number or 0
     outcome = DeliveryOutcome(card=number)
     story_text = f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}"
-    declared = declared_contract(story_text)
 
     branch = branch_name(number, card.title)
     outcome.branch = branch
@@ -578,6 +606,11 @@ def deliver_story(
     # four-day-old branch cut before its sibling #31 landed, and produced
     # nothing (#119). That starts from current `main` instead.
     live = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+    # The merged tests this story may let go: what it declares, and on a rework
+    # what its pull request already retired, which the review has read (#316).
+    declared = declared_contract(story_text)
+    if live is not None:
+        declared |= carried_retirements(issues, repo, live["number"])
     worktree = ws.open(branch, resume=live is not None)
     # Set when a returned story's branch conflicted with main and it was rebuilt
     # from main instead (#158): the conflicting paths, for the Developer and the PR.
@@ -1112,7 +1145,8 @@ def deliver_story(
                 f"**Re-worked.** {implementation.summary}\n\n{how}"
                 if answered
                 else f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
-                f"{how} Lint and the full test suite pass.",
+                f"{how} Lint and the full test suite pass."
+                + "\n".join(_let_go(implementation, outcome)),
                 "Developer",
             ),
         )
@@ -1238,6 +1272,18 @@ def _touched_count(implementation: Implementation) -> int:
     )
 
 
+def _let_go(implementation: Implementation, outcome: DeliveryOutcome) -> list[str]:
+    """The merged tests this change lets go, in sections a rework reads back (#316)."""
+    lines: list[str] = []
+    if implementation.retired_tests:
+        lines += ["", RETIRED_HEADING, ""]
+        lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
+    if outcome.contract_changed:
+        lines += ["", DECLARED_HEADING, ""]
+        lines += [f"- `{key}`" for key in outcome.contract_changed]
+    return lines
+
+
 def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcome) -> str:
     lines = [
         implementation.summary,
@@ -1266,12 +1312,7 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
     if proven:
         lines += ["", "## Criteria the existing tests prove", ""]
         lines += [f"- {p.criterion}: " + ", ".join(f"`{t}`" for t in p.tests) for p in proven]
-    if implementation.retired_tests:
-        lines += ["", "## Tests retired", ""]
-        lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
-    if outcome.contract_changed:
-        lines += ["", "## Tests the story's declared contract change removes or reshapes", ""]
-        lines += [f"- `{key}`" for key in outcome.contract_changed]
+    lines += _let_go(implementation, outcome)
     lines += ["", f"Closes #{card.number}"]
     # Signed last, after the Verification section the Code Reviewer is shown.
     return signed("\n".join(lines), "Developer")
