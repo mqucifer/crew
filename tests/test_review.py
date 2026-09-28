@@ -362,3 +362,61 @@ def test_a_return_records_its_first_finding_for_the_retro(monkeypatch, tmp_path)
     (attempt,) = read_attempts(tmp_path)
     assert (attempt.card, attempt.failure_class) == (6, "REVIEW")
     assert attempt.error == "src/a.py: unused import"
+
+
+# --- an approval that already covers the head (crew#321, sprint-metrics#261) --------------
+
+HEAD = "6bc5910"
+
+
+def headed_pull(number=14):
+    p = crew_pull(number=number)
+    p["head"]["sha"] = HEAD
+    return p
+
+
+def ours(state, commit=HEAD):
+    return {
+        "user": {"login": BOT},
+        "body": f"{REVIEW_MARKER}\nverdict",
+        "state": state,
+        "commit_id": commit,
+    }
+
+
+def test_an_approval_already_on_this_head_moves_the_card_to_qa(monkeypatch):
+    """#261: QA returned it, the Developer answered with an empty commit, and
+    GitHub carried the approval to it (same tree). The card sat in Reviewing."""
+    called = []
+    issues = FakeIssues([headed_pull()], {14: [ours("APPROVED")]})
+    monkeypatch.setattr(review_flow, "review_diff", lambda *a, **k: called.append(1))
+    board = FakeBoard()
+    result = review_open_pulls(
+        issues,
+        EventSink(None),
+        repo="sprint-metrics",
+        bot_login=BOT,
+        board=board,
+        cards=[waiting_card()],
+    )
+    assert called == [] and issues.submitted == [], "no second review"
+    assert board.moves == [("S6", "QAing")]
+    assert result.skipped[0].skipped == "already reviewed at this head"
+
+
+def test_changes_requested_on_this_head_does_not_move_it(monkeypatch):
+    issues = FakeIssues([headed_pull()], {14: [ours("CHANGES_REQUESTED")]})
+    _, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+    assert board.moves == []
+
+
+def test_the_latest_verdict_on_the_head_decides(monkeypatch):
+    issues = FakeIssues([headed_pull()], {14: [ours("APPROVED"), ours("CHANGES_REQUESTED")]})
+    _, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+    assert board.moves == []
+
+
+def test_an_approval_on_an_older_head_means_a_new_review(monkeypatch):
+    issues = FakeIssues([headed_pull()], {14: [ours("APPROVED", commit="642e185")]})
+    _, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+    assert issues.submitted and board.moves == [("S6", "QAing")], "reviewed, then moved"
