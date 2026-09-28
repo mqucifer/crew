@@ -1,6 +1,6 @@
 # Runbook: the model thinks, then answers nothing
 
-**Tracks:** crew#312. **Started:** 2026-09-28. **Status:** investigating. See [Findings so far](#findings-so-far).
+**Tracks:** crew#312. **Started:** 2026-09-28. **Status:** cause narrowed to the task's size; fixes in crew#231 and crew#276. See [What the replays show](#what-the-replays-show).
 
 This is the process we followed and the evidence at each step, so the next person, or the DevOps/SRE role (crew#335), can repeat it. It moves to the `infra` repo once that exists.
 
@@ -156,7 +156,8 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 | cold | 09-09 nightly, DFlash2 | miss | 5 | **2** | Truly cold (`#cached-token: 0` on every chunk). Runs 1, 4 and 5 answered, with about 15,600–17,600 thinking and 5,100–5,800 answer tokens. The cache makes it worse, but it isn't the only cause. |
 | warm | v0.5.20-cu130, DFlash2 | hit | 5 | **4** | Contains sglang #37818. Run 1 was cold (fresh server) and empty. Only run 5 answered: 12,096 thinking, 4,095 answer tokens. **Not fixed.** Cold arm skipped. |
 | warm | v0.5.20-cu130, **DSpark** | hit | 5 | **3** | Run 1 was cold and empty. Runs 2 and 4 answered (4,923 and 4,292 answer tokens); runs 3 and 5 were empty. Better than DFlash2, but not fixed, so the fault isn't DFlash2-only. Cold arm skipped. |
-| cold | 09-09 nightly, DFlash2, `--disable-radix-cache` | none | 5 | *running* | Production settings plus that one flag, via `DF_EXTRA` at launch; `.env` is unchanged. No prefix reuse and no GDN snapshots. |
+| cold | 09-09 nightly, DFlash2, `--disable-radix-cache` | none | 5 | **4** | Production settings plus that one flag, via `DF_EXTRA` at launch; `.env` is unchanged. No prefix reuse and no GDN snapshots: every chunk shows `#cached-token: 0`. **The cache machinery isn't the cause.** |
+| warm | v0.5.20-cu130, DFlash2 (production since 2026-09-28) | hit | 5 | **3** | **The focused prompt (#231):** the same request with its repository section replaced by the files the story names, ~26k tokens instead of ~100k. Runs 1 and 3 answered (7,579 and 6,104 answer tokens, 609 s and 848 s); runs 2, 4 and 5 stopped mid-thought at 17,015–18,198 thinking tokens. |
 
 **The request:** sprint-metrics#268, the Developer, 115,867 prompt tokens, `crew-code-think`, JSON schema `FirstOrDone`.
 
@@ -185,6 +186,18 @@ Long prompts served from cache are where the empty answers are. The single cold 
 1. Save the prefill lines: `docker logs --since <t> qwen3.8-27b-sglang 2>&1 | grep "Prefill batch"`.
 2. Save the calls: LiteLLM's start time, alias, prompt tokens and `text_tokens` for the same window.
 3. Match each call to the first prefill line within 8 seconds after it, and compare `#cached-token` against `#new-token`.
+
+## What the replays show
+Across 30 replays of sprint-metrics#268, the full 100k-token prompt answered 5 times in 25, over two SGLang versions, DFlash2 and DSpark, and the cache on, off or cold. The focused 26k-token prompt answered 2 times in 5.
+
+- **The serving setup isn't the main cause.** Warm cache and DFlash2 made it somewhat worse, but no switch fixed it.
+- **No thinking budget is involved.** SGLang's budget logit processor needs a per-request `thinking_budget` and custom logit processors enabled at launch, and neither is set here. `reasoning_effort` is ignored for this model, whose chat template has no effort parameter (`effort_kwarg=None` at boot).
+- **The empty runs are real stops.** They end mid-sentence, with no final answer hidden in the thinking.
+- **The main trigger is the task's size.** One structured answer has to rewrite the README, move about 20 tests with exact strings, and delete a file: about 7k answer tokens after 15–23k thinking. The model sometimes stops mid-thought, around 16–18k thinking tokens. A shorter prompt helps, but only modestly.
+
+**Fixes, both correctness-preserving:**
+1. A focused context (crew#231): smaller, cheaper, less noise for every story.
+2. Smaller answers per call (crew#276): a plan, then one small answer per file. Design options are on that issue.
 
 ## Other possible symptoms of the same bug
 If the recurrent GDN state sometimes sits at a different position from the attention cache, the model is reading a subtly corrupted context. An empty answer is only the most visible outcome. Worth checking once the fix is in:
