@@ -147,6 +147,31 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 | 50–90k | 66 | 6% |
 | 90k+ | 35 | 26% |
 
+**Warm against cold, the crew's real calls,** 2026-09-28 12:30–18:20 UTC. That's everything the Spark's logs still held. A call is **warm** when at least half its prompt came from the prefix cache, going by the first `Prefill batch` line within 8 seconds of LiteLLM's start time. 62 of 77 calls matched a prefill line; the rest were mostly CrewAI's immediate resends.
+
+| Prompt size | Cache | Calls | Empty |
+|---|---|---|---|
+| under 50k | cold | 23 | 0 |
+| under 50k | warm | 11 | 0 |
+| 50–90k | cold | 8 | 0 |
+| 90k+ | cold | 7 | 1 (14%) |
+| 90k+ | **warm** | 13 | **8 (62%)** |
+
+Long prompts served from cache are where the empty answers are. The single cold empty answer suggests a second, smaller cause, possibly sglang #38009.
+
+**How to repeat this analysis:**
+1. Save the prefill lines: `docker logs --since <t> qwen3.8-27b-sglang 2>&1 | grep "Prefill batch"`.
+2. Save the calls: LiteLLM's start time, alias, prompt tokens and `text_tokens` for the same window.
+3. Match each call to the first prefill line within 8 seconds after it, and compare `#cached-token` against `#new-token`.
+
+## Other possible symptoms of the same bug
+If the recurrent GDN state sometimes sits at a different position from the attention cache, the model is reading a subtly corrupted context. An empty answer is only the most visible outcome. Worth checking once the fix is in:
+- **Circular or looping thinking on long structured generations.** This is the recorded reason the Developer's thinking was switched off (the `crew-code` comment in `deploy/litellm/config.yaml`: 27 minutes, no output), and later limited to low effort. If it was this bug, both were workarounds for a serving fault. **Re-measure the Developer with thinking on at normal effort once the fix is confirmed.**
+- **Plausible but wrong answers.** Ignored instructions, invented names (for example, sprint-metrics#261 naming "CI run of release.yml" as an existing test), details missed deep in a long context. Some SCHEMA retries and first-attempt misses may be this rather than the model.
+- **Identical retries that behave very differently,** depending on whether the prefix was cached.
+- **Our prompt design increases exposure.** Every role's prompt is ordered stable-first so the prefix cache hits, which is exactly the path the bug corrupts.
+- **Separately, DFlash2's cross-request context bleed (sglang #36548)** when calls overlap: a role answering about another prompt. It's less likely here, because the crew mostly runs one request at a time.
+
 ## Decisions
 - **No thinking-off fallback.** The Sponsor, 2026-09-28: *"Making it dumber shouldn't be a solution. Correctness is most important."*
 - **No switch to MTP** until the Sponsor has weighed its impact. It's slower than DFlash2: 2.25× slower for code and 1.41× for prose on this box, per the repo's measurements.
