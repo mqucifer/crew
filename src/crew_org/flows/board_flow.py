@@ -78,6 +78,10 @@ EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
 # A story's line naming stories in other epics it needs first (#295).
 BUILDS_ON = "**Builds on** —"
+# On a split that wrote no stories because other epics' planned stories cover
+# it: those stories, which the epic waits for rather than closing (#329).
+WAITS_FOR = "<!-- crew:waits-for {numbers} -->"
+_WAITS_FOR = re.compile(r"<!-- crew:waits-for ([\d,]+) -->")
 # A story's line saying what it does to merged tests (#189). Delivery reads a
 # declared contract change back from it (#316); the old wording read as "this
 # story's tests are optional" (#311), and stories written with it still exist.
@@ -394,6 +398,69 @@ def _all_bodies(issues: IssueClient, repo: str, number: int) -> str:
 def _last_marked(comments: list[dict], marker: str) -> int:
     marked = [i for i, c in enumerate(comments) if marker in (c.get("body") or "")]
     return marked[-1] if marked else -1
+
+
+RESPLIT = "resplit"
+
+
+def waits_for(issues: IssueClient, repo: str, number: int) -> set[int]:
+    """The planned stories an epic's latest split said it waits for (#329), or none."""
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return set()
+    splits = [b for b in bodies if STORY_SPLIT_MARKER in b]
+    found = _WAITS_FOR.search(splits[-1]) if splits else None
+    return {int(n) for n in found.group(1).split(",") if n} if found else set()
+
+
+def settle_wait(
+    issues: IssueClient,
+    sink: EventSink,
+    result: TickResult,
+    cards: list[Card],
+    epic: Card,
+    repo: str,
+    waited: set[int],
+    done: Delivered,
+) -> str:
+    """Close an epic whose awaited stories landed, or send it back if one never will (#329).
+
+    Returns "closed", "waiting", or RESPLIT.
+    """
+    number = epic.number or 0
+    if waited <= done.numbers:
+        issues.close(repo, number, reason="completed")
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} closed: delivered by " + ", ".join(f"#{n}" for n in sorted(waited)),
+            card=number,
+        )
+        return "closed"
+    by_key = {c.key: c for c in cards}
+    gone = []
+    for n in sorted(waited - done.numbers):
+        card = by_key.get((repo, n))
+        state = card.state if card is not None else None
+        if state is None:
+            with contextlib.suppress(Exception):
+                state = str(issues.get(repo, n).get("state") or "").upper()
+        if state == "CLOSED":
+            gone.append(n)
+    if gone:
+        artifacts.label(issues, sink, repo=repo, number=number, by=None, add=[NEEDS_REWORK])
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} split again: "
+            + ", ".join(f"#{n}" for n in gone)
+            + " closed without being delivered",
+            card=number,
+        )
+        return RESPLIT
+    result.skipped.append(
+        (number, "waits for planned " + ", ".join(f"#{n}" for n in sorted(waited)))
+    )
+    return "waiting"
 
 
 def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number: int):
@@ -1072,6 +1139,15 @@ def refine_epics(
             continue
 
         done = known.for_repo(repo) if known else Delivered()
+        waited = waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
+        if waited:
+            settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
+            if settled != RESPLIT:
+                continue
+            # Something it waited for was superseded: split again, now.
+            epic_card = epic_card.model_copy(
+                update={"labels": frozenset(epic_card.labels) | {NEEDS_REWORK}}
+            )
         if not product_step(
             issues,
             sink,
@@ -1219,12 +1295,30 @@ def refine_epics(
             )
             result.design_required.append(number)
 
+        # Covered by stories other epics only plan: it waits for them, and
+        # closes when they land (#329). Closed at once, sprint-metrics#254 cited
+        # two planned stories as its delivery, and their epic's rework was
+        # about to supersede both.
+        waiting = (
+            sorted({d.by for d in proposal.already_delivered} - done.numbers)
+            if not proposal.stories
+            else []
+        )
+        body = render_split(epic_card.title, proposal, decision, numbers)
+        if waiting:
+            body += (
+                "\n\n### Waiting, not closed\n\n"
+                + ", ".join(f"#{n}" for n in waiting)
+                + " cover this and are planned, not yet delivered. This epic closes when "
+                "they land, and is split again if one is closed without landing.\n\n"
+                + WAITS_FOR.format(numbers=",".join(str(n) for n in waiting))
+            )
         artifacts.comment(
             issues,
             sink,
             repo=repo,
             number=number,
-            body=render_split(epic_card.title, proposal, decision, numbers),
+            body=body,
             by="Business Analyst",
         )
 
@@ -1236,7 +1330,13 @@ def refine_epics(
         result.epics_refined.append(number)
         # Everything it asked for already exists: nothing will ever close it
         # from below, so it closes now, citing what delivered it (#220).
-        if not proposal.stories:
+        if not proposal.stories and waiting:
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} waits for planned " + ", ".join(f"#{n}" for n in waiting),
+                card=number,
+            )
+        elif not proposal.stories:
             issues.close(repo, number, reason="completed")
             sink.note(
                 EventKind.NOTE,
