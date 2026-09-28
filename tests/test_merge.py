@@ -449,3 +449,52 @@ def test_a_blocked_conflict_is_reported_once():
     """It was reported twice: once by the move, once again by hand."""
     _, _, seen = run([card(6)], rebuilt_twice())
     assert sum(e.kind == EventKind.CARD_BLOCKED for e in seen) == 1
+
+
+# --- merged in the second before the crew looked ---------------------------
+#
+# 2026-09-27: sprint-metrics#224 merged through the queue at 23:40:23 and was
+# queued again at 23:40:24. REST still said "not merged", and the queue no
+# longer held it. A moment later its timeline said "removed", which would have
+# sent a merged pull request back for a rebuild.
+
+
+def test_a_pull_request_the_queue_just_merged_is_recorded_not_requeued():
+    issues = QueueIssues(QueueState(has_queue=True, merged=True))
+    result, board, seen = run([card(6)], issues)
+    assert issues.enqueued == [] and result.rebuilding == []
+    assert result.merged == [(6, 100)] and ("C6", "Done") in board.moves
+    assert not any("merge queue" in (e.summary or "") for e in seen)
+
+
+def queue_client(pull: dict):
+    import httpx
+
+    from crew_org.tools.github_issues import IssueClient
+
+    def answer(request):
+        return httpx.Response(
+            200, json={"data": {"repository": {"mergeQueue": {"id": "MQ"}, "pullRequest": pull}}}
+        )
+
+    return IssueClient(None, "mqucifer", client=httpx.Client(transport=httpx.MockTransport(answer)))
+
+
+def removed(reason: str) -> dict:
+    last = {"__typename": "RemovedFromMergeQueueEvent", "reason": reason}
+    return {"merged": False, "mergeQueueEntry": None, "timelineItems": {"nodes": [last]}}
+
+
+def test_the_queue_removing_it_as_merged_reads_as_merged():
+    state = queue_client(removed("merged")).queue_state("sprint-metrics", 224, branch="main")
+    assert state.merged and state.removed is None
+
+
+def test_the_queue_removing_it_for_failing_checks_is_still_a_removal():
+    state = queue_client(removed("CI failed")).queue_state("sprint-metrics", 224, branch="main")
+    assert state.removed == "CI failed" and not state.merged
+
+
+def test_graphql_saying_merged_wins_over_everything_else():
+    pull = {"merged": True, "mergeQueueEntry": {"state": "QUEUED"}, "timelineItems": {"nodes": []}}
+    assert queue_client(pull).queue_state("sprint-metrics", 224, branch="main").merged
