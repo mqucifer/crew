@@ -142,6 +142,8 @@ class LoopResult:
     outcomes: list[PhaseOutcome] = field(default_factory=list)
     # GitHub throttled past what a tick waits (#293): stopped, to resume next tick.
     throttled: bool = False
+    # (repo, card) the Senior Engineer diagnosed at the end of this tick.
+    diagnosed: list[tuple[str, int]] = field(default_factory=list)
     # True only when a pass moved nothing. Hitting the cap is not the same as
     # the board being stable, and reporting it as such tells the Sponsor the
     # work is finished when it was merely stopped.
@@ -624,6 +626,32 @@ def wait_for_queue(
     return len(queued) - len(pending), clock() - start
 
 
+def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
+    """Diagnose what this tick left blocked for a person, as the Senior Engineer."""
+    from pathlib import Path  # noqa: PLC0415
+
+    from crew_org.crews.diagnosis_crew import choose_files  # noqa: PLC0415
+    from crew_org.crews.diagnosis_crew import diagnose as diagnose_files  # noqa: PLC0415
+    from crew_org.flows.diagnose import diagnose_blocked  # noqa: PLC0415
+    from crew_org.permissions import Capability, Permissions  # noqa: PLC0415
+
+    Permissions.from_agents().require("Senior Engineer", Capability.DIAGNOSE_CREW)
+    return attributed(
+        lambda c: diagnose_blocked(
+            c.issues,
+            c.sink,
+            cards=c.board.cards(),
+            repos=c.repos,
+            events_dir=Path("var/events"),
+            out_dir=Path("var/diagnoses"),
+            choose=choose_files,
+            diagnose=diagnose_files,
+        ),
+        sprint=crew.sprint,
+        purpose="diagnose",
+    )(crew)
+
+
 def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
@@ -735,6 +763,15 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                     continue
             result.settled = True
             break
+
+    # The Senior Engineer on cards now blocked for a person, once each (#9).
+    # After the passes, so it reads the board as the tick left it. Best
+    # effort: a diagnosis that fails is noted, and the tick still ends.
+    if not result.throttled:
+        try:
+            result.diagnosed = diagnose_blocked_cards(crew)
+        except Exception as exc:  # noqa: BLE001
+            crew.sink.note(EventKind.NOTE, f"diagnosis skipped: {exc}"[:120])
 
     crew.sink.note(
         EventKind.TICK_FINISHED,

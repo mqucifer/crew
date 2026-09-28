@@ -235,3 +235,84 @@ def file_finding(
     )
     title = finding.wrong.split(". ")[0].rstrip(".")[:120]
     return issues.create(crew_repo, title, body, labels=[DIAGNOSIS_LABEL])
+
+
+# On a card the Senior Engineer has diagnosed, so each block is diagnosed once.
+DIAGNOSED_MARKER = "<!-- crew:diagnosis -->"
+# Diagnoses per tick. Each is two model calls over the crew's source; the tick
+# should not grow without bound when several cards block at once.
+PER_TICK = 2
+# GitHub refuses a comment over 65,536 characters.
+MAX_COMMENT = 60_000
+
+
+def diagnose_blocked(
+    issues: Any,
+    sink: Any,
+    *,
+    cards: list[Any],
+    repos: set[str],
+    events_dir: Path,
+    out_dir: Path,
+    choose: Any,
+    diagnose: Any,
+    limit: int = PER_TICK,
+) -> list[tuple[str, int]]:
+    """The Senior Engineer on each card blocked for a person, once (#9).
+
+    It only ever ran when someone typed `crew diagnose`, and on 2026-09-27 no
+    one did: every crew defect that day was found by hand. On
+    sprint-metrics#200 it then found a sharper cause than the hand diagnosis
+    had. The findings go on the card, where the person unblocking it reads
+    them. Filing stays a person's call, through `crew diagnose`'s offer.
+    """
+    from crew_org.columns import BLOCKED  # noqa: PLC0415
+    from crew_org.events import EventKind  # noqa: PLC0415
+    from crew_org.flows.artifacts import signed  # noqa: PLC0415
+
+    blocked = sorted(
+        (
+            c
+            for c in cards
+            if c.status == BLOCKED
+            and "needs:human" in c.labels
+            and c.state != "CLOSED"
+            and c.number
+            and c.repo in repos
+        ),
+        key=lambda c: (c.repo or "", c.number or 0),
+    )
+    done: list[tuple[str, int]] = []
+    for card in blocked:
+        if len(done) >= limit:
+            break
+        repo, number = card.repo, card.number
+        try:
+            if issues.has_comment_marked(repo, number, DIAGNOSED_MARKER):
+                continue
+            failure = failure_of(events_dir, issues, repo, number)
+            report = run_diagnosis(crew_root(), failure, choose=choose, diagnose=diagnose)
+            text = render(report, repo=repo, card=number)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"{repo}-{number}.md").write_text(text, encoding="utf-8")
+            issues.comment(
+                repo,
+                number,
+                signed(
+                    f"{DIAGNOSED_MARKER}\n**What in the crew's own code led to this block.** "
+                    "Read-only: nothing was changed or filed. Check each finding before it "
+                    f"becomes work; `crew diagnose {repo} {number}` offers to file them as "
+                    f"crew issues.\n\n{text}"[:MAX_COMMENT],
+                    "Senior Engineer",
+                ),
+            )
+            sink.note(
+                EventKind.NOTE,
+                f"#{number}: the Senior Engineer diagnosed the block, "
+                f"{len(report.findings)} findings",
+                repo=repo,
+            )
+            done.append((repo, number))
+        except Exception as exc:  # noqa: BLE001
+            sink.note(EventKind.NOTE, f"#{number}: diagnosis failed: {exc}"[:120], repo=repo)
+    return done
