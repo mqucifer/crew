@@ -289,3 +289,26 @@ def test_qa_is_handed_the_checks(monkeypatch, tmp_path):
         repo="sprint-metrics",
     )
     assert seen["checks"] == "- `image`: success"
+
+
+def test_qa_is_told_a_check_proves_only_what_it_runs(monkeypatch):
+    """sprint-metrics#260: QA cited `tests` as proof of release.yml, which it never runs."""
+    import contextlib
+
+    from crew_org.crews import qa_crew
+
+    seen: dict = {}
+
+    class Stop(Exception):
+        pass
+
+    def crew(**_):
+        raise Stop
+
+    monkeypatch.setattr(qa_crew, "build_agents", lambda *a: {"qa_engineer": None})
+    monkeypatch.setattr(qa_crew, "Task", lambda **k: seen.update(k))
+    monkeypatch.setattr(qa_crew, "Crew", crew)
+    with contextlib.suppress(Stop):
+        qa_crew.verify_story("S", test_output="", test_code="", checks="- `tests`: success")
+    assert "**that runs it**" in seen["description"]
+    assert "a test the run skipped proves nothing" in seen["description"]

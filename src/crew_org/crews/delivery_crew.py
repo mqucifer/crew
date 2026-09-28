@@ -563,7 +563,7 @@ STANDING_INSTRUCTIONS = (
     "A command example a doc shows is still run by the project's doc tests, where it "
     "has them.\n"
     "A change to a CI workflow travels alone: no code or tests in the same change. It "
-    "needs no test either: its own run in CI is the proof, and QA cites the check.\n"
+    "needs no test either: it's judged by review, and proven when it runs.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "

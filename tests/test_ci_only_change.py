@@ -56,4 +56,4 @@ def test_a_yaml_file_outside_the_workflows_is_not_ci(answer):
 
 def test_the_developer_is_told_a_workflow_travels_alone_and_how_it_is_proven():
     assert "A change to a CI workflow travels alone" in STANDING_INSTRUCTIONS
-    assert "its own run in CI is the proof" in STANDING_INSTRUCTIONS
+    assert "judged by review, and proven when it runs" in STANDING_INSTRUCTIONS
