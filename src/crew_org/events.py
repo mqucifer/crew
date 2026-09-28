@@ -41,6 +41,9 @@ class EventKind(StrEnum):
     LLM_CALL_STARTED = "llm.started"
     LLM_CALL_FINISHED = "llm.finished"
     LLM_CALL_FAILED = "llm.failed"
+    # A call that answered nothing, typically after thinking (#312). CrewAI
+    # retries it silently, so without this it's invisible in the log.
+    LLM_CALL_EMPTY = "llm.empty"
 
     TOOL_STARTED = "tool.started"
     TOOL_FINISHED = "tool.finished"
@@ -435,6 +438,22 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         sink.note(EventKind.NOTE, f"CrewAI no longer has {', '.join(missing)}; not bridged.")
 
     _INSTALLED = True
+
+
+def record(kind: EventKind, summary: str, **detail: Any) -> None:
+    """An event from outside a flow (the model client), to every sink forwarding CrewAI's."""
+    about = working()
+    detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
+    for target, target_card in list(_TARGETS):
+        target.emit(
+            CrewEvent(
+                kind=kind,
+                role=about.get("role"),
+                card=about.get("card", target_card),
+                summary=summary[:120],
+                detail=detail,
+            )
+        )
 
 
 def _trace_call(kind: EventKind, event: Any, detail: dict, role: Any, about: dict) -> None:
