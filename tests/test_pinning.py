@@ -106,5 +106,8 @@ def test_a_story_says_opt_in_or_contract_change_and_nothing_else():
 
 def test_the_developer_reads_it_in_the_story():
     body = render_story_body(story(pinned_behaviour="opt-in: only with --thresholds"), 54, "Flags")
-    assert "**Behaviour merged tests pin** — opt-in: only with --thresholds" in body
-    assert "Behaviour merged tests pin" not in render_story_body(story(), 54, "Flags")
+    assert (
+        "**Existing tests** — unchanged: the new behaviour is opt-in (only with --thresholds)"
+        in body
+    )
+    assert "Existing tests" not in render_story_body(story(), 54, "Flags")

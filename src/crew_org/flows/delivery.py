@@ -86,6 +86,9 @@ class DeliveryOutcome:
     already_done: list = field(default_factory=list)
     # Criteria the Developer named existing tests for (#217), for QA.
     proven_by_existing: list = field(default_factory=list)
+    # Merged tests the story's declared contract change let go (#316), for the
+    # Code Reviewer: the story said so, and the pull request says which.
+    contract_changed: list[str] = field(default_factory=list)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -409,8 +412,9 @@ def prior_context(
             "## Where that leaves your files\n\n"
             f"**Your previous attempt is already in the repository below**, on branch "
             f"`{branch}`. You are continuing it, not starting again.\n\n"
-            "- Change what the verdicts above identified, with `replace`, and leave the "
-            "rest alone.\n"
+            "- Change what the verdicts above identified: a definition they say is wrong "
+            "with `replace`; one they say was removed with `add`, because it isn't in the "
+            "files any more. Leave everything the verdicts did not flag alone.\n"
             "- Do not re-send work that is already there. `add` on a name already in the "
             "listing is rejected.\n"
             "- If the listing does not contain something a verdict mentions, say so rather "
@@ -460,6 +464,34 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
         and c.status != DONE
     ]
     return min(blockers, key=lambda c: c.number or 0) if blockers else None
+
+
+# What a declared contract change names: `path.py::test`, `path.py`, or a bare test name.
+_DECLARED = re.compile(r"[\w/.-]+\.py(?:::[\w.]+)?|\btest_\w+")
+
+
+def declared_contract(body: str) -> set[str]:
+    """The merged tests a story declares it changes, from its **Existing tests** line (#316).
+
+    Empty unless the line declares a contract change: an opt-in story promises
+    the merged tests keep passing, so nothing of theirs may go.
+    """
+    from crew_org.flows.board_flow import (  # noqa: PLC0415
+        EXISTING_TESTS,
+        EXISTING_TESTS_BEFORE_311,
+    )
+
+    line = next(
+        (
+            ln
+            for ln in body.splitlines()
+            if ln.startswith((EXISTING_TESTS, EXISTING_TESTS_BEFORE_311))
+        ),
+        "",
+    )
+    if "contract change" not in line and "changes what they assert" not in line:
+        return set()
+    return set(_DECLARED.findall(line))
 
 
 def held_by_what_it_builds_on(cards: list[Card], story: Card, body: str) -> Card | None:
@@ -535,6 +567,7 @@ def deliver_story(
     number = card.number or 0
     outcome = DeliveryOutcome(card=number)
     story_text = f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}"
+    declared = declared_contract(story_text)
 
     branch = branch_name(number, card.title)
     outcome.branch = branch
@@ -795,6 +828,9 @@ def deliver_story(
         # A merged test the story declares it retires, with why, may go: the
         # pull request lists it for the Code Reviewer (sprint-metrics#132).
         broken = regression.without_retired(broken, implementation)
+        # And one the story itself declares it changes (#316): named there, it's
+        # the story's job, not an accident.
+        broken, outcome.contract_changed = regression.without_declared(broken, declared)
         if broken:
             failure = LocalFailure(
                 card=number,
@@ -820,9 +856,9 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = regression.describe_contracts(broken) + NOT_APPLIED
+                feedback = regression.describe_contracts(broken, merged) + NOT_APPLIED
                 continue
-            outcome.failure_detail = regression.describe_contracts(broken)
+            outcome.failure_detail = regression.describe_contracts(broken, merged)
             outcome.blocked_reason = decision.reason
             return outcome
 
@@ -1233,6 +1269,9 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
     if implementation.retired_tests:
         lines += ["", "## Tests retired", ""]
         lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
+    if outcome.contract_changed:
+        lines += ["", "## Tests the story's declared contract change removes or reshapes", ""]
+        lines += [f"- `{key}`" for key in outcome.contract_changed]
     lines += ["", f"Closes #{card.number}"]
     # Signed last, after the Verification section the Code Reviewer is shown.
     return signed("\n".join(lines), "Developer")

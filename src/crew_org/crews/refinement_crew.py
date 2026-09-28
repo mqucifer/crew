@@ -94,7 +94,9 @@ class Story(BaseModel):
         default="",
         description=(
             "Only when this story changes what a merged test asserts: 'opt-in' (the "
-            "existing tests keep passing) or 'contract change: <the tests it updates>'"
+            "existing tests keep passing) or 'contract change: <the tests it updates>'. "
+            "Renaming anything a merged test asserts (a label, a key, a column, a flag) "
+            "is a contract change. A story that only adds new files leaves it empty"
         ),
     )
 
