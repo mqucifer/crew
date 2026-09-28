@@ -364,3 +364,73 @@ def test_the_tick_says_behind_main_not_a_missing_status_check(crew, monkeypatch)
     deliver_returning(monkeypatch, updating=[(31, 67)])
     held = loop._deliver(crew).held
     assert "#31 — PR #67 was behind main; brought up to date, merges once checks pass" in held
+
+
+# --- waiting for the merge queue (#314) ------------------------------------
+#
+# 2026-09-27: tick G queued #198 and called the board stable at 00:22:58; the
+# queue merged it at 00:22:59. With an epic's stories taking turns, each tick
+# finished one story.
+
+
+class Queue:
+    """Answers queue_state: queued for the first `for_polls` lookups, then not."""
+
+    def __init__(self, for_polls: int):
+        self.polls, self.for_polls = 0, for_polls
+
+    def queue_state(self, repo, number, *, branch):
+        from crew_org.tools.github_issues import QueueState
+
+        self.polls += 1
+        return QueueState(has_queue=True, queued=self.polls <= self.for_polls)
+
+
+def queuing(monkeypatch, *, queued_on_pass: int, moves: list[bool]):
+    """One deliver phase: moves as `moves` says, and leaves a PR queued on one pass."""
+    passes = {"n": 0}
+
+    def deliver(_crew):
+        passes["n"] += 1
+        in_queue = [("sprint-metrics", 245, "main")] if passes["n"] == queued_on_pass else []
+        moved = moves.pop(0) if moves else False
+        return loop.PhaseOutcome(
+            "deliver", moved=moved, result=type("R", (), {"in_queue": in_queue})()
+        )
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
+    monkeypatch.setattr(loop.time, "sleep", lambda _s: None)
+    return passes
+
+
+def test_a_pass_that_leaves_work_in_the_queue_waits_and_goes_on(crew, monkeypatch):
+    passes = queuing(monkeypatch, queued_on_pass=1, moves=[False, True, False])
+    crew.issues = Queue(for_polls=2)
+    result = loop.run(crew)
+    assert passes["n"] == 3, "waited, then ran the pass that picks up what landed"
+    assert result.settled
+
+
+def test_the_wait_is_reported():
+    crew_ = type("C", (), {"issues": Queue(for_polls=1)})()
+    clock = iter([0.0, 15.0, 30.0, 45.0])
+    left, waited = loop.wait_for_queue(
+        crew_, [("sprint-metrics", 245, "main")], sleep=lambda _s: None, clock=lambda: next(clock)
+    )
+    assert left == 1 and waited == 45.0, "two polls, the second saw it leave"
+
+
+def test_a_queue_that_never_lets_go_ends_the_tick_after_the_wait(crew, monkeypatch):
+    passes = queuing(monkeypatch, queued_on_pass=1, moves=[False])
+    crew.issues = Queue(for_polls=10**6)
+    ticks = iter(range(0, 10**6, 60))
+    monkeypatch.setattr(loop.time, "monotonic", lambda: float(next(ticks)))
+    result = loop.run(crew)
+    assert passes["n"] == 1 and result.settled
+
+
+def test_nothing_queued_ends_the_tick_at_once(crew, monkeypatch):
+    passes = queuing(monkeypatch, queued_on_pass=0, moves=[False])
+    crew.issues = Queue(for_polls=0)
+    loop.run(crew)
+    assert passes["n"] == 1 and crew.issues.polls == 0
