@@ -241,6 +241,15 @@ def harness(tmp_path, monkeypatch):
             return escalate_result or EscalationResult(outcome=Outcome.COMPLETED, detail="fixed")
 
         monkeypatch.setattr(delivery, "implement_story", fake_implement)
+        # The stepped second attempt (#276) answers through the same fake, so no
+        # test here reaches a real model through the plan or the per-file calls.
+        monkeypatch.setattr(
+            delivery,
+            "_deliver_in_steps",
+            lambda story_text, **kw: fake_implement(
+                story_text, context=kw.get("header", ""), feedback=kw.get("why", "")
+            ),
+        )
         monkeypatch.setattr(
             delivery.workspace, "apply_implementation", apply or (lambda w, impl: [])
         )
