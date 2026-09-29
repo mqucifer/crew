@@ -1,0 +1,27 @@
+{
+ "summary": "This change adds a Dockerfile that builds the sprint-metrics CLI into a minimal Python 3.12 image, along with tests that verify the build, a --help invocation, a batch run against a mounted cards file, and the absence of architecture-pinning substrings. The image is fit to run its primary use case (batch CLI: read a JSON file, print a table). It does not, however, run with the minimum privilege it needs: the base image defaults to root and the Dockerfile never drops to an unprivileged user, even though the tool only reads a file and writes to stdout. One finding blocks; two are notes.",
+ "approve": false,
+ "findings": [
+  {
+   "file": "Dockerfile",
+   "concern": "The image runs as root. The base image python:3.12-slim defaults to UID 0 and the Dockerfile creates no user and issues no USER instruction. The sprint-metrics CLI only reads a JSON file from a volume and writes to stdout; it needs no privilege beyond that. Running as root is more privilege than the tool requires.",
+   "action": "Add a non-root user and a USER directive after the install step, e.g. 'RUN useradd --create-home --shell /usr/sbin/nologin appuser' followed by 'USER appuser'. The volume-mounted file at /input/cards.json will be readable by the unprivileged user under default host permissions (0644), so this does not break AC2. A CI check that runs 'docker run --rm sprint-metrics-test sprint-metrics --help' as a non-root user (or 'docker exec --user') would catch a regression.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "The base image tag python:3.12-slim is a floating reference. Each build may pull a different patch release of Python 3.12, so the same Dockerfile can produce different images over time. §19.7 requires that every project be reproducible from a clean checkout.",
+   "action": "Pin the base image to a digest (FROM python:3.12-slim@sha256:...) or at minimum to a specific patch tag (FROM python:3.12.7-slim). A dependabot or renovate rule for the Dockerfile base image would keep the pin current and flag stale ones.",
+   "blocking": false,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "The image ships the --scrape mode (src/sprint_metrics/serve.py) which binds an HTTP server to 127.0.0.1. Inside a container, 127.0.0.1 is the container's own loopback; Docker's -p port forwarding targets the container's eth0, so the scrape endpoint is unreachable from outside the container even with explicit port mapping. The Dockerfile also issues no EXPOSE instruction to document the port. This is a pre-existing design in serve.py, not introduced by this change, but the image that ships it cannot expose that server as deployed.",
+   "action": "Either (a) change serve.py to bind to 0.0.0.0 when running in a container (e.g. an environment variable or a --bind-address flag), or (b) document in the README that --scrape is intended for in-container or same-host use only and is not a network-exposed service. A smoke test that runs 'docker run -d -p 9100:9100 sprint-metrics-test sprint-metrics --scrape --port 9100' and curls the endpoint would catch this if the binding is ever fixed; until then the note stands.",
+   "blocking": false,
+   "conflicts_with": ""
+  }
+ ]
+}

@@ -1,0 +1,42 @@
+=== serial 5 19:40:07
+serial-5-194008 1 138.2s {'1 bind': 'note', '3 root': 'block', '4 base pin': 'note'}
+serial-5-194008 2 175.6s {'1 bind': 'note', '2 entrypoint': 'note', '3 root': 'block', '4 base pin': 'block'}
+serial-5-194008 3 251.0s {'1 bind': 'note', '2 entrypoint': 'block', '3 root': 'block', '4 base pin': 'note'}
+serial-5-194008 4 184.3s {'1 bind': 'note', '3 root': 'block', '4 base pin': 'note'}
+serial-5-194008 5 139.1s {'1 bind': 'note', '3 root': 'block', '4 base pin': 'block'}
+=== parallel 3 19:54:57
+parallel-3-195457 1 129.8s {'3 root': 'block', '4 base pin': 'block'}
+parallel-3-195457 2 145.1s {'1 bind': 'note', '3 root': 'block', '4 base pin': 'block'}
+parallel-3-195457 3 290.1s {'1 bind': 'block', '2 entrypoint': 'block', '3 root': 'block', '4 base pin': 'block'}
+=== parallel 3 19:59:49
+parallel-3-195949 1 104.9s {'3 root': 'block', '4 base pin': 'note'}
+parallel-3-195949 2 141.5s {'3 root': 'block', '4 base pin': 'note'}
+parallel-3-195949 3 181.9s {'1 bind': 'note', '2 entrypoint': 'block', '3 root': 'block', '4 base pin': 'note'}
+=== serial 5 hidden 20:02:52
+serial-5-hidden-200253 1 192.4s {'1 bind': 'block', '3 root': 'note', '4 base pin': 'note'}
+serial-5-hidden-200253 2 93.4s {'3 root': 'block'}
+serial-5-hidden-200253 3 173.9s {'1 bind': 'block', '3 root': 'block'}
+serial-5-hidden-200253 4 96.8s {'3 root': 'block'}
+serial-5-hidden-200253 5 121.8s {'3 root': 'block'}
+=== done 20:14:11
+16 runs answered, 0 failed
+
+== image rule shown ==
+Recall (raised at all; blocking in brackets)
+finding            single  any 3 of serial      parallel-3-195457      parallel-3-195949
+1 bind            5/5 (0)            10/10                    yes                    yes
+2 entrypoint      2/5 (1)             9/10                    yes                    yes
+3 root            5/5 (5)            10/10                    yes                    yes
+4 base pin        5/5 (2)            10/10                    yes                    yes
+Cost: median single run 176s
+  parallel-3-195457: 3 runs, 290s wall (1.65x one run)
+  parallel-3-195949: 3 runs, 182s wall (1.04x one run)
+
+== image rule HIDDEN ==
+Recall (raised at all; blocking in brackets)
+finding            single  any 3 of serial 
+1 bind            2/5 (2)             9/10 
+2 entrypoint      0/5 (0)             0/10 
+3 root            5/5 (4)            10/10 
+4 base pin        1/5 (0)             6/10 
+Cost: median single run 122s

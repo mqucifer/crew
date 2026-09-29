@@ -1,0 +1,88 @@
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..e03af8f
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,8 @@
++FROM python:3.12-slim
++
++WORKDIR /app
++
++COPY pyproject.toml README.md ./
++COPY src/ ./src/
++
++RUN pip install --no-cache-dir .
+diff --git a/tests/test_dockerfile.py b/tests/test_dockerfile.py
+new file mode 100644
+index 0000000..79c2c86
+--- /dev/null
++++ b/tests/test_dockerfile.py
+@@ -0,0 +1,68 @@
++"""Tests for the Dockerfile at the repository root."""
++
++import json
++import shutil
++import subprocess
++from pathlib import Path
++
++import pytest
++
++DOCKERFILE = Path(__file__).parent.parent / "Dockerfile"
++
++
++def test_dockerfile_is_not_pinned_to_an_architecture():
++    """AC3: the Dockerfile contains none of the architecture-specific substrings
++    amd64, arm64, x86_64, or aarch64."""
++    content = DOCKERFILE.read_text()
++    for arch in ("amd64", "arm64", "x86_64", "aarch64"):
++        assert arch not in content, f"Dockerfile references architecture {arch!r}"
++
++
++@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
++def test_docker_build_and_help():
++    """AC1: docker build exits 0 and docker run sprint-metrics-test sprint-metrics --help
++    exits 0 with stdout containing 'sprint-metrics'."""
++    repo_root = Path(__file__).parent.parent
++    build = subprocess.run(
++        ["docker", "build", "-t", "sprint-metrics-test", "."],
++        cwd=repo_root,
++        capture_output=True,
++        text=True,
++    )
++    assert build.returncode == 0, f"docker build failed: {build.stderr}"
++
++    run = subprocess.run(
++        ["docker", "run", "--rm", "sprint-metrics-test", "sprint-metrics", "--help"],
++        capture_output=True,
++        text=True,
++    )
++    assert run.returncode == 0, f"docker run --help failed: {run.stderr}"
++    assert "sprint-metrics" in run.stdout
++
++
++@pytest.mark.skipif(shutil.which("docker") is None, reason="Docker not available")
++def test_docker_run_with_cards(tmp_path):
++    """AC2: docker run with a volume-mounted cards.json exits 0 and stdout
++    contains the expected table row for a card with cycle time 5 days and
++    lead time 7 days."""
++    cards_path = tmp_path / "cards.json"
++    cards_path.write_text(
++        json.dumps([{"created": "2024-01-03", "started": "2024-01-05", "completed": "2024-01-10"}])
++    )
++
++    run = subprocess.run(
++        [
++            "docker",
++            "run",
++            "--rm",
++            "-v",
++            f"{cards_path}:/input/cards.json",
++            "sprint-metrics-test",
++            "sprint-metrics",
++            "/input/cards.json",
++        ],
++        capture_output=True,
++        text=True,
++    )
++    assert run.returncode == 0, f"docker run failed: {run.stderr}"
++    assert "| Current | 5 days | 7 days | 1 | 0 | 0 days | 0% | 100% | \u2014 |" in run.stdout

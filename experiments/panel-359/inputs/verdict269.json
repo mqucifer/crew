@@ -1,0 +1,27 @@
+{
+ "summary": "This change adds a Dockerfile that packages the sprint-metrics CLI into a container image based on python:3.12-slim, along with tests verifying build, execution, and architecture-neutrality. The image is deployable and the CLI is reachable as designed: the crew runs it by tag from ghcr.io, invoking the sprint-metrics entry point with a cards file or in scrape mode. Two issues block the change: the container runs as root (more privilege than the tool needs—it only reads a file and writes to stdout or binds an ephemeral port on loopback), and the build resolves dependencies at build time without a lockfile, violating the project's reproducibility and deliberate-dependency rules (§19.3, §19.7). A pre-existing binding choice in serve.py (127.0.0.1) is noted but not blocking.",
+ "approve": false,
+ "findings": [
+  {
+   "file": "Dockerfile",
+   "concern": "The Dockerfile has no USER directive. The python:3.12-slim base image defaults to root (uid 0). The sprint-metrics CLI only reads a JSON file from a known path and writes to stdout, or in scrape mode binds an HTTP server to 127.0.0.1 on a user-specified port. None of these operations require root privileges.",
+   "action": "Add a non-root user before the final instruction: create a dedicated user (e.g. RUN useradd --create-home appuser) and switch to it with USER appuser. The WORKDIR and installed packages are already in place by that point. A mechanical check: the deploy review should flag any Dockerfile that lacks a USER directive after any RUN or COPY that runs as root. Alternatively, a CI lint step (hadolint rule DW1041) would catch this automatically.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "RUN pip install --no-cache-dir . resolves all dependencies to their latest compatible versions at build time. The project uses uv with a lockfile in CI (uv sync --extra dev), but the Dockerfile does not reference it. Two builds of this Dockerfile at different times can produce images with different dependency versions, violating §19.3 (dependencies are deliberate, locked with a lockfile) and §19.7 (every project is reproducible, a build from a clean checkout, a lockfile).",
+   "action": "Copy the uv.lock file into the build context and install from it. For example: COPY pyproject.toml uv.lock README.md ./ ; COPY src/ ./src/ ; then use uv (install it in a builder stage or use the uv image) with uv sync --frozen --no-dev, or feed the lockfile to pip as a constraints file (pip install --constraint uv.lock .). The release workflow that builds the multi-platform image must also carry the lockfile so the built image is reproducible across platforms.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "src/sprint_metrics/serve.py",
+   "concern": "The HTTP server in serve_metrics binds to (\"127.0.0.1\", port). When the container is deployed with a published port (docker run -p 9100:9100), Docker forwards traffic to the container's bridge IP, not its loopback, so the scrape endpoint is unreachable from outside the container. This is a pre-existing design choice in serve.py, not introduced by the Dockerfile.",
+   "action": "Note for the project: if scrape mode is intended to be used in a containerized deployment, the bind address should be configurable (e.g. a --bind-address flag defaulting to 0.0.0.0 when running in a container, or reading an environment variable). Until then, operators must use --network host or an in-container proxy to reach the endpoint. Not blocking this change because the code is pre-existing and the primary CLI usage (file argument to stdout) is unaffected.",
+   "blocking": false,
+   "conflicts_with": ""
+  }
+ ]
+}

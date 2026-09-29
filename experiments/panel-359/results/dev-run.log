@@ -1,0 +1,39 @@
+=== #334 same 20:14:45
+ERROR:root:OpenAI API call failed: Could not parse response content as the length limit was reached - CompletionUsage(completion_tokens=32768, prompt_tokens=16700, total_tokens=49468, completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=None, audio_tokens=None, reasoning_tokens=839, rejected_prediction_tokens=None, text_tokens=31929), prompt_tokens_details=PromptTokensDetails(audio_tokens=None, cache_write_tokens=None, cached_tokens=3712))
+ERROR:root:OpenAI API call failed: Could not parse response content as the length limit was reached - CompletionUsage(completion_tokens=32768, prompt_tokens=16700, total_tokens=49468, completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=None, audio_tokens=None, reasoning_tokens=839, rejected_prediction_tokens=None, text_tokens=31929), prompt_tokens_details=PromptTokensDetails(audio_tokens=None, cache_write_tokens=None, cached_tokens=3712))
+[CrewAIEventsBus] Warning: Event pairing mismatch. 'llm_call_failed' closed 
+'flow_started' (expected 'llm_call_started')
+ERROR:crewai.flow.runtime:Error executing listener call_llm_and_parse: Could not parse response content as the length limit was reached - CompletionUsage(completion_tokens=32768, prompt_tokens=16700, total_tokens=49468, completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=None, audio_tokens=None, reasoning_tokens=839, rejected_prediction_tokens=None, text_tokens=31929), prompt_tokens_details=PromptTokensDetails(audio_tokens=None, cache_write_tokens=None, cached_tokens=3712))
+dev-334-same-3-201446 1 Nones verify 
+dev-334-same-3-201446 2 Nones verify 
+dev-334-same-3-201446 3 Nones passed 
+=== #334 lens 20:38:43
+dev-334-lens-3-203844 1 Nones verify Make the smallest change that meets ever
+dev-334-lens-3-203844 2 Nones verify Make the most robust change: think about
+dev-334-lens-3-203844 3 Nones verify Start from the tests: write the test for
+=== #266 same 20:47:55
+dev-266-same-3-204756 1 Nones verify 
+dev-266-same-3-204756 2 Nones edit 
+dev-266-same-3-204756 3 Nones verify 
+=== #266 lens 20:52:08
+dev-266-lens-3-205209 1 Nones verify Make the smallest change that meets ever
+dev-266-lens-3-205209 2 Nones verify Make the most robust change: think about
+dev-266-lens-3-205209 3 Nones verify Start from the tests: write the test for
+=== #264 same 20:59:42
+dev-264-same-3-205943 1 Nones verify 
+dev-264-same-3-205943 2 Nones passed 
+dev-264-same-3-205943 3 Nones passed 
+=== #264 lens 21:10:10
+dev-264-lens-3-211012 1 Nones verify Make the smallest change that meets ever
+dev-264-lens-3-211012 2 Nones verify Make the most robust change: think about
+dev-264-lens-3-211012 3 Nones passed Start from the tests: write the test for
+=== #200 same 21:19:15
+ERROR:crewai.flow.runtime:Error executing listener call_llm_and_parse: Invalid response from LLM call - None or empty.
+dev-200-same-3-211916 1 Nones answered already done 
+dev-200-same-3-211916 2 Nones passed 
+dev-200-same-3-211916 3 Nones passed 
+=== #200 lens 21:38:34
+dev-200-lens-3-213836 1 Nones answered already done Make the smallest change that meets ever
+dev-200-lens-3-213836 2 Nones answered already done Make the most robust change: think about
+dev-200-lens-3-213836 3 Nones passed Start from the tests: write the test for
+=== done 21:48:43

@@ -1,0 +1,41 @@
+{
+ "summary": "This change adds a Dockerfile and a test file for the sprint-metrics container image. The Dockerfile builds from python:3.12-slim, copies the package source, and installs it with pip. The tests verify the build succeeds, the CLI responds to --help, and produces correct output for a sample cards file. The image has four problems against §19.8: it runs as root, the base image is not pinned by digest, the scrape server it ships is unreachable when the container's port is published, and it lacks an ENTRYPOINT so the program name must be repeated on every invocation. The root and digest issues are straightforward to fix; the scrape issue requires a small change to serve.py to make the bind address configurable; the ENTRYPOINT issue conflicts with the acceptance criteria as written and needs a decision.",
+ "approve": false,
+ "findings": [
+  {
+   "file": "Dockerfile",
+   "concern": "The image has no USER instruction. The python:3.12-slim base image runs as root by default, so every process in this container — including the HTTP scrape server — runs as UID 0. The CLI only reads a file and writes to stdout (or binds a TCP port); it needs no privilege.",
+   "action": "Add a non-root user before the end of the Dockerfile. After the pip install (which writes to /usr/local/lib and needs root), create and switch to a dedicated user: `RUN useradd --create-home --shell /usr/sbin/nologin appuser` then `USER appuser`. A mechanical check that would catch this next time: a hadolint rule (DL3002) flags Dockerfiles with no USER instruction after a FROM; running hadolint in CI on any Dockerfile change would make this a build failure.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "`FROM python:3.12-slim` uses a mutable tag. The next time the python:3.12-slim tag is re-pushed to the registry (a new patch to the base, a new glibc, a new CA bundle), the next build silently picks it up. Two builds of the same source at different times can produce different images with no record of what changed in the base.",
+   "action": "Pin the base by digest: `FROM python:3.12-slim@sha256:<digest>`. Keep the tag as a comment or a variable for readability. A dependency updater (e.g. a Renovate or dependabot rule scoped to Dockerfile FROM lines) refreshes the digest on a schedule, and the change is reviewed like any other. A CI check that asserts the FROM line contains `@sha256:` would catch a regression.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "The image ships `src/sprint_metrics/serve.py`, which binds the scrape server to `(\"127.0.0.1\", port)`. Inside a container with the default bridge network, 127.0.0.1 is the container's own loopback. Docker port publishing (`-p 9100:9100`) DNATs host traffic to the container's eth0 IP, not its loopback. A user running `docker run -p 9100:9100 sprint-metrics --scrape --port 9100` gets a connection refused from outside the container. The scrape mode is therefore unreachable as deployed.",
+   "action": "Make the bind address configurable. In serve.py, read the address from an environment variable (e.g. `SPRINT_METRICS_BIND`, default `127.0.0.1` for host use). In the Dockerfile, set `ENV SPRINT_METRICS_BIND=0.0.0.0` so the container image binds all interfaces. A smoke test that runs the image with `--scrape`, publishes the port, and curls `/metrics` from the host (or from a second container on the same network) would catch a regression: the test is `docker run -d -p 9100:9100 sprint-metrics --scrape --port 9100 && curl -sf http://localhost:9100/metrics`.",
+   "blocking": true,
+   "conflicts_with": ""
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "The Dockerfile sets no ENTRYPOINT or CMD. Running `docker run sprint-metrics-test --help` starts the base image's default command (an interactive Python shell), not the CLI. The user must type `docker run sprint-metrics-test sprint-metrics --help`, repeating the program's name on every invocation. §19.8 requires the image to start \"as `docker run <image> <arguments>`, without repeating the program's name.\"",
+   "action": "Add `ENTRYPOINT [\"sprint-metrics\"]` to the Dockerfile. This makes `docker run sprint-metrics-test --help` and `docker run sprint-metrics-test /input/cards.json` work directly. The acceptance criteria as written test the explicit form (`docker run sprint-metrics-test sprint-metrics --help`), which would break because the CLI would receive `sprint-metrics` as a positional file argument. The criteria need to be updated to drop the repeated program name; this is a one-word change in each test command.",
+   "blocking": true,
+   "conflicts_with": "docker run sprint-metrics-test sprint-metrics --help exits 0 with stdout containing the string sprint-metrics"
+  },
+  {
+   "file": "Dockerfile",
+   "concern": "There is no .dockerignore file. The build context sent to Docker is the entire repository root (the test runs `docker build .` from the root), so it includes `.git/`, `tests/`, `.github/`, and any other top-level directory. This inflates the context transfer on every build without affecting the image contents, since the COPY instructions only take `pyproject.toml`, `README.md`, and `src/`.",
+   "action": "Add a `.dockerignore` at the repository root listing at minimum `.git`, `tests`, `.github`, and `__pycache__`. This is a build-hygiene improvement; it does not change what the image contains.",
+   "blocking": false,
+   "conflicts_with": ""
+  }
+ ]
+}

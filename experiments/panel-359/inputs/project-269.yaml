@@ -1,0 +1,88 @@
+# The project's onboarding record (#111). Intent is the Sponsor's, written
+# through `crew onboard`. Design is the project's Architect's, and learned
+# is the crew's; both are proposed by pull request.
+version: 2
+intent:
+  scope:
+    purpose: Report delivery metrics for one or more sprints on the crew's own board,
+      so the crew can use the data to improve its own code.
+    in_scope:
+    - A sprint-metrics CLI that reads sprint cards and optional WIP limits from JSON.
+    - Computes cycle time, lead time, throughput, WIP-limit violations, blocked-card
+      aging, and escalation rate.
+    - Outputs a table by default, or JSON, markdown, or Prometheus text exposition
+      format.
+    - Serves the Prometheus metrics at /metrics in scrape mode.
+    - Packaging and deployment of the tool so the crew can invoke it.
+    out_of_scope:
+    - 'Reporting on anything beyond the projects the Sponsor has asked the crew to
+      contribute to: today, one or more repositories in this GitHub organization''s
+      crew project. Expanding past this organization and project is not planned.'
+    - An MCP server, for now. The crew calls the tool directly, through its command
+      line or, once it runs as one, its service API.
+  release:
+    deploys: false
+    publishes: true
+    where: A version tag vX.Y.Z on the sprint-metrics repo, with a GitHub Release,
+      and a container image at ghcr.io/mqucifer/sprint-metrics:X.Y.Z. The crew installs
+      the tool as a git dependency pinned to the tag, or runs the image by its tag.
+  done:
+    bar: A change is done when its acceptance criteria are met and every check the
+      project's CI runs passes.
+    never_touch:
+    - .github/workflows/board.yml
+  priority: 1
+design:
+  language: Python 3.12
+  dependencies: 'No runtime dependencies (standard library only: argparse, json, http.server,
+    threading, dataclasses, datetime, collections.abc, contextlib, sys). Dev dependencies:
+    pytest>=8.0, ruff>=0.6.'
+  sandbox: 'Python 3.12 interpreter and uv (the package manager). No other tools are
+    required to build or test locally. Docker is available in CI runners but is never
+    a local sandbox requirement: it runs only in CI, never in the local checks.'
+  checks:
+  - uv run ruff check .
+  - uv run pytest -q
+  release_how: 'Package versions follow SemVer, separate from the JSON api_version:
+    removing an old API version is MAJOR, additions (including a new API version)
+    are MINOR, fixes and docs are PATCH. The first release is 1.0.0. CHANGELOG.md
+    follows Keep a Changelog; every user-visible PR adds an entry to [Unreleased].
+    A release is a PR that bumps the version in pyproject.toml and dates the [Unreleased]
+    section. When it merges, a release workflow sees the new version and does three
+    things: creates tag vX.Y.Z; creates a GitHub Release whose body is that CHANGELOG
+    section; builds and pushes a linux/amd64 and linux/arm64 container image to ghcr.io/mqucifer/sprint-metrics
+    tagged X.Y.Z, X.Y, and latest, with build-provenance attestation, using only GITHUB_TOKEN.
+    The release workflow includes a workflow_dispatch dry-run path that validates
+    the pipeline without tagging or pushing. The crew installs the tool as a git dependency
+    pinned to the tag (e.g. uv pip install git+https://github.com/mqucifer/sprint-metrics.git@v1.0.0)
+    or runs the image by its tag (ghcr.io/mqucifer/sprint-metrics:1.0.0).'
+  structure: 'The package is divided by concern so that parallel stories land in different
+    files. card.py owns the Card dataclass and card parsing (parse_card, _load_cards,
+    _as_cards, _parse_date). metrics.py owns the pure metric calculations (cycle time,
+    lead time, throughput, WIP-limit violations, blocked-card aging, escalation rate,
+    first-attempt rate, failure breakdown, top failure causes) and their helpers (_mean_days,
+    _state_windows, _peak_occupancy, _load_wip_limits, ALL_METRICS). thresholds.py
+    owns the default thresholds (DEFAULT_THRESHOLDS), calculate_flags, _load_thresholds,
+    and _flag. report.py owns the single-sprint formatters (table, markdown, Prometheus,
+    JSON), the markdown section and display helpers (_summary_section, _summary_counts,
+    _sprint_section, _prior_sprint_section, _signed, _format_failure_breakdown, _METRIC_COLUMNS,
+    _CANONICAL_ORDER, API_VERSION). sprint_range.py owns sprint-label and range parsing
+    (_parse_sprint_label, _parse_sprint_range, _load_sprints) and the per-sprint range
+    formatters (table, JSON, markdown). schema.py owns the JSON Schema documents for
+    the API response (SINGLE_SPRINT_SCHEMA, SPRINT_RANGE_SCHEMA, METRIC_KEYS), used
+    by the --schema flag. serve.py owns the scrape HTTP server (serve_metrics and
+    its handler). cli.py owns main, argument parsing, and file I/O (_read). _docs_gen.py
+    owns the generation of the marked (generated) sections for each docs/ file: it
+    reads the code (calculate_* docstrings, _METRIC_COLUMNS, ALL_METRICS, schema documents,
+    parse_card, cli argument help) and produces the text written between BEGIN/END
+    markers in each docs/ file. It is a dev tool, not part of the public API. __init__.py
+    re-exports the public API (Card, the calculate_* and format_* functions, main)
+    from these modules; __main__.py is the python -m entry point.'
+  docs:
+  - README.md
+  - docs/usage.md
+  - docs/cards.md
+  - docs/metrics.md
+  - docs/formats.md
+  - docs/thresholds.md
+  - docs/scrape.md
