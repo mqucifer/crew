@@ -1355,6 +1355,37 @@ def design(
         for why in designed.refused:
             console.print(f"  - {escape(why)}")
         raise typer.Exit(code=1)
+    # A record already saying what the design says can't be a pull request:
+    # GitHub refuses one with no commits, and the declared work went with it
+    # (sprint-metrics, 2026-09-29, #335).
+    if designed.record.design == record.design:
+        if not any(c.needs_work for c in designed.proposal.changes):
+            console.print(
+                "\n[green]No change.[/] The design already says this. "
+                f"{escape(designed.proposal.summary)}"
+            )
+            return
+        from crew_org.flows.revisit import Revisits, file_unchanged_design_work
+        from crew_org.tools.github_project import ProjectClient
+
+        board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+        filed = file_unchanged_design_work(
+            issues,
+            board,
+            EventSink(VAR / "events" / "design.jsonl"),
+            repo=repo,
+            proposal=designed.proposal,
+            result=Revisits(),
+        )
+        console.print(
+            "\n[green]The record already says this[/]; the work to make the project match "
+            + (
+                "is filed as technical epics: " + ", ".join(f"#{n}" for n in filed)
+                if filed
+                else "is already open as technical epics."
+            )
+        )
+        return
     url = open_design_pr(ws, issues, repo, designed, base=branch, reason=reason)
     console.print(f"\n[green]Design proposed[/] — {url}")
 

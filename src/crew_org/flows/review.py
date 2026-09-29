@@ -444,6 +444,8 @@ def release_brief(issues: IssueClient, repo: str, head: str) -> str:
             lines.append(f"- How: {record.design.release_how.strip()}")
         if record.design.checks:
             lines.append("- Checks: " + "; ".join(f"`{c}`" for c in record.design.checks))
+        if record.design.ci_checks:
+            lines += ["- CI proves:", *(f"  - {c}" for c in record.design.ci_checks)]
     return "\n".join(lines)
 
 
