@@ -198,6 +198,9 @@ def qa(monkeypatch, tmp_path, comments, accepted):
         work_type="Story",
         repo="sprint-metrics",
     )
+    # The test the verdict cites exists: QA's verdict rests on tests it read (#231).
+    (tmp_path / "tests").mkdir(exist_ok=True)
+    (tmp_path / "tests" / "test_report.py").write_text("def test_api_version():\n    pass\n")
     issues, board = QAIssues(comments), QABoard()
     run_qa(board, issues, EventSink(None), QAWorkspace(tmp_path), None, cards=[card], repo="sm")
     return seen, issues, board

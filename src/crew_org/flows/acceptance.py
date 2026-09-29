@@ -15,6 +15,8 @@ whose stories are all Done is done, and so is a goal whose epics are.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -150,6 +152,144 @@ def collect_tests(worktree: Path) -> str:
             )
         parts.append(f"# {rel}\n{body}")
     return "\n\n".join(parts)
+
+
+# Above this, QA is shown the tests the work touches or names in full, and the
+# rest by name (#231). sprint-metrics' suite passed 200,000 characters, and a QA
+# call reached 78,528 prompt tokens for a docs story (2026-09-29): the band where
+# answers came back empty (#312).
+QA_FOCUS_ABOVE_CHARS = 60_000
+# How often one verdict may ask to see more test files, as the Developer may.
+QA_ASK_LIMIT = 2
+_TEST_DEF = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)", re.M)
+# A test named in prose: `test_api_version`, not the file in `tests/test_report.py`.
+_TEST_NAME = re.compile(r"\btest_\w+\b(?!\.py)")
+
+
+@dataclass
+class QATests:
+    """What QA is shown of the tests, and what it isn't."""
+
+    text: str
+    shown: list[str]
+    focused: bool
+    # Test name -> the file that defines it, for every test in the suite.
+    defined: dict[str, str]
+
+
+def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> QATests:
+    """The tests, for QA: all of them when small, else the ones the work touches or names.
+
+    Chosen, whole: the test files the branch changed, those defining a test
+    `about` names (the story, the Developer's proof, the criteria), and those
+    QA asked for. Every other test file is listed with the tests it defines,
+    so QA can ask for one by name.
+    """
+    files = [p for p in sorted(worktree.rglob("test_*.py")) if not (IGNORED_DIRS & set(p.parts))]
+    bodies = {
+        str(p.relative_to(worktree)): p.read_text(encoding="utf-8", errors="ignore") for p in files
+    }
+    defined = {name: rel for rel, body in bodies.items() for name in _TEST_DEF.findall(body)}
+    if sum(len(b) for b in bodies.values()) <= QA_FOCUS_ABOVE_CHARS:
+        return QATests(collect_tests(worktree), list(bodies), False, defined)
+    wanted = {str(Path(e.strip().lstrip("./"))) for e in extra if e.strip()}
+    changed = set(changed_paths(worktree))
+    chosen = [
+        rel
+        for rel in bodies
+        if rel in changed
+        or rel in wanted
+        or rel in about
+        or any(defined.get(name) == rel for name in _TEST_NAME.findall(about))
+    ]
+    parts = [f"# {rel}\n{bodies[rel]}" for rel in chosen]
+    others = [
+        f"- `{rel}`: " + (", ".join(_TEST_DEF.findall(body)) or "no tests")
+        for rel, body in bodies.items()
+        if rel not in chosen
+    ]
+    if others:
+        parts.append(
+            "# Every other test file, and the tests it defines (not shown in full)\n"
+            + "\n".join(others)
+        )
+    return QATests("\n\n".join(parts), chosen, True, defined)
+
+
+def unseen_citations(verdict, tests: QATests) -> dict[str, str | None]:
+    """Tests a proven criterion cites that QA wasn't shown: name -> its file, or None if none."""
+    cited = {name for c in verdict.criteria if c.proven for name in _TEST_NAME.findall(c.evidence)}
+    return {n: tests.defined.get(n) for n in cited if tests.defined.get(n) not in tests.shown}
+
+
+def held_to_what_it_read(verdict: QAVerdict, tests: QATests) -> QAVerdict:
+    """A proven criterion citing a test QA never read, or one that doesn't exist, isn't proven.
+
+    The counterpart of refusing a Developer's named test that doesn't exist
+    (#221): acceptance rests on evidence QA saw.
+    """
+    unseen = unseen_citations(verdict, tests)
+    if not unseen:
+        return verdict
+    criteria = []
+    for c in verdict.criteria:
+        missing = [n for n in _TEST_NAME.findall(c.evidence) if n in unseen] if c.proven else []
+        if not missing:
+            criteria.append(c)
+            continue
+        why = "; ".join(
+            f"cites `{n}`, which "
+            + ("no test file defines" if unseen[n] is None else "QA wasn't shown")
+            for n in missing
+        )
+        criteria.append(c.model_copy(update={"proven": False, "evidence": f"{c.evidence} ({why})"}))
+    accepted = verdict.accepted and all(c.proven for c in criteria)
+    return verdict.model_copy(update={"criteria": criteria, "accepted": accepted})
+
+
+def _judge(
+    story: str, *, worktree: Path, sink: EventSink, number: int, repo: str, **evidence
+) -> QAVerdict:
+    """QA's verdict, shown the tests the work touches or names, asking for more if it must (#231).
+
+    A test a proven criterion cites that wasn't shown is added and the story
+    judged again, as if QA had asked for its file. Past the limit, what it
+    cites and didn't read doesn't count.
+    """
+    asked: list[str] = []
+    # Set when an ask brings nothing new to show: the next try must judge.
+    judge_now = False
+    for ask in range(QA_ASK_LIMIT + 1):
+        tests = qa_tests(worktree, about=story, extra=asked)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} QA context: {len(tests.text):,} chars of tests"
+            + (f", {len(tests.shown)} files in full" if tests.focused else ", the whole suite"),
+            card=number,
+            context_chars=len(tests.text),
+            focused=tests.focused,
+            shown=tests.shown,
+            asked=asked,
+        )
+        can_ask = tests.focused and ask < QA_ASK_LIMIT and not judge_now
+        # Offered only when there's something to ask for: the whole suite shown
+        # leaves nothing listed by name.
+        ask_for = {"can_ask": True} if can_ask else {}
+        verdict = attributed(verify_story, card=number, repo=repo)(
+            story, test_code=tests.text, **ask_for, **evidence
+        )
+        if verdict.criteria:
+            unseen = [f for f in unseen_citations(verdict, tests).values() if f]
+            wanted = [f for f in unseen if f not in asked]
+            if not wanted or not can_ask:
+                break
+        else:
+            wanted = [f for f in verdict.need_files if f not in asked]
+            judge_now = not wanted
+        asked += wanted
+    if not verdict.criteria:
+        raise ValueError(f"QA asked to see {', '.join(verdict.need_files)} past its limit")
+    return held_to_what_it_read(verdict, tests)
 
 
 # Generous, not a budget (§16): docs a story edits are read whole or named.
@@ -364,10 +504,13 @@ def run_qa(
                 if done
                 else done_or_proof
             )
-            verdict = attributed(verify_story, card=number, repo=card_repo)(
+            verdict = _judge(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
+                worktree=worktree,
+                sink=sink,
+                number=number,
+                repo=card_repo,
                 test_output=collect_output(check.results),
-                test_code=collect_tests(worktree),
                 docs=collect_docs(worktree),
                 checks=ci_checks(issues, card_repo, revision),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
