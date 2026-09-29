@@ -73,6 +73,12 @@ class FakeIssues:
     def pull_reviews(self, repo, number):
         return self._reviews
 
+    # The checks on its head (#335): one passed, unless a test says otherwise.
+    head_checks: list = [{"name": "tests", "status": "completed", "conclusion": "success"}]
+
+    def check_runs(self, repo, sha):
+        return list(self.head_checks)
+
     def merge_pull(self, repo, number, **kw):
         self.merged.append(number)
         return {}

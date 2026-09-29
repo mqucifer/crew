@@ -319,10 +319,10 @@ def _land(issues: IssueClient, result: RevertLanding, pull: dict, *, repo: str) 
     if landed.how in (Landing.CONFLICTED, Landing.REMOVED):
         result.conflicted.append(number)
         return False
-    if landed.how == Landing.UNSETTLED:
+    if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
         result.failed.append((number, landed.reason))
         return False
-    # Queued or brought up to date: it merges without the crew, and the pass
+    # Queued, brought up to date, or checks still running: it merges without the crew, and the pass
     # over merged reverts returns its card then.
     if landed.how != Landing.MERGED:
         return False

@@ -24,7 +24,12 @@ from crew_org.flows import artifacts
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
-from crew_org.tools.github_issues import BranchUpdateConflict, IssueClient, IssueError
+from crew_org.tools.github_issues import (
+    FAILED_CONCLUSIONS,
+    BranchUpdateConflict,
+    IssueClient,
+    IssueError,
+)
 from crew_org.tools.github_project import Card, ProjectClient
 
 STORY_TYPE = "Story"
@@ -60,6 +65,11 @@ class Landing(StrEnum):
     REMOVED = "removed"
     # GitHub has not yet worked out whether it merges cleanly.
     UNSETTLED = "unsettled"
+    # Its checks on GitHub are still running; it merges on a later pass.
+    CHECKING = "checking"
+    # Its checks on GitHub don't prove it: none passed, one failed, or they
+    # couldn't be read. Not merged, and said so.
+    UNPROVEN = "unproven"
 
 
 @dataclass(frozen=True)
@@ -129,8 +139,38 @@ def land(
         except Exception as exc:
             raise IssueError(f"could not update from main: {exc}") from exc
         return Landed(Landing.UPDATING)
+    # Nothing but the crew may be holding it to its checks: a private repository
+    # on a free organization gets no branch protection and no queue (#335). So
+    # §19.7 is kept here, whatever GitHub enforces.
+    held = unproven(issues, repo, head)
+    if held:
+        return held
     issues.merge_pull(repo, number)
     return Landed(Landing.MERGED)
+
+
+def unproven(issues: IssueClient, repo: str, head: str | None) -> Landed | None:
+    """Why the checks on its head don't yet prove it, or None when they do.
+
+    A check ran, all of them finished, and none failed. `neutral` and
+    `skipped` are not failures, but on their own they prove nothing.
+    """
+    try:
+        runs = issues.check_runs(repo, head or "")
+    except Exception as exc:  # noqa: BLE001
+        return Landed(Landing.UNPROVEN, f"its checks couldn't be read: {exc}"[:120])
+    running = [r.get("name") or "a check" for r in runs if r.get("status") != "completed"]
+    if running:
+        return Landed(Landing.CHECKING, "checks still running: " + ", ".join(running[:3]))
+    failed = [r.get("name") or "a check" for r in runs if r.get("conclusion") in FAILED_CONCLUSIONS]
+    if failed:
+        return Landed(Landing.UNPROVEN, "checks failed: " + ", ".join(failed[:3]))
+    if not any(r.get("conclusion") == "success" for r in runs):
+        return Landed(
+            Landing.UNPROVEN,
+            "no check passed on its head, and nothing merges without one (constitution §19.7)",
+        )
+    return None
 
 
 @dataclass
@@ -152,6 +192,9 @@ class MergeResult:
     # (card, PR) brought up to date from main this pass; they merge on the next
     # once their checks pass on the new head.
     updating: list[tuple[int, int]] = field(default_factory=list)
+    # (card, what is still running) approved, with checks not yet finished
+    # where nothing on GitHub holds it to them (#335); merged on a later pass.
+    checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn.
     queued: list[tuple[int, int]] = field(default_factory=list)
     # (repo, PR, base branch) of each queued pull request, so the tick can
@@ -310,8 +353,11 @@ def merge_approved(
                 continue
             _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
             continue
-        if landed.how == Landing.UNSETTLED:
+        if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
             result.failed.append((number, landed.reason))
+            continue
+        if landed.how == Landing.CHECKING:
+            result.checking.append((number, landed.reason))
             continue
         if landed.how == Landing.QUEUED:
             result.queued.append((number, pull["number"]))

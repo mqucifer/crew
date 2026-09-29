@@ -772,6 +772,9 @@ the wording here.
 7. **Every project is reproducible.** A build from a clean checkout, a lockfile,
    and CI running the §7 checks on every pull request.
    *Enforced:* branch protection's required checks (§8). Nothing merges without them.
+   Where GitHub enforces nothing, as on a private repository of a free organization,
+   the crew merges only once a check on the head has passed and none is still
+   running or has failed (`merge.unproven`, crew#335).
 
 Rules 3 and 4 are judgement, not yet mechanism. The Code Reviewer checks every
 diff against them, and a finding cites the rule by number.

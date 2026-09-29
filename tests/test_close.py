@@ -70,6 +70,12 @@ class FakeIssues:
     def review_decision(self, repo, number):
         return self._decision
 
+    # The checks on its head (#335): one passed, unless a test says otherwise.
+    head_checks: list = [{"name": "tests", "status": "completed", "conclusion": "success"}]
+
+    def check_runs(self, repo, sha):
+        return list(self.head_checks)
+
     def merge_pull(self, repo, number, **kw):
         self.merged.append(number)
         return {}
@@ -129,6 +135,16 @@ def test_an_approved_story_is_merged_and_done(ledger):
     assert issues.merged == [100]
     assert result.merged == [6]
     assert ("C6", "Done") in board.moves
+
+
+def test_a_story_whose_checks_are_still_running_keeps_the_sprint_open(ledger):
+    """Nothing merges without its checks, where GitHub doesn't enforce them (#335)."""
+    issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED")
+    issues.head_checks = [{"name": "lint", "status": "queued", "conclusion": None}]
+    result, board = run(issues, ledger)
+    assert issues.merged == []
+    assert result.checking == [(6, "checks still running: lint")]
+    assert not result.complete
 
 
 def test_a_story_nobody_approved_waits_on_the_sponsor(ledger):
