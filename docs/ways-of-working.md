@@ -216,9 +216,11 @@ A card may enter `Done` only when **all** hold:
    section generated from the code, are checked by the project's tests
    (crew#324).
 
-   **So is a CI workflow change.** It travels alone, with no code or tests in
-   the same pull request, so a review sees it for what it is. It needs no new
-   test: it is judged by review and proven by its own run (crew#331).
+   **So is a CI workflow change.** It needs no new test: it is judged by review
+   and proven by its own run (crew#331). It may change in the same pull request
+   as the code or tests it runs, when changing one breaks the other: an
+   `ENTRYPOINT` breaks the smoke job that invokes the image. The deploy review
+   (§20) judges any pull request that touches a workflow (crew#335).
    A pull request that changes only CI workflows isn't put through QA at all:
    most of what a workflow does is only observable when it runs on `main`,
    so it's judged by the Code Reviewer and the DevOps Engineer (§20), and proven by its run (crew#333).
@@ -749,9 +751,8 @@ the wording here.
    refused, before anything is written, if it runs on `pull_request_target`,
    asks to write anything beyond `contents`, `packages`, `id-token` or
    `attestations`, or reads a secret other than `GITHUB_TOKEN` and those the
-   project's record names in `design.secrets` (crew#279). A CI change travels
-   alone, without Python code. `crew auth` says whether the crew's own token
-   can change workflow files at all.
+   project's record names in `design.secrets` (crew#279). `crew auth` says
+   whether the crew's own token can change workflow files at all.
 
 3. **Dependencies are deliberate.** Locked with a lockfile, added only when a
    story needs them, and the standard library and existing dependencies come first.
@@ -850,7 +851,7 @@ is attributed to a role (§10):
   `infra` is a decision; the Sponsor carries it out.
 - **No secrets in `infra`,** which is private because it describes the home
   network. A file may name a secret, never hold one.
-- **Nothing it reviews runs outside the sandbox** (§14), and a CI change
-  travels alone (§19.2).
+- **Nothing it reviews runs outside the sandbox** (§14), and a CI workflow the
+  crew writes gets no secrets, broad writes or weakened checks (§19.2).
 - **No paid services, and no inbound connections:** Grafana is read by the
   crew, never given a way in (crew#335).
