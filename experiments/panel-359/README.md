@@ -15,6 +15,8 @@ Parallel is cheap on the Spark. Three requests at once took 1.0–1.65× the wal
 
 It's small-sample: 1 review case, 4 Developer stories, 1 design case. It gives direction, not settled rates.
 
+**A caveat on the review results:** the deploy review's four questions were written looking at #269's Dockerfile. "As which user?" and "what's pinned?" pointed at its findings, which flatters recall. They were generalized afterwards (PR #375). The finding about correlated misses holds regardless: with the rule hidden, even those pointed questions never led a run to `ENTRYPOINT`.
+
 ## 1. Reviews: the deploy review of sprint-metrics#269
 
 **The case:** the Dockerfile PR with four known problems (crew#335): the scrape server binds `127.0.0.1`, no `ENTRYPOINT`, runs as root, and a base image not pinned by digest. `run_panel.py` calls the crew's `review_deploy` with the evidence it was given on 2026-09-28 (`inputs/`). `analyse.py` makes the table.
