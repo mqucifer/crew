@@ -14,3 +14,6 @@ def _no_registry(monkeypatch):
         raise base_images.Unreadable("no registry in tests")
 
     monkeypatch.setattr(base_images, "LOOKUP", unreachable)
+    base_images._READ.clear()
+    yield
+    base_images._READ.clear()

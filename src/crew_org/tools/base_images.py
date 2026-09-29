@@ -133,6 +133,29 @@ def manifest_digest(host: str, name: str, reference: str) -> str | None:
 # Replaced in tests: every lookup goes through here.
 LOOKUP: Callable[[str, str, str], str | None] = manifest_digest
 
+# What's been read, for the life of the process: a tick. A tag moves every week
+# or two, not between one card and the next, and a digest exists or doesn't.
+# A registry that couldn't be read isn't remembered, so it's asked again.
+_READ: dict[tuple[str, str, str], str | None] = {}
+
+
+def lookup(host: str, name: str, reference: str) -> str | None:
+    key = (host, name, reference)
+    if key not in _READ:
+        _READ[key] = LOOKUP(host, name, reference)
+    return _READ[key]
+
+
+# What says a piece of work is about the image, so only that work is shown it.
+_ABOUT_IMAGES = re.compile(
+    r"dockerfile|containerfile|docker|container image|base image|digest", re.I
+)
+
+
+def concerns(text: str) -> bool:
+    """Does this work mention the image, so it should be shown the base images?"""
+    return bool(_ABOUT_IMAGES.search(text or ""))
+
 
 # --- what the Developer is shown, and what's refused ------------------------------------------
 
@@ -155,7 +178,7 @@ def section(worktree: Path) -> str:
     ]
     for ref in refs:
         try:
-            digest = LOOKUP(ref.host, ref.name, ref.tag)
+            digest = lookup(ref.host, ref.name, ref.tag)
             lines.append(
                 f"- `{ref.shown}` → `{digest}`" if digest else f"- `{ref.shown}`: no such tag"
             )
@@ -174,8 +197,8 @@ def invented(path: str, dockerfile: str) -> list[str]:
             reasons.append(f"{path} pins `{ref.shown}@{ref.digest}`, which isn't a sha256 digest")
             continue
         try:
-            found = LOOKUP(ref.host, ref.name, ref.digest)
-            current = LOOKUP(ref.host, ref.name, ref.tag)
+            found = lookup(ref.host, ref.name, ref.digest)
+            current = lookup(ref.host, ref.name, ref.tag)
         except Unreadable as exc:
             reasons.append(
                 f"{path}: the digest pinned for `{ref.shown}` couldn't be checked ({exc})"

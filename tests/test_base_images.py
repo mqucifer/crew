@@ -92,3 +92,26 @@ def test_a_dockerfile_with_no_digest_costs_no_lookup(tmp_path, registry):
         summary="user", new_files=[FileWrite(path="Dockerfile", content="FROM python:3.12-slim\n")]
     )
     assert bounds.out_of_bounds(tmp_path, change, None) == [] and registry == []
+
+
+# --- once a tick, and only for work about the image ---------------------------------------------
+
+
+def test_a_tag_is_read_once_a_tick(tmp_path, registry):
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    section(tmp_path)
+    section(tmp_path)
+    invented("Dockerfile", f"FROM python:3.12-slim@{REAL}\n")
+    assert registry.count(("docker.io", "library/python", "3.12-slim")) == 1
+
+
+def test_a_registry_that_couldnt_be_read_is_asked_again(tmp_path):
+    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    assert "couldn't be read" in section(tmp_path)
+    assert ("docker.io", "library/python", "3.12-slim") not in base_images._READ
+
+
+def test_only_work_about_the_image_is_shown_it():
+    assert base_images.concerns("Pin the Dockerfile base image by digest")
+    assert base_images.concerns("Add a non-root user to the container image")
+    assert not base_images.concerns("Document --schema in docs/usage.md")
