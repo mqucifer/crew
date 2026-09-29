@@ -23,6 +23,7 @@ negotiate process with each other; they follow what is written here.
 | Code Reviewer | Diff verdicts, Bugs | Yes |
 | Scrum Master | Standups, retros, defects — in the process or in the product | No |
 | Senior Engineer | Diagnoses of the crew's own code: at the end of each tick, for each card blocked for a person (up to two a tick, once per card, posted on the card), and on the Sponsor's request (`crew diagnose`). It changes nothing and files nothing; a person decides which findings become crew issues (crew#9) | No |
+| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project. Its duties so far run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies | No |
 
 These boundaries are structural, not prompt wording — a boundary that depends on
 granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
@@ -778,3 +779,44 @@ the wording here.
 
 Rules 3 and 4 are judgement, not yet mechanism. The Code Reviewer checks every
 diff against them, and a finding cites the rule by number.
+
+---
+
+## 20. What runs, and where
+
+The DevOps Engineer owns what happens after a merge: the release, and the
+machine it runs on (crew#335). It wears two hats, named apart so they can be
+split when the load says so. **DevOps** builds and ships: CI, releases,
+placement. **SRE** keeps it healthy: alerts, investigations, performance.
+
+**What it owns.**
+- The `infra` repository: the inventory of machines, what runs where, access,
+  retention, and a decision record for each choice. It is a delivery repository
+  like any other, worked by the whole crew through the normal flow, with DevOps
+  as its domain owner.
+- The board's Release capability, the `Merging` column, which had no owner.
+
+**What runs today, as code, each tick.** None of these is a model call, so none
+is attributed to a role (§10):
+- **Post-merge watcher** (crew#336): a workflow whose latest run failed on a
+  delivery repository's default branch becomes a technical epic carrying the
+  failing step's log. One per workflow while it is open; an untouched one is
+  closed when the workflow passes again.
+- **Release publish check** (crew#340): after a version-bump merge, the tag,
+  the Release notes against the CHANGELOG section, the image manifest for each
+  platform and the attestation are checked. The result goes on the release pull
+  request, and a gap becomes a technical epic.
+- **Stack health** (crew#347): the proxy and model are required, and the tick
+  stops without them. The telemetry exporter and collector are checked too; one
+  that is down is named in the standup, with how to start it.
+
+**Guardrails.**
+- **It proposes; the Sponsor applies.** No agent changes a real machine, a
+  repository ruleset, an App's permissions or a secret. A merged change in
+  `infra` is a decision; the Sponsor carries it out.
+- **No secrets in `infra`,** which is private because it describes the home
+  network. A file may name a secret, never hold one.
+- **Nothing it reviews runs outside the sandbox** (§14), and a CI change
+  travels alone (§19.2).
+- **No paid services, and no inbound connections:** Grafana is read by the
+  crew, never given a way in (crew#335).
