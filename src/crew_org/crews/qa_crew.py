@@ -49,14 +49,25 @@ class CriterionVerdict(BaseModel):
 class QAVerdict(BaseModel):
     summary: str = Field(description="What was verified and what the result was")
     accepted: bool = Field(description="True only if every criterion is proven")
-    criteria: list[CriterionVerdict] = Field(description="One verdict per criterion")
+    criteria: list[CriterionVerdict] = Field(
+        default_factory=list, description="One verdict per criterion"
+    )
+    # Asking to see more, as the Developer can (#231): a test file listed by
+    # name only, needed in full to judge a criterion. An answer that asks is
+    # not a verdict; QA is asked again with the files shown.
+    need_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Test files listed by name only that you need in full to judge a criterion. "
+            "Only when judging needs them; then leave `criteria` empty"
+        ),
+    )
 
-    @field_validator("criteria")
-    @classmethod
-    def _not_empty(cls, value: list[CriterionVerdict]) -> list[CriterionVerdict]:
-        if not value:
+    @model_validator(mode="after")
+    def _a_verdict_or_an_ask(self) -> QAVerdict:
+        if not self.criteria and not self.need_files:
             raise ValueError("a story is accepted against its criteria; list them")
-        return value
+        return self
 
     @model_validator(mode="after")
     def _acceptance_requires_every_criterion(self) -> QAVerdict:
@@ -83,6 +94,7 @@ def verify_story(
     project: str = "",
     docs: str = "",
     checks: str = "",
+    can_ask: bool = False,
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
 
@@ -131,6 +143,13 @@ def verify_story(
                 "criterion as your evidence, and hold it unproven if the doc doesn't say "
                 "it or says something the code doesn't do.\n\n"
                 if docs
+                else ""
+            )
+            + (
+                "Test files listed by name only weren't shown in full. If judging a "
+                "criterion needs one, name it in `need_files` (and nothing else) and you'll "
+                "be asked again with it shown. Don't cite a test you haven't read.\n"
+                if can_ask
                 else ""
             )
             + "For each acceptance criterion, decide whether a test actually exercises it "
