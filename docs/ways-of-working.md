@@ -571,6 +571,11 @@ Three rules for every limit on prompt content:
    - in full, the files its story, criteria, the gates' verdicts or the last
      failure name, whether by path, file name, module or definition, plus each
      chosen module's own test file
+   - a definition named in plain prose, with the verb dropped and hyphens and
+     underscores treated alike: "first-attempt rate" is
+     `calculate_first_attempt_rate`. Multi-word names only. So a docs story sees
+     the code it describes (sprint-metrics#281 was shown only the doc, and
+     restated its criteria unchecked).
 
    The epic's design note is still shown, but it doesn't choose files: it
    describes the whole epic. Imports aren't followed, because the map carries
