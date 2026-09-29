@@ -106,6 +106,8 @@ delivery:
   # repository by their P0–P3 labels — not on the board the crew works from.
   repos:
     - sprint-metrics
+    # Where the crew and its projects run, and why; private (crew#335, §20).
+    - infra
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in
