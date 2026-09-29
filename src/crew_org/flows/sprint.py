@@ -17,7 +17,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from crew_org.columns import INBOX, READY, SPRINT_BACKLOG
+from crew_org.columns import (
+    DONE,
+    IN_PROGRESS,
+    INBOX,
+    MERGING,
+    QAING,
+    READY,
+    REVIEWING,
+    SPRINT_BACKLOG,
+)
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.moves import move_card
@@ -189,6 +198,12 @@ def plan_sprint(
 
         piece = EpicSlice(number=epic.number or 0, title=epic.title)
         for story in stories:
+            # Delivery holds a story until every earlier sibling has landed
+            # (`held_by_a_sibling`). Admitted without them, it can't finish:
+            # sprint-metrics#284 was, when #283 didn't fit (crew#353).
+            if _held_by_an_earlier_sibling(cards, story, sprint, piece.admitted):
+                piece.deferred.append(story)
+                continue
             remaining = _fill(piece, story, remaining)
         plan.slices.append(piece)
 
@@ -204,6 +219,54 @@ def plan_sprint(
     if loose.admitted or loose.deferred:
         plan.slices.append(loose)
     return plan
+
+
+# Where an earlier sibling can be and still land ahead of a story this sprint.
+ON_ITS_WAY = frozenset({SPRINT_BACKLOG, IN_PROGRESS, REVIEWING, QAING, MERGING})
+
+
+def _held_by_an_earlier_sibling(
+    cards: list[Card], story: Card, sprint: str, admitted: list[Card]
+) -> bool:
+    """An earlier open story in its epic that won't land this sprint: not in the
+    sprint's flow, and not admitted by this plan.
+
+    Earlier means a lower number, as delivery reads it: the order the Business
+    Analyst proposed them in.
+    """
+    if story.parent is None:
+        return False
+    admitted_keys = {c.key for c in admitted}
+    return any(
+        c.repo == story.repo
+        and c.parent == story.parent
+        and c.work_type == STORY_TYPE
+        and (c.number or 0) < (story.number or 0)
+        and c.state != "CLOSED"
+        and c.status != DONE
+        and c.status not in ON_ITS_WAY
+        and c.key not in admitted_keys
+        for c in cards
+    )
+
+
+def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) -> list[Card]:
+    """Stories an earlier sprint admitted and never started.
+
+    Closing a sprint moves nothing, and delivery claims only the current
+    sprint's stories, so one left in Sprint Backlog was never worked again:
+    sprint-metrics#284 after Sprint 9 (crew#353).
+    """
+    return [
+        c
+        for c in cards
+        if c.status == SPRINT_BACKLOG
+        and c.work_type == STORY_TYPE
+        and c.state != "CLOSED"
+        and c.sprint
+        and c.sprint != sprint
+        and (repos is None or c.repo in repos)
+    ]
 
 
 def _fill(piece: EpicSlice, story: Card, remaining: int) -> int:
@@ -232,6 +295,26 @@ def start_sprint(
 ) -> SprintPlan:
     """Admit the planned stories into the sprint."""
     cards = board.cards()
+
+    # Back to Ready first, so planning weighs them with their siblings.
+    returned = {}
+    for card in left_over(cards, sprint, repos=repos):
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=READY,
+            by="Scrum Master",
+            card=card.number,
+            frm=SPRINT_BACKLOG,
+            summary=f"not started in {card.sprint}: back to Ready for planning",
+        )
+        try:
+            board.clear_field(card.item_id, "Sprint")
+        except Exception as exc:  # noqa: BLE001
+            sink.note(EventKind.NOTE, f"#{card.number} sprint not cleared: {exc}"[:120])
+        returned[card.key] = card.model_copy(update={"status": READY, "sprint": None})
+    cards = [returned.get(c.key, c) for c in cards]
 
     # Parentage comes from sub-issue nesting, asked once per epic.
     parents: dict[tuple[str, int], tuple[str, int]] = {}
