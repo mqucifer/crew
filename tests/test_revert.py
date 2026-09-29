@@ -195,6 +195,10 @@ class FakeIssues:
     def review_decision(self, repo, number):
         return "APPROVED" if self._reviews.get(number) else "REVIEW_REQUIRED"
 
+    # The checks on its head (#335): one passed.
+    def check_runs(self, repo, sha):
+        return [{"name": "tests", "status": "completed", "conclusion": "success"}]
+
     def merge_pull(self, repo, number, *, method="squash"):
         self.merged.append(number)
 

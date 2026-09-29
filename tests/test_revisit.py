@@ -293,6 +293,10 @@ class Issues:
     def create_review(self, repo, number, *, event, body):
         self.reviews.setdefault(number, []).append({"state": "APPROVED", "body": body})
 
+    # The checks on its head (#335): one passed.
+    def check_runs(self, repo, sha):
+        return [{"name": "tests", "status": "completed", "conclusion": "success"}]
+
     def merge_pull(self, repo, number, method="squash"):
         if self.merge_fails:
             raise RuntimeError("405 Required status check is expected")

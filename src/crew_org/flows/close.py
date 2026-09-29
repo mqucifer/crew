@@ -54,6 +54,9 @@ class SprintClose:
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
     # (story, PR) behind main and brought up to date; they merge once checks pass.
     updating: list[tuple[int, int]] = field(default_factory=list)
+    # (story, what is still running): checks not finished where nothing on
+    # GitHub holds it to them (#335).
+    checking: list[tuple[int, str]] = field(default_factory=list)
     # (story, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
     # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
@@ -83,6 +86,7 @@ class SprintClose:
             or self.still_open
             or self.unmergeable
             or self.updating
+            or self.checking
             or self.queued
         )
 
@@ -203,8 +207,11 @@ def close_sprint(
         if landed.how == Landing.REMOVED:
             result.unmergeable.append((number, f"left the merge queue: {landed.reason}"))
             continue
-        if landed.how == Landing.UNSETTLED:
+        if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
             result.unmergeable.append((number, landed.reason))
+            continue
+        if landed.how == Landing.CHECKING:
+            result.checking.append((number, landed.reason))
             continue
 
         move_card(

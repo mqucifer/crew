@@ -1043,6 +1043,8 @@ def deliver(
             f"[red]#{number}[/] not merged — PR #{pull} is approved and GitHub still "
             "requires a review; no tick can satisfy that gate"
         )
+    for number, why in result.checking:
+        console.print(f"[yellow]#{number}[/] not merged yet — {why}")
     for number, pull in result.queued:
         console.print(f"[yellow]#{number}[/] PR #{pull} is in the merge queue")
     for number, why in result.unmergeable:
@@ -1771,6 +1773,8 @@ def sprint_close(
             f"  [yellow]#{number}[/] PR #{pull} was behind main — brought up to date; "
             "it merges once its checks pass on the new head"
         )
+    for number, why in result.checking:
+        console.print(f"  [yellow]#{number}[/] {why}; it merges once they pass")
     for number, pull in result.queued:
         console.print(f"  [yellow]#{number}[/] PR #{pull} is in the merge queue")
     for number, why in result.unmergeable:

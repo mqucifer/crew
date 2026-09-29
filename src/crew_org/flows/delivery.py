@@ -136,6 +136,9 @@ class DeliveryResult:
     # (card, PR) behind main and brought up to date this pass; they merge once
     # their checks pass on the new head (#116).
     updating: list[tuple[int, int]] = field(default_factory=list)
+    # (card, what is still running): checks not finished where nothing on
+    # GitHub holds it to them (#335). It merges on a later pass.
+    checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
@@ -1712,6 +1715,7 @@ def deliver(
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     result.updating = list(landed.updating)
+    result.checking = list(landed.checking)
     result.queued = list(landed.queued)
     result.in_queue = list(landed.in_queue)
     result.landed = [card for card, _pr in landed.merged]
