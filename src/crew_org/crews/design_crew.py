@@ -75,7 +75,20 @@ class DesignProposal(BaseModel):
         ),
     )
     checks: list[Choice] = Field(
-        description="The commands that enforce the definition of done, one per command"
+        description=(
+            "The commands that enforce the definition of done, one per command. Each is "
+            "run as it reads, in the crew's sandbox, on every change"
+        )
+    )
+    # What only CI can prove (#335): an image built and run as deployed isn't a
+    # command the sandbox can run, and written into `checks` it would be run as one.
+    ci_checks: list[Choice] = Field(
+        default_factory=list,
+        description=(
+            "What CI proves on every pull request that the sandbox can't, such as an "
+            "image built and run the way it's deployed (constitution §19.8). In words, "
+            "one per proof, naming the CI job. Not commands: those are `checks`"
+        ),
     )
     release_how: Choice | None = Field(None, description="How a release happens")
     structure: Choice | None = Field(

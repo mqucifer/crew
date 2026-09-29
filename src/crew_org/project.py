@@ -136,6 +136,13 @@ class Design(Section):
     checks: list[str] = Field(
         default_factory=list, description="The commands that enforce the definition of done"
     )
+    # What only CI can prove, in words (#335). `checks` are commands the crew's
+    # sandbox runs; an image built and run as deployed (§19.8) isn't one, and
+    # with nowhere else to go the Architect wrote it there as prose.
+    ci_checks: list[str] = Field(
+        default_factory=list,
+        description="What CI proves on every pull request that the local checks can't",
+    )
     release_how: str | None = Field(default=None, description="How a release happens")
     # How the code is divided, and what each part owns (#192). The toolchain
     # alone said nothing about where work lands, so a module every story had to

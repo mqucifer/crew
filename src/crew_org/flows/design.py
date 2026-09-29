@@ -93,6 +93,7 @@ def to_design(proposal: Any) -> Design:
         dependencies=value(proposal.dependencies),
         sandbox=value(proposal.sandbox),
         checks=[c.value for c in proposal.checks],
+        ci_checks=[c.value for c in getattr(proposal, "ci_checks", None) or []],
         release_how=value(proposal.release_how),
         structure=value(getattr(proposal, "structure", None)),
         docs=doc_paths(getattr(proposal, "docs", None)),
@@ -116,15 +117,27 @@ def workflows(root: Path) -> dict[str, str]:
     }
 
 
-def undeclared(proposal: Any, ci: dict[str, str]) -> list[str]:
+def undeclared(proposal: Any, ci: dict[str, str], ci_checks_now: list[str] = ()) -> list[str]:
     """Checks CI doesn't run today that the proposal doesn't state as a change.
 
     Only judged when the project has CI: with none, every check is new and
-    there is nothing existing to keep.
+    there is nothing existing to keep. A CI proof the record doesn't already
+    list is new work whether or not there is CI, so it needs a change that
+    says so: otherwise the record claims CI proves something it doesn't (#335).
     """
+    reasons = []
+    new_proofs = [
+        c.value for c in getattr(proposal, "ci_checks", None) or [] if c.value not in ci_checks_now
+    ]
+    if new_proofs and not any(change.needs_work for change in proposal.changes):
+        reasons += [
+            f"`{proof}` is a new CI proof, and no change says the work that makes CI "
+            "prove it. List it in `changes` with `needs_work` and the work."
+            for proof in new_proofs
+        ]
     if not ci:
-        return []
-    return [
+        return reasons
+    return reasons + [
         f"`{check.value}` isn't a check CI runs today. If it should be, list it in "
         "`changes` (what, what the project does now, and why); if CI already runs it "
         "under another command, name that command instead."
@@ -164,7 +177,9 @@ def design(
             feedback=feedback,
         )
         ended.proposal = proposal
-        reasons = undeclared(proposal, ci)
+        reasons = undeclared(
+            proposal, ci, record.design.ci_checks if record.design is not None else []
+        )
         if not reasons:
             candidate = to_design(proposal)
             shown = yaml.safe_dump(
@@ -244,6 +259,7 @@ def open_design_pr(
         line("Dependencies", proposal.dependencies),
         line("Sandbox", proposal.sandbox),
         *[line("Check", c) for c in proposal.checks],
+        *[line("CI proves", c) for c in getattr(proposal, "ci_checks", None) or []],
         line("Release", proposal.release_how),
         line("Structure", getattr(proposal, "structure", None)),
         line("User docs", getattr(proposal, "docs", None)),

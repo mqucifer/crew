@@ -188,6 +188,7 @@ def _revisit(
         return
     _revise(
         issues,
+        board,
         sink,
         ws,
         cards,
@@ -211,7 +212,7 @@ def _when(stamp: str) -> datetime:
 
 
 def _revise(
-    issues, sink, ws, cards, *, repo, strains, propose_design, review_design, result
+    issues, board, sink, ws, cards, *, repo, strains, propose_design, review_design, result
 ) -> None:
     from crew_org.flows.onboard import describe  # noqa: PLC0415
 
@@ -279,6 +280,28 @@ def _revise(
             title="The Architect revisited the design: no change",
             body=f"The Architect revisited the design because:\n\n{reason}\n\n"
             f"It found nothing to change. {designed.proposal.summary}",
+        )
+        result.unchanged.append((repo, number))
+        return
+
+    # Work declared against a record already saying it: no pull request can
+    # carry it, so it's filed as it would be once one merged (#335).
+    if designed.record.design == record.design:
+        filed = file_unchanged_design_work(
+            issues, board, sink, repo=repo, proposal=designed.proposal, result=result
+        )
+        number = _record_look(
+            issues,
+            sink,
+            repo=repo,
+            title="The Architect revisited the design: the record already says it",
+            body=f"The Architect revisited the design because:\n\n{reason}\n\n"
+            f"The record already says what it proposed. {designed.proposal.summary}\n\n"
+            + (
+                "The work to make the project match: " + ", ".join(f"#{n}" for n in filed)
+                if filed
+                else "Its work is already filed as open technical epics."
+            ),
         )
         result.unchanged.append((repo, number))
         return
@@ -353,6 +376,69 @@ def file_technical_epics(
     changes = [c for c in declared_changes(pull.get("body") or "") if c.get("needs_work")]
     if not changes or issues.has_comment_marked(repo, pull["number"], EPICS_MARKER):
         return []
+    filed = _file_epics(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        changes=changes,
+        source=f"From the design merged in #{pull['number']}.",
+        result=result,
+    )
+    issues.comment(
+        repo,
+        pull["number"],
+        artifacts.signed(
+            f"{EPICS_MARKER}\nTechnical epics filed from this design: "
+            + ", ".join(f"#{n}" for n in filed),
+            BY,
+        ),
+    )
+    return filed
+
+
+def file_unchanged_design_work(
+    issues: Any, board: Any, sink: EventSink, *, repo: str, proposal: Any, result: Revisits
+) -> list[int]:
+    """The work a design declares when its record is already what it says.
+
+    The design pull request is how a design's work reaches the board, and a
+    record that doesn't change can't be one: sprint-metrics' §19.8 revision
+    declared five changes, wrote the record it had, and GitHub refused a pull
+    request with no commits (#335). The record already says it, so this is
+    work the crew found, filed as technical epics without a gate (#192). An
+    open technical epic with the same title is not filed twice.
+    """
+    open_titles = {i.get("title") for i in issues.open_issues(repo)}
+    changes = [
+        {"what": c.what, "was": c.was, "why": c.why, "work": c.work}
+        for c in proposal.changes
+        if c.needs_work and str(c.work or c.what)[:200] not in open_titles
+    ]
+    if not changes:
+        return []
+    return _file_epics(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        changes=changes,
+        source="From a design revision that left the record as it was: the design "
+        "already says this, and the project doesn't do it yet.",
+        result=result,
+    )
+
+
+def _file_epics(
+    issues: Any,
+    board: Any,
+    sink: EventSink,
+    *,
+    repo: str,
+    changes: list[dict],
+    source: str,
+    result: Revisits,
+) -> list[int]:
     color, description = LABELS[TECHNICAL]
     issues.ensure_label(repo, TECHNICAL, color=color, description=description)
     filed: list[int] = []
@@ -368,7 +454,7 @@ def file_technical_epics(
                 f"**What changes in the design:** {change['what']}\n\n"
                 f"**What the project does now:** {change.get('was') or 'nothing'}\n\n"
                 f"**Why:** {change.get('why') or ''}\n\n"
-                f"From the design merged in #{pull['number']}. Technical work: the crew "
+                f"{source} Technical work: the crew "
                 "decided it, so it goes straight to refinement rather than to the Sponsor's "
                 "gate (mqucifer/crew#192).",
                 BY,
@@ -388,13 +474,4 @@ def file_technical_epics(
         board.set_select(item, "Work Type", EPIC_TYPE)
         filed.append(issue["number"])
         result.epics.append((repo, issue["number"]))
-    issues.comment(
-        repo,
-        pull["number"],
-        artifacts.signed(
-            f"{EPICS_MARKER}\nTechnical epics filed from this design: "
-            + ", ".join(f"#{n}" for n in filed),
-            BY,
-        ),
-    )
     return filed
