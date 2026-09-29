@@ -775,6 +775,16 @@ def deliver_story(
     # offered again, or the story would go round between the two.
     may_be_done = not rework and not _answered_done(issues, repo, number)
 
+    # What the registries hold for the base images the Dockerfiles use: the
+    # sandbox can't look, so a pinned digest was invented without it (#364).
+    # Read once per card, not per attempt.
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    try:
+        images = base_images.section(worktree)
+    except Exception:  # noqa: BLE001 - a context aid, never a blocker
+        images = ""
+
     while True:
         attempt += 1
         # Recomputed every pass: a repair must see the files it just wrote, or
@@ -797,6 +807,7 @@ def deliver_story(
         header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
         if record is not None:
             header = f"{brief(record)}\n\n{header}"
+        header += images
         context = header + context
         # Set once an answer arrives and validates: what fails after that is the
         # answer's content, which a repair handles, not the answer's absence.
