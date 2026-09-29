@@ -176,3 +176,40 @@ def test_each_attempt_records_its_context_size(harness, monkeypatch, tmp_path): 
     _, _, seen = _asking_delivery(harness, monkeypatch, tmp_path, [WORK])
     sizes = [e for e in seen if (e.summary or "").startswith("#6 context:")]
     assert sizes and sizes[0].detail["focused"] is True
+
+
+# --- named in prose (sprint-metrics#281) -------------------------------------------------------
+
+
+@pytest.fixture
+def described(tmp_path: Path) -> Path:
+    (tmp_path / PKG).mkdir(parents=True)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / f"{PKG}/metrics.py").write_text(
+        "def calculate_first_attempt_rate(cards):\n    return 0\n\n\n"
+        "def calculate_failure_breakdown(cards):\n    return []\n"
+    )
+    (tmp_path / f"{PKG}/report.py").write_text(
+        "def report(cards):\n    return ''\n\n\ndef format_markdown_table(rows):\n    return ''\n"
+    )
+    (tmp_path / "tests/test_metrics.py").write_text("def test_rate():\n    assert True\n")
+    (tmp_path / "docs/metrics.md").write_text("# Metrics\n")
+    return tmp_path
+
+
+def test_a_docs_story_is_shown_the_code_its_prose_describes(described: Path):
+    """#281 documented the first-attempt rate and was shown only the doc."""
+    about = "Document how first-attempt rate and failure breakdown are computed in docs/metrics.md."
+    chosen, _ = select_files(described, about)
+    assert chosen == ["docs/metrics.md", f"{PKG}/metrics.py", "tests/test_metrics.py"]
+
+
+def test_the_verb_is_dropped_and_separators_are_alike(described: Path):
+    chosen, _ = select_files(described, "Widen the Markdown-table columns.")
+    assert f"{PKG}/report.py" in chosen
+
+
+def test_a_single_word_name_is_not_matched_in_prose(described: Path):
+    chosen, _ = select_files(described, "The report should read better.")
+    assert f"{PKG}/report.py" not in chosen
