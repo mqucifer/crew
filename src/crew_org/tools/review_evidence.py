@@ -11,6 +11,7 @@ imports, as it stands on the base branch.
 from __future__ import annotations
 
 import re
+import sys
 from typing import Any
 
 # The code a diff leans on can be large; this is a guard, not a budget (§16).
@@ -212,7 +213,10 @@ def imported_code(read, diff: str, read_head=None) -> str:
     budget = MAX_IMPORTED_CHARS
     while queue:
         module = queue.pop(0)
-        if module in seen:
+        # The standard library is never the project's code, and looking a
+        # module up tries four paths: through GitHub, four 404s a module on
+        # every review (#283's traces).
+        if module in seen or module.split(".")[0] in sys.stdlib_module_names:
             continue
         seen.add(module)
         for path in candidate_paths(module):
