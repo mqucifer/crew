@@ -609,10 +609,9 @@ def held_by_what_it_builds_on(cards: list[Card], story: Card, body: str) -> Card
     epics: the split names them in the story (`**Builds on** — #189, #190`),
     and a story built before them writes their foundation a second time.
     """
-    from crew_org.flows.board_flow import BUILDS_ON  # noqa: PLC0415
+    from crew_org.flows.board_flow import builds_on  # noqa: PLC0415
 
-    line = next((ln for ln in body.splitlines() if ln.startswith(BUILDS_ON)), "")
-    wanted = {int(n) for n in re.findall(r"#(\d+)", line)}
+    wanted = builds_on(body)
     blockers = [
         c
         for c in cards
