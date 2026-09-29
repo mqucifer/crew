@@ -23,7 +23,7 @@ from crew_org.crews.review_crew import MAX_DIFF_CHARS, ReviewVerdict
 # scheduled job as well as an image (Sponsor, 2026-09-29).
 QUESTIONS = (
     "- Who uses it, and how do they reach it?\n"
-    "- What does it run as, and what can it touch?\n"
+    "- What does it run as, and what can it access?\n"
     "- What does it depend on, and will it build and behave the same tomorrow?\n"
     "- How would we know it's working, and know when it isn't?"
 )
