@@ -213,3 +213,43 @@ def test_the_verb_is_dropped_and_separators_are_alike(described: Path):
 def test_a_single_word_name_is_not_matched_in_prose(described: Path):
     chosen, _ = select_files(described, "The report should read better.")
     assert f"{PKG}/report.py" not in chosen
+
+
+# --- files named for what they are (#335) ----------------------------------------------------
+
+DOCKERFILE = "FROM python:3.12-slim\nRUN pip install .\n"
+
+
+def test_a_dockerfile_asked_for_is_shown(repo: Path):
+    """sprint-metrics#308 asked for its Dockerfile three times and changed only a test."""
+    (repo / "Dockerfile").write_text(DOCKERFILE)
+    text, focus = focused_context(repo, about="Add a non-root USER", extra=["Dockerfile"], above=0)
+    assert "FROM python:3.12-slim" in text and "Dockerfile" in focus.shown
+
+
+def test_a_small_repository_shows_its_dockerfile_whole(repo: Path):
+    (repo / "Dockerfile").write_text(DOCKERFILE)
+    (repo / "Dockerfile.dev").write_text("FROM python:3.12\n")
+    text = repository_context(repo)
+    assert "FROM python:3.12-slim" in text and "FROM python:3.12\n" in text
+
+
+def test_a_file_asked_for_that_cant_be_shown_is_said_to_be(repo: Path):
+    (repo / "logo.png").write_bytes(b"\x89PNG")
+    text, focus = focused_context(repo, about="x", extra=["logo.png"], above=0)
+    assert "Not shown, because they aren't text: `logo.png`" in text
+    assert "logo.png" not in focus.shown
+
+
+def test_text_is_known_by_name_as_well_as_suffix():
+    for name in [
+        "Dockerfile",
+        "Dockerfile.dev",
+        "app.dockerfile",
+        "Containerfile",
+        "Makefile",
+        ".dockerignore",
+        "compose.yaml",
+    ]:
+        assert repo_context.is_text(Path(name)), name
+    assert not repo_context.is_text(Path("logo.png"))
