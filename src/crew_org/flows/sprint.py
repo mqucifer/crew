@@ -28,7 +28,8 @@ from crew_org.columns import (
     SPRINT_BACKLOG,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.flows.board_flow import NEEDS_REWORK
+from crew_org.flows.board_flow import NEEDS_REWORK, TECHNICAL
+from crew_org.flows.board_flow import builds_on as builds_on_line
 from crew_org.flows.moves import move_card
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -134,8 +135,13 @@ def plan_sprint(
     capacity: int,
     repos: set[str] | None = None,
     awaiting_design: set[tuple[str, int]] | None = None,
+    builds_on: dict[tuple[str, int], set[int]] | None = None,
 ) -> SprintPlan:
     """Choose the sprint's contents. Pure — no I/O, so it is testable.
+
+    `builds_on` is each candidate story's `**Builds on** —` line (#295), read
+    from its body. A story waits for what it builds on unless that lands this
+    sprint too (crew#358).
 
     `awaiting_design` is the epics labelled `needs:design` with no design note
     yet (#155). Their stories wait: built without the note, the first story sets
@@ -173,13 +179,12 @@ def plan_sprint(
     # Capacity is the sprint's, not this run's. Every pass of every tick runs
     # admission, and each started from the full capacity: Sprint 6, capacity
     # 20, held 80 points and was about to take the API work on top (#222).
-    plan.committed = sum(
-        int(c.points or 0)
-        for c in cards
-        if c.sprint == sprint and c.work_type == STORY_TYPE and (repos is None or c.repo in repos)
-    )
+    plan.committed = committed_points(cards, sprint, repos=repos)
     remaining = max(capacity - plan.committed, 0)
-    for epic in approved_epics(cards):
+    # Technical work first, as refinement already takes it (#192): planned last,
+    # the image work 1.0.0 waits on got what Sprint 10's docs work left (#358).
+    epics = sorted(approved_epics(cards), key=lambda e: TECHNICAL not in e.labels)
+    for epic in epics:
         stories = sorted(
             (c for key, c in ready.items() if parents.get(key) == epic.key),
             key=lambda c: c.number or 0,
@@ -202,6 +207,13 @@ def plan_sprint(
             # (`held_by_a_sibling`). Admitted without them, it can't finish:
             # sprint-metrics#284 was, when #283 didn't fit (crew#353).
             if _held_by_an_earlier_sibling(cards, story, sprint, piece.admitted):
+                piece.deferred.append(story)
+                continue
+            # And until what it builds on lands, across epics: sprint-metrics#293
+            # (1.0.0) was admitted to Sprint 10 held on #303-#306 (crew#358).
+            wanted = (builds_on or {}).get(story.key, set())
+            admitted = [c for p in [*plan.slices, piece] for c in p.admitted]
+            if _waits_on_work_outside(cards, parents, story, wanted, admitted):
                 piece.deferred.append(story)
                 continue
             remaining = _fill(piece, story, remaining)
@@ -248,6 +260,59 @@ def _held_by_an_earlier_sibling(
         and c.key not in admitted_keys
         for c in cards
     )
+
+
+def committed_points(cards: list[Card], sprint: str, *, repos: set[str] | None = None) -> int:
+    """The points already in the sprint. A story closed as not planned, superseded
+    by a re-split, was never going to be built, so it holds none (#327)."""
+    return sum(
+        int(c.points or 0)
+        for c in cards
+        if c.sprint == sprint
+        and c.work_type == STORY_TYPE
+        and (repos is None or c.repo in repos)
+        and not (c.state == "CLOSED" and c.state_reason == "NOT_PLANNED")
+    )
+
+
+def _waits_on_work_outside(
+    cards: list[Card],
+    parents: dict[tuple[str, int], tuple[str, int]],
+    story: Card,
+    wanted: set[int],
+    admitted: list[Card],
+) -> bool:
+    """Something the story builds on won't land this sprint.
+
+    A story it names lands if it's done, in the sprint's flow, or admitted by
+    this plan. An epic lands when each of its open stories does; one with none
+    yet (not split) won't.
+    """
+    by_key = {c.key: c for c in cards}
+    admitted_keys = {c.key for c in admitted}
+
+    def lands(card: Card) -> bool:
+        return (
+            card.state == "CLOSED"
+            or card.status == DONE
+            or card.status in ON_ITS_WAY
+            or card.key in admitted_keys
+        )
+
+    for number in wanted:
+        target = by_key.get((story.repo or "", number))
+        if target is None or target.state == "CLOSED" or target.status == DONE:
+            continue
+        if target.work_type == STORY_TYPE:
+            if not lands(target):
+                return True
+            continue
+        children = [
+            by_key[k] for k, parent in parents.items() if parent == target.key and k in by_key
+        ]
+        if not children or not all(lands(c) for c in children):
+            return True
+    return False
 
 
 def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) -> list[Card]:
@@ -336,6 +401,25 @@ def start_sprint(
 
     from crew_org.flows.design_notes import awaiting_design  # noqa: PLC0415
 
+    # What each Ready story builds on, from its body; read only when the sprint
+    # has room, since every pass of every tick runs admission.
+    builds: dict[tuple[str, int], set[int]] = {}
+    if committed_points(cards, sprint, repos=repos) < capacity:
+        for card in cards:
+            if not (
+                card.status == READY
+                and card.work_type == STORY_TYPE
+                and card.state != "CLOSED"
+                and (repos is None or card.repo in repos)
+            ):
+                continue
+            try:
+                body = issues.get(card.repo or default_repo, card.number or 0).get("body") or ""
+            except Exception:  # noqa: BLE001
+                body = ""
+            if wanted := builds_on_line(body):
+                builds[card.key] = wanted
+
     plan = plan_sprint(
         cards,
         parents,
@@ -343,6 +427,7 @@ def start_sprint(
         capacity=capacity,
         repos=repos,
         awaiting_design=awaiting_design(issues, cards, default_repo),
+        builds_on=builds,
     )
     counts = board.counts(cards)
 

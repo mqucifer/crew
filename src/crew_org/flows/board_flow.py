@@ -78,6 +78,14 @@ EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
 # A story's line naming stories in other epics it needs first (#295).
 BUILDS_ON = "**Builds on** —"
+
+
+def builds_on(body: str) -> set[int]:
+    """The cards a story's `**Builds on** —` line names (#295), or none."""
+    line = next((ln for ln in (body or "").splitlines() if ln.startswith(BUILDS_ON)), "")
+    return {int(n) for n in re.findall(r"#(\d+)", line)}
+
+
 # On a split that wrote no stories because other epics' planned stories cover
 # it: those stories, which the epic waits for rather than closing (#329).
 WAITS_FOR = "<!-- crew:waits-for {numbers} -->"

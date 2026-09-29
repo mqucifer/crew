@@ -139,6 +139,9 @@ class Card(BaseModel):
     url: str | None = None
     repo: str | None = None
     state: str | None = None
+    # Why a closed issue closed: COMPLETED or NOT_PLANNED. A superseded story is
+    # closed as not planned and never built, so it isn't the sprint's work (#327).
+    state_reason: str | None = None
     status: str | None = None
     work_type: str | None = None
     priority: str | None = None
@@ -286,7 +289,7 @@ query($owner: String!, $number: Int!, $cursor: String) {
           }
           content {
             ... on Issue {
-              number title url state
+              number title url state stateReason
               createdAt updatedAt closedAt
               author { login }
               repository { name }
@@ -620,6 +623,7 @@ def _to_card(node: dict[str, Any]) -> Card | None:
         url=content.get("url"),
         repo=(content.get("repository") or {}).get("name"),
         state=content.get("state"),
+        state_reason=content.get("stateReason"),
         parent=(content.get("parent") or {}).get("number"),
         author=(content.get("author") or {}).get("login"),
         created=_when(content.get("createdAt")),
