@@ -57,3 +57,26 @@ def problems(checks: list[Check]) -> list[str]:
         for c in checks
         if not c.ok
     ]
+
+
+def board_roles(board) -> Check:
+    """Every role can be recorded as a card's owner: the board's Owner Agent field has it.
+
+    The field's options are set on the board by hand. A role added to the crew
+    without one broke a review pass mid-move (the DevOps Engineer, 2026-09-29).
+    """
+    from crew_org.permissions import load_agents  # noqa: PLC0415
+
+    try:
+        options = set(board.schema.field("Owner Agent").options)
+    except Exception as exc:  # noqa: BLE001
+        return Check("board Owner Agent field", False, f"couldn't be read: {exc}")
+    missing = [a["role"] for a in load_agents().values() if a["role"] not in options]
+    if not missing:
+        return Check("board Owner Agent field", True, "every role has an option")
+    return Check(
+        "board Owner Agent field",
+        False,
+        "no option for " + ", ".join(missing) + ": moves by them aren't attributed. "
+        "Add each as an option on the field in the project's settings",
+    )
