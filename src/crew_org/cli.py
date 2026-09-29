@@ -108,6 +108,12 @@ def tick(
         console.print(f"[red]{message}[/]")
         raise typer.Exit(code=1)
     console.print(f"[dim]{message}[/]")
+    # The rest of the stack warns and never stops a tick (#335).
+    from crew_org.tools.stack import stack_health  # noqa: PLC0415
+
+    for check in stack_health()[1:]:
+        if not check.ok:
+            console.print(f"[yellow]{check.component}:[/] {escape(check.detail)}")
 
     sandbox = Sandbox.from_config(org)
     unavailable = sandbox.unavailable_reason()
@@ -206,6 +212,13 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
         write_standup,
     )
     from crew_org.tools.github_project import within  # noqa: PLC0415
+    from crew_org.tools.stack import problems, stack_health  # noqa: PLC0415
+
+    def stack_problems() -> list[str]:
+        try:
+            return problems(stack_health())
+        except Exception as exc:  # noqa: BLE001
+            return [f"- **stack check**: couldn't run ({type(exc).__name__})"]
 
     now = datetime.now(UTC)
     try:
@@ -218,6 +231,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             aging=aging_blocked(cards, crew.rules, VAR / "events", now),
             awaiting=awaiting_approval(cards),
             not_onboarded=crew.not_onboarded,
+            stack=stack_problems(),
         )
         number, commented = record_standup(
             crew.issues,
