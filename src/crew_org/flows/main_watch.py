@@ -115,7 +115,8 @@ def file_technical_epic(issues, board, sink, *, repo: str, title: str, body: str
         sink,
         item_id=item,
         to=NEEDS_REFINEMENT,
-        # No role performed it: a DevOps role doesn't exist yet (#335).
+        # Code, not a model: the DevOps Engineer's duty, attributed to no role,
+        # as the merge queue's moves are (constitution §20).
         by=None,
         card=issue["number"],
         summary=f"technical epic — {title}"[:100],
