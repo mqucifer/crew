@@ -148,3 +148,16 @@ def test_the_reviewer_of_pr_88_is_shown_ci_passing_and_the_code_on_main(monkeypa
 
     assert "- `tests`: success" in shown["checks"]
     assert "applying --wip-limits and --escalations to each sprint" in shown["imported"]
+
+
+def test_the_standard_library_is_never_looked_up():
+    """Each module is four path lookups; through GitHub, four 404s a review (#283's traces)."""
+    asked: list[str] = []
+
+    def read(path):
+        asked.append(path)
+        return ON_MAIN.get(path)
+
+    imported_code(read, PR_88_DIFF)
+    assert not any(p.split("/")[-1].startswith(("json", "pathlib")) for p in asked)
+    assert "src/sprint_metrics/crew_performance.py" in asked

@@ -420,3 +420,24 @@ def test_an_approval_on_an_older_head_means_a_new_review(monkeypatch):
     issues = FakeIssues([headed_pull()], {14: [ours("APPROVED", commit="642e185")]})
     _, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
     assert issues.submitted and board.moves == [("S6", "QAing")], "reviewed, then moved"
+
+
+def test_base_files_are_read_from_the_clone_not_github(tmp_path):
+    """An imported module is looked up at several paths; each miss through the API was a 404."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("x = 1\n")
+
+    class NoApi:
+        def file_at(self, *a):
+            raise AssertionError("read through GitHub")
+
+    read = review_flow._base_reader(NoApi(), "sprint-metrics", "main", tmp_path)
+    assert read("src/a.py") == "x = 1\n"
+    assert read("src/missing.py") is None
+    assert read("../outside.py") is None
+
+
+def test_without_a_clone_base_files_come_from_github():
+    issues = FakeIssues([])
+    issues.files = {"src/a.py": "x = 1\n"}
+    assert review_flow._base_reader(issues, "sprint-metrics", "main", None)("src/a.py") == "x = 1\n"

@@ -235,7 +235,7 @@ def review_open_pulls(
                 ),
                 checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
                 imported=imported_code(
-                    lambda path, ref=base: issues.file_at(repo, path, ref),
+                    _base_reader(issues, repo, base, clone),
                     diff,
                     read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
                 ),
@@ -447,6 +447,25 @@ def release_brief(issues: IssueClient, repo: str, head: str) -> str:
         if record.design.ci_checks:
             lines += ["- CI proves:", *(f"  - {c}" for c in record.design.ci_checks)]
     return "\n".join(lines)
+
+
+def _base_reader(issues: IssueClient, repo: str, base: str, clone: Path | None):
+    """Read a file as it is on the base branch: from the clone when there is one.
+
+    Looking up an imported module tries several paths that mostly don't exist.
+    Through GitHub's API, each miss was a request and a 404 (#283's traces); on
+    disk it's a stat.
+    """
+    if clone is None:
+        return lambda path: issues.file_at(repo, path, base)
+
+    def read(path: str) -> str | None:
+        target = clone / path
+        if not target.is_file() or not target.resolve().is_relative_to(clone.resolve()):
+            return None
+        return target.read_text(encoding="utf-8", errors="ignore")
+
+    return read
 
 
 def _importers(clone: Path | None, diff: str) -> str:
