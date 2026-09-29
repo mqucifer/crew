@@ -52,6 +52,14 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
         # Alone, sprint-metrics#307 couldn't be delivered at all: an ENTRYPOINT
         # breaks the smoke job and the Docker tests that invoke the image, so
         # all three change together or the build is red between them.
+    # A base image pinned by a digest its registry doesn't have was worked out,
+    # not read: the sandbox can't read a registry (#364).
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    dockerfiles = [p for p in paths if base_images.is_dockerfile(p)]
+    for path, text in _after(worktree, implementation, dockerfiles).items():
+        reasons += base_images.invented(path, text)
+
     checks = record.design.checks if record and record.design else []
     if checks and workflows:
         before, after = _workflows(worktree, implementation)
@@ -62,6 +70,22 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
             for check in ci_guard.weakened(checks, before, after)
         ]
     return reasons
+
+
+def _after(worktree: Path, implementation, paths: list[str]) -> dict[str, str]:
+    """What each of `paths` would hold once the change is applied."""
+    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
+    from crew_org.tools.workspace import plan_text_edits  # noqa: PLC0415
+
+    if not paths:
+        return {}
+    after = {f.path: f.content for f in implementation.new_files if f.path in paths}
+    try:
+        planned = plan_text_edits(worktree, implementation.text_edits)
+    except EditError:
+        planned = {}  # applying reports it; this check judges only what would apply
+    after.update({p: t for p, t in planned.items() if p in paths})
+    return after
 
 
 def _workflows(worktree: Path, implementation) -> tuple[dict[str, str], dict[str, str]]:
