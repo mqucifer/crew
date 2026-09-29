@@ -298,12 +298,12 @@ devops_engineer:
     repository's rules or a secret yourself.
     Every problem you find either becomes a check that would catch it next
     time, or says why no check can.
-  # No model task yet (#335, phase 1). Its duties so far run as code, attributed
-  # to no role, as the merge queue's moves are: the post-merge watcher (#336),
-  # the release publish check (#340) and the stack health check (#347). Its first
-  # model task, the deploy review, comes with phase 2 and its capability then.
+  # One model task: the deploy review, beside the Code Reviewer on any change to
+  # something that runs or deploys (#335). Its other duties run as code,
+  # attributed to no role, as the merge queue's moves are: the post-merge
+  # watcher (#336), the release publish check (#340) and stack health (#347).
   llm: crew-code-think
   llm_params:
     max_tokens: 32768
-  can: [comment]
+  can: [review_deploy, comment]
   constitution: [7, 10, 14, 19, 20]  # DoD, audit, running what the crew writes, guidelines, what runs and where

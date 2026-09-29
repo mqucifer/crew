@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
+from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import story_problem
@@ -24,6 +25,7 @@ from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
+from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import (
@@ -59,8 +61,16 @@ class ReviewResult:
     returned: list[tuple[int, int]] = field(default_factory=list)
 
 
-def render_review(verdict: ReviewVerdict) -> str:
-    lines = [REVIEW_MARKER, verdict.summary, ""]
+def render_review(verdict: ReviewVerdict, deploy: ReviewVerdict | None = None) -> str:
+    """The Code Reviewer's verdict, and the DevOps Engineer's where it judged too (#335)."""
+    body = signed(_verdict_lines([REVIEW_MARKER], verdict), "Code Reviewer")
+    if deploy is None:
+        return body
+    return f"{body}\n\n" + signed(_verdict_lines(["## DevOps review"], deploy), "DevOps Engineer")
+
+
+def _verdict_lines(lines: list[str], verdict: ReviewVerdict) -> str:
+    lines = [*lines, verdict.summary, ""]
     blocking = [f for f in verdict.findings if f.blocking]
     if blocking:
         lines += ["## Findings", ""]
@@ -74,7 +84,7 @@ def render_review(verdict: ReviewVerdict) -> str:
             lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
     if verdict.approve and not verdict.findings:
         lines.append("No findings.")
-    return signed("\n".join(lines).strip(), "Code Reviewer")
+    return "\n".join(lines).strip()
 
 
 def already_reviewed(reviews: list[dict], bot_login: str, head: str = "") -> bool:
@@ -255,12 +265,36 @@ def review_open_pulls(
             lambda p, ref=head: issues.file_at(repo, p, ref),
         )
 
+        # Anything that runs or deploys is also judged as it will be run (#335).
+        # One review carries both verdicts: a later review from the same
+        # identity would replace the first as GitHub's decision.
+        deploy: ReviewVerdict | None = None
+        if touches_runnable(diff):
+            try:
+                deploy = _deploy_review(
+                    issues, sink, repo=repo, pull=pull, story=story, diff=diff, clone=clone
+                )
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"deploy review: {type(exc).__name__}: {exc}"))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.AGENT_FAILED,
+                        role="DevOps Engineer",
+                        card=number,
+                        summary=str(exc)[:80],
+                    )
+                )
+                continue
+        code = verdict
+        verdict = with_deploy(code, deploy)
+
         # GitHub refuses an approval from the identity that opened the pull
         # request. The crew reviews as a second app for exactly this reason, so
         # this downgrade now only fires where it should: a pull request the
         # reviewing identity opened itself.
         event = "COMMENT" if author == bot_login else verdict.event
-        issues.create_review(repo, number, event=event, body=render_review(verdict))
+        issues.create_review(repo, number, event=event, body=render_review(code, deploy))
 
         result.reviewed.append(
             ReviewOutcome(
@@ -319,7 +353,7 @@ def review_open_pulls(
                     sink,
                     item_id=card.item_id,
                     to=IN_PROGRESS,
-                    by="Code Reviewer",
+                    by="Code Reviewer" if not code.approve else "DevOps Engineer",
                     card=card.number,
                     frm=REVIEWING,
                     summary=f"changes requested — {len(verdict.findings)} findings",
@@ -330,6 +364,87 @@ def review_open_pulls(
                 )
 
     return result
+
+
+def with_deploy(verdict: ReviewVerdict, deploy: ReviewVerdict | None) -> ReviewVerdict:
+    """One decision from both gates: approved only when each approves."""
+    if deploy is None:
+        return verdict
+    return ReviewVerdict(
+        summary=verdict.summary,
+        approve=verdict.approve and deploy.approve,
+        findings=[*verdict.findings, *deploy.findings],
+    )
+
+
+def _deploy_review(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    pull: dict,
+    story: Card | None,
+    diff: str,
+    clone: Path | None,
+) -> ReviewVerdict:
+    """The DevOps Engineer's verdict on a change to something that runs or deploys (#335)."""
+    number = pull["number"]
+    head = (pull.get("head") or {}).get("sha", "")
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.AGENT_STARTED,
+            role="DevOps Engineer",
+            card=number,
+            summary=f"deploy review of PR #{number}",
+        )
+    )
+    verdict = attributed(
+        review_deploy,
+        card=story.number if story is not None else None,
+        repo=repo,
+        purpose="deploy review" if story is not None else f"deploy review PR #{number}",
+    )(
+        pull["title"],
+        diff,
+        evidence=deploy_evidence(clone, diff, lambda path: issues.file_at(repo, path, head)),
+        acceptance_criteria=story_criteria(issues, story, repo),
+        release=release_brief(issues, repo, head),
+        prior_verdicts=past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+        checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
+    )
+    blocking = [f for f in verdict.findings if f.blocking]
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.AGENT_FINISHED,
+            role="DevOps Engineer",
+            card=number,
+            summary=f"{verdict.event} — {len(blocking)} findings"
+            + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
+            detail={"approved": verdict.approve, "notes": len(verdict.notes)},
+        )
+    )
+    return verdict
+
+
+def release_brief(issues: IssueClient, repo: str, head: str) -> str:
+    """How the project says it's released and checked, from its record at the head."""
+    try:
+        text = issues.file_at(repo, RECORD_PATH, head)
+        record = parse(text) if text else None
+    except Exception:  # noqa: BLE001
+        return ""
+    if record is None:
+        return ""
+    release = record.intent.release
+    lines = [
+        f"- A release is {record.release_is}" + (f": {release.where}" if release.where else ".")
+    ]
+    if record.design is not None:
+        if record.design.release_how:
+            lines.append(f"- How: {record.design.release_how.strip()}")
+        if record.design.checks:
+            lines.append("- Checks: " + "; ".join(f"`{c}`" for c in record.design.checks))
+    return "\n".join(lines)
 
 
 def _importers(clone: Path | None, diff: str) -> str:
