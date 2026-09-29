@@ -22,6 +22,22 @@ CONTEXT_FILES = ("pyproject.toml", "README.md")
 # Developer was shown: a CI workflow listed by name alone is one it would have to
 # reconstruct from memory, and a reconstruction doesn't match.
 TEXT_SUFFIXES = frozenset({".toml", ".md", ".yml", ".yaml", ".cfg", ".ini", ".json", ".txt"})
+# Text files named for what they are, with no suffix to say so. sprint-metrics#308
+# asked to see its Dockerfile three times and was shown everything else: the
+# story was to change it, and the pull request changed only a test (#335).
+TEXT_NAMES = frozenset({"Dockerfile", "Containerfile", "Makefile", "Procfile", ".dockerignore"})
+
+
+def is_text(path: Path) -> bool:
+    """A file shown whole: by its suffix, or by a name like `Dockerfile` or `Dockerfile.dev`."""
+    name = path.name
+    return (
+        path.suffix in TEXT_SUFFIXES
+        or name in TEXT_NAMES
+        or name.startswith(("Dockerfile.", "Containerfile."))
+        or name.endswith((".dockerfile", ".containerfile"))
+    )
+
 
 # The whole repository, on every attempt. The window is 262,144 tokens and the
 # pilot repo is 17,195 characters — under 2% of it. Showing a developer the
@@ -127,7 +143,7 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
     omitted: list[str] = []
     for target in paths:
         rel = target.relative_to(worktree)
-        if target.suffix not in TEXT_SUFFIXES or str(rel) in CONTEXT_FILES:
+        if not is_text(target) or str(rel) in CONTEXT_FILES:
             continue
         body = target.read_text(encoding="utf-8", errors="ignore")
         if len(body) > budget:
@@ -307,13 +323,17 @@ def focused_context(
     index = repository_context(worktree, editing=True, bodies=False)
     lines = [index, "", "### The files this work names, in full", ""]
     shown: list[str] = []
+    unshown: list[str] = []
     for rel in chosen:
         path = worktree / rel
         if path.suffix == ".py":
             fence = "python"
-        elif path.suffix in TEXT_SUFFIXES:
+        elif is_text(path):
             fence = ""
         else:
+            # Said, not skipped: a file asked for and silently left out reads
+            # as one that was shown (#335).
+            unshown.append(rel)
             continue
         if rel in CONTEXT_FILES:
             shown.append(rel)
@@ -321,6 +341,13 @@ def focused_context(
         body = path.read_text(encoding="utf-8", errors="ignore").strip()
         lines += [f"`{rel}`", "", f"```{fence}", body, "```", ""]
         shown.append(rel)
+    if unshown:
+        lines += [
+            "Not shown, because they aren't text: "
+            + ", ".join(f"`{rel}`" for rel in unshown)
+            + ".",
+            "",
+        ]
     lines += [
         "Every other file is listed above by name and what it defines, and not shown in "
         "full. If the work needs one you can't see, don't guess at it: name it in "
