@@ -164,7 +164,7 @@ def test_the_whole_stepped_attempt(monkeypatch, tmp_path: Path):
     the_plan = plan(README, DOCS_TESTS)
     seen_steps: list[tuple[int, str]] = []
 
-    def fake_step(story, *, plan, step, context, earlier):
+    def fake_step(story, *, plan, step, context, earlier, written=frozenset()):
         seen_steps.append((step, earlier))
         if step == 0:
             return StepAnswer(
@@ -257,3 +257,79 @@ def test_an_answer_that_arrived_and_failed_a_check_is_repaired_as_before(harness
     )
     _, _, _, _, _, seen = harness(checks=[green()], implement=lambda n: bad)
     assert not any("goes in steps" in (e.summary or "") for e in seen)
+
+
+def test_a_later_step_citing_an_earlier_steps_test_as_proof_is_not_refused(monkeypatch):
+    """sprint-metrics#268's delete step listed three of step 2's tests as criteria proof."""
+    from crew_org.crews.delivery_crew import CriterionTest
+
+    cites = StepAnswer(
+        summary="delete",
+        deleted_files=["tests/test_readme.py"],
+        criteria_tests=[
+            CriterionTest(
+                criterion="c",
+                path="tests/test_docs.py",
+                test="test_moved",
+                source="def test_moved():\n    assert True",
+            )
+        ],
+    )
+    monkeypatch.setattr(stepped, "_run", lambda description, output: cites)
+    answer = stepped.implement_file(
+        "s",
+        plan=plan(DOCS_TESTS, OLD_TESTS),
+        step=1,
+        context="",
+        earlier="",
+        written=frozenset({("tests/test_docs.py", "test_moved")}),
+    )
+    assert answer.criteria_tests == [] and answer.deleted_files == ["tests/test_readme.py"]
+
+
+def test_a_new_test_in_another_file_is_still_refused(monkeypatch):
+    from crew_org.crews.delivery_crew import CriterionTest
+
+    sneaks = StepAnswer(
+        summary="delete",
+        deleted_files=["tests/test_readme.py"],
+        criteria_tests=[
+            CriterionTest(
+                criterion="c",
+                path="tests/test_docs.py",
+                test="test_brand_new",
+                source="def test_brand_new():\n    assert True",
+            )
+        ],
+    )
+    monkeypatch.setattr(stepped, "_run", lambda description, output: sneaks)
+    with pytest.raises(ValueError, match="also changes `tests/test_docs.py`"):
+        stepped.implement_file(
+            "s", plan=plan(DOCS_TESTS, OLD_TESTS), step=1, context="", earlier=""
+        )
+
+
+def test_the_tests_earlier_steps_wrote_are_known():
+    answers = [
+        StepAnswer(
+            summary="n",
+            new_files=[
+                FileWrite(path="tests/test_new.py", content="def test_one():\n    assert True\n")
+            ],
+        ),
+        StepAnswer(
+            summary="e",
+            edits=[
+                FileEdit(
+                    path="tests/test_docs.py",
+                    operation="add",
+                    target="test_two",
+                    source="def test_two():\n    assert True",
+                )
+            ],
+        ),
+    ]
+    assert stepped.written_tests(answers) == {
+        ("tests/test_new.py", "test_one"),
+        ("tests/test_docs.py", "test_two"),
+    }

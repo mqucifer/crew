@@ -130,7 +130,9 @@ PLAN_INSTRUCTIONS = (
 STEP_INSTRUCTIONS = (
     "Write one file's part of this story, following the plan above. Change only the file "
     "named below: other files are other steps, some already written (shown below) and some "
-    "still to come. Use exactly the names and signatures the plan lists.\n"
+    "still to come. Use exactly the names and signatures the plan lists. The plan already "
+    "says which test proves each criterion: list `criteria_tests` only for tests you write "
+    "in this file.\n"
 )
 
 
@@ -179,7 +181,15 @@ def plan_story(story: str, *, context: str, why: str = "") -> Plan:
     )
 
 
-def implement_file(story: str, *, plan: Plan, step: int, context: str, earlier: str) -> StepAnswer:
+def implement_file(
+    story: str,
+    *,
+    plan: Plan,
+    step: int,
+    context: str,
+    earlier: str,
+    written: frozenset[tuple[str, str]] = frozenset(),
+) -> StepAnswer:
     """One file's answer. The story and the plan come first, identical for every step."""
     target = plan.files[step]
     answer: StepAnswer = _run(
@@ -191,6 +201,12 @@ def implement_file(story: str, *, plan: Plan, step: int, context: str, earlier: 
         + f"This step: `{target.path}` ({target.kind}): {target.intent}",
         StepAnswer,
     )
+    # A test an earlier step wrote, cited again as a criterion's proof, is a
+    # repeat of evidence, not a change to that file: sprint-metrics#268's delete
+    # step listed three of step 2's tests. Anything else in another file is.
+    answer.criteria_tests = [
+        c for c in answer.criteria_tests if c.path == target.path or (c.path, c.test) not in written
+    ]
     stray = answer.touched() - {target.path}
     if stray:
         raise ValueError(
@@ -198,6 +214,18 @@ def implement_file(story: str, *, plan: Plan, step: int, context: str, earlier: 
             + ", ".join(f"`{p}`" for p in sorted(stray))
         )
     return answer
+
+
+def written_tests(answers: list[StepAnswer]) -> frozenset[tuple[str, str]]:
+    """(path, test) for every test the answers so far write: edits, criterion tests, new files."""
+    import re  # noqa: PLC0415
+
+    found = {(e.path, e.target) for a in answers for e in a.edits}
+    found |= {(c.path, c.test) for a in answers for c in a.criteria_tests}
+    for a in answers:
+        for f in a.new_files:
+            found |= {(f.path, name) for name in re.findall(r"^def (test_\w+)", f.content, re.M)}
+    return frozenset(found)
 
 
 def describe(answer: StepAnswer) -> str:

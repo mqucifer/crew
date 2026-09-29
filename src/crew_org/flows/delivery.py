@@ -528,7 +528,14 @@ def _deliver_in_steps(
         earlier = "\n\n".join(stepped.describe(a) for a in answers)
         answer = attributed(
             stepped.implement_file, card=number, repo=repo, sprint=sprint, attempt=attempt
-        )(story, plan=plan, step=index, context=header + step_context, earlier=earlier)
+        )(
+            story,
+            plan=plan,
+            step=index,
+            context=header + step_context,
+            earlier=earlier,
+            written=stepped.written_tests(answers),
+        )
         sink.note(
             EventKind.NOTE,
             f"#{number} step {index + 1}/{len(plan.files)}: {step.path}",
