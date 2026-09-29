@@ -777,6 +777,23 @@ the wording here.
    the crew merges only once a check on the head has passed and none is still
    running or has failed (`merge.unproven`, crew#335).
 
+8. **What ships as an image is proven the way it's run.** A project that
+   publishes or deploys a container image proves in CI, on every pull request,
+   that the image:
+   - starts the way its docs say to run it, as `docker run <image> <arguments>`,
+     without repeating the program's name;
+   - is reached the way a user reaches it: a service is started detached with
+     its port published, and answers from outside the container;
+   - runs as a user other than root;
+   - is built from a base pinned by digest, kept current by a dependency updater.
+
+   Which tools do this is the Architect's design, reviewed by the DevOps
+   Engineer (§20). Choose a tool by what it's been seen to catch: hadolint
+   passes a Dockerfile with no `USER` at all (crew#335).
+   *Enforced:* by each project's own checks, once its design has them. Until
+   then, the deploy review (§20) checks every change that runs or ships against
+   it, and a finding cites the rule by number.
+
 Rules 3 and 4 are judgement, not yet mechanism. The Code Reviewer checks every
 diff against them, and a finding cites the rule by number.
 
