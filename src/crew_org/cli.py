@@ -147,6 +147,10 @@ def tick(
     if not sprint:
         console.print("[red]No iterations configured on the Sprint field.[/]")
         raise typer.Exit(code=1)
+    from crew_org.tools.stack import board_roles  # noqa: PLC0415
+
+    if not (roles := board_roles(board)).ok:
+        console.print(f"[yellow]{roles.component}:[/] {escape(roles.detail)}")
 
     console.print(
         f"[dim]acting as {escape(identity)} · reviewing as {escape(review_identity)} · "
@@ -212,11 +216,11 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
         write_standup,
     )
     from crew_org.tools.github_project import within  # noqa: PLC0415
-    from crew_org.tools.stack import problems, stack_health  # noqa: PLC0415
+    from crew_org.tools.stack import board_roles, problems, stack_health  # noqa: PLC0415
 
     def stack_problems() -> list[str]:
         try:
-            return problems(stack_health())
+            return problems([*stack_health(), board_roles(crew.board)])
         except Exception as exc:  # noqa: BLE001
             return [f"- **stack check**: couldn't run ({type(exc).__name__})"]
 

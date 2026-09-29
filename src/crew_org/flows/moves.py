@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.tools.github_project import ProjectClient
+from crew_org.tools.github_project import BoardError, ProjectClient
 
 OWNER_AGENT = "Owner Agent"
 
@@ -43,7 +43,13 @@ def move_card(
     """
     board.set_status(item_id, to)
     if by is not None:
-        board.set_owner_agent(item_id, by)
+        # Attribution never undoes a move. The DevOps Engineer returned PR #330
+        # on a board whose Owner Agent field had no option for it: the card had
+        # moved, the event was never written, and the review pass stopped.
+        try:
+            board.set_owner_agent(item_id, by)
+        except BoardError as exc:
+            sink.note(EventKind.NOTE, f"owner not recorded: {exc}"[:160], card=card)
     sink.emit(
         CrewEvent(
             kind=kind,
