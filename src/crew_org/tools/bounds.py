@@ -46,14 +46,12 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
         for path in workflows:
             if path in after and after[path] != before.get(path):
                 reasons += ci_guard.unsafe(path, after[path], allowed)
-        # CI changes travel alone, so a review sees them for what they are.
-        code = [p for p in paths if p.endswith(".py")]
-        if code:
-            reasons.append(
-                f"a CI workflow ({', '.join(workflows)}) and Python code "
-                f"({', '.join(code[:3])}) change in the same pull request. A CI change "
-                "travels alone: split it into its own story."
-            )
+        # A workflow may change with the code it runs (Sponsor, 2026-09-29,
+        # crew#335). "A CI change travels alone" was so a review saw it for what
+        # it was; the deploy review now judges every pull request touching one.
+        # Alone, sprint-metrics#307 couldn't be delivered at all: an ENTRYPOINT
+        # breaks the smoke job and the Docker tests that invoke the image, so
+        # all three change together or the build is red between them.
     checks = record.design.checks if record and record.design else []
     if checks and workflows:
         before, after = _workflows(worktree, implementation)

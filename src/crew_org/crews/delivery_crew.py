@@ -474,9 +474,9 @@ class FirstAttempt(Implementation):
     def ci_only(self) -> bool:
         """Every change is to a CI workflow: proven by its own run, not by a test (§7.1).
 
-        A CI change travels alone (`bounds`), so it can't carry a test with it,
-        and sprint-metrics#260 was refused both ways: with a test for mixing, and
-        without one for having none (crew#331).
+        sprint-metrics#260 was refused both ways: with a test for mixing, and
+        without one for having none (crew#331). Mixing is allowed now (crew#335);
+        a change of workflows alone still needs no test.
         """
         return self._touched_only(is_workflow)
 
@@ -584,10 +584,10 @@ STANDING_INSTRUCTIONS = (
     "The repository below may show some files only by name and signature. If you need "
     "one in full to do the work correctly, don't guess at it: name it in `need_files` "
     "(and nothing else), and you'll be asked again with it shown.\n"
-    "A change to a CI workflow travels alone: no code or tests in the same change. It "
-    "needs no test either: it's judged by review, and proven when it runs. Leave "
-    "`criteria_tests` and `proven_by_existing` empty for it: a CI run isn't a test "
-    "to name.\n"
+    "A change to CI workflows alone needs no test: it's judged by review, and proven "
+    "when it runs. Leave `criteria_tests` and `proven_by_existing` empty for it: a CI "
+    "run isn't a test to name. A workflow may change together with the code or tests "
+    "it runs, when changing one breaks the other.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "

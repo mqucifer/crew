@@ -81,7 +81,9 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_a_ci_change_travels_alone(tmp_path):
+def test_a_workflow_may_change_with_the_code_it_runs(tmp_path):
+    """sprint-metrics#307: an ENTRYPOINT breaks the smoke job and the tests that
+    invoke the image, so all three change together (Sponsor, 2026-09-29, crew#335)."""
     change = Implementation(
         summary="s",
         new_files=[
@@ -89,8 +91,20 @@ def test_a_ci_change_travels_alone(tmp_path):
             FileWrite(path="src/pkg/version.py", content="V = 1\n"),
         ],
     )
+    assert bounds.out_of_bounds(repo(tmp_path), change, parse(RECORD)) == []
+
+
+def test_a_workflow_changed_with_code_is_still_held_to_the_guard(tmp_path):
+    unsafe = "on: [pull_request_target]\njobs: {}\n"
+    change = Implementation(
+        summary="s",
+        new_files=[
+            FileWrite(path=".github/workflows/release.yml", content=unsafe),
+            FileWrite(path="src/pkg/version.py", content="V = 1\n"),
+        ],
+    )
     found = bounds.out_of_bounds(repo(tmp_path), change, parse(RECORD))
-    assert any("travels alone" in r for r in found)
+    assert any("pull_request_target" in r for r in found)
 
 
 def test_only_the_workflows_a_change_writes_are_judged(tmp_path):

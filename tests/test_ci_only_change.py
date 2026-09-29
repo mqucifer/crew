@@ -2,7 +2,8 @@
 
 sprint-metrics#260 (create release.yml) was refused both ways: a test beside the
 workflow broke "a CI change travels alone", and none broke "every change carries
-a test". The travels-alone rule stays; the test rule makes room for it.
+a test". The test rule made room for it; since crew#335 a workflow may also change
+with the code it runs.
 """
 
 from __future__ import annotations
@@ -54,8 +55,9 @@ def test_a_yaml_file_outside_the_workflows_is_not_ci(answer):
         answer(criteria_tests=[], summary="Config", new_files=[other])
 
 
-def test_the_developer_is_told_a_workflow_travels_alone_and_how_it_is_proven():
-    assert "A change to a CI workflow travels alone" in STANDING_INSTRUCTIONS
+def test_the_developer_is_told_how_a_workflow_change_is_proven():
+    assert "A change to CI workflows alone needs no test" in STANDING_INSTRUCTIONS
+    assert "may change together with the code or tests" in STANDING_INSTRUCTIONS
     assert "judged by review, and proven when it runs" in STANDING_INSTRUCTIONS
     # sprint-metrics#261 named "CI run of release.yml …" as an existing test.
     assert "Leave `criteria_tests` and `proven_by_existing` empty" in STANDING_INSTRUCTIONS

@@ -305,7 +305,7 @@ def run_qa(
             result.skipped.append((number, f"already judged at {revision[:7]}"))
             continue
 
-        # Only CI workflows, which travel alone: QA can observe nothing of what
+        # Only CI workflows: QA can observe nothing of what
         # they do until they run on `main`. The Code Reviewer judged the
         # workflow; its run is the proof (§7.1, crew#333).
         if ci_only(worktree):
