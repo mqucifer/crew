@@ -16,11 +16,16 @@ from crewai import Crew, Process, Task
 from crew_org.agents import build_agents
 from crew_org.crews.review_crew import MAX_DIFF_CHARS, ReviewVerdict
 
+# Four general concerns, for anything that runs: access, privilege,
+# reproducibility and observability. The first wording ("as which user?",
+# "what's pinned?") was written looking at sprint-metrics#269's Dockerfile and
+# pointed at its findings; general, they fit a workflow, a compose stack or a
+# scheduled job as well as an image (Sponsor, 2026-09-29).
 QUESTIONS = (
-    "- Who runs it, and how is it reached?\n"
-    "- As which user?\n"
-    "- What's pinned, and what floats?\n"
-    "- How do we see that it's working?"
+    "- Who uses it, and how do they reach it?\n"
+    "- What does it run as, and what can it touch?\n"
+    "- What does it depend on, and will it build and behave the same tomorrow?\n"
+    "- How would we know it's working, and know when it isn't?"
 )
 
 

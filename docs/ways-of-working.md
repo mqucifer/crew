@@ -820,8 +820,10 @@ placement. **SRE** keeps it healthy: alerts, investigations, performance.
 **The deploy review** (crew#335). A pull request that adds, alters or removes
 something that runs or deploys (a Dockerfile, a compose file, a CI workflow)
 is judged by the DevOps Engineer as well as the Code Reviewer, in the same
-review pass. It asks four things of what the change runs: who runs it and how
-it's reached, as which user, what's pinned, and how we see that it's working.
+review pass. It asks four general things of what the change runs: who uses it
+and how they reach it; what it runs as and what it can touch; what it depends
+on, and whether it will build and behave the same tomorrow; and how we would
+know it's working, and know when it isn't.
 It's shown the diff, the runnable files and the code they run (the project's
 console scripts, and every file that binds or listens), the project record's
 release and checks, and the story's criteria. One review carries both
