@@ -53,6 +53,9 @@ class Capability(StrEnum):
     # Reading the crew's own code and saying what's wrong with it (#9). Nothing
     # else: the role that holds it can't write, commit or change anything.
     DIAGNOSE_CREW = "diagnose_crew"
+    # Judging a change to something that runs or deploys, as it will be run
+    # (#335). A verdict, like `verdict_diff`, and nothing else.
+    REVIEW_DEPLOY = "review_deploy"
 
 
 class PermissionError_(PermissionError):

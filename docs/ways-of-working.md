@@ -23,7 +23,7 @@ negotiate process with each other; they follow what is written here.
 | Code Reviewer | Diff verdicts, Bugs | Yes |
 | Scrum Master | Standups, retros, defects — in the process or in the product | No |
 | Senior Engineer | Diagnoses of the crew's own code: at the end of each tick, for each card blocked for a person (up to two a tick, once per card, posted on the card), and on the Sponsor's request (`crew diagnose`). It changes nothing and files nothing; a person decides which findings become crew issues (crew#9) | No |
-| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project. Its duties so far run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies | No |
+| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project, and the deploy review of any change to something that runs or deploys. Its other duties run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies | No |
 
 These boundaries are structural, not prompt wording — a boundary that depends on
 granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
@@ -87,6 +87,7 @@ They judge different things and must not be collapsed into one another:
 |---|---|---|
 | **Code Reviewer** | the **diff** | Is this correct, does it reuse what exists, does it stay inside its card? |
 | **QA Engineer** | the **behaviour** | Does the running code satisfy each acceptance criterion as written? |
+| **DevOps Engineer** | what **runs or deploys** | Can it be run and reached the way it will be deployed? (§20) |
 
 A Reviewer never asks "does it work" — that is QA's evidence to produce. A QA
 Engineer never comments on style or structure — that is the Reviewer's finding
@@ -220,7 +221,7 @@ A card may enter `Done` only when **all** hold:
    test: it is judged by review and proven by its own run (crew#331).
    A pull request that changes only CI workflows isn't put through QA at all:
    most of what a workflow does is only observable when it runs on `main`,
-   so it's judged by the Code Reviewer and proven by its run (crew#333).
+   so it's judged by the Code Reviewer and the DevOps Engineer (§20), and proven by its run (crew#333).
    Elsewhere, QA may cite a CI check as proof only of what that check runs:
    a `tests` check that runs lint and pytest proves nothing about a workflow
    it never runs, and a skipped test proves nothing (sprint-metrics#260).
@@ -790,11 +791,27 @@ split when the load says so. **DevOps** builds and ships: CI, releases,
 placement. **SRE** keeps it healthy: alerts, investigations, performance.
 
 **What it owns.**
-- The `infra` repository: the inventory of machines, what runs where, access,
-  retention, and a decision record for each choice. It is a delivery repository
-  like any other, worked by the whole crew through the normal flow, with DevOps
-  as its domain owner.
+- The `infra` repository: research that turns into checks. An inventory of the
+  hosts and of the metrics that exist; investigations; and the dashboards and
+  alert rules they propose, as code, which the Sponsor applies. It is a
+  delivery repository worked by the whole crew through the normal flow, with
+  DevOps as its domain owner: QA proves an alert rule with `promtool test
+  rules`, and CI checks that every metric a rule or dashboard names exists.
 - The board's Release capability, the `Merging` column, which had no owner.
+
+**The deploy review** (crew#335). A pull request that adds, alters or removes
+something that runs or deploys (a Dockerfile, a compose file, a CI workflow)
+is judged by the DevOps Engineer as well as the Code Reviewer, in the same
+review pass. It asks four things of what the change runs: who runs it and how
+it's reached, as which user, what's pinned, and how we see that it's working.
+It's shown the diff, the runnable files and the code they run (the project's
+console scripts, and every file that binds or listens), the project record's
+release and checks, and the story's criteria. One review carries both
+verdicts, approved only when both approve. It blocks what the change runs or
+ships when it can't be run or reached as deployed, or runs with more privilege
+than it needs, even when the line at fault is older than the change; a problem
+that doesn't touch what the change runs or ships is a note. A finding names the check
+that would catch it next time, where one would.
 
 **What runs today, as code, each tick.** None of these is a model call, so none
 is attributed to a role (§10):
