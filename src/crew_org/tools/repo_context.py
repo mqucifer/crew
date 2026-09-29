@@ -181,6 +181,15 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
 FOCUS_ABOVE_CHARS = 160_000
 _BACKTICKED = re.compile(r"`([A-Za-z_][\w.]*)(?:\(\))?`")
 _CALLED = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\(")
+# The verb a definition's name starts with, dropped to read it as a noun phrase:
+# `calculate_first_attempt_rate` is what a story calls "first-attempt rate".
+_VERB_PREFIX = re.compile(r"^(calculate|compute|format|render|parse|load|get|build|make|to|as|is)_")
+_NOT_WORD = re.compile(r"[^a-z0-9]+")
+
+
+def _phrase(text: str) -> str:
+    """Lower case, every run of non-alphanumerics one space: hyphen, underscore and space alike."""
+    return f" {_NOT_WORD.sub(' ', text.lower()).strip()} "
 
 
 @dataclass
@@ -255,6 +264,16 @@ def select_files(
     for word in set(_BACKTICKED.findall(about)) | set(_CALLED.findall(about)):
         owners = sorted(set(defined.get(word.split(".")[0], [])))
         if 0 < len(owners) <= 2:
+            chosen |= set(owners)
+    # Named in prose: "first-attempt rate" is `calculate_first_attempt_rate`
+    # (#231). sprint-metrics#281 documented three computations and was shown
+    # only the doc, so it restated its criteria without seeing the code they
+    # describe. Multi-word names only: a single word like `report` matches any
+    # story.
+    prose = _phrase(about)
+    for name, owners in defined.items():
+        words = _VERB_PREFIX.sub("", name.lstrip("_").lower()).split("_")
+        if len(words) >= 2 and f" {' '.join(words)} " in prose and len(set(owners)) <= 2:
             chosen |= set(owners)
 
     unknown: list[str] = []
