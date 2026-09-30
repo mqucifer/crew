@@ -79,6 +79,8 @@ class DeliveryOutcome:
     # carries. A pytest run with thirteen failures does not fit in 400
     # characters, and the part that identifies the defect is rarely the front.
     failure_detail: str | None = None
+    # Where an unexpected error happened: the crew's last frames (#390).
+    where: str | None = None
     # A story whose failures are the story's (#189): the evidence for its epic,
     # and the merged tests the last attempt broke, to see them break again.
     returned: str | None = None
@@ -141,6 +143,8 @@ class DeliveryResult:
     checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # Stories a passing service failure interrupted, left to be retried (#390).
+    interrupted: list[int] = field(default_factory=list)
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
@@ -232,6 +236,28 @@ def needs_rework(issues: IssueClient, cards: list[Card], *, repo: str) -> list[C
         )
         if awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title), c)
     ]
+
+
+# On a card, a delivery a service interrupted (#390). Consecutive ones count
+# towards blocking it; any other comment from the crew since resets the count.
+INTERRUPTED_MARKER = "<!-- crew:interrupted -->"
+INTERRUPTIONS_BEFORE_BLOCKING = 3
+
+
+def _interrupted_streak(issues: IssueClient, repo: str, number: int) -> int:
+    """How many interruptions in a row end the card's comments."""
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return 0
+    streak = 0
+    for c in reversed(comments):
+        body = c.get("body") or ""
+        if INTERRUPTED_MARKER in body:
+            streak += 1
+        elif "<!-- crew:" in body:
+            break
+    return streak
 
 
 def reconcile_orphans(
@@ -1573,6 +1599,7 @@ def _work_one_card(
         counts[IN_PROGRESS] -= 1
         return
     outcome = None
+    interrupted: str | None = None
     try:
         outcome = deliver_story(
             card,
@@ -1589,12 +1616,32 @@ def _work_one_card(
         )
     except Exception as exc:  # noqa: BLE001
         reraise_if_down(exc)
-        # A last resort. Anything deliver_story can attribute it returns on
-        # its own outcome; reaching here means it could not, so the card
-        # blocks knowing nothing but the error.
-        outcome = DeliveryOutcome(
-            card=card.number or 0, blocked_reason=f"{type(exc).__name__}: {exc}"[:400]
-        )
+        from crew_org.tools.remote_errors import transient_remote, where  # noqa: PLC0415
+
+        # A service stumbling isn't the story's failure (#390): sprint-metrics#358
+        # was blocked for a person on an unreadable GitHub reply mid-outage.
+        # The card stays In Progress, and the next pass's reconciliation
+        # returns it to the backlog to be tried again. Only a streak blocks it.
+        service = transient_remote(exc)
+        streak = _interrupted_streak(issues, card_repo, card.number or 0) if service else 0
+        if service and streak + 1 < INTERRUPTIONS_BEFORE_BLOCKING:
+            interrupted = (
+                f"{INTERRUPTED_MARKER}\n**Interrupted by {service}, not by the story.** "
+                f"`{type(exc).__name__}: {str(exc)[:200]}` at {where(exc)}.\n\n"
+                f"It's tried again next pass ({streak + 1} of "
+                f"{INTERRUPTIONS_BEFORE_BLOCKING} before it's blocked for a person)."
+            )
+        else:
+            # A last resort. Anything deliver_story can attribute it returns on
+            # its own outcome; reaching here means it could not.
+            reason = f"{type(exc).__name__}: {exc}"
+            if service:
+                reason = (
+                    f"{service} failed {INTERRUPTIONS_BEFORE_BLOCKING} times in a row: {reason}"
+                )
+            outcome = DeliveryOutcome(
+                card=card.number or 0, blocked_reason=reason[:400], where=where(exc)
+            )
     finally:
         # Nothing is committed or pushed until verification passes, so for a
         # card that failed this worktree is the only copy of what was
@@ -1603,6 +1650,18 @@ def _work_one_card(
         if outcome is not None and not outcome.ok:
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
+
+    if interrupted is not None:
+        artifacts.comment(
+            issues, sink, repo=card_repo, number=card.number or 0, body=interrupted, by=None
+        )
+        sink.note(
+            EventKind.NOTE,
+            f"#{card.number} interrupted by a service, not the story: tried again next pass",
+            card=card.number,
+        )
+        result.interrupted.append(card.number or 0)
+        return
 
     if outcome.already_done:
         # Straight to QA with the evidence (#221): no diff, so nothing to review.
@@ -1684,7 +1743,8 @@ def _work_one_card(
             repo=repo,
             number=card.number or 0,
             body=f"**Blocked.** {outcome.blocked_reason}\n\n"
-            f"Attempts: {outcome.attempts}. "
+            + (f"Where: `{outcome.where}`\n\n" if outcome.where else "")
+            + f"Attempts: {outcome.attempts}. "
             f"{'Escalated.' if outcome.escalated else 'Not escalated.'}",
             by="Developer",
         )
