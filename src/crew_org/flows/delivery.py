@@ -1804,14 +1804,8 @@ def _work_one_card(
             f"{'Escalated.' if outcome.escalated else 'Not escalated.'}",
             by="Developer",
         )
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.CARD_BLOCKED,
-                role="Developer",
-                card=card.number,
-                summary=(outcome.blocked_reason or "")[:80],
-            )
-        )
+        # One block, one event: the move above already recorded `card.blocked`
+        # (#321; the merge path's duplicate went in #304).
         result.blocked.append(outcome)
         # A usage limit means come back later, not try the next card. The
         # caller stops on the flag; this one is finished either way.

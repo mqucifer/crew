@@ -21,6 +21,7 @@ from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import (
     NEEDS_DESIGN,
+    NEEDS_HUMAN,
     PRODUCT_ANSWER_MARKER,
     PRODUCT_QUESTION_MARKER,
     STORY_SPLIT_MARKER,
@@ -46,7 +47,13 @@ class DesignNotes:
 
 def needs_note(card: Card) -> bool:
     """An open epic labelled `needs:design`. It wins over `no:design` (§13)."""
-    return card.work_type == EPIC_TYPE and card.state != "CLOSED" and NEEDS_DESIGN in card.labels
+    return (
+        card.work_type == EPIC_TYPE
+        and card.state != "CLOSED"
+        and NEEDS_DESIGN in card.labels
+        # Waiting for a person: no note is attempted until they've answered (#321).
+        and NEEDS_HUMAN not in card.labels
+    )
 
 
 def note_for(issues: Any, repo: str, epic: int) -> str:

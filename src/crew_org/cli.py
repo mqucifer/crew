@@ -1722,10 +1722,11 @@ def sprint_close(
         False, "--early", help="Close before the sprint's dates are over: it ends now."
     ),
 ) -> None:
-    """Close the sprint: merge what you approved, and report on the increment.
+    """Close the sprint: land what's approved, and report on the increment.
 
-    This is the second gate. The crew cannot approve its own pull requests, so
-    reviewing the increment is approving the pull requests that make it up.
+    This is the Sponsor's second gate: reviewing the increment. Where the crew's
+    reviewing identity is installed, it approves what passed review and QA, and
+    the close lands it; what's left waiting on a person is named in the report.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env

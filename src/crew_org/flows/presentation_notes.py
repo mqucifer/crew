@@ -21,7 +21,13 @@ from typing import Any
 
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
-from crew_org.flows.board_flow import BUILDS_ON, EXISTING_TESTS, NEEDS_UX, STORY_SPLIT_MARKER
+from crew_org.flows.board_flow import (
+    BUILDS_ON,
+    EXISTING_TESTS,
+    NEEDS_HUMAN,
+    NEEDS_UX,
+    STORY_SPLIT_MARKER,
+)
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_project import Card
@@ -46,7 +52,13 @@ class PresentationNotes:
 
 def needs_note(card: Card) -> bool:
     """An open epic labelled `needs:ux`."""
-    return card.work_type == EPIC_TYPE and card.state != "CLOSED" and NEEDS_UX in card.labels
+    return (
+        card.work_type == EPIC_TYPE
+        and card.state != "CLOSED"
+        and NEEDS_UX in card.labels
+        # Waiting for a person: no note is attempted until they've answered (#321).
+        and NEEDS_HUMAN not in card.labels
+    )
 
 
 def note_for(issues: Any, repo: str, epic: int) -> str:

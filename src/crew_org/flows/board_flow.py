@@ -1331,6 +1331,15 @@ def refine_epics(
                 )
             continue
 
+        # The epic may have closed while the model worked: stories created under a
+        # closed epic had to be closed by hand (sprint-metrics#233-#235, #321).
+        if (_epic_state(issues, repo, number) or "").lower() == "closed":
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} closed while it was being split: no stories created",
+                card=number,
+            )
+            continue
         numbers: dict[str, int] = {}
         for story in proposal.stories:
             issue = issues.create(
@@ -1614,6 +1623,14 @@ def tick(
         f"{len(result.failed)} failed",
     )
     return result
+
+
+def _epic_state(issues: IssueClient, repo: str, number: int) -> str | None:
+    """The issue's state as GitHub has it now, or None if it can't be read."""
+    try:
+        return issues.get(repo, number).get("state")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _goal_body(issues: IssueClient, repo: str, number: int) -> str:
