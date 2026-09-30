@@ -71,8 +71,10 @@ def test_a_story_needs_two_criteria():
         StoryCriteria(story=1, criteria=[crit()])
 
 
-def test_the_note_carries_a_sample():
-    assert "~~~\n## Health" in render(note(63))
+def test_the_note_carries_a_sample_that_the_criteria_outrank():
+    shown = render(note(63))
+    assert "~~~\n## Health" in shown
+    assert "where the two differ, follow the criteria" in shown
 
 
 # --- the criteria join the story's own ------------------------------------------------------
