@@ -64,6 +64,18 @@ class Change(BaseModel):
         return self
 
 
+class PartChoice(BaseModel):
+    """One part of a project, by path, in its own language (#404)."""
+
+    path: str = Field(description="Where it lives, e.g. `site/`; empty for the whole project")
+    language: str = Field(description="Its language, e.g. python, javascript")
+    tests: list[str] = Field(
+        default_factory=list,
+        description="Its test files, as globs, e.g. `site/tests/**/*.spec.js`",
+    )
+    basis: str = Field(description="What it's based on: the files, the build, the record")
+
+
 class DesignProposal(BaseModel):
     language: Choice | None = None
     dependencies: Choice | None = None
@@ -86,8 +98,9 @@ class DesignProposal(BaseModel):
         None,
         description=(
             "Only for a project that isn't Python built with uv: the container image its "
-            "checks run in, with every tool they need, pinned by digest "
-            "(registry/name:tag@sha256:...). Empty for a Python project"
+            "checks run in, with every tool they need: the reference alone, "
+            "registry/name:tag. The crew pins it to the digest the tag names today. "
+            "Empty for a Python project"
         ),
     )
     setup: Choice | None = Field(
@@ -100,6 +113,15 @@ class DesignProposal(BaseModel):
     autofix: list[Choice] = Field(
         default_factory=list,
         description="With `sandbox_image` only: formatters run before the checks",
+    )
+    # A project's parts, each read by its own language's tools (#404). Empty: the
+    # whole project is Python's, as sprint-metrics is.
+    parts: list[PartChoice] = Field(
+        default_factory=list,
+        description=(
+            "Only for a project that isn't all Python: its parts by path, each with its "
+            "language and test files. Empty for a Python project"
+        ),
     )
     # What only CI can prove (#335): an image built and run as deployed isn't a
     # command the sandbox can run, and written into `checks` it would be run as one.
@@ -204,8 +226,13 @@ def propose_design(
             "Propose this project's design: language, dependencies, what the sandbox must "
             "provide, the commands that enforce its definition of done, how a release "
             "happens, how its code is divided into modules, and which files its user "
-            "documentation lives in. Give the basis of each "
-            "choice. Where the project already has an answer (its CI, its lockfile, its "
+            "documentation lives in. The crew's tools differ by language: Python gets edits "
+            "by definition name, a guard that refuses a change removing an existing "
+            "definition, and a map of what every file defines; any other language gets "
+            "whole-file and find-and-replace edits, tests found by title in its declared test "
+            "files, and no such guard. Weigh that where the language is a choice. Give the "
+            "basis of each choice. Where the project already has an answer (its CI, its "
+            "lockfile, its "
             "build, its modules), record it; anything that differs from what it does today "
             "goes in `changes`, with why, and whether making it so needs work on the code."
         ),

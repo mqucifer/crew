@@ -1,0 +1,95 @@
+{
+  "rounds": [
+    {
+      "attempt": 1,
+      "seconds": 82,
+      "asks": [],
+      "summary": "Adds a 'Changed: Cycle time improved by 2 days' paragraph to the health section of the report page, positioned after the Status paragraph and before the Current Sprint section. Retires the existing test that pinned the health section to a single paragraph, and adds two new tests proving both acceptance criteria.",
+      "criteria_tests": [
+        "tests/page.spec.js::the health section shows what changed since the prior sprint",
+        "tests/page.spec.js::the changed paragraph comes after status and before the current sprint section"
+      ],
+      "proven_by_existing": [],
+      "new_files": [],
+      "text_edits": [
+        "index.html",
+        "tests/page.spec.js"
+      ],
+      "check_ok": false,
+      "tests": [
+        "tests/page.spec.js::the health section shows what changed since the prior sprint",
+        "tests/page.spec.js::the changed paragraph comes after status and before the current sprint section"
+      ]
+    },
+    {
+      "attempt": 2,
+      "seconds": 16,
+      "asks": [],
+      "summary": "Fix the existing test 'the health summary is the first section' to use .first() on the #health p locator, since the health section now contains two paragraphs after adding the 'Changed' line.",
+      "criteria_tests": [],
+      "proven_by_existing": [],
+      "new_files": [],
+      "text_edits": [
+        "tests/page.spec.js"
+      ],
+      "check_ok": true,
+      "tests": []
+    }
+  ],
+  "qa_rounds": [
+    {
+      "round": 1,
+      "accepted": false,
+      "criteria": [
+        {
+          "criterion": "Given the report page, When it is opened, Then the health section contains a paragraph reading exactly `Changed: Cycle time improved by 2 days`",
+          "proven": false,
+          "evidence": "No test asserts that a paragraph with the text \"Changed: Cycle time improved by 2 days\" exists in the health section. The only test, \"the health summary is the first section\", asserts that the first paragraph in #health reads \"Status: All clear\" \u2014 it never references the \"Changed:\" paragraph at all. A passing suite here proves nothing about this criterion."
+        },
+        {
+          "criterion": "Given the report page, When it is opened, Then that paragraph comes after the `Status: All clear` paragraph, inside the health section, and before the Current Sprint section",
+          "proven": false,
+          "evidence": "No test asserts the positional ordering of the \"Changed:\" paragraph relative to the \"Status: All clear\" paragraph, its containment within the health section, or its position before the Current Sprint section. The test \"the health summary is the first section\" only checks that #health is the first section under main and that its first paragraph says \"Status: All clear\". It does not verify any ordering constraint involving the \"Changed:\" paragraph."
+        }
+      ]
+    },
+    {
+      "repair": {
+        "asks": [],
+        "summary": "Add a 'Changed: Cycle time improved by 2 days' paragraph to the health section of index.html, positioned after the status paragraph and before the Current Sprint section. Add two Playwright tests that prove both acceptance criteria: the paragraph exists in the health section with the exact text, and it is ordered after the status paragraph within the health section, which itself precedes the Current Sprint section.",
+        "criteria_tests": [
+          "tests/page.spec.js::the health section shows what changed since the prior sprint",
+          "tests/page.spec.js::the changed paragraph is ordered after status and before the current sprint section"
+        ],
+        "proven_by_existing": [],
+        "new_files": [],
+        "text_edits": [
+          "index.html",
+          "tests/page.spec.js"
+        ],
+        "check_ok": true,
+        "test_output": "pm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0\nnpm notice To update run: npm install -g npm@12.2.0\nnpm notice\n\n$ npx playwright test\nRunning 3 tests using 1 worker\n\n[1/3] [chromium] \u203a tests/page.spec.js:4:1 \u203a the health summary is the first section\n[2/3] [chromium] \u203a tests/page.spec.js:10:1 \u203a the health section shows what changed since the prior sprint\n[3/3] [chromium] \u203a tests/page.spec.js:17:1 \u203a the changed paragraph is ordered after status and before the current sprint section\n  3 passed (497ms)"
+      }
+    },
+    {
+      "round": 2,
+      "accepted": true,
+      "criteria": [
+        {
+          "criterion": "Given the report page\nWhen it is opened\nThen the health section contains a paragraph reading exactly `Changed: Cycle time improved by 2 days`",
+          "proven": true,
+          "evidence": "Test `\"the health section shows what changed since the prior sprint\"` (tests/page.spec.js:10) locates `#health p` filtered by the exact text, asserts count is 1, and asserts `toHaveText(\"Changed: Cycle time improved by 2 days\")` which checks exact match. This directly exercises the criterion."
+        },
+        {
+          "criterion": "Given the report page\nWhen it is opened\nThen that paragraph comes after the `Status: All clear` paragraph, inside the health section, and before the Current Sprint section",
+          "proven": true,
+          "evidence": "Test `\"the changed paragraph is ordered after status and before the current sprint section\"` (tests/page.spec.js:17) asserts `#health p` has count 2, that nth(0) is \"Status: All clear\" and nth(1) is \"Changed: Cycle time improved by 2 days\" (proving intra-section order), then asserts `main > section` nth(0) has id \"health\" and nth(1) has id \"current\" (proving the health section precedes the Current Sprint section). This directly exercises the ordering and containment requirements."
+        }
+      ]
+    }
+  ],
+  "page": "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Sprint 10</title></head>\n<body>\n  <main>\n    <section id=\"health\"><h2>Health</h2><p>Status: All clear</p><p>Changed: Cycle time improved by 2 days</p></section>\n    <section id=\"current\"><h2>Current Sprint</h2><p>Cycle time: 4 days</p></section>\n  </main>\n</body>\n</html>\n",
+  "tests": {
+    "tests/page.spec.js": "const { test, expect } = require(\"@playwright/test\");\nconst path = require(\"path\");\n\ntest(\"the health summary is the first section\", async ({ page }) => {\n  await page.goto(\"file://\" + path.join(__dirname, \"..\", \"index.html\"));\n  await expect(page.locator(\"main > section\").first()).toHaveAttribute(\"id\", \"health\");\n  await expect(page.locator(\"#health p\").first()).toHaveText(\"Status: All clear\");\n});\n\ntest(\"the health section shows what changed since the prior sprint\", async ({ page }) => {\n  await page.goto(\"file://\" + path.join(__dirname, \"..\", \"index.html\"));\n  const changed = page.locator(\"#health p\", { hasText: \"Changed: Cycle time improved by 2 days\" });\n  await expect(changed).toHaveCount(1);\n  await expect(changed).toHaveText(\"Changed: Cycle time improved by 2 days\");\n});\n\ntest(\"the changed paragraph is ordered after status and before the current sprint section\", async ({ page }) => {\n  await page.goto(\"file://\" + path.join(__dirname, \"..\", \"index.html\"));\n  const healthParagraphs = page.locator(\"#health p\");\n  await expect(healthParagraphs).toHaveCount(2);\n  await expect(healthParagraphs.nth(0)).toHaveText(\"Status: All clear\");\n  await expect(healthParagraphs.nth(1)).toHaveText(\"Changed: Cycle time improved by 2 days\");\n  const sections = page.locator(\"main > section\");\n  await expect(sections.nth(0)).toHaveAttribute(\"id\", \"health\");\n  await expect(sections.nth(1)).toHaveAttribute(\"id\", \"current\");\n});\n"
+  }
+}

@@ -450,6 +450,21 @@ whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
 
+**A project in more than one language, or not in Python, declares its parts**
+(crew#404). Each part has a path, a language and its test files. Every file is
+read by its part's profile:
+
+| | Python | Any other language (the generic profile) |
+|---|---|---|
+| Editing | By definition name, as well as whole files and find-and-replace | Whole files and exact find-and-replace |
+| A criterion's test | Written with the answer and added by name | Named by its title, written as a file; delivery checks it's there |
+| The regression guard | Refuses a change that removes or breaks a definition | None, and the Code Reviewer and QA are told which changed files had none |
+| The map | Every definition and signature | Files by name |
+
+A project that declares no parts is Python's throughout, as sprint-metrics is.
+The Architect proposes the parts, and is shown this table's difference, so the
+language is chosen knowing it.
+
 These are bounds on blast radius, and bounds are not proof. They were verified
 against a live engine rather than assumed: network blocked for test code but
 available for dependency resolution, a 4GB allocation killed at the 2GB limit,
