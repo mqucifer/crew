@@ -585,6 +585,10 @@ class IssueClient:
             state_reason=reason,
         )
 
+    def edit_issue(self, repo: str, number: int, *, body: str) -> dict[str, Any]:
+        """Replace an issue's body."""
+        return self._request("PATCH", f"/repos/{self.owner}/{repo}/issues/{number}", body=body)
+
     def edit_pull(self, repo: str, number: int, *, body: str) -> dict[str, Any]:
         """Replace a pull request's description."""
         return self._request("PATCH", f"/repos/{self.owner}/{repo}/pulls/{number}", body=body)

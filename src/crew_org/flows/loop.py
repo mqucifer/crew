@@ -337,8 +337,10 @@ def _refine(crew: Crew) -> PhaseOutcome:
 
 def _design(crew: Crew) -> PhaseOutcome:
     """Design notes for the epics that need one, before their stories are admitted (#155)."""
+    from crew_org.crews import presentation_note_crew as ux  # noqa: PLC0415
     from crew_org.crews.design_crew import review_design  # noqa: PLC0415
     from crew_org.crews.design_note_crew import render, write_note  # noqa: PLC0415
+    from crew_org.flows import presentation_notes  # noqa: PLC0415
     from crew_org.flows.design_notes import write_notes  # noqa: PLC0415
 
     result = write_notes(
@@ -352,14 +354,31 @@ def _design(crew: Crew) -> PhaseOutcome:
         review=review_design,
         render=render,
     )
+    # The UX Designer's note, for epics that change what a reader sees (#377).
+    shown = presentation_notes.write_notes(
+        crew.issues,
+        crew.sink,
+        crew.ws,
+        crew.board.cards(),
+        default_repo=crew.repo,
+        repos=crew.repos,
+        write=ux.write_note,
+        render=ux.render,
+        line=ux.criterion_lines,
+    )
     return PhaseOutcome(
         "design",
-        moved=bool(result.written or result.blocked),
-        summary=f"{len(result.written)} design notes written",
+        moved=bool(result.written or result.blocked or shown.written or shown.blocked),
+        summary=(
+            f"{len(result.written)} design notes written"
+            + (f", {len(shown.written)} presentation notes" if shown.written else "")
+        ),
         result=result,
-        counts={"notes": len(result.written)},
-        held=[f"epic #{n} — design note failed: {why}" for n, why in result.failed],
-        blocked=[f"epic #{n} — no design note, needs a person: {why}" for n, why in result.blocked],
+        counts={"notes": len(result.written), "presentation_notes": len(shown.written)},
+        held=[f"epic #{n} — design note failed: {why}" for n, why in result.failed]
+        + [f"epic #{n} — presentation note failed: {why}" for n, why in shown.failed],
+        blocked=[f"epic #{n} — no design note, needs a person: {why}" for n, why in result.blocked]
+        + [f"epic #{n} — no presentation note, needs a person: {why}" for n, why in shown.blocked],
     )
 
 

@@ -56,6 +56,8 @@ class Capability(StrEnum):
     # Judging a change to something that runs or deploys, as it will be run
     # (#335). A verdict, like `verdict_diff`, and nothing else.
     REVIEW_DEPLOY = "review_deploy"
+    # What a reader sees, as criteria a test can check, and a sample (#377).
+    WRITE_PRESENTATION_NOTE = "write_presentation_note"
 
 
 class PermissionError_(PermissionError):

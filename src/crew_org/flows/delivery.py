@@ -34,10 +34,10 @@ from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
-from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import REBUILD_MARKER, merge_approved
 from crew_org.flows.moves import move_card
+from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
@@ -731,8 +731,9 @@ def deliver_story(
     except ProjectRecordError as exc:
         outcome.blocked_reason = f"the project's record can't be read: {exc}"
         return outcome
-    # The Architect's note for this story's epic, if it has one (#155).
-    note = story_note(issues, card, repo)
+    # The notes for this story's epic, if it has them: the Architect's (#155)
+    # and the UX Designer's (#377).
+    note = story_notes(issues, card, repo)
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
