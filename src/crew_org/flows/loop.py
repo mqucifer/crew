@@ -324,6 +324,29 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
 
 
+def _order(crew: Crew) -> PhaseOutcome:
+    """The Product Owner orders a repository's backlog when new work arrives (#358)."""
+    from crew_org.crews.refinement_crew import order_backlog  # noqa: PLC0415
+    from crew_org.flows.backlog_order import order_backlogs  # noqa: PLC0415
+
+    result = order_backlogs(
+        crew.board,
+        crew.issues,
+        crew.sink,
+        crew.board.cards(),
+        repos=crew.repos,
+        order=order_backlog,
+    )
+    return PhaseOutcome(
+        "order",
+        moved=bool(result.ordered or result.holds),
+        summary=f"{len(result.ordered)} backlogs ordered, {len(result.holds)} new holds",
+        result=result,
+        counts={"ordered": len(result.ordered), "holds": len(result.holds)},
+        held=[f"{repo} — backlog not ordered: {why}" for repo, why in result.failed],
+    )
+
+
 def _refine(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.board_flow import tick as refine  # noqa: PLC0415
 
@@ -658,6 +681,8 @@ PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
     # First, so every hold below is judged against the board as it now stands.
     ("land", _land),
     ("revisit", _revisit),
+    # Before refinement, so new holds and the order apply to this pass (#358).
+    ("order", _order),
     ("refine", _refine),
     ("design", _design),
     ("admit", _admit),

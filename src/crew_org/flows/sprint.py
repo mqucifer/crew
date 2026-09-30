@@ -111,8 +111,10 @@ class SprintPlan:
         return [c for s in self.slices for c in s.admitted]
 
 
-def _priority_key(card: Card) -> tuple[int, int]:
-    return (PRIORITY_ORDER.get(card.priority or "", 99), card.number or 0)
+def _priority_key(card: Card) -> tuple[int, float, int]:
+    """Priority (the Sponsor's override), then the Product Owner's Rank (#358), then number."""
+    rank = card.rank if card.rank is not None else float("inf")
+    return (PRIORITY_ORDER.get(card.priority or "", 99), rank, card.number or 0)
 
 
 def approved_epics(cards: list[Card]) -> list[Card]:

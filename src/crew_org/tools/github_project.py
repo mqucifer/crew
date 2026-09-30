@@ -171,6 +171,8 @@ class Card(BaseModel):
     sprint: str | None = None
     points: float | None = None
     escalations: float | None = None
+    # The Product Owner's order of a repository's open epics, 1 first (#358).
+    rank: float | None = None
     labels: frozenset[str] = frozenset()
     # Read off the item query rather than asked for per card (#55). Progress
     # counts *closed* sub-issues, which is not the same as Done: it can settle
@@ -365,6 +367,7 @@ _FIELD_TO_ATTR = {
     "Sprint": "sprint",
     "Points": "points",
     "Escalations": "escalations",
+    "Rank": "rank",
 }
 
 
