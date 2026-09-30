@@ -284,7 +284,12 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         held=[f"{repo} — {why}" for repo, why in sorted(result.holds.items())]
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
-        + [f"{repo} — release unchecked: {why}" for repo, why in released.failed],
+        + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [
+            f"{repo} v{version} — waiting on the Sponsor: make the package public "
+            "(its settings page; crew#386)"
+            for repo, version in released.sponsor
+        ],
     )
 
 

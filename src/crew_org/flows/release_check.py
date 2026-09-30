@@ -24,6 +24,9 @@ RELEASE_WORKFLOW = ".github/workflows/release.yml"
 RELEASE_MARKER = "<!-- crew:release-check version={version} -->"
 PLATFORMS = ("linux/amd64", "linux/arm64")
 SOURCE_LABEL = "org.opencontainers.image.source"
+# A gap only the Sponsor can close. A package's visibility is set on its settings
+# page; no API or workflow token changes it, so no story can (crew#386).
+SPONSOR_STEP = "For the Sponsor, not the crew:"
 _VERSION = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
@@ -33,6 +36,8 @@ class ReleaseCheck:
     filed: list[tuple[str, int]] = field(default_factory=list)
     waiting: list[tuple[str, str]] = field(default_factory=list)
     failed: list[tuple[str, str]] = field(default_factory=list)
+    # (repo, version) whose only gap is the Sponsor's to close.
+    sponsor: list[tuple[str, str]] = field(default_factory=list)
 
 
 def changelog_section(text: str, version: str) -> list[str]:
@@ -89,7 +94,12 @@ def gaps(issues: Any, registry: Registry, repo: str, version: str) -> list[str]:
     try:
         image = registry.image(name, version)
     except ImageUnreadable as exc:
-        found.append(f"{exc}. The image checks below couldn't run.")
+        found.append(
+            f"{SPONSOR_STEP} {exc}. Making the package public is a setting only its owner "
+            "can change, on the package's settings page (Change visibility). No API or "
+            "workflow token can do it, so no story should try. The image checks run once "
+            "the image can be read."
+        )
         return found
     if image is None:
         found.append(f"There's no image `ghcr.io/{name}:{version}`.")
@@ -155,9 +165,18 @@ def check_releases(
         except Exception as exc:  # noqa: BLE001
             result.failed.append((repo, str(exc)[:160]))
             continue
-        if not missing:
+        sponsor = [line for line in missing if line.startswith(SPONSOR_STEP)]
+        missing = [line for line in missing if not line.startswith(SPONSOR_STEP)]
+        if not missing and not sponsor:
             result.verified.append((repo, version))
             sink.note(EventKind.NOTE, f"{repo} v{version}: release verified")
+            continue
+        if not missing:
+            # Nothing for the crew: no epic, and it's read again next tick.
+            result.sponsor.append((repo, version))
+            sink.note(
+                EventKind.NOTE, f"{repo} v{version}: waiting on the Sponsor: {sponsor[0]}"[:160]
+            )
             continue
         number = file_technical_epic(
             issues,
@@ -185,6 +204,7 @@ def check_releases(
                 + f"What `v{version}` is missing, read from GitHub and GHCR after its release "
                 "run finished:\n\n"
                 + "\n".join(f"- {line}" for line in missing)
+                + ("\n\n" + "\n".join(sponsor) if sponsor else "")
                 + "\n\nTechnical work: found by the crew, so it goes straight to refinement "
                 "(mqucifer/crew#192, #335)."
             ),
