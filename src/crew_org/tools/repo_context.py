@@ -95,7 +95,7 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
     exist; it is not editing anything, and instructions for a job it is not
     doing are noise competing with the ones it must follow.
     """
-    from crew_org.tools.regression import signatures_for_context  # noqa: PLC0415
+    from crew_org.profiles import profile_for  # noqa: PLC0415
 
     paths = sorted(
         p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
@@ -105,7 +105,9 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
     for path in paths:
         rel = path.relative_to(worktree)
         if path.suffix == ".py":
-            signatures = signatures_for_context(path.read_text(encoding="utf-8", errors="ignore"))
+            signatures = profile_for(rel.as_posix()).definitions(
+                path.read_text(encoding="utf-8", errors="ignore")
+            )
             defined = (
                 ", ".join(f"{name}{sig}" for name, sig in sorted(signatures.items()))
                 if signatures
@@ -250,7 +252,7 @@ def select_files(
     Developer asks for a body it needs. `extra` is what it asked for by path.
     Returns (chosen, unknown asks).
     """
-    from crew_org.tools.regression import signatures_for_context  # noqa: PLC0415
+    from crew_org.profiles import profile_for  # noqa: PLC0415
 
     rels = {str(p.relative_to(worktree)): p for p in _files(worktree)}
     by_name: dict[str, list[str]] = {}
@@ -275,7 +277,8 @@ def select_files(
     defined: dict[str, list[str]] = {}
     for rel, path in rels.items():
         if rel.endswith(".py") and not _is_test(Path(rel)):
-            for name in signatures_for_context(path.read_text(encoding="utf-8", errors="ignore")):
+            source = path.read_text(encoding="utf-8", errors="ignore")
+            for name in profile_for(rel).definitions(source):
                 defined.setdefault(name.split(".")[0], []).append(rel)
     for word in set(_BACKTICKED.findall(about)) | set(_CALLED.findall(about)):
         owners = sorted(set(defined.get(word.split(".")[0], [])))
@@ -300,8 +303,8 @@ def select_files(
         else:
             unknown.append(ask)
 
-    for rel in [r for r in chosen if r.endswith(".py") and not _is_test(Path(r))]:
-        paired = f"tests/test_{Path(rel).stem}.py"
+    for rel in list(chosen):
+        paired = profile_for(rel).paired_test(rel)
         if paired in rels:
             chosen.add(paired)
     return sorted(chosen), unknown
@@ -366,5 +369,6 @@ def focused_context(
 
 def _is_test(rel: Path) -> bool:
     """A test module: under tests/, or named like one."""
-    name = rel.name
-    return rel.parts[0] == "tests" or name.startswith("test_") or name.endswith("_test.py")
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    return profile_for(rel.as_posix()).is_test_path(rel.as_posix())

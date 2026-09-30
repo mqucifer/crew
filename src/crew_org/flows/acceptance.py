@@ -15,7 +15,6 @@ whose stories are all Done is done, and so is a goal whose epics are.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +27,7 @@ from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.llm import reraise_if_down
+from crew_org.profiles import profile_for
 from crew_org.project import brief, read_record
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
@@ -161,9 +161,7 @@ def collect_tests(worktree: Path) -> str:
 QA_FOCUS_ABOVE_CHARS = 60_000
 # How often one verdict may ask to see more test files, as the Developer may.
 QA_ASK_LIMIT = 2
-_TEST_DEF = re.compile(r"^\s*(?:async\s+)?def\s+(test_\w+)", re.M)
-# A test named in prose: `test_api_version`, not the file in `tests/test_report.py`.
-_TEST_NAME = re.compile(r"\btest_\w+\b(?!\.py)")
+# The tests a file defines, and tests named in prose, are the profile's (#404).
 
 
 @dataclass
@@ -189,7 +187,9 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
     bodies = {
         str(p.relative_to(worktree)): p.read_text(encoding="utf-8", errors="ignore") for p in files
     }
-    defined = {name: rel for rel, body in bodies.items() for name in _TEST_DEF.findall(body)}
+    defined = {
+        name: rel for rel, body in bodies.items() for name in profile_for(rel).tests_defined(body)
+    }
     if sum(len(b) for b in bodies.values()) <= QA_FOCUS_ABOVE_CHARS:
         return QATests(collect_tests(worktree), list(bodies), False, defined)
     wanted = {str(Path(e.strip().removeprefix("./"))) for e in extra if e.strip()}
@@ -200,11 +200,11 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
         if rel in changed
         or rel in wanted
         or rel in about
-        or any(defined.get(name) == rel for name in _TEST_NAME.findall(about))
+        or any(defined.get(name) == rel for name in profile_for().test_names_in(about))
     ]
     parts = [f"# {rel}\n{bodies[rel]}" for rel in chosen]
     others = [
-        f"- `{rel}`: " + (", ".join(_TEST_DEF.findall(body)) or "no tests")
+        f"- `{rel}`: " + (", ".join(profile_for(rel).tests_defined(body)) or "no tests")
         for rel, body in bodies.items()
         if rel not in chosen
     ]
@@ -218,7 +218,12 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
 
 def unseen_citations(verdict, tests: QATests) -> dict[str, str | None]:
     """Tests a proven criterion cites that QA wasn't shown: name -> its file, or None if none."""
-    cited = {name for c in verdict.criteria if c.proven for name in _TEST_NAME.findall(c.evidence)}
+    cited = {
+        name
+        for c in verdict.criteria
+        if c.proven
+        for name in profile_for().test_names_in(c.evidence)
+    }
     return {n: tests.defined.get(n) for n in cited if tests.defined.get(n) not in tests.shown}
 
 
@@ -233,7 +238,9 @@ def held_to_what_it_read(verdict: QAVerdict, tests: QATests) -> QAVerdict:
         return verdict
     criteria = []
     for c in verdict.criteria:
-        missing = [n for n in _TEST_NAME.findall(c.evidence) if n in unseen] if c.proven else []
+        missing = (
+            [n for n in profile_for().test_names_in(c.evidence) if n in unseen] if c.proven else []
+        )
         if not missing:
             criteria.append(c)
             continue

@@ -12,16 +12,15 @@ rejected by the schema, not noticed later by a reviewer.
 
 from __future__ import annotations
 
-import re
 from pathlib import PurePosixPath
 
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
+from crew_org.profiles import profile_for
 from crew_org.tools.ast_edit import Operation
 from crew_org.tools.ci_guard import is_workflow
-from crew_org.tools.fixtures import declare_fixtures
 
 MAX_FILE_BYTES = 120_000
 
@@ -66,14 +65,13 @@ class FileWrite(BaseModel):
 
     @property
     def is_test(self) -> bool:
-        name = PurePosixPath(self.path).name
-        return name.startswith("test_") or name.endswith("_test.py")
+        return profile_for(self.path).is_test_file(self.path)
 
     @model_validator(mode="after")
     def _tests_declare_their_fixtures(self) -> FileWrite:
         # A test using tmp_path without taking it failed four first attempts (#196).
-        if self.is_test and self.path.endswith(".py"):
-            self.content = declare_fixtures(self.content)
+        if self.is_test:
+            self.content = profile_for(self.path).prepare_test(self.path, self.content)
         return self
 
 
@@ -108,13 +106,12 @@ class FileEdit(BaseModel):
         if self.operation is not Operation.DELETE and not self.source.strip():
             raise ValueError(f"{self.operation} needs source. Only delete may omit it.")
         if self.is_test and self.operation is not Operation.DELETE:
-            self.source = declare_fixtures(self.source)  # #196
+            self.source = profile_for(self.path).prepare_test(self.path, self.source)  # #196
         return self
 
     @property
     def is_test(self) -> bool:
-        name = PurePosixPath(self.path).name
-        return name.startswith("test_") or name.endswith("_test.py")
+        return profile_for(self.path).is_test_file(self.path)
 
 
 class Move(BaseModel):
@@ -229,12 +226,12 @@ class CriterionTest(BaseModel):
 
     @model_validator(mode="after")
     def _is_that_test(self) -> CriterionTest:
-        if not re.search(rf"def {re.escape(self.test)}\b", self.source):
+        profile = profile_for(self.path)
+        if not profile.defines_test(self.source, self.test):
             raise ValueError(f"the source for {self.test!r} doesn't define it")
-        self.source = declare_fixtures(self.source)  # #196
-        name = PurePosixPath(self.path).name
-        if not (name.startswith("test_") or name.endswith("_test.py")):
-            raise ValueError(f"{self.path!r} isn't a test file: name it tests/test_*.py")
+        self.source = profile.prepare_test(self.path, self.source)  # #196
+        if not profile.is_test_file(self.path):
+            raise ValueError(f"{self.path!r} isn't a test file: {profile.test_file_hint}")
         return self
 
     def as_edit(self) -> FileEdit:
@@ -258,8 +255,7 @@ class RetiredTest(BaseModel):
     @classmethod
     def _a_test_file(cls, value: str) -> str:
         cleaned = FileWrite._stays_in_the_repository(value)
-        name = PurePosixPath(cleaned).name
-        if not (name.startswith("test_") or name.endswith("_test.py")):
+        if not profile_for(cleaned).is_test_file(cleaned):
             raise ValueError(
                 f"{cleaned!r} isn't a test file: only tests can be retired. Code that "
                 "still has callers moves, it isn't retired"
@@ -360,7 +356,7 @@ class Implementation(BaseModel):
                 c.as_edit()
                 for c in self.criteria_tests
                 if (c.path, c.test) not in edited
-                and not re.search(rf"def {re.escape(c.test)}\b", written.get(c.path, ""))
+                and not profile_for(c.path).defines_test(written.get(c.path, ""), c.test)
             ),
         ]
 
