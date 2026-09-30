@@ -26,7 +26,7 @@ from typing import Any
 import yaml
 
 from crew_org.flows.record_pr import RecordChange, propose
-from crew_org.project import RECORD_PATH, Design, ProjectRecord, brief
+from crew_org.project import RECORD_PATH, Design, Part, ProjectRecord, brief
 from crew_org.tools import ci_guard
 
 ATTEMPTS = 2
@@ -96,6 +96,10 @@ def to_design(proposal: Any) -> Design:
         sandbox_image=value(getattr(proposal, "sandbox_image", None)),
         setup=value(getattr(proposal, "setup", None)),
         autofix=[c.value for c in getattr(proposal, "autofix", None) or []],
+        parts=[
+            Part(path=p.path, language=p.language, tests=list(p.tests))
+            for p in getattr(proposal, "parts", None) or []
+        ],
         ci_checks=[c.value for c in getattr(proposal, "ci_checks", None) or []],
         release_how=value(proposal.release_how),
         structure=value(getattr(proposal, "structure", None)),
@@ -184,7 +188,11 @@ def design(
             proposal, ci, record.design.ci_checks if record.design is not None else []
         )
         # The sandbox image is real and pinned: a guessed digest runs nothing (#403, #365).
-        reasons += image_problems(getattr(proposal, "sandbox_image", None))
+        # The Architect names a tag, and the digest is read from the registry.
+        pinned, unpinnable = pin_image(getattr(proposal, "sandbox_image", None))
+        if pinned is not None:
+            proposal.sandbox_image = pinned
+        reasons += unpinnable or image_problems(pinned)
         if not reasons:
             candidate = to_design(proposal)
             shown = yaml.safe_dump(
@@ -208,6 +216,33 @@ def design(
         ended.refused = reasons
         feedback = "\n".join(f"- {r}" for r in reasons)
     return ended
+
+
+def pin_image(choice: Any) -> tuple[Any, list[str]]:
+    """The image the Architect named, pinned to the digest its tag names today (#404).
+
+    A model can name a real tag; a digest it writes is one it made up. On the first
+    live design of the static-site fixture with no design recorded, the Architect
+    named `mcr.microsoft.com/playwright:v1.63.0-jammy` with a note in place of a
+    digest, and a refusal asking for one invites an invention. The registry is
+    asked instead. The reference is the value's first word: anything after it is
+    commentary, and the record keeps the reference alone.
+    """
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    words = (getattr(choice, "value", "") or "").split() if choice is not None else []
+    ref = base_images.parse(words[0]) if words else None
+    if ref is None:
+        return choice, []
+    if ref.digest:
+        return choice.model_copy(update={"value": words[0]}), []
+    try:
+        digest = base_images.lookup(ref.host, ref.name, ref.tag)
+    except base_images.Unreadable as exc:
+        return choice, [f"the sandbox image `{ref.shown}` can't be pinned: {exc}"]
+    if digest is None:
+        return choice, [f"the sandbox image `{ref.shown}` doesn't exist: no such tag in {ref.host}"]
+    return choice.model_copy(update={"value": f"{ref.shown}@{digest}"}), []
 
 
 def image_problems(choice: Any) -> list[str]:
@@ -284,6 +319,12 @@ def open_design_pr(
         line("Sandbox image", getattr(proposal, "sandbox_image", None)),
         line("Setup", getattr(proposal, "setup", None)),
         *[line("Autofix", c) for c in getattr(proposal, "autofix", None) or []],
+        *[
+            f"- **Part:** `{p.path or '(the whole project)'}` in {p.language}, tests "
+            + (", ".join(f"`{t}`" for t in p.tests) or "none declared")
+            + f"  _based on: {p.basis}_"
+            for p in getattr(proposal, "parts", None) or []
+        ],
         *[line("Check", c) for c in proposal.checks],
         *[line("CI proves", c) for c in getattr(proposal, "ci_checks", None) or []],
         line("Release", proposal.release_how),

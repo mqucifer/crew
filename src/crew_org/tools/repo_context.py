@@ -21,7 +21,16 @@ CONTEXT_FILES = ("pyproject.toml", "README.md")
 # by quoting the text it replaces, and a quote can only be copied from text the
 # Developer was shown: a CI workflow listed by name alone is one it would have to
 # reconstruct from memory, and a reconstruction doesn't match.
-TEXT_SUFFIXES = frozenset({".toml", ".md", ".yml", ".yaml", ".cfg", ".ini", ".json", ".txt"})
+TEXT_SUFFIXES = frozenset(
+    {".toml", ".md", ".yml", ".yaml", ".cfg", ".ini", ".json", ".txt"}
+    # Source in a language other than Python, shown whole for the same reason
+    # (#404). A part in another language is edited by quoting its text, and on
+    # the first live run the static-site fixture's page and Playwright test were
+    # listed by name only: every answer asked to see them and changed nothing.
+    | {".html", ".htm", ".css", ".scss", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"}
+    | {".vue", ".svelte", ".svg", ".xml", ".sh", ".sql", ".scad"}
+    | {".go", ".rs", ".java", ".kt", ".rb", ".c", ".h", ".cpp", ".hpp", ".swift"}
+)
 # Text files named for what they are, with no suffix to say so. sprint-metrics#308
 # asked to see its Dockerfile three times and was shown everything else: the
 # story was to change it, and the pull request changed only a test (#335).
@@ -62,7 +71,11 @@ CONTEXT_CHAR_CEILING = 600_000
 # Tool droppings. They tell the Developer nothing and they are not free: the
 # file listing is capped, so eleven cache entries are eleven real files the
 # model never gets shown.
-IGNORED_DIRS = frozenset({".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache"})
+IGNORED_DIRS = frozenset(
+    {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache"}
+    # A JavaScript part's installed packages and Playwright's reports (#404).
+    | {"node_modules", "test-results", "playwright-report"}
+)
 
 
 def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = True) -> str:

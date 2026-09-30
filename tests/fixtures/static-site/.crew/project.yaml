@@ -12,3 +12,8 @@ design:
   setup: npm ci
   checks:
   - npx playwright test
+  parts:
+  - path: ''
+    language: javascript
+    tests:
+    - tests/**/*.spec.js

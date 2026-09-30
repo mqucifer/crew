@@ -1,0 +1,45 @@
+{
+  "rounds": [
+    {
+      "attempt": 1,
+      "seconds": 101,
+      "asks": [],
+      "summary": "Adds a 'Changed: Cycle time improved by 2 days' paragraph to the health section of the report page, placed after the Status paragraph and before the Current Sprint section. Updates the existing test selector to remain correct with multiple paragraphs, and adds two new tests proving both acceptance criteria.",
+      "criteria_tests": [
+        "tests/page.spec.js::the health section contains the changed-since-prior-sprint paragraph",
+        "tests/page.spec.js::the changed paragraph follows the status paragraph inside the health section"
+      ],
+      "proven_by_existing": [
+        "tests/page.spec.js::the health summary is the first section"
+      ],
+      "new_files": [],
+      "text_edits": [
+        "index.html",
+        "tests/page.spec.js"
+      ],
+      "check_ok": true,
+      "tests": [
+        "tests/page.spec.js::the health section contains the changed-since-prior-sprint paragraph",
+        "tests/page.spec.js::the changed paragraph follows the status paragraph inside the health section"
+      ]
+    }
+  ],
+  "qa_rounds": [
+    {
+      "round": 1,
+      "accepted": true,
+      "criteria": [
+        {
+          "criterion": "Given the report page, When it is opened, Then the health section contains a paragraph reading exactly `Changed: Cycle time improved by 2 days`",
+          "proven": true,
+          "evidence": "Test 'the health section contains the changed-since-prior-sprint paragraph' locates a paragraph inside #health with the text 'Changed: Cycle time improved by 2 days' and asserts its full text equals that exact string. Test passes."
+        },
+        {
+          "criterion": "Given the report page, When it is opened, Then that paragraph comes after the `Status: All clear` paragraph, inside the health section, and before the Current Sprint section",
+          "proven": true,
+          "evidence": "Proven by two tests together: (1) 'the health summary is the first section' asserts main > section .first() has id 'health', meaning the health section precedes all other sections in main, including Current Sprint; (2) 'the changed paragraph follows the status paragraph inside the health section' asserts #health p nth(0) is 'Status: All clear' and nth(1) is 'Changed: Cycle time improved by 2 days', proving correct order within the health section. Both tests pass."
+        }
+      ]
+    }
+  ]
+}

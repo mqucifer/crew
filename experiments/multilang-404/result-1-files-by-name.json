@@ -1,0 +1,75 @@
+{
+  "rounds": [
+    {
+      "attempt": 1,
+      "seconds": 16,
+      "summary": "Need to see index.html and tests/page.spec.js in full to write the tests and make the correct edit to the health section.",
+      "criteria_tests": [],
+      "proven_by_existing": [],
+      "new_files": [],
+      "text_edits": [],
+      "check_ok": true,
+      "tests": []
+    }
+  ],
+  "qa_rounds": [
+    {
+      "round": 1,
+      "accepted": false,
+      "criteria": [
+        {
+          "criterion": "Given the report page, When it is opened, Then the health section contains a paragraph reading exactly `Changed: Cycle time improved by 2 days`",
+          "proven": false,
+          "evidence": "No test asserts the existence or text of a paragraph reading 'Changed: Cycle time improved by 2 days'. The only test ('the health summary is the first section') checks that '#health p' has the text 'Status: All clear' \u2014 a different paragraph. The required paragraph is not exercised by any test."
+        },
+        {
+          "criterion": "Given the report page, When it is opened, Then that paragraph comes after the `Status: All clear` paragraph, inside the health section, and before the Current Sprint section",
+          "proven": false,
+          "evidence": "No test asserts the positional ordering of a 'Changed: Cycle time improved by 2 days' paragraph relative to 'Status: All clear' or relative to a Current Sprint section. The existing test does not reference any element with that text, nor does it verify ordering within or between sections."
+        }
+      ]
+    },
+    {
+      "repair": {
+        "summary": "Need to see the current content of the test file and the HTML page to write the proper test edits.",
+        "criteria_tests": [],
+        "proven_by_existing": [],
+        "new_files": [],
+        "text_edits": [],
+        "check_ok": true,
+        "test_output": "$ npm ci\nadded 3 packages, and audited 4 packages in 524ms\n\nfound 0 vulnerabilities\nnpm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0\nnpm notice To update run: npm install -g npm@12.2.0\nnpm notice\n\n$ npx playwright test\nRunning 1 test using 1 worker\n\n[1/1] [chromium] \u203a tests/page.spec.js:4:1 \u203a the health summary is the first section\n  1 passed (377ms)"
+      }
+    },
+    {
+      "round": 2,
+      "accepted": false,
+      "criteria": [
+        {
+          "criterion": "Given the report page, When it is opened, Then the health section contains a paragraph reading exactly `Changed: Cycle time improved by 2 days`",
+          "proven": false,
+          "evidence": "No test asserts the existence or text of a paragraph reading 'Changed: Cycle time improved by 2 days'. The test 'the health summary is the first section' only asserts that the first paragraph in #health reads 'Status: All clear'. It never references the 'Changed:' text at all."
+        },
+        {
+          "criterion": "Given the report page, When it is opened, Then that paragraph comes after the `Status: All clear` paragraph, inside the health section, and before the Current Sprint section",
+          "proven": false,
+          "evidence": "No test asserts ordering. The test 'the health summary is the first section' does not check that any paragraph follows 'Status: All clear', nor does it verify the 'Changed:' paragraph is inside the health section and before the Current Sprint section. There is no positional or sequence assertion in the test."
+        }
+      ]
+    },
+    {
+      "repair": {
+        "summary": "Need to see the current state of the test file and HTML to fix the failing tests.",
+        "criteria_tests": [],
+        "proven_by_existing": [],
+        "new_files": [],
+        "text_edits": [],
+        "check_ok": true,
+        "test_output": "$ npm ci\nadded 3 packages, and audited 4 packages in 518ms\n\nfound 0 vulnerabilities\nnpm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0\nnpm notice To update run: npm install -g npm@12.2.0\nnpm notice\n\n$ npx playwright test\nRunning 1 test using 1 worker\n\n[1/1] [chromium] \u203a tests/page.spec.js:4:1 \u203a the health summary is the first section\n  1 passed (400ms)"
+      }
+    }
+  ],
+  "page": "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Sprint 10</title></head>\n<body>\n  <main>\n    <section id=\"health\"><h2>Health</h2><p>Status: All clear</p></section>\n    <section id=\"current\"><h2>Current Sprint</h2><p>Cycle time: 4 days</p></section>\n  </main>\n</body>\n</html>\n",
+  "tests": {
+    "tests/page.spec.js": "const { test, expect } = require(\"@playwright/test\");\nconst path = require(\"path\");\n\ntest(\"the health summary is the first section\", async ({ page }) => {\n  await page.goto(\"file://\" + path.join(__dirname, \"..\", \"index.html\"));\n  await expect(page.locator(\"main > section\").first()).toHaveAttribute(\"id\", \"health\");\n  await expect(page.locator(\"#health p\")).toHaveText(\"Status: All clear\");\n});\n"
+  }
+}

@@ -160,3 +160,32 @@ def test_an_unpinned_image_is_refused():
 
 def test_microsoft_s_registry_is_read_without_a_token():
     assert base_images._AUTH["mcr.microsoft.com"][0] is None
+
+
+def test_a_named_tag_is_pinned_to_the_digest_the_registry_reads(monkeypatch):
+    read = {}
+    digest = "sha256:" + "a" * 64
+
+    def lookup(host, name, ref):
+        read["asked"] = (host, name, ref)
+        return digest
+
+    monkeypatch.setattr(base_images, "lookup", lookup)
+    pinned, problems = design_flow.pin_image(
+        Choice(value="mcr.microsoft.com/playwright:v1.63.0-noble (kept current)", basis="x")
+    )
+    assert problems == []
+    assert read["asked"] == ("mcr.microsoft.com", "playwright", "v1.63.0-noble")
+    assert pinned.value == f"mcr.microsoft.com/playwright:v1.63.0-noble@{digest}"
+
+
+def test_a_tag_the_registry_doesn_t_have_is_refused(monkeypatch):
+    monkeypatch.setattr(base_images, "lookup", lambda host, name, ref: None)
+    _, problems = design_flow.pin_image(Choice(value="node:99-invented", basis="x"))
+    assert "no such tag" in problems[0]
+
+
+def test_a_pinned_image_keeps_its_digest_and_loses_the_commentary(monkeypatch):
+    monkeypatch.setattr(base_images, "lookup", lambda *a: pytest.fail("no lookup to pin"))
+    pinned, problems = design_flow.pin_image(Choice(value=f"{REAL} (pinned)", basis="x"))
+    assert problems == [] and pinned.value == REAL
