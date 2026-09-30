@@ -202,7 +202,8 @@ Long prompts served from cache are where the empty answers are. The single cold 
 Across 30 replays of sprint-metrics#268, the full 100k-token prompt answered 5 times in 25, over two SGLang versions, DFlash2 and DSpark, and the cache on, off or cold. The focused 26k-token prompt answered 2 times in 5.
 
 - **The serving setup isn't the main cause.** Warm cache and DFlash2 made it somewhat worse, but no switch fixed it.
-- **No thinking budget is involved.** SGLang's budget logit processor needs a per-request `thinking_budget` and custom logit processors enabled at launch, and neither is set here. `reasoning_effort` is ignored for this model, whose chat template has no effort parameter (`effort_kwarg=None` at boot).
+- **No thinking budget is involved.** SGLang's budget logit processor needs a per-request `thinking_budget` and custom logit processors enabled at launch, and neither is set here.
+- **`reasoning_effort` does reach the model** (corrected 2026-09-30; this said it was ignored). The served model's `chat_template.jinja` reads it and puts an instruction in the prompt: `low` adds "Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration"; `xhigh`, the default when none is sent, adds "think carefully through the task, validate key assumptions, consider plausible alternatives…"; `medium` adds nothing. `effort_kwarg=None` at boot only means SGLang found no separate effort switch in the template. It fits the probe behind the Model settings mock: 97 reasoning tokens at `low` against 1,697 at the default. The crew's Developer runs at `low`, so its long structured answers carry an instruction to keep thinking brief.
 - **The empty runs are real stops.** They end mid-sentence, with no final answer hidden in the thinking.
 - **The main trigger is the task's size.** One structured answer has to rewrite the README, move about 20 tests with exact strings, and delete a file: about 7k answer tokens after 15–23k thinking. The model sometimes stops mid-thought, around 16–18k thinking tokens. A shorter prompt helps, but only modestly.
 
@@ -238,7 +239,24 @@ From the MiaAI-Lab README's measurements on this box, in tokens per second. Thei
   - It must keep `YARN=0` and a context of 262144.
 - **For the crew,** whose work is mostly long code and JSON, DSpark is about 6% slower than DFlash2. MTP is 35–55% slower.
 
+## Leads from outside research (2026-09-30)
+Another model's analysis, checked against what's measured here:
+
+| Claim | Checked | Verdict |
+|---|---|---|
+| The thinking runs out of `max_tokens` and the parser strips it | The empty runs end `stop`, not `length`, at 16–18k thinking tokens against `max_tokens` 32,768 | **Ruled out** |
+| `low` injects a "keep it brief" instruction; `medium` injects none | The template says exactly that (above) | **Confirmed**: worth a test |
+| Prefill through CUDA graphs overflows on a long prompt | The flag is real in the pinned image, and the server already runs `disable_prefill_cuda_graph: True` | **Ruled out**: already off |
+| The JSON schema grammar and the reasoning parser disagree at `</think>`, and generation stops | Its own reasoning, not sourced. In #268's run the 17:43 call had no `response_format` and still answered empty; the 18:00 call, also without, answered | **Weakened**: worth a test |
+| Speculative decoding ends thinking early on a draft token | DSpark was no better than DFlash2 | **Unlikely** |
+
 ## Next steps
+**Quiet-window arms (2026-09-30), each five warm replays of sprint-metrics#268 on production, no restart**, against 4 of 5 empty at `low` with the schema:
+- **`reasoning_effort: medium`**, the one level with no injected instruction. Does "keep it brief" on a long, heavy answer add to the stops?
+- **No `response_format`**: does the schema's grammar take part?
+
+Earlier steps, kept for the record:
+
 1. Finish the cold arm. If cold answers and warm stays empty, the #37818 mechanism is confirmed on this box.
 2. Restart on v0.5.20 and repeat the warm arm:
    ```bash
