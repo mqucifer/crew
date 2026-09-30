@@ -506,14 +506,38 @@ class FirstAttempt(Implementation):
 
 
 class CriterionMet(BaseModel):
-    """One acceptance criterion the code already meets, and the proof (#221)."""
+    """One acceptance criterion the code already meets, and the proof (#221).
+
+    The proof is an existing test, or for a criterion only CI can prove (what a
+    workflow does), the workflow step that meets it (#397). sprint-metrics#368's
+    right answer was refused because a workflow has no test to name.
+    """
 
     criterion: str = Field(description="The acceptance criterion, as the story states it")
     code: str = Field(description="The code that meets it: file and definition")
     test: str = Field(
+        "",
         description="The existing test that proves it, as path::test_name, e.g. "
-        "tests/test_cli.py::test_schema_flag"
+        "tests/test_cli.py::test_schema_flag. Empty only when `ci_step` is given.",
     )
+    ci_step: str = Field(
+        "",
+        description=(
+            "Only for a criterion about what a CI workflow does, which no test can prove: "
+            "the workflow file and the step that meets it, as "
+            "`.github/workflows/release.yml#Create GitHub Release`. Its latest run on the "
+            "default branch must have passed. Leave `test` empty then."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_proof(self) -> CriterionMet:
+        if bool(self.test.strip()) == bool(self.ci_step.strip()):
+            raise ValueError(
+                "each criterion is proven by an existing test, or, for what a CI workflow "
+                "does, by its workflow step: give exactly one"
+            )
+        return self
 
 
 class FirstOrDone(FirstAttempt):

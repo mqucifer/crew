@@ -873,13 +873,29 @@ def deliver_story(
                 )
             answered = True
             _keep_proposal(sink, repo, number, implementation)
-            named = [met.test for met in getattr(implementation, "already_done", None) or []]
+            done_now = getattr(implementation, "already_done", None) or []
+            named = [met.test for met in done_now if met.test]
             named += [
                 test
                 for proof in getattr(implementation, "proven_by_existing", None) or []
                 for test in proof.tests
             ]
             missing = [test for test in named if not names_a_test(worktree, test)]
+            # A workflow step as evidence, checked as a test is (#397).
+            unproven = ci_evidence_problems(
+                worktree,
+                issues,
+                repo,
+                default_branch,
+                [met.ci_step for met in done_now if met.ci_step],
+            )
+            if unproven:
+                raise ValueError(
+                    "this CI evidence doesn't hold: "
+                    + "; ".join(unproven)
+                    + ". Name a workflow step that exists and whose workflow passed on "
+                    f"`{default_branch}`, or change the code."
+                )
             if missing:
                 # Refused, naming each (#221, #217): evidence that doesn't
                 # exist is no evidence.
@@ -936,7 +952,7 @@ def deliver_story(
         # It asked to see files first (#231). Not a failure, and not applied:
         # it's asked again with them shown, up to ASK_LIMIT times a delivery.
         if implementation.asks:
-            wanted = [f.strip().lstrip("./") for f in implementation.need_files]
+            wanted = [f.strip().removeprefix("./") for f in implementation.need_files]
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
             exists = [f for f in fresh if (worktree / f).is_file()]
             sink.note(
@@ -1418,9 +1434,49 @@ def names_a_test(worktree, test: str) -> bool:
     return re.search(rf"^\s*(?:async\s+)?def\s+{re.escape(name)}\s*\(", text, re.M) is not None
 
 
+def ci_evidence_problems(
+    worktree: Path, issues: IssueClient, repo: str, branch: str, steps: list[str]
+) -> list[str]:
+    """What's wrong with each `workflow#step` offered as evidence, or nothing (#397).
+
+    The file exists, the step is in it, and that workflow's latest run on the
+    default branch passed. Only CI proves what a workflow does, so this is the
+    same bar QA holds a CI-only change to.
+    """
+    if not steps:
+        return []
+    problems: list[str] = []
+    try:
+        runs = issues.latest_runs(repo, branch)
+    except Exception as exc:  # noqa: BLE001
+        return [f"the default branch's runs couldn't be read ({exc})"]
+    for evidence in steps:
+        path, _, step = evidence.partition("#")
+        path, step = path.strip().removeprefix("./"), step.strip()
+        target = worktree / path
+        if not path.startswith(".github/workflows/") or not target.is_file():
+            problems.append(f"`{path}` isn't a workflow in the repository")
+            continue
+        if not step or f"name: {step}" not in target.read_text(encoding="utf-8", errors="ignore"):
+            problems.append(f"`{path}` has no step named `{step}`")
+            continue
+        run = runs.get(path)
+        if run is None or run.get("conclusion") != "success":
+            problems.append(
+                f"`{path}`'s latest run on `{branch}` "
+                + ("didn't pass" if run is not None else "hasn't run")
+            )
+    return problems
+
+
 def already_done_comment(done: list) -> str:
     """The Developer's evidence, on the story, for QA and for whoever reads it (#221)."""
-    rows = "\n".join(f"| {m.criterion} | {m.code} | `{m.test}` |" for m in done)
+    rows = "\n".join(
+        f"| {m.criterion} | {m.code} | "
+        + (f"`{m.test}`" if m.test else f"CI: `{m.ci_step}`, passed on the default branch")
+        + " |"
+        for m in done
+    )
     return (
         f"{ALREADY_DONE_MARKER}\n**Already done.** The code as it stands meets every acceptance "
         "criterion, so nothing was changed and no pull request was opened. Lint and the full "

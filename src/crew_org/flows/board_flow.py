@@ -1271,7 +1271,7 @@ def refine_epics(
                 )
                 if not proposal.asks:
                     break
-                wanted = [f.strip().lstrip("./") for f in proposal.need_files]
+                wanted = [f.strip().removeprefix("./") for f in proposal.need_files]
                 fresh = [
                     f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
                 ]
