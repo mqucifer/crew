@@ -813,6 +813,17 @@ the wording here.
    then, the deploy review (§20) checks every change that runs or ships against
    it, and a finding cites the rule by number.
 
+9. **A release can be run again.** Running the release for a version again
+   completes whatever that version is missing (its tag, its Release, its image
+   and the image's tags) and changes nothing already published. A run that
+   fails part-way leaves the version to be finished by the next run; the
+   version number isn't used up. sprint-metrics 1.0.0 and 1.0.1 were both
+   tagged, then left without a Release or image when a later step failed, and
+   the next run skipped each because its tag existed (2026-09-30).
+   How a release does this is the Architect's design.
+   *Enforced:* by the release check (§20), which reads what each version
+   actually published, and by the deploy review of any change to a release.
+
 Rules 3 and 4 are judgement, not yet mechanism. The Code Reviewer checks every
 diff against them, and a finding cites the rule by number.
 
