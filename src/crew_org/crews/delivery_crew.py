@@ -216,8 +216,15 @@ class CriterionTest(BaseModel):
         description="The test file it goes in, e.g. tests/test_sprint_range.py. A new one "
         "also goes in new_files, with its imports and fixtures"
     )
-    test: str = Field(description="The test function's name, e.g. test_range_as_json")
-    source: str = Field(description="The complete test function, as it should read in the file")
+    test: str = Field(
+        description="The test function's name, e.g. test_range_as_json. In a part that "
+        "isn't Python, the test's title, as in test(\"the health summary is first\", ...)"
+    )
+    source: str = Field(
+        "",
+        description="The complete test function, as it should read in the file. In a part "
+        "that isn't Python, leave it empty and write the test in new_files or text_edits",
+    )
 
     @field_validator("path")
     @classmethod
@@ -227,11 +234,16 @@ class CriterionTest(BaseModel):
     @model_validator(mode="after")
     def _is_that_test(self) -> CriterionTest:
         profile = profile_for(self.path)
+        if not profile.is_test_file(self.path):
+            raise ValueError(f"{self.path!r} isn't a test file: {profile.test_file_hint}")
+        if not profile.edit_by_name:
+            # Written in new_files or text_edits; delivery checks it's there (#404).
+            if self.source.strip() and not profile.defines_test(self.source, self.test):
+                raise ValueError(f"the source for {self.test!r} doesn't define it")
+            return self
         if not profile.defines_test(self.source, self.test):
             raise ValueError(f"the source for {self.test!r} doesn't define it")
         self.source = profile.prepare_test(self.path, self.source)  # #196
-        if not profile.is_test_file(self.path):
-            raise ValueError(f"{self.path!r} isn't a test file: {profile.test_file_hint}")
         return self
 
     def as_edit(self) -> FileEdit:
@@ -355,7 +367,9 @@ class Implementation(BaseModel):
             *(
                 c.as_edit()
                 for c in self.criteria_tests
-                if (c.path, c.test) not in edited
+                # Only where tests are added by name: elsewhere they're written as files (#404).
+                if profile_for(c.path).edit_by_name
+                and (c.path, c.test) not in edited
                 and not profile_for(c.path).defines_test(written.get(c.path, ""), c.test)
             ),
         ]

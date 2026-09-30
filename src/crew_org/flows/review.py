@@ -233,7 +233,13 @@ def review_open_pulls(
                     past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
                     latest_answer(issues, repo, number),
                 ),
-                checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
+                checks=_with_guard_notice(
+                    checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
+                    issues,
+                    repo,
+                    head,
+                    diff,
+                ),
                 imported=imported_code(
                     _base_reader(issues, repo, base, clone),
                     diff,
@@ -424,6 +430,20 @@ def _deploy_review(
         )
     )
     return verdict
+
+
+def _with_guard_notice(checks: str, issues: IssueClient, repo: str, head: str, diff: str) -> str:
+    """The checks, plus which changed files no regression guard read (#404)."""
+    from crew_org import profiles  # noqa: PLC0415
+    from crew_org.tools.review_evidence import unguarded_section  # noqa: PLC0415
+
+    try:
+        text = issues.file_at(repo, RECORD_PATH, head)
+        profiles.set_project(parse(text) if text else None)
+    except Exception:  # noqa: BLE001
+        profiles.clear()
+    notice = unguarded_section(diff)
+    return "\n\n".join(part for part in (checks, notice) if part)
 
 
 def release_brief(issues: IssueClient, repo: str, head: str) -> str:

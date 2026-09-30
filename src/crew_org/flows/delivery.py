@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from crew_org import profiles
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
 from crew_org.crews.delivery_crew import Implementation, implement_story
 from crew_org.escalation import (
@@ -757,6 +758,8 @@ def deliver_story(
     except ProjectRecordError as exc:
         outcome.blocked_reason = f"the project's record can't be read: {exc}"
         return outcome
+    # Each file's profile comes from this project's parts, until the card is done (#404).
+    profiles.set_project(record)
     # The notes for this story's epic, if it has them: the Architect's (#155)
     # and the UX Designer's (#377).
     note = story_notes(issues, card, repo)
@@ -1112,6 +1115,20 @@ def deliver_story(
 
         try:
             workspace.apply_implementation(worktree, implementation)
+            # Tests in a part that isn't Python are written as files: each one the
+            # answer names must be in them, by its title (#404).
+            unwritten = [
+                f"{c.path}::{c.test}"
+                for c in getattr(implementation, "criteria_tests", None) or []
+                if not profiles.profile_for(c.path).edit_by_name
+                and not names_a_test(worktree, f"{c.path}::{c.test}")
+            ]
+            if unwritten:
+                raise ValueError(
+                    "these tests aren't in their files: "
+                    + ", ".join(unwritten)
+                    + ". Write each one in new_files or text_edits, titled as named here."
+                )
         except Exception as exc:  # noqa: BLE001
             failure = LocalFailure(
                 card=number,
@@ -1706,6 +1723,7 @@ def _work_one_card(
         if outcome is not None and not outcome.ok:
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
+        profiles.clear()
 
     if interrupted is not None:
         artifacts.comment(

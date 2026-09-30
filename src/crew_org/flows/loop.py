@@ -27,6 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from crew_org import profiles
 from crew_org.escalation import EscalationLedger, EscalationPolicy
 from crew_org.events import (
     CrewEvent,
@@ -806,6 +807,8 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             )
 
         for name, phase in PHASES:
+            # No project's parts carry over from one phase to the next (#404).
+            profiles.clear()
             try:
                 # Every model call a phase makes says which phase, and which
                 # sprint, even one made for no card (#179).
