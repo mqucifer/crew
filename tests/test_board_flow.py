@@ -797,3 +797,81 @@ def test_no_sponsor_configured_keeps_the_old_behaviour():
     assert [c.number for c in goal_cards(cards)] == [1]
     assert [c.number for c in goal_cards(cards, sponsor="mquarters")] == []
     assert unauthored_goals(cards) == [], "nothing to report when nothing is configured"
+
+
+# --- #231: the Business Analyst's own view of the repository -------------------------------
+
+
+def _big_repo(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/report.py").write_text("def format_report():\n    HEALTH = 1\n    return 1\n")
+    (tmp_path / "src/other.py").write_text("def unrelated():\n    OTHER_BODY = 2\n    return 2\n")
+
+    class FakeWorkspace:
+        def for_repo(self, repo):
+            return self
+
+        def current(self):
+            return tmp_path
+
+    return FakeWorkspace()
+
+
+def _spying(monkeypatch, answers):
+    shown: list[str] = []
+
+    def spy(title, context="", *, repository="", feedback="", **_kw):
+        shown.append(repository)
+        return answers.pop(0)
+
+    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda g, **kw: PROPOSAL)
+    monkeypatch.setattr("crew_org.flows.board_flow.split_epic", spy)
+    # Small enough to focus: the real threshold is 60k characters.
+    monkeypatch.setattr("crew_org.flows.board_flow.REFINE_FOCUS_ABOVE_CHARS", 10)
+    return shown
+
+
+def test_a_large_repository_is_focused_on_what_the_epic_names(monkeypatch, tmp_path):
+    """2026-09-30: every split was over 60k tokens with the whole repository."""
+    shown = _spying(monkeypatch, [SPLIT])
+    issues = FakeIssues()
+    issues.get = lambda repo, n: {"body": "Lead the report from `format_report` with a summary."}
+    tick(
+        FakeBoard([epic_card(3)]),
+        issues,
+        EventSink(None),
+        default_repo="sprint-metrics",
+        ws=_big_repo(tmp_path),
+    )
+    assert "HEALTH = 1" in shown[0], "the file the epic names, in full"
+    assert "OTHER_BODY" not in shown[0], "the rest only by name, on the map"
+    assert "unrelated" in shown[0]
+
+
+def test_it_may_ask_to_see_a_file_and_is_asked_again_with_it(monkeypatch, tmp_path):
+    asking = StoryProposal(epic_title="Epic 3", need_files=["src/other.py"])
+    shown = _spying(monkeypatch, [asking, SPLIT])
+    tick(
+        FakeBoard([epic_card(3)]),
+        FakeIssues(),
+        EventSink(None),
+        default_repo="sprint-metrics",
+        ws=_big_repo(tmp_path),
+    )
+    assert len(shown) == 2
+    assert "OTHER_BODY" not in shown[0] and "OTHER_BODY" in shown[1]
+
+
+def test_asking_past_the_limit_is_a_failed_split_not_an_empty_one(monkeypatch, tmp_path):
+    asking = [StoryProposal(epic_title="Epic 3", need_files=[f"src/{n}.py"]) for n in "abcd"]
+    _spying(monkeypatch, asking)
+    issues = FakeIssues()
+    result = tick(
+        FakeBoard([epic_card(3)]),
+        issues,
+        EventSink(None),
+        default_repo="sprint-metrics",
+        ws=_big_repo(tmp_path),
+    )
+    assert result.failed and "past the limit" in result.failed[0][1]
+    assert issues.created == [], "no stories written from an answer that only asked"

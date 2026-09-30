@@ -49,7 +49,7 @@ from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
-from crew_org.tools.repo_context import repository_context
+from crew_org.tools.repo_context import Focus, focused_context, repository_context
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -115,6 +115,15 @@ PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
 NEEDS_DESIGN = "needs:design"
 # An epic that changes what a reader sees: the UX Designer writes a note (#377).
 NEEDS_UX = "needs:ux"
+# Times the Business Analyst may ask to see files before splitting (#231), as the
+# Developer may (delivery.ASK_LIMIT).
+ANALYST_ASK_LIMIT = 2
+# Above this, a split sees the map plus what its epic names, not every file (#231).
+# Lower than the Developer's (160k): sprint-metrics came to 159k characters for
+# refinement, so the Developer's threshold focused nothing, and the rest of the
+# split's prompt (record, pinning tests, delivered and planned stories) adds
+# about 26k tokens more. At 60k, #62–65 came to 7k–17k tokens instead of 40k.
+REFINE_FOCUS_ABOVE_CHARS = 60_000
 # A story held in refinement only because Ready was full. The label is what
 # tells it apart from a story that genuinely needs refining — one filed by
 # hand, or returned by escalation — so the pass that lets it in when Ready
@@ -936,6 +945,29 @@ class RepoContext:
             self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
             return ""
 
+    def focused_for(self, repo: str, about: str, extra: list[str] = ()) -> tuple[str, Focus]:
+        """The repository for one epic's split: the record, a map, and what the epic names (#231).
+
+        The whole repository was one text shared by every split in a pass, which
+        kept the prefix cached; on 2026-09-30 every split the Business Analyst
+        made was over 60k tokens, the band where empty answers begin (#312), and
+        #312 found long prompts served from the cache were where they clustered.
+        So each split gets its own view, as the Developer's and QA's do: all of
+        it when the repository is small, the map plus the named files when not,
+        and `need_files` to ask for more.
+        """
+        if self._ws is None:
+            return "", Focus()
+        try:
+            clone = self._ws.for_repo(repo).current()
+            text, focus = focused_context(
+                clone, about=about, extra=extra, editing=False, above=REFINE_FOCUS_ABOVE_CHARS
+            )
+            return self._record(repo, clone) + text, focus
+        except Exception as exc:  # noqa: BLE001
+            self._sink.note(EventKind.NOTE, f"refining {repo} without its code: {exc}"[:120])
+            return "", Focus()
+
     def record_for(self, repo: str) -> str:
         """Only the project's record, for a role that decides without the code."""
         if self._ws is None:
@@ -1196,18 +1228,61 @@ def refine_epics(
             # cannot see becomes a criterion nobody can satisfy.
             body = _goal_body(issues, repo, number)
             planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
-            proposal = attributed(split_epic, card=number, repo=repo)(
-                epic_card.title,
-                body,
-                repository=context.for_repo(repo),
-                pinning=context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes),
-                superseded=result.superseded.get(number),
-                feedback=notes,
-                delivered=done.render(),
-                delivered_numbers=done.numbers if known else None,
-                planned="\n".join(f"- #{n} {title} (epic #{epic})" for n, title, epic in planned),
-                planned_numbers={n for n, _t, _e in planned},
-            )
+            pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
+            # Its own view of the repository, and it may ask for more (#231).
+            about = f"{epic_card.title}\n\n{body}\n\n{notes}"
+            asked: list[str] = []
+            told = ""
+            for asks in range(ANALYST_ASK_LIMIT + 1):
+                repository, focus = context.focused_for(repo, about, asked)
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} split context: {focus.chars:,} chars, "
+                    f"{len(focus.shown)} files in full",
+                    card=number,
+                    focused=focus.focused,
+                    shown=focus.shown,
+                )
+                if focus.unknown:
+                    told = (
+                        f"These aren't files in the repository: {', '.join(focus.unknown)}. " + told
+                    )
+                proposal = attributed(split_epic, card=number, repo=repo)(
+                    epic_card.title,
+                    body,
+                    repository=repository,
+                    pinning=pinning,
+                    superseded=result.superseded.get(number),
+                    feedback="\n\n".join(f for f in (notes, told) if f),
+                    delivered=done.render(),
+                    delivered_numbers=done.numbers if known else None,
+                    planned="\n".join(
+                        f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
+                    ),
+                    planned_numbers={n for n, _t, _e in planned},
+                )
+                if not proposal.asks:
+                    break
+                wanted = [f.strip().lstrip("./") for f in proposal.need_files]
+                fresh = [
+                    f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
+                ]
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} asked to see {', '.join(wanted)[:200]}",
+                    card=number,
+                    need_files=wanted,
+                )
+                if fresh and asks < ANALYST_ASK_LIMIT:
+                    asked += fresh
+                    told = ""
+                    continue
+                told = (
+                    "You've been shown what you asked for. Split the epic now with the files "
+                    "you can see, and leave `need_files` empty."
+                )
+            if proposal.asks:
+                raise ValueError("it asked to see files past the limit instead of splitting")
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))

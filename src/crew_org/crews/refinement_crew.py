@@ -238,9 +238,23 @@ class StoryProposal(BaseModel):
         ),
     )
 
+    need_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Only if you can't split this epic without seeing a file the map above only "
+            "names: its path. You're asked again with it shown in full; leave the stories "
+            "empty then. Empty otherwise."
+        ),
+    )
+
+    @property
+    def asks(self) -> bool:
+        """It asked to see files first (#231): not a split, and not applied."""
+        return bool(self.need_files) and not self.stories and not self.already_delivered
+
     @model_validator(mode="after")
     def _not_empty(self) -> StoryProposal:
-        if not self.stories and not self.already_delivered:
+        if not self.stories and not self.already_delivered and not self.need_files:
             raise ValueError("an epic must decompose into at least one story")
         return self
 
