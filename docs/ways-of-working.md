@@ -605,6 +605,38 @@ Three rules for every limit on prompt content:
    shown. It may ask twice per delivery, and asking isn't a failure. Every
    attempt records its context size and which files it was shown.
 
+   **QA is shown the tests the work touches or names, and asks for more**
+   (crew#231, #369, 2026-09-29). Found in Grafana: a QA call at 78,528 prompt
+   tokens, about 200k characters of it whole test files unrelated to the docs
+   story being judged, in the same band where empty answers begin (crew#312).
+   Under 60,000 characters of tests, QA still sees the whole suite, as before.
+   Above that, it's shown in full only the test files the branch changed and
+   any a story, its criteria or the Developer's proof names by file — read
+   from those, never inferred from prose — and every other test file by name
+   only. QA may ask for a named file back (`need_files`, twice per delivery,
+   the same shape as the Developer's ask); asking isn't a verdict, and asking
+   twice for a file it already has means there's nothing more to show, so the
+   next try must judge. **QA can cite only what it read.** A proven criterion
+   citing a test QA wasn't shown gets that file shown and is judged again;
+   past the ask limit, a cited test QA never read, or one no file defines,
+   isn't proof — the criterion is unproven with the reason, and acceptance
+   follows from that. The context is logged the same way the Developer's is.
+
+   **The Business Analyst splits each epic from its own view of the
+   repository** (crew#231, 2026-09-30). Refinement used to hand it the whole
+   repository for every split; on one day every split was over 60,000
+   tokens, the band where empty answers begin, and long prompts served from
+   the cache were where they clustered (crew#312). A split is now shown the
+   project record, the map of every file and what it defines, and the files
+   its epic names in full — the same shape the Developer and QA are shown.
+   It can ask for more (`need_files`, twice, the same limit); asking past
+   that fails the split rather than returning an empty one. There are no
+   editing rules in its view, because the Business Analyst decides what a
+   story is, it doesn't edit code. Refinement's own threshold is 60,000
+   characters, lower than the Developer's 160,000: a live split of a small
+   epic came to about 34,000 characters against a repository of 159,000, and
+   split into four stories without asking.
+
    Why: long prompts are where the model thinks and then answers nothing
    (crew#312). There were none under 50k tokens in 99 calls, and
    sprint-metrics#268's 100k-token prompt came back empty on every serving
@@ -812,6 +844,16 @@ the wording here.
    *Enforced:* by each project's own checks, once its design has them. Until
    then, the deploy review (§20) checks every change that runs or ships against
    it, and a finding cites the rule by number.
+
+   **A digest can't be invented.** The Developer's sandbox has no network
+   (§14), so nothing tells it what a registry holds now — a story to pin one
+   can only be answered by inventing it, and an invented digest reads as
+   plausible until CI fails with "manifest unknown" (crew#364). A Dockerfile
+   change is shown each `FROM image:tag`'s real digest, resolved anonymously
+   from the registry outside the sandbox; one it pins that the registry
+   doesn't have for that image is refused before anything is written, the
+   feedback naming the real one, the way an unsafe CI workflow is (§19.2).
+   Resolved once per tick and shown only to work that touches the image.
 
 9. **A release can be run again.** Running the release for a version again
    completes whatever that version is missing (its tag, its Release, its image
