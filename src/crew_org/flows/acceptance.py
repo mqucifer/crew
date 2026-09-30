@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from crew_org import profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
@@ -701,4 +702,6 @@ def _project_brief(worktree) -> str:
     rather than judging it against rules nobody can see.
     """
     record = read_record(worktree)
+    # QA reads this project's tests by its parts' profiles (#404).
+    profiles.set_project(record)
     return brief(record) if record else ""

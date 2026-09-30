@@ -241,3 +241,24 @@ def imported_code(read, diff: str, read_head=None) -> str:
             + ". Treat anything they define as code you cannot see."
         )
     return "\n".join(lines)
+
+
+def unguarded_section(diff: str) -> str:
+    """The changed files no regression guard read, said to the Code Reviewer (#404).
+
+    The guard reads Python's syntax tree: a part in another language is edited
+    as whole files or find-and-replace, with nothing refusing a definition that
+    disappears. Said, so review knows to look.
+    """
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+    from crew_org.tools.deploy_evidence import changed_files  # noqa: PLC0415
+
+    bare = [path for path in changed_files(diff) if not profile_for(path).guarded]
+    if not bare:
+        return ""
+    return (
+        "**No regression guard ran on:** "
+        + ", ".join(f"`{p}`" for p in bare)
+        + ". The crew's guard reads Python only. Check that this change removes nothing "
+        "that was there before and wasn't meant to go."
+    )

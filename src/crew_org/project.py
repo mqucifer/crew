@@ -125,6 +125,17 @@ class Intent(Section):
     priority: int | None = Field(default=None, description="Against other projects; 1 is first")
 
 
+class Part(Section):
+    """One part of a project, by path, in its own language (#404)."""
+
+    path: str = Field(description="Where the part lives, e.g. `site/`. `` for the whole project")
+    language: str = Field(description="Its language, e.g. python, javascript")
+    tests: list[str] = Field(
+        default_factory=list,
+        description="Its test files, as globs, e.g. `site/tests/**/*.spec.js`",
+    )
+
+
 class Design(Section):
     """The Architect's choices for this project (#144). Proposed by pull request."""
 
@@ -156,6 +167,12 @@ class Design(Section):
     autofix: list[str] = Field(
         default_factory=list,
         description="Formatters run before the checks, e.g. `npx prettier --write .`",
+    )
+    # The project's parts by path, each in its own language (#404). None: every
+    # file is Python's, as it always was.
+    parts: list[Part] = Field(
+        default_factory=list,
+        description="The project's parts by path, each with its language and test files",
     )
     # What only CI can prove, in words (#335). `checks` are commands the crew's
     # sandbox runs; an image built and run as deployed (§19.8) isn't one, and
