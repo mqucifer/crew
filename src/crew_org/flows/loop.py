@@ -233,6 +233,37 @@ class LoopResult:
         return out
 
 
+def _land(crew: Crew) -> PhaseOutcome:
+    """Land approved work and close what's finished, before any hold is judged (#388).
+
+    The bookkeeping used to come last in a pass: merges in `deliver`, finished
+    epics in `qa`. But `revisit`, `refine`, `admit` and `deliver` judge their
+    holds earlier ("technical work lands first", "builds on #304"), so a hold a
+    merge released was only seen a pass later. Sprint 11's first ticks each
+    stopped at the pass cap with holds on work that had already finished.
+    `deliver` still lands too, for work approved later in the same pass.
+    """
+    from crew_org.flows.acceptance import close_finished_parents  # noqa: PLC0415
+    from crew_org.flows.merge import merge_approved  # noqa: PLC0415
+
+    cards = crew.board.cards()
+    landed = merge_approved(
+        crew.board, crew.issues, crew.sink, cards=cards, default_repo=crew.repo, repos=crew.repos
+    )
+    if landed.merged or landed.conflicted or landed.rebuilding:
+        cards = crew.board.cards()
+    closed = close_finished_parents(
+        crew.board, crew.issues, crew.sink, cards, repo=crew.repo, repos=crew.repos
+    )
+    return PhaseOutcome(
+        "land",
+        moved=bool(landed.merged or landed.conflicted or landed.rebuilding or closed),
+        summary=f"{len(landed.merged)} merged, {len(closed)} closed",
+        result=landed,
+        counts={"merged": len(landed.merged), "closed": len(closed)},
+    )
+
+
 def _revisit(crew: Crew) -> PhaseOutcome:
     """The Architect revisits a design delivery shows is under strain (#192).
 
@@ -624,6 +655,8 @@ def _deliver(crew: Crew) -> PhaseOutcome:
 # admission puts them in a sprint, and the three that follow push started work
 # forward before delivery claims more.
 PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
+    # First, so every hold below is judged against the board as it now stands.
+    ("land", _land),
     ("revisit", _revisit),
     ("refine", _refine),
     ("design", _design),
@@ -784,7 +817,7 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             queued = [
                 q
                 for o in result.outcomes[-len(PHASES) :]
-                if o.name == "deliver" and o.result is not None
+                if o.name in ("land", "deliver") and o.result is not None
                 for q in getattr(o.result, "in_queue", [])
             ]
             if queued and result.passes < max_passes:
