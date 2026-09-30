@@ -1812,6 +1812,12 @@ def sprint_close(
         console.print(f"  [yellow]#{number}[/] {why}; it merges once they pass")
     for number, pull in result.queued:
         console.print(f"  [yellow]#{number}[/] PR #{pull} is in the merge queue")
+    for number, following in result.carried:
+        console.print(
+            f"  [yellow]#{number}[/] not merged by the close: carried to {following}"
+            if following
+            else f"  [yellow]#{number}[/] not merged by the close; no next sprint to carry it to"
+        )
     for number, why in result.unmergeable:
         console.print(f"  [red]#{number}[/] {why}")
     if result.still_open:

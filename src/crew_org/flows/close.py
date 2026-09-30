@@ -8,6 +8,7 @@ one pass at the end of a sprint rather than a decision per story.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -59,6 +60,9 @@ class SprintClose:
     checking: list[tuple[int, str]] = field(default_factory=list)
     # (story, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # (story, next sprint) still unmerged after the close waited for the queue,
+    # carried to where it will merge and be counted (#389).
+    carried: list[tuple[int, str]] = field(default_factory=list)
     # Names, not numbers: the sprint close reported "#12, #19, #20, #31, #32,
     # #32" for six stories in two repositories, and the retro then described
     # one card two ways. A number is not a name where two repositories are on
@@ -123,6 +127,84 @@ def board_summary(cards: list[Card], sprint: str) -> str:
     return "\n".join(lines) or "No stories in this sprint."
 
 
+def _settle_queue(board, issues, sink, result, in_queue, *, repo, sleep=None, clock=None) -> None:
+    """Wait for what the close queued, and record what merged in this sprint (#389).
+
+    The close used to report a queued story as not done and end; GitHub merged it
+    minutes later, and it landed in a sprint whose report was already written.
+    The tick already waits the same way before it calls itself settled (#314).
+    """
+    import time  # noqa: PLC0415
+
+    from crew_org.flows.loop import QUEUE_POLL, QUEUE_WAIT  # noqa: PLC0415
+
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    pending = list(in_queue)
+    start = clock()
+    while pending and clock() - start < QUEUE_WAIT:
+        sleep(QUEUE_POLL)
+        still = []
+        for card, pull, base in pending:
+            try:
+                queued = issues.queue_state(repo, pull, branch=base).queued
+            except Exception:  # noqa: BLE001
+                queued = True
+            if queued:
+                still.append((card, pull, base))
+        pending = still
+    for card, pull, _base in in_queue:
+        try:
+            merged = bool(issues.pull(repo, pull).get("merged_at"))
+        except Exception:  # noqa: BLE001
+            merged = False
+        if not merged:
+            continue
+        number = card.number or 0
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=DONE,
+            by=None,
+            card=number,
+            frm=MERGING,
+            summary=f"merged PR #{pull} (the close waited for the queue)",
+        )
+        with contextlib.suppress(Exception):
+            issues.close(card.repo or repo, number)  # as the merge does (#381)
+        result.merged.append(number)
+        result.queued = [(n, p) for n, p in result.queued if n != number]
+
+
+def _carry_over(board, sink, result, cards: list[Card], sprint: str) -> None:
+    """Approved stories still not merged move to the next sprint, and are named (#389).
+
+    Merged is done (§7), so a story counts once, in the sprint where it merges:
+    the Sponsor's call, 2026-09-30. With no next sprint on the board, it stays,
+    and the report still names it.
+    """
+    try:
+        following = board.schema.field("Sprint").next_iteration(sprint)
+    except Exception:  # noqa: BLE001
+        following = None
+    for card in sprint_cards(cards, sprint):
+        number = card.number or 0
+        # What the close merged is done, even if the board hasn't caught up.
+        if card.status != MERGING or number in result.merged:
+            continue
+        if following is None:
+            result.carried.append((number, ""))
+            continue
+        board.set_iteration(card.item_id, "Sprint", following[0])
+        result.carried.append((number, following[0]))
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} not merged by the close: carried to {following[0]}",
+            card=number,
+        )
+
+
 def close_sprint(
     board: ProjectClient,
     issues: IssueClient,
@@ -139,6 +221,8 @@ def close_sprint(
     delivery_repos: list[str] | None = None,
     preview: bool = False,
     tz: str = "UTC",
+    sleep=None,
+    clock=None,
 ) -> SprintClose:
     """Merge what the Sponsor approved, then report on the sprint.
 
@@ -151,6 +235,9 @@ def close_sprint(
     result = SprintClose(sprint=sprint)
     cards = board.cards()
     qualify = many_repos(cards)
+
+    # Approved stories the close handed to the merge queue: waited for below.
+    in_queue: list[tuple[Card, int, str]] = []
 
     # A preview touches nothing: no merges, no board moves, no issues (#193).
     for card in [] if preview else sorted(sprint_cards(cards, sprint), key=lambda c: c.number or 0):
@@ -197,6 +284,7 @@ def close_sprint(
             continue
         if landed.how == Landing.QUEUED:
             result.queued.append((number, pull["number"]))
+            in_queue.append((card, pull["number"], (pull.get("base") or {}).get("ref", "main")))
             continue
         if landed.how == Landing.UPDATING:
             result.updating.append((number, pull["number"]))
@@ -225,6 +313,10 @@ def close_sprint(
             summary=f"merged PR #{pull['number']}",
         )
         result.merged.append(number)
+
+    if not preview and merge:
+        _settle_queue(board, issues, sink, result, in_queue, repo=repo, sleep=sleep, clock=clock)
+        _carry_over(board, sink, result, board.cards(), sprint)
 
     # §12: a card blocked longer than the threshold is raised to the Sponsor at
     # sprint review. The function that answers "which ones" was written, the
