@@ -60,24 +60,30 @@ def gaps(issues: Any, registry: Registry, repo: str, version: str) -> list[str]:
     found: list[str] = []
     tag = f"v{version}"
     if not issues.tag_exists(repo, tag):
-        found.append(f"The tag `{tag}` doesn't exist.")
-    release = issues.release_for_tag(repo, tag)
-    if release is None:
-        found.append(f"There's no GitHub Release on `{tag}`.")
-    changelog = issues.file_at(repo, "CHANGELOG.md", tag) or ""
-    section = changelog_section(changelog, version)
-    if not section:
-        found.append(f"`CHANGELOG.md` at `{tag}` has no `## [{version}]` section with entries.")
-    elif release is not None:
-        body = " ".join((release.get("body") or "").split())
-        # The entries, not the `### Added` headings (sprint-metrics#261's criterion).
-        entries = [line for line in section if line.startswith(("-", "*"))]
-        missing = [line for line in entries if " ".join(line.split()) not in body]
-        if missing:
-            found.append(
-                "The Release notes leave out lines of the CHANGELOG section: "
-                + "; ".join(f"`{m[:80]}`" for m in missing[:5])
-            )
+        # Without the tag there's no Release on it and no changelog at it to read:
+        # one gap, not three (sprint-metrics#350, crew#384).
+        found.append(
+            f"The tag `{tag}` doesn't exist, so there's no GitHub Release on it "
+            f"and `CHANGELOG.md` at it can't be read."
+        )
+    else:
+        release = issues.release_for_tag(repo, tag)
+        if release is None:
+            found.append(f"There's no GitHub Release on `{tag}`.")
+        changelog = issues.file_at(repo, "CHANGELOG.md", tag) or ""
+        section = changelog_section(changelog, version)
+        if not section:
+            found.append(f"`CHANGELOG.md` at `{tag}` has no `## [{version}]` section with entries.")
+        elif release is not None:
+            body = " ".join((release.get("body") or "").split())
+            # The entries, not the `### Added` headings (sprint-metrics#261's criterion).
+            entries = [line for line in section if line.startswith(("-", "*"))]
+            missing = [line for line in entries if " ".join(line.split()) not in body]
+            if missing:
+                found.append(
+                    "The Release notes leave out lines of the CHANGELOG section: "
+                    + "; ".join(f"`{m[:80]}`" for m in missing[:5])
+                )
 
     name = f"{issues.owner}/{repo}".lower()
     try:
@@ -145,6 +151,7 @@ def check_releases(
             if _already_checked(issues, repo, version):
                 continue
             missing = gaps(issues, registry, repo, version)
+            published = issues.tag_exists(repo, f"v{version}")
         except Exception as exc:  # noqa: BLE001
             result.failed.append((repo, str(exc)[:160]))
             continue
@@ -157,13 +164,25 @@ def check_releases(
             board,
             sink,
             repo=repo,
-            title=f"Release v{version} published less than the design asks",
+            title=(
+                f"Release v{version} published less than the design asks"
+                if published
+                else f"Release v{version} was never published"
+            ),
             body=(
                 f"{RELEASE_MARKER.format(version=version)}\n"
-                f"**The work:** make the release mechanism publish everything the design "
-                f"asks for, and ship it as the next release. `v{version}` itself can't be "
-                "changed once published.\n\n"
-                f"What `v{version}` is missing, read from GitHub and GHCR after its release "
+                + (
+                    f"**The work:** make the release mechanism publish everything the design "
+                    f"asks for, and ship it as the next release. `v{version}` itself can't be "
+                    "changed once published.\n\n"
+                    if published
+                    # Nothing to amend: the version is still free to release as itself.
+                    else f"**The work:** make the release mechanism publish everything the "
+                    f"design asks for, and publish `{version}`. Nothing was published for it: "
+                    f"the tag `v{version}` doesn't exist, so `{version}` can still be released "
+                    "as itself.\n\n"
+                )
+                + f"What `v{version}` is missing, read from GitHub and GHCR after its release "
                 "run finished:\n\n"
                 + "\n".join(f"- {line}" for line in missing)
                 + "\n\nTechnical work: found by the crew, so it goes straight to refinement "

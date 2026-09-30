@@ -153,8 +153,7 @@ def test_each_gap_is_named():
     registry = FakeRegistry(image, tags={"1.0": "sha256:other", "latest": DIGEST})
     found = gaps(Issues(tag=False, release=False), registry, "sprint-metrics", VERSION)
     text = "\n".join(found)
-    assert "The tag `v1.0.0` doesn't exist." in text
-    assert "no GitHub Release" in text
+    assert "The tag `v1.0.0` doesn't exist, so there's no GitHub Release on it" in text
     assert "no linux/arm64 image" in text
     assert "`ghcr.io/mqucifer/sprint-metrics:1.0` doesn't point at" in text
 
@@ -258,3 +257,20 @@ def test_a_refused_read_is_unreadable():
     reg = registry({"manifests/1.0.0": (401, {}, {})})
     with pytest.raises(ImageUnreadable):
         reg.image("mqucifer/sprint-metrics", "1.0.0")
+
+
+# --- crew#384: nothing published is not an incomplete release -----------------
+
+
+def test_a_version_never_published_is_released_as_itself():
+    """sprint-metrics#350: the workflow skipped 1.0.0, so no tag, Release or image."""
+    issues = Issues(tag=False, release=False)
+    result = check(issues, FakeRegistry(None))
+    assert result.filed == [("sprint-metrics", 400)]
+    title, body = issues.created[0]["title"], issues.created[0]["body"]
+    assert title == "Release v1.0.0 was never published"
+    assert "can still be released as itself" in body
+    assert "can't be changed once published" not in body
+    # The missing tag is one gap, not three.
+    assert "no `## [1.0.0]` section" not in body
+    assert "There's no GitHub Release on" not in body
