@@ -313,14 +313,19 @@ def focused_context(
     about: str,
     extra: Iterable[str] = (),
     above: int | None = None,
+    editing: bool = True,
 ) -> tuple[str, Focus]:
-    """The repository for a Developer: all of it when small, the named part when not (#231)."""
-    full = repository_context(worktree)
+    """The repository for a piece of work: all of it when small, the named part when not (#231).
+
+    `editing` is False for a role that decides rather than edits (refinement):
+    the rules for editing by name are noise to it.
+    """
+    full = repository_context(worktree, editing=editing)
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
         return full, Focus(focused=False, chars=len(full))
 
     chosen, unknown = select_files(worktree, about, extra)
-    index = repository_context(worktree, editing=True, bodies=False)
+    index = repository_context(worktree, editing=editing, bodies=False)
     lines = [index, "", "### The files this work names, in full", ""]
     shown: list[str] = []
     unshown: list[str] = []
