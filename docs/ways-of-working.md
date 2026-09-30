@@ -15,7 +15,7 @@ negotiate process with each other; they follow what is written here.
 | Role | Produces | May escalate |
 |---|---|---|
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance | n/a |
-| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189) | No |
+| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's | No |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates | No |
 | UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one | No |
 | Architect | A project's design, design notes, technical epics, Tasks, Spikes | Yes |

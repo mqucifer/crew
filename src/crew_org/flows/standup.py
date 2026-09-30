@@ -62,6 +62,20 @@ def decided_by_crew(result) -> list[str]:
     """
     lines: list[str] = []
     for outcome in result.outcomes:
+        if outcome.name == "order" and outcome.result is not None:
+            # The Product Owner's order, and the holds new work created (#358).
+            lines += [
+                f"- {repo}: the Product Owner ordered the open epics: "
+                + ", ".join(f"#{n}" for n in order)
+                for repo, order in outcome.result.ordered
+            ]
+            lines += [
+                f"- {repo}#{story} now waits for "
+                + ", ".join(f"#{n}" for n in numbers)
+                + f": {why}"
+                for repo, story, numbers, why in outcome.result.holds
+            ]
+            continue
         found = outcome.result if outcome.name == "revisit" else None
         if found is None:
             continue

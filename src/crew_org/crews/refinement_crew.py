@@ -370,6 +370,58 @@ def propose_epics(
     return crew.kickoff().pydantic
 
 
+class Hold(BaseModel):
+    """A story that must now wait for other work, and why (#358)."""
+
+    story: int = Field(description="The unstarted story that must wait")
+    builds_on: list[int] = Field(description="The epics or stories it must wait for")
+    why: str = Field(description="One sentence: what it needs from them")
+
+
+class BacklogOrder(BaseModel):
+    """The Product Owner's order of a repository's open epics (#358). Short, by design."""
+
+    order: list[int] = Field(
+        description="Every open epic's number, exactly once, the first to be worked first"
+    )
+    holds: list[Hold] = Field(
+        default_factory=list,
+        description=(
+            "Only stories the new work changes: an unstarted story that must now wait for "
+            "another epic or story. Empty if none."
+        ),
+    )
+
+
+def order_backlog(*, new: str, backlog: str, feedback: str = "") -> BacklogOrder:
+    """Product Owner only: the order of a repository's open epics, and new holds (#358).
+
+    Shown one line per open epic and unstarted story, never bodies, code or
+    criteria (the Sponsor: don't bloat the context; #312, #231). One call per
+    repository when an epic arrives without a rank, not per story or per tick.
+    """
+    agents = build_agents("product_owner")
+    sent_back = REWORK.format(feedback=feedback) if feedback else ""
+    task = Task(
+        description=(
+            f"## New work, not yet ordered\n\n{new}\n\n"
+            f"## This repository's open epics and unstarted stories\n\n{backlog}\n\n"
+            + sent_back
+            + "Order every open epic, the first to be worked first: what the Goals need "
+            "soonest, what other work builds on, and the Architect's technical epics before "
+            "the product work they affect. Then, only where the new work changes it, name "
+            "the unstarted stories that must now wait for another epic or story, and why."
+        ),
+        expected_output="Every open epic in order, and any new holds.",
+        agent=agents["product_owner"],
+        output_pydantic=BacklogOrder,
+    )
+    crew = Crew(
+        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    )
+    return crew.kickoff().pydantic
+
+
 def check_delivered(
     proposal: StoryProposal, numbers: set[int] | None, planned: set[int] | frozenset = frozenset()
 ) -> None:
