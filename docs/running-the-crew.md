@@ -60,11 +60,12 @@ Two human gates and no more: an epic awaiting approval in Inbox (Goals), and the
 
 ## A tick
 
-`crew tick` runs seven phases in dependency order until a pass moves nothing. One command takes the board as far as it can go.
+`crew tick` runs eight phases in dependency order until a pass moves nothing. One command takes the board as far as it can go. Each pass starts by landing approved work and closing finished stories and epics, so every hold after it is judged against the board as it now stands (crew#388).
 
 ```mermaid
 flowchart TD
-  S([pass starts]) --> RV[revisit]
+  S([pass starts]) --> L[land]
+  L --> RV[revisit]
   RV --> R[refine]
   R --> DN[design]
   DN --> A[admit]

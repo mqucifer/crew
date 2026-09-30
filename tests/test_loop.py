@@ -440,3 +440,59 @@ def test_nothing_queued_ends_the_tick_at_once(crew, monkeypatch):
     crew.issues = Queue(for_polls=0)
     loop.run(crew)
     assert passes["n"] == 1 and crew.issues.polls == 0
+
+
+# --- #388: bookkeeping first, so holds see the board as it stands ------------------------------
+
+
+def test_landing_comes_first_and_delivering_last():
+    names = [n for n, _ in loop.PHASES]
+    assert names[0] == "land" and names[-1] == "deliver"
+
+
+def test_a_hold_released_by_a_merge_is_seen_in_the_same_pass(crew, monkeypatch):
+    """Sprint 11: #293 waited a pass for #304, which had already finished."""
+    board = {"304": "open"}
+    seen: list[str] = []
+
+    def land(_crew):
+        moved = board["304"] == "open"
+        board["304"] = "done"
+        return loop.PhaseOutcome("land", moved=moved)
+
+    def admit(_crew):
+        seen.append(board["304"])
+        return loop.PhaseOutcome("admit")
+
+    monkeypatch.setattr(loop, "PHASES", (("land", land), ("admit", admit)))
+    loop.run(crew)
+    assert seen[0] == "done", "admit judged the hold after the merge, not a pass later"
+
+
+def test_land_merges_then_closes_what_is_finished(crew, monkeypatch):
+    from crew_org.flows import acceptance, merge
+
+    calls: list[str] = []
+    landed = merge.MergeResult(merged=[(293, 345)])
+    monkeypatch.setattr(merge, "merge_approved", lambda *a, **k: calls.append("merge") or landed)
+    monkeypatch.setattr(
+        acceptance, "close_finished_parents", lambda *a, **k: calls.append("close") or [304]
+    )
+    outcome = loop._land(crew)
+    assert calls == ["merge", "close"]
+    assert outcome.moved and outcome.counts == {"merged": 1, "closed": 1}
+
+
+def test_what_land_leaves_in_the_queue_is_waited_for(crew, monkeypatch):
+    passes = {"n": 0}
+
+    def land(_crew):
+        passes["n"] += 1
+        in_queue = [("sprint-metrics", 245, "main")] if passes["n"] == 1 else []
+        return loop.PhaseOutcome("land", result=type("R", (), {"in_queue": in_queue})())
+
+    monkeypatch.setattr(loop, "PHASES", (("land", land),))
+    monkeypatch.setattr(loop.time, "sleep", lambda _s: None)
+    crew.issues = Queue(for_polls=1)
+    loop.run(crew)
+    assert passes["n"] == 2, "waited for the queue, then ran the pass that sees it land"
