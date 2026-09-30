@@ -632,12 +632,21 @@ def close_finished_parents(
         for card in within(cards, repos):
             if card.work_type != parent_type or card.state == "CLOSED":
                 continue
-            # The board's own progress settles "not finished" without a fetch
-            # (#55). It counts closed sub-issues, not Done ones, so 100% only
-            # earns the per-child check below; it never closes anything alone.
-            total, closed_count = card.sub_issues_total, card.sub_issues_closed
-            if total is not None and (total == 0 or (closed_count or 0) < total):
-                continue
+            # "Not finished" is settled without a fetch (#55). The children on
+            # the board say it first: one that isn't Done. GitHub's sub-issue
+            # count is only the fallback for a parent with none on the board,
+            # because it can be wrong: it read 1 of 2 for sprint-metrics#304 with
+            # both children closed and Done, and the epic, and everything held
+            # on it, stayed open (crew#381). 100% either way only earns the
+            # per-child check below; neither closes anything alone.
+            on_board = [c for c in cards if c.parent == card.number and c.repo == card.repo]
+            if on_board:
+                if any(c.status != DONE for c in on_board):
+                    continue
+            else:
+                total, closed_count = card.sub_issues_total, card.sub_issues_closed
+                if total is not None and (total == 0 or (closed_count or 0) < total):
+                    continue
             parent_repo = card.repo or repo
             try:
                 children = issues.sub_issues(parent_repo, card.number or 0)

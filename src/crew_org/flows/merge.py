@@ -248,7 +248,16 @@ def merge_approved(
         repo = card.repo or default_repo
         merged = _merged_pull(issues, repo, branch_name(card.number or 0, card.title))
         if merged is not None:
-            _done(board, sink, card, pull=merged, result=result)
+            _done(board, sink, card, pull=merged, result=result, issues=issues, repo=repo)
+
+    # Done, with its issue still open: the merge recorded, and GitHub never
+    # acted on its `Closes #N` (sprint-metrics#339, crew#381). The crew closes
+    # what it merged rather than trusting the keyword.
+    for card in done_but_open(cards, repos):
+        repo = card.repo or default_repo
+        merged = _merged_pull(issues, repo, branch_name(card.number or 0, card.title))
+        if merged is not None:
+            _close_story(issues, sink, card, repo=repo, pull=merged)
 
     for card in ready_to_land(cards, repos):
         number = card.number or 0
@@ -259,7 +268,7 @@ def merge_approved(
         if pull is None:
             merged = _merged_pull(issues, repo, branch)
             if merged is not None:
-                _done(board, sink, card, pull=merged, result=result)
+                _done(board, sink, card, pull=merged, result=result, issues=issues, repo=repo)
             else:
                 result.failed.append((number, "no open pull request"))
             continue
@@ -385,7 +394,7 @@ def merge_approved(
             )
             continue
 
-        _done(board, sink, card, pull=pull, result=result)
+        _done(board, sink, card, pull=pull, result=result, issues=issues, repo=repo)
 
     return result
 
@@ -412,6 +421,18 @@ def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[C
     ]
 
 
+def done_but_open(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
+    """Stories in Done whose issue is still open: merged, and never closed."""
+    return [
+        c
+        for c in cards
+        if c.status == DONE
+        and c.work_type == STORY_TYPE
+        and c.state != "CLOSED"
+        and (repos is None or c.repo in repos)
+    ]
+
+
 def _merged_pull(issues: IssueClient, repo: str, branch: str) -> dict | None:
     """The pull request from `branch` that merged, if one did."""
     return next(
@@ -421,7 +442,14 @@ def _merged_pull(issues: IssueClient, repo: str, branch: str) -> dict | None:
 
 
 def _done(
-    board: ProjectClient, sink: EventSink, card: Card, *, pull: dict, result: MergeResult
+    board: ProjectClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    pull: dict,
+    result: MergeResult,
+    issues: IssueClient,
+    repo: str,
 ) -> None:
     number = card.number or 0
     move_card(
@@ -435,6 +463,36 @@ def _done(
         summary=f"merged PR #{pull['number']}",
     )
     result.merged.append((number, pull["number"]))
+    if card.state != "CLOSED":
+        _close_story(issues, sink, card, repo=repo, pull=pull)
+
+
+def _close_story(
+    issues: IssueClient, sink: EventSink, card: Card, *, repo: str, pull: dict
+) -> None:
+    """Close a merged story's issue: its `Closes #N` isn't relied on (crew#381).
+
+    GitHub usually closes it first, and closing a closed issue changes nothing. A
+    close that fails is noted and retried by the next pass's sweep.
+    """
+    try:
+        issues.close(repo, card.number or 0)
+    except Exception as exc:  # noqa: BLE001
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.NOTE,
+                card=card.number,
+                summary=f"PR #{pull['number']} merged; closing the issue failed: {exc}"[:120],
+            )
+        )
+        return
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.NOTE,
+            card=card.number,
+            summary=f"closed: PR #{pull['number']} merged",
+        )
+    )
 
 
 # On a pull request whose approved head conflicted with main and was returned for
