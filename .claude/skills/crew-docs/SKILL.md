@@ -16,7 +16,8 @@ one pull request that changes documentation and nothing else.
 ## 1. What has changed
 
 - The last sync is the commit in `docs/.docs-sync` (or `$ARGUMENTS` if given).
-- `git fetch` first, then work from `origin/main`.
+- `git fetch` first, then work from `origin/main`, in your own worktree (step 5):
+  never in the main checkout.
 - List what merged since: `git log --no-merges --format='%h %s' <sync>..origin/main`.
   For each change, read its commit message (it says what and why) and its issue
   (`gh issue view <n>`), and note which docs it already touched
@@ -67,7 +68,16 @@ Anything you can't confirm, leave out and list as a question in the pull request
 
 ## 5. Deliver it
 
-- Branch `docs/sync-<short head hash>` from `origin/main`. A pull request, never a push to `main`.
+- **Work in a worktree of your own, never the main checkout.** A tick may be
+  running from the main checkout, and switching its branch changes the code
+  under it: on 2026-09-30 this skill checked out its branch there mid-tick, and
+  left the checkout on a branch deleted after merge.
+  ```bash
+  git worktree add ../crew-docs-<short head hash> -b docs/sync-<short head hash> origin/main
+  ```
+  Do every read, edit and commit there. When the pull request is open, remove
+  it: `git worktree remove ../crew-docs-<short head hash>`.
+- A pull request from that branch, never a push to `main`.
 - Change only files under `docs/`, `README.md`, and `docs/.docs-sync`, which you
   set to the short hash of the `origin/main` you synced to.
 - The pull request's body:
