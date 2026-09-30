@@ -322,6 +322,20 @@ def changed_paths(worktree: Path) -> list[str]:
     return diff.stdout.split()
 
 
+def _with_unguarded(checks: str, worktree: Path) -> str:
+    """QA's checks, plus the changed files no regression guard read (#404)."""
+    bare = [p for p in changed_paths(worktree) if not profile_for(p).guarded]
+    if not bare:
+        return checks
+    notice = (
+        "**No regression guard ran on:** "
+        + ", ".join(f"`{p}`" for p in bare)
+        + ". The crew's guard reads Python only: judge these criteria by their tests, "
+        "and name anything existing the change seems to have removed."
+    )
+    return "\n\n".join(part for part in (checks, notice) if part)
+
+
 def ci_only(worktree: Path) -> bool:
     """The branch changes CI workflows and nothing else (crew#333)."""
     from crew_org.tools.ci_guard import is_workflow  # noqa: PLC0415
@@ -512,6 +526,8 @@ def run_qa(
                 if done
                 else done_or_proof
             )
+            # Read first: it sets this project's parts, which the notice below needs (#404).
+            project = _project_brief(worktree)
             verdict = _judge(
                 f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
                 worktree=worktree,
@@ -520,9 +536,9 @@ def run_qa(
                 repo=card_repo,
                 test_output=collect_output(check.results),
                 docs=collect_docs(worktree),
-                checks=ci_checks(issues, card_repo, revision),
+                checks=_with_unguarded(ci_checks(issues, card_repo, revision), worktree),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
-                project=_project_brief(worktree),
+                project=project,
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
