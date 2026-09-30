@@ -47,7 +47,7 @@ from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
-from crew_org.tools.github_issues import IssueClient
+from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import Focus, focused_context, repository_context
 
@@ -255,10 +255,11 @@ def sponsor_notes(issues: IssueClient, repo: str, number: int) -> str:
         if any(m in (c.get("body") or "") for m in markers):
             last_crew = i
     since = comments[last_crew + 1 :]
+    # The Sponsor's words only (crew#399): anyone can comment on a public repo.
     return "\n\n".join(
         (c.get("body") or "").strip()
         for c in since
-        if not any(m in (c.get("body") or "") for m in markers)
+        if not any(m in (c.get("body") or "") for m in markers) and from_sponsor(issues, c)
     ).strip()
 
 
@@ -337,7 +338,9 @@ def product_step(
     except Exception:  # noqa: BLE001
         return True
     bodies = [c.get("body") or "" for c in comments]
-    since = bodies[_last_marked(comments, STORY_SPLIT_MARKER) + 1 :]
+    start = _last_marked(comments, STORY_SPLIT_MARKER) + 1
+    since = bodies[start:]
+    authored = comments[start:]
     problems = [i for i, b in enumerate(since) if STORY_PROBLEM_MARKER in b]
     if not problems:
         return True  # the Sponsor's own rework: theirs to explain
@@ -346,7 +349,12 @@ def product_step(
         return True
     asked = [i for i, b in enumerate(after) if PRODUCT_QUESTION_MARKER in b]
     if asked:
-        replied = any("<!-- crew:" not in b for b in after[asked[-1] + 1 :])
+        # Answered only by the Sponsor (crew#399), not by any comment at all.
+        base = problems[-1] + asked[-1] + 1
+        replied = any(
+            "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
+            for c in authored[base:]
+        )
         if not replied:
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied

@@ -843,6 +843,15 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         except Exception as exc:  # noqa: BLE001
             crew.sink.note(EventKind.NOTE, f"diagnosis skipped: {exc}"[:120])
 
+    # Comments left unread because their author isn't trusted (crew#399):
+    # said, so a real contributor is never dropped silently.
+    for repo, number, login in sorted(getattr(crew.issues, "ignored", None) or ()):
+        crew.sink.note(
+            EventKind.NOTE,
+            f"{repo}#{number}: a comment by {login or 'an unknown account'} was not read "
+            "(not in org.yaml's trust list, crew#399)",
+        )
+
     crew.sink.note(
         EventKind.TICK_FINISHED,
         f"{result.passes} pass{'es' if result.passes != 1 else ''}, "
