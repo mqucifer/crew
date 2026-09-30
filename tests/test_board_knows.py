@@ -191,3 +191,21 @@ def test_the_item_query_carries_progress_and_linked_pull_requests():
     )
     assert (card.sub_issues_total, card.sub_issues_closed) == (5, 5)
     assert card.linked_pulls == (linked(),)
+
+
+# --- crew#381: the board's children, not GitHub's count, say "finished" --------
+
+
+def test_an_epic_is_closed_when_its_children_are_done_though_the_count_lags():
+    """sprint-metrics#304: both children closed and Done, GitHub counted 1 of 2."""
+    issues = Issues({3: [{"number": 6, "state": "closed"}, {"number": 7, "state": "closed"}]})
+    cards = [epic(total=2, closed=1), story(6, parent=3), story(7, parent=3)]
+    assert close_parents(cards, issues) == [3]
+    assert issues.closed == [3]
+
+
+def test_a_child_on_the_board_not_done_settles_it_without_a_fetch():
+    issues = Issues({3: [{"number": 6}, {"number": 7}]})
+    cards = [epic(total=2, closed=2), story(6, parent=3), story(7, status="In Progress", parent=3)]
+    assert close_parents(cards, issues) == []
+    assert issues.fetched == []

@@ -119,6 +119,11 @@ class FakeIssues:
     def comment(self, repo, number, body):
         self.posted.append((number, body))
 
+    closed: list = []
+
+    def close(self, repo, number, *, reason="completed"):
+        self.closed = [*self.closed, number]
+
 
 def run(cards, issues, repos=None):
     board = FakeBoard()
@@ -520,3 +525,36 @@ def test_the_queue_removing_it_for_failing_checks_is_still_a_removal():
 def test_graphql_saying_merged_wins_over_everything_else():
     pull = {"merged": True, "mergeQueueEntry": {"state": "QUEUED"}, "timelineItems": {"nodes": []}}
     assert queue_client(pull).queue_state("sprint-metrics", 224, branch="main").merged
+
+
+# --- crew#381: the crew closes what it merged --------------------------------
+
+
+def test_a_merged_story_s_issue_is_closed_by_the_crew():
+    """sprint-metrics#339: its PR merged with `Closes #339`, and GitHub never linked it."""
+    issues = FakeIssues()
+    result, board, _ = run([card(6)], issues)
+    assert result.merged == [(6, 100)]
+    assert issues.closed == [6]
+
+
+def test_a_done_story_left_open_is_closed_once_its_pull_request_merged():
+    issues = FakeIssues()
+    issues.merged_pulls = [{"number": 344, "merged_at": "2026-09-30T11:02:27Z"}]
+    run([card(339, status="Done")], issues)
+    assert issues.closed == [339]
+
+
+def test_a_done_story_with_no_merged_pull_request_stays_open():
+    issues = FakeIssues()
+    issues.merged_pulls = []
+    run([card(339, status="Done")], issues)
+    assert issues.closed == []
+
+
+def test_a_closed_done_story_is_left_alone():
+    issues = FakeIssues()
+    issues.merged_pulls = [{"number": 344, "merged_at": "2026-09-30T11:02:27Z"}]
+    closed = card(339, status="Done").model_copy(update={"state": "CLOSED"})
+    run([closed], issues)
+    assert issues.closed == []
