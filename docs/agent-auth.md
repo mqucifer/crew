@@ -218,6 +218,35 @@ naming. What still stands between generated code and `main`: QA verifying each
 acceptance criterion, the sandbox, the required `tests` check, and branch
 protection. No agent has `administration`, so none of them can turn those off.
 
+## Whose comments the crew trusts
+
+Two GitHub Apps don't limit who can *comment* — `crew` and `sprint-metrics` are
+public repositories, so anyone can. A comment with no crew marker was read as
+your direction, and the crew's own verdicts were markers in plain text that
+anyone could type (crew#399).
+
+`org.yaml`'s `trust` key is the fix, and it's data, not code:
+
+```yaml
+trust:
+  sponsor: mquarters
+  crew: ["mqucifer-crew[bot]", "mqucifer-crew-approver[bot]"]
+  tools: ["dependabot[bot]", "github-actions[bot]"]
+```
+
+- **`sponsor`** — the only login whose comments count as your direction: rework
+  notes, and answers to the Product Owner's questions.
+- **`crew`** — the two Apps above. Only their comments count as the crew's own
+  record (verdicts, notes, proposals); a marker in someone else's comment does
+  not.
+- **`tools`** — accounts read as data only (dependency updates, CI), never as
+  direction.
+
+Every comment reader goes through the one check this adds to `IssueClient`, so
+a future reader is covered by construction. A comment from an account not on
+any of the three lists is ignored, and the tick notes who it was and on which
+card. Adding a person is your decision, the same as `delivery.repos`.
+
 ## Rotation
 
 Fine-grained tokens expire. When one does, every agent action fails with 401 at
