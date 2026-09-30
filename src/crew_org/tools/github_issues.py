@@ -89,9 +89,64 @@ FAILED_CONCLUSIONS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class Trust:
+    """Whose comments the crew reads, from `org.yaml`'s `trust` (crew#399).
+
+    The repositories are public: anyone can comment, and a comment is read into
+    prompts as the Sponsor's direction, or as one of the crew's own verdicts.
+    """
+
+    sponsor: str
+    crew: frozenset[str]
+    tools: frozenset[str]
+
+    @property
+    def readable(self) -> frozenset[str]:
+        return frozenset({self.sponsor}) | self.crew | self.tools
+
+
+def load_trust() -> Trust:
+    """The allow-list. Missing is a failure, never "trust everyone" (§19, rule 6)."""
+    from crew_org.config import load_org  # noqa: PLC0415
+
+    section = load_org().get("trust")
+    if not section or not section.get("sponsor"):
+        raise ValueError("org.yaml has no `trust` section naming the Sponsor (crew#399)")
+    return Trust(
+        sponsor=section["sponsor"],
+        crew=frozenset(section.get("crew") or ()),
+        tools=frozenset(section.get("tools") or ()),
+    )
+
+
+def author(comment: dict[str, Any]) -> str:
+    return (comment.get("user") or {}).get("login") or ""
+
+
+def from_sponsor(issues: Any, comment: dict[str, Any]) -> bool:
+    """Is this comment the Sponsor's direction? Only the Sponsor's login counts (crew#399).
+
+    A stand-in client in tests carries no `trust`, and its comments have no
+    author: those are taken as written.
+    """
+    trust = getattr(issues, "trust", None)
+    return trust is None or author(comment) == trust.sponsor
+
+
 class IssueClient:
-    def __init__(self, token: Token, owner: str, *, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        token: Token,
+        owner: str,
+        *,
+        client: httpx.Client | None = None,
+        trust: Trust | None = None,
+    ) -> None:
         self.owner = owner
+        self.trust = trust or load_trust()
+        # (repo, number, login) of each comment left unread, for the event log.
+        self.ignored: set[tuple[str, int, str]] = set()
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
             # Paced writes and throttles waited out (#293).
@@ -202,7 +257,16 @@ class IssueClient:
             f"{API}/repos/{self.owner}/{repo}/issues/{number}/comments?per_page=100"
         )
         response.raise_for_status()
-        return response.json()
+        # Only the accounts `org.yaml` trusts (crew#399). One check here covers
+        # every reader: verdict markers are plain text anyone can type.
+        kept = []
+        for comment in response.json():
+            login = author(comment)
+            if login in self.trust.readable:
+                kept.append(comment)
+            else:
+                self.ignored.add((repo, number, login))
+        return kept
 
     def add_sub_issue(self, repo: str, parent_number: int, child_id: int) -> None:
         """Nest one issue under another so the board shows the hierarchy.

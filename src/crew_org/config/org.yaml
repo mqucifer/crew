@@ -148,3 +148,15 @@ labels:
   defect:
     prompt: defect:prompt
     process: defect:process
+
+# Whose comments the crew reads (crew#399). Everyone else's are ignored and
+# noted: the repositories are public, and a comment is read into prompts as
+# direction or as a crew verdict. Adding a person is the Sponsor's decision,
+# like delivery.repos.
+trust:
+  # Direction: rework notes, answers to the Product Owner's questions.
+  sponsor: mquarters
+  # The crew's own records: verdicts, notes, proposals.
+  crew: ["mqucifer-crew[bot]", "mqucifer-crew-approver[bot]"]
+  # Read as data only, never as direction (dependency updates, CI).
+  tools: ["dependabot[bot]", "github-actions[bot]"]

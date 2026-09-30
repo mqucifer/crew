@@ -27,6 +27,7 @@ from crew_org.flows.board_flow import (
 )
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.tools.github_issues import from_sponsor
 from crew_org.tools.github_project import Card
 
 NOTE_MARKER = "<!-- crew:design-note -->"
@@ -74,14 +75,20 @@ def decided(issues: Any, repo: str, epic: int) -> str:
     design note has to follow it, or it can contradict the stories again.
     """
     try:
-        bodies = [c.get("body") or "" for c in issues.comments(repo, epic)]
+        comments = issues.comments(repo, epic)
     except Exception:  # noqa: BLE001
         return ""
+    bodies = [c.get("body") or "" for c in comments]
     for i in range(len(bodies) - 1, -1, -1):
         if PRODUCT_ANSWER_MARKER in bodies[i]:
             return bodies[i].replace(PRODUCT_ANSWER_MARKER, "").split("<!-- crew:by")[0].strip()
         if PRODUCT_QUESTION_MARKER in bodies[i]:
-            replies = [b for b in bodies[i + 1 :] if "<!-- crew:" not in b]
+            # The Sponsor's reply only (crew#399): anyone can comment on a public repo.
+            replies = [
+                c.get("body") or ""
+                for c in comments[i + 1 :]
+                if "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
+            ]
             return "\n\n".join(replies).strip()
     return ""
 
