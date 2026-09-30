@@ -16,6 +16,7 @@ from crew_org.events import EventSink
 from crew_org.flows.release_check import (
     RELEASE_MARKER,
     RELEASE_WORKFLOW,
+    SPONSOR_STEP,
     changelog_section,
     check_releases,
     gaps,
@@ -165,9 +166,11 @@ def test_release_notes_missing_changelog_lines_are_named():
     assert any("leave out lines of the CHANGELOG section" in f for f in found)
 
 
-def test_a_private_package_is_named_and_the_image_checks_stop():
+def test_a_private_package_is_the_sponsor_s_step_and_the_image_checks_stop():
     found = gaps(Issues(), FakeRegistry(unreadable=True), "sprint-metrics", VERSION)
-    assert any("isn't public" in f for f in found)
+    [line] = found
+    assert line.startswith(SPONSOR_STEP)
+    assert "isn't public" in line and "Change visibility" in line and "no story should" in line
 
 
 def test_no_image_at_all_is_a_gap():
@@ -274,3 +277,25 @@ def test_a_version_never_published_is_released_as_itself():
     # The missing tag is one gap, not three.
     assert "no `## [1.0.0]` section" not in body
     assert "There's no GitHub Release on" not in body
+
+
+# --- crew#386: a gap only the Sponsor can close isn't crew work ----------------
+
+
+def test_only_the_sponsor_s_step_files_no_epic():
+    issues = Issues()
+    result = check(issues, FakeRegistry(unreadable=True))
+    assert result.filed == [] and result.verified == []
+    assert result.sponsor == [("sprint-metrics", VERSION)]
+    assert issues.created == []
+
+
+def test_crew_gaps_are_filed_and_the_sponsor_s_step_is_kept_apart():
+    """sprint-metrics#350: nothing published, and the package unreadable."""
+    issues = Issues(tag=False, release=False)
+    result = check(issues, FakeRegistry(unreadable=True))
+    assert result.filed == [("sprint-metrics", 400)]
+    body = issues.created[0]["body"]
+    gap_lines = [line for line in body.splitlines() if line.startswith("- ")]
+    assert gap_lines and not any(SPONSOR_STEP in line for line in gap_lines)
+    assert SPONSOR_STEP in body
