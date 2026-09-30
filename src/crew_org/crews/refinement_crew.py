@@ -141,6 +141,13 @@ class Epic(BaseModel):
             "the others. Name what the user could do with only this."
         )
     )
+    changes_what_readers_see: bool = Field(
+        description=(
+            "True if this epic changes what someone reads or sees: a report, a page, "
+            "an output format. The UX Designer then adds criteria about the reader "
+            "(#377)."
+        )
+    )
 
     @field_validator("separately_deliverable")
     @classmethod

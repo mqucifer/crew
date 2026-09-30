@@ -58,5 +58,6 @@ def test_an_epic_may_state_a_quality():
         separately_deliverable=(
             "A reader could scan the summary alone and know whether to look further."
         ),
+        changes_what_readers_see=True,
     )
     assert "at a glance" in epic.outcome

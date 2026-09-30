@@ -31,6 +31,7 @@ PROPOSAL = EpicProposal(
             separately_deliverable=(
                 "The Sponsor can read every metric in the terminal with no other work done."
             ),
+            changes_what_readers_see=True,
         ),
         Epic(
             title="Emit JSON",
@@ -39,6 +40,7 @@ PROPOSAL = EpicProposal(
             separately_deliverable=(
                 "Other tools can consume the metrics even if nobody reads the table."
             ),
+            changes_what_readers_see=False,
         ),
     ],
     ordering_rationale="Table first because it answers the question immediately.",
@@ -232,6 +234,15 @@ def test_a_fresh_goal_gets_a_proposal(monkeypatch):
     assert EPIC_PROPOSAL_MARKER in issues.posted[0][1]
 
 
+def test_an_epic_that_changes_what_readers_see_is_labelled_for_the_ux_designer(monkeypatch):
+    """#377: the Product Owner marks it, and the UX Designer writes its note."""
+    issues = FakeIssues()
+    run(FakeBoard([card(1)]), issues, monkeypatch)
+    labels = {i["title"]: i["labels"] for i in issues.created}
+    assert labels["Report as a table"] == ["needs:human", "needs:ux"]
+    assert labels["Emit JSON"] == ["needs:human"]
+
+
 def test_a_goal_outside_the_crews_repositories_is_not_decomposed(monkeypatch):
     """crew#4 was a Goal in the crew's own repository, and refinement split it
     into eight epics and stories on the board. Only claiming checked
@@ -276,7 +287,7 @@ def test_epics_become_cards_awaiting_the_sponsor(monkeypatch):
     assert result.epics_created == [101, 102]
     # Every epic is labelled for the Sponsor and parked at the gate.
     for issue in issues.created:
-        assert issue["labels"] == ["needs:human"]
+        assert "needs:human" in issue["labels"]
     assert [m[1] for m in board.moves] == [INBOX, INBOX]
     assert ("ITEM_N101", "Work Type", "Epic") in board.selects
 

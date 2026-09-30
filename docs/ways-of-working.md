@@ -15,8 +15,9 @@ negotiate process with each other; they follow what is written here.
 | Role | Produces | May escalate |
 |---|---|---|
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance | n/a |
-| Product Owner | Epics; answers to questions about product intent (crew#189) | No |
+| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189) | No |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates | No |
+| UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one | No |
 | Architect | A project's design, design notes, technical epics, Tasks, Spikes | Yes |
 | Developer | Code, tests, docs, PRs, Bugs | Yes |
 | QA Engineer | Behaviour verdicts, Bugs | No |
@@ -356,6 +357,22 @@ retry, then the epic is blocked for a person with the guideline named, and so is
 a decision the Architect names as beyond its reach. Until the note exists,
 planning holds the epic's stories back. Once it does, the Developer building one
 of them and the Code Reviewer judging its diff are both shown it.
+
+**What the reader sees** (crew#377). An epic that changes what someone reads or
+sees (a report, a page, an output format) is labelled `needs:ux` by the Product
+Owner. Once its stories are split, the design phase has the UX Designer write a
+presentation note on the epic: who reads the output and the question they bring,
+a sample of the finished output, and for every story at least two criteria about
+what the reader sees. Those criteria are added to the story's own acceptance
+criteria, in the same Given/When/Then form, so the Developer builds to them, the
+Code Reviewer reads them and QA proves them with tests. A criterion that needs
+judgement ("clear", "at a glance") is refused by the note's schema, not by
+asking: whether it reads well is the Sponsor's call at review. A note that
+doesn't cover every story after a retry blocks the epic for a person. Until the
+note exists, planning holds the epic's stories back, as for a design note, and
+the Developer and Code Reviewer are shown it once it does. It's rationed for the
+same reason design is: presentation judgement is as hard for a small model as
+architecture, so it's asked for only where a reader is affected.
 
 **When the Architect revisits a project's design** (crew#192). How a project is
 built is the Architect's call, and the Sponsor is never asked whether a

@@ -400,6 +400,7 @@ def start_sprint(
             )
 
     from crew_org.flows.design_notes import awaiting_design  # noqa: PLC0415
+    from crew_org.flows.presentation_notes import awaiting_presentation  # noqa: PLC0415
 
     # What each Ready story builds on, from its body; read only when the sprint
     # has room, since every pass of every tick runs admission.
@@ -426,7 +427,9 @@ def start_sprint(
         sprint=sprint,
         capacity=capacity,
         repos=repos,
-        awaiting_design=awaiting_design(issues, cards, default_repo),
+        # Held until their notes exist: the Architect's and the UX Designer's (#377).
+        awaiting_design=awaiting_design(issues, cards, default_repo)
+        | awaiting_presentation(issues, cards, default_repo),
         builds_on=builds,
     )
     counts = board.counts(cards)

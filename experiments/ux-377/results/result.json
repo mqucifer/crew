@@ -1,0 +1,13 @@
+{
+  "stories": 4,
+  "criteria_per_story": {
+    "9001": 2,
+    "9002": 2,
+    "9003": 2,
+    "9004": 2
+  },
+  "coverage_problems": [],
+  "beyond_reach": null,
+  "split_seconds": 307,
+  "note_seconds": 206
+}

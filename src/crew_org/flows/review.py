@@ -19,9 +19,9 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
-from crew_org.flows.design_notes import story_note
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
+from crew_org.flows.presentation_notes import story_notes
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
@@ -239,7 +239,7 @@ def review_open_pulls(
                     diff,
                     read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
                 ),
-                design_note=story_note(issues, story, repo) if story is not None else "",
+                design_note=story_notes(issues, story, repo) if story is not None else "",
                 acceptance_criteria=story_criteria(issues, story, repo),
                 importers=_importers(clone, diff),
             )

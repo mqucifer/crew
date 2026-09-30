@@ -113,6 +113,8 @@ STORY_PROBLEM_MARKER = "<!-- crew:story-problem -->"
 PRODUCT_ANSWER_MARKER = "<!-- crew:product-answer -->"
 PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
 NEEDS_DESIGN = "needs:design"
+# An epic that changes what a reader sees: the UX Designer writes a note (#377).
+NEEDS_UX = "needs:ux"
 # A story held in refinement only because Ready was full. The label is what
 # tells it apart from a story that genuinely needs refining — one filed by
 # hand, or returned by escalation — so the pass that lets it in when Ready
@@ -708,7 +710,8 @@ def create_epic_cards(
             repo,
             epic.title,
             render_epic_body(epic, goal.number or 0, goal.title),
-            labels=[NEEDS_HUMAN],
+            # The UX Designer writes its note once the stories are split (#377).
+            labels=[NEEDS_HUMAN, *([NEEDS_UX] if epic.changes_what_readers_see else [])],
         )
         number = issue["number"]
         created[epic.title] = number
