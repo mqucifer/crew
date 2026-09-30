@@ -294,7 +294,7 @@ def select_files(
 
     unknown: list[str] = []
     for ask in extra:
-        ask = ask.strip().lstrip("./")
+        ask = ask.strip().removeprefix("./")
         if ask in rels:
             chosen.add(ask)
         else:
@@ -360,7 +360,7 @@ def focused_context(
         "",
     ]
     text = "\n".join(lines)
-    asked = [a.strip().lstrip("./") for a in extra if a.strip().lstrip("./") in chosen]
+    asked = [a.strip().removeprefix("./") for a in extra if a.strip().removeprefix("./") in chosen]
     return text, Focus(focused=True, shown=shown, asked=asked, unknown=unknown, chars=len(text))
 
 
