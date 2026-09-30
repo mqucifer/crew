@@ -1,6 +1,17 @@
 # Runbook: the model thinks, then answers nothing
 
-**Tracks:** crew#312. **Started:** 2026-09-28. **Status:** cause narrowed to the task's size; fixes in crew#231 and crew#276. See [What the replays show](#what-the-replays-show).
+**Tracked:** crew#312, closed 2026-09-29 once the cause was found. **Started:** 2026-09-28. **Fixes:** crew#231 and crew#276, each proven by the empty-answer rate below.
+
+## What we know
+- **The cause is the size of the answer asked for, made likelier by a long prompt.** One structured answer needing about 7k answer tokens after 15–23k thinking sometimes stops mid-thought, at around 16–18k thinking tokens. Serving (DFlash2, DSpark, the prefix cache, SGLang v0.5.20) changed the rate somewhat but fixed nothing. See [What the replays show](#what-the-replays-show).
+- **Where it happens,** as the share of calls answering empty, by prompt size (`crew-code-think`, constrained JSON, 7 days to 2026-09-28): under 50k, 0%; 50–90k, 6%; 90k and up, 26% (62% when served warm from the cache). This is the baseline the fixes are measured against.
+- **What the crew does about it:**
+  - A smaller prompt: crew#231, focused context.
+  - Smaller answers: crew#276, a failed attempt retries in steps.
+  - Neither makes the model "dumber": there's no thinking-off fallback (see [Decisions](#decisions)).
+- **What watches it:**
+  - Every empty answer is an `llm.empty` event.
+  - An alert rule counts model calls over 60k prompt tokens: pull, not a webhook, and owned by the DevOps/SRE role (crew#335). It starts at 60k, the low end of where empty answers begin, and is tuned from what it finds.
 
 This is the process we followed and the evidence at each step, so the next person, or the DevOps/SRE role (crew#335), can repeat it. It moves to the `infra` repo once that exists.
 
