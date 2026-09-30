@@ -192,7 +192,7 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
     defined = {name: rel for rel, body in bodies.items() for name in _TEST_DEF.findall(body)}
     if sum(len(b) for b in bodies.values()) <= QA_FOCUS_ABOVE_CHARS:
         return QATests(collect_tests(worktree), list(bodies), False, defined)
-    wanted = {str(Path(e.strip().lstrip("./"))) for e in extra if e.strip()}
+    wanted = {str(Path(e.strip().removeprefix("./"))) for e in extra if e.strip()}
     changed = set(changed_paths(worktree))
     chosen = [
         rel
