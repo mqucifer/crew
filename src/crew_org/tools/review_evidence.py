@@ -59,8 +59,9 @@ _FILE = re.compile(r"^\+\+\+ b/(\S+)$")
 
 
 def _is_test(path: str) -> bool:
-    name = path.rsplit("/", 1)[-1]
-    return path.startswith("tests/") or "/tests/" in path or name.startswith("test_")
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    return profile_for(path).is_test_path(path)
 
 
 def added_options(diff: str) -> list[str]:

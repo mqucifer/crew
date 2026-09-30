@@ -1422,16 +1422,16 @@ def existing_proof_block(proven: list) -> str:
 
 def names_a_test(worktree, test: str) -> bool:
     """Does `path::name` (or `path::Class::name`) name a test that exists in the worktree?"""
-    import re  # noqa: PLC0415
     from pathlib import Path  # noqa: PLC0415
 
-    path, _, rest = test.partition("::")
-    name = rest.rsplit("::", 1)[-1].split("[", 1)[0]
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    profile = profile_for(test.partition("::")[0])
+    path, name = profile.split_test_id(test)
     target = Path(worktree) / path
     if not name or not target.is_file():
         return False
-    text = target.read_text(encoding="utf-8", errors="ignore")
-    return re.search(rf"^\s*(?:async\s+)?def\s+{re.escape(name)}\s*\(", text, re.M) is not None
+    return profile.test_exists(target.read_text(encoding="utf-8", errors="ignore"), name)
 
 
 def ci_evidence_problems(

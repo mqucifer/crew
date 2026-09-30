@@ -274,8 +274,9 @@ def broken_contracts(
 
 
 def _is_test_path(path: str) -> bool:
-    name = path.rsplit("/", 1)[-1]
-    return path.startswith("tests/") or "/tests/" in path or name.startswith("test_")
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    return profile_for(path).is_test_path(path)
 
 
 def describe_contracts(broken: dict[str, tuple[str, str]], merged: Merged | None = None) -> str:
