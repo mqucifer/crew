@@ -150,6 +150,10 @@ def render(note: PresentationNote) -> str:
         "",
         "**The finished output, as it should read**",
         "",
+        # A sample isn't checked against the criteria (on #62's live run it listed
+        # two metrics twice), so it's illustration and the criteria decide (#377).
+        "_An illustration. The criteria below decide; where the two differ, follow the criteria._",
+        "",
         "~~~",
         note.sample.strip("\n"),
         "~~~",
