@@ -93,6 +93,9 @@ def to_design(proposal: Any) -> Design:
         dependencies=value(proposal.dependencies),
         sandbox=value(proposal.sandbox),
         checks=[c.value for c in proposal.checks],
+        sandbox_image=value(getattr(proposal, "sandbox_image", None)),
+        setup=value(getattr(proposal, "setup", None)),
+        autofix=[c.value for c in getattr(proposal, "autofix", None) or []],
         ci_checks=[c.value for c in getattr(proposal, "ci_checks", None) or []],
         release_how=value(proposal.release_how),
         structure=value(getattr(proposal, "structure", None)),
@@ -180,6 +183,8 @@ def design(
         reasons = undeclared(
             proposal, ci, record.design.ci_checks if record.design is not None else []
         )
+        # The sandbox image is real and pinned: a guessed digest runs nothing (#403, #365).
+        reasons += image_problems(getattr(proposal, "sandbox_image", None))
         if not reasons:
             candidate = to_design(proposal)
             shown = yaml.safe_dump(
@@ -203,6 +208,24 @@ def design(
         ended.refused = reasons
         feedback = "\n".join(f"- {r}" for r in reasons)
     return ended
+
+
+def image_problems(choice: Any) -> list[str]:
+    """Why a proposed sandbox image can't be used, or nothing (#403)."""
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    if choice is None or not getattr(choice, "value", ""):
+        return []
+    ref = base_images.parse(choice.value.strip())
+    if ref is None or not ref.digest:
+        return [f"the sandbox image `{choice.value}` isn't pinned by digest (name@sha256:...)"]
+    try:
+        found = base_images.lookup(ref.host, ref.name, ref.digest)
+    except base_images.Unreadable as exc:
+        return [f"the sandbox image `{choice.value}` can't be verified: {exc}"]
+    if found is None:
+        return [f"the sandbox image `{choice.value}` doesn't exist: no such digest in {ref.host}"]
+    return []
 
 
 def changes_block(proposal: Any) -> str:
@@ -258,6 +281,9 @@ def open_design_pr(
         line("Language", proposal.language),
         line("Dependencies", proposal.dependencies),
         line("Sandbox", proposal.sandbox),
+        line("Sandbox image", getattr(proposal, "sandbox_image", None)),
+        line("Setup", getattr(proposal, "setup", None)),
+        *[line("Autofix", c) for c in getattr(proposal, "autofix", None) or []],
         *[line("Check", c) for c in proposal.checks],
         *[line("CI proves", c) for c in getattr(proposal, "ci_checks", None) or []],
         line("Release", proposal.release_how),

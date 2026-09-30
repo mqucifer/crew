@@ -80,6 +80,27 @@ class DesignProposal(BaseModel):
             "run as it reads, in the crew's sandbox, on every change"
         )
     )
+    # The sandbox itself (#403). Left empty, a project is built and tested in the
+    # crew's Python image with uv, ruff and pytest, as sprint-metrics is.
+    sandbox_image: Choice | None = Field(
+        None,
+        description=(
+            "Only for a project that isn't Python built with uv: the container image its "
+            "checks run in, with every tool they need, pinned by digest "
+            "(registry/name:tag@sha256:...). Empty for a Python project"
+        ),
+    )
+    setup: Choice | None = Field(
+        None,
+        description=(
+            "With `sandbox_image` only: the one command that installs dependencies, the "
+            "only step given a network, e.g. `npm ci`"
+        ),
+    )
+    autofix: list[Choice] = Field(
+        default_factory=list,
+        description="With `sandbox_image` only: formatters run before the checks",
+    )
     # What only CI can prove (#335): an image built and run as deployed isn't a
     # command the sandbox can run, and written into `checks` it would be run as one.
     ci_checks: list[Choice] = Field(

@@ -136,6 +136,27 @@ class Design(Section):
     checks: list[str] = Field(
         default_factory=list, description="The commands that enforce the definition of done"
     )
+    # The sandbox itself, from the design rather than one image for every
+    # project (#403). Each unset one keeps today's Python default, so a project
+    # whose design doesn't name them is checked exactly as before.
+    sandbox_image: str | None = Field(
+        default=None,
+        description=(
+            "The container image the crew builds and tests this project in, pinned by digest "
+            "(name@sha256:...), with every tool the checks need"
+        ),
+    )
+    setup: str | None = Field(
+        default=None,
+        description=(
+            "The one command that installs dependencies, the only step given a network, "
+            "e.g. `npm ci`"
+        ),
+    )
+    autofix: list[str] = Field(
+        default_factory=list,
+        description="Formatters run before the checks, e.g. `npx prettier --write .`",
+    )
     # What only CI can prove, in words (#335). `checks` are commands the crew's
     # sandbox runs; an image built and run as deployed (§19.8) isn't one, and
     # with nowhere else to go the Architect wrote it there as prose.
