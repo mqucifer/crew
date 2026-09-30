@@ -12,7 +12,7 @@ import ast
 import os
 import subprocess
 import textwrap
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from crew_org.crews.delivery_crew import FileWrite
@@ -367,6 +367,61 @@ VERIFY = (
 )
 
 
+# The dependency step when a project's design names none: today's, for Python.
+SETUP = ["uv", "sync", "--extra", "dev", "--quiet"]
+
+
+@dataclass(frozen=True)
+class Toolchain:
+    """What `check` runs for one project, from its design (#403)."""
+
+    image: str | None
+    setup: list[str] | None
+    autofix: tuple[list[str], ...]
+    verify: tuple[list[str], ...]
+    problem: str | None = None
+
+
+def toolchain(worktree: Path) -> Toolchain:
+    """The project's own sandbox image, setup, autofix and checks, or today's defaults.
+
+    A design that names its own image gets only what it names: the Python
+    defaults (uv, ruff) would fail in any other image. A design that names none
+    keeps them, so sprint-metrics is checked exactly as before.
+    """
+    import shlex  # noqa: PLC0415
+
+    from crew_org.project import ProjectRecordError, read_record  # noqa: PLC0415
+
+    try:
+        record = read_record(worktree)
+    except ProjectRecordError:
+        record = None
+    design = record.design if record is not None else None
+    image = design.sandbox_image if design is not None else None
+    own = bool(image)
+    verify = (
+        tuple(shlex.split(c) for c in design.checks)
+        if design is not None and design.checks
+        else (() if own else VERIFY)
+    )
+    if design is not None and design.setup:
+        setup = shlex.split(design.setup)
+    else:
+        setup = None if own else SETUP
+    if design is not None and design.autofix:
+        autofix = tuple(shlex.split(c) for c in design.autofix)
+    else:
+        autofix = () if own else AUTOFIX
+    problem = None
+    if own and "@sha256:" not in image:
+        # The image rule (§19): what runs is pinned, never a tag that can move.
+        problem = f"the design's sandbox image `{image}` isn't pinned by digest (name@sha256:...)"
+    elif own and not verify:
+        problem = "the design names its own sandbox image but no checks to run in it"
+    return Toolchain(image=image, setup=setup, autofix=autofix, verify=verify, problem=problem)
+
+
 def check(
     worktree: Path, *, sandbox: Sandbox | None = None, timeout: int = DEFAULT_TIMEOUT
 ) -> CheckResult:
@@ -388,20 +443,21 @@ def check(
     none at all, so generated code cannot reach anything while it executes.
     """
     sandbox = sandbox or Sandbox()
-    results = [
-        run(
-            worktree,
-            ["uv", "sync", "--extra", "dev", "--quiet"],
-            sandbox=sandbox,
-            network=True,
-            timeout=timeout,
-        )
-    ]
-    if results[0].ok:
-        for command in AUTOFIX:
+    tools = toolchain(worktree)
+    if tools.problem:
+        # Refused before anything runs: a design that can't be checked safely is
+        # the Architect's to fix, and the card says so.
+        return CheckResult(results=[CommandResult(command="design", code=2, output=tools.problem)])
+    if tools.image:
+        sandbox = replace(sandbox, image=tools.image)
+    results = []
+    if tools.setup:
+        results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, timeout=timeout))
+    if all(r.ok for r in results):
+        for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
             run(worktree, command, sandbox=sandbox, network=False, timeout=timeout)
-        for command in VERIFY:
+        for command in tools.verify:
             results.append(run(worktree, command, sandbox=sandbox, network=False, timeout=timeout))
     return CheckResult(results=results)

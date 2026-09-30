@@ -86,6 +86,8 @@ _AUTH = {
         "https://registry-1.docker.io",
     ),
     "ghcr.io": ("https://ghcr.io/token", "ghcr.io", "https://ghcr.io"),
+    # Microsoft's registry serves Playwright's browser images, and needs no token (#403).
+    "mcr.microsoft.com": (None, None, "https://mcr.microsoft.com"),
 }
 _ACCEPT = ", ".join(
     [
@@ -108,17 +110,14 @@ def manifest_digest(host: str, name: str, reference: str) -> str | None:
     auth, service, registry = _AUTH[host]
     try:
         with httpx.Client(timeout=TIMEOUT, follow_redirects=True) as client:
-            token = client.get(
-                auth, params={"service": service, "scope": f"repository:{name}:pull"}
-            )
-            token.raise_for_status()
-            response = client.head(
-                f"{registry}/v2/{name}/manifests/{reference}",
-                headers={
-                    "Authorization": f"Bearer {token.json().get('token', '')}",
-                    "Accept": _ACCEPT,
-                },
-            )
+            headers = {"Accept": _ACCEPT}
+            if auth is not None:
+                token = client.get(
+                    auth, params={"service": service, "scope": f"repository:{name}:pull"}
+                )
+                token.raise_for_status()
+                headers["Authorization"] = f"Bearer {token.json().get('token', '')}"
+            response = client.head(f"{registry}/v2/{name}/manifests/{reference}", headers=headers)
     except httpx.HTTPError as exc:
         raise Unreadable(f"{host} couldn't be reached: {exc}") from exc
     if response.status_code == 404:

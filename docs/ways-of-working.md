@@ -439,6 +439,17 @@ looks protected while running arbitrary code against the user's own account.
 Host execution exists only as `sandbox.mode: off` in `config/org.yaml` — an
 explicit acceptance of the risk, never a default.
 
+**Which image, and which commands, come from the project's design** (crew#403).
+The Architect's design can name a `sandbox_image` (pinned by digest, and checked
+to exist in its registry before the design is opened), a `setup` command (the
+only step given a network) and `autofix` formatters, beside the `checks` it
+already names. A design that names none of them is built and tested exactly as
+before: the crew's Python image, `uv sync`, then ruff and pytest. A design that
+names its own image runs only what it names. Every protection in the table holds
+whatever the image: a browser test runs headless under the same limits, no
+network, read-only root, non-root, no capabilities. That was verified with a
+static site's Playwright test, and with a broken page making the check fail.
+
 These are bounds on blast radius, and bounds are not proof. They were verified
 against a live engine rather than assumed: network blocked for test code but
 available for dependency resolution, a 4GB allocation killed at the 2GB limit,
