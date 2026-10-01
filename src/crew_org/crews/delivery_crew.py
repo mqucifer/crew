@@ -234,6 +234,14 @@ class CriterionTest(BaseModel):
     @model_validator(mode="after")
     def _is_that_test(self) -> CriterionTest:
         profile = profile_for(self.path)
+        if is_doc(self.path):
+            # "Name it tests/test_*.py" can't be followed for a doc criterion:
+            # sprint-metrics#381 was refused that way twice in a row.
+            raise ValueError(
+                f"{self.path!r} is documentation. A criterion about what a doc says is "
+                "proven by reading the doc, not by a test: leave it out of criteria_tests "
+                "and make the doc change in new_files or text_edits"
+            )
         if not profile.is_test_file(self.path):
             raise ValueError(f"{self.path!r} isn't a test file: {profile.test_file_hint}")
         if not profile.edit_by_name:
