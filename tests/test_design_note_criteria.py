@@ -1,4 +1,4 @@
-"""A design note can't overrule a story's acceptance criterion (#258).
+"""A design note can't overrule a story's acceptance criterion (#258, #425).
 
 Epic sprint-metrics#59's note told #145's test to leave out the stdout-empty
 assertion that #145's own criterion required, so #146's change would be "a
@@ -13,7 +13,8 @@ import contextlib
 
 from crew_org.crews import design_crew, design_note_crew
 from crew_org.crews.design_crew import Conflict, DesignReview
-from tests.test_design_notes import Architect, Issues, note, run
+from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, story_problem_evidence
+from tests.test_design_notes import Architect, Issues, design_epic, note, run
 
 CRITERION = "the exit code is 2, stderr contains the label, and stdout is empty"
 STORIES = {
@@ -105,3 +106,55 @@ def test_the_architect_is_told_criteria_are_the_products_decisions(monkeypatch):
         lambda: design_note_crew.write_note(epic="e", stories="s", project="", repository=""),
     )
     assert "never drop, weaken or defer one" in text
+
+
+# --- #425: a note that can't meet the stories' criteria sends the stories back ---------------
+
+CONTRADICTORY = DesignReview(
+    conflicts=[
+        Conflict(
+            guideline="#145 criterion 5: the response has HTTP status 400",
+            choice="every unknown card returns 404",
+            why="criterion 4 asks 404 of the same request",
+            story=145,
+        )
+    ]
+)
+
+
+class Labelled(Issues):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.ensured: list[str] = []
+
+    def ensure_label(self, repo, name, **kwargs):
+        self.ensured.append(name)
+
+
+def test_a_note_that_still_contradicts_only_criteria_goes_to_the_product_owner(tmp_path):
+    issues = Labelled(subs=STORIES)
+    result = run(
+        tmp_path, issues, Architect(note(), note()), Reviewer(CONTRADICTORY, CONTRADICTORY)
+    )
+    ((number, why),) = result.returned
+    assert number == 50 and "HTTP status 400" in why
+    assert result.blocked == [] and result.written == []
+    assert issues.labels == [(50, NEEDS_REWORK)], "not blocked, not for a person"
+    ((on, body),) = issues.posted
+    assert on == 50 and STORY_PROBLEM_MARKER in body and "#145" in body
+    assert "HTTP status 400" in story_problem_evidence(issues, "sprint-metrics", 50)
+
+
+def test_a_guideline_among_the_conflicts_still_needs_a_person(tmp_path):
+    mixed = DesignReview(conflicts=CONTRADICTORY.conflicts + OVERRULED.conflicts)
+    issues = Labelled(subs=STORIES)
+    result = run(tmp_path, issues, Architect(note(), note()), Reviewer(mixed, mixed))
+    assert [n for n, _ in result.blocked] == [50] and result.returned == []
+    assert (50, "needs:human") in issues.labels
+
+
+def test_an_epic_waiting_to_be_split_again_gets_no_note(tmp_path):
+    waiting = design_epic(labels=frozenset({"needs:design", NEEDS_REWORK}))
+    architect = Architect(note())
+    result = run(tmp_path, Labelled(subs=STORIES), architect, cards=[waiting])
+    assert architect.calls == [] and result.written == []

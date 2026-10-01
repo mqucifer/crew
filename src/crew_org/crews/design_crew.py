@@ -173,6 +173,15 @@ class Conflict(BaseModel):
     guideline: str = Field(description="The guideline it contradicts: §19 rule N, or the project's")
     choice: str = Field(description="The design choice that contradicts it")
     why: str
+    # A criterion is the product's decision, not a guideline: a note that can't
+    # meet it goes to the Product Owner, not a person (#425).
+    story: int | None = Field(
+        default=None,
+        description=(
+            "The story's issue number when it contradicts that story's acceptance criterion; "
+            "null when it contradicts a guideline"
+        ),
+    )
 
 
 class Undeclared(BaseModel):
@@ -265,8 +274,9 @@ def review_design(
         "## The stories this note directs, with their acceptance criteria\n\n"
         f"{stories}\n\n"
         "The acceptance criteria are the product's decisions. Also report, as a conflict "
-        "whose `guideline` names the story and quotes its criterion, every place the note "
-        "has a story drop, weaken or defer what that story's own criterion requires.\n\n"
+        "whose `guideline` names the story and quotes its criterion, and whose `story` is "
+        "that story's number, every place the note has a story drop, weaken or defer what "
+        "that story's own criterion requires.\n\n"
         if stories
         else ""
     )
