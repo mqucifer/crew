@@ -18,6 +18,7 @@ from crew_org.crews.design_crew import Change, Choice, Conflict, DesignProposal,
 from crew_org.events import EventSink
 from crew_org.flows.board_flow import TECHNICAL
 from crew_org.flows.design import (
+    DESIGN_PR,
     REVISIT_LABEL,
     REVISIT_MARKER,
     changes_block,
@@ -628,3 +629,12 @@ def test_a_design_declared_before_work_existed_still_files_its_what():
 def test_a_change_that_needs_work_must_say_what_the_work_is():
     with pytest.raises(ValidationError, match="say what that work is"):
         Change(what="Add a docs field", was="nothing", why="collisions", needs_work=True)
+
+
+def test_an_open_design_pr_run_by_hand_holds_its_projects_epics(clone):
+    """sprint-metrics#406-#408 were approved while the Sponsor's design PR #412 was open."""
+    by_hand = {"number": 412, "body": f"Closes #411\n\n{DESIGN_PR}, in the `design` section."}
+    issues = Issues(open_pulls=[by_hand])
+    result = revisit(issues, clone, SPRINT6, Architect())
+    assert result.holds[REPO] == "the Architect's design, PR #412, lands first"
+    assert issues.merged == [], "the Sponsor merges a design run by hand"
