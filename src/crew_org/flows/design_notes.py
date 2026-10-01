@@ -51,12 +51,15 @@ class DesignNotes:
     failed: list[tuple[int, str]] = field(default_factory=list)
 
 
-def needs_note(card: Card) -> bool:
+def wants_note(card: Card) -> bool:
     """An open epic labelled `needs:design`. It wins over `no:design` (§13)."""
+    return card.work_type == EPIC_TYPE and card.state != "CLOSED" and NEEDS_DESIGN in card.labels
+
+
+def needs_note(card: Card) -> bool:
+    """An epic whose note the Architect should write now."""
     return (
-        card.work_type == EPIC_TYPE
-        and card.state != "CLOSED"
-        and NEEDS_DESIGN in card.labels
+        wants_note(card)
         # Waiting for a person: no note is attempted until they've answered (#321).
         and NEEDS_HUMAN not in card.labels
         # Waiting to be split again: a note now would be for the stories it replaces (#425).
@@ -109,11 +112,19 @@ def decided(issues: Any, repo: str, epic: int) -> str:
 
 
 def awaiting_design(issues: Any, cards: list[Card], default_repo: str) -> set[tuple[str, int]]:
-    """The epics whose stories wait: labelled `needs:design`, with no note yet."""
+    """The epics whose stories wait: labelled `needs:design`, with no note yet.
+
+    Blocked for a person too: the Architect waits for them, and the stories wait
+    for the note. sprint-metrics#184 was blocked over #393's criteria, and all
+    five of its stories were admitted without one (#425). An epic being split
+    again is planning's own case: its stories are about to be superseded.
+    """
     return {
         epic.key
         for epic in cards
-        if needs_note(epic) and not note_for(issues, epic.repo or default_repo, epic.number or 0)
+        if wants_note(epic)
+        and NEEDS_REWORK not in epic.labels
+        and not note_for(issues, epic.repo or default_repo, epic.number or 0)
     }
 
 
