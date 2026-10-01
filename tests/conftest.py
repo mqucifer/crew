@@ -17,3 +17,15 @@ def _no_registry(monkeypatch):
     base_images._READ.clear()
     yield
     base_images._READ.clear()
+
+
+@pytest.fixture(autouse=True)
+def _criteria_pass(monkeypatch):
+    """No test calls the model to check a split's criteria (#428): they all pass.
+
+    Tests of the check itself set their own.
+    """
+    from crew_org.crews.criteria_crew import CriteriaCheck
+    from crew_org.flows import board_flow
+
+    monkeypatch.setattr(board_flow, "check_criteria", lambda **_: CriteriaCheck())
