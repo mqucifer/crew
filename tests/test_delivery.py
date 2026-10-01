@@ -353,3 +353,9 @@ def test_a_new_criterion_test_is_still_added(tmp_path):
     )
     text = (tmp_path / "tests" / "test_sprint_range.py").read_text()
     assert "def test_there" in text and "def test_range" in text
+
+
+def test_a_doc_criterion_named_as_a_test_is_told_the_doc_proves_it():
+    """sprint-metrics#381: told to name tests/test_*.py for a doc, twice in a row."""
+    with pytest.raises(ValidationError, match="proven by reading the doc"):
+        CriterionTest(criterion="the doc explains it", path="docs/formats.md", test="doc")

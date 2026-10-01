@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org
+from crew_org.crews.criteria_crew import check_criteria
 from crew_org.crews.refinement_crew import (
     Epic,
     EpicProposal,
@@ -40,7 +41,7 @@ from crew_org.crews.refinement_crew import (
 )
 from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, criteria_check
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace
@@ -1229,6 +1230,7 @@ def refine_epics(
                 summary=f"split {epic_card.title[:50]}",
             )
         )
+        checked = None
         try:
             # The whole epic body. It was cut at 800 characters while the Product
             # Owner one step earlier was given its goal whole — and the Business
@@ -1255,9 +1257,7 @@ def refine_epics(
                     told = (
                         f"These aren't files in the repository: {', '.join(focus.unknown)}. " + told
                     )
-                proposal = attributed(split_epic, card=number, repo=repo)(
-                    epic_card.title,
-                    body,
+                asked_for = dict(
                     repository=repository,
                     pinning=pinning,
                     superseded=result.superseded.get(number),
@@ -1268,6 +1268,9 @@ def refine_epics(
                         f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
                     ),
                     planned_numbers={n for n, _t, _e in planned},
+                )
+                proposal = attributed(split_epic, card=number, repo=repo)(
+                    epic_card.title, body, **asked_for
                 )
                 if not proposal.asks:
                     break
@@ -1291,6 +1294,27 @@ def refine_epics(
                 )
             if proposal.asks:
                 raise ValueError("it asked to see files past the limit instead of splitting")
+            # Every criterion has to pass alongside the others and the code, and
+            # that shows before any story exists (#428). One re-split with the
+            # conflicts named; what survives goes to the Product Owner.
+            others = criteria_check.planned_criteria(issues, repo, planned)
+            checked = attributed(check_criteria, card=number, repo=repo)(
+                stories=criteria_check.render_split(proposal),
+                repository=repository,
+                planned=others,
+            )
+            if checked.conflicts:
+                asked_for["feedback"] = "\n\n".join(
+                    f for f in (asked_for["feedback"], criteria_check.feedback(checked)) if f
+                )
+                proposal = attributed(split_epic, card=number, repo=repo)(
+                    epic_card.title, body, **asked_for
+                )
+                checked = attributed(check_criteria, card=number, repo=repo)(
+                    stories=criteria_check.render_split(proposal),
+                    repository=repository,
+                    planned=others,
+                )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             result.failed.append((number, f"{type(exc).__name__}: {exc}"))
@@ -1329,6 +1353,19 @@ def refine_epics(
                     "parks the epic rather than retrying it every pass.",
                     by=None,
                 )
+            continue
+
+        if checked is not None and checked.conflicts:
+            criteria_check.to_product_owner(
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                check=checked,
+                marker=STORY_PROBLEM_MARKER,
+                rework=NEEDS_REWORK,
+            )
+            result.skipped.append((number, "its criteria can't all pass: to the Product Owner"))
             continue
 
         # The epic may have closed while the model worked: stories created under a
