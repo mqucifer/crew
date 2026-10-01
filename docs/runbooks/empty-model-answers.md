@@ -3,7 +3,7 @@
 **Tracked:** crew#312, closed 2026-09-29 once the cause was found. **Started:** 2026-09-28. **Fixes:** crew#231 and crew#276, each proven by the empty-answer rate below.
 
 ## What we know
-- **The cause is the size of the answer asked for, made likelier by a long prompt.** One structured answer needing about 7k answer tokens after 15–23k thinking sometimes stops mid-thought, at around 16–18k thinking tokens. Serving (DFlash2, DSpark, the prefix cache, SGLang v0.5.20) changed the rate somewhat but fixed nothing. See [What the replays show](#what-the-replays-show).
+- **The cause is the size of the answer asked for, made likelier by a long prompt.** One structured answer needing about 7k answer tokens after 15–23k thinking sometimes stops mid-thought, at around 16–18k thinking tokens. Serving (DFlash2, DSpark, the prefix cache, SGLang v0.5.20) changed the rate somewhat but fixed nothing. Neither did the effort level, a 16-bit KV cache, or 8-bit weights in place of NVFP4 (2026-09-30). The one lever still untested is sampling temperature. See [What the replays show](#what-the-replays-show).
 - **Where it happens,** as the share of calls answering empty, by prompt size (`crew-code-think`, constrained JSON, 7 days to 2026-09-28): under 50k, 0%; 50–90k, 6%; 90k and up, 26% (62% when served warm from the cache). This is the baseline the fixes are measured against.
 - **What the crew does about it:**
   - A smaller prompt: crew#231, focused context.
@@ -135,6 +135,8 @@ It shows local time, not UTC. The Sponsor spotted the cache split here.
    - **Leading spaces don't force a miss.** The chat template strips them. The script uses zero-width spaces (U+200B) instead.
    - **Killing the script doesn't stop the server.** SGLang keeps decoding a non-streaming request after the client leaves. Wait until no `Decode batch` lines have appeared for about 15 seconds before starting the next arm.
    - **The crew must be idle.** No tick should run during a test.
+   - **An alias's own settings beat the request's.** A replay sending `reasoning_effort: medium` to `crew-code-think` went out at `low`, as LiteLLM's log of the call shows. To vary a setting, send the request to an alias that has it (`crew-analysis` is `crew-code-think` at `medium`) or add a temporary one.
+   - **A server flag goes in `DF_EXTRA` for one launch,** without editing `.env`: `DF_EXTRA="<production's DF_EXTRA> --kv-cache-dtype bf16" ./start-dflash.sh`. Later flags win. A plain `./start-dflash.sh` afterwards puts production back.
 
 ## Upstream research
 - **The serving setup** is [MiaAI-Lab/Qwen3.8-27B-SGLang-DGX-Spark](https://github.com/MiaAI-Lab/Qwen3.8-27B-SGLang-DGX-Spark), cloned on the Spark. It's thorough. Read `README.md`, `CHANGELOG.md` and `docs/brainstorms/`. Relevant findings:
@@ -169,8 +171,16 @@ gh api repos/sgl-project/sglang/compare/<merge commit>...<image commit or tag> -
 | warm | v0.5.20-cu130, **DSpark** | hit | 5 | **3** | Run 1 was cold and empty. Runs 2 and 4 answered (4,923 and 4,292 answer tokens); runs 3 and 5 were empty. Better than DFlash2, but not fixed, so the fault isn't DFlash2-only. Cold arm skipped. |
 | cold | 09-09 nightly, DFlash2, `--disable-radix-cache` | none | 5 | **4** | Production settings plus that one flag, via `DF_EXTRA` at launch; `.env` is unchanged. No prefix reuse and no GDN snapshots: every chunk shows `#cached-token: 0`. **The cache machinery isn't the cause.** |
 | warm | v0.5.20-cu130, DFlash2 (production since 2026-09-28) | hit | 5 | **3** | **The focused prompt (#231):** the same request with its repository section replaced by the files the story names, ~26k tokens instead of ~100k. Runs 1 and 3 answered (7,579 and 6,104 answer tokens, 609 s and 848 s); runs 2, 4 and 5 stopped mid-thought at 17,015–18,198 thinking tokens. |
+| warm | v0.5.20-cu130, DFlash2, **`reasoning_effort: medium`** | hit | 5 | **3** | 2026-09-30. Through the `crew-analysis` alias, identical to `crew-code-think` but for its effort (see [Reproducing it](#reproducing-it)). Runs 3 and 4 answered (5,703 and 1,555 answer tokens, both valid JSON); runs 1, 2 and 5 stopped at 11,995–21,681 thinking tokens. **The "keep it brief" instruction isn't the lever.** |
+| warm | v0.5.20-cu130, DFlash2, **`--kv-cache-dtype bf16`** | hit | 5 | **3** | 2026-09-30, via `DF_EXTRA`. KV room halved (614,613 tokens against about 1.24M) and decode slowed from about 31 to 22 tok/s. Runs 1 (cold) and 4 answered; runs 2, 3 and 5 stopped at 15,125–18,399 thinking tokens. **KV precision isn't the lever.** |
+| warm | v0.5.20-cu130, DFlash2, **`Qwen/Qwen3.8-27B-FP8`** | hit | 3 | **3** | 2026-09-30. Qwen's own 8-bit weights (revision `017b9c7`, CRC-checked) in place of RadixArk's NVFP4, whose MLPs are 4-bit; chat template, tokenizer and end-of-turn tokens identical; KV cache 8-bit as in production. Stopped after 3 of 3 empty (9,430–16,945 thinking tokens): the last two couldn't have made it better than production. **The 4-bit weights aren't the cause.** |
 
 **The request:** sprint-metrics#268, the Developer, 115,867 prompt tokens, `crew-code-think`, JSON schema `FirstOrDone`.
+
+**Also checked on 2026-09-30, without a replay:**
+- **The GDN state pool (40 → 120 slots, 2026-09-27 21:00 UTC) isn't the cause.** Seven empty answers came before it, at 40 slots: 7 of 53 calls at 50–90k tokens, 2026-09-27 18:08–19:41 UTC. During the replays the KV pool was 9–21% full and the state pool 3%, and the `--disable-radix-cache` arm, where the pool can't matter, still went empty 4 times in 5.
+- **The server sees nothing when a run stops.** The SGLang log over all of 2026-09-30's runs has no warning, retraction or memory message. Draft acceptance is the same in empty and answered runs (accept length 4.3–4.8, rate 0.47–0.54), and an empty run ends at ordinary acceptance mid-thinking. From the server's side, an empty run is a request that finished.
+- **The same family elsewhere:** [Qwen3.8-Flash-Next discussion #50](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/discussions/50), NVFP4 on SGLang, other hardware (RTX PRO 6000). Its rate also rises with prompt length, and a 16-bit KV cache, MTP off, and NVIDIA's NVFP4 in place of RadixArk's all still fail. Its stops come after 5 tokens ("No response requested."), and its strongest lever is an earlier empty assistant turn in the history. Ours stop after 8–22k thinking tokens, mid-sentence, on requests with no history at all: a system message and one user message, as every empty crew call since 2026-09-26 was. Nobody there tested full-precision weights; our FP8 arm answers that for ours.
 
 **Empty-answer rate by prompt size,** `crew-code-think`, 7 days, constrained JSON:
 
@@ -245,15 +255,21 @@ Another model's analysis, checked against what's measured here:
 | Claim | Checked | Verdict |
 |---|---|---|
 | The thinking runs out of `max_tokens` and the parser strips it | The empty runs end `stop`, not `length`, at 16–18k thinking tokens against `max_tokens` 32,768 | **Ruled out** |
-| `low` injects a "keep it brief" instruction; `medium` injects none | The template says exactly that (above) | **Confirmed**: worth a test |
+| `low` injects a "keep it brief" instruction; `medium` injects none | The template says exactly that (above). At `medium`, 3 of 5 empty against 4 of 5 | **Tested**: not the lever |
 | Prefill through CUDA graphs overflows on a long prompt | The flag is real in the pinned image, and the server already runs `disable_prefill_cuda_graph: True` | **Ruled out**: already off |
-| The JSON schema grammar and the reasoning parser disagree at `</think>`, and generation stops | Its own reasoning, not sourced. In #268's run the 17:43 call had no `response_format` and still answered empty; the 18:00 call, also without, answered | **Weakened**: worth a test |
-| Speculative decoding ends thinking early on a draft token | DSpark was no better than DFlash2 | **Unlikely** |
+| The JSON schema grammar and the reasoning parser disagree at `</think>`, and generation stops | Its own reasoning, not sourced. In #268's run the 17:43 call had no `response_format` and still answered empty; the 18:00 call, also without, answered | **Weakened**: not tested. The Sponsor skipped it on 2026-09-30, since nothing points at the schema |
+| Speculative decoding ends thinking early on a draft token | DSpark was no better than DFlash2. Acceptance is the same in empty and answered runs, and the Flash-Next report still fails with MTP off | **Unlikely**: no arm without it |
+| The 4-bit (NVFP4) weights push the model to end its turn | Qwen's FP8 weights went empty 3 of 3 | **Ruled out** |
+| The 8-bit KV cache loses precision over a long context | A 16-bit cache went empty 3 of 5 | **Ruled out** |
+| Tripling the GDN state pool starved the KV cache | The empty answers predate the change, and the KV pool is 9–21% full | **Ruled out** |
 
 ## Next steps
-**Quiet-window arms (2026-09-30), each five warm replays of sprint-metrics#268 on production, no restart**, against 4 of 5 empty at `low` with the schema:
-- **`reasoning_effort: medium`**, the one level with no injected instruction. Does "keep it brief" on a long, heavy answer add to the stops?
-- **No `response_format`**: does the schema's grammar take part?
+**The working theory (2026-09-30):** the model itself ends its turn mid-thought. On a long context at temperature 1.0 the end-of-turn token sometimes wins the draw, and a longer generation gives it more chances. It fits everything above: size is the only thing that moves the rate, nothing in serving or precision does, and the server records nothing when it happens.
+
+**Next, when the Sponsor is ready:**
+1. **Temperature.** Five warm replays at a lower temperature, such as 0.6 (Ornith-1.5's recommendation for precise coding, on the same base family). It needs an alias with that temperature, since an alias's settings beat the request's. The Sponsor is researching it first.
+2. **How a run ends.** One replay that keeps special tokens in the output, to see whether the last token is `<|im_end|>` inside the thinking.
+3. **Pin the model revision** in the Spark's start script, `--revision 009632fef96dd349150baa780c984e62e70e91fe`, as the draft model is. Today a fresh download could change it silently.
 
 Earlier steps, kept for the record:
 
