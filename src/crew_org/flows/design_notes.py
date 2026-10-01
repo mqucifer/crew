@@ -4,7 +4,8 @@ An epic labelled `needs:design` gets the Architect's note as a comment on the
 epic. The Code Reviewer checks it against the crew-wide guidelines and the
 project's own, as it checks a project's design (#144); the Architect doesn't
 grade itself. A conflict gets one retry, then the epic is blocked for a person
-with the guideline named.
+with the guideline named. A conflict only with stories' criteria is the
+stories' problem instead: the epic goes back to the Product Owner (#425).
 
 Until the note exists, planning holds the epic's stories back. Once it does,
 the Developer building one of them is shown it, and so is the Code Reviewer
@@ -13,6 +14,7 @@ judging the diff.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -22,8 +24,10 @@ from crew_org.flows import artifacts
 from crew_org.flows.board_flow import (
     NEEDS_DESIGN,
     NEEDS_HUMAN,
+    NEEDS_REWORK,
     PRODUCT_ANSWER_MARKER,
     PRODUCT_QUESTION_MARKER,
+    STORY_PROBLEM_MARKER,
     STORY_SPLIT_MARKER,
 )
 from crew_org.llm import reraise_if_down
@@ -42,6 +46,8 @@ EPIC_TYPE = "Epic"
 class DesignNotes:
     written: list[int] = field(default_factory=list)
     blocked: list[tuple[int, str]] = field(default_factory=list)
+    # Sent back as a story problem: the note couldn't meet the stories' criteria (#425).
+    returned: list[tuple[int, str]] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
 
 
@@ -53,6 +59,8 @@ def needs_note(card: Card) -> bool:
         and NEEDS_DESIGN in card.labels
         # Waiting for a person: no note is attempted until they've answered (#321).
         and NEEDS_HUMAN not in card.labels
+        # Waiting to be split again: a note now would be for the stories it replaces (#425).
+        and NEEDS_REWORK not in card.labels
     )
 
 
@@ -198,7 +206,11 @@ def write_notes(
             )
             result.written.append(number)
             continue
-        why = outcome[0]
+        why, stories_at_fault = outcome
+        if stories_at_fault:
+            _to_product_owner(issues, sink, repo, number, why, stories_at_fault)
+            result.returned.append((number, why))
+            continue
         artifacts.label(
             issues, sink, repo=repo, number=number, by=BY, add=["blocked", "needs:human"]
         )
@@ -215,23 +227,60 @@ def write_notes(
     return result
 
 
+def _to_product_owner(issues, sink, repo, number, why, stories):
+    """The note can't meet the stories' own criteria: they are the problem (#425).
+
+    sprint-metrics#393's criteria 4 and 5 asked 404 and 400 of the same request,
+    and #184 was blocked for the Sponsor over it. A criterion is the product's
+    decision, so the Product Owner settles it and the epic is split again
+    (#189), as a review conflict with a criterion is (#252).
+    """
+    named = ", ".join(f"#{n}" for n in stories)
+    with contextlib.suppress(Exception):
+        issues.ensure_label(
+            repo,
+            NEEDS_REWORK,
+            color="d4c5f9",
+            description="Split this epic again: see the latest comment",
+        )
+    artifacts.label(issues, sink, repo=repo, number=number, by=BY, add=[NEEDS_REWORK])
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"{STORY_PROBLEM_MARKER}\n"
+        f"**No design note: {named} can't be designed as written.** {why}\n\n"
+        "Settle what the criteria should say before this epic is split again.",
+        by=BY,
+    )
+
+
 def _write_one(*, write, review, render, epic, stories, project, repository):
-    """The rendered note, or (why it couldn't be written,) for a person."""
+    """The rendered note, or (why it couldn't be written, the stories at fault).
+
+    The stories are at fault when every remaining conflict is with a story's
+    criterion; with a guideline among them, or none at all, it's for a person.
+    """
     feedback = ""
     reasons: list[str] = []
+    at_fault: tuple[int, ...] = ()
     for _attempt in range(ATTEMPTS):
         note = write(
             epic=epic, stories=stories, project=project, repository=repository, feedback=feedback
         )
         if note.beyond_reach:
-            return (f"The Architect could not resolve: {note.beyond_reach}",)
+            return (f"The Architect could not resolve: {note.beyond_reach}", ())
         shown = render(note)
         # The stories too: a note can't overrule their criteria (#258).
         checked = review(project=project, design=shown, stories=stories)
         reasons = [f"{c.choice} contradicts {c.guideline}: {c.why}" for c in checked.conflicts]
         if not reasons:
             return shown
+        numbers = [c.story for c in checked.conflicts]
+        at_fault = () if None in numbers else tuple(sorted(set(numbers)))
         feedback = "\n".join(f"- {r}" for r in reasons)
     return (
         "It contradicts a guideline or a story's criterion after a retry: " + "; ".join(reasons),
+        at_fault,
     )
