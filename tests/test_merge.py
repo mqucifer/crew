@@ -558,3 +558,62 @@ def test_a_closed_done_story_is_left_alone():
     closed = card(339, status="Done").model_copy(update={"state": "CLOSED"})
     run([closed], issues)
     assert issues.closed == []
+
+
+# --- two additions in one place keep both (#436) -------------------------
+
+
+def run_keeping(issues, keep_both):
+    board = FakeBoard()
+    sink = EventSink(None)
+    result = merge_approved(
+        board,
+        issues,
+        sink,
+        cards=[card(6)],
+        default_repo="sprint-metrics",
+        keep_both=keep_both,
+    )
+    return result, board
+
+
+def test_two_additions_in_one_place_are_kept_rather_than_rebuilt():
+    """sprint-metrics#384 was rebuilt twice, then blocked, over appended tests."""
+    asked = []
+
+    def keep_both(repo, branch):
+        asked.append((repo, branch))
+        return ["tests/test_crew_performance.py"]
+
+    issues = FakeIssues(mergeable_state="dirty")
+    result, board = run_keeping(issues, keep_both)
+    assert asked and asked[0][0] == "sprint-metrics" and asked[0][1].startswith("feat/6-")
+    assert result.rebuilding == [] and result.conflicted == []
+    assert result.updating == [(6, 100)]
+    assert board.moves == [], "it stays approved, waiting for CI"
+    (_, body) = issues.posted[0]
+    assert "keeping both sides" in body and "tests/test_crew_performance.py" in body
+    assert REBUILD_MARKER.split("{")[0] not in body
+
+
+def test_a_conflict_that_needs_judgement_is_still_rebuilt():
+    issues = FakeIssues(mergeable_state="dirty")
+    result, board = run_keeping(issues, lambda repo, branch: None)
+    assert result.rebuilding == [(6, 100)]
+    assert ("C6", "In Progress") in board.moves
+
+
+def test_keeping_both_failing_outright_falls_back_to_a_rebuild():
+    def broken(repo, branch):
+        raise RuntimeError("push rejected")
+
+    issues = FakeIssues(mergeable_state="dirty")
+    result, _ = run_keeping(issues, broken)
+    assert result.rebuilding == [(6, 100)]
+
+
+def test_keeping_both_is_tried_even_past_the_rebuild_cap():
+    issues = rebuilt_twice()
+    result, board = run_keeping(issues, lambda repo, branch: ["tests/test_it.py"])
+    assert result.updating == [(6, 100)] and result.conflicted == []
+    assert ("C6", "Blocked") not in board.moves

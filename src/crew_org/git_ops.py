@@ -14,6 +14,7 @@ It refuses rather than warns, and has deliberately no override flag.
 
 from __future__ import annotations
 
+import ast
 import base64
 import contextlib
 import re
@@ -396,6 +397,57 @@ class Workspace:
             raise MergeConflict(files) from None
         return _run(["rev-parse", "HEAD"], cwd=self.path) != before
 
+    def catch_up_keeping_both(self) -> list[str]:
+        """Bring the open worktree up to date, keeping both sides of a pure addition.
+
+        Approved stories in different epics add to the same files: sprint-metrics
+        #380, #381, #382 and #384 each appended tests to one file, and #384 was
+        rebuilt from scratch twice, then blocked, for a conflict between two
+        additions (#436). Where both sides only added lines at the same place, a
+        person keeps both. Anything else, a line both sides had and one changed,
+        aborts and raises with the paths, exactly as `catch_up` does.
+
+        Returns the files where both additions were kept. Empty if `main`
+        merged cleanly.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        identity = [
+            "-c",
+            f"user.name={self.identity.name}",
+            "-c",
+            f"user.email={self.identity.email}",
+        ]
+
+        def give_up(files: list[str]) -> MergeConflict:
+            with contextlib.suppress(GitError):
+                _run(["merge", "--abort"], cwd=self.path)
+            return MergeConflict(files)
+
+        try:
+            _run(
+                [*identity, "-c", "merge.conflictStyle=diff3", "merge", "--no-edit", "origin/HEAD"],
+                cwd=self.path,
+            )
+            return []
+        except GitError:
+            files = _run(["diff", "--name-only", "--diff-filter=U"], cwd=self.path).split()
+        if not files:
+            raise give_up(files)
+        for name in files:
+            target = self.path / name
+            try:
+                text = target.read_text()
+            except (OSError, UnicodeDecodeError):
+                raise give_up(files) from None
+            kept = keep_both_additions(text)
+            if kept is None or (name.endswith(".py") and not _still_whole(kept)):
+                raise give_up(files)
+            target.write_text(kept)
+            _run(["add", name], cwd=self.path)
+        _run([*identity, "commit", "--no-edit"], cwd=self.path)
+        return files
+
     def revert(self, sha: str) -> None:
         """Commit the inverse of `sha` onto the open worktree.
 
@@ -491,3 +543,51 @@ class Workspace:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+# A conflict in diff3 style: the branch's side, the common base, then main's (#436).
+_CONFLICT = re.compile(
+    r"^<<<<<<< [^\n]*\n(.*?)^\|\|\|\|\|\|\| [^\n]*\n(.*?)^=======\n(.*?)^>>>>>>> [^\n]*\n",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def keep_both_additions(text: str) -> str | None:
+    """Every conflict in `text` where both sides only added lines, resolved by keeping both.
+
+    Main's lines come first, then the branch's, as if the branch's commit had
+    been written after main's. None if any conflict changes a line the two
+    sides shared: that one needs judgement, not concatenation.
+    """
+    unresolved = False
+
+    def resolve(found: re.Match) -> str:
+        nonlocal unresolved
+        branch, base, main = found.group(1), found.group(2), found.group(3)
+        if base.strip():
+            unresolved = True
+            return found.group(0)
+        return main + branch
+
+    resolved = _CONFLICT.sub(resolve, text)
+    if unresolved or "<<<<<<< " in resolved or "\n>>>>>>> " in resolved:
+        return None
+    return resolved
+
+
+def _still_whole(source: str) -> bool:
+    """Python that parses and defines nothing twice at the top level.
+
+    Two sides adding a test of the same name would leave pytest running only
+    the second, silently. That is a loss, not a merge.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    names = [
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    return len(names) == len(set(names))

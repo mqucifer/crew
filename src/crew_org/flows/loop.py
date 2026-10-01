@@ -245,11 +245,17 @@ def _land(crew: Crew) -> PhaseOutcome:
     `deliver` still lands too, for work approved later in the same pass.
     """
     from crew_org.flows.acceptance import close_finished_parents  # noqa: PLC0415
-    from crew_org.flows.merge import merge_approved  # noqa: PLC0415
+    from crew_org.flows.merge import keeping_both, merge_approved  # noqa: PLC0415
 
     cards = crew.board.cards()
     landed = merge_approved(
-        crew.board, crew.issues, crew.sink, cards=cards, default_repo=crew.repo, repos=crew.repos
+        crew.board,
+        crew.issues,
+        crew.sink,
+        cards=cards,
+        default_repo=crew.repo,
+        repos=crew.repos,
+        keep_both=keeping_both(crew.ws),
     )
     if landed.merged or landed.conflicted or landed.rebuilding:
         cards = crew.board.cards()

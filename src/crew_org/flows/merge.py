@@ -232,8 +232,13 @@ def merge_approved(
     cards: list[Card],
     default_repo: str,
     repos: set[str] | None = None,
+    keep_both: Callable[[str, str], list[str] | None] | None = None,
 ) -> MergeResult:
     """Land every story the Sponsor has approved.
+
+    `keep_both(repo, branch)` merges main into an approved branch that
+    conflicts, keeping both sides where they only added lines, and pushes it.
+    It returns the files it kept both sides of, or None when it couldn't (#436).
 
     A conflict is not something to retry or work around: it means two changes
     disagree and a person has to decide. The card is blocked and labelled so it
@@ -333,7 +338,9 @@ def merge_approved(
             result.failed.append((number, str(exc)[:120]))
             continue
         if landed.how == Landing.CONFLICTED:
-            _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
+            _conflict(
+                board, issues, sink, card, repo=repo, pull=pull, result=result, keep_both=keep_both
+            )
             continue
         # Taken out of the queue: a conflict with what landed ahead of it, or
         # checks that failed on top of it. A failed check goes back with its
@@ -360,7 +367,9 @@ def merge_approved(
                 )
                 result.ci_failed.append((number, pull["number"]))
                 continue
-            _conflict(board, issues, sink, card, repo=repo, pull=pull, result=result)
+            _conflict(
+                board, issues, sink, card, repo=repo, pull=pull, result=result, keep_both=keep_both
+            )
             continue
         if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
             result.failed.append((number, landed.reason))
@@ -512,6 +521,7 @@ def _conflict(
     repo: str,
     pull: dict,
     result: MergeResult,
+    keep_both: Callable[[str, str], list[str] | None] | None = None,
 ) -> None:
     """An approved story that conflicts with main is rebuilt by the crew.
 
@@ -524,6 +534,38 @@ def _conflict(
     """
     number = card.number or 0
     head = (pull.get("head") or {}).get("sha", "")
+    # Two approved stories that only added to the same place: keep both, as a
+    # person would, rather than rebuilding approved work from scratch (#436).
+    branch = (pull.get("head") or {}).get("ref") or branch_name(number, card.title)
+    if keep_both is not None:
+        try:
+            kept = keep_both(repo, branch)
+        except Exception as exc:  # noqa: BLE001
+            kept = None
+            sink.note(EventKind.NOTE, f"#{number} PR #{pull['number']}: {exc}"[:120], card=number)
+        if kept is not None:
+            issues.comment(
+                repo,
+                pull["number"],
+                "**Brought up to date with `main`, keeping both sides.** "
+                + (
+                    "Other work had added to the same place in "
+                    + ", ".join(f"`{f}`" for f in kept)
+                    + ". Both additions are kept, main's first. "
+                    if kept
+                    else ""
+                )
+                + "This story's own changes are as approved; CI runs again on the new head.",
+            )
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} PR #{pull['number']} kept both sides of {', '.join(kept) or 'main'}"[
+                    :120
+                ],
+                card=number,
+            )
+            result.updating.append((number, pull["number"]))
+            return
     try:
         comments = issues.comments(repo, pull["number"])
     except Exception:  # noqa: BLE001
@@ -593,3 +635,28 @@ def _block_on_conflict(
         "the story be re-delivered from current `main`.",
         by=None,
     )
+
+
+def keeping_both(ws) -> Callable[[str, str], list[str] | None]:
+    """`keep_both` for `merge_approved`, on a fresh workspace of the pull request's repo.
+
+    A fresh one: the land phase must never move a worktree delivery has open.
+    """
+    from crew_org.git_ops import MergeConflict, Workspace  # noqa: PLC0415
+
+    def keep_both(repo: str, branch: str) -> list[str] | None:
+        work = Workspace(ws.owner, repo, ws._token, ws.identity)
+        try:
+            work.open(branch, resume=True)
+            if not work.resumed:
+                return None
+            try:
+                kept = work.catch_up_keeping_both()
+            except MergeConflict:
+                return None
+            work.push()
+            return kept
+        finally:
+            work.close()
+
+    return keep_both

@@ -36,7 +36,7 @@ from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
-from crew_org.flows.merge import REBUILD_MARKER, merge_approved
+from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved
 from crew_org.flows.moves import move_card
 from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
@@ -1852,7 +1852,15 @@ def deliver(
 
     # Land first, then branch. A story that branches from a main missing its
     # predecessors is a conflict scheduled for later.
-    landed = merge_approved(board, issues, sink, cards=cards, default_repo=repo, repos=repos)
+    landed = merge_approved(
+        board,
+        issues,
+        sink,
+        cards=cards,
+        default_repo=repo,
+        repos=repos,
+        keep_both=keeping_both(ws),
+    )
     result.conflicted = [card for card, _pr in landed.conflicted]
     result.rebuilding = list(landed.rebuilding)
     result.awaiting_approval = list(landed.awaiting_approval)
