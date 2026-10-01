@@ -24,6 +24,7 @@ from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
+from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
@@ -640,6 +641,12 @@ def close_finished_parents(
     Bookkeeping a human should not have to do. Done means every child is Done —
     a parent with one story still open is not finished, however close it looks.
 
+    A child closed as not planned was superseded, not delivered: GitHub moves it
+    to Done all the same. It doesn't count either way, and a parent with nothing
+    delivered isn't finished. sprint-metrics#184, #185 and #187 were closed as
+    completed when their superseded stories were, and Goal #174 would have
+    followed. A parent being planned again (`needs:rework`) never closes here.
+
     Closing means both: the card moves to Done and the issue closes. Moving the
     card alone left finished epics open in the repository, and a parent already
     in Done with its issue open is closed here rather than skipped.
@@ -655,6 +662,8 @@ def close_finished_parents(
         # from the whole board.
         for card in within(cards, repos):
             if card.work_type != parent_type or card.state == "CLOSED":
+                continue
+            if NEEDS_REWORK in card.labels:
                 continue
             # "Not finished" is settled without a fetch (#55). The children on
             # the board say it first: one that isn't Done. GitHub's sub-issue
@@ -681,6 +690,8 @@ def close_finished_parents(
 
             statuses = []
             for child in children:
+                if child.get("state_reason") == "not_planned":
+                    continue
                 child_repo = child.get("repository_url", parent_repo).rsplit("/", 1)[-1]
                 on_board = by_key.get((child_repo, child["number"]))
                 if on_board:
@@ -689,7 +700,7 @@ def close_finished_parents(
                     # A child off the board has no status to read; its issue
                     # closing is the only sign it is finished.
                     statuses.append(DONE if child.get("state") == "closed" else None)
-            if any(status != DONE for status in statuses):
+            if not statuses or any(status != DONE for status in statuses):
                 continue
 
             # Bookkeeping, not judgement: no role decided this, so the parent

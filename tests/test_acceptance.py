@@ -516,3 +516,33 @@ class _QAWorkspace:
 
     def close(self, path=None):
         pass
+
+
+# --- superseded is not done (2026-10-01) ---------------------------------
+
+
+def test_an_epic_whose_stories_were_all_superseded_stays_open():
+    """sprint-metrics#184: its stories were closed as not planned, GitHub moved
+    them to Done, and the epic was closed as completed."""
+    cards = [story(3, "Needs Refinement", "Epic"), story(6, DONE), story(7, DONE)]
+    gone = {"state": "closed", "state_reason": "not_planned"}
+    issues = FakeIssues({3: [{"number": 6, **gone}, {"number": 7, **gone}]})
+    assert close_finished_parents(FakeBoard(), issues, EventSink(None), cards, repo="r") == []
+    assert issues.closed == []
+
+
+def test_a_superseded_story_doesnt_hold_its_resplit_epic_open():
+    cards = [story(3, "Needs Refinement", "Epic"), story(6, DONE), story(8, DONE)]
+    issues = FakeIssues(
+        {3: [{"number": 6, "state": "closed", "state_reason": "not_planned"}, {"number": 8}]}
+    )
+    assert close_finished_parents(FakeBoard(), issues, EventSink(None), cards, repo="r") == [3]
+
+
+def test_a_parent_being_planned_again_never_closes():
+    goal = story(174, "Inbox (Goals)", "Goal").model_copy(
+        update={"labels": frozenset({"goal", "needs:rework"})}
+    )
+    cards = [goal, story(186, DONE, "Epic")]
+    issues = FakeIssues({174: [{"number": 186}]})
+    assert close_finished_parents(FakeBoard(), issues, EventSink(None), cards, repo="r") == []
