@@ -155,6 +155,34 @@ model_list:
         min_p: 0.0
         repetition_penalty: 1.0
 
+  # Qwen3.8-Flash-Next under TensorFold, kept for experiments (crew#422 has
+  # the first results). Commented out: it serves on the Spark's port 8888 in
+  # place of the 27B, so it can't run beside production, and no crew role
+  # uses it. To try it: start the MiaAI-Lab recipe on the Spark, uncomment
+  # this, restart the proxy (docker restart crew-litellm). Comment it out
+  # and restart production before any tick.
+  # TensorFold differs from SGLang in three ways that matter here:
+  #   - Effort rides chat_template_kwargs; a top-level reasoning_effort is ignored.
+  #   - response_format is ignored: answers arrive in a ```json fence, can follow
+  #     prose, and once came as tool-call markup.
+  #   - Sampling is seeded by default: identical requests return identical
+  #     output. Send a seed per request to sample (replay_request.py --seed).
+  # - model_name: crew-flash-next
+  #   model_info:
+  #     max_input_tokens: 262144
+  #   litellm_params:
+  #     model: openai/Qwen3.8-Flash-Next
+  #     api_base: os.environ/SGLANG_BASE_URL
+  #     api_key: "sk-not-used"
+  #     drop_params: true
+  #     temperature: 1.0
+  #     top_p: 0.95
+  #     timeout: 1800
+  #     extra_body:
+  #       top_k: 20
+  #       chat_template_kwargs:
+  #         reasoning_effort: low
+
 litellm_settings:
   drop_params: true
   # A timeout must outlast the generation it carries, or the proxy kills work

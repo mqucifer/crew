@@ -3,13 +3,17 @@
 Used for crew#312 (empty answers). Export the request first (see
 docs/runbooks/empty-model-answers.md), then:
 
-    uv run python scripts/replay_request.py <request.json> <arm> <runs>
+    uv run python scripts/replay_request.py <request.json> <arm> <runs> [--seed]
 
 `<arm>` names the results file (`results-<arm>.jsonl`, beside the request).
 An arm ending in `miss` makes every run miss SGLang's prefix cache by putting a
 different number of zero-width spaces (U+200B) at the start of the first message:
 the chat template strips leading whitespace, not these, and they mean nothing to
 the model.
+
+`--seed` sends each run its number as `seed`. A server that samples with a
+fixed default seed, as TensorFold does, returns the same output to the same
+request: without it, five runs are one sample (crew#422).
 
 Runs are sequential and non-streaming. Killing this script does NOT stop the
 request on the server: SGLang keeps decoding a non-streaming request after the
@@ -31,6 +35,7 @@ from crew_org.llm import api_key, base_url
 
 def main() -> None:
     path, arm, runs = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+    seeded = "--seed" in sys.argv[4:]
     stored = json.loads(path.read_text())
     body = {
         k: stored[k] for k in ("model", "messages", "max_tokens", "response_format") if k in stored
@@ -40,7 +45,9 @@ def main() -> None:
     out = path.parent / f"results-{arm}.jsonl"
     with httpx.Client(timeout=2400) as client:
         for run in range(1, runs + 1):
-            send = copy.deepcopy(body) if miss else body
+            send = copy.deepcopy(body) if miss or seeded else body
+            if seeded:
+                send["seed"] = run
             if miss:
                 send["messages"][0]["content"] = "​" * (run + 1) + send["messages"][0]["content"]
             started = time.time()
