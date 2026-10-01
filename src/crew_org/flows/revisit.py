@@ -35,6 +35,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, approved_epics
 from crew_org.flows.design import (
+    DESIGN_PR,
     REVISIT_LABEL,
     REVISIT_MARKER,
     declared_changes,
@@ -162,6 +163,23 @@ def _revisit(
                 f"the Architect's design revision, PR #{open_revision['number']}, lands first"
             )
             return
+
+    # A design run by hand (`crew design`) is the Sponsor's to merge, and its
+    # epics wait for it the same way. sprint-metrics#406-#408 were approved while
+    # PR #412 was open, and the next pass would have split them against the
+    # design it replaces.
+    proposed = next(
+        (
+            p
+            for p in issues.open_pulls(repo)
+            if DESIGN_PR in (p.get("body") or "")
+            and p.get("number") != (open_revision or {}).get("number")
+        ),
+        None,
+    )
+    if proposed is not None:
+        result.holds[repo] = f"the Architect's design, PR #{proposed['number']}, lands first"
+        return
 
     # Filed this pass as well as on the board: `cards` was read before them,
     # and refinement runs next in this same pass.

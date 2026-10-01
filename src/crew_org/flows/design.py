@@ -41,6 +41,8 @@ _CHANGES = re.compile(r"<!-- crew:design-changes (.*?) -->", re.DOTALL)
 REVISIT_LABEL = "design:revisit"
 # On a revisit's pull request: the crew merges it, not the Sponsor.
 REVISIT_MARKER = "<!-- crew:design-revisit -->"
+# Every design pull request opens with this, by hand or by revisit (#144).
+DESIGN_PR = "The Architect's design for this project"
 
 DESIGN = RecordChange(
     issue_title="Design this project: the Architect's section of its record",
@@ -344,7 +346,7 @@ def open_design_pr(
     def body(number: int) -> str:
         return (
             f"Closes #{number}\n\n"
-            f"The Architect's design for this project, in the `design` section of "
+            f"{DESIGN_PR}, in the `design` section of "
             f"`{RECORD_PATH}` (mqucifer/crew#144)."
             + (f" Revisited because: {reason}" if reason else "")
             + f"\n\n{proposal.summary}\n\n## Choices\n\n"
