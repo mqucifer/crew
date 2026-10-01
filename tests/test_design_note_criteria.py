@@ -14,6 +14,7 @@ import contextlib
 from crew_org.crews import design_crew, design_note_crew
 from crew_org.crews.design_crew import Conflict, DesignReview
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, story_problem_evidence
+from crew_org.flows.design_notes import awaiting_design
 from tests.test_design_notes import Architect, Issues, design_epic, note, run
 
 CRITERION = "the exit code is 2, stderr contains the label, and stdout is empty"
@@ -158,3 +159,13 @@ def test_an_epic_waiting_to_be_split_again_gets_no_note(tmp_path):
     architect = Architect(note())
     result = run(tmp_path, Labelled(subs=STORIES), architect, cards=[waiting])
     assert architect.calls == [] and result.written == []
+
+
+def test_a_blocked_epics_stories_still_wait_for_its_note():
+    blocked = design_epic(labels=frozenset({"needs:design", "blocked", "needs:human"}))
+    assert awaiting_design(Issues(), [blocked], "sprint-metrics") == {blocked.key}
+
+
+def test_an_epic_being_split_again_is_plannings_own_case():
+    waiting = design_epic(labels=frozenset({"needs:design", NEEDS_REWORK}))
+    assert awaiting_design(Issues(), [waiting], "sprint-metrics") == set()
