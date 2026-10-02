@@ -41,10 +41,11 @@ file never reaches them. Change it by pull request, like any other file.
   PR, even when the credential could bypass protection. *Guarded by the hook.*
 - **Commit subject:** `<type>: <what is now true>`. The body says why and
   names the issue as `crew#<n>`.
-- **PR body:** `Closes crew#<n>`, then **Why**, **Change** and
+- **PR body:** `Closes mqucifer/crew#<n>`, then **Why**, **Change** and
   **Verification**. Verification says how it actually ran, not how it could.
-- **References are explicit:** `crew#12`, `owner/repo#12` or a full URL, never
-  a bare `#12`. GitHub links a bare number in whichever repo the text lands in.
+- **References are explicit:** `owner/repo#12` or a full URL, which link and
+  close; `crew#12` is plain text. Never a bare `#12`: GitHub links it in
+  whichever repo the text lands in.
   *Guarded by the hook for `gh` issue and PR bodies.*
 - **Crew PRs are merged by the Sponsor; Claude doesn't approve them.** The
   approver App has no access to this repo, by the Sponsor's decision, so

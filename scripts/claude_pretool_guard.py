@@ -142,7 +142,7 @@ def check_gh_body(command: str, cwd: Path) -> None:
         if found:
             refuse(
                 f"bare issue number {found.group()} in a gh body. GitHub links it in the "
-                "repository it's posted to. Write `crew#N`, `owner/repo#N` or the full URL."
+                "repository it's posted to. Write `owner/repo#N` or the full URL."
             )
 
 

@@ -128,7 +128,7 @@ def test_a_pull_in_a_worktree_during_a_tick_is_allowed(guard, repo, tmp_path, mo
 def test_a_bare_issue_number_in_a_gh_body_is_refused(repo, command):
     done = run_guard(command, repo)
     assert done.returncode == 2
-    assert "crew#N" in done.stderr
+    assert "owner/repo#N" in done.stderr
 
 
 @pytest.mark.parametrize(
