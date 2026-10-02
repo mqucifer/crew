@@ -27,5 +27,8 @@ jobs:
       - name: Format check
         run: uv run ruff format --check .
 
+      - name: Type check (ratchet)
+        run: uv run python scripts/mypy_ratchet.py
+
       - name: Test
         run: uv run pytest -q
