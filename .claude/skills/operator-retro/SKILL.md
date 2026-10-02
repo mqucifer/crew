@@ -26,7 +26,7 @@ The runbook is `docs/runbooks/operator-retro.md`. Read it first, every time. You
    - **Where a person was asked or a card stopped:** each `card.blocked`, each label containing `needs:human`, each `story.returned`, each rebuild ("returned for a rebuild"), each "kept both sides". Give the card, the event's summary verbatim, and the card's last comment (first 300 characters, via `gh issue view`).
    - **Failures:** each `llm.failed`, `task.failed`, `agent.failed` and `llm.empty`: the card, the role, and the first line of the error. Group repeats of the same first line and give the count.
    - **The operator's and Sponsor's own steps:** every event in `operator.jsonl` and `sponsor.jsonl` in the window, listed here even if it also appears above.
-   - **Possible incidents,** listed last, only when an event shows one of these:
+   - **Possible incidents,** listed last. Rebuilds, blocks, failed attempts, escalations and `needs:human` are **never** possible incidents: they go in the sections above. List one only when an event shows one of these:
      - a Python error in a phase (a summary containing "failed: " with an exception name, such as "deliver failed: ImportError")
      - a card closed as completed that had no merged PR
      - every story blocked
