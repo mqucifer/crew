@@ -50,8 +50,33 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - **The Architect's design note stays after the split,** on the stories. The panel is the conversation first; the design comes once the work is sliced.
 - **Each note is checked before it's acted on.** A model asked for input tends to produce some, and an unneeded note shouldn't become work, as sprint-metrics#419 did.
 - **A settle step ends the panel, before the split** (agreed 2026-10-02). The Product Owner turns the panel's notes into the epic's conclusion. Each point is answered from the Goal, the record or a recorded decision, or becomes one question to the Sponsor, whose answer becomes a line.
-- **The conclusion lives in the epic body,** under its own header, below the text the Sponsor approved, which stays as it was. It is short and to the point, as a working team's ticket is after refinement. Nobody has to read ten comments to find out what was decided. Each line is numbered and names its source. Questions the design note must answer are listed apart from what is settled. The panel's full notes stay as one comment, the audit trail, and aren't passed on.
-- **Stories point back to the lines they rely on,** by reference (for example "#406, line 2"), rather than restating them. Whatever reads a story can follow a reference to the line it needs. That is the start of each step getting the context it needs and no more, instead of everything upstream (to design: what each later step pulls, and how).
+- **Discussion may be long; what's handed on is short.** As in a meeting: an hour of discussion, then a concise summary with clear actions for the next team. The panel's full notes stay as one comment, the audit trail, and aren't passed on. Only the conclusion is.
+- **The conclusion lives in the epic body,** under its own header, below the text the Sponsor approved, which stays as it was. Nobody has to read ten comments to find out what was decided. Its format draws on three established ones:
+  - BLUF, bottom line up front: the first line says whether the epic is ready to split.
+  - Example Mapping: settled rules, apart from open questions.
+  - Decision records (Nygard, Y-statements): each decision carries its consequence.
+
+  ```
+  ## Refinement conclusion
+  Ready to split: 7 settled, 2 open for the design note.
+
+  | Ref | Area     | Conclusion                                | Action / impact                         | Source            |
+  |-----|----------|-------------------------------------------|-----------------------------------------|-------------------|
+  | R1  | Storage  | Postgres, own schema on the shared server | Postgres client; CI needs a throwaway DB | Sponsor decision  |
+  | R2  | Counting | A card counts in the sprint it finishes   | Sprint queries group by finish date     | Sponsor decision  |
+  ...
+
+  | Ref | Open for the design note        | Impact                     |
+  |-----|---------------------------------|----------------------------|
+  | Q1  | Intake api_version: same track? | Every sender encodes it    |
+  ```
+
+  - Every settled point gets a row, with no cap on how many rows there are.
+  - Each row is held short by schema limits, because asking a model to be brief doesn't hold. The area is at most two words, and the conclusion and the action at most twelve words each. Every row has a source. There is no prose.
+  - Rows are sorted by area.
+  - A source is an explicit link with words, never a bare issue number (see below).
+- **Stories point back to the rows they rely on** ("Follows the epic's R1, R4") rather than restating them. A story's epic is its parent, so no number is needed. Whatever reads a story pulls only the rows it names. A long conclusion therefore doesn't bloat a story's context, and nothing it relies on goes missing. That's the start of each step getting the context it needs and no more (to design: what each later step pulls, and how).
+- **No bare issue numbers in anything the crew posts to GitHub: issues, pull requests and comments.** GitHub turns `#123` (and `GH-123`) into a link to that number in the current repository, and adds a "mentioned this" back-link on that issue. Whenever the reference meant another project, both point at the wrong issue. A reference is an explicit link with descriptive words. Files in the repository aren't autolinked. This applies across the crew, not only here.
 - **Serial first, then parallel.** Prove the notes are right, then make it crew#299's first parallel case. The calls are independent, read-only, and share a long prefix.
 - Refinement is the slowest step and carries the most risk. The extra calls are accepted for that reason.
 
