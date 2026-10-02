@@ -55,7 +55,11 @@ Build the panel (crew#440, reshaped as part 5 describes), in parallel, with thre
    - **DevOps:** each environment the plan names (local checks, CI, production) and the settings each needs. Part 1 of the plan now gives it that list.
    - **The Architect:** a version change is classified by the #186 SemVer rule, and an epic that depends on a sibling's code names it.
    - These are scope lines in each member's task, not design rules.
-3. **Keep each member on its own epic.** "Comment on this epic only. A sibling's problem belongs to its own panel, and a delivered epic is context, not under review." That removes the unneeded DevOps notes and most of QA's overlap.
+3. **Review the epic in front of you; the siblings are there to show how it fits.** Some members reviewed the sibling epics instead:
+   - DevOps, asked about #185, wrote about #186's CI and base image, and twice quoted #186's text as if it were #185's. All 8 unneeded notes are like this.
+   - QA, asked about #185, repeated #184's problems, which it had already raised on #184.
+
+   One line in each member's task fixes it: "Your notes are about this epic. A problem with how it fits another epic is yours to raise. A problem wholly inside another epic belongs to that epic's review, and a delivered epic is background only." **Notes about how two epics fit stay:** finding 7, one event format for #184 and #185, is exactly that kind, and one of the panel's best.
 
 **What happens to the notes:** about 70% are design questions, and part 5 keeps the design note after the split. So the panel's design notes travel to the design note as its inputs. The Product Owner settles the rest, from the sources or with one question to the Sponsor. Finding 7 shows a catch: the same shared-format note came up on both #184's and #185's panels in 7 of 9 runs. A design note that names a sibling has to reach both epics' design notes, or two design notes decide the same thing differently. That is exactly what happened on 2026-10-01.
 
