@@ -51,30 +51,29 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - **Each note is checked before it's acted on.** A model asked for input tends to produce some, and an unneeded note shouldn't become work, as sprint-metrics#419 did.
 - **A settle step ends the panel, before the split** (agreed 2026-10-02). The Product Owner turns the panel's notes into the epic's conclusion. Each point is answered from the Goal, the record or a recorded decision, or becomes one question to the Sponsor, whose answer becomes a line.
 - **Discussion may be long; what's handed on is short.** As in a meeting: an hour of discussion, then a concise summary with clear actions for the next team. The panel's full notes stay as one comment, the audit trail, and aren't passed on. Only the conclusion is.
-- **The conclusion lives in the epic body,** under its own header, below the text the Sponsor approved, which stays as it was. Nobody has to read ten comments to find out what was decided. Its format draws on three established ones:
-  - BLUF, bottom line up front: the first line says whether the epic is ready to split.
-  - Example Mapping: settled rules, apart from open questions.
-  - Decision records (Nygard, Y-statements): each decision carries its consequence.
+- **The conclusion lives in the epic body,** under its own header, below the text the Sponsor approved, which stays as it was. Nobody has to read ten comments to find out what was decided. Its format follows established standards, not one of the crew's own (agreed 2026-10-02):
+  - **BLUF** (bottom line up front): the first line says whether the epic is ready to split.
+  - **Nygard's ADR fields** (ID, Status, Context, Decision, Consequences) as table columns, short fragments with no prose, and a source on each row. **MADR status values:** accepted, or "superseded by" another row.
+  - **Example Mapping's question cards:** what can't be settled yet is listed apart, with who settles it.
 
   ```
   ## Refinement conclusion
-  Ready to split: 7 settled, 2 open for the design note.
+  Ready to split: 7 decided, 2 open for the design note.
 
-  | Ref | Area     | Conclusion                                | Action / impact                         | Source            |
-  |-----|----------|-------------------------------------------|-----------------------------------------|-------------------|
-  | R1  | Storage  | Postgres, own schema on the shared server | Postgres client; CI needs a throwaway DB | Sponsor decision  |
-  | R2  | Counting | A card counts in the sprint it finishes   | Sprint queries group by finish date     | Sponsor decision  |
+  | ID | Status   | Context       | Decision                                  | Consequences                         | Source           |
+  |----|----------|---------------|-------------------------------------------|--------------------------------------|------------------|
+  | R1 | accepted | History store | Postgres, own schema on the shared server | Postgres client; CI needs throwaway DB | Goal decision D1 |
+  | R2 | accepted | Counting      | A card counts in the sprint it merges     | Sprint queries group by merge date   | Goal decision D3 |
   ...
 
-  | Ref | Open for the design note        | Impact                     |
-  |-----|---------------------------------|----------------------------|
-  | Q1  | Intake api_version: same track? | Every sender encodes it    |
+  | ID | Open question                   | Impact                  | Settled by  |
+  |----|---------------------------------|-------------------------|-------------|
+  | Q1 | Intake api_version: same track? | Every sender encodes it | Design note |
   ```
 
-  - Every settled point gets a row, with no cap on how many rows there are.
-  - Each row is held short by schema limits, because asking a model to be brief doesn't hold. The area is at most two words, and the conclusion and the action at most twelve words each. Every row has a source. There is no prose.
-  - Rows are sorted by area.
-  - A source is an explicit link with words, never a bare issue number (see below).
+  - **It's the same format as the Goal's decision log,** so one way of writing a decision runs from the Goal down. An epic row can cite a Goal decision by its ID.
+  - **Every decision gets a row,** with no cap on the number of rows. Each cell is held short by schema limits, because asking a model to be brief doesn't hold.
+  - **A source is an explicit link with words,** never a bare issue number (see below).
 - **Stories point back to the rows they rely on** ("Follows the epic's R1, R4") rather than restating them. A story's epic is its parent, so no number is needed. Whatever reads a story pulls only the rows it names. A long conclusion therefore doesn't bloat a story's context, and nothing it relies on goes missing. That's the start of each step getting the context it needs and no more (to design: what each later step pulls, and how).
 - **No bare issue numbers in anything the crew posts to GitHub: issues, pull requests and comments.** GitHub turns `#123` (and `GH-123`) into a link to that number in the current repository, and adds a "mentioned this" back-link on that issue. Whenever the reference meant another project, both point at the wrong issue. A reference is an explicit link with descriptive words. Files in the repository aren't autolinked. This applies across the crew, not only here.
 - **Serial first, then parallel.** Prove the notes are right, then make it crew#299's first parallel case. The calls are independent, read-only, and share a long prefix.
@@ -86,9 +85,9 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - Who writes the QA suite's stories, and how its growth is triggered with each feature. To be answered from how working teams do it. A starting point: QA writes a suite story inside each feature epic, and a Developer builds it in the same cycle.
 - The design note's own conclusion. Agreed on 2026-10-02: each step hands down only the relevant conclusions. The design note, the largest thing a Developer is given today, ends in the same table, answering the epic's open questions as rows, and stories name its rows. A coverage check confirms every settled row is named by a story or marked not for stories. Still to plan in detail.
 
-**Agreed 2026-10-02: every role's hand-off is concise in the same way.** The design note, the presentation note, reviews, QA verdicts, diagnoses, the Product Owner's answers, standups and retros: each ends in a conclusion table, with the bottom line first and one row per point (area, conclusion, action, source). The discussion behind it may be long; what the next step reads is the table. Crew-wide work, tracked in crew#457.
+**Agreed 2026-10-02: every role's hand-off is concise in the same way.** The design note, the presentation note, reviews, QA verdicts, diagnoses, the Product Owner's answers, standups and retros: each ends in a conclusion table in the same standard form: the bottom line first, then one row per decision in ADR fields (Context, Decision, Consequences, Source), with open questions apart. The discussion behind it may be long; what the next step reads is the table. Crew-wide work, tracked in crew#457.
 
-**Agreed 2026-10-02: the Sponsor's decisions for a Goal live in the Goal's body,** in a "Sponsor decisions" table in the same row format. The decisions rule already reads a section headed "Sponsor decisions" on the Goal's cards, so it finds them with no change. A decision made elsewhere is added there when it's made.
+**Agreed 2026-10-02: the Sponsor's decisions for a Goal live in the Goal's body,** in a "Sponsor decisions" decision log in the same ADR fields, with MADR status values. Goal #174 has one since 2026-10-02. The decisions rule already reads a section headed "Sponsor decisions" on the Goal's cards, so it finds them with no change. A decision made elsewhere is added there when it's made.
 
 **Agreed 2026-10-02: one epic per pass.** A clash between two epics' splits is caught later by steps that exist today. The criteria check reads the stories other epics have planned (crew#428). A story problem, or a design note at odds with the stories, goes back to the Product Owner to settle (crew#189, crew#425). A panel also sees what earlier sibling epics settled, because their conclusions are in their bodies.
 
