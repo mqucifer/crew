@@ -26,6 +26,11 @@ DEFAULT_TIMEOUT = 1800
 # refuses to write to main.
 ALLOWED_TOOLS = "Read,Write,Edit,Glob,Grep,Bash(uv run:*),Bash(uv sync:*),Bash(python3:*)"
 
+# The operator's own Claude Code setup (a repo's CLAUDE.md, hooks, skills) is
+# for the operator, not the crew. Safe mode leaves it all out, while auth stays
+# on the subscription; --bare would also leave it out but needs an API key.
+ISOLATION_FLAGS = ("--safe-mode",)
+
 # Credentials must not be visible to a subprocess writing code. Claude Code
 # reads its own OAuth credentials from the user's config, not from here.
 STRIPPED_ENV = (
@@ -105,6 +110,7 @@ def escalate(
                 "json",
                 "--allowedTools",
                 ALLOWED_TOOLS,
+                *ISOLATION_FLAGS,
             ],
             cwd=worktree,
             capture_output=True,

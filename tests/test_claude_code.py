@@ -127,3 +127,18 @@ def test_no_anthropic_api_key_is_ever_passed(monkeypatch, tmp_path):
     monkeypatch.setattr(claude_code.subprocess, "run", capture)
     escalate(tmp_path, "fix it")
     assert "ANTHROPIC_API_KEY" not in seen
+
+
+def test_the_operators_claude_setup_never_reaches_an_escalation(monkeypatch, tmp_path):
+    """CLAUDE.md, hooks and skills are the operator's; the crew is independent."""
+    monkeypatch.setattr(claude_code, "available", lambda command="claude": True)
+    seen: list = []
+
+    def capture(args, **k):
+        seen.extend(args)
+        return FakeCompleted(stdout=success_payload())
+
+    monkeypatch.setattr(claude_code.subprocess, "run", capture)
+    escalate(tmp_path, "fix it")
+    assert "--safe-mode" in seen
+    assert "--bare" not in seen  # bare mode authenticates only by API key
