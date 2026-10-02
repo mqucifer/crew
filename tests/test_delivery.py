@@ -359,3 +359,19 @@ def test_a_doc_criterion_named_as_a_test_is_told_the_doc_proves_it():
     """sprint-metrics#381: told to name tests/test_*.py for a doc, twice in a row."""
     with pytest.raises(ValidationError, match="proven by reading the doc"):
         CriterionTest(criterion="the doc explains it", path="docs/formats.md", test="doc")
+
+
+def test_an_existing_test_named_without_code_is_told_where_it_goes():
+    """sprint-metrics#386: four attempts bounced between two refusals that never said."""
+    with pytest.raises(ValidationError, match="proven_by_existing") as raised:
+        CriterionTest(
+            criterion="the worked example matches",
+            path="tests/test_formats.py",
+            test="test_formats_worked_example_markdown_output",
+        )
+    assert "tests/test_formats.py::test_formats_worked_example_markdown_output" in str(raised.value)
+
+
+def test_code_that_defines_a_different_test_is_refused_as_before():
+    with pytest.raises(ValidationError, match="doesn't define it"):
+        criterion_test(source="def something_else():\n    pass\n")
