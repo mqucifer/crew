@@ -79,6 +79,8 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - **Serial first, then parallel.** Prove the notes are right, then make it crew#299's first parallel case. The calls are independent, read-only, and share a long prefix.
 - Refinement is the slowest step and carries the most risk. The extra calls are accepted for that reason.
 
+**The build plan:** [`refinement-panel-build.md`](refinement-panel-build.md): ten steps, then the proof on #406.
+
 **The test before it's built:** [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md) (crew PR #441; run 2026-10-02, PR #455). Its recommendation is to build the panel, in parallel, with three changes: record decisions where a rule finds them; give DevOps and the Architect checks for their blind spots; and have each member review the epic in front of it.
 
 **Still open in this part:**
