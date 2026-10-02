@@ -49,12 +49,18 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - **Every member sees the same context:** the Goal, the project record, the sibling epics, and the Sponsor's recorded decisions, collected by rule. The misses on 2026-10-01 came from that context being missing, not from a missing role.
 - **The Architect's design note stays after the split,** on the stories. The panel is the conversation first; the design comes once the work is sliced.
 - **Each note is checked before it's acted on.** A model asked for input tends to produce some, and an unneeded note shouldn't become work, as sprint-metrics#419 did.
+- **A settle step ends the panel, before the split** (agreed 2026-10-02). The Product Owner turns the panel's notes into the epic's conclusion. Each point is answered from the Goal, the record or a recorded decision, or becomes one question to the Sponsor, whose answer becomes a line.
+- **The conclusion lives in the epic body,** under its own header, below the text the Sponsor approved, which stays as it was. It is short and to the point, as a working team's ticket is after refinement. Nobody has to read ten comments to find out what was decided. Each line is numbered and names its source. Questions the design note must answer are listed apart from what is settled. The panel's full notes stay as one comment, the audit trail, and aren't passed on.
+- **Stories point back to the lines they rely on,** by reference (for example "#406, line 2"), rather than restating them. Whatever reads a story can follow a reference to the line it needs. That is the start of each step getting the context it needs and no more, instead of everything upstream (to design: what each later step pulls, and how).
 - **Serial first, then parallel.** Prove the notes are right, then make it crew#299's first parallel case. The calls are independent, read-only, and share a long prefix.
 - Refinement is the slowest step and carries the most risk. The extra calls are accepted for that reason.
 
-**The test before it's built:** [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md) (crew PR #441).
+**The test before it's built:** [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md) (crew PR #441; run 2026-10-02, PR #455). Its recommendation is to build the panel, in parallel, with three changes: record decisions where a rule finds them; give DevOps and the Architect checks for their blind spots; and have each member review the epic in front of it.
 
-**Still open in this part:** who writes the QA suite's stories, and how its growth is triggered with each feature. To be answered from how working teams do it. A starting point: QA writes a suite story inside each feature epic, and a Developer builds it in the same cycle.
+**Still open in this part:**
+- Who writes the QA suite's stories, and how its growth is triggered with each feature. To be answered from how working teams do it. A starting point: QA writes a suite story inside each feature epic, and a Developer builds it in the same cycle.
+- Context down the chain: what each step after the split needs from the conclusion and the design note, and how it gets it (pushed by the step before, or pulled by reference). The two problems are bloat (empty answers grow with prompt size, #312) and missing context (the 2026-10-01 misses).
+- Whether the panel runs one epic at a time, or across a Goal's approved epics in one pass so each sees what the others settled.
 
 ## 6. Sequencing Goal #174 (to plan)
 
