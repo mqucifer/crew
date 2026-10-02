@@ -86,6 +86,10 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 - Who writes the QA suite's stories, and how its growth is triggered with each feature. To be answered from how working teams do it. A starting point: QA writes a suite story inside each feature epic, and a Developer builds it in the same cycle.
 - The design note's own conclusion. Agreed on 2026-10-02: each step hands down only the relevant conclusions. The design note, the largest thing a Developer is given today, ends in the same table, answering the epic's open questions as rows, and stories name its rows. A coverage check confirms every settled row is named by a story or marked not for stories. Still to plan in detail.
 
+**Agreed 2026-10-02: every role's hand-off is concise in the same way.** The design note, the presentation note, reviews, QA verdicts, diagnoses, the Product Owner's answers, standups and retros: each ends in a conclusion table, with the bottom line first and one row per point (area, conclusion, action, source). The discussion behind it may be long; what the next step reads is the table. Crew-wide work, tracked in crew#457.
+
+**Agreed 2026-10-02: the Sponsor's decisions for a Goal live in the Goal's body,** in a "Sponsor decisions" table in the same row format. The decisions rule already reads a section headed "Sponsor decisions" on the Goal's cards, so it finds them with no change. A decision made elsewhere is added there when it's made.
+
 **Agreed 2026-10-02: one epic per pass.** A clash between two epics' splits is caught later by steps that exist today. The criteria check reads the stories other epics have planned (crew#428). A story problem, or a design note at odds with the stories, goes back to the Product Owner to settle (crew#189, crew#425). A panel also sees what earlier sibling epics settled, because their conclusions are in their bodies.
 
 ## 6. Sequencing Goal #174 (to plan)
