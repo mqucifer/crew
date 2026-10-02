@@ -46,8 +46,11 @@ file never reaches them. Change it by pull request, like any other file.
 - **References are explicit:** `crew#12`, `owner/repo#12` or a full URL, never
   a bare `#12`. GitHub links a bare number in whichever repo the text lands in.
   *Guarded by the hook for `gh` issue and PR bodies.*
-- **Approve with `crew review --repo`.** The Sponsor authors Claude's PRs, so
-  they can't approve them.
+- **Crew PRs are merged by the Sponsor; Claude doesn't approve them.** The
+  approver App has no access to this repo, by the Sponsor's decision, so
+  `crew review --repo crew` only gets a 403. Don't run it, and don't propose
+  giving the App access. In a delivery repo, `crew review --repo <name>`
+  approves Claude's PRs, which the Sponsor authors and can't approve.
 - **When blocked on the Sponsor** (a merge, an approval, a decision), send a
   push notification. They step away.
 - **After merge:** close the issue, then remove the worktree and branch
