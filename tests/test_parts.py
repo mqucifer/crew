@@ -79,7 +79,7 @@ def test_a_generic_criterion_test_must_be_in_a_test_file():
 
 
 def test_a_python_criterion_test_still_needs_its_source():
-    with pytest.raises(ValidationError, match="doesn't define it"):
+    with pytest.raises(ValidationError, match="has no source"):
         CriterionTest(criterion="x", path="tests/test_report.py", test="test_health_first")
 
 
