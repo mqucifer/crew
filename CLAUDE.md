@@ -57,6 +57,14 @@ file never reaches them. Change it by pull request, like any other file.
 - **After merge:** close the issue, then remove the worktree and branch
   (`git worktree remove ../crew-<n>`, `git branch -D <branch>`).
 
+## Decisions
+- **A decision becomes an ADR in the session it's made.** That means one the
+  Sponsor makes or approves, or a choice of Claude's that would be costly to
+  reverse. It goes into `docs/decisions/` by PR, and the Sponsor's merge is the
+  approval. Not into memory.
+- **Read the ADRs before changing what they cover.** To change a decision,
+  write a new ADR that supersedes the old one; don't edit the old one.
+
 ## Never
 - **An Anthropic API key, anywhere.** Escalation runs on the subscription
   through `claude -p`. A key bills separately. *Blocked by `scripts/pre-commit`.*
