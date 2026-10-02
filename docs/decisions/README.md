@@ -29,3 +29,4 @@ numbered in order, with a kebab-case title.
 | [0011](0011-focused-passes-over-bigger-prompts.md) | Focused passes over bigger prompts | 2026-09-29 | Accepted |
 | [0012](0012-no-approver-app-on-the-crew-repo.md) | No approver App on the crew repo | 2026-09-30 | Accepted |
 | [0013](0013-claude-and-the-crew-are-independent.md) | Claude's standards and the crew's are independent | 2026-10-02 | Accepted |
+| [0014](0014-logging-one-levelled-stream.md) | Logging: one levelled stream, named events for what code reads | 2026-10-02 | Accepted (built by crew#449) |
