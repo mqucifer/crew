@@ -15,7 +15,7 @@
 | No bare issue numbers | Filed, P2 | crew#456 |
 | The panel's own issue | To reshape (step 2) | crew#440 |
 | Epics #406–#408 | Approved, held until the panel exists | sprint-metrics board, Inbox |
-| Sprint 13 | Not started; needs the Sponsor | Board |
+| Sprint 13 | Starts only after this build and other crew issues are done (Sponsor, 2026-10-02) | Board |
 
 ## The agreed design
 
@@ -73,6 +73,5 @@ Each step is one PR. Anything that calls a model or GitHub is proven with one re
 
 | ID | Question | Settled by |
 |---|---|---|
-| Q1 | Does Sprint 13 start before or after the panel is built? (#406–#408 wait for it) | Sponsor |
-| Q2 | Who writes the QA suite's stories, and how its growth is triggered | Sponsor, from how real teams do it |
-| Q3 | The design note's conclusion in detail | With step 10 |
+| Q1 | Who writes the QA suite's stories, and how its growth is triggered | Sponsor, from how real teams do it |
+| Q2 | The design note's conclusion in detail | With step 10 |
