@@ -249,6 +249,15 @@ class CriterionTest(BaseModel):
             if self.source.strip() and not profile.defines_test(self.source, self.test):
                 raise ValueError(f"the source for {self.test!r} doesn't define it")
             return self
+        if not self.source.strip():
+            # Named with no code: almost always a test already in the repository.
+            # "Doesn't define it" never said where that goes, and sprint-metrics#386
+            # spent four attempts and the sprint's escalation finding out (#448).
+            raise ValueError(
+                f"{self.test!r} has no source. criteria_tests holds new tests, written in "
+                "full. A test already in the repository goes in proven_by_existing, named "
+                f"as {self.path}::{self.test}"
+            )
         if not profile.defines_test(self.source, self.test):
             raise ValueError(f"the source for {self.test!r} doesn't define it")
         self.source = profile.prepare_test(self.path, self.source)  # #196
