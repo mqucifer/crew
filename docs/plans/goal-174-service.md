@@ -84,8 +84,9 @@ Modelled on how working teams refine: everyone with a stake is in the room, and 
 
 **Still open in this part:**
 - Who writes the QA suite's stories, and how its growth is triggered with each feature. To be answered from how working teams do it. A starting point: QA writes a suite story inside each feature epic, and a Developer builds it in the same cycle.
-- Context down the chain: what each step after the split needs from the conclusion and the design note, and how it gets it (pushed by the step before, or pulled by reference). The two problems are bloat (empty answers grow with prompt size, #312) and missing context (the 2026-10-01 misses).
-- Whether the panel runs one epic at a time, or across a Goal's approved epics in one pass so each sees what the others settled.
+- The design note's own conclusion. Agreed on 2026-10-02: each step hands down only the relevant conclusions. The design note, the largest thing a Developer is given today, ends in the same table, answering the epic's open questions as rows, and stories name its rows. A coverage check confirms every settled row is named by a story or marked not for stories. Still to plan in detail.
+
+**Agreed 2026-10-02: one epic per pass.** A clash between two epics' splits is caught later by steps that exist today. The criteria check reads the stories other epics have planned (crew#428). A story problem, or a design note at odds with the stories, goes back to the Product Owner to settle (crew#189, crew#425). A panel also sees what earlier sibling epics settled, because their conclusions are in their bodies.
 
 ## 6. Sequencing Goal #174 (to plan)
 
