@@ -61,7 +61,8 @@ file never reaches them. Change it by pull request, like any other file.
   through `claude -p`. A key bills separately. *Blocked by `scripts/pre-commit`.*
 - **Model traffic around the proxy.** Everything goes via LiteLLM :4000, and
   nothing probes SGLang on the Spark directly.
-- **Generated code run outside the sandbox.**
+- **Unvetted generated code run outside the sandbox.** Released crew-built
+  software is ordinary software, and is still deployed in a container.
 - **A check weakened to make something pass.** A test deleted to go green counts.
 
 ## Commands
