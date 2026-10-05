@@ -121,7 +121,12 @@ def test_a_section_ends_at_the_next_heading_as_high():
 # --- rule 2: the Sponsor's issues that name the Goal --------------------------------------
 
 
-def test_an_issue_the_sponsor_opened_naming_the_goal_comes_with_their_comments():
+def test_an_issue_the_sponsor_opened_naming_the_goal_gives_its_sponsor_sections_and_comments():
+    body = (
+        "Serves sprint-metrics#174's API.\n\n"
+        "## Who uses it (Sponsor, 2026-09-29)\n\nThe presentation site.\n\n"
+        "## Acceptance criteria\n\n1. Given a thing."
+    )
     issues = github(
         **{
             "sprint-metrics": {174: issue(174)},
@@ -129,7 +134,7 @@ def test_an_issue_the_sponsor_opened_naming_the_goal_comes_with_their_comments()
                 280: issue(
                     280,
                     title="The crew runs the service",
-                    body="Serves sprint-metrics#174's API.",
+                    body=body,
                     comments=[("mquarters", "Shared Postgres."), ("stranger", "No.")],
                 )
             },
@@ -137,9 +142,28 @@ def test_an_issue_the_sponsor_opened_naming_the_goal_comes_with_their_comments()
     )
     found = collect(issues)
     assert by_source(found) == {(2, "mqucifer/crew#280")}
-    assert [d.kind for d in found][0] == "issue body"
+    assert [d.kind for d in found][0] == "body section"
+    assert "The presentation site." in found[0].text
+    assert "Given a thing" not in found[0].text
     assert [d.text for d in found][1:] == ["Shared Postgres."]
-    assert found[0].title == "The crew runs the service"
+    assert all(d.title == "The crew runs the service" for d in found)
+
+
+def test_a_defect_report_citing_the_goal_as_evidence_gives_nothing():
+    # The Sponsor's login opens the crew's defect reports too (crew#440).
+    issues = github(
+        **{
+            "sprint-metrics": {174: issue(174)},
+            "crew": {
+                429: issue(
+                    429,
+                    body="From Sprint 12. Goal sprint-metrics#174 says the service keeps its "
+                    "history; #184 keeps it in memory.\n\n## Acceptance criteria\n\n1. Given.",
+                )
+            },
+        }
+    )
+    assert collect(issues) == []
 
 
 def test_a_comment_linking_an_issue_to_the_goal_makes_it_part_of_it():

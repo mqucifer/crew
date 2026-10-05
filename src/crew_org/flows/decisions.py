@@ -9,18 +9,25 @@ The panel and the split are shown what this returns.
 own cards or names the Goal:
 
 1. On the Goal and every sub-issue under it: the Sponsor's comments, and any
-   section of a card's body whose heading names a "Sponsor decision" (the
-   Goal's decision log).
+   section of a card's body whose heading names the Sponsor (the Goal's
+   decision log, or `(Sponsor, 2026-09-29)` as crew#280 writes it).
 2. In the searched repositories: any issue the Sponsor opened whose body, or
-   one of the Sponsor's comments on it, names the Goal, with the Sponsor's
-   comments on it. A comment that links an issue to the Goal makes the issue
-   part of it: crew#280's one-line comment was the only link to its decision
-   on storage.
+   one of the Sponsor's comments on it, names the Goal. From it, the
+   Sponsor's comments and the body sections headed as above, and nothing else
+   of the body. A comment that links an issue to the Goal makes the issue part
+   of it: crew#280's one-line comment was the only link to its decision on
+   storage.
 3. Any other comment by the Sponsor in those repositories that names the Goal.
 
 **Why per Goal, and not "names the repository".** 133 crew issues by the
 Sponsor name sprint-metrics, nearly all about the crew's own mechanics with
 sprint-metrics as evidence. That is not a context any role could be given.
+
+**Why not a whole body in rule 2.** The Sponsor's login also opens the crew's
+defect reports, which cite the Goal as evidence ("found in the Sprint 8 tick,
+decomposing sprint-metrics#171"). Counted whole, they were about 15 KB of the
+36 KB for Goal 174, and four of five other Goals pulled in the same kind. A
+decision in an issue body has to sit under a heading that names the Sponsor.
 
 **Who is the Sponsor** is `org.yaml`'s `trust.sponsor`, as everywhere else
 (crew#399): only that login's words are direction. `IssueClient.comments`
@@ -39,7 +46,7 @@ from typing import Any
 
 from crew_org.tools.github_issues import IssueClient, IssueError, author
 
-DECISION_HEADING = re.compile(r"^(#{1,6})\s+.*Sponsor decision", re.I | re.M)
+DECISION_HEADING = re.compile(r"^(#{1,6})\s+.*\bSponsor\b", re.I | re.M)
 
 
 @dataclass(frozen=True)
@@ -70,7 +77,7 @@ def names_goal(repo: str, number: int) -> re.Pattern[str]:
 
 
 def decision_sections(body: str) -> list[str]:
-    """Each section whose heading names a Sponsor decision, to the next heading as high."""
+    """Each section whose heading names the Sponsor, to the next heading as high."""
     sections = []
     for m in DECISION_HEADING.finditer(body):
         level = len(m.group(1))
@@ -131,8 +138,11 @@ def collect_decisions(
             authored = author(item) == sponsor
             linked = any(pattern.search(c.get("body") or "") for c in comments)
             if authored and body and (pattern.search(body) or linked):
-                found.append(Decision(2, source, item["html_url"], "issue body", body, title))
-                found += [_comment(2, source, c) for c in comments]
+                found += [
+                    Decision(2, source, item["html_url"], "body section", s, title)
+                    for s in decision_sections(body)
+                ]
+                found += [_comment(2, source, c, title) for c in comments]
                 continue
             found += [
                 _comment(3, source, c, title)
