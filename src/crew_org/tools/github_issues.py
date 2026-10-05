@@ -633,6 +633,33 @@ class IssueClient:
                 return pull
         return None
 
+    def search(self, repo: str, text: str) -> list[int]:
+        """Numbers of the issues in `repo` whose title, body or comments mention `text`.
+
+        Search is loose (it matches words, not phrases), so a caller filters what
+        it gets. GitHub returns at most 1,000 results.
+        """
+        found: list[int] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/search/issues",
+                params={
+                    "q": f"{text} repo:{self.owner}/{repo} is:issue",
+                    "per_page": 100,
+                    "page": page,
+                },
+            )
+            if response.status_code == 422:
+                # GitHub's answer for a repository the token can't see, as well as a bad query.
+                raise IssueError(f"search of {repo} -> 422: {response.json().get('message', '')}")
+            response.raise_for_status()
+            batch = response.json()["items"]
+            found += [i["number"] for i in batch]
+            if len(batch) < 100 or len(found) >= 1000:
+                return found
+            page += 1
+
     def sub_issues(self, repo: str, number: int) -> list[dict[str, Any]]:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/issues/{number}/sub_issues?per_page=100"
