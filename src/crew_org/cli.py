@@ -1395,6 +1395,41 @@ def design(
 
 
 @app.command()
+def decisions(
+    goal: str = typer.Argument(..., help="The Goal, as `repo#n` or `owner/repo#n`."),
+) -> None:
+    """What the Sponsor has decided for a Goal, as the panel and the split are shown it (crew#440).
+
+    Collected by rule: the Sponsor's comments and decision log on the Goal's own
+    cards, plus anything of theirs elsewhere that names the Goal. Read-only.
+    """
+    import re  # noqa: PLC0415
+
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.flows.decisions import collect_decisions, render
+    from crew_org.tools.github_issues import IssueClient
+
+    named = re.fullmatch(r"(?:[\w.-]+/)?([\w.-]+)#(\d+)", goal)
+    if not named:
+        raise typer.BadParameter("Write the Goal as `repo#n`, like sprint-metrics#174.")
+    repo, number = named.group(1), int(named.group(2))
+
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    # Where the Sponsor writes about a Goal: its own repository, the crew's, and
+    # the other repositories the crew works in.
+    repos = [
+        repo,
+        env.get("CREW_REPO", "crew"),
+        *(load_org().get("delivery", {}).get("repos") or []),
+    ]
+    found = collect_decisions(IssueClient(token, owner), goal_repo=repo, goal=number, repos=repos)
+    typer.echo(render(found, goal=f"{owner}/{repo}#{number}"))
+
+
+@app.command()
 def telemetry(
     backfill: bool = typer.Option(
         False, "--backfill", help="Rewrite var/telemetry from var/events, history included."
