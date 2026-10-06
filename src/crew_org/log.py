@@ -194,13 +194,87 @@ def line(record: dict[str, Any]) -> str:
     return f"{at} {level} {where + ' ' if where else ''}{record.get('message', '')}"
 
 
+def _to_collector(endpoint: str | None, exporter: Any) -> logging.Handler | None:
+    """The stream, over OTLP to the Sponsor's collector, content-free (ADR 0010).
+
+    The SDK's handler takes a record's message as its body and every field on it as an
+    attribute, so this one sends the event name as the body and only the allow-listed
+    names and numbers as attributes. The trace context is the SDK's own, so in Grafana
+    a log record sits in its trace natively (crew#283).
+    """
+    if not endpoint and exporter is None:
+        return None
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler  # noqa: PLC0415
+    from opentelemetry.sdk._logs.export import (  # noqa: PLC0415
+        BatchLogRecordProcessor,
+        SimpleLogRecordProcessor,
+    )
+    from opentelemetry.sdk.resources import Resource  # noqa: PLC0415
+
+    from crew_org.telemetry import DETAIL  # noqa: PLC0415
+
+    class Content(logging.Formatter):
+        def format(self, record: logging.LogRecord) -> str:
+            return _event_name(record) or "log"
+
+    class ToCollector(LoggingHandler):
+        @staticmethod
+        def _get_attributes(record: logging.LogRecord) -> Any:
+            ctx = getattr(record, "crew_ctx", {})
+            attrs = getattr(record, "attrs", {})
+            return {
+                "logger": record.name,
+                "event.name": _event_name(record) or "log",
+                "schema_version": SCHEMA_VERSION,
+                **{
+                    f"crew.{k}": v
+                    for k, v in ctx.items()
+                    if k in _CONTEXT_OUT and k not in ("trace_id", "span_id")
+                },
+                **{
+                    f"crew.{k}": v
+                    for k, v in attrs.items()
+                    if (k in DETAIL or k.startswith("count_"))
+                    and isinstance(v, str | int | float | bool)
+                },
+            }
+
+    global _provider
+    _provider = LoggerProvider(resource=Resource.create({"service.name": "crew"}))
+    if exporter is not None:
+        _provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
+    else:
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import (  # noqa: PLC0415
+            OTLPLogExporter,
+        )
+
+        target = f"{str(endpoint).rstrip('/')}/v1/logs"
+        _provider.add_log_record_processor(
+            BatchLogRecordProcessor(OTLPLogExporter(endpoint=target, timeout=5))
+        )
+    handler = ToCollector(level=logging.INFO, logger_provider=_provider)
+    handler.setFormatter(Content())
+    return handler
+
+
+_provider: Any = None
+
+
 def setup(
     *,
     var: Path = Path("var"),
     console: TextIO | None = None,
     console_level: int | None = None,
+    otlp_endpoint: str | None = None,
+    exporter: Any = None,
 ) -> None:
-    """Send the crew's records to its file, its telemetry and the console. Once per process."""
+    """Send the crew's records to its file, to Grafana and to the console. Once per process.
+
+    With `otlp_endpoint` (org.yaml's `telemetry.otlp_endpoint`) the stream goes to the
+    Sponsor's collector over OTLP; without it, an allow-list projection is written to
+    `var/telemetry/logs.jsonl` for the collector to tail. Never both, so nothing is
+    counted twice. `exporter` replaces the OTLP one, for tests.
+    """
     global _configured
     if _configured:
         return
@@ -216,10 +290,12 @@ def setup(
     full.addFilter(context)
     root.addHandler(full)
 
-    (var / "telemetry").mkdir(parents=True, exist_ok=True)
-    out = logging.FileHandler(var / "telemetry" / "logs.jsonl", encoding="utf-8")
-    out.setLevel(logging.INFO)
-    out.setFormatter(Telemetry())
+    out = _to_collector(otlp_endpoint, exporter)
+    if out is None:
+        (var / "telemetry").mkdir(parents=True, exist_ok=True)
+        out = logging.FileHandler(var / "telemetry" / "logs.jsonl", encoding="utf-8")
+        out.setLevel(logging.INFO)
+        out.setFormatter(Telemetry())
     out.addFilter(context)
     out.addFilter(_NotMirrored())
     root.addHandler(out)
@@ -238,13 +314,22 @@ def setup(
     _configured = True
 
 
+def shutdown() -> None:
+    """Send what's still batched for the collector. At the end of a command."""
+    if _provider is not None:
+        _provider.shutdown()
+
+
 def reset() -> None:
     """Remove what `setup` installed. For tests."""
-    global _configured
+    global _configured, _provider
     root = logging.getLogger(ROOT)
     for handler in list(root.handlers):
         root.removeHandler(handler)
         handler.close()
+    if _provider is not None:
+        _provider.shutdown()
+        _provider = None
     _configured = False
 
 

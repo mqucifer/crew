@@ -98,7 +98,8 @@ def tick(
     # and the console. Redirected, the console shows progress live.
     from crew_org import log  # noqa: PLC0415
 
-    log.setup(var=VAR)
+    # To Grafana over OTLP, through the Sponsor's collector, when org.yaml names it.
+    log.setup(var=VAR, otlp_endpoint=(org.get("telemetry") or {}).get("otlp_endpoint"))
 
     # The proxy is project-scoped and will not always be running. Say so plainly
     # rather than surfacing a connection error from deep inside an agent.
@@ -231,6 +232,7 @@ def tick(
             settled=result.settled,
         )
     tracing.stop()
+    log.shutdown()
 
     _render_tick(result)
     _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)

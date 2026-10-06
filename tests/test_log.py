@@ -278,3 +278,52 @@ def test_a_phases_holds_blocks_and_failures_are_logged_as_it_finishes(tmp_path):
     assert all(r["ctx"] == {"pass": 1, "phase": "refine"} for r in records)
     assert "technical work lands first" in records[0]["message"]
     assert records[-1]["attrs"] == {"moved": False, "count_stories": 0}
+
+
+# --- over OTLP to the Sponsor's collector ---------------------------------------------------------
+
+
+def exporting(tmp_path):
+    from opentelemetry.sdk._logs.export import InMemoryLogExporter
+
+    memory = InMemoryLogExporter()
+    log.setup(var=tmp_path, console=io.StringIO(), exporter=memory)
+    return memory
+
+
+def test_with_an_endpoint_the_stream_goes_over_otlp_content_free(tmp_path):
+    memory = exporting(tmp_path)
+    logger = logging.getLogger("crew_org.flows.refine")
+    with working_on(card=406, repo="sprint-metrics"), log.scoped(phase="refine"):
+        log.event(logger, "phase.held", "held: secret prompt text", count=2, answer="free text")
+    [sent] = memory.get_finished_logs()
+    record = sent.log_record
+    assert record.body == "phase.held" and record.severity_text == "INFO"
+    attributes = dict(record.attributes)
+    assert attributes["event.name"] == "phase.held" and attributes["crew.card"] == 406
+    assert attributes["crew.phase"] == "refine" and attributes["crew.count"] == 2
+    assert "secret prompt text" not in json.dumps(attributes, default=str)
+    assert not any(k.endswith("answer") or k.startswith("code.") for k in attributes)
+
+
+def test_otlp_records_sit_in_their_trace_natively(tmp_path):
+    from opentelemetry import trace
+    from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+
+    memory = exporting(tmp_path)
+    span = NonRecordingSpan(
+        SpanContext(trace_id=0xABC, span_id=0xDEF, is_remote=False, trace_flags=TraceFlags(1))
+    )
+    with trace.use_span(span):
+        logging.getLogger("crew_org.x").info("inside a span")
+    [sent] = memory.get_finished_logs()
+    assert sent.log_record.trace_id == 0xABC and sent.log_record.span_id == 0xDEF
+    assert "crew.trace_id" not in dict(sent.log_record.attributes)
+
+
+def test_otlp_sends_no_debug_no_mirrored_events_and_writes_no_projection_file(tmp_path):
+    memory = exporting(tmp_path)
+    logging.getLogger("crew_org.x").debug("noise")
+    EventSink(None).emit(CrewEvent(kind=EventKind.CARD_MOVED, card=406, summary="moved"))
+    assert memory.get_finished_logs() == ()
+    assert not (tmp_path / "telemetry" / "logs.jsonl").exists()
