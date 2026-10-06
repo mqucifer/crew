@@ -18,6 +18,7 @@ from typing import Any
 from crew_org.events import EventKind, EventSink
 from crew_org.flows.main_watch import file_technical_epic
 from crew_org.flows.revisit import TECHNICAL
+from crew_org.project import RECORD_PATH, ProjectRecordError, parse
 from crew_org.tools.registry import ImageUnreadable, Registry
 
 RELEASE_WORKFLOW = ".github/workflows/release.yml"
@@ -27,6 +28,8 @@ SOURCE_LABEL = "org.opencontainers.image.source"
 # A gap only the Sponsor can close. A package's visibility is set on its settings
 # page; no API or workflow token changes it, so no story can (crew#386).
 SPONSOR_STEP = "For the Sponsor, not the crew:"
+# Neither a gap nor a step: the image is private because the Sponsor chose it (crew#398).
+PRIVATE_NOTE = "By the Sponsor's choice:"
 _VERSION = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
@@ -60,7 +63,20 @@ def _already_checked(issues: Any, repo: str, version: str) -> bool:
     return any(marker in (i.get("body") or "") for i in issues.labelled(repo, TECHNICAL))
 
 
-def gaps(issues: Any, registry: Registry, repo: str, version: str) -> list[str]:
+def private_by_choice(issues: Any, repo: str, branch: str) -> bool:
+    """The project's record says its published image is private."""
+    text = issues.file_at(repo, RECORD_PATH, branch)
+    if not text:
+        return False
+    try:
+        return parse(text).intent.release.image == "private"
+    except (ProjectRecordError, ValueError):
+        return False  # unreadable: an unreadable image stays the Sponsor's step, as before
+
+
+def gaps(
+    issues: Any, registry: Registry, repo: str, version: str, *, private: bool = False
+) -> list[str]:
     """What release `version` of `repo` didn't publish, each as a line a Developer can act on."""
     found: list[str] = []
     tag = f"v{version}"
@@ -94,6 +110,12 @@ def gaps(issues: Any, registry: Registry, repo: str, version: str) -> list[str]:
     try:
         image = registry.image(name, version)
     except ImageUnreadable as exc:
+        if private:
+            found.append(
+                f"{PRIVATE_NOTE} `ghcr.io/{name}` is private, as the project's record says, "
+                "so its image checks are skipped."
+            )
+            return found
         found.append(
             f"{SPONSOR_STEP} {exc}. Making the package public is a setting only its owner "
             "can change, on the package's settings page (Change visibility). No API or "
@@ -160,16 +182,23 @@ def check_releases(
                 continue
             if _already_checked(issues, repo, version):
                 continue
-            missing = gaps(issues, registry, repo, version)
+            missing = gaps(
+                issues, registry, repo, version, private=private_by_choice(issues, repo, branch)
+            )
             published = issues.tag_exists(repo, f"v{version}")
         except Exception as exc:  # noqa: BLE001
             result.failed.append((repo, str(exc)[:160]))
             continue
         sponsor = [line for line in missing if line.startswith(SPONSOR_STEP)]
-        missing = [line for line in missing if not line.startswith(SPONSOR_STEP)]
+        skipped = [line for line in missing if line.startswith(PRIVATE_NOTE)]
+        missing = [line for line in missing if line not in sponsor and line not in skipped]
         if not missing and not sponsor:
             result.verified.append((repo, version))
-            sink.note(EventKind.NOTE, f"{repo} v{version}: release verified")
+            sink.note(
+                EventKind.NOTE,
+                f"{repo} v{version}: release verified"
+                + ("; its image is private by choice, so not read" if skipped else ""),
+            )
             continue
         if not missing:
             # Nothing for the crew: no epic, and it's read again next tick.
