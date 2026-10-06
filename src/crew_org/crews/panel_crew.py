@@ -132,6 +132,8 @@ class PanelContext:
     epic_ref: str
     epic: str
     siblings: list[Sibling] = field(default_factory=list)
+    # The project's own decision log: what applies to every epic, whatever its Goal (crew#468).
+    project_log: str = ""
 
 
 @dataclass(frozen=True)
@@ -148,6 +150,7 @@ def describe(context: PanelContext, role: str) -> str:
         f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
         + (f"{context.project}\n\n" if context.project else "")
         + (f"{context.decisions}\n\n" if context.decisions else "")
+        + (f"{context.project_log}\n\n" if context.project_log else "")
         + (f"## The other epics under this Goal\n\n{siblings}\n\n" if siblings else "")
         + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
         "## Your task\n\n"
@@ -155,7 +158,8 @@ def describe(context: PanelContext, role: str) -> str:
         f"it once, for what they own. You are the {title}. {FOCUS[role]}\n\n"
         "Name each problem in your area that should be settled before the split: "
         "something the epic gets wrong, leaves out or contradicts, against the Goal, the "
-        "project's record, the Sponsor's decisions or the other epics. Quote its source.\n\n"
+        "project's record, the Sponsor's decisions, the project's decision log or the other "
+        "epics. Quote its source.\n\n"
         f"{SCOPE}\n\n"
         'If there is nothing in your area to add, say so: "nothing to add" is a complete '
         "answer, and better than a note that isn't needed. Don't restate the epic, propose "

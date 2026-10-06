@@ -17,6 +17,7 @@ from typing import Any
 from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelResult, Sibling
 from crew_org.flows.decisions import collect_decisions
 from crew_org.flows.decisions import render as render_decisions
+from crew_org.flows.project_log import read_log
 from crew_org.permissions import load_agents
 from crew_org.tools.github_issues import IssueClient
 
@@ -88,6 +89,7 @@ def gather(
         epic_ref=f"{ref}#{epic}",
         epic=_text(card),
         siblings=siblings_of(issues, repo, goal, epic),
+        project_log=read_log(issues, repo),
     )
 
 

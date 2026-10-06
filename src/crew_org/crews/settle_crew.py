@@ -339,6 +339,7 @@ def describe(
         f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
         + (f"{context.project}\n\n" if context.project else "")
         + (f"{context.decisions}\n\n" if context.decisions else "")
+        + (f"{context.project_log}\n\n" if context.project_log else "")
         + (f"## The other epics under this Goal\n\n{siblings}\n\n" if siblings else "")
         + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
         f"## The panel's notes\n\n{notes or '(none)'}\n\n"
@@ -348,13 +349,14 @@ def describe(
         "Four roles read this epic before it is split and raised the notes above. Settle each "
         "one, in the fewest words:\n"
         "- **A row** when you can decide it. If the Goal, the project's record, a Sponsor "
-        "decision or a sibling's conclusion answers it, say what is decided and what follows, "
-        "and name the source. If none does, decide it yourself, as the product owner does for "
-        "the team: set `own_call`, say why, and quote the Goal's own words that the decision "
-        "stays within. It is recorded as your call. It must not contradict the Goal or a "
-        "Sponsor decision. Your own calls are for what the product does. A note a member "
-        "marked for the Architect is a design question (a path, a response shape, a "
-        "parameter): it is an open question for the design note, unless a source settles it.\n"
+        "decision, the project's decision log or a sibling's conclusion answers it, say what is "
+        "decided and what follows, and name the source. If none does, decide it yourself, as "
+        "the product owner does for the team: set `own_call`, say why, and quote the Goal's own "
+        "words that the decision stays within. It is recorded as your call. It must not "
+        "contradict the Goal or a Sponsor decision. Your own calls are for what the product "
+        "does. A note a member marked for the Architect is a design question (a path, a "
+        "response shape, a parameter): it is an open question for the design note, unless a "
+        "source settles it.\n"
         "- **An open question** when it is a design question that can't be settled until the "
         "stories exist. The Architect settles those after the split.\n"
         "- **For infra** when a member marked it infra: it is about the deployed runtime "
