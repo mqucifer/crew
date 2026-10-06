@@ -207,14 +207,21 @@ def tick(
     with log.scoped(sprint=sprint):
         # Which code ran this tick, first: a tick once crashed from mixed versions,
         # and nothing recorded which code it was (crew#449).
-        log.event(
-            tick_log,
-            "tick.started",
-            f"tick on {', '.join(sorted(allowed))}, {sprint}",
-            repos=",".join(sorted(allowed)),
-            **log.code_version(),
-        )
-        with attach(sink, view), tracing.span("tick", **{"crew.sprint": sprint}):
+        version = log.code_version()
+        with (
+            attach(sink, view),
+            tracing.span(
+                "tick", **{"crew.sprint": sprint, "crew.commit": version.get("commit", "")}
+            ),
+        ):
+            # Inside the tick's span, so its first record carries the trace's id.
+            log.event(
+                tick_log,
+                "tick.started",
+                f"tick on {', '.join(sorted(allowed))}, {sprint}",
+                repos=",".join(sorted(allowed)),
+                **version,
+            )
             result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
         log.event(
             tick_log,

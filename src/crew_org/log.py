@@ -43,7 +43,20 @@ _SCOPE: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("crew_lo
 QUIET = ("crewai", "litellm", "LiteLLM", "httpx", "httpcore", "opentelemetry", "urllib3")
 # What the context may carry out to Grafana: identifiers and names, never text.
 _CONTEXT_OUT = frozenset(
-    {"tick", "pass", "phase", "repo", "card", "role", "sprint", "attempt", "for"}
+    {
+        "tick",
+        "pass",
+        "phase",
+        "repo",
+        "card",
+        "role",
+        "sprint",
+        "attempt",
+        "for",
+        # The span the record was written in, so Grafana joins a log line to its trace.
+        "trace_id",
+        "span_id",
+    }
 )
 _EVENTS = "events."
 
@@ -51,10 +64,18 @@ _configured = False
 
 
 def scope() -> dict[str, Any]:
-    """The context a record written now carries: the tick's, and the card's (`working_on`)."""
+    """The context a record written now carries: the tick's, the card's (`working_on`), and
+    the trace's, when a span is open (crew#283), so a log line and its trace join up."""
+    from opentelemetry import trace  # noqa: PLC0415
+
     from crew_org.events import working  # noqa: PLC0415
 
-    return {**working(), **_SCOPE.get({})}
+    found = {**working(), **_SCOPE.get({})}
+    span = trace.get_current_span().get_span_context()
+    if span.is_valid:
+        found["trace_id"] = format(span.trace_id, "032x")
+        found["span_id"] = format(span.span_id, "016x")
+    return found
 
 
 @contextlib.contextmanager

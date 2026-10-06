@@ -49,6 +49,26 @@ def test_the_context_joins_the_ticks_and_the_cards():
     assert log.scope() == {}
 
 
+def test_a_record_written_in_a_span_carries_the_traces_ids(tmp_path):
+    from opentelemetry import trace
+    from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+
+    configured(tmp_path)
+    span = NonRecordingSpan(
+        SpanContext(trace_id=0xABC, span_id=0xDEF, is_remote=False, trace_flags=TraceFlags(1))
+    )
+    with trace.use_span(span):
+        logging.getLogger("crew_org.x").info("inside the tick's span")
+    logging.getLogger("crew_org.x").info("outside any span")
+    inside, outside = read(tmp_path / "logs" / "crew.jsonl")
+    assert (
+        inside["ctx"]["trace_id"] == f"{0xABC:032x}" and inside["ctx"]["span_id"] == f"{0xDEF:016x}"
+    )
+    assert "trace_id" not in outside["ctx"]
+    [projected, _] = read(tmp_path / "telemetry" / "logs.jsonl")
+    assert projected["trace_id"] == f"{0xABC:032x}"
+
+
 def test_a_scope_nests_and_is_restored():
     with log.scoped(pass_=1):
         token = log.enter(phase="deliver")
