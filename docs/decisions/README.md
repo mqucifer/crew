@@ -31,3 +31,4 @@ numbered in order, with a kebab-case title.
 | [0013](0013-claude-and-the-crew-are-independent.md) | Claude's standards and the crew's are independent | 2026-10-02 | Accepted |
 | [0014](0014-logging-one-levelled-stream.md) | Logging: one levelled stream, named events for what code reads | 2026-10-02 | Accepted (built by crew#449) |
 | [0015](0015-a-goals-decisions-are-the-sponsors-words-under-a-heading.md) | A Goal's decisions are the Sponsor's comments and headed sections | 2026-10-05 | Accepted |
+| [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468) |
