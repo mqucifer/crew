@@ -168,3 +168,31 @@ These two shape the mechanism after the panel, discussed with the Sponsor on 202
 - The panel catches most of 1–10 only with item 4: the collection of decisions is the work, more than the roles.
 - Members miss the same findings together: add a critic step, as #359 found for the Architect.
 - Many unneeded notes: tighten "nothing to add" before building.
+
+## The replay (2026-10-05)
+
+The crew's own panel (`crew_org.crews.panel_crew`: the new focus lines, the scope line, and a `settled_by` tag on every note) run on the same stored inputs, for crew#440 step 4. `replay.py` runs it; answers are in `results/replay.jsonl`.
+
+**One run, 12 calls, none failed.** It was meant to be three. The Sponsor stopped it after the first: in the earlier tests more runs never changed a conclusion, and what moved results was the context the members were shown. So this is direction from one run, scored by one reader, with the same rule as above.
+
+| # | Finding | Test (serial, of 3 runs) | Replay | Why |
+|---|---|---|---|---|
+| 1 | History in memory; Postgres decided | 3 | In part | The Architect and DevOps on #184 set crew#280's Postgres against #186's "volume for history", but offer sqlite as an open choice |
+| 2 | No `unblocked` event | 1 | No | |
+| 3 | A card counted where it merges | 0 (+1) | No | Its decision names no Goal, so the rule can't find it |
+| 4 | Traces must be OTLP | 2 (+1) | In part | All four on #187 ask for a named protocol, three name OTLP or OpenTelemetry, none cites crew#283 as the decision |
+| 5 | A new intake version is MINOR | 0 (+2) | In part | The Architect applies the versioning rule: a new optional intake field is MINOR, a change after release is MAJOR |
+| 6 | Trends planned nowhere | 2 | Yes | QA on #184: "trend" isn't a query type in the code |
+| 7 | #184 and #185 share one event format | 3 | Yes | Raised by the Architect and QA on both epics |
+| 8 | Intake versioned like the answers | 3 | Yes | The Architect on #185: separate intake and response versions |
+| 9 | #187 instruments the service | 0 (+3) | In part | The Architect names #184 as what the intake spans need. QA scopes the testable work to query processing only, which leans the wrong way |
+| 10 | Settings per environment | 0 (+1) | In part | DevOps names the CI service container and the local sandbox's limit. No settings or secrets per environment, and no production |
+
+**The other counts:**
+- **Unneeded notes: 0 of 27** (test: 8 of 269). DevOps's habit of reviewing #186 for #185 is gone: it wrote one note on #185, about #185.
+- **Who settles:** 21 for the Architect, 6 for the Product Owner, none for the Sponsor.
+- **"Nothing to add":** once in 12 calls (UX on #185).
+- **Bare issue numbers:** 59 in the 27 notes, though the prompt asks for `owner/repo#n`. The epics the members read use bare numbers and they copy them. Posted on the epic's own repository they link correctly. Making them explicit mechanically is crew#456's job.
+- **Time:** the three epics took 426 s, 368 s and 303 s, about 1,100 s for the run. The test's parallel arm took 313 s an epic.
+
+**What it says.** The scope line and the Architect's check did what they were for: the unneeded notes are gone, and finding 5 and the dependency in 9 now appear. The DevOps line did not produce finding 10, and 2 and 3 are still missing. For 3 the cause is the decision, not the role. For 10, a longer line is not the lever (ADR 0011): DevOps would need evidence chosen mechanically, such as the project's CI and design record. That is for the Sponsor to take up, and it is not decided here.
