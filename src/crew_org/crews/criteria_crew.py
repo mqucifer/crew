@@ -41,7 +41,13 @@ class CriteriaCheck(BaseModel):
 
 
 def check_criteria(
-    *, stories: str, repository: str = "", planned: str = "", conclusion: str = ""
+    *,
+    stories: str,
+    repository: str = "",
+    planned: str = "",
+    conclusion: str = "",
+    goal: str = "",
+    project_log: str = "",
 ) -> CriteriaCheck:
     """QA's check of a proposed split's criteria, against each other, the code and the rows.
 
@@ -58,6 +64,11 @@ def check_criteria(
                 if planned
                 else ""
             )
+            # What is already decided, so restating it isn't taken for deciding it: on
+            # sprint-metrics#406 two criteria naming the five event types, decided on the
+            # Goal and in the project's log, were refused as settling an open question.
+            + (f"## The Goal, set by the Sponsor\n\n{goal}\n\n" if goal else "")
+            + (f"{project_log}\n\n" if project_log else "")
             + (
                 f"## The epic's conclusion, decided before the split\n\n{conclusion}\n\n"
                 if conclusion
@@ -75,7 +86,9 @@ def check_criteria(
                 ";\n- a row of the epic's conclusion above: a criterion that expects the "
                 "opposite of what a row decides. A criterion that decides an open question "
                 "(Q) the row table leaves for the design note is a conflict too, since no "
-                "story settles it"
+                "story settles it, unless the Goal, the project's decision log or a decided "
+                "row already says what the criterion states: restating a decision isn't "
+                "deciding the question"
                 if conclusion
                 else ""
             )
