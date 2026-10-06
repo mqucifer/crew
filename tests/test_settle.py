@@ -16,8 +16,10 @@ from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, Pane
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     DECISION_CHARS,
+    INFRA_CHARS,
     Conclusion,
     Dismissal,
+    ForInfra,
     OpenQuestion,
     Row,
     Settlement,
@@ -199,6 +201,7 @@ def conclusion():
             row(settles=[2], context="Counting", source="crew#389, Goal decision D3"),
         ],
         open=[OpenQuestion(question="Same version track?", impact="Every sender", settles=[3])],
+        for_infra=[ForInfra(item="A Postgres schema and user for the service", settles=[5])],
         dismissed=[Dismissal(note=4, why="Wholly inside #186")],
     )
 
@@ -210,7 +213,9 @@ def rendered():
 def test_the_conclusion_opens_with_its_header_and_the_bottom_line():
     lines = rendered().split("\n")
     assert lines[0] == "## Refinement conclusion"
-    assert lines[2] == "Ready to split: 2 decided, 1 open for the design note, 1 dismissed."
+    assert lines[2] == (
+        "Ready to split: 2 decided, 1 open for the design note, 1 for infra, 1 dismissed."
+    )
 
 
 def test_ids_and_status_are_the_codes_not_the_models():
@@ -248,6 +253,41 @@ def test_a_link_already_written_is_not_wrapped_again():
 
 def test_open_questions_say_who_settles_them():
     assert "| Q1 | Same version track? | Every sender | Design note |" in rendered()
+
+
+def test_what_infra_has_to_provide_is_its_own_table_and_not_a_row():
+    text = rendered()
+    assert "| I1 | A Postgres schema and user for the service |" in text
+    assert "For infra: what the deployed runtime has to provide" in text
+    assert "| R3 |" not in text
+
+
+def test_an_epic_with_nothing_for_infra_says_so_in_the_bottom_line():
+    text = flow.render(Conclusion(rows=[row()]), owner="mqucifer", repo="sprint-metrics")
+    assert "0 for infra" in text and "For infra:" not in text
+
+
+def test_a_note_for_infra_is_answered_by_listing_it_and_a_conclusion_may_be_only_that():
+    only = Settlement(
+        conclusion=Conclusion(for_infra=[ForInfra(item="A shared Postgres", settles=[1, 2])])
+    )
+    check_covers(only, 2)
+    with pytest.raises(Unsettled, match="N3"):
+        check_covers(only, 3)
+
+
+def test_an_infra_item_that_ran_into_its_limit_was_cut_off():
+    cut = Settlement(
+        conclusion=Conclusion(for_infra=[ForInfra(item="x" * INFRA_CHARS, settles=[1])])
+    )
+    with pytest.raises(Unsettled, match="for infra 1"):
+        check_not_cut(cut)
+
+
+def test_the_task_tells_the_product_owner_what_to_do_with_a_note_a_member_marked_infra():
+    text = describe(context(), panel(1, 0, 0, 0))
+    assert "**For infra** when a member marked it infra" in text
+    assert "no story waits on it" in text and "one of the four" in text
 
 
 # --- settling an epic -----------------------------------------------------------------------

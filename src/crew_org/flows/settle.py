@@ -99,7 +99,8 @@ def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | N
         CONCLUSION_HEADER,
         "",
         f"Ready to split: {len(conclusion.rows)} decided, {len(conclusion.open)} open for the "
-        f"design note, {len(conclusion.dismissed)} dismissed.",
+        f"design note, {len(conclusion.for_infra)} for infra, "
+        f"{len(conclusion.dismissed)} dismissed.",
         "",
     ]
     if conclusion.rows:
@@ -119,6 +120,10 @@ def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | N
             f"| Q{i} | {c(q.question)} | {c(q.impact)} | Design note |"
             for i, q in enumerate(conclusion.open, 1)
         ]
+        lines.append("")
+    if conclusion.for_infra:
+        lines += ["| ID | For infra: what the deployed runtime has to provide |", "|---|---|"]
+        lines += [f"| I{i} | {c(f.item)} |" for i, f in enumerate(conclusion.for_infra, 1)]
         lines.append("")
     if conclusion.dismissed:
         lines += ["| Note | Dismissed because |", "|---|---|"]

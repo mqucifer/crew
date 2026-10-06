@@ -30,6 +30,7 @@ QUESTION_CHARS = 140
 IMPACT_CHARS = 100
 REASON_CHARS = 100
 ASK_CHARS = 300
+INFRA_CHARS = 160
 
 
 def aim(limit: int) -> int:
@@ -87,6 +88,17 @@ class OpenQuestion(BaseModel):
     settles: list[int] = Field(min_length=1, description="The panel notes it stands for")
 
 
+class ForInfra(BaseModel):
+    """Something about the deployed runtime the epic assumes and infra must provide."""
+
+    item: str = Field(
+        min_length=2,
+        max_length=INFRA_CHARS,
+        description=f"What infra has to provide, under {aim(INFRA_CHARS)} characters",
+    )
+    settles: list[int] = Field(min_length=1, description="The panel notes it stands for")
+
+
 class Dismissal(BaseModel):
     note: int = Field(description="The number of the panel note")
     why: str = Field(
@@ -105,11 +117,18 @@ class Conclusion(BaseModel):
         default_factory=list,
         description="Design questions that can't be settled until the stories exist",
     )
+    for_infra: list[ForInfra] = Field(
+        default_factory=list,
+        description=(
+            "What the epic assumes of the deployed runtime that infra provides. Not rows: "
+            "no story waits on them"
+        ),
+    )
     dismissed: list[Dismissal] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _says_something(self) -> Conclusion:
-        if not (self.rows or self.open or self.dismissed):
+        if not (self.rows or self.open or self.for_infra or self.dismissed):
             raise ValueError("a conclusion answers the notes: give rows, questions or dismissals")
         return self
 
@@ -117,6 +136,7 @@ class Conclusion(BaseModel):
         return (
             {n for r in self.rows for n in r.settles}
             | {n for q in self.open for n in q.settles}
+            | {n for i in self.for_infra for n in i.settles}
             | {d.note for d in self.dismissed}
         )
 
@@ -188,6 +208,11 @@ def check_not_cut(settlement: Settlement) -> None:
                 if len(getattr(q, name)) >= limit:
                     cut.append(f"open question {i} {name}")
         cut += [
+            f"for infra {i}"
+            for i, f in enumerate(conclusion.for_infra, 1)
+            if len(f.item) >= INFRA_CHARS
+        ]
+        cut += [
             f"dismissal of N{d.note}" for d in conclusion.dismissed if len(d.why) >= REASON_CHARS
         ]
     if cut:
@@ -238,9 +263,13 @@ def describe(
         "Never decide something those don't hold.\n"
         "- **An open question** when it is a design question that can't be settled until the "
         "stories exist. The Architect settles those after the split.\n"
+        "- **For infra** when a member marked it infra: it is about the deployed runtime "
+        "(where it runs, real addresses and secrets, provisioning, backups), which the "
+        "project doesn't build. List what infra has to provide, in a few words. It is not a "
+        "row, and no story waits on it.\n"
         "- **A dismissal** when it isn't needed: already settled, wholly inside another epic, "
         "or wrong. Say why.\n"
-        "Every note gets one of the three, and a row may answer several. If a note needs a "
+        "Every note gets one of the four, and a row may answer several. If a note needs a "
         "product choice and none of the sources answers it, give one question for the Sponsor "
         "instead and no conclusion. Don't ask what you can answer, and don't restate the epic."
     )

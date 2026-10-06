@@ -52,11 +52,16 @@ FOCUS = {
         "asks of it can be proven, and whether everything it promises can hold together."
     ),
     "devops_engineer": (
-        "You own whether what this epic ships really runs where it is meant to, and "
-        "stays healthy there.\n"
-        "For each place its work runs (local checks, CI, a test bed, production), name "
-        "the settings and secrets it needs there, who provides them, and whether the "
-        "epic or a sibling covers it. A place with no answer is a problem to settle."
+        "You own whether what this epic ships can be run and operated, and proven in CI. "
+        "The project builds to its spec; where it runs is infra's.\n"
+        "For the epic, check the runtime contract: the settings it reads (their names and "
+        "defaults), what it needs at startup, how it is started, health-checked and "
+        "stopped, and how CI proves it, with throwaway services and no real secrets. A gap "
+        "there is a problem to settle.\n"
+        "The deployed runtime is infra's, not the epic's: which server, real addresses and "
+        "secrets, provisioning, backups, scaling, dashboards. Don't ask the epic to settle "
+        "them. If the epic assumes something infra must provide, raise one note for it and "
+        "mark it infra."
     ),
 }
 ROLES = tuple(FOCUS)
@@ -67,7 +72,7 @@ SCOPE = (
     "delivered epic is background only."
 )
 
-SettledBy = Literal["product_owner", "architect", "sponsor"]
+SettledBy = Literal["product_owner", "architect", "sponsor", "infra"]
 
 
 class PanelNote(BaseModel):
@@ -85,7 +90,9 @@ class PanelNote(BaseModel):
         description=(
             "Who can settle it: product_owner if the Goal, the record or a recorded Sponsor "
             "decision answers it; architect if it is a design question; sponsor only if "
-            "nothing recorded answers it and it is a product choice"
+            "nothing recorded answers it and it is a product choice; infra only for the "
+            "deployed runtime (where it runs, real addresses and secrets, provisioning, "
+            "backups), which the project doesn't build"
         )
     )
 
