@@ -1,24 +1,30 @@
 # Decisions
 
-Architecture decision records for the crew's own design (ADR 0001).
+Architecture decision records for the crew's own design (ADR 0001). This README is
+how they're kept: living documentation, changed by PR like any other doc, not by
+another ADR, so the current process is always read here and nowhere else.
 
-**What gets one** (ADR 0019): a decision that changes how the crew works across
-roles, steps or projects, or that would be costly to reverse. A choice inside one
-issue (which option meets a criterion, a retry count, a wording) goes in that
-issue and its PR instead.
+**What gets one:** a decision that changes how the crew works across roles, steps
+or projects, or that would be costly to reverse. Examples: infra owns the deployed
+runtime (0017), the Product Owner's leeway within the Goal (0018). A choice inside
+one issue (which option meets a criterion, a retry count, a threshold, a wording)
+goes in that issue and its PR instead.
 
-**How:** Claude writes it by PR in the session the decision is made. The
-Sponsor's merge is the approval.
+**How:** the Sponsor's decisions are asked in chat, with the options and a
+recommendation. When one meets the line above, Claude writes the ADR by PR in the
+session it's made, and the Sponsor's merge is the approval. When it's unclear which
+side of the line a decision falls, that's asked with the decision.
 
-**Changing one:** write a new ADR that supersedes the old one, and set the old
-one's Status to `Superseded by NNNN`. The old body isn't edited.
+**Changing one:** write a new ADR that supersedes it, restating the whole decision so
+the new one can be read alone, and set the old one's Status to `Superseded by NNNN`.
+The old body isn't edited.
 
 Use the format of `0001` (Date, Status, Context, Decision, Consequences),
 numbered in order, with a kebab-case title.
 
 | ADR | Decision | Date | Status |
 |---|---|---|---|
-| [0001](0001-record-architecture-decisions.md) | Record architecture decisions | 2026-10-02 | Accepted; "What gets one" superseded by 0019 |
+| [0001](0001-record-architecture-decisions.md) | Record architecture decisions | 2026-10-02 | Accepted (the process now lives in this README) |
 | [0002](0002-the-board-is-the-orchestrator.md) | The board is the orchestrator | 2026-09-18 | Accepted |
 | [0003](0003-the-sponsors-gates.md) | The Sponsor's gates | 2026-09-18 | Accepted |
 | [0004](0004-escalation-runs-on-the-subscription.md) | Escalation runs on the subscription, never an API key | 2026-09-18 | Accepted |
@@ -36,4 +42,3 @@ numbered in order, with a kebab-case title.
 | [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468); last bullet superseded by 0018 |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
 | [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and records it | 2026-10-05 | Accepted (built by crew#440) |
-| [0019](0019-what-gets-an-adr.md) | What gets an ADR | 2026-10-06 | Accepted |
