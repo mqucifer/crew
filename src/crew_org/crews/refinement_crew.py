@@ -111,10 +111,12 @@ class Story(BaseModel):
     @classmethod
     def _row_ids(cls, value: list[str]) -> list[str]:
         ids = [v.strip().upper() for v in value]
-        bad = [v for v in ids if not re.fullmatch(r"R\d+", v)]
+        bad = [v for v in ids if not re.fullmatch(r"[RQI]\d+", v)]
         if bad:
             raise ValueError(f"{', '.join(bad)}: name rows of the conclusion by ID, like R1")
-        return list(dict.fromkeys(ids))
+        # An open question (Q) or an item for infra (I) isn't something a story follows.
+        # Dropped rather than refused: a refusal costs a whole model call, and nothing is lost.
+        return list(dict.fromkeys(v for v in ids if v.startswith("R")))
 
     @field_validator("pinned_behaviour")
     @classmethod
@@ -240,14 +242,18 @@ class Accounted(BaseModel):
 class RowNotForStories(BaseModel):
     """A row of the epic's conclusion that no story follows, and why (crew#440)."""
 
-    row: str = Field(description="The row's ID, like R3")
+    row: str = Field(
+        description="The row's ID, like R3. Open questions (Q) and infra items (I) need no entry"
+    )
     why: str = Field(description="Why it is not for stories, e.g. it only guides the design note")
 
     @field_validator("row")
     @classmethod
     def _row_id(cls, value: str) -> str:
+        # Q and I are accepted, and ignored by the coverage check: the 406 proof's split
+        # listed them here, and refusing that cost four model calls of seven minutes each.
         found = value.strip().upper()
-        if not re.fullmatch(r"R\d+", found):
+        if not re.fullmatch(r"[RQI]\d+", found):
             raise ValueError("name the row by its ID, like R3")
         return found
 
@@ -552,8 +558,9 @@ def split_epic(
                 "before this split. Its rows are decided: a story may not contradict one, and "
                 "each story names the rows it follows in `follows`. Don't settle an open "
                 "question (Q): the Architect does that after the split, so no story answers "
-                "one or waits for one unless the epic's own text says so. A row that no story "
-                "follows goes in `not_for_stories`, with why.\n\n"
+                "one or waits for one unless the epic's own text says so. A row (R) that no "
+                "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
+                "items for infra (I) need no entry: no story takes them on.\n\n"
                 if conclusion
                 else ""
             )

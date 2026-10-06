@@ -120,7 +120,8 @@ def problems(proposal: Any, rows: list[str]) -> list[str]:
                 f"Story '{story.title}' follows {', '.join(unknown)}, not rows of the epic."
             )
         followed.update(story.follows)
-    left_out = {n.row for n in proposal.not_for_stories}
+    # Only rows count: an open question (Q) or an infra item (I) listed here is harmless.
+    left_out = {n.row for n in proposal.not_for_stories if n.row.startswith("R")}
     unknown_left = sorted(left_out - known)
     if unknown_left:
         found.append(f"not_for_stories names {', '.join(unknown_left)}, not rows of the epic.")
