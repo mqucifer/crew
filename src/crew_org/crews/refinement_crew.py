@@ -598,6 +598,77 @@ def split_epic(
     return proposal
 
 
+class RepairedStory(BaseModel):
+    """One flagged story's criteria, rewritten. Nothing else of the story changes."""
+
+    title: str = Field(description="The story's title, exactly as given")
+    acceptance_criteria: list[AcceptanceCriterion] = Field(
+        description=(
+            f"All of the story's criteria, at least {MIN_CRITERIA}; one a failure or edge case"
+        )
+    )
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
+        return Story._enough_criteria(value)
+
+
+class CriteriaRepair(BaseModel):
+    stories: list[RepairedStory] = Field(
+        default_factory=list, description="Each story you were asked to repair, once"
+    )
+
+
+def repair_criteria(
+    title: str,
+    context: str = "",
+    *,
+    flagged: str,
+    others: str,
+    conflicts: str,
+    repository: str = "",
+    conclusion: str = "",
+    project_log: str = "",
+) -> CriteriaRepair:
+    """Business Analyst only: rewrite the criteria the check refused, and nothing else.
+
+    A whole re-split rewrote every story, and every rewrite could slip in a fresh
+    mistake: on sprint-metrics#406 each split fixed the conflict it was told of and
+    made a new one elsewhere (crew#440). The stories that passed stay as they were.
+    """
+    agents = build_agents("business_analyst")
+    task = Task(
+        description=(
+            (f"## The repository as it stands\n\n{repository}\n\n" if repository else "")
+            + (f"{project_log}\n\n" if project_log else "")
+            + (f"## The epic's conclusion\n\n{conclusion}\n\n" if conclusion else "")
+            + f"## The epic\n\n{title}\n\n{context}\n\n"
+            + f"## The other stories of this split, which stay as they are\n\n{others}\n\n"
+            + f"## The stories to repair\n\n{flagged}\n\n"
+            + f"## Why their criteria can't all pass\n\n{conflicts}\n\n"
+            "Rewrite the acceptance criteria of the stories to repair, so that every "
+            "criterion can pass alongside the other stories, the project's code and the "
+            "epic's conclusion. Change only what the conflicts need; keep every criterion "
+            "they don't touch word for word. Check each criterion's expected values "
+            "against its own inputs: a number the stated data can't produce can't pass. "
+            "Where the epic doesn't say which outcome it wants, leave the case out rather "
+            "than guess. Return each story to repair once, with its title exactly as given "
+            "and all of its criteria."
+        ),
+        expected_output="The repaired stories' criteria.",
+        agent=agents["business_analyst"],
+        output_pydantic=CriteriaRepair,
+    )
+    crew = Crew(
+        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    )
+    repair = getattr(crew.kickoff(), "pydantic", None)
+    if not isinstance(repair, CriteriaRepair):
+        raise ValueError("the Business Analyst gave no answer in the CriteriaRepair form")
+    return repair
+
+
 def check_accounted(proposal: StoryProposal, superseded: list[tuple[int, str]]) -> None:
     """Refuse a re-split that drops a superseded story without a word (#248).
 

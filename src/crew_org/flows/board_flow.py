@@ -37,6 +37,7 @@ from crew_org.crews.refinement_crew import (
     StoryProposal,
     answer_story_problem,
     propose_epics,
+    repair_criteria,
     split_epic,
 )
 from crew_org.design import DesignPolicy, EpicShape
@@ -1342,8 +1343,8 @@ def refine_epics(
                         "the split doesn't fit the epic's conclusion: " + " ".join(found)
                     )
             # Every criterion has to pass alongside the others and the code, and
-            # that shows before any story exists (#428). One re-split with the
-            # conflicts named; what survives goes to the Product Owner.
+            # that shows before any story exists (#428). One repair of the flagged
+            # stories' criteria; what survives goes to the Product Owner.
             others = criteria_check.planned_criteria(issues, repo, planned)
             checked = attributed(check_criteria, card=number, repo=repo)(
                 stories=criteria_check.render_split(proposal),
@@ -1353,13 +1354,31 @@ def refine_epics(
                 goal=goal_text,
                 project_log=project_log,
             )
-            if checked.conflicts:
+            named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
+            if named:
+                # Only those stories' criteria are rewritten: a whole re-split fixed
+                # the conflict it was told of and made a new one elsewhere (crew#440).
+                repair = attributed(repair_criteria, card=number, repo=repo)(
+                    epic_card.title,
+                    body,
+                    flagged=criteria_check.render_stories(named),
+                    others=criteria_check.render_stories(
+                        [s for s in proposal.stories if s not in named]
+                    ),
+                    conflicts=criteria_check.described(checked),
+                    repository=repository,
+                    conclusion=conclusion,
+                    project_log=project_log,
+                )
+                proposal = criteria_check.with_repairs(proposal, named, repair)
+            elif checked.conflicts:
                 asked_for["feedback"] = "\n\n".join(
                     f for f in (asked_for["feedback"], criteria_check.feedback(checked)) if f
                 )
                 proposal = attributed(split_epic, card=number, repo=repo)(
                     epic_card.title, body, **asked_for
                 )
+            if checked.conflicts:
                 checked = attributed(check_criteria, card=number, repo=repo)(
                     stories=criteria_check.render_split(proposal),
                     repository=repository,
