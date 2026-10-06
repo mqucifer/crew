@@ -2,6 +2,8 @@
 
 How the history-keeping service runs, gets tested and is looked after, and where DevOps and QA come into the work. Planned with the Sponsor on 2026-10-01.
 
+**Note (2026-10-05):** parts 1, 2 and 4 (environments, settings and secrets, production on the shared Postgres) are infra's content: a product builds to its spec and proves it in CI, and infra owns where it runs ([ADR 0017](../decisions/0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md)). They stay here as the record until infra's own Goal takes them over.
+
 **Status:** parts 1–5 agreed. Parts 6 (sequencing) and 7 (the Goals that follow) are still to plan. Nothing here is built yet, except where noted.
 
 ## 1. Environments

@@ -26,7 +26,12 @@ PANEL_MARKER = "<!-- crew:panel -->"
 # these, not a re-run: a second run would not give the same notes.
 _DATA = re.compile(r"<!-- crew:panel-data (.*?) -->", re.S)
 
-_WHO = {"product_owner": "Product Owner", "architect": "Architect", "sponsor": "Sponsor"}
+_WHO = {
+    "product_owner": "Product Owner",
+    "architect": "Architect",
+    "sponsor": "Sponsor",
+    "infra": "Infra",
+}
 
 # The Product Owner's approval footer, which is the crew's, not the epic's.
 _FOOTER = re.compile(r"\n---\n\s*\nProposed by the Product Owner")

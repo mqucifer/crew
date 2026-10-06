@@ -26,7 +26,7 @@
 | A3 | How | The four calls in parallel | About 5 minutes per epic; crew#299's first case |
 | A4 | Context | Goal (with decision log), record, epic, sibling bodies, decisions by rule | The same context for every member |
 | A5 | Focus | Each reviews the epic in front of it | How it fits a sibling: raise it. Wholly inside a sibling, or a delivered epic: don't |
-| A6 | Blind spots | DevOps checks environments; Architect checks SemVer and sibling dependencies | Covers findings 10, 5 and 9 from the test |
+| A6 | Blind spots | DevOps checks the runtime contract and the CI proof, and marks the deployed runtime for infra (ADR 0017); Architect checks SemVer and sibling dependencies | Covers findings 5 and 9 from the test; the production part of 10 is infra's |
 | A7 | Discussion | Full notes are kept as one comment | The audit trail; never passed on |
 | A8 | Settle | The PO writes the conclusion; one question to the Sponsor if the sources can't answer | The epic waits for the reply, as story problems do |
 | A9 | Conclusion | In the epic body, under its own header, with the approved text untouched | BLUF line, ADR-field rows, open questions apart |

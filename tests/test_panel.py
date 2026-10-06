@@ -111,11 +111,27 @@ def test_each_member_gets_its_own_area_and_not_the_others():
                 assert FOCUS[other] not in text
 
 
-def test_devops_is_asked_for_each_environment_and_the_architect_for_the_versioning_rule():
-    assert "local checks, CI, a test bed, production" in FOCUS["devops_engineer"]
-    assert "settings and secrets" in FOCUS["devops_engineer"]
+def test_devops_checks_the_runtime_contract_and_leaves_the_deployed_runtime_to_infra():
+    focus = FOCUS["devops_engineer"]
+    assert "The project builds to its spec; where it runs is infra's" in focus
+    # What the product owes: its settings, startup, health, and the CI proof.
+    for contract in ("settings it reads", "started, health-checked and", "throwaway services"):
+        assert contract in focus
+    # What it doesn't: production, real secrets, provisioning.
+    assert "The deployed runtime is infra's, not the epic's" in focus
+    assert "mark it infra" in focus
+    assert "local checks, CI, a test bed, production" not in focus
+
+
+def test_the_architect_is_asked_for_the_versioning_rule_and_sibling_dependencies():
     assert "MAJOR, MINOR or" in FOCUS["architect"]
     assert "name the sibling" in FOCUS["architect"]
+
+
+def test_a_note_can_be_for_infra_and_the_member_is_told_when():
+    assert note(settled_by="infra").settled_by == "infra"
+    described = PanelNote.model_json_schema()["properties"]["settled_by"]["description"]
+    assert "infra only for the deployed runtime" in described
 
 
 def test_references_are_asked_for_in_full():
@@ -194,7 +210,9 @@ def test_the_comment_is_marked_and_counts_notes_by_who_settles_them():
     text = panel.render(result)
     assert text.startswith(panel.PANEL_MARKER)
     assert "2 notes from 2 members" in text
-    assert "0 for the Product Owner, 1 for the Architect, 1 for the Sponsor" in text
+    assert (
+        "0 for the Product Owner, 1 for the Architect, 1 for the Sponsor, 0 for the Infra" in text
+    )
     assert "Nothing to add." in text
     assert "  - Settled by: Architect" in text
     assert "Did not answer: TimeoutError: slow" in text
