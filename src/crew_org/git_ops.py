@@ -112,6 +112,8 @@ class MergeConflict(GitError):
 
     def __init__(self, files: list[str]) -> None:
         self.files = files
+        # The subject of the commit that landed in these files first, when known (#436).
+        self.landed = ""
         super().__init__(f"{self.verb} conflicts in: " + (", ".join(files) or "unknown files"))
 
 
@@ -550,6 +552,20 @@ _CONFLICT = re.compile(
     r"^<<<<<<< [^\n]*\n(.*?)^\|\|\|\|\|\|\| [^\n]*\n(.*?)^=======\n(.*?)^>>>>>>> [^\n]*\n",
     re.MULTILINE | re.DOTALL,
 )
+
+
+def last_landed(path: Path, files: list[str]) -> str:
+    """The subject of the last commit on the default branch that touched these files.
+
+    A squash merge's subject names its pull request, so this says which story
+    landed first and caused the conflict (#436). Empty if it can't be read.
+    """
+    if not files:
+        return ""
+    try:
+        return _run(["log", "-1", "--format=%s", "origin/HEAD", "--", *files], cwd=path).strip()
+    except GitError:
+        return ""
 
 
 def keep_both_additions(text: str) -> str | None:

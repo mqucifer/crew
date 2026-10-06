@@ -617,3 +617,83 @@ def test_keeping_both_is_tried_even_past_the_rebuild_cap():
     result, board = run_keeping(issues, lambda repo, branch: ["tests/test_it.py"])
     assert result.updating == [(6, 100)] and result.conflicted == []
     assert ("C6", "Blocked") not in board.moves
+
+
+# --- a rebuild says where it conflicts and what landed there first (#436) ----------------------
+
+
+def conflicted(files, landed=""):
+    from crew_org.git_ops import MergeConflict
+
+    def keep_both(repo, branch):
+        exc = MergeConflict(files)
+        exc.landed = landed
+        raise exc
+
+    return keep_both
+
+
+def test_a_rebuild_names_the_files_and_the_story_that_landed_there_first():
+    issues = FakeIssues(mergeable_state="dirty")
+    seen = []
+    board = FakeBoard()
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    result = merge_approved(
+        board,
+        issues,
+        sink,
+        cards=[card(6)],
+        default_repo="sprint-metrics",
+        keep_both=conflicted(
+            ["tests/test_crew_performance.py", "src/report.py"], "feat: the trend table (#405)"
+        ),
+    )
+    assert result.rebuilding == [(6, 100)]
+    (_, body) = issues.posted[0]
+    assert "Conflicts with `main` in tests/test_crew_performance.py, src/report.py" in body
+    assert "the last to land there was *feat: the trend table (#405)*" in body
+    assert "keeping both wasn't safe" in body
+    [note] = [e for e in seen if e.detail.get("files")]
+    assert note.detail["files"] == ["tests/test_crew_performance.py", "src/report.py"]
+    assert note.detail["landed"] == "feat: the trend table (#405)"
+
+
+def test_a_rebuild_without_the_files_says_only_what_it_knows():
+    issues = FakeIssues(mergeable_state="dirty")
+    result, _ = run_keeping(issues, lambda repo, branch: None)
+    assert result.rebuilding == [(6, 100)]
+    (_, body) = issues.posted[0]
+    assert "Conflicts with `main`, returned for a rebuild." in body
+    assert "keeping both" not in body and "last to land" not in body
+
+
+def test_keeping_both_raises_the_conflict_with_what_landed(monkeypatch, tmp_path):
+    import pytest
+
+    from crew_org import git_ops
+    from crew_org.flows import merge
+
+    class Work:
+        resumed = True
+        path = tmp_path
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def open(self, branch, resume):
+            pass
+
+        def catch_up_keeping_both(self):
+            raise git_ops.MergeConflict(["src/report.py"])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(git_ops, "Workspace", Work)
+    monkeypatch.setattr(git_ops, "last_landed", lambda path, files: "feat: the trend table (#405)")
+    ws = type("Ws", (), {"owner": "mqucifer", "_token": "t", "identity": None})()
+    with pytest.raises(git_ops.MergeConflict) as raised:
+        merge.keeping_both(ws)("sprint-metrics", "feat/6-x")
+    assert raised.value.files == ["src/report.py"]
+    assert raised.value.landed == "feat: the trend table (#405)"

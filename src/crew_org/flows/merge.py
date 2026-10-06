@@ -23,7 +23,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
-from crew_org.git_ops import branch_name
+from crew_org.git_ops import MergeConflict, branch_name
 from crew_org.tools.github_issues import (
     FAILED_CONCLUSIONS,
     BranchUpdateConflict,
@@ -537,9 +537,15 @@ def _conflict(
     # Two approved stories that only added to the same place: keep both, as a
     # person would, rather than rebuilding approved work from scratch (#436).
     branch = (pull.get("head") or {}).get("ref") or branch_name(number, card.title)
+    # Where it conflicts, and what landed there first, when keeping both found out (#436).
+    files: list[str] = []
+    landed = ""
     if keep_both is not None:
         try:
             kept = keep_both(repo, branch)
+        except MergeConflict as exc:
+            kept = None
+            files, landed = list(exc.files), exc.landed
         except Exception as exc:  # noqa: BLE001
             kept = None
             sink.note(EventKind.NOTE, f"#{number} PR #{pull['number']}: {exc}"[:120], card=number)
@@ -575,6 +581,16 @@ def _conflict(
         _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
         result.conflicted.append((number, pull["number"]))
         return
+    where = f" in {', '.join(files)}" if files else ""
+    if files:
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} PR #{pull['number']} conflicts in {', '.join(files)}"
+            + (f" after {landed}" if landed else ""),
+            card=number,
+            files=files,
+            landed=landed,
+        )
     move_card(
         board,
         sink,
@@ -588,9 +604,15 @@ def _conflict(
     issues.comment(
         repo,
         pull["number"],
-        f"{REBUILD_MARKER.format(head=head)}\n**Conflicts with `main`, returned for a rebuild.** "
-        "This was approved, and other work has since merged into the same lines. The crew "
-        "rebuilds it on current `main` and it goes through review and QA again "
+        f"{REBUILD_MARKER.format(head=head)}\n**Conflicts with `main`{where}, returned for a "
+        "rebuild.** This was approved, and other work has since merged into the same lines"
+        + (f": the last to land there was *{landed}*" if landed else "")
+        + (
+            ". It isn't only an addition on both sides, so keeping both wasn't safe"
+            if files
+            else ""
+        )
+        + ". The crew rebuilds it on current `main` and it goes through review and QA again "
         f"(rebuild {rebuilt + 1} of {MAX_REBUILDS} before a person is asked).",
     )
     result.rebuilding.append((number, pull["number"]))
@@ -642,7 +664,7 @@ def keeping_both(ws) -> Callable[[str, str], list[str] | None]:
 
     A fresh one: the land phase must never move a worktree delivery has open.
     """
-    from crew_org.git_ops import MergeConflict, Workspace  # noqa: PLC0415
+    from crew_org.git_ops import MergeConflict, Workspace, last_landed  # noqa: PLC0415
 
     def keep_both(repo: str, branch: str) -> list[str] | None:
         work = Workspace(ws.owner, repo, ws._token, ws.identity)
@@ -652,8 +674,11 @@ def keeping_both(ws) -> Callable[[str, str], list[str] | None]:
                 return None
             try:
                 kept = work.catch_up_keeping_both()
-            except MergeConflict:
-                return None
+            except MergeConflict as exc:
+                # Raised on with what the rebuild should say: the files, and the
+                # story that landed in them first (#436).
+                exc.landed = last_landed(work.path, exc.files) if work.path else ""
+                raise
             work.push()
             return kept
         finally:
