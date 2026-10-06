@@ -31,7 +31,7 @@ from __future__ import annotations
 from datetime import date
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -70,6 +70,13 @@ class Release(Section):
     )
     where: str | None = Field(
         default=None, description="Where it is deployed, or where the version is published"
+    )
+    # The Sponsor's choice, not the crew's (crew#398): the release check took an image
+    # it couldn't read as a package not yet made public, every tick, when keeping
+    # sprint-metrics' image private was the Sponsor's call all along.
+    image: Literal["public", "private"] | None = Field(
+        default=None,
+        description="Whether the published container image is public or private, by choice",
     )
 
     @model_validator(mode="before")
