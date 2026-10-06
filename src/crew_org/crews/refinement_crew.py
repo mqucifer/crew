@@ -90,6 +90,13 @@ class Story(BaseModel):
             "number. Delivery waits for them to land"
         ),
     )
+    follows: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The rows of the epic's conclusion this story follows, by ID (R1, R4). Later "
+            "steps are shown only these rows, so name every one it relies on"
+        ),
+    )
     pinned_behaviour: str = Field(
         default="",
         description=(
@@ -99,6 +106,15 @@ class Story(BaseModel):
             "is a contract change. A story that only adds new files leaves it empty"
         ),
     )
+
+    @field_validator("follows")
+    @classmethod
+    def _row_ids(cls, value: list[str]) -> list[str]:
+        ids = [v.strip().upper() for v in value]
+        bad = [v for v in ids if not re.fullmatch(r"R\d+", v)]
+        if bad:
+            raise ValueError(f"{', '.join(bad)}: name rows of the conclusion by ID, like R1")
+        return list(dict.fromkeys(ids))
 
     @field_validator("pinned_behaviour")
     @classmethod
@@ -221,6 +237,21 @@ class Accounted(BaseModel):
     )
 
 
+class RowNotForStories(BaseModel):
+    """A row of the epic's conclusion that no story follows, and why (crew#440)."""
+
+    row: str = Field(description="The row's ID, like R3")
+    why: str = Field(description="Why it is not for stories, e.g. it only guides the design note")
+
+    @field_validator("row")
+    @classmethod
+    def _row_id(cls, value: str) -> str:
+        found = value.strip().upper()
+        if not re.fullmatch(r"R\d+", found):
+            raise ValueError("name the row by its ID, like R3")
+        return found
+
+
 class StoryProposal(BaseModel):
     """What the Business Analyst proposes for one epic."""
 
@@ -235,6 +266,14 @@ class StoryProposal(BaseModel):
         description=(
             "Stories this epic needs that the project has already delivered, each with "
             "the delivered story that did it. Not written again."
+        ),
+    )
+
+    not_for_stories: list[RowNotForStories] = Field(
+        default_factory=list,
+        description=(
+            "Rows of the epic's conclusion that no story follows, each with why. Every row "
+            "is followed by a story or listed here"
         ),
     )
 
@@ -464,6 +503,7 @@ def split_epic(
     superseded: list[tuple[int, str]] | None = None,
     planned: str = "",
     planned_numbers: set[int] | None = None,
+    conclusion: str = "",
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -502,6 +542,17 @@ def split_epic(
                 "Don't write these again. A story they cover goes in `already_delivered`, "
                 "naming the planned story; a story that needs one names it in `builds_on`.\n\n"
                 if planned
+                else ""
+            )
+            + (
+                f"## The epic's conclusion\n\n{conclusion}\n\n"
+                "Four roles read this epic and the Product Owner settled what they raised, "
+                "before this split. Its rows are decided: a story may not contradict one, and "
+                "each story names the rows it follows in `follows`. Don't settle an open "
+                "question (Q): the Architect does that after the split, so no story answers "
+                "one or waits for one unless the epic's own text says so. A row that no story "
+                "follows goes in `not_for_stories`, with why.\n\n"
+                if conclusion
                 else ""
             )
             + sent_back

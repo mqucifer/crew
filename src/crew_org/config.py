@@ -64,6 +64,10 @@ def _validate(org: dict[str, Any]) -> None:
             "to allow every repository, or name the ones it may work in."
         )
 
+    panel = (org.get("refinement") or {}).get("panel", False)
+    if not isinstance(panel, bool):
+        raise ValueError(f"refinement.panel must be true or false, got {panel!r}")
+
     sandbox = org.get("sandbox") or {}
     mode = sandbox.get("mode", "required")
     if mode not in ("required", "off"):

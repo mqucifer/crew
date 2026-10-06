@@ -42,8 +42,10 @@ from crew_org.crews.refinement_crew import (
 from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, criteria_check
+from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
+from crew_org.flows.refine_panel import panel_step
 from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
@@ -835,6 +837,9 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
             f"{BUILDS_ON} " + ", ".join(f"#{n}" for n in sorted(set(story.builds_on))),
             "",
         ]
+    if story.follows:
+        # Read back by later steps, which are shown only the rows named here (crew#440).
+        lines += [conclusion_flow.follows_line(story.follows), ""]
     lines += [
         f"**Estimate** — {story.points} points",
         "",
@@ -1168,8 +1173,12 @@ def refine_epics(
     context: RepoContext,
     holds: dict[str, str] | None = None,
     known: KnownDelivered | None = None,
+    panel_search: list[str] | None = None,
 ) -> None:
     """Split approved epics into stories, and decide whether design is warranted.
+
+    `panel_search` is where the refinement panel looks for the Sponsor's decisions;
+    None leaves the panel off, and epics are split as before (crew#440).
 
     `holds` names the projects whose design is being revisited, and why. Their
     epics wait, so their stories are written against the structure the
@@ -1218,6 +1227,19 @@ def refine_epics(
         if not proceed:
             continue
 
+        # Four roles read it and the Product Owner settles what they raised into
+        # its conclusion, which the split reads (crew#440).
+        if panel_search is not None and not panel_step(
+            issues,
+            sink,
+            result,
+            epic_card,
+            repo,
+            project=context.record_for(repo),
+            search=panel_search,
+        ):
+            continue
+
         # What this epic has already failed at. Read before the attempt, so a
         # dead end is recognised rather than walked into again.
         seen_failures = failures_since_parking(issues, repo, number)
@@ -1236,7 +1258,10 @@ def refine_epics(
             # Owner one step earlier was given its goal whole — and the Business
             # Analyst is the role that writes the acceptance criteria, so what it
             # cannot see becomes a criterion nobody can satisfy.
-            body = _goal_body(issues, repo, number)
+            # The conclusion is shown apart from the epic's own text, so it can't be
+            # missed or mistaken for what the Sponsor approved (crew#440).
+            body, conclusion = conclusion_flow.split_conclusion(_goal_body(issues, repo, number))
+            rows = conclusion_flow.row_ids(conclusion)
             planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
             pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
             # Its own view of the repository, and it may ask for more (#231).
@@ -1268,6 +1293,7 @@ def refine_epics(
                         f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
                     ),
                     planned_numbers={n for n, _t, _e in planned},
+                    conclusion=conclusion,
                 )
                 proposal = attributed(split_epic, card=number, repo=repo)(
                     epic_card.title, body, **asked_for
@@ -1294,6 +1320,21 @@ def refine_epics(
                 )
             if proposal.asks:
                 raise ValueError("it asked to see files past the limit instead of splitting")
+            # Every settled row is followed by a story, or named as not for stories
+            # (crew#440). One re-split with what is missing named; past that it fails.
+            found = conclusion_flow.problems(proposal, rows)
+            if found:
+                asked_for["feedback"] = "\n\n".join(
+                    f for f in (str(asked_for["feedback"]), conclusion_flow.feedback(found)) if f
+                )
+                proposal = attributed(split_epic, card=number, repo=repo)(
+                    epic_card.title, body, **asked_for
+                )
+                found = conclusion_flow.problems(proposal, rows)
+                if found:
+                    raise ValueError(
+                        "the split doesn't fit the epic's conclusion: " + " ".join(found)
+                    )
             # Every criterion has to pass alongside the others and the code, and
             # that shows before any story exists (#428). One re-split with the
             # conflicts named; what survives goes to the Product Owner.
@@ -1506,6 +1547,7 @@ def tick(
     sponsor: str | None = None,
     repos: set[str] | None = None,
     holds: dict[str, str] | None = None,
+    crew_repo: str | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
 
@@ -1639,6 +1681,13 @@ def tick(
 
     # Epics approved in an earlier tick are refined now. Epics created moments
     # ago are not: they are sitting at the Sponsor's gate, unapproved.
+    # Where the Sponsor writes about a Goal: the crew's repository and the ones
+    # it works in. None leaves the panel off (`refinement.panel` in org.yaml).
+    panel_search = (
+        [crew_repo or "crew", *sorted(repos or (org.get("delivery") or {}).get("repos") or [])]
+        if (org.get("refinement") or {}).get("panel")
+        else None
+    )
     refine_epics(
         board,
         issues,
@@ -1651,6 +1700,7 @@ def tick(
         context=context,
         holds=holds,
         known=known,
+        panel_search=panel_search,
     )
 
     sink.note(

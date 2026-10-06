@@ -383,6 +383,18 @@ def test_a_body_edited_while_the_model_was_thinking_is_not_overwritten(monkeypat
     assert gh.writes == [] and "The Sponsor added a line." in gh.body
 
 
+def test_a_panel_that_raised_nothing_is_settled_without_a_model_call(monkeypatch):
+    gh = Github()
+    nothing = PanelResult({"architect": PanelAnswer(nothing_to_add=True)}, {})
+    result, calls, _ = run(gh, monkeypatch, notes=nothing)
+    assert result.outcome is flow.Outcome.WRITTEN and calls == []
+    assert gh.body.startswith(APPROVED)
+    assert gh.body.rstrip().endswith("## Refinement conclusion\n\n" + flow.NOTHING_RAISED)
+    # And it is a conclusion, so the next tick leaves the epic alone.
+    again, calls, _ = run(gh, monkeypatch, notes=nothing)
+    assert again.outcome is flow.Outcome.ALREADY and calls == []
+
+
 # --- the Sponsor's question -----------------------------------------------------------------
 
 

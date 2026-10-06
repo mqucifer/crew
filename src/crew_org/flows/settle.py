@@ -38,6 +38,7 @@ from crew_org.tools.github_issues import IssueClient, from_sponsor
 CONCLUSION_HEADER = "## Refinement conclusion"
 SETTLE_QUESTION_MARKER = "<!-- crew:settle-question -->"
 NEEDS_HUMAN = "needs:human"
+NOTHING_RAISED = "Ready to split: the panel raised nothing."
 # A conclusion the schema or the coverage check refuses is asked for again, told why.
 ATTEMPTS = 3
 
@@ -182,6 +183,14 @@ def settle_epic(
     issue: dict[str, Any] = issues.get(repo, epic)
     if has_conclusion(issue.get("body") or ""):
         return Settled(Outcome.ALREADY)
+
+    if not numbered(panel):
+        # Nothing was raised, so there is nothing to settle and no model call. The
+        # conclusion still goes in: it is what marks the epic as settled.
+        text = f"{CONCLUSION_HEADER}\n\n{NOTHING_RAISED}"
+        issues.edit_issue(repo, epic, body=f"{(issue.get('body') or '').rstrip()}\n\n{text}\n")
+        sink.note(EventKind.NOTE, f"epic #{epic}: the panel raised nothing", card=epic)
+        return Settled(Outcome.WRITTEN, text)
 
     asked, reply = _reply(issues, repo, epic)
     if asked and not reply:
