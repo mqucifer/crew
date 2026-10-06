@@ -1,7 +1,7 @@
 # 1. Record architecture decisions
 
 - **Date:** 2026-10-02
-- **Status:** Accepted
+- **Status:** Accepted; its "What gets one" bullet superseded by 0019
 
 ## Context
 
