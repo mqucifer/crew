@@ -169,3 +169,50 @@ def test_without_resume_nothing_is_carried_over(monkeypatch, tmp_path):
     ws.open("feat/31-scrape-endpoint")
     assert _base_of(calls) == "origin/HEAD"
     assert ws.resumed is False
+
+
+# --- what landed in a conflicting file first (#436) ----------------------------------------------
+
+
+def test_the_last_commit_to_land_in_the_files_is_named(tmp_path):
+    import subprocess
+
+    from crew_org.git_ops import last_landed
+
+    def git(*args):
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+                *args,
+            ],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    for name, subject in (
+        ("a.txt", "feat: first"),
+        ("b.txt", "feat: second"),
+        ("a.txt", "fix: third"),
+    ):
+        (tmp_path / name).write_text(subject)
+        git("add", name)
+        git("commit", "-q", "-m", subject)
+    git("update-ref", "refs/remotes/origin/HEAD", "HEAD")
+
+    assert last_landed(tmp_path, ["a.txt"]) == "fix: third"
+    assert last_landed(tmp_path, ["b.txt"]) == "feat: second"
+    assert last_landed(tmp_path, []) == ""
+
+
+def test_what_landed_is_empty_when_it_cannot_be_read(tmp_path):
+    from crew_org.git_ops import last_landed
+
+    assert last_landed(tmp_path, ["a.txt"]) == ""
