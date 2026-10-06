@@ -95,10 +95,10 @@ estimation:
 refinement:
   # Before an approved epic is split, four roles read it and the Product Owner
   # settles what they raised into a conclusion in the epic's body (crew#440,
-  # docs/plans/refinement-panel-build.md). About ten minutes an epic. Off, epics
-  # are split as before. Off until the panel is proven on a real epic: the
-  # steps that read its conclusion aren't all built yet.
-  panel: false
+  # docs/plans/refinement-panel-build.md). About fifteen minutes an epic. Off,
+  # epics are split as before. Turned on for the proof on sprint-metrics#406
+  # (step 9), once every step that reads the conclusion was built.
+  panel: true
 
 delivery:
   # Repositories the crew may WORK IN. Every phase is bounded by this list —
