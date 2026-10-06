@@ -9,17 +9,22 @@ writes the short conclusion the later steps read).
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from typing import Any
 
-from crew_org.crews.panel_crew import PanelContext, PanelResult, Sibling
+from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelResult, Sibling
 from crew_org.flows.decisions import collect_decisions
 from crew_org.flows.decisions import render as render_decisions
 from crew_org.permissions import load_agents
 from crew_org.tools.github_issues import IssueClient
 
 PANEL_MARKER = "<!-- crew:panel -->"
+# The notes again as data, invisible on GitHub. The settle step may run ticks
+# after the panel (it waits on a Sponsor reply), and the notes it numbers are
+# these, not a re-run: a second run would not give the same notes.
+_DATA = re.compile(r"<!-- crew:panel-data (.*?) -->", re.S)
 
 _WHO = {"product_owner": "Product Owner", "architect": "Architect", "sponsor": "Sponsor"}
 
@@ -110,7 +115,35 @@ def render(result: PanelResult) -> str:
         lines.append("")
     for role, why in result.failed.items():
         lines += [f"### {roles[role]['role']}", "", f"Did not answer: {why}", ""]
+    data = {
+        "answers": {role: a.model_dump() for role, a in result.answers.items()},
+        "failed": result.failed,
+    }
+    # `--` can't appear inside an HTML comment; JSON reads `-` back as `-`.
+    escaped = json.dumps(data).replace("--", "\\u002d\\u002d")
+    lines += ["", f"<!-- crew:panel-data {escaped} -->"]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def read_panel(comment: str) -> PanelResult | None:
+    """The panel's notes from its comment, or None if it carries none."""
+    found = _DATA.search(comment)
+    if not found:
+        return None
+    data = json.loads(found.group(1))
+    return PanelResult(
+        {role: PanelAnswer.model_validate(a) for role, a in data["answers"].items()},
+        data["failed"],
+    )
+
+
+def panel_on(issues: IssueClient, repo: str, epic: int) -> PanelResult | None:
+    """The panel already run on this epic: its latest comment that carries notes."""
+    for comment in reversed(issues.comments(repo, epic)):
+        body = comment.get("body") or ""
+        if PANEL_MARKER in body and (found := read_panel(body)):
+            return found
+    return None
 
 
 def post(issues: IssueClient, repo: str, epic: int, result: PanelResult) -> bool:
