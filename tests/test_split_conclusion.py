@@ -8,6 +8,7 @@ it when `refinement.panel` is on.
 
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -284,7 +285,8 @@ def run_tick(monkeypatch, *proposals, org_panel=False, issues=None):
 
     monkeypatch.setattr(board_flow, "split_epic", split)
     monkeypatch.setattr(board_flow, "propose_epics", lambda g, **kw: None)
-    org = load_org()
+    # A copy: load_org is cached, and writing to its dict would leak into every test after.
+    org = copy.deepcopy(load_org())
     org["refinement"] = {"panel": org_panel}
     issues = issues or Concluded()
     result = board_flow.tick(
@@ -354,14 +356,17 @@ def test_an_epic_without_a_conclusion_is_split_exactly_as_before(monkeypatch):
 # --- the switch -------------------------------------------------------------------------------
 
 
-def test_the_panel_is_off_unless_the_org_turns_it_on(monkeypatch):
+def test_the_panel_runs_only_while_the_org_has_it_on(monkeypatch):
     def boom(*a, **kw):
         raise AssertionError("the panel ran")
 
     monkeypatch.setattr(board_flow, "panel_step", boom)
-    result, _, _ = run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")))
+    result, _, _ = run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")), org_panel=False)
     assert len(result.stories_created) == 1
-    assert load_org()["refinement"]["panel"] is False
+
+
+def test_the_panel_is_on_in_the_crews_own_config():
+    assert load_org()["refinement"]["panel"] is True
 
 
 def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repositories(
@@ -388,7 +393,7 @@ def test_an_epic_the_panel_holds_back_is_not_split(monkeypatch):
 def test_the_switch_must_be_true_or_false():
     from crew_org.config import _validate
 
-    org = load_org()
+    org = copy.deepcopy(load_org())
     org["refinement"] = {"panel": "yes"}
     with pytest.raises(ValueError, match="refinement.panel"):
         _validate(org)

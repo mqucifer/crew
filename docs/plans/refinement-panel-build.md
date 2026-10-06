@@ -2,7 +2,7 @@
 
 **Bottom line:** build the panel and its settle step into refinement, then prove them on sprint-metrics #406. Success means #406 splits without the contradictions and missed decisions of 2026-10-01.
 
-**Status:** planned with the Sponsor on 2026-10-02. Steps 1–7 are done (the split and the criteria check read the conclusion, behind `refinement.panel` in `org.yaml`, which is off until step 9). Step 8, later steps getting only their rows, is in review; the rest isn't built. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
+**Status:** planned with the Sponsor on 2026-10-02. Steps 1–8 are done, with the scope changes of ADRs 0017 and 0018. `refinement.panel` in `org.yaml` is on, for step 9: the proof on #406 in a tick. Step 10 isn't built. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
 
 ## Where things stand (2026-10-02)
 
