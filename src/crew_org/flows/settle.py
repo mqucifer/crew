@@ -23,10 +23,13 @@ from pydantic import ValidationError
 from crew_org.crews.panel_crew import PanelContext, PanelResult
 from crew_org.crews.settle_crew import (
     Conclusion,
+    Row,
     Settlement,
     Unsettled,
     check_covers,
+    check_grounded,
     check_not_cut,
+    check_product_calls,
     numbered,
     settle,
 )
@@ -89,6 +92,18 @@ def _cell(text: str, *, owner: str, repo: str, known: set[str]) -> str:
     )
 
 
+def _own(conclusion: Conclusion) -> str:
+    n = sum(1 for r in conclusion.rows if r.own_call)
+    return f" ({n} the Product Owner's call)" if n else ""
+
+
+def _source(row: Row) -> str:
+    """A call the Product Owner made itself says so, and the Goal's words it stays within."""
+    if not row.own_call:
+        return row.source
+    return f'Product Owner\'s call, within the Goal: "{row.goal_wording}". {row.source}'
+
+
 def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | None = None) -> str:
     """The conclusion as the epic's body carries it. IDs and the bottom line are the code's."""
 
@@ -98,7 +113,8 @@ def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | N
     lines = [
         CONCLUSION_HEADER,
         "",
-        f"Ready to split: {len(conclusion.rows)} decided, {len(conclusion.open)} open for the "
+        f"Ready to split: {len(conclusion.rows)} decided{_own(conclusion)}, "
+        f"{len(conclusion.open)} open for the "
         f"design note, {len(conclusion.for_infra)} for infra, "
         f"{len(conclusion.dismissed)} dismissed.",
         "",
@@ -110,7 +126,7 @@ def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | N
         ]
         lines += [
             f"| R{i} | accepted | {c(r.context)} | {c(r.decision)} | {c(r.consequences)} "
-            f"| {c(r.source)} |"
+            f"| {c(_source(r))} |"
             for i, r in enumerate(conclusion.rows, 1)
         ]
         lines.append("")
@@ -151,9 +167,19 @@ def _reply(issues: IssueClient, repo: str, epic: int) -> tuple[bool, str]:
 
 
 def propose(
-    context: PanelContext, panel: PanelResult, reply: str, *, card: int, repo: str
+    context: PanelContext,
+    panel: PanelResult,
+    reply: str,
+    *,
+    card: int,
+    repo: str,
+    sink: EventSink | None = None,
 ) -> Settlement:
-    """The Product Owner's settlement, asked for again if it is refused."""
+    """The Product Owner's settlement, asked for again if it is refused.
+
+    Each refusal is written to the event log with its reason: a retry costs minutes,
+    and without the reason nobody can tell what the model keeps getting wrong.
+    """
     count = len(numbered(panel))
     feedback = ""
     for attempt in range(ATTEMPTS):
@@ -162,11 +188,22 @@ def propose(
                 context, panel, reply=reply, feedback=feedback
             )
             check_not_cut(settlement)
+            check_grounded(settlement, context.goal)
+            check_product_calls(settlement, panel)
             check_covers(settlement, count)
             return settlement
         except (ValidationError, Unsettled, ValueError) as exc:
             reraise_if_down(exc)
             feedback = str(exc)[:600]
+            if sink is not None:
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{card} conclusion refused, attempt {attempt + 1} of {ATTEMPTS}: "
+                    f"{feedback[:160]}",
+                    card=card,
+                    attempt=attempt + 1,
+                    reason=feedback,
+                )
     raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {feedback}")
 
 
@@ -201,7 +238,7 @@ def settle_epic(
     if asked and not reply:
         return Settled(Outcome.WAITING)
 
-    settlement = propose(context, panel, reply, card=epic, repo=repo)
+    settlement = propose(context, panel, reply, card=epic, repo=repo, sink=sink)
     if settlement.conclusion is None:
         question = settlement.sponsor_question
         artifacts.comment(

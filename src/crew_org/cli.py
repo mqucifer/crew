@@ -1564,7 +1564,7 @@ def settle(
             typer.echo(done.text)
         else:
             with working_on(card=number, repo=repo):
-                found = flow.propose(context, notes, "", card=number, repo=repo)
+                found = flow.propose(context, notes, "", card=number, repo=repo, sink=sink)
             typer.echo(
                 flow.render(found.conclusion, owner=issues.owner, repo=repo)
                 if found.conclusion

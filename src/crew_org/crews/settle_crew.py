@@ -31,6 +31,7 @@ IMPACT_CHARS = 100
 REASON_CHARS = 100
 ASK_CHARS = 300
 INFRA_CHARS = 160
+GOAL_QUOTE_CHARS = 160
 
 
 def aim(limit: int) -> int:
@@ -70,12 +71,41 @@ class Row(BaseModel):
         description=(
             "What settles it, named: a Goal decision by its ID (D3), the project's record, "
             "or an issue or pull request as owner/repo#number, as given in the context. "
-            f"Never a decision the sources don't hold. Under {aim(SOURCE_CHARS)} characters"
+            "For your own call, why you decided it. "
+            f"Under {aim(SOURCE_CHARS)} characters"
+        ),
+    )
+    own_call: bool = Field(
+        default=False,
+        description=(
+            "True when no source answers it and you decided it yourself, as a product owner "
+            "does for the team. It is recorded as your call"
+        ),
+    )
+    goal_wording: str = Field(
+        default="",
+        max_length=GOAL_QUOTE_CHARS,
+        description=(
+            "Only for your own call: the Goal's own words, quoted exactly, that the decision "
+            f"stays within. Under {aim(GOAL_QUOTE_CHARS)} characters"
         ),
     )
     settles: list[int] = Field(
         min_length=1, description="The numbers of the panel notes this answers (N1 is 1)"
     )
+
+    @model_validator(mode="after")
+    def _a_call_stays_within_the_goal(self) -> Row:
+        if self.own_call and not self.goal_wording.strip():
+            raise ValueError("your own call quotes the Goal's wording that it stays within")
+        return self
+
+
+def _plain(text: str) -> str:
+    """Words only, to compare a quotation with its source: case, spacing, quote marks aside."""
+    return " ".join(
+        text.replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"').split()
+    ).casefold()
 
 
 class OpenQuestion(BaseModel):
@@ -200,8 +230,9 @@ def check_not_cut(settlement: Settlement) -> None:
                 ("decision", DECISION_CHARS),
                 ("consequences", CONSEQUENCES_CHARS),
                 ("source", SOURCE_CHARS),
+                ("goal wording", GOAL_QUOTE_CHARS),
             ):
-                if len(getattr(r, name)) >= limit:
+                if len(getattr(r, name.replace(" ", "_"))) >= limit:
                     cut.append(f"row {i} {name}")
         for i, q in enumerate(conclusion.open, 1):
             for name, limit in (("question", QUESTION_CHARS), ("impact", IMPACT_CHARS)):
@@ -219,6 +250,64 @@ def check_not_cut(settlement: Settlement) -> None:
         raise Unsettled(
             f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
             "Say each in fewer words, well under the limit, and finish the thought."
+        )
+
+
+def check_grounded(settlement: Settlement, goal: str) -> None:
+    """A call the Product Owner makes itself stays within the Goal, in the Goal's own words.
+
+    The leeway is the Product Owner's, as a team's owner has it, so long as the call is
+    recorded and doesn't contradict the Goal. A quotation that isn't in the Goal is
+    wording it made up, and no call rests on it.
+    """
+    if settlement.conclusion is None:
+        return
+    text = _plain(goal)
+    ungrounded = [
+        f"row {i}"
+        for i, r in enumerate(settlement.conclusion.rows, 1)
+        if r.own_call and _plain(r.goal_wording) not in text
+    ]
+    if ungrounded:
+        raise Unsettled(
+            f"{', '.join(ungrounded)}: your own call quotes wording that isn't in the Goal. "
+            "Quote the Goal's own words exactly, or if the Goal doesn't say which way it points, "
+            "ask the Sponsor one question instead."
+        )
+
+
+def note_owners(panel: PanelResult) -> dict[int, str]:
+    """Who each numbered note was marked for by the member who raised it.
+
+    Numbered in the order `numbered` uses, so N1 is the same note in both.
+    """
+    owners: dict[int, str] = {}
+    for answer in panel.answers.values():
+        for note in answer.notes:
+            owners[len(owners) + 1] = note.settled_by
+    return owners
+
+
+def check_product_calls(settlement: Settlement, panel: PanelResult) -> None:
+    """The Product Owner's own calls are product choices; a design question is the Architect's.
+
+    A note a member marked for the Architect (a path, a response shape, a parameter) stays
+    an open question for the design note unless a source settles it. The leeway to decide
+    is for what the product does (ADR 0018).
+    """
+    if settlement.conclusion is None:
+        return
+    owners = note_owners(panel)
+    design = [
+        f"row {i} (N{', N'.join(str(n) for n in r.settles if owners.get(n) == 'architect')})"
+        for i, r in enumerate(settlement.conclusion.rows, 1)
+        if r.own_call and any(owners.get(n) == "architect" for n in r.settles)
+    ]
+    if design:
+        raise Unsettled(
+            f"{'; '.join(design)} are your own call on a note a member marked for the Architect. "
+            "That is a design question: list it as an open question for the design note, or give "
+            "a source that settles it. Your own calls are for what the product does."
         )
 
 
@@ -258,9 +347,14 @@ def describe(
         + "## Your task\n\n"
         "Four roles read this epic before it is split and raised the notes above. Settle each "
         "one, in the fewest words:\n"
-        "- **A row** when the Goal, the project's record, a Sponsor decision or a sibling's "
-        "conclusion answers it. Say what is decided and what follows, and name the source. "
-        "Never decide something those don't hold.\n"
+        "- **A row** when you can decide it. If the Goal, the project's record, a Sponsor "
+        "decision or a sibling's conclusion answers it, say what is decided and what follows, "
+        "and name the source. If none does, decide it yourself, as the product owner does for "
+        "the team: set `own_call`, say why, and quote the Goal's own words that the decision "
+        "stays within. It is recorded as your call. It must not contradict the Goal or a "
+        "Sponsor decision. Your own calls are for what the product does. A note a member "
+        "marked for the Architect is a design question (a path, a response shape, a "
+        "parameter): it is an open question for the design note, unless a source settles it.\n"
         "- **An open question** when it is a design question that can't be settled until the "
         "stories exist. The Architect settles those after the split.\n"
         "- **For infra** when a member marked it infra: it is about the deployed runtime "
@@ -269,9 +363,10 @@ def describe(
         "row, and no story waits on it.\n"
         "- **A dismissal** when it isn't needed: already settled, wholly inside another epic, "
         "or wrong. Say why.\n"
-        "Every note gets one of the four, and a row may answer several. If a note needs a "
-        "product choice and none of the sources answers it, give one question for the Sponsor "
-        "instead and no conclusion. Don't ask what you can answer, and don't restate the epic."
+        "Every note gets one of the four, and a row may answer several. Ask the Sponsor one "
+        "question, with no conclusion, only when you can't tell which way the Goal points, so "
+        "that any call you made might contradict it. Don't ask what you can decide, and don't "
+        "restate the epic."
     )
 
 

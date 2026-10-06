@@ -28,7 +28,7 @@
 | A5 | Focus | Each reviews the epic in front of it | How it fits a sibling: raise it. Wholly inside a sibling, or a delivered epic: don't |
 | A6 | Blind spots | DevOps checks the runtime contract and the CI proof, and marks the deployed runtime for infra (ADR 0017); Architect checks SemVer and sibling dependencies | Covers findings 5 and 9 from the test; the production part of 10 is infra's |
 | A7 | Discussion | Full notes are kept as one comment | The audit trail; never passed on |
-| A8 | Settle | The PO writes the conclusion; one question to the Sponsor if the sources can't answer | The epic waits for the reply, as story problems do |
+| A8 | Settle | The PO writes the conclusion, deciding what no source answers within the Goal and recording it as its call when it is a product choice (ADR 0018), and leaving design questions open for the Architect's design note, which answers each; one question to the Sponsor only if it can't tell which way the Goal points | The epic waits for the reply, as story problems do |
 | A9 | Conclusion | In the epic body, under its own header, with the approved text untouched | BLUF line, ADR-field rows, open questions apart |
 | A10 | Format | Short cells enforced by schema; no cap on rows; links with words | The same form as the Goal's decision log |
 | A11 | Down the chain | Stories name the rows they follow | Later steps get those rows only; a coverage check confirms every row is used |
