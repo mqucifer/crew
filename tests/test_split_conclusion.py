@@ -397,3 +397,63 @@ def test_the_switch_must_be_true_or_false():
     org["refinement"] = {"panel": "yes"}
     with pytest.raises(ValueError, match="refinement.panel"):
         _validate(org)
+
+
+# --- the 406 proof's refusal: open questions and infra items in `not_for_stories` ---------------
+
+
+def test_the_split_the_406_proof_was_refused_for_is_now_accepted():
+    # The model listed the conclusion's open questions and infra item as "not for stories".
+    split = StoryProposal(
+        epic_title="E",
+        stories=[story("A", "R1"), story("B", "R2")],
+        not_for_stories=[
+            RowNotForStories(row="Q1", why="settled by the design note"),
+            RowNotForStories(row="Q2", why="settled by the design note"),
+            RowNotForStories(row="I1", why="infra provides it"),
+        ],
+    )
+    assert flow.problems(split, ["R1", "R2"]) == []
+
+
+def test_an_open_question_listed_does_not_excuse_a_row_no_story_follows():
+    split = proposal(story("A", "R1"), left_out=["Q1", "I1"])
+    assert flow.problems(split, ["R1", "R2"]) == [
+        "No story follows R2. Name the story that does in its `follows`, or list the row in "
+        "`not_for_stories` with why it is not for stories."
+    ]
+
+
+def test_a_story_following_a_question_or_infra_item_keeps_only_its_rows():
+    base = make_story("S").model_dump()
+    assert Story.model_validate({**base, "follows": ["R1", "Q1", "I1", "R2"]}).follows == [
+        "R1",
+        "R2",
+    ]
+
+
+def test_the_split_is_told_questions_and_infra_items_need_no_entry(monkeypatch):
+    import contextlib
+    from types import SimpleNamespace
+
+    from crew_org.crews import refinement_crew
+
+    seen = {}
+
+    class Crew:
+        def __init__(self, **_):
+            pass
+
+        def kickoff(self):
+            return SimpleNamespace(pydantic=None)
+
+    class Agents(dict):
+        def __missing__(self, key):
+            return object()
+
+    monkeypatch.setattr(refinement_crew, "build_agents", lambda *a, **k: Agents())
+    monkeypatch.setattr(refinement_crew, "Task", lambda **k: seen.update(k) or object())
+    monkeypatch.setattr(refinement_crew, "Crew", Crew)
+    with contextlib.suppress(Exception):
+        refinement_crew.split_epic("E", "body", conclusion=CONCLUSION)
+    assert "Open questions (Q) and items for infra (I) need no entry" in seen["description"]
