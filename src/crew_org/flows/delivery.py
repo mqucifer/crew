@@ -38,7 +38,7 @@ from crew_org.flows.attempts import first_error
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
-from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved
+from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved, rebuild_files
 from crew_org.flows.moves import move_card
 from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
@@ -152,6 +152,9 @@ class DeliveryResult:
     # (story, the earlier sibling it is waiting for). Reported rather than
     # silently skipped: a card that could be claimed and was not needs a reason.
     waiting_on_a_sibling: list[tuple[int, int]] = field(default_factory=list)
+    # (story, PR) a rebuild waits for: the open PR still changing the files it
+    # conflicted in (#436).
+    waiting_on_files: list[tuple[int, int]] = field(default_factory=list)
     # Reverts landed this pass, and those that could not land yet (#83).
     reverts: RevertLanding = field(default_factory=RevertLanding)
     rate_limited: bool = False
@@ -215,6 +218,58 @@ def awaiting_rework(
     except Exception:  # noqa: BLE001
         return None
     return pull if refused else None
+
+
+# A crew story's branch, as `branch_name` writes it: `<type>/<number>-<summary>`.
+_STORY_BRANCH = re.compile(r"^(?:feat|fix|chore|docs|test|refactor|exp)/(\d+)-")
+
+
+def rebuild_waits_for(
+    issues: IssueClient, cards: list[Card], card: Card, *, repo: str
+) -> tuple[int, list[str]] | None:
+    """The open story PR still changing the files this story's rebuild conflicted in (#436).
+
+    A story returned for a rebuild because its branch conflicted in some files waits
+    to start it while another story's pull request changes those files: rebuilt now,
+    it would conflict again as soon as that one lands, as sprint-metrics#384 did
+    twice. Only a pull request that is moving holds it. One waiting on its own
+    rebuild, or whose story is blocked, holds nothing, so two rebuilds never wait on
+    each other.
+
+    None when it may go ahead, and on any error: waiting saves a rebuild, it isn't a gate.
+    """
+    try:
+        branch = branch_name(card.number or 0, card.title)
+        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+        if pull is None:
+            return None
+        head = (pull.get("head") or {}).get("sha", "")
+        files: set[str] = set()
+        for comment in issues.comments(repo, pull["number"]):
+            body = comment.get("body") or ""
+            if REBUILD_MARKER.format(head=head) in body:
+                files = set(rebuild_files(body))
+        if not files:
+            return None
+        blocked = {c.number for c in cards if (c.repo or repo) == repo and c.status == BLOCKED}
+        for other in issues.open_pulls(repo):
+            if other["number"] == pull["number"]:
+                continue
+            story = _STORY_BRANCH.match((other.get("head") or {}).get("ref") or "")
+            if story is None or int(story.group(1)) in blocked:
+                continue
+            its_head = (other.get("head") or {}).get("sha", "")
+            if any(
+                REBUILD_MARKER.format(head=its_head) in (c.get("body") or "")
+                for c in issues.comments(repo, other["number"])
+            ):
+                continue
+            overlap = files & set(issues.pull_files(repo, other["number"]))
+            if overlap:
+                return other["number"], sorted(overlap)
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 def needs_rework(issues: IssueClient, cards: list[Card], *, repo: str) -> list[Card]:
@@ -1920,6 +1975,19 @@ def deliver(
     returned = needs_rework(issues, cards, repo=repo)
     for card in returned:
         if repos is not None and (card.repo or repo) not in repos:
+            continue
+        waiting = rebuild_waits_for(issues, cards, card, repo=card.repo or repo)
+        if waiting is not None:
+            other, paths = waiting
+            result.waiting_on_files.append((card.number or 0, other))
+            sink.note(
+                EventKind.NOTE,
+                f"#{card.number} waits to rebuild until PR #{other} lands: both change "
+                + ", ".join(paths),
+                card=card.number,
+                pull=other,
+                files=paths,
+            )
             continue
         if card.status == REVIEWING:
             verdict = rules.may_move(frm=REVIEWING, to=IN_PROGRESS, counts=counts)

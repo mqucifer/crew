@@ -13,6 +13,7 @@ claimed so a branch always starts from current `main`.
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -507,6 +508,18 @@ def _close_story(
 # On a pull request whose approved head conflicted with main and was returned for
 # a rebuild. Delivery reads it as work sent back (`awaiting_rework`).
 REBUILD_MARKER = "<!-- crew:rebuild head={head} -->"
+# The files a rebuild conflicted in, so delivery can wait for the story still
+# working in them before it starts the rebuild (#436).
+REBUILD_FILES_MARKER = "<!-- crew:rebuild-files {files} -->"
+_REBUILD_FILES = re.compile(r"<!-- crew:rebuild-files (\S+) -->")
+
+
+def rebuild_files(body: str) -> list[str]:
+    """The files a rebuild comment says it conflicted in, or none."""
+    found = _REBUILD_FILES.search(body)
+    return found.group(1).split(",") if found else []
+
+
 # Parallel work can conflict a rebuilt pull request again. Past this many
 # rebuilds of one pull request, a person decides.
 MAX_REBUILDS = 2
@@ -604,7 +617,9 @@ def _conflict(
     issues.comment(
         repo,
         pull["number"],
-        f"{REBUILD_MARKER.format(head=head)}\n**Conflicts with `main`{where}, returned for a "
+        f"{REBUILD_MARKER.format(head=head)}\n"
+        + (f"{REBUILD_FILES_MARKER.format(files=','.join(files))}\n" if files else "")
+        + f"**Conflicts with `main`{where}, returned for a "
         "rebuild.** This was approved, and other work has since merged into the same lines"
         + (f": the last to land there was *{landed}*" if landed else "")
         + (
