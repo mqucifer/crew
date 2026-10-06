@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich import box
@@ -22,6 +23,10 @@ from crew_org.clock import timezone as clock_zone
 from crew_org.config import load_org
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.tui import LiveView, attach
+
+if TYPE_CHECKING:
+    from crew_org.crews.panel_crew import PanelContext
+    from crew_org.tools.github_issues import IssueClient
 
 
 class CrewTyper(typer.Typer):
@@ -1456,7 +1461,6 @@ def panel(
     from crew_org.crews.panel_crew import run_panel
     from crew_org.events import bridge_crewai, flush_bridge, working_on
     from crew_org.flows import panel as flow
-    from crew_org.project import RECORD_PATH, ProjectRecordError, brief, parse
     from crew_org.tools.github_issues import IssueClient
 
     repo, number = _issue_ref(epic)
@@ -1464,18 +1468,7 @@ def panel(
     token, _ = resolve_credentials(env)
     issues = IssueClient(token, env["GITHUB_OWNER"])
 
-    text = issues.file_at(repo, RECORD_PATH, "main")
-    try:
-        project = brief(parse(text)) if text else ""
-    except ProjectRecordError as exc:
-        console.print(f"[yellow]Reading without {repo}'s record:[/] {escape(str(exc))}")
-        project = ""
-    try:
-        context = flow.gather(
-            issues, repo, number, project=project, search=_decision_repos(repo, env)
-        )
-    except flow.NotUnderAGoal as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    context = _panel_context(issues, repo, number, env)
 
     console.print(
         f"Panel on {context.epic_ref}: {len(context.siblings)} sibling epics, "
@@ -1492,6 +1485,93 @@ def panel(
     if post:
         posted = flow.post(issues, repo, number, result)
         console.print("[green]Posted.[/]" if posted else "[yellow]Already has a panel comment.[/]")
+
+
+def _panel_context(
+    issues: IssueClient, repo: str, number: int, env: dict[str, str]
+) -> PanelContext:
+    """What the panel and the settle step are shown for an epic."""
+    from crew_org.flows import panel as flow
+    from crew_org.project import RECORD_PATH, ProjectRecordError, brief, parse
+
+    text = issues.file_at(repo, RECORD_PATH, "main")
+    try:
+        project = brief(parse(text)) if text else ""
+    except ProjectRecordError as exc:
+        console.print(f"[yellow]Reading without {repo}'s record:[/] {escape(str(exc))}")
+        project = ""
+    try:
+        return flow.gather(issues, repo, number, project=project, search=_decision_repos(repo, env))
+    except flow.NotUnderAGoal as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command()
+def settle(
+    epic: str = typer.Argument(..., help="The epic, as `repo#n` or `owner/repo#n`."),
+    post: bool = typer.Option(
+        False,
+        "--post",
+        help="Write the conclusion into the epic's body, or ask the Sponsor its one question. "
+        "Otherwise it prints.",
+    ),
+) -> None:
+    """Settle an epic's panel notes into its conclusion: the Product Owner's step (crew#440).
+
+    Uses the epic's panel comment if it has one; otherwise runs the panel now (and
+    with --post leaves that comment too). Each note becomes a decision row, an open
+    question for the design note, or a dismissal; or, when nothing written down
+    answers one, the Product Owner asks the Sponsor a single question and the epic
+    waits. Nothing is written to GitHub without --post.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.panel_crew import run_panel
+    from crew_org.crews.settle_crew import numbered
+    from crew_org.events import bridge_crewai, flush_bridge, working_on
+    from crew_org.flows import panel as panel_flow
+    from crew_org.flows import settle as flow
+    from crew_org.tools.github_issues import IssueClient
+
+    repo, number = _issue_ref(epic)
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    issues = IssueClient(token, env["GITHUB_OWNER"])
+    context = _panel_context(issues, repo, number, env)
+
+    sink = EventSink(VAR / "events" / "settle.jsonl")
+    bridge_crewai(sink)
+    try:
+        notes = panel_flow.panel_on(issues, repo, number)
+        if notes is None:
+            console.print("No panel comment on the epic: running the panel first.")
+            with working_on(card=number, repo=repo):
+                notes = run_panel(context)
+            if post:
+                panel_flow.post(issues, repo, number, notes)
+        console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
+        if post:
+            done = flow.settle_epic(
+                issues,
+                sink,
+                repo=repo,
+                epic=number,
+                context=context,
+                panel=notes,
+                known=set(_decision_repos(repo, env)),
+            )
+            console.print(f"[green]{done.outcome.value}[/]")
+            typer.echo(done.text)
+        else:
+            with working_on(card=number, repo=repo):
+                found = flow.propose(context, notes, "", card=number, repo=repo)
+            typer.echo(
+                flow.render(found.conclusion, owner=issues.owner, repo=repo)
+                if found.conclusion
+                else f"A question for the Sponsor: {found.sponsor_question}"
+            )
+    finally:
+        flush_bridge()
 
 
 @app.command()
