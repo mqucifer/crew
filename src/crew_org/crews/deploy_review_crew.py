@@ -14,6 +14,7 @@ from __future__ import annotations
 from crewai import Crew, Process, Task
 
 from crew_org.agents import build_agents
+from crew_org.crews import epic_rows
 from crew_org.crews.review_crew import MAX_DIFF_CHARS, ReviewVerdict
 
 # Four general concerns, for anything that runs: access, privilege,
@@ -38,6 +39,7 @@ def review_deploy(
     release: str = "",
     prior_verdicts: str = "",
     checks: str = "",
+    decisions: str = "",
 ) -> ReviewVerdict:
     """Judge a change to something that runs or deploys, as it will be run.
 
@@ -67,6 +69,11 @@ def review_deploy(
         description=(
             f"Review this change for whether what it runs or ships is fit to run as deployed."
             f"\n\n## Title\n\n{title}{criteria}{previously}\n\n"
+            + epic_rows.block(
+                decisions,
+                "These are decided for the epic. Where one says how it runs, is configured or "
+                "is checked, judge the change against it as well.",
+            )
             + (f"## How this project is released and checked\n\n{release}\n\n" if release else "")
             + f"## Diff\n\n```diff\n{diff}\n```\n\n"
             + (f"{evidence}\n\n" if evidence else "")

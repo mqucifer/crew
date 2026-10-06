@@ -19,6 +19,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
+from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
 from crew_org.flows.presentation_notes import story_notes
@@ -247,6 +248,7 @@ def review_open_pulls(
                 ),
                 design_note=story_notes(issues, story, repo) if story is not None else "",
                 acceptance_criteria=story_criteria(issues, story, repo),
+                decisions=story_rows(issues, story, repo),
                 importers=_importers(clone, diff),
             )
         except Exception as exc:  # noqa: BLE001
@@ -414,6 +416,7 @@ def _deploy_review(
         diff,
         evidence=deploy_evidence(clone, diff, lambda path: issues.file_at(repo, path, head)),
         acceptance_criteria=story_criteria(issues, story, repo),
+        decisions=story_rows(issues, story, repo),
         release=release_brief(issues, repo, head),
         prior_verdicts=past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
         checks=checks_section(issues.check_runs(repo, head), pull.get("body") or ""),

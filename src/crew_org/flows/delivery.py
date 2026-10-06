@@ -19,6 +19,7 @@ from pathlib import Path
 
 from crew_org import profiles
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
+from crew_org.crews import epic_rows
 from crew_org.crews.delivery_crew import Implementation, implement_story
 from crew_org.escalation import (
     Disposition,
@@ -35,6 +36,7 @@ from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import first_error
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
+from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved
 from crew_org.flows.moves import move_card
@@ -763,6 +765,8 @@ def deliver_story(
     # The notes for this story's epic, if it has them: the Architect's (#155)
     # and the UX Designer's (#377).
     note = story_notes(issues, card, repo)
+    # And only the rows of the epic's conclusion this story names (crew#440).
+    decided = story_rows(issues, card, repo)
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -832,6 +836,15 @@ def deliver_story(
             asked=focus.asked,
         )
         header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
+        header = (
+            epic_rows.block(
+                decided,
+                "These are decided for the epic. Build to them: don't contradict one, and "
+                "don't settle in code what the design note leaves open.",
+                level=1,
+            )
+            + header
+        )
         if record is not None:
             header = f"{brief(record)}\n\n{header}"
         if not images and (

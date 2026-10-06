@@ -151,7 +151,15 @@ def test_qa_is_handed_the_docs(monkeypatch, tmp_path):
     seen = {}
 
     def fake_verify(
-        story, *, test_output, test_code, prior_verdicts="", project="", docs="", checks=""
+        story,
+        *,
+        test_output,
+        test_code,
+        prior_verdicts="",
+        project="",
+        docs="",
+        checks="",
+        decisions="",
     ):
         seen["docs"] = docs
         return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
