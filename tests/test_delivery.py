@@ -13,6 +13,7 @@ from crew_org.crews.delivery_crew import (
     FileWrite,
     FirstAttempt,
     Implementation,
+    Rework,
 )
 
 
@@ -370,6 +371,30 @@ def test_an_existing_test_named_without_code_is_told_where_it_goes():
             test="test_formats_worked_example_markdown_output",
         )
     assert "tests/test_formats.py::test_formats_worked_example_markdown_output" in str(raised.value)
+
+
+# sprint-metrics#427: a repair re-named the six tests already on its branch, was told
+# they go in proven_by_existing, a field only a first attempt has, and dropped
+# everything. Three answers refused, then the escalation.
+ON_THE_BRANCH = {"criterion": "POST accepted", "path": "tests/test_service.py", "test": "test_post"}
+
+
+@pytest.mark.parametrize("form", [Implementation, Rework])
+def test_a_repair_naming_a_test_on_its_branch_is_told_to_leave_it_out(form):
+    with pytest.raises(ValidationError, match="leave it out") as raised:
+        form(summary="s", criteria_tests=[ON_THE_BRANCH], new_files=[code()])
+    assert "proven_by_existing" not in str(raised.value), "not a field this form has"
+
+
+def test_a_repair_may_still_add_a_test_written_in_full():
+    written = {**ON_THE_BRANCH, "source": "def test_post():\n    assert True\n"}
+    answer = Implementation(summary="s", criteria_tests=[written], new_files=[code()])
+    assert [e.target for e in answer.all_edits] == ["test_post"]
+
+
+def test_a_first_attempt_is_still_told_about_proven_by_existing():
+    with pytest.raises(ValidationError, match="proven_by_existing"):
+        FirstAttempt(summary="s", criteria_tests=[ON_THE_BRANCH], new_files=[code()])
 
 
 def test_code_that_defines_a_different_test_is_refused_as_before():

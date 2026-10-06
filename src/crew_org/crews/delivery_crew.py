@@ -13,6 +13,7 @@ rejected by the schema, not noticed later by a reviewer.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import Any
 
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -352,6 +353,31 @@ class Implementation(BaseModel):
     @classmethod
     def _deleted_stay_in_the_repository(cls, value: list[str]) -> list[str]:
         return [FileWrite._stays_in_the_repository(v) for v in value]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _names_only_tests_it_writes(cls, data: Any) -> Any:
+        """A repair or rework names no test it doesn't write, and is told so in its terms.
+
+        A test named with no code is refused as belonging in `proven_by_existing`,
+        which only a first attempt has. sprint-metrics#427's repairs re-named the six
+        tests already on the branch, were sent to that field, couldn't use it, and
+        dropped everything: three answers refused, then the escalation.
+        """
+        if "proven_by_existing" in cls.model_fields or not isinstance(data, dict):
+            return data
+        for c in data.get("criteria_tests") or []:
+            if not isinstance(c, dict) or str(c.get("source") or "").strip():
+                continue
+            path, test = str(c.get("path") or ""), str(c.get("test") or "")
+            if profile_for(path).edit_by_name and profile_for(path).is_test_file(path):
+                raise ValueError(
+                    f"{test!r} has no source. This answer changes the branch: a test "
+                    "already on it needs no entry in criteria_tests, so leave it out, and "
+                    "change it in edits if it has to change. A new test is written in "
+                    "criteria_tests in full."
+                )
+        return data
 
     @property
     def changes_nothing(self) -> bool:
