@@ -15,6 +15,7 @@ from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
+from crew_org.crews import epic_rows
 
 MIN_EVIDENCE_CHARS = 20
 
@@ -95,6 +96,7 @@ def verify_story(
     docs: str = "",
     checks: str = "",
     can_ask: bool = False,
+    decisions: str = "",
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
 
@@ -124,7 +126,12 @@ def verify_story(
         description=(
             (f"{project}\n\n" if project else "")
             + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
-            f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
+            + epic_rows.block(
+                decisions,
+                "These are decided for the epic. A criterion is proven only by work that also "
+                "keeps to them: hold it unproven if the code does what a row rules out.",
+            )
+            + f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
             f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
             + (
                 f"{checks}\n\nA criterion only CI can run (an image build, a workflow) "

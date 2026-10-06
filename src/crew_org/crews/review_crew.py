@@ -14,6 +14,7 @@ from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
+from crew_org.crews import epic_rows
 
 # The whole diff, or no approval. A head slice of 30,000 characters meant the
 # Reviewer approved files it had never seen — and its approval now merges, so
@@ -104,6 +105,7 @@ def review_diff(
     imported: str = "",
     design_note: str = "",
     importers: str = "",
+    decisions: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -165,6 +167,11 @@ def review_diff(
             + (f"{checks}\n\n" if checks else "")
             + (f"{imported}\n\n" if imported else "")
             + (f"{importers}\n\n" if importers else "")
+            + epic_rows.block(
+                decisions,
+                "These are decided for the epic. Judge the diff against them as well: a "
+                "change that contradicts one is a finding, whatever else it gets right.",
+            )
             + (
                 "## The Architect's design note for this story's epic\n\n"
                 f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"

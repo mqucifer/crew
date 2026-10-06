@@ -21,6 +21,9 @@ from crew_org.flows.settle import CONCLUSION_HEADER
 _ROW = re.compile(r"^\|\s*(R\d+)\s*\|", re.M)
 
 FOLLOWS = "Follows the epic's"
+# The line a story carries: `Follows the epic's R1, R4.`
+_FOLLOWS_LINE = re.compile(rf"^{re.escape(FOLLOWS)} (R\d+(?:, R\d+)*)\.\s*$", re.M)
+_ROW_LINE = re.compile(r"^\|\s*(R\d+)\s*\|")
 
 
 def split_conclusion(body: str) -> tuple[str, str]:
@@ -39,6 +42,48 @@ def row_ids(conclusion: str) -> list[str]:
 def follows_line(rows: list[str]) -> str:
     """The line a story carries naming the epic's rows it follows."""
     return f"{FOLLOWS} {', '.join(rows)}."
+
+
+def parse_follows(story_body: str) -> list[str]:
+    """The rows a story's issue says it follows, in the order it names them."""
+    found = _FOLLOWS_LINE.search(story_body)
+    return found.group(1).split(", ") if found else []
+
+
+def rows_for(conclusion: str, ids: list[str]) -> str:
+    """The table's header and just these rows, not the epic's whole table.
+
+    A row the conclusion no longer has is left out; none left gives nothing.
+    """
+    lines = conclusion.split("\n")
+    start = next((i for i, line in enumerate(lines) if _ROW_LINE.match(line)), None)
+    if start is None or start < 2:
+        return ""
+    wanted = set(ids)
+    picked = [
+        line for line in lines[start:] if (m := _ROW_LINE.match(line)) and m.group(1) in wanted
+    ]
+    return "\n".join([*lines[start - 2 : start], *picked]) if picked else ""
+
+
+def story_rows(issues: Any, story: Any, default_repo: str) -> str:
+    """The rows of the epic's conclusion this story names, for the steps that build and judge it.
+
+    "Whatever reads a story pulls only the rows it names": a long conclusion doesn't
+    bloat a story's context, and nothing the story relies on goes missing. A story
+    that names none, or an epic with no conclusion, gives nothing.
+    """
+    if story is None or story.parent is None or story.number is None:
+        return ""
+    repo = story.repo or default_repo
+    try:
+        ids = parse_follows(issues.get(repo, story.number).get("body") or "")
+        if not ids:
+            return ""
+        _, conclusion = split_conclusion(issues.get(repo, story.parent).get("body") or "")
+    except Exception:  # noqa: BLE001 - context, never a reason to stop the work
+        return ""
+    return rows_for(conclusion, ids)
 
 
 def problems(proposal: Any, rows: list[str]) -> list[str]:

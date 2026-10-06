@@ -427,7 +427,15 @@ def test_qa_is_shown_what_it_said_about_this_card_before(monkeypatch, tmp_path):
     seen = {}
 
     def fake_verify(
-        story, *, test_output, test_code, prior_verdicts="", project="", docs="", checks=""
+        story,
+        *,
+        test_output,
+        test_code,
+        prior_verdicts="",
+        project="",
+        docs="",
+        checks="",
+        decisions="",
     ):
         seen["prior"] = prior_verdicts
         return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])

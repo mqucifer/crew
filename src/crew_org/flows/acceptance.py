@@ -25,6 +25,7 @@ from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import NEEDS_REWORK
+from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import past_qa
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
@@ -540,6 +541,7 @@ def run_qa(
                 checks=_with_unguarded(ci_checks(issues, card_repo, revision), worktree),
                 prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
                 project=project,
+                decisions=story_rows(issues, card, card_repo),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
