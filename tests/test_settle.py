@@ -16,6 +16,7 @@ from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, Pane
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     DECISION_CHARS,
+    GOAL_QUOTE_CHARS,
     INFRA_CHARS,
     Conclusion,
     Dismissal,
@@ -25,8 +26,11 @@ from crew_org.crews.settle_crew import (
     Settlement,
     Unsettled,
     check_covers,
+    check_grounded,
     check_not_cut,
+    check_product_calls,
     describe,
+    note_owners,
     numbered,
 )
 from crew_org.events import EventSink
@@ -290,6 +294,137 @@ def test_the_task_tells_the_product_owner_what_to_do_with_a_note_a_member_marked
     assert "no story waits on it" in text and "one of the four" in text
 
 
+# --- the Product Owner's own call --------------------------------------------------------------
+
+
+GOAL = "The tool reports on what it's handed and forgets it. It should keep the history it's given."
+
+
+def own(quote="keep the history it's given", **kw):
+    return row(
+        own_call=True, goal_wording=quote, source="Restart survival is what keeping means", **kw
+    )
+
+
+def test_a_call_the_product_owner_makes_itself_quotes_the_goal_it_stays_within():
+    assert own().own_call is True
+    with pytest.raises(ValidationError, match="quotes the Goal's wording"):
+        row(own_call=True)
+    with pytest.raises(ValidationError):
+        own(quote="x" * (GOAL_QUOTE_CHARS + 1))
+
+
+def test_a_sourced_row_needs_no_quotation():
+    assert row().own_call is False and row().goal_wording == ""
+
+
+def test_a_call_that_quotes_the_goal_is_grounded_whatever_the_case_spacing_or_quote_marks():
+    check_grounded(Settlement(conclusion=Conclusion(rows=[own()])), GOAL)
+    check_grounded(
+        Settlement(conclusion=Conclusion(rows=[own("KEEP  the history it\u2019s given")])),
+        GOAL,
+    )
+
+
+def test_a_call_that_quotes_wording_the_goal_does_not_have_is_refused():
+    made_up = Settlement(conclusion=Conclusion(rows=[row(), own("survive every upgrade")]))
+    with pytest.raises(Unsettled, match=r"row 2: your own call quotes wording that isn't"):
+        check_grounded(made_up, GOAL)
+
+
+def test_a_sourced_row_is_not_held_to_the_goals_words_and_a_question_needs_nothing():
+    check_grounded(Settlement(conclusion=Conclusion(rows=[row(source="D1")])), "something else")
+    check_grounded(Settlement(sponsor_question="Which?"), GOAL)
+
+
+def test_a_quotation_that_ran_into_its_limit_was_cut_off():
+    cut = Settlement(conclusion=Conclusion(rows=[own("x" * GOAL_QUOTE_CHARS)]))
+    with pytest.raises(Unsettled, match="row 1 goal wording"):
+        check_not_cut(cut)
+
+
+def test_an_own_call_says_so_and_carries_the_goals_words_in_the_table():
+    out = flow.render(
+        Conclusion(rows=[row(), own(settles=[2])]), owner="mqucifer", repo="sprint-metrics"
+    )
+    lines = out.split("\n")
+    assert "2 decided (1 the Product Owner's call)," in out
+    first, second = [line for line in lines if line.startswith("| R")]
+    assert "Product Owner's call" not in first
+    assert "Product Owner's call, within the Goal: \"keep the history it's given\"." in second
+
+
+def test_a_conclusion_with_no_own_calls_has_no_count_of_them():
+    out = flow.render(Conclusion(rows=[row()]), owner="mqucifer", repo="sprint-metrics")
+    assert "the Product Owner's call" not in out
+
+
+def test_the_task_lets_the_product_owner_decide_and_asks_it_to_record_the_call():
+    text = describe(context(), panel(1, 0, 0, 0))
+    assert "decide it yourself, as the product owner does for the team" in text
+    assert "set `own_call`" in text and "quote the Goal's own words" in text
+    assert "must not contradict the Goal or a Sponsor decision" in text
+    assert "only when you can't tell which way the Goal points" in text
+    assert "Never decide something" not in text
+
+
+def tagged() -> PanelResult:
+    """N1 for the Product Owner, N2 for the Architect, N3 for the Sponsor, N4 for the Architect."""
+    both = [
+        note("a product choice", "product_owner"),
+        note("a response shape", "architect"),
+        note("a priority", "sponsor"),
+    ]
+    return PanelResult(
+        {
+            "qa_engineer": PanelAnswer(nothing_to_add=False, notes=both),
+            "architect": PanelAnswer(nothing_to_add=False, notes=[note("a path", "architect")]),
+        },
+        {},
+    )
+
+
+def test_the_notes_are_marked_in_the_order_they_are_numbered():
+    owners = note_owners(tagged())
+    assert owners == {1: "product_owner", 2: "architect", 3: "sponsor", 4: "architect"}
+    assert [n for n, *_ in numbered(tagged())] == [1, 2, 3, 4]
+
+
+def test_an_own_call_on_a_design_question_is_refused_and_the_note_named():
+    design = Settlement(conclusion=Conclusion(rows=[own(settles=[2]), row(settles=[1, 3, 4])]))
+    with pytest.raises(Unsettled, match=r"row 1 \(N2\).*marked for the Architect"):
+        check_product_calls(design, tagged())
+
+
+def test_an_own_call_that_also_settles_a_design_note_is_refused():
+    mixed = Settlement(conclusion=Conclusion(rows=[own(settles=[1, 4])]))
+    with pytest.raises(Unsettled, match=r"row 1 \(N4\)"):
+        check_product_calls(mixed, tagged())
+
+
+def test_an_own_call_on_a_product_or_sponsor_note_is_allowed():
+    check_product_calls(
+        Settlement(conclusion=Conclusion(rows=[own(settles=[1, 3]), row(settles=[2, 4])])),
+        tagged(),
+    )
+
+
+def test_a_row_with_a_source_may_settle_a_design_note_and_a_question_is_unchecked():
+    check_product_calls(
+        Settlement(
+            conclusion=Conclusion(rows=[row(settles=[2, 4], source="D6"), row(settles=[1, 3])])
+        ),
+        tagged(),
+    )
+    check_product_calls(Settlement(sponsor_question="Which?"), tagged())
+
+
+def test_the_task_keeps_design_questions_for_the_design_note():
+    text = describe(context(), tagged())
+    assert "Your own calls are for what the product does" in text
+    assert "marked for the Architect is a design question" in text
+
+
 # --- settling an epic -----------------------------------------------------------------------
 
 
@@ -392,6 +527,50 @@ def test_a_cut_cell_is_asked_for_again_with_the_reason(monkeypatch):
     result, calls, _ = run(gh, monkeypatch, cut, good())
     assert result.outcome is flow.Outcome.WRITTEN
     assert "cut off: row 1 consequences" in calls[1]["feedback"]
+
+
+def test_an_own_call_that_quotes_wording_the_goal_lacks_is_asked_for_again(monkeypatch):
+    gh = Github()
+    made_up = Settlement(conclusion=Conclusion(rows=[own("made up wording", settles=[1, 2])]))
+    grounded = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
+    result, calls, _ = run(gh, monkeypatch, made_up, grounded)
+    assert result.outcome is flow.Outcome.WRITTEN
+    assert "isn't in the Goal" in calls[1]["feedback"]
+    assert 'Product Owner\'s call, within the Goal: "GOAL"' in gh.body
+
+
+def test_each_refusal_is_in_the_event_log_with_its_reason(monkeypatch):
+    gh = Github()
+    short = Settlement(conclusion=Conclusion(rows=[row(settles=[1])]))
+    _, _, events = run(gh, monkeypatch, short, good())
+    refused = [e for e in events if "conclusion refused" in e.summary]
+    assert len(refused) == 1
+    assert "attempt 1 of 3" in refused[0].summary and "N2" in refused[0].summary
+    assert "No row, question or dismissal for N2" in refused[0].detail["reason"]
+
+
+def test_an_own_call_on_a_design_question_is_asked_for_again_as_an_open_question(monkeypatch):
+    gh = Github()
+    design = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
+    fixed = Settlement(
+        conclusion=Conclusion(
+            rows=[own("GOAL", settles=[1])],
+            open=[OpenQuestion(question="Which response shape?", impact="The API", settles=[2])],
+        )
+    )
+    two = PanelResult(
+        {
+            "qa_engineer": PanelAnswer(
+                nothing_to_add=False,
+                notes=[note("a product choice", "product_owner"), note("a shape", "architect")],
+            )
+        },
+        {},
+    )
+    result, calls, _ = run(gh, monkeypatch, design, fixed, notes=two)
+    assert result.outcome is flow.Outcome.WRITTEN
+    assert "marked for the Architect" in calls[1]["feedback"]
+    assert "| Q1 | Which response shape?" in gh.body
 
 
 def test_a_conclusion_refused_every_time_fails_and_writes_nothing(monkeypatch):

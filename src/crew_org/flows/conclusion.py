@@ -24,6 +24,7 @@ FOLLOWS = "Follows the epic's"
 # The line a story carries: `Follows the epic's R1, R4.`
 _FOLLOWS_LINE = re.compile(rf"^{re.escape(FOLLOWS)} (R\d+(?:, R\d+)*)\.\s*$", re.M)
 _ROW_LINE = re.compile(r"^\|\s*(R\d+)\s*\|")
+_QUESTION_LINE = re.compile(r"^\|\s*(Q\d+)\s*\|")
 
 
 def split_conclusion(body: str) -> tuple[str, str]:
@@ -37,6 +38,21 @@ def split_conclusion(body: str) -> tuple[str, str]:
 def row_ids(conclusion: str) -> list[str]:
     """The IDs of the decisions, in the order the table has them."""
     return _ROW.findall(conclusion)
+
+
+def open_questions(conclusion: str) -> tuple[list[str], str]:
+    """The questions the conclusion leaves for the design note: their IDs, and the table.
+
+    The Architect settles these after the split, so each is shown to it and has to be
+    answered (crew#440).
+    """
+    lines = conclusion.split("\n")
+    start = next((i for i, line in enumerate(lines) if _QUESTION_LINE.match(line)), None)
+    if start is None or start < 2:
+        return [], ""
+    asked = [line for line in lines[start:] if _QUESTION_LINE.match(line)]
+    ids = [m.group(1) for line in asked if (m := _QUESTION_LINE.match(line))]
+    return ids, "\n".join([*lines[start - 2 : start], *asked])
 
 
 def follows_line(rows: list[str]) -> str:

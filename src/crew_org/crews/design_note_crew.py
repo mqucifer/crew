@@ -13,6 +13,8 @@ reverse, the risks, and how the work divides across the stories.
 
 from __future__ import annotations
 
+import re
+
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,6 +25,23 @@ from crew_org.permissions import load_agents
 class StoryDirection(BaseModel):
     story: int = Field(description="The story's issue number")
     direction: str = Field(description="What this story builds, within the approach")
+
+
+class SettledQuestion(BaseModel):
+    question: str = Field(description="The ID of the epic's open question, like Q1")
+    decision: str = Field(
+        min_length=2,
+        max_length=160,
+        description="What you decide, as a short fragment. It is your call as the Architect",
+    )
+
+    @field_validator("question")
+    @classmethod
+    def _an_id(cls, value: str) -> str:
+        found = value.strip().upper()
+        if not re.fullmatch(r"Q\d+", found):
+            raise ValueError("name the question by its ID, like Q1")
+        return found
 
 
 class DesignNote(BaseModel):
@@ -37,6 +56,10 @@ class DesignNote(BaseModel):
     risks: list[str] = Field(default_factory=list, description="Named plainly, not hedged")
     stories: list[StoryDirection] = Field(
         description="One direction per story, so no story builds another's part"
+    )
+    settled: list[SettledQuestion] = Field(
+        default_factory=list,
+        description="Each question the epic's conclusion left open for you, answered by its ID",
     )
     looked_at: list[str] = Field(description="What you read to write this: files, issues")
     beyond_reach: str | None = Field(
@@ -69,6 +92,10 @@ def render(note: DesignNote) -> str:
         *listed("Interfaces and data shapes", note.interfaces),
         *listed("Expensive to reverse", note.expensive_to_reverse),
         *listed("Risks", note.risks),
+        *listed(
+            "Questions the epic left open, settled",
+            [f"{s.question}: {s.decision}" for s in note.settled],
+        ),
         "**How the stories divide the work**",
         *[f"- #{s.story}: {s.direction}" for s in note.stories],
         "",
@@ -78,7 +105,13 @@ def render(note: DesignNote) -> str:
 
 
 def write_note(
-    *, epic: str, stories: str, project: str, repository: str, feedback: str = ""
+    *,
+    epic: str,
+    stories: str,
+    project: str,
+    repository: str,
+    feedback: str = "",
+    open_questions: str = "",
 ) -> DesignNote:
     """The Architect's note for one epic."""
     spec = load_agents()["architect"]
@@ -88,7 +121,17 @@ def write_note(
         description=(
             (f"{project}\n\n" if project else "")
             + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
-            f"{stories}\n\n## The code as it stands\n\n{repository}\n\n{refused}"
+            f"{stories}\n\n## The code as it stands\n\n{repository}\n\n"
+            + (
+                f"## The questions the epic's conclusion left open for you\n\n{open_questions}\n\n"
+                "These are yours: design questions (paths, response shapes, parameters, keys) the "
+                "Product Owner left for the design note. Settle every one in `settled`, naming it "
+                "by its ID, as your own call as the Architect, within the Goal and the "
+                "conclusion's decided rows. Don't leave one open.\n\n"
+                if open_questions
+                else ""
+            )
+            + f"{refused}"
             "Write the design note for this epic: the least design that settles its open "
             "questions. Name the interfaces and data shapes the stories share, so each "
             "story builds on the one before instead of re-deciding it, and give each story "

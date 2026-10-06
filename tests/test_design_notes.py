@@ -12,7 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from crew_org.crews.design_crew import Conflict, DesignReview
-from crew_org.crews.design_note_crew import DesignNote, StoryDirection, render
+from crew_org.crews.design_note_crew import DesignNote, SettledQuestion, StoryDirection, render
 from crew_org.events import EventSink
 from crew_org.flows.design_notes import (
     NOTE_MARKER,
@@ -331,6 +331,116 @@ def test_the_reviewer_is_shown_the_stories_note(monkeypatch):
         cards=[reviewing],
     )
     assert "Build a range model once." in shown["design_note"]
+
+
+# --- the epic's open questions are the Architect's to settle (crew#440) ---------------------------
+
+CONCLUDED = (
+    "A user can ask for a range of past sprints.\n\n## Refinement conclusion\n\n"
+    "Ready to split: 1 decided, 2 open for the design note, 0 for infra, 0 dismissed.\n\n"
+    "| ID | Status | Context | Decision | Consequences | Source |\n|---|---|---|---|---|---|\n"
+    "| R1 | accepted | Counting | Where it merges | Group by merge date | D3 |\n\n"
+    "| ID | Open question | Impact | Settled by |\n|---|---|---|---|\n"
+    "| Q1 | Which key makes the upsert idempotent? | The store | Design note |\n"
+    "| Q2 | What shape is the rejection body? | The API | Design note |\n\n"
+    "_Settled by the Product Owner._"
+)
+
+
+class ConcludedIssues(Issues):
+    def get(self, repo, number):
+        return {"body": CONCLUDED}
+
+
+def settled(*ids):
+    return [SettledQuestion(question=i, decision=f"decided {i}") for i in ids]
+
+
+def test_the_architect_is_shown_the_questions_the_conclusion_left_for_it(tmp_path):
+    architect = Architect(note(settled=settled("Q1", "Q2")))
+    run(tmp_path, ConcludedIssues(), architect)
+    shown = architect.calls[0]["open_questions"]
+    assert "Q1" in shown and "Which key makes the upsert idempotent?" in shown
+    assert "Q2" in shown and "R1" not in shown
+
+
+def test_a_note_that_settles_every_question_is_written_with_the_answers(tmp_path):
+    issues = ConcludedIssues()
+    result = run(tmp_path, issues, Architect(note(settled=settled("Q1", "Q2"))))
+    assert result.written == [50]
+    body = issues.posted[-1][1]
+    assert "Questions the epic left open, settled" in body
+    assert "Q1: decided Q1" in body and "Q2: decided Q2" in body
+
+
+def test_a_question_left_open_is_asked_for_again_by_name(tmp_path):
+    architect = Architect(note(settled=settled("Q1")), note(settled=settled("Q1", "Q2")))
+    result = run(tmp_path, ConcludedIssues(), architect)
+    assert result.written == [50]
+    assert "didn't settle Q2" in architect.calls[1]["feedback"]
+
+
+def test_questions_never_settled_leave_it_for_a_person(tmp_path):
+    architect = Architect(*[note(settled=settled("Q1")) for _ in range(5)])
+    issues = ConcludedIssues()
+    result = run(tmp_path, issues, architect)
+    assert result.written == [] and result.blocked and "Q2 left open" in result.blocked[0][1]
+    assert ("blocked") in [label for _, label in issues.labels]
+
+
+def test_an_epic_with_no_conclusion_is_not_asked_to_settle_anything(tmp_path):
+    architect = Architect(note())
+    result = run(tmp_path, Issues(), architect)
+    assert result.written == [50] and "open_questions" not in architect.calls[0]
+
+
+def test_the_open_questions_are_read_from_the_conclusions_second_table():
+    from crew_org.flows.conclusion import open_questions, split_conclusion
+
+    ids, table = open_questions(split_conclusion(CONCLUDED)[1])
+    assert ids == ["Q1", "Q2"]
+    assert table.split("\n")[0].startswith("| ID | Open question")
+    assert "R1" not in table and "Settled by the Product Owner" not in table
+    assert open_questions("") == ([], "")
+    assert open_questions(
+        "## Refinement conclusion\n\nReady to split: the panel raised nothing."
+    ) == (
+        [],
+        "",
+    )
+
+
+def test_a_question_is_named_by_its_id():
+    assert SettledQuestion(question="q3", decision="a key").question == "Q3"
+    with pytest.raises(ValidationError, match="by its ID"):
+        SettledQuestion(question="three", decision="a key")
+
+
+def test_the_architects_task_says_the_questions_are_its_own_call(monkeypatch):
+    from types import SimpleNamespace
+
+    from crew_org.crews import design_note_crew as crew_module
+
+    seen = {}
+
+    class Crew:
+        def __init__(self, **_):
+            pass
+
+        def kickoff(self):
+            return SimpleNamespace(pydantic=note())
+
+    monkeypatch.setattr(crew_module, "build_agent", lambda *a, **k: object())
+    monkeypatch.setattr(crew_module, "Task", lambda **k: seen.update(k) or object())
+    monkeypatch.setattr(crew_module, "Crew", Crew)
+    crew_module.write_note(
+        epic="E", stories="S", project="", repository="R", open_questions="| Q1 | Which key? |"
+    )
+    text = seen["description"]
+    assert "left open for you" in text and "| Q1 | Which key? |" in text
+    assert "your own call as the Architect" in text
+    crew_module.write_note(epic="E", stories="S", project="", repository="R")
+    assert "left open for you" not in seen["description"]
 
 
 # --- 5: nothing waits without the label ----------------------------------------------------------

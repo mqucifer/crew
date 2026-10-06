@@ -30,6 +30,7 @@ from crew_org.flows.board_flow import (
     STORY_PROBLEM_MARKER,
     STORY_SPLIT_MARKER,
 )
+from crew_org.flows.conclusion import open_questions, split_conclusion
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import from_sponsor
@@ -181,7 +182,10 @@ def write_notes(
             except ProjectRecordError:
                 record = None
             project = brief(record) if record else ""
-            epic_text = f"#{number} {epic.title}\n\n{issues.get(repo, number).get('body') or ''}"
+            epic_body = issues.get(repo, number).get("body") or ""
+            epic_text = f"#{number} {epic.title}\n\n{epic_body}"
+            # What the conclusion left open for this note to settle (crew#440).
+            question_ids, question_table = open_questions(split_conclusion(epic_body)[1])
             ruling = decided(issues, repo, number)
             if ruling:
                 epic_text += (
@@ -204,6 +208,8 @@ def write_notes(
                 stories=story_text,
                 project=project,
                 repository=repository_context(clone, editing=False),
+                questions=question_ids,
+                questions_text=question_table,
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -267,21 +273,41 @@ def _to_product_owner(issues, sink, repo, number, why, stories):
     )
 
 
-def _write_one(*, write, review, render, epic, stories, project, repository):
+def _write_one(
+    *, write, review, render, epic, stories, project, repository, questions=(), questions_text=""
+):
     """The rendered note, or (why it couldn't be written, the stories at fault).
 
     The stories are at fault when every remaining conflict is with a story's
     criterion; with a guideline among them, or none at all, it's for a person.
+
+    `questions` are the epic's open questions (crew#440): the note settles every one.
     """
     feedback = ""
     reasons: list[str] = []
     at_fault: tuple[int, ...] = ()
+    # Passed only when there are some, as the epics before the panel have none.
+    extra = {"open_questions": questions_text} if questions_text else {}
     for _attempt in range(ATTEMPTS):
         note = write(
-            epic=epic, stories=stories, project=project, repository=repository, feedback=feedback
+            epic=epic,
+            stories=stories,
+            project=project,
+            repository=repository,
+            feedback=feedback,
+            **extra,
         )
         if note.beyond_reach:
             return (f"The Architect could not resolve: {note.beyond_reach}", ())
+        left = sorted(set(questions) - {s.question for s in getattr(note, "settled", [])})
+        if left:
+            reasons = [f"{', '.join(left)} left open: the epic's conclusion leaves them to you"]
+            feedback = (
+                f"- You didn't settle {', '.join(left)}. The epic's conclusion left them open "
+                "for the design note: answer each in `settled`, by its ID."
+            )
+            at_fault = ()
+            continue
         shown = render(note)
         # The stories too: a note can't overrule their criteria (#258).
         checked = review(project=project, design=shown, stories=stories)

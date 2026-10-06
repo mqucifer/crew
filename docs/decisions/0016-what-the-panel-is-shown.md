@@ -1,7 +1,7 @@
 # 16. What the refinement panel is shown
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440 and crew#468)
+- **Status:** Accepted (built by crew#440 and crew#468); its last bullet superseded by 0018
 
 ## Context
 
