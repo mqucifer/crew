@@ -32,7 +32,7 @@
 | A9 | Conclusion | In the epic body, under its own header, with the approved text untouched | BLUF line, ADR-field rows, open questions apart |
 | A10 | Format | Short cells enforced by schema; no cap on rows; links with words | The same form as the Goal's decision log |
 | A11 | Down the chain | Stories name the rows they follow | Later steps get those rows only; a coverage check confirms every row is used |
-| A12 | References | No bare issue numbers in anything posted | crew#456 |
+| A12 | References | No bare issue numbers in anything posted | crew#456: one guard in `IssueClient` before every post |
 
 ## Build steps
 
