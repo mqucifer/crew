@@ -80,10 +80,12 @@ class Issues:
         notes="- The first release.",
         attested=True,
         epics=(),
+        record=None,
     ):
         self._head, self._run_sha, self._version = head, run_sha, version
         self._tag, self._release, self._notes, self._attested = tag, release, notes, attested
         self._epics = list(epics)
+        self._record = record
         self.created = []
 
     def repository(self, repo):
@@ -100,6 +102,8 @@ class Issues:
             return f'[project]\nname = "sprint-metrics"\nversion = "{self._version}"\n'
         if path == "CHANGELOG.md":
             return CHANGELOG
+        if path == ".crew/project.yaml":
+            return self._record
         return None
 
     def labelled(self, repo, label):
@@ -299,3 +303,42 @@ def test_crew_gaps_are_filed_and_the_sponsor_s_step_is_kept_apart():
     gap_lines = [line for line in body.splitlines() if line.startswith("- ")]
     assert gap_lines and not any(SPONSOR_STEP in line for line in gap_lines)
     assert SPONSOR_STEP in body
+
+
+# --- a private image by the Sponsor's choice (crew#398) -------------------------------------------
+
+
+def record(image: str | None) -> str:
+    line = f"\n    image: {image}" if image else ""
+    return (
+        "version: 2\nintent:\n  scope:\n    purpose: Report delivery metrics.\n"
+        f"  release:\n    publishes: true\n    where: ghcr.io/mqucifer/sprint-metrics{line}\n"
+        "  done:\n    bar: Its criteria are met.\n"
+    )
+
+
+def test_an_image_private_by_choice_is_not_the_sponsor_s_step():
+    """The Sponsor, 2026-09-30: "Why do I want to make it public? It's for me so far.\""""
+    issues = Issues(record=record("private"))
+    result = check(issues, FakeRegistry(unreadable=True))
+    assert result.sponsor == [] and result.filed == [] and issues.created == []
+    assert result.verified == [("sprint-metrics", VERSION)]
+
+
+def test_a_public_image_that_cant_be_read_is_still_the_sponsor_s_step():
+    for answer in ("public", None):
+        result = check(Issues(record=record(answer)), FakeRegistry(unreadable=True))
+        assert result.sponsor == [("sprint-metrics", VERSION)], answer
+
+
+def test_a_private_image_s_release_gaps_are_still_filed_without_a_sponsor_step():
+    issues = Issues(tag=False, release=False, record=record("private"))
+    result = check(issues, FakeRegistry(unreadable=True))
+    assert result.filed == [("sprint-metrics", 400)]
+    body = issues.created[0]["body"]
+    assert SPONSOR_STEP not in body and "make the package public" not in body.lower()
+
+
+def test_a_readable_private_image_is_still_checked():
+    found = gaps(Issues(), FakeRegistry(image=GOOD_IMAGE), "sprint-metrics", VERSION, private=True)
+    assert found == []
