@@ -643,6 +643,10 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
         + [
+            f"#{n} — waits to rebuild until PR #{p} lands (same files)"
+            for n, p in result.waiting_on_files
+        ]
+        + [
             f"#{n} — PR #{pr} was approved and conflicts with main; returned for a rebuild"
             for n, pr in result.rebuilding
         ]

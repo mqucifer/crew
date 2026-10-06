@@ -51,6 +51,16 @@ def panel_step(
     where = list(dict.fromkeys([repo, *search]))
     try:
         context = panel_flow.gather(issues, repo, number, project=project, search=where)
+        # Seen before it crowds the context (crew#468).
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} panel context: {len(context.decisions):,} chars of Goal decisions, "
+            f"{len(context.project_log):,} of the project's log, {len(context.siblings)} siblings",
+            card=number,
+            decisions_chars=len(context.decisions),
+            project_log_chars=len(context.project_log),
+            siblings=len(context.siblings),
+        )
         notes = panel_flow.panel_on(issues, repo, number)
         if notes is None:
             sink.emit(

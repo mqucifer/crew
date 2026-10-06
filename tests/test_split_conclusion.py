@@ -158,7 +158,7 @@ class Gh:
 
 def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=None):
     calls = {"gather": [], "panel": 0, "post": 0, "settle": 0}
-    context = SimpleNamespace(epic_ref="x")
+    context = SimpleNamespace(epic_ref="x", decisions="D", project_log="", siblings=[])
 
     def gather(issues, repo, epic, *, project, search):
         calls["gather"].append((project, search))
