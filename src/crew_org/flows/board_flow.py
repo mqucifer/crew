@@ -45,6 +45,7 @@ from crew_org.flows import artifacts, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
+from crew_org.flows.project_log import read_log
 from crew_org.flows.refine_panel import panel_step
 from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
@@ -1262,6 +1263,8 @@ def refine_epics(
             # missed or mistaken for what the Sponsor approved (crew#440).
             body, conclusion = conclusion_flow.split_conclusion(_goal_body(issues, repo, number))
             rows = conclusion_flow.row_ids(conclusion)
+            # What the project has decided for every epic (crew#468).
+            project_log = read_log(issues, repo)
             planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
             pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
             # Its own view of the repository, and it may ask for more (#231).
@@ -1294,6 +1297,7 @@ def refine_epics(
                     ),
                     planned_numbers={n for n, _t, _e in planned},
                     conclusion=conclusion,
+                    project_log=project_log,
                 )
                 proposal = attributed(split_epic, card=number, repo=repo)(
                     epic_card.title, body, **asked_for
