@@ -1403,30 +1403,95 @@ def decisions(
     Collected by rule: the Sponsor's comments and decision log on the Goal's own
     cards, plus anything of theirs elsewhere that names the Goal. Read-only.
     """
-    import re  # noqa: PLC0415
-
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.flows.decisions import collect_decisions, render
     from crew_org.tools.github_issues import IssueClient
 
-    named = re.fullmatch(r"(?:[\w.-]+/)?([\w.-]+)#(\d+)", goal)
-    if not named:
-        raise typer.BadParameter("Write the Goal as `repo#n`, like sprint-metrics#174.")
-    repo, number = named.group(1), int(named.group(2))
-
+    repo, number = _issue_ref(goal)
     env = load_env()
     token, _ = resolve_credentials(env)
     owner = env["GITHUB_OWNER"]
-    # Where the Sponsor writes about a Goal: its own repository, the crew's, and
-    # the other repositories the crew works in.
-    repos = [
+    found = collect_decisions(
+        IssueClient(token, owner), goal_repo=repo, goal=number, repos=_decision_repos(repo, env)
+    )
+    typer.echo(render(found, goal=f"{owner}/{repo}#{number}"))
+
+
+def _issue_ref(text: str) -> tuple[str, int]:
+    """`repo#n` or `owner/repo#n` as (repo, n)."""
+    import re  # noqa: PLC0415
+
+    named = re.fullmatch(r"(?:[\w.-]+/)?([\w.-]+)#(\d+)", text)
+    if not named:
+        raise typer.BadParameter("Write it as `repo#n`, like sprint-metrics#174.")
+    return named.group(1), int(named.group(2))
+
+
+def _decision_repos(repo: str, env: dict[str, str]) -> list[str]:
+    """Where the Sponsor writes about a Goal: its own repository, the crew's, and
+    the other repositories the crew works in."""
+    return [
         repo,
         env.get("CREW_REPO", "crew"),
         *(load_org().get("delivery", {}).get("repos") or []),
     ]
-    found = collect_decisions(IssueClient(token, owner), goal_repo=repo, goal=number, repos=repos)
-    typer.echo(render(found, goal=f"{owner}/{repo}#{number}"))
+
+
+@app.command()
+def panel(
+    epic: str = typer.Argument(..., help="The epic, as `repo#n` or `owner/repo#n`."),
+    post: bool = typer.Option(
+        False, "--post", help="Post the notes on the epic as one comment. Otherwise they print."
+    ),
+) -> None:
+    """Run the refinement panel on an epic: Architect, UX Designer, QA and DevOps (crew#440).
+
+    Each reads the epic once, in parallel, against its Goal, the project's record,
+    the Sponsor's decisions and its sibling epics. Takes about five minutes.
+    Nothing is written to GitHub without --post.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.panel_crew import run_panel
+    from crew_org.events import bridge_crewai, flush_bridge, working_on
+    from crew_org.flows import panel as flow
+    from crew_org.project import RECORD_PATH, ProjectRecordError, brief, parse
+    from crew_org.tools.github_issues import IssueClient
+
+    repo, number = _issue_ref(epic)
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    issues = IssueClient(token, env["GITHUB_OWNER"])
+
+    text = issues.file_at(repo, RECORD_PATH, "main")
+    try:
+        project = brief(parse(text)) if text else ""
+    except ProjectRecordError as exc:
+        console.print(f"[yellow]Reading without {repo}'s record:[/] {escape(str(exc))}")
+        project = ""
+    try:
+        context = flow.gather(
+            issues, repo, number, project=project, search=_decision_repos(repo, env)
+        )
+    except flow.NotUnderAGoal as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    console.print(
+        f"Panel on {context.epic_ref}: {len(context.siblings)} sibling epics, "
+        f"{len(context.decisions):,} characters of decisions."
+    )
+    # The panel's model calls are recorded like a tick's.
+    bridge_crewai(EventSink(VAR / "events" / "panel.jsonl"))
+    try:
+        with working_on(card=number, repo=repo):
+            result = run_panel(context)
+    finally:
+        flush_bridge()
+    typer.echo(flow.render(result))
+    if post:
+        posted = flow.post(issues, repo, number, result)
+        console.print("[green]Posted.[/]" if posted else "[yellow]Already has a panel comment.[/]")
 
 
 @app.command()
