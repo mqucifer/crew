@@ -148,7 +148,9 @@ service:
   extensions: [health_check, file_storage]
   pipelines:
     logs:
-      receivers: [file_log/crew]
+      # The crew's events, tailed from var/telemetry; and its levelled log stream,
+      # sent over OTLP with its trace context (crew#449). Both pass the no-content step.
+      receivers: [file_log/crew, otlp]
       processors: [memory_limiter, filter/loki-window, transform/no-content, resource/logs, resource/crew, batch]
       exporters: [otlp_http/grafana]  # add debug to see it locally
     metrics:

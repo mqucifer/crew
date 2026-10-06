@@ -128,6 +128,11 @@ class EventSink:
                     self.telemetry.parent.mkdir(parents=True, exist_ok=True)
                     with self.telemetry.open("a", encoding="utf-8") as fh:
                         fh.write(telemetry.line(event))
+        # One levelled stream (crew#449): the event, mirrored into the crew's log.
+        with contextlib.suppress(Exception):
+            from crew_org import log  # noqa: PLC0415
+
+            log.from_event(event)
         for fn in subscribers:
             # A broken view must never take down the run that feeds it.
             with contextlib.suppress(Exception):
