@@ -367,6 +367,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
         sponsor=crew.sponsor,
         repos=crew.repos,
         holds=crew.design_holds,
+        crew_repo=crew.crew_repo,
     )
     # Parking an epic is movement: the card left Needs Refinement, and a pass
     # that reports "nothing moved" over it would hide the one thing that
