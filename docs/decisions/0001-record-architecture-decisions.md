@@ -1,7 +1,7 @@
 # 1. Record architecture decisions
 
 - **Date:** 2026-10-02
-- **Status:** Accepted; its "What gets one" bullet superseded by 0019
+- **Status:** Accepted. How decisions are recorded is now kept in this directory's README, as living documentation; the process bullets below were its first version.
 
 ## Context
 

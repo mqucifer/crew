@@ -59,11 +59,9 @@ file never reaches them. Change it by pull request, like any other file.
 
 ## Decisions
 - **A decision that changes how the crew works becomes an ADR** in the session
-  it's made: across roles, steps or projects, or costly to reverse (ADR 0019).
-  It goes into `docs/decisions/` by PR, and the Sponsor's merge is the approval.
-  Not into memory.
-- **A choice inside one issue isn't an ADR.** Which option meets a criterion, a
-  retry count, a wording: it goes in that issue and its PR.
+  it's made: across roles, steps or projects, or costly to reverse. A choice inside
+  one issue goes in that issue and its PR. The process is kept in
+  `docs/decisions/README.md`; read it there. Not into memory.
 - **The Sponsor's decisions are asked in chat,** with the options and a
   recommendation, never left in a PR body for them to find.
 - **Read the ADRs before changing what they cover.** To change a decision,
