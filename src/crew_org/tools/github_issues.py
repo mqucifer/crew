@@ -487,6 +487,19 @@ class IssueClient:
             return []
         return self.failed_jobs(repo, runs[0]["id"])
 
+    def list_dir(self, repo: str, path: str, ref: str) -> list[str]:
+        """The names of the files in a directory at `ref`. Empty if there is no such directory."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/contents/{path}", params={"ref": ref}
+        )
+        if response.status_code == 404:
+            return []
+        response.raise_for_status()
+        found = response.json()
+        return (
+            [e["name"] for e in found if e.get("type") == "file"] if isinstance(found, list) else []
+        )
+
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         """A file's text at `ref`, or None if there is no such file."""
         response = self._client.get(
