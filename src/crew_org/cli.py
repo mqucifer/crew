@@ -7,9 +7,10 @@ the individual transitions within it.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from rich import box
@@ -93,6 +94,12 @@ def tick(
         with attach(sink, view):
             _synthetic_tick(sink)
         return
+    # One levelled stream (crew#449): var/logs/crew.jsonl, its telemetry projection,
+    # and the console. Redirected, the console shows progress live.
+    from crew_org import log  # noqa: PLC0415
+
+    # To Grafana over OTLP, through the Sponsor's collector, when org.yaml names it.
+    log.setup(var=VAR, otlp_endpoint=(org.get("telemetry") or {}).get("otlp_endpoint"))
 
     # The proxy is project-scoped and will not always be running. Say so plainly
     # rather than surfacing a connection error from deep inside an agent.
@@ -197,9 +204,35 @@ def tick(
 
     # A trace per tick, to the Sponsor's collector, when org.yaml names it (#283).
     tracing.start(org)
-    with attach(sink, view), tracing.span("tick", **{"crew.sprint": sprint}):
-        result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
+    tick_log = logging.getLogger("crew_org.tick")
+    with log.scoped(sprint=sprint):
+        # Which code ran this tick, first: a tick once crashed from mixed versions,
+        # and nothing recorded which code it was (crew#449).
+        version = log.code_version()
+        with (
+            attach(sink, view),
+            tracing.span(
+                "tick", **{"crew.sprint": sprint, "crew.commit": version.get("commit", "")}
+            ),
+        ):
+            # Inside the tick's span, so its first record carries the trace's id.
+            log.event(
+                tick_log,
+                "tick.started",
+                f"tick on {', '.join(sorted(allowed))}, {sprint}",
+                repos=",".join(sorted(allowed)),
+                **version,
+            )
+            result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
+        log.event(
+            tick_log,
+            "tick.finished",
+            f"{result.passes} passes, {'settled' if result.settled else 'stopped at the pass cap'}",
+            passes=result.passes,
+            settled=result.settled,
+        )
     tracing.stop()
+    log.shutdown()
 
     _render_tick(result)
     _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)
@@ -1572,6 +1605,50 @@ def settle(
             )
     finally:
         flush_bridge()
+
+
+@app.command(name="log")
+def log_command(
+    level: str = typer.Option("INFO", "--level", help="DEBUG, INFO, WARNING, ERROR."),
+    card: int = typer.Option(None, "--card", help="Only this card's records."),
+    phase: str = typer.Option(None, "--phase", help="Only this phase: refine, deliver, land..."),
+    event: str = typer.Option(None, "--event", help="Only events starting with this name."),
+    last: int = typer.Option(40, "--last", help="How many matching records to show first."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Keep printing new records."),
+) -> None:
+    """The crew's log, readable: what a tick is doing, and what it decided (crew#449).
+
+    Reads `var/logs/crew.jsonl`, where every command that logs writes, with each record's
+    level, phase and card. `--follow` watches a running tick.
+    """
+    import json as _json  # noqa: PLC0415
+
+    from crew_org import log  # noqa: PLC0415
+
+    path = VAR / "logs" / "crew.jsonl"
+    if not path.exists():
+        console.print(f"[dim]No log yet at {path}.[/]")
+        raise typer.Exit(code=0)
+
+    def wanted(text: str) -> dict[str, Any] | None:
+        try:
+            record = _json.loads(text)
+        except ValueError:
+            return None
+        ok = log.matches(record, level=level, card=card, phase=phase, event=event)
+        return record if ok else None
+
+    with path.open(encoding="utf-8") as fh:
+        found = [r for r in (wanted(t) for t in fh) if r is not None]
+        for record in found[-last:]:
+            typer.echo(log.line(record))
+        while follow:
+            text = fh.readline()
+            if not text:
+                time.sleep(0.5)
+                continue
+            if (fresh := wanted(text)) is not None:
+                typer.echo(log.line(fresh))
 
 
 @app.command()

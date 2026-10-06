@@ -22,12 +22,13 @@ having no way to undo it, so the answer is a revert, not a rehearsal (crew#82).
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org import profiles
+from crew_org import log, profiles
 from crew_org.escalation import EscalationLedger, EscalationPolicy
 from crew_org.events import (
     CrewEvent,
@@ -48,6 +49,8 @@ from crew_org.tools.sandbox import Sandbox
 # A pass that keeps moving forever is a bug, not a busy board. Five is well
 # past what a real board needs: refinement feeds admission feeds delivery, and
 # each is one pass deep.
+_log = logging.getLogger(__name__)
+
 MAX_PASSES = 5
 # How long a pass that moved nothing waits for pull requests it left in the
 # merge queue (#314). GitHub lands one in about a minute; its own check timeout
@@ -759,6 +762,30 @@ def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
     )(crew)
 
 
+def _record(outcome: PhaseOutcome) -> None:
+    """A phase's decisions, on the record as it finishes (crew#449).
+
+    What a phase held, blocked or failed on used to reach a person only in the tick's
+    final console summary, buffered until exit: on 2026-10-06 an epic waited a whole
+    tick with its reason nowhere in the event log.
+    """
+    with log.scoped(phase=outcome.name):
+        for held in outcome.held:
+            log.event(_log, "phase.held", f"held: {held}")
+        for blocked in outcome.blocked:
+            log.event(_log, "phase.blocked", f"blocked: {blocked}", level=logging.WARNING)
+        if outcome.error:
+            log.event(_log, "phase.failed", f"failed: {outcome.error}", level=logging.ERROR)
+        log.event(
+            _log,
+            "phase.finished",
+            f"{outcome.summary or 'nothing'}",
+            level=logging.INFO if outcome.moved or outcome.error else logging.DEBUG,
+            moved=outcome.moved,
+            **{f"count_{k}": v for k, v in outcome.counts.items()},
+        )
+
+
 def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
@@ -781,6 +808,8 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     for _ in range(max_passes):
         result.passes += 1
         moved_this_pass = False
+        # Every record in this pass says which pass (crew#449).
+        in_pass = log.enter(pass_=result.passes)
 
         # The board as it actually stands, once per pass. The live view seeds
         # its swimlanes from this; without it the lanes only ever showed the
@@ -845,7 +874,9 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                 outcome = PhaseOutcome(name, error=f"{type(exc).__name__}: {exc}"[:200])
                 crew.sink.note(EventKind.NOTE, f"{name} failed: {outcome.error}"[:120])
             result.outcomes.append(outcome)
+            _record(outcome)
             moved_this_pass = moved_this_pass or outcome.moved
+        log.leave(in_pass)
         if result.throttled:
             break
 

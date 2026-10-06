@@ -29,6 +29,14 @@ DETAIL = frozenset(
         "attempt",
         "for",
         "tick",
+        # Which code ran, and how a tick and its phases went (crew#449): a commit id, a
+        # flag, names and counts.
+        "commit",
+        "dirty",
+        "repos",
+        "passes",
+        "settled",
+        "moved",
         # A model call: alias, reason it stopped, tokens, time, ids (#179).
         "model",
         "tool",
