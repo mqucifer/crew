@@ -128,3 +128,42 @@ def test_an_epic_without_a_conclusion_gives_the_check_nothing_extra(monkeypatch)
     monkeypatch.setattr(board_flow, "check_criteria", checker)
     run_tick(monkeypatch, SPLIT, issues=Plain())
     assert checker.calls[0]["conclusion"] == ""
+
+
+# --- the check sees what's already decided (the sprint-metrics#406 proof) ------------------
+
+
+def test_the_check_is_shown_the_goal_and_the_projects_log_before_the_stories(monkeypatch):
+    text = described(
+        monkeypatch,
+        conclusion="C",
+        goal="A user sends it: started, blocked, unblocked, finished, escalated.",
+        project_log=(
+            "## The project's decision log\n\n### 5. The service accepts five kinds of event"
+        ),
+    )
+    assert "## The Goal, set by the Sponsor" in text and "unblocked, finished" in text
+    assert "five kinds of event" in text
+    assert text.index("five kinds of event") < text.index("## The proposed stories")
+
+
+def test_restating_a_decision_is_not_deciding_an_open_question(monkeypatch):
+    text = described(monkeypatch, conclusion="C")
+    assert "decides an open question (Q)" in text
+    assert "restating a decision isn't deciding the question" in text
+
+
+def test_the_tick_gives_the_check_the_projects_log(monkeypatch):
+    from tests.test_project_log import LOG
+
+    class WithLog(Concluded):
+        def list_dir(self, repo, path, ref):
+            return list(LOG)
+
+        def file_at(self, repo, path, ref):
+            return LOG.get(path.rsplit("/", 1)[1])
+
+    checker = Checker()
+    checked_tick(monkeypatch, checker, issues=WithLog())
+    assert "A card counts where it merges" in checker.calls[0]["project_log"]
+    assert checker.calls[0]["goal"] == ""  # this epic has no Goal above it

@@ -1263,6 +1263,8 @@ def refine_epics(
             # missed or mistaken for what the Sponsor approved (crew#440).
             body, conclusion = conclusion_flow.split_conclusion(_goal_body(issues, repo, number))
             rows = conclusion_flow.row_ids(conclusion)
+            # The Goal, shown to the criteria check with the project's log (crew#440).
+            goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
             # What the project has decided for every epic (crew#468).
             project_log = read_log(issues, repo)
             planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
@@ -1348,6 +1350,8 @@ def refine_epics(
                 repository=repository,
                 planned=others,
                 conclusion=conclusion,
+                goal=goal_text,
+                project_log=project_log,
             )
             if checked.conflicts:
                 asked_for["feedback"] = "\n\n".join(
@@ -1361,6 +1365,8 @@ def refine_epics(
                     repository=repository,
                     planned=others,
                     conclusion=conclusion,
+                    goal=goal_text,
+                    project_log=project_log,
                 )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
