@@ -9,13 +9,16 @@ present.
 
 from __future__ import annotations
 
+import functools
+import re
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
 from crew_org.tokens import BearerAuth, Token
-from crew_org.tools.github_http import GitHubTransport
+from crew_org.tools.github_http import WRITES, GitHubTransport
+from crew_org.tools.references import explicit
 
 API = "https://api.github.com"
 GRAPHQL = "https://api.github.com/graphql"
@@ -147,6 +150,10 @@ class IssueClient:
         self.trust = trust or load_trust()
         # (repo, number, login) of each comment left unread, for the event log.
         self.ignored: set[tuple[str, int, str]] = set()
+        # (repo, number) of each bare reference left unlinked because no such issue or
+        # pull request exists there (crew#456).
+        self.unresolved: set[tuple[str, int]] = set()
+        self._exists: dict[tuple[str, int], bool] = {}
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
             # Paced writes and throttles waited out (#293).
@@ -160,11 +167,32 @@ class IssueClient:
         )
 
     def _request(self, method: str, path: str, **json: Any) -> dict[str, Any]:
+        # Every body the crew posts, made explicit first: no bare issue numbers (crew#456).
+        posted = re.match(rf"/repos/{re.escape(self.owner)}/([^/]+)/", path)
+        if method in WRITES and posted and isinstance(json.get("body"), str):
+            repo = posted.group(1)
+            json["body"], unresolved = explicit(
+                json["body"],
+                owner=self.owner,
+                repo=repo,
+                exists=functools.partial(self.exists, repo),
+            )
+            self.unresolved.update((repo, n) for n in unresolved)
         response = self._client.request(method, f"{API}{path}", json=json or None)
         if response.status_code >= 400:
             detail = response.json().get("message", response.text[:120])
             raise IssueError(f"{method} {path} -> {response.status_code}: {detail}")
         return response.json() if response.content else {}
+
+    def exists(self, repo: str, number: int) -> bool:
+        """Is `number` an issue or pull request in `repo`? Asked once per number."""
+        key = (repo, number)
+        if key not in self._exists:
+            response = self._client.get(f"{API}/repos/{self.owner}/{repo}/issues/{number}")
+            # Only a definite "no such issue" leaves it unlinked: on any other answer
+            # it is linked, which is what GitHub would have done with the bare number.
+            self._exists[key] = response.status_code not in (404, 410)
+        return self._exists[key]
 
     def create(
         self,
