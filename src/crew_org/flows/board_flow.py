@@ -1343,6 +1343,7 @@ def refine_epics(
                 stories=criteria_check.render_split(proposal),
                 repository=repository,
                 planned=others,
+                conclusion=conclusion,
             )
             if checked.conflicts:
                 asked_for["feedback"] = "\n\n".join(
@@ -1355,6 +1356,7 @@ def refine_epics(
                     stories=criteria_check.render_split(proposal),
                     repository=repository,
                     planned=others,
+                    conclusion=conclusion,
                 )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)

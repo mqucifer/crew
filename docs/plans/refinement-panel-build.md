@@ -2,7 +2,7 @@
 
 **Bottom line:** build the panel and its settle step into refinement, then prove them on sprint-metrics #406. Success means #406 splits without the contradictions and missed decisions of 2026-10-01.
 
-**Status:** planned with the Sponsor on 2026-10-02. Steps 1–5 are done (crew#466, the panel crew, and the settle step). Step 6, the split reading the conclusion, is in review, behind `refinement.panel` in `org.yaml`, which is off until step 9; the rest isn't built. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
+**Status:** planned with the Sponsor on 2026-10-02. Steps 1–6 are done (the split reads the conclusion, behind `refinement.panel` in `org.yaml`, which is off until step 9). Step 7, the criteria check reading the rows, is in review; the rest isn't built. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
 
 ## Where things stand (2026-10-02)
 

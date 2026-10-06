@@ -24,7 +24,8 @@ class CriteriaConflict(BaseModel):
     against: str = Field(
         description=(
             "What it contradicts, quoted: another criterion (name its story), or the "
-            "merged code or test (name the file and the definition or test)"
+            "merged code or test (name the file and the definition or test), or a row of "
+            "the epic's conclusion (name its ID)"
         )
     )
     why: str = Field(description="Why no implementation can satisfy both")
@@ -39,8 +40,14 @@ class CriteriaCheck(BaseModel):
     )
 
 
-def check_criteria(*, stories: str, repository: str = "", planned: str = "") -> CriteriaCheck:
-    """QA's check of a proposed split's criteria, against each other and the code."""
+def check_criteria(
+    *, stories: str, repository: str = "", planned: str = "", conclusion: str = ""
+) -> CriteriaCheck:
+    """QA's check of a proposed split's criteria, against each other, the code and the rows.
+
+    The epic's conclusion (crew#440) is decided before the split: a criterion that
+    goes against one of its rows can't be right, however well it reads.
+    """
     spec = load_agents()["qa_engineer"]
     checker = build_agent("qa_engineer", {**spec, **spec["criteria_check"]})
     task = Task(
@@ -51,6 +58,11 @@ def check_criteria(*, stories: str, repository: str = "", planned: str = "") -> 
                 if planned
                 else ""
             )
+            + (
+                f"## The epic's conclusion, decided before the split\n\n{conclusion}\n\n"
+                if conclusion
+                else ""
+            )
             + "## The proposed stories\n\n"
             f"{stories}\n\n"
             "Report every criterion of the proposed stories that can't pass alongside:\n"
@@ -58,8 +70,16 @@ def check_criteria(*, stories: str, repository: str = "", planned: str = "") -> 
             "that expects a different outcome from the same situation;\n"
             "- the project's code: a value the code defines or computes differently, or "
             "behaviour a merged test pins. A story that declares it changes those tests "
-            "(its Existing tests line says a contract change naming them) is allowed to.\n\n"
-            "Quote both sides. A criterion that is merely vague, large or worded "
+            "(its Existing tests line says a contract change naming them) is allowed to"
+            + (
+                ";\n- a row of the epic's conclusion above: a criterion that expects the "
+                "opposite of what a row decides. A criterion that decides an open question "
+                "(Q) the row table leaves for the design note is a conflict too, since no "
+                "story settles it"
+                if conclusion
+                else ""
+            )
+            + ".\n\nQuote both sides. A criterion that is merely vague, large or worded "
             "differently from how you would write it is not a conflict."
         ),
         expected_output="Every criterion that can't be met, or none.",
