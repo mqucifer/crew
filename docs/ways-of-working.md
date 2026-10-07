@@ -862,7 +862,13 @@ the wording here.
    - is reached the way a user reaches it: a service is started detached with
      its port published, and answers from outside the container;
    - runs as a user other than root;
-   - is built from a base pinned by digest, kept current by a dependency updater.
+   - is built from a base pinned by digest, kept current by a dependency updater;
+   - shows why when it fails: a step that starts the container prints the
+     container's logs (`docker logs`) before it fails, so the failure names its
+     cause. The crew can't read a container's output after the job ends, so only
+     the workflow can show it. sprint-metrics#433's check failed four times as
+     "`/health` did not become reachable", and three rounds went on networking,
+     while the container's stderr said `libpq` was missing (crew#494).
 
    Which tools do this is the Architect's design, reviewed by the DevOps
    Engineer (§20). Choose a tool by what it's been seen to catch: hadolint
