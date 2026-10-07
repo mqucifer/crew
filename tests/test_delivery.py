@@ -373,17 +373,28 @@ def test_an_existing_test_named_without_code_is_told_where_it_goes():
     assert "tests/test_formats.py::test_formats_worked_example_markdown_output" in str(raised.value)
 
 
-# sprint-metrics#427: a repair re-named the six tests already on its branch, was told
-# they go in proven_by_existing, a field only a first attempt has, and dropped
-# everything. Three answers refused, then the escalation.
+# sprint-metrics#427, #450 and #453: repairs re-named the tests already on their
+# branch beside the edits that fixed them, and were refused until they blocked, the
+# fix lost with them (crew#489, crew#511). The names are dropped and the fix applied.
 ON_THE_BRANCH = {"criterion": "POST accepted", "path": "tests/test_service.py", "test": "test_post"}
 
 
 @pytest.mark.parametrize("form", [Implementation, Rework])
-def test_a_repair_naming_a_test_on_its_branch_is_told_to_leave_it_out(form):
-    with pytest.raises(ValidationError, match="leave it out") as raised:
-        form(summary="s", criteria_tests=[ON_THE_BRANCH], new_files=[code()])
-    assert "proven_by_existing" not in str(raised.value), "not a field this form has"
+def test_a_repair_naming_a_test_on_its_branch_keeps_its_fix(form):
+    fix = FileEdit(
+        path="src/pkg/service.py",
+        operation="replace",
+        target="ENDPOINTS",
+        source="ENDPOINTS = ()\n",
+    )
+    answer = form(summary="s", criteria_tests=[ON_THE_BRANCH], edits=[fix])
+    assert answer.criteria_tests == []
+    assert answer.all_edits == [fix]
+
+
+def test_a_repair_that_only_names_tests_still_changes_nothing():
+    with pytest.raises(ValidationError, match="must create a file or edit one"):
+        Implementation(summary="s", criteria_tests=[ON_THE_BRANCH])
 
 
 def test_a_repair_may_still_add_a_test_written_in_full():
