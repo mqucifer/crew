@@ -15,12 +15,19 @@ recommendation. When one meets the line above, Claude writes the ADR by PR in th
 session it's made, and the Sponsor's merge is the approval. When it's unclear which
 side of the line a decision falls, that's asked with the decision.
 
-**Changing one:** write a new ADR that supersedes it, restating the whole decision so
-the new one can be read alone, and set the old one's Status to `Superseded by NNNN`.
-The old body isn't edited.
+**An ADR says what's true now** (Sponsor, 2026-10-07). Reading one ADR is enough to
+know the current decision; nobody has to follow a chain of superseding records.
 
-Use the format of `0001` (Date, Status, Context, Decision, Consequences),
-numbered in order, with a kebab-case title.
+**Changing one:** edit it in place, by PR. The Context, Decision and Consequences
+are rewritten to read as the decision stands now. A dated line is added to the
+`## Changelog` at its bottom saying what changed, why, and who decided, so the
+earlier version stays findable there and in git. A decision dropped altogether
+keeps its file, with Status `Withdrawn` and a changelog line saying why. A new ADR
+is for a new decision, not a change to an existing one.
+
+Use the format of `0001` (Date, Status, Context, Decision, Consequences,
+Changelog), numbered in order, with a kebab-case title. The Date is when the
+decision was first made.
 
 | ADR | Decision | Date | Status |
 |---|---|---|---|
@@ -39,7 +46,7 @@ numbered in order, with a kebab-case title.
 | [0013](0013-claude-and-the-crew-are-independent.md) | Claude's standards and the crew's are independent | 2026-10-02 | Accepted |
 | [0014](0014-logging-one-levelled-stream.md) | Logging: one levelled stream, named events for what code reads | 2026-10-02 | Accepted (built by crew#449) |
 | [0015](0015-a-goals-decisions-are-the-sponsors-words-under-a-heading.md) | A Goal's decisions are the Sponsor's comments and headed sections | 2026-10-05 | Accepted |
-| [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468); last bullet superseded by 0018 |
+| [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468) |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
-| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and records it | 2026-10-05 | Accepted (built by crew#440) |
+| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (the Architect's settle before the split to be built by crew#440) |
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | An epic is the smallest unit of release | 2026-10-07 | Accepted (to be built by crew#500) |

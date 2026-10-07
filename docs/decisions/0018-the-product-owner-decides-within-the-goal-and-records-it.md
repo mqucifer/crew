@@ -1,7 +1,7 @@
-# 18. The Product Owner decides within the Goal, and records it
+# 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440)
+- **Status:** Accepted (built by crew#440; the Architect's settle before the split is still to be built there)
 
 ## Context
 
@@ -14,6 +14,15 @@ what its sources don't hold, so I called it overreach.
 The Sponsor, 2026-10-05: the Product Owner needs leeway in order to hand off
 ownership, so long as the call is recorded and doesn't contradict the overall
 Goal. It sounds like a real team.
+
+The panel's proof (sprint-metrics epics 406 and 407, Sprints 17 and 18) then showed
+that leaving design questions to the design note was too late. The design note is
+written after the split, so the split wrote criteria on contracts nobody had
+settled yet: the intake schema, the health check, what "the last N sprints" means.
+All five story problems raised in refinement came from that, each costing a
+Product Owner answer and a re-split. The panel was built because design was
+missing too much (the Sponsor, 2026-10-07); it found the right questions, and then
+handed them on past the point where they were needed.
 
 ## Decision
 
@@ -30,9 +39,15 @@ Sponsor, 2026-10-05.
   Architect is a design question (a path, a response shape, a parameter): it stays
   an open question for the design note unless a source settles it. The code refuses
   an own call on such a note and sends the conclusion back.
-- **The Architect settles every open question** in the design note, as its own call
-  within the Goal and the decided rows. The note names each by its ID, and one left
-  out is asked for again; one still left out after the retries is for a person.
+- **The Architect settles every open question before the split,** in the settle
+  step, right after the Product Owner's conclusion. Each answer is its own call
+  within the Goal and the decided rows, and becomes a decided row the split writes
+  criteria against. It names each question by its ID; one left out is asked for
+  again, and one still left out after the retries is for a person.
+- **The design note, after the split, follows those rows.** It decides what's left
+  to design: which module owns what, and the file layout. A question that can only
+  be answered with the code read stays open, and the split writes no criterion on
+  it until the design note settles it.
 - **The Sponsor is asked only when the Product Owner can't tell which way the Goal
   points**, so that any call it made might contradict it.
 
@@ -49,8 +64,16 @@ Sponsor whenever its written sources ran out.
   check and the Sponsor's review of the conclusion are what catch the rest.
 - The first run with the leeway had the Product Owner deciding API paths, response
   shapes and parameters. The Sponsor drew the line there (2026-10-05): design goes
-  to the Architect, which must now answer what the conclusion leaves it.
+  to the Architect.
+- Refinement costs one more Architect call for each epic with open design questions,
+  and saves the story problems and re-splits they caused.
 - A call can narrow an approved epic, as the 406 row did, so long as it stays within
   the Goal and is recorded. If narrowing epics proves to be a problem, that is a
   further limit for the Sponsor to set.
 - Once projects keep decision logs (crew#468), the calls go there too.
+
+## Changelog
+
+- **2026-10-07:** the Architect settles open design questions before the split,
+  not in the design note after it, so the split's criteria build on settled
+  contracts (Sponsor, from the evidence on sprint-metrics epics 406 and 407).

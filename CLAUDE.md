@@ -64,8 +64,9 @@ file never reaches them. Change it by pull request, like any other file.
   `docs/decisions/README.md`; read it there. Not into memory.
 - **The Sponsor's decisions are asked in chat,** with the options and a
   recommendation, never left in a PR body for them to find.
-- **Read the ADRs before changing what they cover.** To change a decision,
-  write a new ADR that supersedes the old one; don't edit the old one.
+- **Read the ADRs before changing what they cover.** An ADR says what's true
+  now: to change a decision, edit its ADR by PR and add a dated line to its
+  Changelog.
 
 ## Never
 - **An Anthropic API key, anywhere.** Escalation runs on the subscription
