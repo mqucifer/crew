@@ -116,6 +116,9 @@ delivery:
     - sprint-metrics
     # Where the crew and its projects run, and why; private (crew#335, §20).
     - infra
+    # The public site that shows how the crew works, built from its published
+    # data (crew Discussion 260; onboarded 2026-10-07).
+    - crew-presentation
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in
