@@ -10,8 +10,8 @@ judge. A proposal is refused, and the Architect told why, when:
 - the Code Reviewer finds it contradicts a guideline: crew-wide (§19) or the
   project's own. A judgement, by a role that didn't write the proposal.
 
-It gets one retry with the reasons. A second refusal ends it with the reasons
-named, and no pull request.
+Each check gives one retry with its reasons. A second refusal by the same check
+ends it with the reasons named, and no pull request.
 """
 
 from __future__ import annotations
@@ -176,8 +176,12 @@ def design(
     )
     feedback = ""
     ended = Designed()
-    for attempt in range(1, ATTEMPTS + 1):
-        ended.attempts = attempt
+    # Counted per check (crew#513). Shared, a mechanical refusal spent the only
+    # retry: crew-presentation's second proposal fixed it, and the review's five
+    # findings ended the run without the Architect ever seeing them.
+    refusals = {"mechanical": 0, "review": 0}
+    while max(refusals.values()) < ATTEMPTS:
+        ended.attempts += 1
         proposal = propose_design(
             project=project,
             repository=repository,
@@ -195,7 +199,9 @@ def design(
         if pinned is not None:
             proposal.sandbox_image = pinned
         reasons += unpinnable or image_problems(pinned)
-        if not reasons:
+        if reasons:
+            refusals["mechanical"] += 1
+        else:
             candidate = to_design(proposal)
             shown = yaml.safe_dump(
                 candidate.model_dump(exclude_none=True, exclude_defaults=True), sort_keys=False
@@ -215,6 +221,7 @@ def design(
                 ended.record = record.model_copy(update={"design": candidate})
                 ended.refused = []
                 return ended
+            refusals["review"] += 1
         ended.refused = reasons
         feedback = "\n".join(f"- {r}" for r in reasons)
     return ended
