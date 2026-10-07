@@ -23,8 +23,8 @@ Consequences.
   costly to reverse. Routine implementation choices stay in PR text.
 - **How:** Claude writes it by PR in the session the decision is made, and the
   Sponsor's merge is the approval.
-- **Changing one:** a new ADR supersedes the old one. The old one's Status
-  names its successor, and its body isn't edited.
+- **Changing one:** the ADR is edited in place, so it says what's true now,
+  and a dated line in its Changelog records what changed.
 
 These records are about the crew itself. They aren't the crew's ADRs for the
 products it builds (crew#190), and the crew agents aren't shown them.
@@ -36,3 +36,9 @@ products it builds (crew#190), and the crew agents aren't shown them.
 - Each ADR adds a small PR for the Sponsor to merge.
 - Backfilled ADRs (0002 to 0013) give the date the decision was first made, and
   say where it was recorded before.
+
+## Changelog
+
+- **2026-10-07:** an ADR is changed in place and keeps a changelog, instead of
+  being superseded by a new one, so each ADR reads as the decision now (Sponsor,
+  as their team does at work).
