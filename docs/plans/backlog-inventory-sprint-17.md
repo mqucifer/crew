@@ -10,7 +10,7 @@ As of 2026-10-06, Sprint 17 under way. It's refreshed at sprint close, so the sp
 |---|---|
 | Open issues | 38: 5 P1, 14 P2, 14 P3, 5 unlabelled (3 retros, 1 retro finding, 1 standup) |
 | Open discussions | 11, all ideas |
-| Closed during Sprint 17 so far | [crew#489](https://github.com/mqucifer/crew/issues/489) (the repair form's message) |
+| Closed during Sprint 17 so far | [crew#489](https://github.com/mqucifer/crew/issues/489) (the repair form's message), [crew#398](https://github.com/mqucifer/crew/issues/398) (a private image by choice), [crew#491](https://github.com/mqucifer/crew/issues/491) (this inventory), [crew#494](https://github.com/mqucifer/crew/issues/494) (container logs on failure) |
 
 ## The question the session starts from
 
@@ -113,6 +113,40 @@ Evidence from Sprint 17 for the QA suite is on [D261](https://github.com/mqucife
 | [D282](https://github.com/mqucifer/crew/discussions/282) DORA metrics proper | Waits on releases. |
 | [D359](https://github.com/mqucifer/crew/discussions/359) Panels and teams | Results recorded (2026-09-29). The refinement panel ([crew#440](https://github.com/mqucifer/crew/issues/440)) used them. |
 | [D422](https://github.com/mqucifer/crew/discussions/422) Try other models on the crew's work | Ornith-1.5 and Qwen3.8-Flash-Next tried. Not scheduled. |
+
+## Raised during Sprint 17
+
+### An idea for the session: rules where they're needed, not in every prompt
+
+The Sponsor, 2026-10-07. The Developer often fails fast on rules it could have known: refused forms, wrong kinds of edit. Each refusal costs a round. The question is how to stop these systematically, without making every prompt longer, and without hand-coding every rule.
+
+**Counted from Sprint 17's events** (2026-10-06 19:00 to 2026-10-07 01:30), using regular expressions on the error text, since refusals carry no rule ID:
+- **Repair decisions by kind:** VERIFY 8, EDIT 4, SCHEMA 2, SCOPE 1.
+- **Form refusals by rule:** "has no source" 6 (since fixed, [crew#489](https://github.com/mqucifer/crew/issues/489)), "must create a file or edit one" 6, "replace needs source" 2.
+
+**The pieces raised:**
+
+| Piece | What it is | Where it touches the backlog |
+|---|---|---|
+| See them in the logs | Each refusal is recorded with a rule ID and what the step was doing, so "which rules break, for which work" is a count. Today, a verification failure is kept to its first 600 characters, and the names of failing tests are lost. | [crew#449](https://github.com/mqucifer/crew/issues/449) part 2, and its Sprint 17 follow-ups. The analysis belongs to the model-performance pilot, [D262](https://github.com/mqucifer/crew/discussions/262). |
+| A decision model routes | A "System One" model like TypeSafe AI's Jev ([LangChain's write-up](https://www.langchain.com/blog/building-a-harness-with-jev)). It takes structured state and questions, and returns typed answers with calibrated confidence: choice, score or yes/no, evaluated in parallel. It doesn't generate text. Here it could decide which rules to show a step, which model to use, and whether to stage the work, and could predict a refusal before the round trip. The article doesn't say whether Jev's weights are open. The Sponsor wants an open-weights model in this role. | [crew#276](https://github.com/mqucifer/crew/issues/276), [D422](https://github.com/mqucifer/crew/discussions/422) |
+| A small local model sorts | Apple's on-device foundation model, served over the OpenAI API spec, so it sits behind LiteLLM like any alias. It's good at classification and summaries, within about 4,000 tokens. Possible jobs: labelling each refusal with a rule ID, pulling the failing tests out of a pytest log, classifying a task for the router. | [crew#449](https://github.com/mqucifer/crew/issues/449), [D262](https://github.com/mqucifer/crew/discussions/262) |
+| Rules the output can't break | Decoding constrained to the answer's JSON schema, which SGLang supports, plus more rules expressed in the schema itself (unique test names, a required source). One thing to check: TensorFold ignored `response_format`, so whether the main model's path honours it needs one real call. | [crew#276](https://github.com/mqucifer/crew/issues/276) |
+
+### Generator gaps seen in Sprint 17
+
+These are from mqucifer/sprint-metrics#406's delivery. They are evidence for the session, not yet triaged:
+- **Contract, storage and runtime**, put on [D261](https://github.com/mqucifer/crew/discussions/261) as evidence for the QA suite:
+  - `card.created` is optional in the intake schema but `NOT NULL` in the table;
+  - a store never committed;
+  - CI's tests job has no database;
+  - the service exits at startup when the database is unreachable, against the Product Owner's decision to keep running and return 503.
+- **The deploy review runs only for Dockerfile and workflow changes.** A new dependency that needs a system library (`psycopg` needs `libpq`) reached a slim image unreviewed, and surfaced only when mqucifer/sprint-metrics#433 first ran the image as a service.
+- **The Code Reviewer and QA passed a change whose CI was red.** The delivery gate caught it, and returned it with the log.
+- **Container logs on failure:** the Developer added `docker logs` on its own after two blind failures, and then found the cause. It's now §19 rule 8 ([crew#494](https://github.com/mqucifer/crew/issues/494)).
+- **Text edits for Python definitions:** the Developer reached for a text edit to add a definition three times across mqucifer/sprint-metrics#434 and mqucifer/sprint-metrics#443. The refusal names `edits` as the way.
+- **mqucifer/sprint-metrics#443 is blocked:** the sprint's single escalation was spent on mqucifer/sprint-metrics#427. Its last answer changed no code, wrote only tests (one named three times), and came from a prompt of up to 151,000 characters.
+- **The release check re-reads a verified release on every pass:** it remembers only versions it filed an epic for.
 
 ## Housekeeping
 
