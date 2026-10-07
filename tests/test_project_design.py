@@ -182,6 +182,36 @@ def test_a_check_ci_does_not_run_must_be_stated_as_a_change():
     assert reviewer.calls == [], "refused mechanically, before any review"
 
 
+# crew#513: crew-presentation's first proposal was refused mechanically, its second by
+# the review, and the run ended without the Architect seeing the review's findings.
+MYPY = Change(what="add `uv run mypy src` to the checks", was="no type check", why="types")
+CONFLICT = DesignReview(conflicts=[Conflict(guideline="§19 rule 1", choice="x", why="y")])
+
+
+def test_a_mechanical_refusal_leaves_the_review_its_own_retry():
+    architect = Architect(
+        proposal("uv run pytest -q", "uv run mypy src"),
+        proposal("uv run pytest -q", "uv run mypy src", changes=[MYPY]),
+        proposal("uv run pytest -q", "uv run mypy src", changes=[MYPY]),
+    )
+    reviewer = Reviewer(CONFLICT)
+
+    ended = run(architect, reviewer)
+
+    assert "§19 rule 1" in architect.calls[2]["feedback"], "shown the review's findings"
+    assert ended.record is not None and ended.attempts == 3
+
+
+def test_each_check_still_ends_the_run_on_its_second_refusal():
+    unstated = proposal("uv run pytest -q", "uv run mypy src")
+    stated = proposal("uv run pytest -q", "uv run mypy src", changes=[MYPY])
+
+    ended = run(Architect(unstated, stated, unstated), Reviewer(CONFLICT))
+
+    assert ended.record is None and ended.attempts == 3
+    assert "`uv run mypy src` isn't a check CI runs today" in ended.refused[0]
+
+
 def test_a_stated_change_is_accepted_and_shown_in_the_pull_request(tmp_path: Path):
     declared = Change(
         what="add `uv run mypy src` to the checks", was="no type check", why="catch type drift"
