@@ -42,3 +42,4 @@ numbered in order, with a kebab-case title.
 | [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468); last bullet superseded by 0018 |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
 | [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and records it | 2026-10-05 | Accepted (built by crew#440) |
+| [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | An epic is the smallest unit of release | 2026-10-07 | Accepted (to be built by crew#500) |
