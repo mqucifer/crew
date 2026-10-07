@@ -51,3 +51,9 @@ story level."
   lands, as technical work does. It's small, so the hold is short.
 - Until crew#500 is built, a completed epic's release story is filed by hand.
   Epic 406's is the first.
+- **Left open, to rethink later.** The DevOps Engineer still reviews stories, and
+  later bugs, through the deploy review. One day it may mark a particular story or
+  bug as needing its own release, such as a fix users need now. That would be an
+  exception it flags, never every story. The Sponsor, 2026-10-07: "That may need to
+  be rethought at a later time if it can tag them earlier as needs release or
+  something. Not every story."
