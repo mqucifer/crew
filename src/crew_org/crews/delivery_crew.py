@@ -356,28 +356,29 @@ class Implementation(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _names_only_tests_it_writes(cls, data: Any) -> Any:
-        """A repair or rework names no test it doesn't write, and is told so in its terms.
+    def _drops_tests_it_only_names(cls, data: Any) -> Any:
+        """A repair or rework's tests named with no code are dropped, not refused.
 
-        A test named with no code is refused as belonging in `proven_by_existing`,
-        which only a first attempt has. sprint-metrics#427's repairs re-named the six
-        tests already on the branch, were sent to that field, couldn't use it, and
-        dropped everything: three answers refused, then the escalation.
+        They're the tests already on the branch, and naming them changes nothing.
+        Refusing them lost the fix beside them. sprint-metrics#453 and #450 named
+        their branch's tests next to edits that fixed lint and an import, and were
+        refused until they blocked, though the refusal said to leave them out
+        (crew#489). When #450 did, it left out its fix too (crew#511). A first
+        attempt keeps its refusal, which points at `proven_by_existing`.
         """
         if "proven_by_existing" in cls.model_fields or not isinstance(data, dict):
             return data
-        for c in data.get("criteria_tests") or []:
+        named = data.get("criteria_tests")
+        if not isinstance(named, list):
+            return data
+
+        def only_named(c: Any) -> bool:
             if not isinstance(c, dict) or str(c.get("source") or "").strip():
-                continue
-            path, test = str(c.get("path") or ""), str(c.get("test") or "")
-            if profile_for(path).edit_by_name and profile_for(path).is_test_file(path):
-                raise ValueError(
-                    f"{test!r} has no source. This answer changes the branch: a test "
-                    "already on it needs no entry in criteria_tests, so leave it out, and "
-                    "change it in edits if it has to change. A new test is written in "
-                    "criteria_tests in full."
-                )
-        return data
+                return False
+            path = str(c.get("path") or "")
+            return bool(profile_for(path).edit_by_name and profile_for(path).is_test_file(path))
+
+        return {**data, "criteria_tests": [c for c in named if not only_named(c)]}
 
     @property
     def changes_nothing(self) -> bool:
