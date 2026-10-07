@@ -368,3 +368,45 @@ Further facts:
 - crew#449 (logging): large; its own iteration
 - crew#439 (technical-epic classification): needed before the next design PR
 - crew#436 criterion 3, crew#444, crew#431, crew#429, crew#430: waiting for more evidence or for the panel
+
+## Operator's retro: Sprint 17 (2026-10-06, closed 2026-10-07, crew#505)
+
+Sprint 17 was the refinement panel's proof on mqucifer/sprint-metrics#406. All 9 stories landed, and the epic was released as v1.1.0. No working log was kept during the sprint, so this is from the event log, the merged PRs and the board.
+
+**Ticks:** 13 runs, 47 passes. None crashed, and I stopped none (Sprint 12: 5 of 9 stopped). Four runs ended at the 5-pass cap while stories waited on CI and the merge queue.
+
+### 1. Interventions
+- **Crew PRs merged during the sprint: 17.** Ten set up the proof (PR 478–488: the panel on, the decision log, logging, and two criteria-check fixes found by the first refinement). Seven came mid-delivery:
+  - **Incidents:** PR 490 (the repair form's misleading message, which was looping mqucifer/sprint-metrics#427), PR 493 (every tick held on "make the package public") and PR 498 (added definitions landed after `__main__`, blocking mqucifer/sprint-metrics#443).
+  - **Could have waited:** PR 495 (container logs rule), PR 492, PR 496 and PR 501 (docs, ADR 0019).
+- **By hand on sprint-metrics:** PR 440 (the record says the image is private, the Sponsor's decision); the release story mqucifer/sprint-metrics#445 filed by hand, because nothing files a release when an epic completes (now ADR 0019, crew#500); mqucifer/sprint-metrics#406's card moved back to Needs Refinement after its reopen left it in Done.
+- **`crew moves --people` shows nothing after 09-27**, so this list is from memory and the PRs, not the board's record. Not yet filed.
+
+### 2. Where a person was asked
+- **The escalation (1 of 1) went to mqucifer/sprint-metrics#427** at 21:16. The budget then blocked mqucifer/sprint-metrics#443 at 01:25. The block was a tool defect (crew#497), which an escalation wouldn't have fixed; it was unblocked about 26 minutes later by PR 498. Evidence for the open question on the budget: at 1 per sprint, it cost one short block and surfaced a real defect.
+- **The Product Owner answered 6 story problems** on mqucifer/sprint-metrics#406 without a person: 4 during refinement, 2 when stories returned over tests that already existed (mqucifer/sprint-metrics#434, mqucifer/sprint-metrics#445).
+
+### 3. Drift between the Goal and the plan
+- Nothing new. The Sponsor's decisions this sprint (private image, epic as the unit of release) are in the project's record and ADR 0019.
+
+### 4. Repeats and cost
+- **A misleading refusal drove the sprint's escalation, two sprints running.** Sprint 12: mqucifer/sprint-metrics#386 (crew#448). Sprint 17: mqucifer/sprint-metrics#427, whose 7 refusals included 3 "has no source" telling it to use a field its form didn't have (crew#489, fixed by PR 490).
+- **Missing imports (F821)** on 2 cards: crew#504, filed by the crew's retro.
+- **Returned to refinement over tests that already existed:** 2 stories, each costing a re-split. The second was the release story; crew#500 should declare version-pinning tests up front.
+- **`llm.failed` is logged twice** for every failed call (22 events, 11 calls). A crew#449 follow-up.
+- **The Business Analyst was refused 3 times** for naming a not-for-stories row "I1" or "Q1" where the form wants "R3". Possibly a misleading message; not yet filed.
+
+### 5. The crew's own retro (crew#505) against this one
+- **It saw:** the F821 recurrence (crew#504, new), the merge-queue wait behind mqucifer/sprint-metrics#428 (21:46–22:37), and 5 of 9 first-time landings.
+- **It got wrong:**
+  - **Every link to a sprint-metrics card points at the crew issue with the same number**, including "Needs you". Filed as crew#506.
+  - **Its two diagnoses.** mqucifer/sprint-metrics#427's escalation was the misleading refusal, not the story spanning two layers (crew#502). mqucifer/sprint-metrics#443's test failures were crew#497, not vague criteria (crew#503). Both noted on the issues.
+  - **"The first ~9 hours were idle."** They were refinement: 4 Product Owner answers and re-splits (12:02–19:52) and three crew fixes merged.
+  - **"Needs you: epics at your gate."** mqucifer/sprint-metrics#407 and mqucifer/sprint-metrics#408 are held by the Sponsor on purpose, the same miss as Sprint 12. [D453](https://github.com/mqucifer/crew/discussions/453) covers it, below P3 by the Sponsor's choice.
+
+### 6. Proposed for the crew iteration (for the Sponsor to agree)
+1. **crew#500:** DevOps files the release when an epic completes. This sprint's release story was filed by hand and went back to refinement once.
+2. **crew#506:** the retro qualifies other repos' card numbers. Small; every retro about a delivery repo is affected.
+3. **Refusal messages, as one pass:** read every form refusal the Developer and Business Analyst can get, for whether it names a fix the form allows. Two sprints' escalations came from one that didn't.
+
+**Checks:** "ticks stopped" found nothing this sprint (5 in Sprint 12). One more empty sprint makes it a candidate for removal. "The crew's retro against this one" found wrong items both sprints, which is the case for [D453](https://github.com/mqucifer/crew/discussions/453).
