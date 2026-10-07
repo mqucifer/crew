@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from crew_org.flows.board_moves import BOARD_WORKFLOW
 from crew_org.flows.record_pr import RecordChange, propose
 from crew_org.project import RECORD_PATH, Design, Part, ProjectRecord, brief
 from crew_org.tools import ci_guard
@@ -117,13 +118,51 @@ def doc_paths(choice: Any) -> list[str]:
 
 
 def workflows(root: Path) -> dict[str, str]:
+    """The project's CI workflows: what it runs today.
+
+    Not `board.yml`, the board automation onboarding installs. It runs no
+    checks, and counted as CI it made crew-presentation, a repository with no
+    code, keep a toolchain it didn't have: two designs refused (crew#516).
+    """
     folder = root / ci_guard.WORKFLOWS
     if not folder.exists():
         return {}
     return {
         str(path.relative_to(root)): path.read_text(encoding="utf-8")
         for path in sorted(folder.glob("*.y*ml"))
+        if path.name != BOARD_WORKFLOW
     }
+
+
+# Run by Node, which the crew's default sandbox (Python and uv) doesn't have.
+NODE_TOOLS = frozenset({"npx", "npm", "node", "pnpm", "yarn"})
+
+
+def needs_an_image(proposal: Any) -> list[str]:
+    """Why a design that needs more than Python must name its sandbox image (crew#516).
+
+    Left empty, a project is built and tested in the crew's Python image. A
+    crew-presentation proposal named `npx playwright test` and a JavaScript part
+    with no image, so its first story's checks would have found no Node.
+    """
+    if getattr(proposal, "sandbox_image", None) is not None:
+        return []
+    needs = [
+        f"the check `{c.value}`"
+        for c in proposal.checks
+        if c.value.split() and c.value.split()[0] in NODE_TOOLS
+    ] + [
+        f"the {p.language} part `{p.path or '(the whole project)'}`"
+        for p in getattr(proposal, "parts", None) or []
+        if p.language.strip().lower() != "python"
+    ]
+    if not needs:
+        return []
+    return [
+        f"{', '.join(needs)} needs more than the crew's default sandbox, which has only "
+        "Python and uv. Name the image they run in, with every tool the checks need, in "
+        "`sandbox_image` (registry/name:tag), and its install command in `setup`."
+    ]
 
 
 def undeclared(proposal: Any, ci: dict[str, str], ci_checks_now: list[str] = ()) -> list[str]:
@@ -193,6 +232,7 @@ def design(
         reasons = undeclared(
             proposal, ci, record.design.ci_checks if record.design is not None else []
         )
+        reasons += needs_an_image(proposal)
         # The sandbox image is real and pinned: a guessed digest runs nothing (#403, #365).
         # The Architect names a tag, and the digest is read from the registry.
         pinned, unpinnable = pin_image(getattr(proposal, "sandbox_image", None))

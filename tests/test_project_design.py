@@ -18,8 +18,16 @@ from crew_org.crews.design_crew import (
     Conflict,
     DesignProposal,
     DesignReview,
+    PartChoice,
 )
-from crew_org.flows.design import design, open_design_pr, to_design, undeclared
+from crew_org.flows.design import (
+    design,
+    needs_an_image,
+    open_design_pr,
+    to_design,
+    undeclared,
+    workflows,
+)
 from crew_org.project import RECORD_PATH, parse, render
 from crew_org.tools import bounds
 from tests.test_onboard import FakeIssues, FakeWorkspace
@@ -227,6 +235,51 @@ def test_a_stated_change_is_accepted_and_shown_in_the_pull_request(tmp_path: Pat
 
 def test_a_project_without_ci_has_nothing_existing_to_keep():
     assert undeclared(proposal("uv run pytest -q"), {}) == []
+
+
+# crew#516: crew-presentation had only the board automation onboarding installs, and
+# was held to a toolchain it didn't have.
+def test_the_board_automation_is_not_ci(tmp_path: Path):
+    folder = tmp_path / ".github" / "workflows"
+    folder.mkdir(parents=True)
+    (folder / "board.yml").write_text("on: issues\n")
+    assert workflows(tmp_path) == {}
+
+    (folder / "tests.yml").write_text(CI[".github/workflows/tests.yml"])
+    assert list(workflows(tmp_path)) == [".github/workflows/tests.yml"]
+
+
+# crew#516: a crew-presentation proposal named `npx playwright test` and a JavaScript
+# part, and no image: the crew's default sandbox has no Node.
+def node_design(*checks: str, parts=(), image=None) -> DesignProposal:
+    design = proposal(*checks)
+    design.parts = [PartChoice(path=p, language="javascript", basis="b") for p in parts]
+    design.sandbox_image = Choice(value=image, basis="b") if image else None
+    return design
+
+
+def test_a_check_run_by_node_needs_an_image():
+    (reason,) = needs_an_image(node_design("uv run pytest -q", "npx playwright test"))
+    assert "the check `npx playwright test`" in reason and "sandbox_image" in reason
+
+
+def test_a_part_that_isnt_python_needs_an_image():
+    (reason,) = needs_an_image(node_design("uv run pytest -q", parts=["static/"]))
+    assert "the javascript part `static/`" in reason
+
+
+def test_a_named_image_or_a_python_design_needs_nothing_more():
+    named = node_design("npx playwright test", parts=["static/"], image="node:22")
+    assert needs_an_image(named) == []
+    assert needs_an_image(proposal("uv run pytest -q")) == []
+
+
+def test_a_design_needing_node_with_no_image_is_refused_before_review():
+    reviewer = Reviewer()
+    needs_node = node_design("npx playwright test")
+    ended = run(Architect(needs_node, needs_node), reviewer, ci={})
+    assert ended.record is None and "only Python and uv" in ended.refused[0]
+    assert reviewer.calls == []
 
 
 # --- 4: a later change comes through the Architect, never delivery
