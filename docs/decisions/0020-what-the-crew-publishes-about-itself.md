@@ -1,13 +1,14 @@
 # 20. What the crew publishes about itself
 
 - **Date:** 2026-10-07
-- **Status:** Accepted (to be built with the replay feed)
+- **Status:** Accepted (to be built by crew#521)
 
 ## Context
 
-crew-presentation is a public site about how the crew works. It shows sprint-metrics'
-answers and the crew's replay feed, which the crew sends it in snapshot pull requests.
-Once a snapshot is in that public repository, it's published.
+crew-presentation is a public site about how the crew works. It shows the crew's
+`delivery-history` package: a replay of the crew's work, and sprint-metrics' answers
+about each sprint (ADR 0021). The crew releases that package on its own public
+repository, so once released, it's published.
 
 What the crew may publish had only been called "content-free". That word was never
 defined, and it had been copied into a Goal's decisions and the project's record.
@@ -58,3 +59,5 @@ answer, review text or its reasoning; a secret.
 
 - 2026-10-07: Accepted. The Sponsor agreed the definition while planning
   crew-presentation's Goals (crew#518).
+- 2026-10-07: The context names the `delivery-history` package, released on the crew's
+  repository, in place of snapshot pull requests (crew#521).
