@@ -116,9 +116,12 @@ delivery:
     - sprint-metrics
     # Where the crew and its projects run, and why; private (crew#335, §20).
     - infra
-    # The public site that shows how the crew works, built from its published
-    # data (crew Discussion 260; onboarded 2026-10-07).
-    - crew-presentation
+    # crew-presentation, the public site that shows how the crew works (crew
+    # Discussion 260; onboarded 2026-10-07), is paused (crew#523). It depends only
+    # on the crew's delivery-history package (ADR 0021, crew#521), and can't do
+    # useful work before that package's shape exists. It comes back by pull
+    # request at delivery-history's first release, when the Architect proposes its
+    # design again against the real package.
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in
