@@ -134,6 +134,24 @@ def _import_insertion_point(tree: ast.Module, lines: list[str]) -> int:
     return last
 
 
+def _main_guard(tree: ast.Module, lines: list[str]) -> int | None:
+    """Where a top-level `if __name__ == "__main__":` starts (0-based), with the
+    comments directly above it, which belong to it. None when the file has none."""
+    for node in tree.body:
+        test = node.test if isinstance(node, ast.If) else None
+        if not isinstance(test, ast.Compare) or len(test.comparators) != 1:
+            continue
+        sides = [test.left, test.comparators[0]]
+        names = {s.id for s in sides if isinstance(s, ast.Name)}
+        values = {s.value for s in sides if isinstance(s, ast.Constant)}
+        if names == {"__name__"} and values == {"__main__"}:
+            start = node.lineno - 1
+            while start > 0 and lines[start - 1].lstrip().startswith("#"):
+                start -= 1
+            return start
+    return None
+
+
 def apply_edit(source: str, edit: Edit) -> str:
     """Apply one edit. The file is re-parsed per edit, so spans never go stale."""
     try:
@@ -157,6 +175,14 @@ def apply_edit(source: str, edit: Edit) -> str:
         if edit.target in definitions:
             raise EditError(f"{edit.target!r} already exists — use replace, or choose another name")
         body = edit.source.strip("\n")
+        # Before the file's `__main__` block, not after it: run as a script, the
+        # block calls into the module before anything below it is defined.
+        # sprint-metrics#434 and #443 each added a generator to `_docs_gen.py`
+        # past `sys.exit(main())`, and `python -m` failed with NameError (crew#497).
+        guard = _main_guard(tree, lines)
+        if guard is not None:
+            head = "\n".join(lines[:guard]).rstrip("\n")
+            return head + "\n\n\n" + body + "\n\n\n" + "\n".join(lines[guard:]) + "\n"
         return source.rstrip("\n") + "\n\n\n" + body + "\n"
 
     if edit.operation is Operation.ADD_METHOD:

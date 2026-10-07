@@ -175,3 +175,51 @@ def test_an_annotated_constant_can_be_replaced_by_name():
         ANNOTATED, [Edit(operation=Operation.REPLACE, target="DEFAULT_THRESHOLDS", source=source)]
     )
     assert '{"cycle_time": 3.0}' in after and '"cycle_time": 5.0' not in after
+
+
+# --- an added definition goes before the file's __main__ block (crew#497) ----------------------
+
+# sprint-metrics' `_docs_gen.py`, cut down: the registry calls the new generator by
+# name, and the guard runs `main()` as soon as `python -m` reaches it.
+DOCS_GEN = """import sys
+
+GENERATORS = {}
+
+
+def main():
+    return _generate_service_content()
+
+
+# Run as a module: python -m sprint_metrics._docs_gen
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+
+ADDED = "def _generate_service_content():\n    return 0\n"
+
+
+def test_an_added_definition_goes_before_the_main_guard():
+    out = apply_edit(DOCS_GEN, Edit(Operation.ADD, "_generate_service_content", ADDED))
+    assert out.index("def _generate_service_content") < out.index("# Run as a module")
+    assert out.index("# Run as a module") < out.index('if __name__ == "__main__":')
+    ast.parse(out)
+
+
+def test_run_as_a_script_the_added_definition_exists_when_main_runs():
+    """sprint-metrics#434 and #443: `python -m` raised NameError before the fix."""
+    out = apply_edit(DOCS_GEN, Edit(Operation.ADD, "_generate_service_content", ADDED))
+    with pytest.raises(SystemExit) as exited:
+        exec(compile(out, "_docs_gen.py", "exec"), {"__name__": "__main__"})  # noqa: S102
+    assert exited.value.code == 0
+
+
+def test_the_guard_is_found_either_way_round():
+    source = 'def main():\n    pass\n\n\nif "__main__" == __name__:\n    main()\n'
+    out = apply_edit(source, Edit(Operation.ADD, "helper", "def helper():\n    pass\n"))
+    assert out.index("def helper") < out.index('if "__main__" == __name__')
+
+
+def test_without_a_main_guard_an_added_definition_goes_at_the_end():
+    source = 'def main():\n    pass\n\n\nif __name__ == "other":\n    main()\n'
+    out = apply_edit(source, Edit(Operation.ADD, "helper", "def helper():\n    pass\n"))
+    assert out.rstrip().endswith("pass") and out.index('"other"') < out.index("def helper")
