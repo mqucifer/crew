@@ -50,3 +50,5 @@ decision was first made.
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
 | [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (the Architect's settle before the split to be built by crew#440) |
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | An epic is the smallest unit of release | 2026-10-07 | Accepted (to be built by crew#500) |
+| [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built with the replay feed) |
+| [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source | 2026-10-07 | Accepted (to be built by a sprint-metrics Goal and the crew's replay feed) |
