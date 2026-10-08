@@ -446,6 +446,8 @@ class Github:
             self.comments.append({"user": {"login": "mqucifer-crew[bot]"}, "body": posted})
             self.writes.append(("comment", posted))
             return httpx.Response(201, json={"id": 1})
+        if path.endswith("/labels") and "/issues/" not in path:
+            return httpx.Response(201, json={})  # a repository's label, created
         if path.endswith("/labels"):
             self.labels += json.loads(request.content)["labels"]
             return httpx.Response(200, json=[])
@@ -702,3 +704,26 @@ def test_the_latest_panel_comment_with_notes_is_the_one_settled():
 
 def test_no_panel_comment_means_no_panel_yet():
     assert panel_flow.panel_on(Github().client(), "sprint-metrics", 406) is None
+
+
+# --- a decision for every epic reaches the project's log (crew#468) ---------------------------
+
+
+def test_a_row_that_decides_for_every_epic_is_marked_in_the_conclusion():
+    marked = Conclusion(rows=[row(), row(settles=[2], context="Counting", project_wide=True)])
+    text = flow.render(marked, owner="mqucifer", repo="sprint-metrics")
+    assert flow.TO_LOG.format("R2") in text
+    assert "crew:to-log" not in rendered(), "a conclusion with none says nothing"
+
+
+def test_settling_a_project_wide_row_labels_the_epic_for_the_log(monkeypatch):
+    gh = Github()
+    wide = Settlement(conclusion=Conclusion(rows=[row(settles=[1, 2], project_wide=True)]))
+    run(gh, monkeypatch, wide)
+    assert flow.TO_LOG_LABEL in gh.labels
+
+
+def test_an_epic_whose_rows_are_its_own_gets_no_label(monkeypatch):
+    gh = Github()
+    run(gh, monkeypatch, good())
+    assert flow.TO_LOG_LABEL not in gh.labels

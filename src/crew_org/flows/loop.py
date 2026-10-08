@@ -280,11 +280,13 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     Before refinement, so an approved epic isn't split against a structure the
     Architect is about to change.
     """
+    from crew_org.clock import sprint_today  # noqa: PLC0415
     from crew_org.crews.design_crew import (  # noqa: PLC0415
         place_changes,
         propose_design,
         review_design,
     )
+    from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
@@ -311,14 +313,20 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         place_changes=place_changes,
     )
     crew.design_holds = dict(result.holds)
+    # The Product Owner's project-wide decisions reach the project's log (crew#468).
+    logs = write_logs(
+        crew.issues, crew.reviewer, crew.sink, crew.ws, repos=repos, today=sprint_today(crew.org)
+    )
     return PhaseOutcome(
         "revisit",
-        moved=result.moved or bool(red.filed or red.closed or released.filed),
+        moved=result.moved or logs.moved or bool(red.filed or red.closed or released.filed),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
+            + (f", {len(logs.merged)} merged" if logs.merged else "")
         ),
         result=result,
         counts={
@@ -331,6 +339,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
         + [
             f"{repo} v{version} — waiting on the Sponsor: make the package public "
             "(its settings page; crew#386)"
