@@ -37,6 +37,7 @@ from crew_org.crews.refinement_crew import (
     StoryProposal,
     answer_story_problem,
     propose_epics,
+    propose_missing_epics,
     repair_criteria,
     split_epic,
 )
@@ -112,6 +113,14 @@ NEEDS_HUMAN = "needs:human"
 # teaches the crew nothing: the same goal decomposed again produces the same
 # epics, because nothing about the rejection is an input to anything.
 NEEDS_REWORK = "needs:rework"
+# On a Goal with epics under way: propose only what it still lacks, beside them
+# (crew#429). `needs:rework` supersedes every unstarted epic and refuses once any
+# work has started, so a Goal that lacked one epic couldn't get it.
+NEEDS_EPIC = "needs:epic"
+NEEDS_EPIC_LABEL = (
+    "0e8a16",
+    "The Goal lacks an epic: the Product Owner proposes only what's missing",
+)
 # On an epic: a story of it went back to refinement as a story problem (#189).
 STORY_PROBLEM_MARKER = "<!-- crew:story-problem -->"
 # The Product Owner's answer to it, or its one question for the Sponsor.
@@ -606,6 +615,42 @@ def rework_gate(
         )
         if part
     )
+
+
+def lacking_notes(issues: IssueClient, repo: str, number: int) -> str:
+    """What the Product Owner is told when the Sponsor asks a Goal for what it lacks (crew#429).
+
+    The Sponsor's words since the crew last answered, and every epic the Goal has
+    already, open or closed, so it proposes only what is missing and nothing
+    that duplicates or replaces one.
+    """
+    try:
+        children = issues.sub_issues(repo, number)
+    except Exception:  # noqa: BLE001
+        children = []
+    have = "\n".join(
+        f"- #{c['number']} ({c.get('state') or 'open'}): {c.get('title') or ''}" for c in children
+    )
+    return (
+        "The Sponsor asks for the epics this Goal still lacks. It already has the "
+        "epics below, which stay as they are: propose only what the Goal still needs "
+        "and none of them delivers, and nothing that duplicates or replaces one.\n\n"
+        f"## Its epics already\n\n{have or '(none)'}\n\n"
+        f"## What the Sponsor said\n\n{sponsor_notes(issues, repo, number) or '(nothing)'}"
+    )
+
+
+def lacking_goals(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
+    """Goals the Sponsor asked for a missing epic, wherever on the board they are."""
+    return [
+        c
+        for c in cards
+        if c.work_type == GOAL_TYPE
+        and c.state != "CLOSED"
+        and NEEDS_EPIC in c.labels
+        and NEEDS_REWORK not in c.labels
+        and (sponsor is None or c.author == sponsor)
+    ]
 
 
 def goals_missing_work_type(cards: list[Card]) -> list[Card]:
@@ -1632,13 +1677,32 @@ def tick(
             )
         )
 
-    for card in goal_cards(cards, sponsor=sponsor):
+    # A Goal under way that lacks an epic is asked wherever it sits (crew#429).
+    lacking = lacking_goals(cards, sponsor=sponsor)
+    lacking_keys = {c.key for c in lacking}
+    labelled: set[str] = set()
+    for card in [
+        *lacking,
+        *(c for c in goal_cards(cards, sponsor=sponsor) if c.key not in lacking_keys),
+    ]:
         result.considered += 1
         repo = card.repo or default_repo
         number = card.number
         assert number is not None
+        if repo not in labelled:
+            # The Sponsor's label has to exist before it can be put on a Goal.
+            labelled.add(repo)
+            with contextlib.suppress(Exception):
+                color, description = NEEDS_EPIC_LABEL
+                issues.ensure_label(repo, NEEDS_EPIC, color=color, description=description)
 
-        proceed, notes = rework_gate(issues, sink, result, cards, card, repo, EPIC_PROPOSAL_MARKER)
+        extend = card.key in lacking_keys
+        if extend:
+            proceed, notes = True, lacking_notes(issues, repo, number)
+        else:
+            proceed, notes = rework_gate(
+                issues, sink, result, cards, card, repo, EPIC_PROPOSAL_MARKER
+            )
         if not proceed:
             continue
 
@@ -1659,11 +1723,21 @@ def tick(
             )
         )
         try:
-            proposal = attributed(propose_epics, card=number, repo=repo)(
-                f"{card.title}\n\n{_goal_body(issues, repo, number)}",
-                repository=context.for_repo(repo),
-                feedback=notes,
-                delivered=known.for_repo(repo).render(),
+            goal_text = f"{card.title}\n\n{_goal_body(issues, repo, number)}"
+            proposal = (
+                attributed(propose_missing_epics, card=number, repo=repo)(
+                    goal_text,
+                    lacking=notes,
+                    repository=context.for_repo(repo),
+                    delivered=known.for_repo(repo).render(),
+                )
+                if extend
+                else attributed(propose_epics, card=number, repo=repo)(
+                    goal_text,
+                    repository=context.for_repo(repo),
+                    feedback=notes,
+                    delivered=known.for_repo(repo).render(),
+                )
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -1699,6 +1773,9 @@ def tick(
         # would show the Sponsor four things demanding attention when only
         # three do, and make the goal look like the card to move.
         artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
+        if extend:
+            # The Sponsor's label, spent: no more epics until it's asked again.
+            artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_EPIC])
 
         result.proposed.append(number)
         sink.emit(
