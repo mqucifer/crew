@@ -55,6 +55,10 @@ class CrewTyper(typer.Typer):
 app = CrewTyper(help="An agile engineering organization run as agents.", no_args_is_help=True)
 sprint_app = typer.Typer(help="Sprint cadence commands.", no_args_is_help=True)
 app.add_typer(sprint_app, name="sprint")
+package_app = typer.Typer(
+    help="The data packages the crew publishes about itself (crew#521).", no_args_is_help=True
+)
+app.add_typer(package_app, name="package")
 
 console = Console()
 VAR = Path("var")
@@ -2109,6 +2113,94 @@ def sprint_close(
 
     if result.complete:
         console.print("\n[green]Sprint complete.[/]")
+
+
+@package_app.command("schema")
+def package_schema() -> None:
+    """Write delivery-history's schema into contracts/, from the model (ADR 0021).
+
+    Refused when the schema changed and SCHEMA_VERSION didn't: raise it, MAJOR
+    if a consumer could break on the change, MINOR if it only adds.
+    """
+    from crew_org.packages import contract  # noqa: PLC0415
+
+    try:
+        written = contract.write()
+    except contract.StaleVersion as exc:
+        console.print(f"[red]{escape(str(exc))}[/]")
+        raise typer.Exit(code=1) from None
+    for path in written:
+        console.print(f"wrote {path.relative_to(contract.ROOT)}")
+
+
+@package_app.command("build")
+def package_build(
+    out: str = typer.Option(None, "--out", help="Where to write it. Defaults to var/packages/."),
+) -> None:
+    """Build delivery-history from the crew's events, the board and GitHub. Releases nothing.
+
+    Everything up to today, by the sprint clock. It's written as a directory and
+    an archive: the package, its manifest and the schemas it follows.
+    """
+    import json  # noqa: PLC0415
+    import shutil  # noqa: PLC0415
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from crew_org.auth import resolve_credentials  # noqa: PLC0415
+    from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.packages import contract  # noqa: PLC0415
+    from crew_org.packages import delivery_history as dh  # noqa: PLC0415
+    from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
+    from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
+
+    env = load_env()
+    org = load_org()
+    token, _ = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    issues = IssueClient(token, owner)
+    crew_repo = env.get("CREW_REPO", "crew")
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    for path in sorted((VAR / "events").glob("*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                events.append((path.stem, json.loads(line)))
+            except ValueError:
+                continue
+    cards = board.cards()
+    # Every repository with cards on the board, paused or not: a pause doesn't
+    # take a project out of the history.
+    repositories = sorted({c.repo for c in cards if c.repo})
+    pulls = {repo: issues.all_pulls(repo) for repo in [*repositories, crew_repo]}
+    today = sprint_today(org)
+    history, files, manifest = dh.build(
+        dh.Inputs(
+            events=events,
+            cards=cards,
+            sprints=dh.sprints_from(board.sprints()),
+            pulls=pulls,
+            crew_repository=crew_repo,
+            repositories=repositories,
+            timezone=clock_zone(org),
+            date=today,
+            generated=datetime.now(UTC),
+        )
+    )
+    name = f"{dh.NAME}-{today.isoformat()}"
+    directory = Path(out) if out else VAR / "packages" / name
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "manifest.json").write_text(manifest.model_dump_json(indent=2) + "\n")
+    (directory / f"{dh.NAME}.json").write_text(history.model_dump_json(indent=1) + "\n")
+    for name, period in files.items():
+        (directory / name).parent.mkdir(parents=True, exist_ok=True)
+        (directory / name).write_text(period.model_dump_json(indent=1) + "\n")
+    for schema, content in contract.schemas().items():
+        (directory / schema).write_text(json.dumps(content, indent=2, sort_keys=True) + "\n")
+    archive = shutil.make_archive(str(directory), "gztar", directory.parent, directory.name)
+    console.print(f"{manifest.events} events · schema {manifest.schema_version} · {archive}")
+    for why, count in manifest.left_out.items():
+        console.print(f"[dim]left out: {count} × {escape(why)}[/]")
 
 
 if __name__ == "__main__":
