@@ -95,3 +95,21 @@ def test_a_finding_closed_as_not_planned_is_no_fix():
     run_issues = Issues(findings=[declined])
     run(run_issues, c)
     assert len(run_issues.created) == 1, "declined isn't fixed: it recurs and is filed"
+
+
+def test_a_recurring_finding_links_its_cards_to_their_own_repo():
+    """crew#506: crew#502's evidence linked sprint-metrics' cards into the crew repo."""
+    c = cause(("2026-09-26T09:00:00Z", 125), ("2026-09-26T10:00:00Z", 126))
+    issues = Issues()
+    _file_recurring(
+        issues,
+        EventSink(None),
+        [c],
+        sprint="Sprint 6",
+        crew_repo=CREW,
+        record=RetroRecord(),
+        delivery_repos=["sprint-metrics", "infra"],
+        board_cards=[("sprint-metrics", 125), ("sprint-metrics", 126)],
+    )
+    (filed,) = issues.created
+    assert "mqucifer/sprint-metrics#125, mqucifer/sprint-metrics#126" in filed["body"]

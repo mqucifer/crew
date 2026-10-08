@@ -452,6 +452,7 @@ def close_sprint(
                 known=known | fixed,
                 recurring=causes_of(report),
                 layout=layout,
+                cards=[(c.repo, c.number) for c in cards],
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.

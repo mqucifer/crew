@@ -282,6 +282,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             sprint=crew.sprint,
             crew_repo=crew_repo,
             delivery_repos=sorted(crew.repos),
+            cards=[(c.repo, c.number) for c in cards],
         )
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]Standup not recorded:[/] {escape(str(exc))}")

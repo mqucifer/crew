@@ -15,6 +15,7 @@ GitHub's cross-reference puts a link back to the retro on every defect.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from crew_org.crews.retro_crew import ProcessDefect, Retro
@@ -157,6 +158,7 @@ def record_retro(
     known: set[int] | frozenset[int] = frozenset(),
     recurring: list | tuple = (),
     layout: RetroLayout | None = None,
+    cards: Iterable[tuple[str | None, int | None]] = (),
 ) -> RetroRecord:
     """File each defect where it belongs, then the retro issue naming them all.
 
@@ -187,6 +189,7 @@ def record_retro(
                 home=repo,
                 delivery=delivery_repos,
                 known=[crew_repo],
+                cards=cards,
             )
             issue = issues.create(
                 repo,
@@ -214,7 +217,14 @@ def record_retro(
     # Recurring causes are filed by the crew itself, not left to the model to
     # notice (#157): a cause on two or more of a sprint's cards is the crew's.
     lines += _file_recurring(
-        issues, sink, recurring, sprint=sprint, crew_repo=crew_repo, record=record
+        issues,
+        sink,
+        recurring,
+        sprint=sprint,
+        crew_repo=crew_repo,
+        record=record,
+        delivery_repos=delivery_repos,
+        board_cards=cards,
     )
 
     issue = issues.create(
@@ -226,6 +236,7 @@ def record_retro(
                 owner=issues.owner,
                 home=crew_repo,
                 delivery=delivery_repos,
+                cards=cards,
             ),
             ROLE,
         ),
@@ -388,6 +399,8 @@ def _file_recurring(
     sprint: str,
     crew_repo: str,
     record: RetroRecord,
+    delivery_repos: Iterable[str] = (),
+    board_cards: Iterable[tuple[str | None, int | None]] = (),
 ) -> list[str]:
     """File each recurring cause once, with its count and cards as evidence.
 
@@ -451,6 +464,15 @@ def _file_recurring(
             )
         )
         try:
+            # Its cards are a delivery repository's, written into the crew's
+            # repository: linked to their own (crew#506).
+            body = link_references(
+                body,
+                owner=issues.owner,
+                home=crew_repo,
+                delivery=list(delivery_repos),
+                cards=board_cards,
+            )
             issue = issues.create(
                 crew_repo,
                 f"Recurring {cause.failure_class}: {cause.cause}"[:120],
