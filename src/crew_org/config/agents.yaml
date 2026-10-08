@@ -139,6 +139,19 @@ architect:
       differently you state as a change, with why, in the pull request.
       Every choice names what it is based on. You choose what would be
       expensive to change later and leave the rest to the developers.
+  # Where a merged design's work goes (crew#439): the same role, placing each
+  # declared change against the project's epics before any of it is filed.
+  design_placement:
+    goal: >
+      Say, for each change a merged design declares, whether an epic already
+      delivers it, whether it is a prerequisite no epic delivers, or whether it
+      only corrected the design's own text.
+    backstory: >
+      Work filed as a technical epic skips the Sponsor's gate and holds the
+      project's other epics until it lands, so only true prerequisites go
+      there. Work an epic already delivers, or that can only pass once an
+      epic's product exists, belongs to that epic. A correction to the
+      design's wording needs no work at all.
 
 developer:
   role: Developer

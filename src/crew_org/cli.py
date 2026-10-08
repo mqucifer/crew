@@ -1336,7 +1336,7 @@ def design(
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.crews.design_crew import propose_design, review_design
+    from crew_org.crews.design_crew import place_changes, propose_design, review_design
     from crew_org.flows.design import design as run_design
     from crew_org.flows.design import open_design_pr, workflows
     from crew_org.flows.onboard import describe
@@ -1418,6 +1418,8 @@ def design(
             repo=repo,
             proposal=designed.proposal,
             result=Revisits(),
+            cards=board.cards(),
+            place=place_changes,
         )
         console.print(
             "\n[green]The record already says this[/]; the work to make the project match "

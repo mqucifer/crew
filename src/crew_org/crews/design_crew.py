@@ -13,6 +13,8 @@ against it, so it judges this too.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -305,3 +307,63 @@ def review_design(
     )
     crew = Crew(agents=[reviewer], tasks=[task], process=Process.sequential, verbose=False)
     return crew.kickoff().pydantic
+
+
+# Where a merged design's declared work goes (crew#439). sprint-metrics' design of
+# 2026-10-01 declared six changes and all six became technical epics: one was a
+# real prerequisite, three were what approved epics already deliver, one could only
+# fail until the service existed, and one corrected a typo in the design's own text.
+EPIC = "epic"
+PREREQUISITE = "prerequisite"
+DESIGN_TEXT = "design_text"
+
+
+class Placement(BaseModel):
+    """Where one declared change's work belongs."""
+
+    change: int = Field(description="The change's number in the list, from 1")
+    kind: Literal["epic", "prerequisite", "design_text"] = Field(
+        description=(
+            "`epic`: an epic below already delivers this work, or it can only pass once "
+            "that epic's product exists. `prerequisite`: no epic delivers it, and the "
+            "epics need it first (a dependency, CI infrastructure, a structural move). "
+            "`design_text`: it only corrects the design's own wording; nothing in the "
+            "project changes"
+        )
+    )
+    epic: int | None = Field(None, description="With `epic`: that epic's number")
+    why: str = Field(description="One sentence: what in the epic or the change shows it")
+
+    @model_validator(mode="after")
+    def _epic_is_named(self) -> Placement:
+        if self.kind == EPIC and self.epic is None:
+            raise ValueError(f"change {self.change} belongs to an epic: name it in `epic`")
+        return self
+
+
+class Placements(BaseModel):
+    placements: list[Placement] = Field(description="One for each change, in order")
+
+
+def place_changes(*, project: str, changes: str, epics: str) -> Placements:
+    """The Architect's placement of a merged design's declared work (crew#439).
+
+    `changes` is numbered from 1; `epics` is the project's open product epics,
+    approved or proposed, each with its number and what it delivers.
+    """
+    architect = _role("architect", "design_placement")
+    task = Task(
+        description=(
+            f"{project}\n\n## The changes the merged design declares as needing work\n\n"
+            f"{changes}\n\n## The project's open epics\n\n{epics or '(none)'}\n\n"
+            "Place every change, once each. Name an epic only from the list above."
+        ),
+        expected_output="One placement per change.",
+        agent=architect,
+        output_pydantic=Placements,
+    )
+    crew = Crew(agents=[architect], tasks=[task], process=Process.sequential, verbose=False)
+    placed = getattr(crew.kickoff(), "pydantic", None)
+    if not isinstance(placed, Placements):
+        raise ValueError("the Architect's placement didn't parse")
+    return placed
