@@ -17,6 +17,34 @@ import httpx
 
 # A reply GitHub, or a registry, sends when it's struggling: a server error.
 _SERVER_ERROR = 500
+# A git push or fetch GitHub's side failed (crew#444). sprint-metrics#383's push
+# got `remote: fatal error in commit_refs` / `[remote rejected]` on 2026-10-01,
+# GitHub operational minutes later, and the card was blocked as its own failure.
+_GIT_SERVER_SIDE = (
+    "remote: fatal error",
+    "[remote rejected]",
+    "the requested url returned error: 5",
+    "rpc failed; http 5",
+    "internal server error",
+    "unexpected disconnect",
+    "early eof",
+    "connection reset",
+    "could not resolve host",
+    "operation timed out",
+)
+# A rejection that is the story's own: checked first, so `[remote rejected]` with
+# one of these reasons stays the card's to deal with.
+_GIT_STORY_OWN = (
+    "protected branch",
+    "permission",
+    "denied",
+    "non-fast-forward",
+    "fetch first",
+    "stale info",
+    "hook declined",
+    "push protection",
+    "secret",
+)
 
 
 def _chain(exc: BaseException):
@@ -43,9 +71,11 @@ def _frames(exc: BaseException) -> list[traceback.FrameSummary]:
 def transient_remote(exc: BaseException) -> str | None:
     """The service a passing failure came from, or None if it's the card's own.
 
-    Passing: a timeout or a dropped connection, a server error (5xx), or a reply
-    that couldn't be read as JSON. A 4xx is an answer, not a stumble, and stays
-    the card's to deal with.
+    Passing: a timeout or a dropped connection, a server error (5xx), a reply
+    that couldn't be read as JSON, or a git push or fetch GitHub's side failed. A
+    4xx is an answer, not a stumble, and stays the card's to deal with, as does a
+    push rejected for the story's own reasons (protection, permission, a stale
+    lease).
     """
     for current in _chain(exc):
         if isinstance(current, httpx.TransportError):
@@ -57,6 +87,12 @@ def transient_remote(exc: BaseException) -> str | None:
             return None
         if type(current).__name__ == "IssueError" and " -> 5" in str(current):
             return "GitHub"
+        if type(current).__name__ in ("GitError", "CalledProcessError"):
+            text = str(current).lower()
+            if any(own in text for own in _GIT_STORY_OWN):
+                return None
+            if any(side in text for side in _GIT_SERVER_SIDE):
+                return "GitHub"
         if isinstance(current, json.JSONDecodeError):
             # Only a reply's body: a model's own output fails validation instead.
             files = [f.filename for f in _frames(current)]
