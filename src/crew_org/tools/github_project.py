@@ -143,6 +143,10 @@ class Card(BaseModel):
     # closed as not planned and never built, so it isn't the sprint's work (#327).
     state_reason: str | None = None
     status: str | None = None
+    # When the Status was last set, by anyone. GitHub's issue timeline stopped
+    # recording status changes, so this is how a move the crew didn't make is
+    # dated (crew#521).
+    status_set: datetime | None = None
     work_type: str | None = None
     priority: str | None = None
     owner_agent: str | None = None
@@ -237,6 +241,23 @@ query($owner: String!, $number: Int!) {
 }
 """
 
+_SPRINTS_QUERY = """
+query($owner: String!, $number: Int!) {
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      field(name: "Sprint") {
+        ... on ProjectV2IterationField {
+          configuration {
+            iterations { title startDate duration }
+            completedIterations { title startDate duration }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 # Issues only: a pull request's card is moved by the same workflow as its
 # issue, and GitHub does not record a pull request's project status changes.
 _HISTORY_QUERY = """
@@ -282,7 +303,7 @@ query($owner: String!, $number: Int!, $cursor: String) {
                 number field { ... on ProjectV2FieldCommon { name } }
               }
               ... on ProjectV2ItemFieldSingleSelectValue {
-                name field { ... on ProjectV2FieldCommon { name } }
+                name updatedAt field { ... on ProjectV2FieldCommon { name } }
               }
               ... on ProjectV2ItemFieldIterationValue {
                 title field { ... on ProjectV2FieldCommon { name } }
@@ -400,6 +421,9 @@ class ProjectClient:
     ):
         self.owner = owner
         self.number = number
+        # Each item's repository, as of the last read: a move names its card's
+        # repository without every caller passing it (crew#521).
+        self._repos: dict[str, str] = {}
         self._client = client or httpx.Client(
             timeout=TIMEOUT,
             # Paced writes and throttles waited out (#293).
@@ -479,6 +503,8 @@ class ProjectClient:
                 card = _to_card(node)
                 if card is not None:
                     cards.append(card)
+                    if card.repo:
+                        self._repos[card.item_id] = card.repo
             page = items["pageInfo"]
             if not page["hasNextPage"]:
                 return cards
@@ -534,6 +560,21 @@ class ProjectClient:
             if card.status and card.work_type not in CONTAINER_TYPES:
                 counts[card.status] = counts.get(card.status, 0) + 1
         return counts
+
+    def sprints(self) -> list[dict[str, Any]]:
+        """Every sprint the board has: past, current and planned, oldest first.
+
+        `schema` keeps to current and planned ones, which is all a tick needs;
+        a history needs the finished ones too (crew#521).
+        """
+        project = self._project(_SPRINTS_QUERY, owner=self.owner, number=self.number)
+        config = (project.get("field") or {}).get("configuration") or {}
+        both = (config.get("completedIterations") or []) + (config.get("iterations") or [])
+        return sorted(both, key=lambda it: it["startDate"])
+
+    def repo_of(self, item_id: str) -> str | None:
+        """The repository of a card read since this client was made, or None."""
+        return self._repos.get(item_id)
 
     # --- write ----------------------------------------------------------
     def set_status(self, item_id: str, column: str) -> None:
@@ -618,6 +659,8 @@ def _to_card(node: dict[str, Any]) -> Card | None:
         if attr is None:
             continue
         values[attr] = value.get("name") or value.get("title") or value.get("number")
+        if attr == "status":
+            values["status_set"] = _when(value.get("updatedAt"))
 
     return Card(
         item_id=node["id"],

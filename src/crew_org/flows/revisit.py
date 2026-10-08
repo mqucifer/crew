@@ -13,9 +13,12 @@ one:
 3. Merge. The crew opens the revision as a pull request, approves it with the
    reviewing identity, and merges it once CI passes. The record's intent
    section, the Sponsor's, is never part of it.
-4. Work. Each declared change that needs work on the code becomes a technical
-   epic, straight into Needs Refinement. This happens for any merged design
-   pull request, a Sponsor's `crew design` as well (#154).
+4. Work. Each declared change that needs work on the code is placed against the
+   project's open epics (crew#439). An epic that delivers it gets it in its own
+   text; a correction to the design's wording files nothing; only a prerequisite
+   no epic delivers becomes a technical epic, straight into Needs Refinement.
+   This happens for any merged design pull request, a Sponsor's `crew design` as
+   well (#154).
 
 While a revision is open, or its technical epics are, the project's other
 approved epics wait to be split, so their stories are written against the
@@ -34,6 +37,7 @@ from crew_org.columns import NEEDS_REFINEMENT
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, approved_epics
+from crew_org.flows.conclusion import split_conclusion
 from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
@@ -58,6 +62,10 @@ LABELS = {
 }
 # On a merged design pull request, once its changes are epics: filed once.
 EPICS_MARKER = "<!-- crew:technical-epics -->"
+# Work a merged design gives an epic that already delivers it (crew#439). It sits
+# in the epic's own text, where its split reads it, and says whose it is, so it
+# isn't mistaken for what the Sponsor approved.
+DESIGN_WORK_HEADER = "## Design work this epic owns (the Architect, from merged designs)"
 
 
 @dataclass
@@ -97,6 +105,7 @@ def revisit_designs(
     propose_design: Callable[..., Any],
     review_design: Callable[..., Any],
     threshold: int = REVISIT_CONFLICTS,
+    place_changes: Callable[..., Any] | None = None,
 ) -> Revisits:
     result = Revisits()
     rebuilds = read_rebuilds(events_dir)
@@ -116,6 +125,7 @@ def revisit_designs(
                 review_design=review_design,
                 threshold=threshold,
                 result=result,
+                place_changes=place_changes,
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -140,10 +150,20 @@ def _revisit(
     review_design,
     threshold,
     result,
+    place_changes=None,
 ) -> None:
     for pull in issues.closed_pulls(repo):
         if pull.get("merged_at"):
-            file_technical_epics(issues, board, sink, repo=repo, pull=pull, result=result)
+            file_technical_epics(
+                issues,
+                board,
+                sink,
+                repo=repo,
+                pull=pull,
+                result=result,
+                cards=cards,
+                place=place_changes,
+            )
 
     open_revision = next(
         (p for p in issues.open_pulls(repo) if REVISIT_MARKER in (p.get("body") or "")), None
@@ -157,6 +177,8 @@ def _revisit(
                 repo=repo,
                 pull=issues.pull(repo, open_revision["number"]),
                 result=result,
+                cards=cards,
+                place=place_changes,
             )
         else:
             result.holds[repo] = (
@@ -215,6 +237,7 @@ def _revisit(
         propose_design=propose_design,
         review_design=review_design,
         result=result,
+        place_changes=place_changes,
     )
 
 
@@ -230,7 +253,18 @@ def _when(stamp: str) -> datetime:
 
 
 def _revise(
-    issues, board, sink, ws, cards, *, repo, strains, propose_design, review_design, result
+    issues,
+    board,
+    sink,
+    ws,
+    cards,
+    *,
+    repo,
+    strains,
+    propose_design,
+    review_design,
+    result,
+    place_changes=None,
 ) -> None:
     from crew_org.flows.onboard import describe  # noqa: PLC0415
 
@@ -306,7 +340,14 @@ def _revise(
     # carry it, so it's filed as it would be once one merged (#335).
     if designed.record.design == record.design:
         filed = file_unchanged_design_work(
-            issues, board, sink, repo=repo, proposal=designed.proposal, result=result
+            issues,
+            board,
+            sink,
+            repo=repo,
+            proposal=designed.proposal,
+            result=result,
+            cards=cards,
+            place=place_changes,
         )
         number = _record_look(
             issues,
@@ -388,35 +429,64 @@ def _merge(issues, reviewer, sink, *, repo: str, pull: dict, result: Revisits) -
 
 
 def file_technical_epics(
-    issues: Any, board: Any, sink: EventSink, *, repo: str, pull: dict, result: Revisits
+    issues: Any,
+    board: Any,
+    sink: EventSink,
+    *,
+    repo: str,
+    pull: dict,
+    result: Revisits,
+    cards: list[Card] | None = None,
+    place: Callable[..., Any] | None = None,
 ) -> list[int]:
-    """Turn a merged design's changes that need work into technical epics, once."""
+    """Turn a merged design's changes that need work into technical epics, once.
+
+    With `place`, each change is first placed against the project's open epics
+    (crew#439): only a prerequisite no epic delivers becomes a technical epic.
+    """
     changes = [c for c in declared_changes(pull.get("body") or "") if c.get("needs_work")]
     if not changes or issues.has_comment_marked(repo, pull["number"], EPICS_MARKER):
         return []
+    source = f"the design merged in #{pull['number']}"
+    prerequisites, given, text_only = _route(
+        issues, sink, repo=repo, changes=changes, source=source, cards=cards, place=place
+    )
     filed = _file_epics(
         issues,
         board,
         sink,
         repo=repo,
-        changes=changes,
-        source=f"From the design merged in #{pull['number']}.",
+        changes=prerequisites,
+        source=f"From {source}.",
         result=result,
     )
-    issues.comment(
-        repo,
-        pull["number"],
-        artifacts.signed(
-            f"{EPICS_MARKER}\nTechnical epics filed from this design: "
-            + ", ".join(f"#{n}" for n in filed),
-            BY,
-        ),
-    )
+    lines = [
+        f"{EPICS_MARKER}\nTechnical epics filed from this design: "
+        + (", ".join(f"#{n}" for n in filed) or "none")
+    ]
+    if given:
+        lines.append(
+            "Given to the epics that deliver it: "
+            + ", ".join(f"#{epic} ({work[:60]})" for epic, work in given)
+        )
+    if text_only:
+        lines.append(
+            "Corrections to the design's own text, needing no work: " + str(len(text_only))
+        )
+    issues.comment(repo, pull["number"], artifacts.signed("\n\n".join(lines), BY))
     return filed
 
 
 def file_unchanged_design_work(
-    issues: Any, board: Any, sink: EventSink, *, repo: str, proposal: Any, result: Revisits
+    issues: Any,
+    board: Any,
+    sink: EventSink,
+    *,
+    repo: str,
+    proposal: Any,
+    result: Revisits,
+    cards: list[Card] | None = None,
+    place: Callable[..., Any] | None = None,
 ) -> list[int]:
     """The work a design declares when its record is already what it says.
 
@@ -435,16 +505,117 @@ def file_unchanged_design_work(
     ]
     if not changes:
         return []
+    prerequisites, _, _ = _route(
+        issues,
+        sink,
+        repo=repo,
+        changes=changes,
+        source="a design revision that left the record as it was",
+        cards=cards,
+        place=place,
+    )
     return _file_epics(
         issues,
         board,
         sink,
         repo=repo,
-        changes=changes,
+        changes=prerequisites,
         source="From a design revision that left the record as it was: the design "
         "already says this, and the project doesn't do it yet.",
         result=result,
     )
+
+
+def _route(
+    issues: Any,
+    sink: EventSink,
+    *,
+    repo: str,
+    changes: list[dict[str, Any]],
+    source: str,
+    cards: list[Card] | None,
+    place: Callable[..., Any] | None,
+) -> tuple[list[dict[str, Any]], list[tuple[int, str]], list[dict[str, Any]]]:
+    """Split a design's changes into prerequisites, epics' work and text only (crew#439).
+
+    sprint-metrics' design of 2026-10-01 declared six changes and all six became
+    technical epics, which skip the Sponsor's gate and hold every other epic: three
+    were what approved epics already deliver, one could only fail until the service
+    existed, and one corrected a typo in the design's own text. Only a prerequisite
+    no epic delivers is filed as one now. Without `place`, or with no open epics,
+    every change is a prerequisite, as before. A placement that names no epic shown,
+    or a change left unplaced, stays a prerequisite: work is never dropped.
+    """
+    epics = _product_epics(cards or [], repo)
+    if place is None or not epics:
+        return changes, [], []
+    shown = {e.number for e in epics}
+    listed = "\n".join(
+        f"{i}. {c.get('work') or c['what']} (why: {c.get('why') or ''})"
+        for i, c in enumerate(changes, 1)
+    )
+    about = "\n\n".join(_epic_summary(issues, repo, e) for e in epics)
+    try:
+        placed = {
+            p.change: p
+            for p in place(project=f"Project: {repo}", changes=listed, epics=about).placements
+        }
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"{repo}: design work not placed, all filed: {exc}"[:120])
+        return changes, [], []
+    prerequisites: list[dict[str, Any]] = []
+    given: list[tuple[int, str]] = []
+    text_only: list[dict[str, Any]] = []
+    for i, change in enumerate(changes, 1):
+        p = placed.get(i)
+        work = str(change.get("work") or change["what"])
+        if p is not None and p.kind == "epic" and p.epic in shown:
+            _give_to_epic(issues, sink, repo=repo, epic=p.epic, work=work, source=source)
+            given.append((p.epic, work))
+        elif p is not None and p.kind == "design_text":
+            sink.note(EventKind.NOTE, f"{repo}: design text only, no work: {work[:70]}")
+            text_only.append(change)
+        else:
+            prerequisites.append(change)
+    return prerequisites, given, text_only
+
+
+def _product_epics(cards: list[Card], repo: str) -> list[Card]:
+    """The project's open epics the Sponsor approved or was proposed: not technical ones."""
+    return [
+        c
+        for c in cards
+        if (c.repo or repo) == repo
+        and c.work_type == EPIC_TYPE
+        and c.state != "CLOSED"
+        and TECHNICAL not in c.labels
+    ]
+
+
+def _epic_summary(issues: Any, repo: str, epic: Card) -> str:
+    body, _ = split_conclusion(issues.get(repo, epic.number or 0).get("body") or "")
+    return f"#{epic.number}: {epic.title}\n{body[:800]}"
+
+
+def _give_to_epic(
+    issues: Any, sink: EventSink, *, repo: str, epic: int, work: str, source: str
+) -> None:
+    """Add the work to the epic's own text, under the Architect's heading, once."""
+    body = issues.get(repo, epic).get("body") or ""
+    line = f"- {work} (from {source})"
+    if line in body:
+        return
+    head, conclusion = split_conclusion(body)
+    at = head.find(DESIGN_WORK_HEADER)
+    if at < 0:
+        head = f"{head.rstrip()}\n\n{DESIGN_WORK_HEADER}\n\n{line}"
+    else:
+        end = head.find("\n## ", at + len(DESIGN_WORK_HEADER))
+        end = len(head) if end < 0 else end
+        head = f"{head[:end].rstrip()}\n{line}{head[end:]}"
+    issues.edit_issue(repo, epic, body=f"{head}\n\n{conclusion}\n" if conclusion else f"{head}\n")
+    sink.note(EventKind.NOTE, f"#{epic} owns design work: {work[:70]}", card=epic)
 
 
 def _file_epics(

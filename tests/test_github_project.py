@@ -141,6 +141,28 @@ def test_cards_flatten_field_values_and_labels():
     assert card.is_blocked
 
 
+def test_a_card_says_when_its_status_was_last_set():
+    """GitHub's issue timelines stopped recording status changes; the field's own
+    time is how a move the crew didn't make is dated (crew#521)."""
+    node = item(464, "Needs Refinement")
+    node["fieldValues"]["nodes"][0]["updatedAt"] = "2026-10-08T11:24:17Z"
+
+    card = _to_card(node)
+
+    assert card is not None
+    assert card.status_set is not None
+    assert card.status_set.isoformat() == "2026-10-08T11:24:17+00:00"
+
+
+def test_a_card_read_from_the_board_has_its_repository_remembered():
+    c = client_for(items_response([item(7, "Ready")]))
+    assert c.repo_of("ITEM_7") is None
+
+    c.cards()
+
+    assert c.repo_of("ITEM_7") == "crew"
+
+
 def test_draft_items_are_skipped():
     """Every card must be a real issue — drafts have no number and no audit trail."""
     draft = {"id": "ITEM_draft", "fieldValues": {"nodes": []}, "content": {}}

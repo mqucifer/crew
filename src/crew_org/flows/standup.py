@@ -22,6 +22,7 @@ with it.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -254,6 +255,7 @@ def record_standup(
     sprint: str,
     crew_repo: str,
     delivery_repos: list[str] | tuple[str, ...] = (),
+    cards: Iterable[tuple[str | None, int | None]] = (),
 ) -> tuple[int, bool]:
     """Add this tick's standup to the sprint's issue. (issue, whether it commented)."""
     number = find_standup(issues, crew_repo, sprint)
@@ -285,7 +287,11 @@ def record_standup(
     # Written on the crew repository about delivery cards: a bare #31 here
     # would link to crew#31 (#118).
     text = link_references(
-        standup.text, owner=issues.owner, home=crew_repo, delivery=list(delivery_repos)
+        standup.text,
+        owner=issues.owner,
+        home=crew_repo,
+        delivery=list(delivery_repos),
+        cards=cards,
     )
     body = f"{QUIET_MARKER}\n{text}" if standup.quiet else text
     issues.comment(crew_repo, number, signed(body, ROLE))

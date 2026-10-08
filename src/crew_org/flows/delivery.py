@@ -1398,6 +1398,12 @@ def deliver_story(
         # lease so only the crew's own refused attempt is overwritten.
         ws.push(force=not rework or rebuilt_over is not None)
     except Exception as exc:  # noqa: BLE001
+        from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
+
+        # GitHub's side failing isn't the story's (crew#444): it goes to the
+        # interruption path, tried again next pass and blocked only after a streak.
+        if transient_remote(exc):
+            raise
         # Landing failed, not the work. Returning the outcome keeps what it
         # already knows — how many repairs it took, the diff it produced — where
         # letting this propagate discards all of it and the card blocks saying

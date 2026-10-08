@@ -1,0 +1,279 @@
+{
+  "$defs": {
+    "Card": {
+      "additionalProperties": false,
+      "description": "A card on the board. Its title is already public on GitHub.",
+      "properties": {
+        "closed": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closed"
+        },
+        "created": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created"
+        },
+        "number": {
+          "title": "Number",
+          "type": "integer"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The parent card's number, in the same repository.",
+          "title": "Parent"
+        },
+        "points": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Points"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "sprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sprint"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "Goal",
+                "Epic",
+                "Story"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Type"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "required": [
+        "repo",
+        "number",
+        "type",
+        "title",
+        "url",
+        "parent",
+        "points",
+        "sprint",
+        "status",
+        "created",
+        "closed"
+      ],
+      "title": "Card",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "description": "Days whose events share a file: a sprint, or a run of days between sprints.",
+      "properties": {
+        "end": {
+          "description": "The period's last day, inclusive.",
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "events": {
+          "title": "Events",
+          "type": "integer"
+        },
+        "file": {
+          "description": "Its events file, relative to the package's root.",
+          "title": "File",
+          "type": "string"
+        },
+        "sprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sprint's name; none for days between sprints.",
+          "title": "Sprint"
+        },
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sprint",
+        "start",
+        "end",
+        "file",
+        "events"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "Sprint": {
+      "additionalProperties": false,
+      "description": "A board iteration: its name and the days it runs, in the package's timezone.",
+      "properties": {
+        "end": {
+          "description": "The sprint's last day, inclusive.",
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "start",
+        "end"
+      ],
+      "title": "Sprint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The package's index: everything up to its date, so a consumer needs only the latest.\n\nThe events are in one file per period, so a page loads only the sprint it\nshows: the history grows by a sprint's worth each sprint, and a year of it\nin one file would be tens of megabytes (the Sponsor, 2026-10-08).",
+  "properties": {
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/Card"
+      },
+      "title": "Cards",
+      "type": "array"
+    },
+    "crew_repository": {
+      "title": "Crew Repository",
+      "type": "string"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "package": {
+      "const": "delivery-history",
+      "default": "delivery-history",
+      "title": "Package",
+      "type": "string"
+    },
+    "periods": {
+      "description": "Every period with events, oldest first.",
+      "items": {
+        "$ref": "#/$defs/Period"
+      },
+      "title": "Periods",
+      "type": "array"
+    },
+    "repositories": {
+      "description": "The delivery repositories it covers.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Repositories",
+      "type": "array"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sprints": {
+      "items": {
+        "$ref": "#/$defs/Sprint"
+      },
+      "title": "Sprints",
+      "type": "array"
+    },
+    "timezone": {
+      "description": "The timezone sprint days are counted in.",
+      "title": "Timezone",
+      "type": "string"
+    }
+  },
+  "required": [
+    "package",
+    "schema_version",
+    "date",
+    "timezone",
+    "crew_repository",
+    "repositories",
+    "sprints",
+    "cards",
+    "periods"
+  ],
+  "title": "DeliveryHistory",
+  "type": "object"
+}

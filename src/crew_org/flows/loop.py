@@ -280,7 +280,13 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     Before refinement, so an approved epic isn't split against a structure the
     Architect is about to change.
     """
-    from crew_org.crews.design_crew import propose_design, review_design  # noqa: PLC0415
+    from crew_org.clock import sprint_today  # noqa: PLC0415
+    from crew_org.crews.design_crew import (  # noqa: PLC0415
+        place_changes,
+        propose_design,
+        review_design,
+    )
+    from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
@@ -304,16 +310,23 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         propose_design=propose_design,
         review_design=review_design,
         threshold=int((crew.org.get("design") or {}).get("revisit_conflicts", REVISIT_CONFLICTS)),
+        place_changes=place_changes,
     )
     crew.design_holds = dict(result.holds)
+    # The Product Owner's project-wide decisions reach the project's log (crew#468).
+    logs = write_logs(
+        crew.issues, crew.reviewer, crew.sink, crew.ws, repos=repos, today=sprint_today(crew.org)
+    )
     return PhaseOutcome(
         "revisit",
-        moved=result.moved or bool(red.filed or red.closed or released.filed),
+        moved=result.moved or logs.moved or bool(red.filed or red.closed or released.filed),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
+            + (f", {len(logs.merged)} merged" if logs.merged else "")
         ),
         result=result,
         counts={
@@ -326,6 +339,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
         + [
             f"{repo} v{version} — waiting on the Sponsor: make the package public "
             "(its settings page; crew#386)"
@@ -762,6 +776,46 @@ def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
     )(crew)
 
 
+def _record_seen_moves(crew: Crew, cards: list[Any]) -> None:
+    """Log the moves made since the last pass by anyone but the crew (crew#521).
+
+    Best effort, like the board read it uses. The pass's view is saved only once
+    the moves are logged, so a failure here is caught up by the next pass.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from crew_org.events import replay_dir  # noqa: PLC0415
+    from crew_org.flows.board_moves import BOARD_WORKFLOW, run_windows  # noqa: PLC0415
+    from crew_org.flows.seen_moves import (  # noqa: PLC0415
+        SEEN_FILE,
+        changed,
+        load_seen,
+        save_seen,
+        seen_moves,
+    )
+
+    events_dir = crew.sink.path.parent if crew.sink.path else Path("var/events")
+    path = events_dir / SEEN_FILE
+    seen = load_seen(path)
+    if seen is not None and changed(cards, seen):
+        repos = sorted({*crew.repos, *([crew.crew_repo] if crew.crew_repo else [])})
+        moves = seen_moves(
+            cards,
+            seen,
+            replay_dir(events_dir),
+            lambda since: [
+                window
+                for repo in repos
+                for window in run_windows(
+                    crew.issues.workflow_runs(repo, BOARD_WORKFLOW, since=since), repo
+                )
+            ],
+        )
+        for move in moves:
+            crew.sink.emit(move)
+    save_seen(path, cards)
+
+
 def _record(outcome: PhaseOutcome) -> None:
     """A phase's decisions, on the record as it finishes (crew#449).
 
@@ -817,10 +871,16 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         # Best effort: a panel that cannot be seeded is worth less than a tick,
         # and every phase reads the board for itself anyway.
         try:
-            counts = crew.board.counts(crew.board.cards())
+            cards = crew.board.cards()
+            counts = crew.board.counts(cards)
         except Exception as exc:  # noqa: BLE001
-            counts = {}
+            cards, counts = [], {}
             crew.sink.note(EventKind.NOTE, f"could not read the board: {exc}"[:120])
+        if cards:
+            try:
+                _record_seen_moves(crew, cards)
+            except Exception as exc:  # noqa: BLE001
+                crew.sink.note(EventKind.NOTE, f"moves by others not recorded: {exc}"[:160])
         crew.sink.note(
             EventKind.TICK_STARTED,
             f"pass {result.passes}",

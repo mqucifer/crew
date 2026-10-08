@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -55,6 +56,21 @@ query($owner: String!, $repo: String!, $number: Int!, $branch: String!) {
       timelineItems(last: 1, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT,
           REMOVED_FROM_MERGE_QUEUE_EVENT, PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
         nodes { __typename ... on RemovedFromMergeQueueEvent { reason } }
+      }
+    }
+  }
+}
+"""
+
+_PULLS = """
+query($owner: String!, $repo: String!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(first: 100, after: $cursor,
+                 orderBy: {field: CREATED_AT, direction: ASC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title createdAt mergedAt closedAt
+        closingIssuesReferences(first: 10) { nodes { number repository { name } } }
       }
     }
   }
@@ -364,14 +380,23 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
-    def workflow_runs(self, repo: str, workflow: str) -> list[dict[str, Any]]:
-        """Every run of one workflow file, newest first. Empty if it has none."""
+    def workflow_runs(
+        self, repo: str, workflow: str, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Every run of one workflow file, newest first. Empty if it has none.
+
+        `since` keeps to runs created from then on: a tick asking about one
+        pass's moves needn't page through the workflow's whole history.
+        """
         runs: list[dict[str, Any]] = []
         page = 1
+        params: dict[str, Any] = {"per_page": 100}
+        if since is not None:
+            params["created"] = f">={since.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ}"
         while True:
             response = self._client.get(
                 f"{API}/repos/{self.owner}/{repo}/actions/workflows/{workflow}/runs",
-                params={"per_page": 100, "page": page},
+                params={**params, "page": page},
             )
             if response.status_code == 404:
                 return runs
@@ -589,6 +614,41 @@ class IssueClient:
         if response.status_code == 422 and "conflict" in detail.lower():
             raise BranchUpdateConflict(detail)
         raise IssueError(f"PUT update-branch #{number} -> {response.status_code}: {detail}")
+
+    def all_pulls(self, repo: str) -> list[dict[str, Any]]:
+        """Every pull request in `repo`, open, closed or merged, oldest first (crew#521).
+
+        Its number, title, when it was opened, merged and closed, and the issues it
+        closes, by GitHub's own link rather than a reading of its body.
+        `closed_pulls` keeps to the latest hundred; this pages through them all.
+        """
+        pulls: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            data = self._graphql(_PULLS, owner=self.owner, repo=repo, cursor=cursor)
+            page = (data.get("repository") or {}).get("pullRequests") or {}
+            for node in page.get("nodes") or []:
+                if not node:
+                    continue
+                closes = (node.get("closingIssuesReferences") or {}).get("nodes") or []
+                pulls.append(
+                    {
+                        "number": node["number"],
+                        "title": node.get("title") or "",
+                        "created_at": node.get("createdAt"),
+                        "merged_at": node.get("mergedAt"),
+                        "closed_at": node.get("closedAt"),
+                        "closes": [
+                            ((c.get("repository") or {}).get("name"), c["number"])
+                            for c in closes
+                            if c
+                        ],
+                    }
+                )
+            info = page.get("pageInfo") or {}
+            if not info.get("hasNextPage"):
+                return pulls
+            cursor = info.get("endCursor")
 
     def _graphql(self, query: str, **variables: Any) -> dict[str, Any]:
         response = self._client.post(GRAPHQL, json={"query": query, "variables": variables})

@@ -121,3 +121,35 @@ def test_what_is_not_a_reference_is_left_alone():
 def test_with_several_delivery_repositories_a_bare_number_is_not_guessed():
     assert linked("#31", delivery=(SM, "other")) == "#31"
     assert linked("other#4", delivery=(SM, "other")) == "mqucifer/other#4"
+
+
+# --- several delivery repositories: the board says whose card it is (crew#506) ------------
+
+
+def test_with_several_delivery_repos_a_card_number_links_to_the_repo_holding_it():
+    """Sprint 17's retro named sprint-metrics' epics 407 and 408, and with two delivery
+    repositories they were left bare, then linked to crew#407 and crew#408."""
+    text = link_references(
+        "Epics at your gate: #407, #408. Also #5 and #9, and crew#12.",
+        owner="mqucifer",
+        home="crew",
+        delivery=["infra", "sprint-metrics"],
+        known=["crew"],
+        cards=[
+            ("sprint-metrics", 407),
+            ("sprint-metrics", 408),
+            ("infra", 5),
+            ("infra", 9),
+            ("sprint-metrics", 9),
+            ("crew", 12),
+        ],
+    )
+    assert "mqucifer/sprint-metrics#407, mqucifer/sprint-metrics#408" in text
+    assert "mqucifer/infra#5" in text
+    assert " #9," in text, "a number two delivery repositories hold is left, not guessed"
+    assert "#12." in text and "mqucifer/crew" not in text, "the crew's own stay as they were"
+
+
+def test_without_the_board_several_repos_still_leave_a_number_alone():
+    text = link_references("#407", owner="mqucifer", home="crew", delivery=["a", "b"])
+    assert text == "#407"

@@ -410,3 +410,56 @@ Sprint 17 was the refinement panel's proof on mqucifer/sprint-metrics#406. All 9
 3. **Refusal messages, as one pass:** read every form refusal the Developer and Business Analyst can get, for whether it names a fix the form allows. Two sprints' escalations came from one that didn't.
 
 **Checks:** "ticks stopped" found nothing this sprint (5 in Sprint 12). One more empty sprint makes it a candidate for removal. "The crew's retro against this one" found wrong items both sprints, which is the case for [D453](https://github.com/mqucifer/crew/discussions/453).
+
+## Operator's retro: Sprint 18 (2026-10-07, closed 2026-10-08, crew#543)
+
+Sprint 18 delivered sprint-metrics' last stories for Goal 174 (epics 407 and 408, both closed), and the planning for the contract path (ADRs 0019–0022). crew-presentation's 4 stories (9 points) didn't move: two were blocked, and the project was paused at 23:20Z (crew#523) for its redesign. That's on purpose, not a delivery failure. From the working log, the event log, the merged PRs and the board.
+
+**Ticks:** 22 runs. None crashed, and I stopped none. Two ended at the pass cap.
+
+**The close:** I ran `crew sprint close` without naming the sprint. By then the board's current iteration was Sprint 19, so the close refused to end it early. `--sprint "Sprint 18"` closed the right one.
+
+### 1. Interventions
+- **Crew PRs merged during the sprint: 18.**
+  - **Incidents (3):** PR 512 ("has no source" refusals blocking two stories), PR 514 (the Architect couldn't answer the design review) and PR 517 (CI held against a project with no code).
+  - **Planning (7):** PR 507–509, 520, 522, 524 and 525: the ADRs and crew-presentation's start and pause.
+  - **Overnight backlog (8):** PR 527 and 529–535.
+- **By hand:** the Sponsor removed `blocked` from mqucifer/sprint-metrics#450 and mqucifer/sprint-metrics#453 after PR 512. I filed release stories mqucifer/sprint-metrics#473 and mqucifer/sprint-metrics#474, which the Sponsor withdrew (ADR 0019 rewritten in PR 527).
+- **`crew moves --people` still misses hand moves.** Its list ends at 10-01, and it doesn't show my moves of 473 and 474 on 10-08. Second sprint running.
+
+### 2. Where a person was asked
+- **The escalation (1 of 1) went to mqucifer/sprint-metrics#448** at 12:47. With the budget spent, mqucifer/sprint-metrics#453 was blocked at 14:17 and mqucifer/crew-presentation#16 at 20:45.
+  - Neither was helped by an escalation: mqucifer/sprint-metrics#453 needed PR 512, and mqucifer/crew-presentation#16 was refused for changing nothing.
+  - That's the third sprint in which the budget blocked a card and an escalation wouldn't have fixed it.
+- **The Product Owner answered 1 story problem** without a person.
+
+### 3. Drift between the Goal and the plan
+- **Nothing left unrecorded.** The Sponsor's decisions this sprint are in ADRs 0019–0022, in Goals mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462 and mqucifer/sprint-metrics#470 (filed by the Sponsor), and in crew#521 and crew#523.
+
+### 4. Repeats and cost
+- **25 refusals of the Developer's answer** (logged twice each, so 50 `llm.failed` events). There were no model failures of another kind.
+  - **7 "has no source"** on mqucifer/sprint-metrics#450 and mqucifer/sprint-metrics#453, then 3 "must create a file or edit one" on mqucifer/sprint-metrics#450. Told to leave out the tests it had named, the Developer handed back nothing. All 10 were before PR 512.
+  - **15 on crew-presentation:** 10 "must create a file or edit one" and 5 "the edit to `ci.yml` changes nothing", on mqucifer/crew-presentation#15 and mqucifer/crew-presentation#16. The cause isn't established, and the stories are paused for replacement.
+- **ImportError, 6 times on 3 cards** (crew#541): the Developer imported `InMemorySpanExporter` from the wrong module of the installed OpenTelemetry package. It doesn't see what the package provides.
+- **5 empty answers from `crew-code-think`** on mqucifer/sprint-metrics#455. See the empty-answers runbook.
+- **Only 2 of 7 sprint-metrics stories landed first time.**
+
+### 5. The crew's own retro (crew#543) against this one
+- **It saw:** the ImportError recurrence (crew#541, new and real), and that the escalation budget parked two cards.
+- **It got wrong:**
+  - **Every crew-presentation card links to the crew issue with the same number,** and mqucifer/crew-presentation#18 is labelled as sprint-metrics'. My fix for crew#506 (PR 535) qualifies only by repositories still in `delivery.repos`, and the pause took crew-presentation out while its cards stayed on the board. Not filed: it lasts only while the pause does (the Sponsor, 2026-10-08).
+  - **Two of its four defects are wrong diagnoses**, as were both of Sprint 17's.
+    - crew#539 blames criteria that don't name a file; the cause was crew#511.
+    - crew#540 says the four checks were only counted, but criterion 2 lists their exact commands.
+  - **crew#542 re-files "has no source", fixed mid-sprint by PR 512.** The retro recognises a fix only by its cause marker in the PR body or a closed finding, and PR 512 had none.
+  - **"infra could not be onboarded"**, a repository that doesn't exist on purpose, the same as Sprint 12.
+  - **"Needs you" counts mqucifer/crew-presentation#13 and mqucifer/crew-presentation#14**, which are paused. The 7 sprint-metrics epics (mqucifer/sprint-metrics#464 to mqucifer/sprint-metrics#472) are the real queue.
+
+### 6. Proposed for the crew iteration (for the Sponsor to agree)
+1. **The retro's process diagnoses:** 4 of the last 4 were wrong (crew#502, crew#503, crew#539, crew#540). Each one reasoned from the card's text, not from the refusals in its event log. The retro should be shown each card's refusal sequence before it diagnoses, or file these as questions rather than defects.
+2. **crew#541:** the Developer can see what an installed package provides before importing from it.
+
+**Checks:**
+- **"Ticks stopped" found nothing for a second sprint.** Candidate for removal.
+- **"The crew's retro against this one" found wrong items for a third sprint.** That's the case for proposal 1 and [D453](https://github.com/mqucifer/crew/discussions/453).
+- **A fix should carry its cause's marker:** a fix PR for a failure the retro counts puts `<!-- crew:cause:KEY -->` in its body. PR 512's didn't, so the retro filed crew#542.

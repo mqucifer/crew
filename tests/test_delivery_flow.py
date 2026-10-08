@@ -67,6 +67,9 @@ class FakeBoard:
                 out[c.status] = out.get(c.status, 0) + 1
         return out
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append((item_id, column))
 
@@ -695,6 +698,26 @@ def test_a_failed_push_keeps_what_the_attempt_learned(harness, monkeypatch):
     assert blocked.attempts == 1, "the repair it took is still on the outcome"
     assert "could not push" in (blocked.blocked_reason or "")
     assert blocked.rejected_diff is not None, "and the evidence survived"
+
+
+def test_a_push_github_s_side_failed_is_tried_again_not_blocked(harness, monkeypatch):
+    """crew#444: sprint-metrics#383's push got GitHub's `remote: fatal error in
+    commit_refs` and the card was blocked as the story's own failure, though
+    GitHub was operational minutes later."""
+    from crew_org.flows.delivery import INTERRUPTED_MARKER
+    from crew_org.git_ops import GitError
+
+    def stumble(self, *, force=False):
+        raise GitError(
+            "git push failed: remote: fatal error in commit_refs\n"
+            " ! [remote rejected] feat/6-x -> feat/6-x (failure)"
+        )
+
+    monkeypatch.setattr(FakeWorkspace, "push", stumble)
+    result, _, issues, _, _, _ = harness(checks=[green()], cards=[story(6)])
+
+    assert result.blocked == [], "GitHub interrupted it; the story didn't fail"
+    assert any(INTERRUPTED_MARKER in body for _, body in issues.comments_)
 
 
 # --- a second attempt can land ------------------------------------------

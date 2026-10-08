@@ -151,3 +151,63 @@ def test_a_graphql_answer_is_read_without_the_response_carrying_its_request():
     """The crash: the first tick on #294 raised on every GraphQL answer."""
     request = httpx.Request("POST", "https://api.github.com/graphql")
     assert not throttled(request, httpx.Response(200, content=b'{"data": {}}'))
+
+
+# --- a passing server error is retried, a create is never repeated (crew#515) -------------
+
+WENT_WRONG = (
+    200,
+    {"content-type": "application/json"},
+    b'{"errors": [{"message": "Something went wrong while executing your query. '
+    b'Please include `CF84:1584F2` when reporting this issue."}]}',
+)
+
+
+def test_a_server_error_on_a_read_is_retried_after_a_short_wait():
+    clock = Clock()
+    assert client([(502, {}, b""), OK], clock).get("/repos/o/r/issues").status_code == 200
+    assert clock.slept == [5.0]
+
+
+def test_graphql_s_something_went_wrong_is_retried():
+    clock = Clock()
+    board = client([WENT_WRONG, OK], clock)
+    assert board.post("/graphql", json={"query": "mutation { x }"}).json() == {}
+    assert 5.0 in clock.slept
+
+
+def test_an_html_error_page_where_json_belongs_is_retried():
+    clock = Clock()
+    page = (200, {"content-type": "text/html; charset=utf-8"}, b"<html>Unicorn!</html>")
+    assert client([page, OK], clock).get("/repos/o/r/issues/1/comments").status_code == 200
+
+
+def test_a_create_that_may_have_landed_is_not_repeated():
+    clock = Clock()
+    response = client([(502, {}, b""), OK], clock).post("/repos/o/r/issues/1/comments", json={})
+    assert response.status_code == 502, "returned as it came; the caller fails as before"
+    assert clock.slept == [], "no retry wait"
+
+
+def test_adding_labels_is_safe_to_repeat():
+    clock = Clock()
+    labels = client([(503, {}, b""), OK], clock)
+    assert labels.post("/repos/o/r/issues/1/labels", json={"labels": ["x"]}).status_code == 200
+
+
+def test_github_still_failing_stops_the_tick_like_a_throttle():
+    clock = Clock()
+    down = (502, {}, b"")
+    with pytest.raises(github_http.GitHubUnavailable, match="isn't answering") as stopped:
+        client([down, down, down, down], clock).get("/x")
+    assert isinstance(stopped.value, GitHubThrottled), "the loop stops cleanly on it"
+    assert clock.slept == [5.0, 10.0, 20.0]
+    with pytest.raises(github_http.GitHubUnavailable):
+        reraise_if_down(stopped.value)  # a card's catch passes it through
+
+
+def test_a_graphql_refusal_is_not_a_blip():
+    clock = Clock()
+    refused = (200, {}, b'{"errors": [{"message": "Could not resolve to a node"}]}')
+    assert client([refused], clock).post("/graphql", json={"query": "q"}).json()["errors"]
+    assert clock.slept == []

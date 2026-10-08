@@ -41,6 +41,12 @@ from crew_org.tools.github_issues import IssueClient, from_sponsor
 CONCLUSION_HEADER = "## Refinement conclusion"
 SETTLE_QUESTION_MARKER = "<!-- crew:settle-question -->"
 NEEDS_HUMAN = "needs:human"
+# Rows that decide something for every epic go into the project's decision log
+# too (crew#468). The conclusion names them, and the label says the log hasn't
+# caught up yet; the revisit phase, which has the clone and the approving
+# identity, writes them and takes the label off once they've merged.
+TO_LOG = "<!-- crew:to-log {} -->"
+TO_LOG_LABEL = "decision:to-log"
 NOTHING_RAISED = "Ready to split: the panel raised nothing."
 # A conclusion the schema or the coverage check refuses is asked for again, told why.
 ATTEMPTS = 3
@@ -149,6 +155,9 @@ def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | N
         "_Settled by the Product Owner from the panel's notes, which stay as the epic's "
         "panel comment._"
     )
+    wide = [f"R{i}" for i, r in enumerate(conclusion.rows, 1) if r.project_wide]
+    if wide:
+        lines.append(TO_LOG.format(",".join(wide)))
     return "\n".join(lines)
 
 
@@ -270,6 +279,16 @@ def settle_epic(
     if current != (issue.get("body") or ""):
         raise SettleFailed(f"the epic's body changed while it was being settled: {repo}#{epic}")
     issues.edit_issue(repo, epic, body=f"{current.rstrip()}\n\n{text}\n")
+    if any(r.project_wide for r in settlement.conclusion.rows):
+        issues.ensure_label(
+            repo,
+            TO_LOG_LABEL,
+            color="fbca04",
+            description="Its conclusion decides something the project's log doesn't hold yet",
+        )
+        artifacts.label(
+            issues, sink, repo=repo, number=epic, by="Product Owner", add=[TO_LOG_LABEL]
+        )
     sink.emit(
         CrewEvent(
             kind=EventKind.NOTE,

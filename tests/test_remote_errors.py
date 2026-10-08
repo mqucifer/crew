@@ -68,6 +68,9 @@ class Board:
     def __init__(self):
         self.moves = []
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append(column)
 
@@ -158,3 +161,30 @@ def test_other_crew_work_since_resets_the_streak(monkeypatch):
     issues = Issues(earlier=earlier)
     _board, result = work(monkeypatch, issues)
     assert result.interrupted == [358]
+
+
+# --- GitHub's side failing a push (crew#444) ------------------------------------------------
+
+
+def test_a_push_github_s_side_failed_is_passing():
+    from crew_org.git_ops import GitError
+
+    seen = GitError(
+        "git push failed: remote: fatal error in commit_refs\n"
+        "To https://github.com/mqucifer/sprint-metrics.git\n"
+        " ! [remote rejected] feat/383-show-retry-count -> feat/383-show-retry-count (failure)"
+    )
+    assert transient_remote(seen) == "GitHub"
+    assert transient_remote(GitError("git fetch failed: error: RPC failed; HTTP 502")) == "GitHub"
+
+
+def test_a_push_rejected_for_the_story_s_own_reasons_is_not():
+    from crew_org.git_ops import GitError
+
+    for reason in (
+        " ! [remote rejected] main -> main (protected branch hook declined)",
+        " ! [rejected] feat/6 -> feat/6 (stale info)",
+        " ! [rejected] feat/6 -> feat/6 (non-fast-forward)",
+        "remote: Permission to mqucifer/sprint-metrics.git denied",
+    ):
+        assert transient_remote(GitError(f"git push failed: {reason}")) is None, reason

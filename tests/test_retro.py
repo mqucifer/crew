@@ -373,3 +373,20 @@ def test_references_in_a_known_issue_are_shown_as_crew_references():
     issues = FakeIssues()
     issues.open_ = [open_issue(117, "Bridge", "so that what #56 set out to record is there")]
     assert "what crew#56 set out" in known_issues(issues, CREW)[1]
+
+
+def test_with_several_delivery_repos_the_retro_links_cards_by_the_board():
+    """crew#506: the Sprint 17 retro linked every sprint-metrics card into the crew repo."""
+    issues = FakeIssues()
+    record_retro(
+        issues,
+        EventSink(None),
+        Retro(summary="#427 is done; epic #407 waits for you."),
+        sprint=SPRINT,
+        crew_repo=CREW,
+        delivery_repos=[PRODUCT, "infra"],
+        cards=[(PRODUCT, 427), (PRODUCT, 407), ("infra", 3)],
+    )
+    retro = issues.created[-1]["body"]
+    assert "mqucifer/sprint-metrics#427 is done" in retro
+    assert "epic mqucifer/sprint-metrics#407 waits" in retro

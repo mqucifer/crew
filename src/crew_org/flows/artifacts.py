@@ -32,7 +32,13 @@ _BARE = re.compile(r"(?<![\w/#])#(\d+)\b")
 
 
 def link_references(
-    text: str, *, owner: str, home: str, delivery: list[str], known: Iterable[str] = ()
+    text: str,
+    *,
+    owner: str,
+    home: str,
+    delivery: list[str],
+    known: Iterable[str] = (),
+    cards: Iterable[tuple[str | None, int | None]] = (),
 ) -> str:
     """Make every card reference in `text` link to that card from `home`.
 
@@ -41,9 +47,12 @@ def link_references(
     delivery cards, so a bare `#31` there linked to crew#31, a different issue
     (#118). `repo#N` does not link at all; `owner/repo#N` does.
 
-    A bare number is qualified only when there is exactly one delivery
-    repository to qualify it with. With several it is ambiguous, and it is left
-    as it was rather than guessed. `known` names other repositories whose
+    A bare number is qualified when there is exactly one delivery repository to
+    qualify it with, or, with several, when the board's `cards` (repo, number)
+    put that number in exactly one of them (crew#506): Sprint 17's retro had two
+    delivery repositories, so every card number was left bare and then linked
+    into the crew repository. A number still ambiguous is left as it was rather
+    than guessed. `known` names other repositories whose
     `repo#N` should link, such as the crew's own; any other `word#N` is left
     alone, so `PR#5` is not mistaken for a repository.
     """
@@ -59,6 +68,19 @@ def link_references(
     # way round, `crew#9` became `#9` and was then taken for a delivery card.
     if len(delivery) == 1 and delivery[0] != home:
         text = _BARE.sub(lambda m: f"{owner}/{delivery[0]}#{m.group(1)}", text)
+    else:
+        held: dict[int, set[str]] = {}
+        for repo, number in cards:
+            if repo in delivery and repo != home and number:
+                held.setdefault(number, set()).add(repo)
+
+        def owned(match: re.Match[str]) -> str:
+            repos = held.get(int(match.group(1)), set())
+            if len(repos) != 1:
+                return match.group(0)
+            return f"{owner}/{next(iter(repos))}#{match.group(1)}"
+
+        text = _BARE.sub(owned, text)
     return _QUALIFIED.sub(qualified, text)
 
 
