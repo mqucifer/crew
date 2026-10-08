@@ -45,15 +45,27 @@ story level."
 
 - An epic's outcome that names a released artifact is met when it can be used,
   not when its code merges.
-- Versions move once per epic. The service is 1.1.0; the next two epics under Goal
-  174, trends and telemetry, are each a MINOR.
+- Versions move once per epic.
 - A release story is technical work, so it holds the project's other epics until it
   lands, as technical work does. It's small, so the hold is short.
-- Until crew#500 is built, a completed epic's release story is filed by hand.
-  Epic 406's is the first.
+- **Until crew#500 is built, no release story is filed by hand.** A completed epic
+  waits unreleased on `main`, and crew#500's close check files its release when it's
+  built. Epic 406's 1.1.0 was the only one filed by hand. sprint-metrics' epics 408
+  (telemetry) and 407 (trends) completed on 2026-10-07 and 2026-10-08 and wait this
+  way. The Sponsor, 2026-10-08: "I don't quite get the desire to make two releases
+  for something we currently know is not what we want and we have backlog work that
+  will do this for us automatically. I'd rather have less real epics to wade
+  through." Their sprints are about to change (mqucifer/sprint-metrics#462).
 - **Left open, to rethink later.** The DevOps Engineer still reviews stories, and
   later bugs, through the deploy review. One day it may mark a particular story or
   bug as needing its own release, such as a fix users need now. That would be an
   exception it flags, never every story. The Sponsor, 2026-10-07: "That may need to
   be rethought at a later time if it can tag them earlier as needs release or
   something. Not every story."
+
+## Changelog
+
+- 2026-10-07: Accepted (crew#501).
+- 2026-10-08: No release story is filed by hand until crew#500 is built; completed
+  epics wait unreleased. The Sponsor withdrew the hand-filed releases of epics 407
+  and 408 (crew#500).
