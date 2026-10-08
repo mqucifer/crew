@@ -158,6 +158,16 @@ def test_the_analyst_is_configured_off_the_shared_alias():
     assert spec["llm_params"]["max_tokens"] > 16384
 
 
+def test_the_developer_has_room_for_a_whole_implementation_and_the_time_to_write_it():
+    """sprint-metrics#475: two answers of three stopped at 32,768 tokens, mid-answer."""
+    from crew_org.permissions import load_agents
+
+    params = load_agents()["developer"]["llm_params"]
+    assert params["max_tokens"] > 32768
+    # At the 27.5 tokens a second measured that day, the whole budget has to fit.
+    assert params["timeout"] >= params["max_tokens"] / 27.5
+
+
 # --- #153: a dead backend behind a live proxy --------------------------------------
 
 

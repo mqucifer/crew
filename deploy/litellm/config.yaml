@@ -147,7 +147,9 @@ model_list:
       temperature: 1.0
       top_p: 0.95
       presence_penalty: 0.0
-      timeout: 1800
+      # The Developer's answers may run to 65,536 tokens (agents.yaml): about
+      # 2,400 seconds at the 27.5 tokens a second measured on 2026-10-08.
+      timeout: 3600
       reasoning_effort: low
       allowed_openai_params: ["reasoning_effort"]  # or drop_params strips it
       extra_body:                        # not OpenAI parameters: drop_params would strip them
@@ -190,8 +192,9 @@ litellm_settings:
   # Measured at ~36 tok/s, a 16,384-token implementation takes ~460s, so 300
   # could never have completed one — it returned 408 mid-generation while
   # SGLang carried on, and the client retried into the same wall.
-  # 1800 leaves headroom for reasoning tokens and a slower day.
-  request_timeout: 1800
+  # 1800 left headroom for reasoning tokens and a slower day, until the
+  # Developer's answers grew to 65,536 tokens (crew-code-think's own timeout).
+  request_timeout: 3600
   # Agents retry through the escalation policy, not blindly at the transport
   # layer — a silent retry storm would hide the failure classification.
   num_retries: 0
