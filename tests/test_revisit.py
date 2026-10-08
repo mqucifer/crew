@@ -312,6 +312,9 @@ class Board:
     def add_issue(self, node_id):
         return f"item-{node_id}"
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item, to):
         self.status[item] = to
 

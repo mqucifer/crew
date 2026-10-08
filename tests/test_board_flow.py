@@ -138,6 +138,9 @@ class FakeBoard:
         self.added.append(node_id)
         return f"ITEM_{node_id}"
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id: str, column: str) -> None:
         self.moves.append((item_id, column))
 

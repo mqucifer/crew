@@ -60,6 +60,9 @@ class Board:
     def cards(self):
         return list(self._cards.values())
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         c = self._cards[item_id]
         self._cards[item_id] = c.model_copy(update={"status": column})

@@ -132,6 +132,9 @@ class Board:
     def __init__(self):
         self.status, self.cleared = {}, []
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item, to):
         self.status[item] = to
 

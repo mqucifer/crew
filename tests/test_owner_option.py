@@ -18,6 +18,9 @@ class Board:
         self.options = options
         self.moves, self.owners = [], []
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item, to):
         self.moves.append((item, to))
 
