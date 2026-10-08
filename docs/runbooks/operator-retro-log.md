@@ -417,7 +417,7 @@ Sprint 18 delivered sprint-metrics' last stories for Goal 174 (epics 407 and 408
 
 **Ticks:** 22 runs. None crashed, and I stopped none. Two ended at the pass cap.
 
-**The close:** Sprint 18 was not closed on its last day, so by morning the board's current iteration was Sprint 19. A plain `crew sprint close` named Sprint 19 and refused to end it early. `--sprint "Sprint 18"` closed the right one.
+**The close:** I ran `crew sprint close` without naming the sprint. By then the board's current iteration was Sprint 19, so the close refused to end it early. `--sprint "Sprint 18"` closed the right one.
 
 ### 1. Interventions
 - **Crew PRs merged during the sprint: 18.**
@@ -447,7 +447,7 @@ Sprint 18 delivered sprint-metrics' last stories for Goal 174 (epics 407 and 408
 ### 5. The crew's own retro (crew#543) against this one
 - **It saw:** the ImportError recurrence (crew#541, new and real), and that the escalation budget parked two cards.
 - **It got wrong:**
-  - **Every crew-presentation card links to the crew issue with the same number,** and mqucifer/crew-presentation#18 is labelled as sprint-metrics'. My fix for crew#506 (PR 535) qualifies only by repositories still in `delivery.repos`, and the pause took crew-presentation out while its cards stayed on the board. Not yet filed.
+  - **Every crew-presentation card links to the crew issue with the same number,** and mqucifer/crew-presentation#18 is labelled as sprint-metrics'. My fix for crew#506 (PR 535) qualifies only by repositories still in `delivery.repos`, and the pause took crew-presentation out while its cards stayed on the board. Not filed: it lasts only while the pause does (the Sponsor, 2026-10-08).
   - **Two of its four defects are wrong diagnoses**, as were both of Sprint 17's.
     - crew#539 blames criteria that don't name a file; the cause was crew#511.
     - crew#540 says the four checks were only counted, but criterion 2 lists their exact commands.
@@ -456,11 +456,10 @@ Sprint 18 delivered sprint-metrics' last stories for Goal 174 (epics 407 and 408
   - **"Needs you" counts mqucifer/crew-presentation#13 and mqucifer/crew-presentation#14**, which are paused. The 7 sprint-metrics epics (mqucifer/sprint-metrics#464 to mqucifer/sprint-metrics#472) are the real queue.
 
 ### 6. Proposed for the crew iteration (for the Sponsor to agree)
-1. **Card links for a paused project:** qualify by the repository of every card on the board, not only `delivery.repos`. Small, and my own miss in PR 535.
-2. **The retro's process diagnoses:** 4 of the last 4 were wrong (crew#502, crew#503, crew#539, crew#540). Each one reasoned from the card's text, not from the refusals in its event log. The retro should be shown each card's refusal sequence before it diagnoses, or file these as questions rather than defects.
-3. **crew#541:** the Developer can see what an installed package provides before importing from it.
+1. **The retro's process diagnoses:** 4 of the last 4 were wrong (crew#502, crew#503, crew#539, crew#540). Each one reasoned from the card's text, not from the refusals in its event log. The retro should be shown each card's refusal sequence before it diagnoses, or file these as questions rather than defects.
+2. **crew#541:** the Developer can see what an installed package provides before importing from it.
 
 **Checks:**
 - **"Ticks stopped" found nothing for a second sprint.** Candidate for removal.
-- **"The crew's retro against this one" found wrong items for a third sprint.** That's the case for proposal 2 and [D453](https://github.com/mqucifer/crew/discussions/453).
+- **"The crew's retro against this one" found wrong items for a third sprint.** That's the case for proposal 1 and [D453](https://github.com/mqucifer/crew/discussions/453).
 - **A fix should carry its cause's marker:** a fix PR for a failure the retro counts puts `<!-- crew:cause:KEY -->` in its body. PR 512's didn't, so the retro filed crew#542.
