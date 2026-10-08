@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -364,14 +365,23 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
-    def workflow_runs(self, repo: str, workflow: str) -> list[dict[str, Any]]:
-        """Every run of one workflow file, newest first. Empty if it has none."""
+    def workflow_runs(
+        self, repo: str, workflow: str, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Every run of one workflow file, newest first. Empty if it has none.
+
+        `since` keeps to runs created from then on: a tick asking about one
+        pass's moves needn't page through the workflow's whole history.
+        """
         runs: list[dict[str, Any]] = []
         page = 1
+        params: dict[str, Any] = {"per_page": 100}
+        if since is not None:
+            params["created"] = f">={since.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ}"
         while True:
             response = self._client.get(
                 f"{API}/repos/{self.owner}/{repo}/actions/workflows/{workflow}/runs",
-                params={"per_page": 100, "page": page},
+                params={**params, "page": page},
             )
             if response.status_code == 404:
                 return runs

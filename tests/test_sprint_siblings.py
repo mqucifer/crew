@@ -80,6 +80,9 @@ class Board:
     def counts(self, cards):
         return {}
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item, to):
         self.moves.append((item, to))
 

@@ -29,6 +29,10 @@ class EventKind(StrEnum):
     CARD_CLAIMED = "card.claimed"
     CARD_MOVED = "card.moved"
     CARD_BLOCKED = "card.blocked"
+    # A move the crew didn't make, seen at the start of a pass (crew#521): a
+    # person's, or the board workflow's. Its own kind, so nothing that reads
+    # `card.moved` as the crew's own takes it for one.
+    CARD_SEEN_MOVED = "card.seen_moved"
 
     AGENT_STARTED = "agent.started"
     AGENT_FINISHED = "agent.finished"

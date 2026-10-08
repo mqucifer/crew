@@ -776,6 +776,46 @@ def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
     )(crew)
 
 
+def _record_seen_moves(crew: Crew, cards: list[Any]) -> None:
+    """Log the moves made since the last pass by anyone but the crew (crew#521).
+
+    Best effort, like the board read it uses. The pass's view is saved only once
+    the moves are logged, so a failure here is caught up by the next pass.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from crew_org.events import replay_dir  # noqa: PLC0415
+    from crew_org.flows.board_moves import BOARD_WORKFLOW, run_windows  # noqa: PLC0415
+    from crew_org.flows.seen_moves import (  # noqa: PLC0415
+        SEEN_FILE,
+        changed,
+        load_seen,
+        save_seen,
+        seen_moves,
+    )
+
+    events_dir = crew.sink.path.parent if crew.sink.path else Path("var/events")
+    path = events_dir / SEEN_FILE
+    seen = load_seen(path)
+    if seen is not None and changed(cards, seen):
+        repos = sorted({*crew.repos, *([crew.crew_repo] if crew.crew_repo else [])})
+        moves = seen_moves(
+            cards,
+            seen,
+            replay_dir(events_dir),
+            lambda since: [
+                window
+                for repo in repos
+                for window in run_windows(
+                    crew.issues.workflow_runs(repo, BOARD_WORKFLOW, since=since), repo
+                )
+            ],
+        )
+        for move in moves:
+            crew.sink.emit(move)
+    save_seen(path, cards)
+
+
 def _record(outcome: PhaseOutcome) -> None:
     """A phase's decisions, on the record as it finishes (crew#449).
 
@@ -831,10 +871,16 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         # Best effort: a panel that cannot be seeded is worth less than a tick,
         # and every phase reads the board for itself anyway.
         try:
-            counts = crew.board.counts(crew.board.cards())
+            cards = crew.board.cards()
+            counts = crew.board.counts(cards)
         except Exception as exc:  # noqa: BLE001
-            counts = {}
+            cards, counts = [], {}
             crew.sink.note(EventKind.NOTE, f"could not read the board: {exc}"[:120])
+        if cards:
+            try:
+                _record_seen_moves(crew, cards)
+            except Exception as exc:  # noqa: BLE001
+                crew.sink.note(EventKind.NOTE, f"moves by others not recorded: {exc}"[:160])
         crew.sink.note(
             EventKind.TICK_STARTED,
             f"pass {result.passes}",

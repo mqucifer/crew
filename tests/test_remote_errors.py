@@ -68,6 +68,9 @@ class Board:
     def __init__(self):
         self.moves = []
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append(column)
 
