@@ -1,0 +1,36 @@
+# sprint-metrics, run as a service for the crew (crew#280).
+#
+# The crew pushes its board events here and asks it for each sprint's numbers.
+# It keeps its history in its own database, `sprint_metrics`, on the stack's one
+# Postgres server (the Sponsor, 2026-10-01). That server is `litellm-temp-db`,
+# reached over LiteLLM's compose network. Its own role owns that database and
+# nothing else, so it can't read LiteLLM's.
+#
+# Its password is in var/secrets/sprint-metrics.env, which git ignores. Start it
+# from this directory:
+#
+#   docker compose --env-file ../../var/secrets/sprint-metrics.env up -d
+#
+# The image is the released one, pinned by tag. It's private, so pulling it needs
+# Docker logged in to ghcr.io with `read:packages`. Until then, build the same
+# tag from its public source and point SPRINT_METRICS_IMAGE at it:
+#
+#   docker build -t sprint-metrics:1.1.0-local <sprint-metrics checked out at v1.1.0>
+
+services:
+  sprint-metrics:
+    image: ${SPRINT_METRICS_IMAGE:-ghcr.io/mqucifer/sprint-metrics:1.1.0}
+    container_name: crew-sprint-metrics
+    command: ["--service"]
+    environment:
+      - SPRINT_METRICS_DB=postgresql://sprint_metrics:${SPRINT_METRICS_DB_PASSWORD:?set it in var/secrets/sprint-metrics.env}@litellm-temp-db:5432/sprint_metrics
+    ports:
+      # Loopback only: the crew asks it from this machine.
+      - "127.0.0.1:8080:8080"
+    networks:
+      - litellm_default
+    restart: unless-stopped
+
+networks:
+  litellm_default:
+    external: true
