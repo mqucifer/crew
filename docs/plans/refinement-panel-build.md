@@ -2,7 +2,7 @@
 
 **Bottom line:** build the panel and its settle step into refinement, then prove them on sprint-metrics #406. Success means #406 splits without the contradictions and missed decisions of 2026-10-01.
 
-**Status:** planned with the Sponsor on 2026-10-02. Steps 1–8 are done, with the scope changes of ADRs 0017 and 0018. `refinement.panel` in `org.yaml` is on, for step 9: the proof on #406 in a tick. Step 10 isn't built. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
+**Status:** done. Steps 1–9 are built and proven: the proof on #406, #407 and #408 passed (see the success test below). Step 10, the design note's conclusion and the other hand-offs, is crew#457's. The decisions behind this plan are in part 5 of [`goal-174-service.md`](goal-174-service.md), and the evidence for them is in [`experiments/panel-174/README.md`](../../experiments/panel-174/README.md).
 
 ## Where things stand (2026-10-02)
 
@@ -53,12 +53,14 @@ Each step is one PR. Anything that calls a model or GitHub is proven with one re
 
 ## The success test (step 9)
 
-| Check | 2026-10-01 | Success |
-|---|---|---|
-| Stories returned for contradicting criteria | 4 (#393, #394, #395, #402) | None |
-| Goal decisions missing from the plan | Postgres, counting, OTLP, MINOR | All in the conclusion, cited |
-| Notes that became unneeded work | sprint-metrics #419 | None |
-| Sponsor questions | Not counted | At most one or two per epic |
+| Check | 2026-10-01 | Success | Result on #406, #407, #408 (2026-10-06 to 08) |
+|---|---|---|---|
+| Stories returned for contradicting criteria | 4 (#393, #394, #395, #402) | None | **None.** Two stories under #406 went back for pinned tests (#434, #445), a different cause. |
+| Goal decisions missing from the plan | Postgres, counting, OTLP, MINOR | All in the conclusion, cited | **None missing.** All four reached the split through the Goal's decisions and the project's log (sprint-metrics ADRs 0001, 0002, 0006, 0007), which every step is shown (ADR 0016), so the conclusion didn't restate them. The stories followed all four. |
+| Notes that became unneeded work | sprint-metrics #419 | None | **None.** No technical epic was filed on sprint-metrics after 2026-10-05. |
+| Sponsor questions | Not counted | At most one or two per epic | **None.** The Product Owner answered its own questions within the Goal (6 on #406, 1 on #407; ADR 0018), and refused one own call on a design question for #407, as ADR 0018 says. |
+
+**Proven, 2026-10-08.** All three epics delivered and closed. One thing the panel couldn't catch: #407 decided that trends take calendar ranges, because nothing the panel was shown said what the crew's sprints are. That's missing context, not a missed note: mqucifer/sprint-metrics#462 and crew#528.
 
 ## What to reuse from the test
 
