@@ -214,6 +214,22 @@ class EpicProposal(BaseModel):
         return value
 
 
+class MissingEpics(EpicProposal):
+    """The epics a Goal under way still lacks (crew#429): as few as that takes."""
+
+    @field_validator("epics")
+    @classmethod
+    def _decomposed(cls, value: list[Epic]) -> list[Epic]:
+        if not value:
+            raise ValueError("name the epic the goal still lacks: at least one")
+        if len(value) > MAX_EPICS:
+            raise ValueError(f"{len(value)} epics is more than a goal lacks (limit {MAX_EPICS})")
+        titles = [e.title.strip().lower() for e in value]
+        if len(set(titles)) != len(titles):
+            raise ValueError("two epics share a title; each must be a distinct slice")
+        return value
+
+
 class AlreadyDelivered(BaseModel):
     """A story this epic would need that the project has already delivered (#220)."""
 
@@ -413,6 +429,42 @@ def propose_epics(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
     )
     return crew.kickoff().pydantic
+
+
+def propose_missing_epics(
+    goal: str, *, lacking: str, repository: str = "", delivered: str = ""
+) -> MissingEpics:
+    """Product Owner only: the epics a Goal with epics under way still lacks (crew#429).
+
+    `lacking` is the Goal's epics already and what the Sponsor said is missing.
+    Nothing it already has is closed or replaced; this only adds beside them.
+    """
+    agents = build_agents("product_owner")
+    repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
+    task = Task(
+        description=(
+            repo_block
+            + _delivered_block(delivered, "an epic whose outcome these already deliver")
+            + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
+            + f"{lacking}\n\n"
+            + "Propose epics only for what the Sponsor says the goal lacks, and nothing "
+            "else, however useful it would be: anything more is a new decision for the "
+            f"Sponsor. As few as that takes, one is fine, at most {MAX_EPICS}. Each delivers "
+            "something none of the goal's epics already delivers. Decompose by outcome, "
+            "never by architectural layer.\n\n"
+            "For each epic, state what a user could do with that epic alone."
+        ),
+        expected_output="The missing epics, each with a title, outcome and rationale.",
+        agent=agents["product_owner"],
+        output_pydantic=MissingEpics,
+    )
+    crew = Crew(
+        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    )
+    found = getattr(crew.kickoff(), "pydantic", None)
+    if not isinstance(found, MissingEpics):
+        raise ValueError("the Product Owner's missing epics didn't parse")
+    return found
 
 
 class Hold(BaseModel):
