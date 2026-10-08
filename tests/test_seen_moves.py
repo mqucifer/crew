@@ -67,6 +67,34 @@ def test_the_crews_own_move_is_not_recorded_again():
     assert seen_moves([now], seen(card(455, REVIEWING, None)), logged, no_runs) == []
 
 
+def test_the_crew_blocking_a_card_is_the_crews_move():
+    """The crew blocked sprint-metrics#475 at 18:33 and it was recorded as a person's."""
+    now = card(475, "Blocked", APPROVED)
+    block = CrewEvent(
+        at=APPROVED + timedelta(seconds=1),
+        kind=EventKind.CARD_BLOCKED,
+        role="Developer",
+        card=475,
+        detail={"from": "In Progress", "to": "Blocked", "repo": "sprint-metrics"},
+    )
+
+    assert seen_moves([now], seen(card(475, "In Progress", None)), [block], no_runs) == []
+
+
+def test_a_move_this_recorder_logged_isnt_taken_for_the_crews():
+    now = card(464, NEEDS_REFINEMENT, APPROVED)
+    recorded = CrewEvent(
+        at=APPROVED,
+        kind=EventKind.CARD_SEEN_MOVED,
+        card=464,
+        detail={"from": INBOX, "to": NEEDS_REFINEMENT, "repo": "sprint-metrics", "by": "person"},
+    )
+
+    [move] = seen_moves([now], seen(card(464, INBOX, None)), [recorded], no_runs)
+
+    assert move.detail["by"] == "person"
+
+
 def test_a_crew_move_logged_before_moves_named_a_repository_still_counts():
     now = card(455, QAING, APPROVED)
     logged = [crew_move(455, QAING, APPROVED + timedelta(seconds=2))]

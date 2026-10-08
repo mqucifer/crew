@@ -82,7 +82,12 @@ def _the_crews(card: Card, logged: list[CrewEvent]) -> bool:
     """A move the crew logged to this Status, near when the board says it was set."""
     assert card.status_set is not None
     for event in logged:
-        if event.kind is not EventKind.CARD_MOVED or event.card != card.number:
+        # Every move the crew makes goes through `move_card`, which logs a block as
+        # `card.blocked` and a move as `card.moved`, both with where it went. A
+        # block matched only `card.moved`, so the crew blocking sprint-metrics#475
+        # on 2026-10-08 was recorded as a person's move. What this file records
+        # itself is never the crew's.
+        if event.kind is EventKind.CARD_SEEN_MOVED or event.card != card.number:
             continue
         detail = event.detail or {}
         if detail.get("to") != card.status:
