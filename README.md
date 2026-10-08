@@ -58,6 +58,29 @@ dry mode — the pull request is where a diff is read before it lands, and a
 rehearsal that spent the same inference and left nothing landable was a
 substitute for using that gate.
 
+## Data packages: how projects use them
+
+The crew publishes data about how it works as **packages**, like reports
+(ADR 0021). `delivery-history` is the first: the board's sprints and cards, and
+every move, attempt, model call and merge, up to its date. What it may carry is
+ADR 0020; who does what with it is ADR 0022.
+
+- **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
+  `schema.json` for the package and `manifest.schema.json` for its manifest.
+  Both are generated from the code that builds it (`crew package schema`), and
+  `versions.json` lists every schema version.
+- **A release** is dated, not versioned: the tag `delivery-history-<date>`, with
+  the archive as its asset. The archive holds `manifest.json`,
+  `delivery-history.json` and the schemas it follows. It carries everything up
+  to its date, so a consumer needs only the latest.
+- **The manifest's `schema_version`** says which schema the package follows.
+  MAJOR changes when a consumer could break, MINOR when fields are only added.
+  A consumer checks that the MAJOR is one it can display, validates the package
+  against the schema in the archive, and keeps no copy of its own.
+- **Nothing is released yet.** The first release follows once sprint-metrics'
+  answers join the package (crew#521). `crew package build` builds one locally,
+  under `var/packages/`.
+
 ## The two gates
 
 Everything else is the crew's. The Sponsor:

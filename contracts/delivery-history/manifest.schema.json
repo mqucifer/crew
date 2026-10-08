@@ -1,0 +1,48 @@
+{
+  "additionalProperties": false,
+  "description": "What a release holds, and the schema version it follows.",
+  "properties": {
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "events": {
+      "title": "Events",
+      "type": "integer"
+    },
+    "generated": {
+      "format": "date-time",
+      "title": "Generated",
+      "type": "string"
+    },
+    "left_out": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Events the crew recorded but couldn't place, by why. None are guessed.",
+      "title": "Left Out",
+      "type": "object"
+    },
+    "package": {
+      "const": "delivery-history",
+      "default": "delivery-history",
+      "title": "Package",
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "package",
+    "date",
+    "schema_version",
+    "generated",
+    "events",
+    "left_out"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

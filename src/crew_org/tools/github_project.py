@@ -241,6 +241,23 @@ query($owner: String!, $number: Int!) {
 }
 """
 
+_SPRINTS_QUERY = """
+query($owner: String!, $number: Int!) {
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      field(name: "Sprint") {
+        ... on ProjectV2IterationField {
+          configuration {
+            iterations { title startDate duration }
+            completedIterations { title startDate duration }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 # Issues only: a pull request's card is moved by the same workflow as its
 # issue, and GitHub does not record a pull request's project status changes.
 _HISTORY_QUERY = """
@@ -543,6 +560,17 @@ class ProjectClient:
             if card.status and card.work_type not in CONTAINER_TYPES:
                 counts[card.status] = counts.get(card.status, 0) + 1
         return counts
+
+    def sprints(self) -> list[dict[str, Any]]:
+        """Every sprint the board has: past, current and planned, oldest first.
+
+        `schema` keeps to current and planned ones, which is all a tick needs;
+        a history needs the finished ones too (crew#521).
+        """
+        project = self._project(_SPRINTS_QUERY, owner=self.owner, number=self.number)
+        config = (project.get("field") or {}).get("configuration") or {}
+        both = (config.get("completedIterations") or []) + (config.get("iterations") or [])
+        return sorted(both, key=lambda it: it["startDate"])
 
     def repo_of(self, item_id: str) -> str | None:
         """The repository of a card read since this client was made, or None."""
