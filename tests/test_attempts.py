@@ -186,7 +186,11 @@ def test_a_cause_on_two_cards_is_filed_with_its_count_and_cards():
     finding = issues.created[0]
     assert finding["title"] == "Recurring SCHEMA: no test"
     assert CAUSE_MARKER.format(key=recurring().key) in finding["body"]
-    assert "Seen 2 times, on 2 of the sprint's cards: #73, #75." in finding["body"]
+    # Linked to their own repository, not the crew's (crew#506).
+    assert (
+        "Seen 2 times, on 2 of the sprint's cards: "
+        "mqucifer/sprint-metrics#73, mqucifer/sprint-metrics#75." in finding["body"]
+    )
     assert FINDING_LABEL in finding["labels"]
     assert (CREW, finding["number"]) in out.filed
     retro = issues.created[-1]["body"]

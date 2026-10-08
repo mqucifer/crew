@@ -393,3 +393,18 @@ def test_a_card_blocked_with_no_record_of_when_is_listed_as_unknown(tmp_path):
     assert aging_blocked([card(40, "Blocked")], rules, events, AT) == [("#40", None)]
     text = write_standup(run(), sprint=SPRINT, at=AT, waiting=[], aging=[("#40", None)]).text
     assert "- #40: blocked for an unknown time (no record of when)" in text
+
+
+def test_with_several_delivery_repos_the_standup_links_cards_by_the_board():
+    issues = FakeIssues()
+    standup_ = write_standup(run(), sprint=SPRINT, at=AT, waiting=["#12"], aging=[])
+    record_standup(
+        issues,
+        EventSink(None),
+        standup_,
+        sprint=SPRINT,
+        crew_repo=CREW,
+        delivery_repos=["infra", "sprint-metrics"],
+        cards=[("sprint-metrics", 12)],
+    )
+    assert "- mqucifer/sprint-metrics#12" in issues.posted[-1][1]
