@@ -52,3 +52,4 @@ decision was first made.
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | An epic is the smallest unit of release | 2026-10-07 | Accepted (to be built by crew#500) |
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source | 2026-10-07 | Accepted (to be built by mqucifer/sprint-metrics#461 and crew#521) |
+| [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
