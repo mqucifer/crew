@@ -93,6 +93,16 @@ class Row(BaseModel):
     settles: list[int] = Field(
         min_length=1, description="The numbers of the panel notes this answers (N1 is 1)"
     )
+    # Recorded in the project's decision log too, for the epics that come after (crew#468).
+    project_wide: bool = Field(
+        default=False,
+        description=(
+            "True when it decides something for every epic in the project, not only this "
+            "one: how a sprint counts a story, a standard the project follows, a versioning "
+            "rule. It is added to the project's decision log. False when the log already "
+            "says it"
+        ),
+    )
 
     @model_validator(mode="after")
     def _a_call_stays_within_the_goal(self) -> Row:
