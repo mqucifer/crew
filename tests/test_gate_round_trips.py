@@ -94,6 +94,9 @@ class Board:
             ),
         ]
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item, to):
         self.status[item] = to
 

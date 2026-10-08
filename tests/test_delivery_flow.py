@@ -67,6 +67,9 @@ class FakeBoard:
                 out[c.status] = out.get(c.status, 0) + 1
         return out
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append((item_id, column))
 

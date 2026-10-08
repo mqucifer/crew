@@ -72,6 +72,9 @@ class Board:
     def add_issue(self, node_id):
         return "ITEM300"
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append((item_id, column))
 

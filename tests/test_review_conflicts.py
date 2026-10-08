@@ -94,6 +94,9 @@ class Board:
     def cards(self):
         return self._cards
 
+    def repo_of(self, item_id):
+        return None
+
     def set_status(self, item_id, column):
         self.moves.append((item_id, column))
 

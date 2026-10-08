@@ -50,12 +50,15 @@ def move_card(
             board.set_owner_agent(item_id, by)
         except BoardError as exc:
             sink.note(EventKind.NOTE, f"owner not recorded: {exc}"[:160], card=card)
+    # A card number alone names a card in no particular repository: the replay
+    # in `delivery-history` (crew#521) needs to know which.
+    repo = board.repo_of(item_id)
     sink.emit(
         CrewEvent(
             kind=kind,
             role=by,
             card=card,
             summary=summary,
-            detail={"from": frm, "to": to, **detail},
+            detail={"from": frm, "to": to, **({"repo": repo} if repo else {}), **detail},
         )
     )
