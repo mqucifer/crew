@@ -9,6 +9,7 @@ them, including the fields that must never leave.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import UTC, date, datetime, timedelta
 
@@ -55,8 +56,15 @@ def inputs(events, *, cards=None, pulls=None, day=date(2026, 10, 7)) -> dh.Input
 
 
 def built(events, **kwargs) -> tuple[dict, dh.Manifest]:
-    history, manifest = dh.build(inputs(events, **kwargs))
-    return json.loads(history.model_dump_json()), manifest
+    """The index, with every period's events gathered back into one list, oldest first."""
+    history, files, manifest = dh.build(inputs(events, **kwargs))
+    data = json.loads(history.model_dump_json())
+    data["events"] = [
+        e
+        for period in data["periods"]
+        for e in json.loads(files[period["file"]].model_dump_json())["events"]
+    ]
+    return data, manifest
 
 
 # The real shapes, with the fields that must stay local.
@@ -305,6 +313,32 @@ def test_an_event_after_the_packages_date_is_left_for_the_next():
     assert [e["at"] for e in data["events"]] == ["2026-10-08T04:30:00Z"]
 
 
+def test_events_are_filed_by_the_sprint_their_day_falls_in_or_the_days_between():
+    """No Sprint 15 or 16: 10-04 and 10-05 share one file between Sprint 14 and Sprint 17."""
+    sprints = dh.sprints_from(
+        [
+            {"title": "Sprint 14", "startDate": "2026-10-03", "duration": 1},
+            {"title": "Sprint 17", "startDate": "2026-10-06", "duration": 1},
+        ]
+    )
+    days = [
+        "2026-10-03T18:00:00Z",
+        "2026-10-04T18:00:00Z",
+        "2026-10-05T18:00:00Z",
+        "2026-10-06T18:00:00Z",
+    ]
+    events = [("tick", {**MOVE[1], "at": when}) for when in days]
+    history, files, _ = dh.build(dataclasses.replace(inputs(events), sprints=sprints))
+
+    assert [(p.sprint, str(p.start), str(p.end), p.file, p.events) for p in history.periods] == [
+        ("Sprint 14", "2026-10-03", "2026-10-03", "events/2026-10-03.json", 1),
+        (None, "2026-10-04", "2026-10-05", "events/2026-10-04.json", 2),
+        ("Sprint 17", "2026-10-06", "2026-10-06", "events/2026-10-06.json", 1),
+    ]
+    assert sorted(files) == [p.file for p in history.periods]
+    assert files["events/2026-10-04.json"].sprint is None
+
+
 def test_a_sprint_runs_its_duration_from_its_start():
     [sprint] = dh.sprints_from([{"title": "Sprint 19", "startDate": "2026-10-08", "duration": 1}])
 
@@ -441,13 +475,16 @@ def test_a_package_built_from_every_kind_of_event_matches_the_committed_schema()
             }
         ]
     }
-    history, manifest = dh.build(inputs(events, pulls=pulls))
+    history, files, manifest = dh.build(inputs(events, pulls=pulls))
 
-    schema = json.loads((contract.CONTRACTS / "schema.json").read_text())
-    jsonschema.validate(json.loads(history.model_dump_json()), schema)
-    manifest_schema = json.loads((contract.CONTRACTS / "manifest.schema.json").read_text())
-    jsonschema.validate(json.loads(manifest.model_dump_json()), manifest_schema)
-    assert {e.kind for e in history.events} == {
+    def schema(name):
+        return json.loads((contract.CONTRACTS / name).read_text())
+
+    jsonschema.validate(json.loads(history.model_dump_json()), schema("schema.json"))
+    for period in files.values():
+        jsonschema.validate(json.loads(period.model_dump_json()), schema("events.schema.json"))
+    jsonschema.validate(json.loads(manifest.model_dump_json()), schema("manifest.schema.json"))
+    assert {e.kind for period in files.values() for e in period.events} == {
         "card_moved",
         "model_call",
         "attempt",

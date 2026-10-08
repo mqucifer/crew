@@ -2174,7 +2174,7 @@ def package_build(
     repositories = sorted({c.repo for c in cards if c.repo})
     pulls = {repo: issues.all_pulls(repo) for repo in [*repositories, crew_repo]}
     today = sprint_today(org)
-    history, manifest = dh.build(
+    history, files, manifest = dh.build(
         dh.Inputs(
             events=events,
             cards=cards,
@@ -2192,6 +2192,9 @@ def package_build(
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "manifest.json").write_text(manifest.model_dump_json(indent=2) + "\n")
     (directory / f"{dh.NAME}.json").write_text(history.model_dump_json(indent=1) + "\n")
+    for path, period in files.items():
+        (directory / path).parent.mkdir(parents=True, exist_ok=True)
+        (directory / path).write_text(period.model_dump_json(indent=1) + "\n")
     for schema, content in contract.schemas().items():
         (directory / schema).write_text(json.dumps(content, indent=2, sort_keys=True) + "\n")
     archive = shutil.make_archive(str(directory), "gztar", directory.parent, directory.name)

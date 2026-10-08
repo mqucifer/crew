@@ -30,6 +30,7 @@ def schemas() -> dict[str, dict[str, Any]]:
     """Each schema file's content: what the package writes, as a consumer reads it."""
     return {
         "schema.json": dh.DeliveryHistory.model_json_schema(mode="serialization"),
+        "events.schema.json": dh.PeriodEvents.model_json_schema(mode="serialization"),
         "manifest.schema.json": dh.Manifest.model_json_schema(mode="serialization"),
     }
 

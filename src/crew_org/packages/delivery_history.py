@@ -202,8 +202,23 @@ Event = Annotated[
 ]
 
 
+class Period(_Part):
+    """Days whose events share a file: a sprint, or a run of days between sprints."""
+
+    sprint: str | None = Field(description="The sprint's name; none for days between sprints.")
+    start: date
+    end: date = Field(description="The period's last day, inclusive.")
+    file: str = Field(description="Its events file, relative to the package's root.")
+    events: int
+
+
 class DeliveryHistory(_Part):
-    """Everything up to the package's date, so a consumer needs only the latest."""
+    """The package's index: everything up to its date, so a consumer needs only the latest.
+
+    The events are in one file per period, so a page loads only the sprint it
+    shows: the history grows by a sprint's worth each sprint, and a year of it
+    in one file would be tens of megabytes (the Sponsor, 2026-10-08).
+    """
 
     package: Literal["delivery-history"] = NAME
     schema_version: str
@@ -213,7 +228,18 @@ class DeliveryHistory(_Part):
     repositories: list[str] = Field(description="The delivery repositories it covers.")
     sprints: list[Sprint]
     cards: list[Card]
-    events: list[Event] = Field(description="Oldest first.")
+    periods: list[Period] = Field(description="Every period with events, oldest first.")
+
+
+class PeriodEvents(_Part):
+    """One period's events, oldest first."""
+
+    package: Literal["delivery-history"] = NAME
+    schema_version: str
+    sprint: str | None
+    start: date
+    end: date
+    events: list[Event]
 
 
 class Manifest(_Part):
@@ -534,8 +560,39 @@ def _cards(inputs: Inputs) -> list[Card]:
     return sorted(out, key=lambda c: (c.repo, c.number))
 
 
-def build(inputs: Inputs) -> tuple[DeliveryHistory, Manifest]:
-    """The package and its manifest, from the crew's events, the board and GitHub."""
+def _periods(
+    events: list[Event], sprints: list[Sprint], zone: ZoneInfo
+) -> list[tuple[str | None, date, date, list[Event]]]:
+    """Events grouped by the sprint their day falls in, or by a run of days between sprints."""
+    by_day: dict[date, list[Event]] = {}
+    for event in events:
+        by_day.setdefault(event.at.astimezone(zone).date(), []).append(event)
+
+    def sprint_on(day: date) -> Sprint | None:
+        return next((s for s in sprints if s.start <= day <= s.end), None)
+
+    out: list[tuple[str | None, date, date, list[Event]]] = []
+    for day in sorted(by_day):
+        sprint = sprint_on(day)
+        if sprint is not None:
+            if out and out[-1][0] == sprint.name:
+                out[-1][3].extend(by_day[day])
+            else:
+                out.append((sprint.name, sprint.start, sprint.end, list(by_day[day])))
+            continue
+        last = out[-1] if out else None
+        if last is not None and last[0] is None and last[2] == day - timedelta(days=1):
+            out[-1] = (None, last[1], day, last[3] + by_day[day])
+        else:
+            out.append((None, day, day, list(by_day[day])))
+    return out
+
+
+def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Manifest]:
+    """The package's index, its events files by path, and its manifest.
+
+    From the crew's events, the board and GitHub.
+    """
     placer = _Placer(cards=list(inputs.cards), pulls=inputs.pulls)
     left_out: dict[str, int] = {}
     seen: set[str] = set()
@@ -550,15 +607,24 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, Manifest]:
             events.append(built)
     events += _pull_events(inputs)
     events.sort(key=lambda e: e.at)
+    sprints = sorted(inputs.sprints, key=lambda s: s.start)
+    files: dict[str, PeriodEvents] = {}
+    periods: list[Period] = []
+    for sprint, start, end, grouped in _periods(events, sprints, ZoneInfo(inputs.timezone)):
+        path = f"events/{start.isoformat()}.json"
+        files[path] = PeriodEvents(
+            schema_version=SCHEMA_VERSION, sprint=sprint, start=start, end=end, events=grouped
+        )
+        periods.append(Period(sprint=sprint, start=start, end=end, file=path, events=len(grouped)))
     history = DeliveryHistory(
         schema_version=SCHEMA_VERSION,
         date=inputs.date,
         timezone=inputs.timezone,
         crew_repository=inputs.crew_repository,
         repositories=sorted(inputs.repositories),
-        sprints=sorted(inputs.sprints, key=lambda s: s.start),
+        sprints=sprints,
         cards=_cards(inputs),
-        events=events,
+        periods=periods,
     )
     manifest = Manifest(
         date=inputs.date,
@@ -567,7 +633,7 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, Manifest]:
         events=len(events),
         left_out=dict(sorted(left_out.items())),
     )
-    return history, manifest
+    return history, files, manifest
 
 
 def sprints_from(iterations: Iterable[dict[str, Any]]) -> list[Sprint]:

@@ -1,131 +1,5 @@
 {
   "$defs": {
-    "Attempt": {
-      "additionalProperties": false,
-      "description": "An attempt that didn't land, and what the crew decided to do about it.\n\n`reason` is present only when one of the crew's own checks wrote it with\nnothing but names filled in (ADR 0020); otherwise the failure class stands\nalone.",
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
-        },
-        "card": {
-          "$ref": "#/$defs/CardRef"
-        },
-        "decision": {
-          "anyOf": [
-            {
-              "enum": [
-                "retry_local",
-                "return_to_refinement",
-                "file_prompt_defect",
-                "escalate",
-                "block"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Decision"
-        },
-        "failure_class": {
-          "title": "Failure Class",
-          "type": "string"
-        },
-        "kind": {
-          "const": "attempt",
-          "default": "attempt",
-          "title": "Kind",
-          "type": "string"
-        },
-        "number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Which local attempt this was, from 1.",
-          "title": "Number"
-        },
-        "reason": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Reason"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Role"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "role",
-        "number",
-        "failure_class",
-        "decision",
-        "reason"
-      ],
-      "title": "Attempt",
-      "type": "object"
-    },
-    "Blocked": {
-      "additionalProperties": false,
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
-        },
-        "card": {
-          "$ref": "#/$defs/CardRef"
-        },
-        "kind": {
-          "const": "blocked",
-          "default": "blocked",
-          "title": "Kind",
-          "type": "string"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Role"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "role"
-      ],
-      "title": "Blocked",
-      "type": "object"
-    },
     "Card": {
       "additionalProperties": false,
       "description": "A card on the board. Its title is already public on GitHub.",
@@ -255,118 +129,26 @@
       "title": "Card",
       "type": "object"
     },
-    "CardMoved": {
+    "Period": {
       "additionalProperties": false,
-      "description": "A card moving between columns.\n\n`by` says who: the crew (and `role`, the role that moved it), a person, or\nthe platform (the board's own workflow). The Sponsor's approvals are a\nperson moving a Goal or an Epic.",
+      "description": "Days whose events share a file: a sprint, or a run of days between sprints.",
       "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
+        "end": {
+          "description": "The period's last day, inclusive.",
+          "format": "date",
+          "title": "End",
           "type": "string"
         },
-        "by": {
-          "enum": [
-            "crew",
-            "person",
-            "platform"
-          ],
-          "title": "By",
-          "type": "string"
-        },
-        "card": {
-          "$ref": "#/$defs/CardRef"
-        },
-        "from_column": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "From Column"
-        },
-        "kind": {
-          "const": "card_moved",
-          "default": "card_moved",
-          "title": "Kind",
-          "type": "string"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Role"
-        },
-        "to_column": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "To Column"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "from_column",
-        "to_column",
-        "by",
-        "role"
-      ],
-      "title": "CardMoved",
-      "type": "object"
-    },
-    "CardRef": {
-      "additionalProperties": false,
-      "description": "A card, by repository and number: numbers repeat across repositories.",
-      "properties": {
-        "number": {
-          "title": "Number",
+        "events": {
+          "title": "Events",
           "type": "integer"
         },
-        "repo": {
-          "title": "Repo",
-          "type": "string"
-        }
-      },
-      "required": [
-        "repo",
-        "number"
-      ],
-      "title": "CardRef",
-      "type": "object"
-    },
-    "Escalated": {
-      "additionalProperties": false,
-      "description": "An attempt sent to the escalation model, which the sprint's budget pays for.",
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
+        "file": {
+          "description": "Its events file, relative to the package's root.",
+          "title": "File",
           "type": "string"
         },
-        "card": {
-          "$ref": "#/$defs/CardRef"
-        },
-        "kind": {
-          "const": "escalated",
-          "default": "escalated",
-          "title": "Kind",
-          "type": "string"
-        },
-        "role": {
+        "sprint": {
           "anyOf": [
             {
               "type": "string"
@@ -375,212 +157,23 @@
               "type": "null"
             }
           ],
-          "title": "Role"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "role"
-      ],
-      "title": "Escalated",
-      "type": "object"
-    },
-    "ModelCall": {
-      "additionalProperties": false,
-      "description": "One call to a model: what it cost in tokens and time. No money is recorded.",
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
+          "description": "The sprint's name; none for days between sprints.",
+          "title": "Sprint"
         },
-        "card": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CardRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "completion_tokens": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Completion Tokens"
-        },
-        "failed": {
-          "title": "Failed",
-          "type": "boolean"
-        },
-        "kind": {
-          "const": "model_call",
-          "default": "model_call",
-          "title": "Kind",
-          "type": "string"
-        },
-        "model": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The model alias the crew asked for.",
-          "title": "Model"
-        },
-        "prompt_tokens": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Prompt Tokens"
-        },
-        "reasoning_tokens": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Reasoning Tokens"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Role"
-        },
-        "seconds": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Seconds"
-        },
-        "step": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "What the call was for, such as deliver or refine.",
-          "title": "Step"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "role",
-        "step",
-        "model",
-        "prompt_tokens",
-        "completion_tokens",
-        "reasoning_tokens",
-        "seconds",
-        "failed"
-      ],
-      "title": "ModelCall",
-      "type": "object"
-    },
-    "PullMerged": {
-      "additionalProperties": false,
-      "description": "A pull request merging. In the crew's own repository, that's a fix to the crew.",
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
-        },
-        "closes": {
-          "items": {
-            "$ref": "#/$defs/CardRef"
-          },
-          "title": "Closes",
-          "type": "array"
-        },
-        "crews_own": {
-          "description": "Merged into the crew's own repository.",
-          "title": "Crews Own",
-          "type": "boolean"
-        },
-        "kind": {
-          "const": "pull_merged",
-          "default": "pull_merged",
-          "title": "Kind",
-          "type": "string"
-        },
-        "number": {
-          "title": "Number",
-          "type": "integer"
-        },
-        "repo": {
-          "title": "Repo",
-          "type": "string"
-        },
-        "title": {
-          "title": "Title",
+        "start": {
+          "format": "date",
+          "title": "Start",
           "type": "string"
         }
       },
       "required": [
-        "kind",
-        "at",
-        "repo",
-        "number",
-        "title",
-        "closes",
-        "crews_own"
+        "sprint",
+        "start",
+        "end",
+        "file",
+        "events"
       ],
-      "title": "PullMerged",
-      "type": "object"
-    },
-    "PullRef": {
-      "additionalProperties": false,
-      "properties": {
-        "number": {
-          "title": "Number",
-          "type": "integer"
-        },
-        "repo": {
-          "title": "Repo",
-          "type": "string"
-        }
-      },
-      "required": [
-        "repo",
-        "number"
-      ],
-      "title": "PullRef",
+      "title": "Period",
       "type": "object"
     },
     "Sprint": {
@@ -610,109 +203,10 @@
       ],
       "title": "Sprint",
       "type": "object"
-    },
-    "WorkFinished": {
-      "additionalProperties": false,
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
-        },
-        "card": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CardRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "kind": {
-          "const": "work_finished",
-          "default": "work_finished",
-          "title": "Kind",
-          "type": "string"
-        },
-        "pull": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PullRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "pull",
-        "role"
-      ],
-      "title": "WorkFinished",
-      "type": "object"
-    },
-    "WorkStarted": {
-      "additionalProperties": false,
-      "description": "A role starting work on a card, or on no card (planning, the retro).\n\nA review is work on a pull request: `pull` names it, and `card` the card it\ncloses, when it closes exactly one.",
-      "properties": {
-        "at": {
-          "format": "date-time",
-          "title": "At",
-          "type": "string"
-        },
-        "card": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CardRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "kind": {
-          "const": "work_started",
-          "default": "work_started",
-          "title": "Kind",
-          "type": "string"
-        },
-        "pull": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PullRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kind",
-        "at",
-        "card",
-        "pull",
-        "role"
-      ],
-      "title": "WorkStarted",
-      "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "Everything up to the package's date, so a consumer needs only the latest.",
+  "description": "The package's index: everything up to its date, so a consumer needs only the latest.\n\nThe events are in one file per period, so a page loads only the sprint it\nshows: the history grows by a sprint's worth each sprint, and a year of it\nin one file would be tens of megabytes (the Sponsor, 2026-10-08).",
   "properties": {
     "cards": {
       "items": {
@@ -730,57 +224,19 @@
       "title": "Date",
       "type": "string"
     },
-    "events": {
-      "description": "Oldest first.",
-      "items": {
-        "discriminator": {
-          "mapping": {
-            "attempt": "#/$defs/Attempt",
-            "blocked": "#/$defs/Blocked",
-            "card_moved": "#/$defs/CardMoved",
-            "escalated": "#/$defs/Escalated",
-            "model_call": "#/$defs/ModelCall",
-            "pull_merged": "#/$defs/PullMerged",
-            "work_finished": "#/$defs/WorkFinished",
-            "work_started": "#/$defs/WorkStarted"
-          },
-          "propertyName": "kind"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/$defs/CardMoved"
-          },
-          {
-            "$ref": "#/$defs/WorkStarted"
-          },
-          {
-            "$ref": "#/$defs/WorkFinished"
-          },
-          {
-            "$ref": "#/$defs/Attempt"
-          },
-          {
-            "$ref": "#/$defs/Blocked"
-          },
-          {
-            "$ref": "#/$defs/Escalated"
-          },
-          {
-            "$ref": "#/$defs/ModelCall"
-          },
-          {
-            "$ref": "#/$defs/PullMerged"
-          }
-        ]
-      },
-      "title": "Events",
-      "type": "array"
-    },
     "package": {
       "const": "delivery-history",
       "default": "delivery-history",
       "title": "Package",
       "type": "string"
+    },
+    "periods": {
+      "description": "Every period with events, oldest first.",
+      "items": {
+        "$ref": "#/$defs/Period"
+      },
+      "title": "Periods",
+      "type": "array"
     },
     "repositories": {
       "description": "The delivery repositories it covers.",
@@ -816,7 +272,7 @@
     "repositories",
     "sprints",
     "cards",
-    "events"
+    "periods"
   ],
   "title": "DeliveryHistory",
   "type": "object"
