@@ -33,7 +33,7 @@ from crew_org.tools import ci_guard
 ATTEMPTS = 2
 
 # On a design pull request: its declared changes, so the crew can turn the ones
-# that need work into technical epics once it merges, whoever merged it (#192).
+# that need work into the right place once it merges, whoever merged it (#192, crew#439).
 CHANGES_MARKER = "<!-- crew:design-changes {} -->"
 _CHANGES = re.compile(r"<!-- crew:design-changes (.*?) -->", re.DOTALL)
 # On the issue a revisit's pull request closes, and on a revisit that changed
@@ -406,7 +406,8 @@ def open_design_pr(
             + (f" It took {designed.attempts} proposals." if designed.attempts > 1 else "")
             + (
                 "\n- The crew merges this itself once CI passes (mqucifer/crew#192). Each "
-                "change above that needs work becomes a technical epic."
+                "change above that needs work goes to the epic that delivers it, or becomes a "
+                "technical epic when no epic does."
                 if revisit
                 else ""
             )

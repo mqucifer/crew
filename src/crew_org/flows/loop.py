@@ -280,7 +280,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     Before refinement, so an approved epic isn't split against a structure the
     Architect is about to change.
     """
-    from crew_org.crews.design_crew import propose_design, review_design  # noqa: PLC0415
+    from crew_org.crews.design_crew import (  # noqa: PLC0415
+        place_changes,
+        propose_design,
+        review_design,
+    )
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
@@ -304,6 +308,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         propose_design=propose_design,
         review_design=review_design,
         threshold=int((crew.org.get("design") or {}).get("revisit_conflicts", REVISIT_CONFLICTS)),
+        place_changes=place_changes,
     )
     crew.design_holds = dict(result.holds)
     return PhaseOutcome(
