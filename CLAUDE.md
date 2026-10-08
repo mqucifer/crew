@@ -56,6 +56,10 @@ file never reaches them. Change it by pull request, like any other file.
   push notification. They step away.
 - **After merge:** close the issue, then remove the worktree and branch
   (`git worktree remove ../crew-<n>`, `git branch -D <branch>`).
+- **An issue left open gets a status comment.** When a PR lands part of an
+  issue, or work on it stops partway, comment on the issue: each criterion done
+  (and by which PR), what's left, and what it waits on. The Sponsor follows the
+  work from the issue, not from PR bodies or chat.
 
 ## Decisions
 - **A decision that changes how the crew works becomes an ADR** in the session
