@@ -21,6 +21,13 @@ So every GitHub request goes through `GitHubTransport`:
   resumes. It's GitHub's limit, not a card's failure.
 - **It's seen**: an observer is told of every wait, and the latest budget
   GitHub reported is kept for the telemetry.
+- **A blip is retried too** (crew#515): a 5xx, an HTML error page where JSON
+  belongs, or GraphQL's "Something went wrong". A few short waits, then
+  `GitHubUnavailable`, which stops the tick as a throttle does. Only a request
+  that's safe to repeat is retried: a read, a board query or mutation (they set
+  or add a value), an edit, or adding labels. One that creates something (an
+  issue, a comment, a pull request, a review) may have landed, so it's returned
+  as it came and the caller fails as before.
 """
 
 from __future__ import annotations
@@ -38,6 +45,9 @@ WRITE_INTERVAL = 1.0
 MAX_WAIT = 120.0
 ATTEMPTS = 3
 FIRST_BACKOFF = 60.0
+# A passing server error: a few short waits, doubling (crew#515).
+TRANSIENT_ATTEMPTS = 4
+TRANSIENT_BACKOFF = 5.0
 WRITES = frozenset({"POST", "PATCH", "PUT", "DELETE"})
 
 
@@ -47,6 +57,16 @@ class GitHubThrottled(RuntimeError):
     def __init__(self, wait: float, detail: str) -> None:
         self.wait = wait
         super().__init__(f"GitHub is throttling ({detail}); it asked for {wait:.0f}s more")
+
+
+class GitHubUnavailable(GitHubThrottled):
+    """GitHub kept answering with a server error. Nobody's failure: the tick stops cleanly."""
+
+    def __init__(self, wait: float, detail: str) -> None:
+        self.wait = wait
+        RuntimeError.__init__(
+            self, f"GitHub isn't answering ({detail}) after {wait:.0f}s of retries"
+        )
 
 
 # Told of every throttle waited out: (seconds, detail). The tick points it at
@@ -109,6 +129,40 @@ def throttled(request: httpx.Request, response: httpx.Response) -> bool:
     return False
 
 
+def transient(request: httpx.Request, response: httpx.Response) -> bool:
+    """Is this GitHub failing for a moment, rather than refusing the request?
+
+    On 2026-10-07 the board's GraphQL answered "Something went wrong while
+    executing your query" and the standup got a body that wasn't JSON, while
+    githubstatus.com showed everything operational. A phase failed for each.
+    """
+    if response.status_code in (500, 502, 503, 504):
+        return True
+    if response.headers.get("content-type", "").startswith("text/html"):
+        return True  # an error page where the API's JSON belongs
+    if response.status_code == 200 and request.url.path.endswith("/graphql"):
+        try:
+            errors = response.json().get("errors") or []
+        except (ValueError, json.JSONDecodeError):
+            return True
+        return any(
+            "something went wrong" in str(e.get("message", "")).lower()
+            for e in errors
+            if isinstance(e, dict)
+        )
+    return False
+
+
+def repeatable(request: httpx.Request) -> bool:
+    """Safe to send again if the first may have landed."""
+    if request.method in ("GET", "HEAD", "PATCH", "PUT", "DELETE"):
+        return True
+    path = request.url.path
+    # The board's GraphQL: queries, and mutations that set or add a value.
+    # Adding labels, or creating one that already exists, changes nothing twice.
+    return path.endswith("/graphql") or path.endswith("/labels")
+
+
 def wait_for(response: httpx.Response, attempt: int, now: float) -> float:
     """How long GitHub asked to wait, or the backoff when it didn't say."""
     headers = response.headers
@@ -146,11 +200,33 @@ class GitHubTransport(httpx.BaseTransport):
             self._last_write = self._monotonic()
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        for attempt in range(ATTEMPTS):
+        blips, waited = 0, 0.0
+        attempt = 0
+        while attempt < ATTEMPTS:
             self._pace(request)
             response = self._inner.handle_request(request)
             response.read()
             _record_budget(response)
+            if transient(request, response) and repeatable(request):
+                blips += 1
+                what = f"{response.status_code} on {request.url.path}"
+                if blips >= TRANSIENT_ATTEMPTS:
+                    raise GitHubUnavailable(waited, what)
+                wait = TRANSIENT_BACKOFF * (2 ** (blips - 1))
+                for fn in list(_OBSERVERS):
+                    with contextlib.suppress(Exception):  # a view never stops the work
+                        fn(
+                            wait,
+                            {
+                                "status": response.status_code,
+                                "path": request.url.path,
+                                "resource": "transient",
+                                "attempt": blips,
+                            },
+                        )
+                self._sleep(wait)
+                waited += wait
+                continue
             if not throttled(request, response):
                 return response
             wait = wait_for(response, attempt, self._clock())
@@ -166,6 +242,7 @@ class GitHubTransport(httpx.BaseTransport):
                 with contextlib.suppress(Exception):  # a view never stops the work
                     fn(wait, detail)
             self._sleep(wait)
+            attempt += 1
         return response  # unreachable: the last attempt returns or raises
 
     def close(self) -> None:
