@@ -199,3 +199,27 @@ The crew's own panel (`crew_org.crews.panel_crew`: the new focus lines, the scop
 
 **After ADR 0017 (2026-10-05).** The replay's DevOps check line asked a product epic to settle production: each place it runs, and the settings and secrets it needs there. The Sponsor's ruling is that a product builds to its spec and proves it in CI, and infra owns the deployed runtime, so that line is rewritten and the production half of finding 10 is infra's, not the epic's. The replay isn't re-run: one run was all it was meant to be, and a rerun would show the same inputs under a new line. Read its DevOps notes this way: the CI service container, the missing healthcheck and the settings the service reads are the product's (the runtime contract); "what the Sponsor must provide in production" and a volume path are infra's. A live run on a current epic after the change is in the pull request that made it.
 
+
+## The replay with the project's log (2026-10-08)
+
+crew#468's criterion 5: the same replay, with sprint-metrics' decision log in every member's context, as the live panel is shown it. `replay.py 1 --with-log` reads the log from sprint-metrics' `docs/decisions/` (entries 0001–0008, 1,918 characters) with the crew's own `read_log`, and records the arm `replay-log`.
+
+**One run, 12 calls, none failed, 25 notes.** The epics took 350 s, 277 s and 251 s. Scored by one reader, with the same rule as above.
+
+| # | Finding | Replay, 2026-10-05 | With the log | Why |
+|---|---|---|---|---|
+| 1 | History in memory; Postgres decided | In part | Yes | The Architect and QA on #184 cite entry 6 |
+| 2 | No `unblocked` event | No | **Yes** | All four members on #184 set the epic's event list against entry 5 |
+| 3 | A card counted where it merges | No | **No** | Entry 1 was in every member's context; no note applies it |
+| 4 | Traces must be OTLP | In part | **Yes** | The Architect, UX and QA on #187 set entry 7 against the epic's "points their log pipeline at its stdout" |
+| 5 | A new intake version is MINOR | In part | In part | The Architect on #185 cites entry 2's rule, about one version or two, not against a MAJOR call |
+| 6 | Trends planned nowhere | Yes | Yes | QA on #184: "trend" isn't defined |
+| 7 | #184 and #185 share one event format | Yes | Yes | UX on #185 sets #184's names against the log's |
+| 8 | Intake versioned like the answers | Yes | Yes | The Architect on #184 and #185 |
+| 9 | #187 instruments the service | In part | No | |
+| 10 | Settings per environment | In part | In part | DevOps on #184: what CI provisions, and the service's start before Postgres is up |
+
+**What it says.**
+- **The log is what finds 2 and 4.** The inputs and the code are the same as on 2026-10-05; the log is the only change, and both findings now come with the log entry as their source. The live proof on epics 406–408 couldn't separate the log from the newer panel code; this does.
+- **Finding 3 isn't a context problem any more.** The counting decision was in front of every member, and none of them applied it to the epic. On the live epics it reached the split through the Goal's decisions instead. A rule that's present but not applied is a role's miss, not a missing source.
+- **Unneeded notes: none.** DevOps on #184 asked what the service does when Postgres isn't up at startup. That's the weakness the crew found live on 2026-10-07 (mqucifer/sprint-metrics#470), raised here from the Sprint 12 inputs.
