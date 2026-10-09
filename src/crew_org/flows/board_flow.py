@@ -137,8 +137,7 @@ PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
 NEEDS_DESIGN = "needs:design"
 # An epic that changes what a reader sees: the UX Designer writes a note (#377).
 NEEDS_UX = "needs:ux"
-# Times the Business Analyst may ask to see files before splitting (#231), as the
-# Developer may (delivery.ASK_LIMIT).
+# Times the Business Analyst may ask to see files before splitting (#231).
 ANALYST_ASK_LIMIT = 2
 # Above this, a split sees the map plus what its epic names, not every file (#231).
 # Lower than the Developer's (160k): sprint-metrics came to 159k characters for
@@ -1398,9 +1397,17 @@ def refine_epics(
                         asked += fresh
                         told = ""
                         continue
+                    # Said as it is: "you've been shown what you asked for", said of
+                    # files past the limit, drew the same ask again (2026-10-09).
                     told = (
-                        "You've been shown what you asked for. Split the epic now with the files "
-                        "you can see, and leave `need_files` empty."
+                        (
+                            f"Not shown: {', '.join(fresh)}. A split may ask "
+                            f"{ANALYST_ASK_LIMIT} times, and this one has. "
+                            if fresh
+                            else "Everything you named is already shown above. "
+                        )
+                        + "Split the epic now with the files you can see, and leave "
+                        "`need_files` empty."
                     )
                 if proposal.asks:
                     raise ValueError("it asked to see files past the limit instead of splitting")

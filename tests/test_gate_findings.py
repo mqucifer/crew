@@ -41,6 +41,37 @@ def test_the_failing_tests_are_named_with_their_assertion_once_each():
     assert failing_tests("ruff: F821 Undefined name `x`") == []
 
 
+# A real report, from pytest -q outside a terminal: the summary line is too long
+# for 80 columns, so pytest left its message off (sprint-metrics#529, 2026-10-09).
+LONG_ID = """F                                                                        [100%]
+=================================== FAILURES ===================================
+___ test_single_sprint_json_output_validates_against_schema_with_a_long_name ___
+
+    def test_single_sprint_json_output_validates_against_schema_with_a_long_name():
+        data = {"a": 1}
+>       assert data == {"a": 2}
+E       AssertionError: assert {'a': 1} == {'a': 2}
+E         
+E         Differing items:
+E         {'a': 1} != {'a': 2}
+E         Use -v to get more diff
+
+tests/test_schema_long_name_example.py:3: AssertionError
+=========================== short test summary info ============================
+FAILED {ID}
+1 failed in 0.01s
+""".replace(
+    "{ID}",
+    "tests/test_schema_long_name_example.py::"
+    "test_single_sprint_json_output_validates_against_schema_with_a_long_name",
+)
+
+
+def test_a_summary_line_with_no_message_takes_the_tests_first_error_line():
+    [failed] = failing_tests(LONG_ID)
+    assert failed["assertion"] == "AssertionError: assert {'a': 1} == {'a': 2}"
+
+
 def test_a_file_asked_for_says_why_and_a_bare_path_still_reads():
     answer = Implementation.model_validate(
         {

@@ -583,8 +583,11 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
 _DECLARED = re.compile(r"[\w/.-]+\.py(?:::[\w.]+)?|\btest_\w+")
 
 
-# How often one delivery may ask to see more files before it must work with what it has.
-ASK_LIMIT = 2
+# How many files one delivery may have added by asking (#231). A file it hasn't
+# seen is shown whenever it asks; this bounds what asking adds to the prompt.
+# Counting asks instead refused sprint-metrics#529's third, for the one file its
+# change needed, three times over (2026-10-09).
+ASKED_FILES_LIMIT = 8
 
 
 def _deliver_in_steps(
@@ -874,9 +877,8 @@ def deliver_story(
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
     attempt = 0
-    # Files the Developer asked to see in full (#231), and how often it asked.
+    # Files the Developer asked to see in full (#231).
     asked: list[str] = []
-    asks = 0
     # A first attempt with no usable answer is followed by one in steps (#276).
     in_steps = False
     stepped = False
@@ -1052,7 +1054,7 @@ def deliver_story(
             return outcome
 
         # It asked to see files first (#231). Not a failure, and not applied:
-        # it's asked again with them shown, up to ASK_LIMIT times a delivery.
+        # it's asked again with them shown, up to ASKED_FILES_LIMIT files a delivery.
         if implementation.asks:
             wanted = file_asks.paths(implementation.need_files)
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
@@ -1070,18 +1072,22 @@ def deliver_story(
                     },
                 )
             )
-            if exists and asks < ASK_LIMIT:
-                asks += 1
-                asked += exists
+            added = exists[: max(ASKED_FILES_LIMIT - len(asked), 0)]
+            if added:
+                asked += added
                 continue
             missing = [f for f in fresh if f not in exists]
+            # Said as it is: "you've been shown what you asked for", said of a file
+            # past the limit, had it ask again for the same file.
             feedback = (
                 (f"These aren't files in the repository: {', '.join(missing)}. " if missing else "")
                 + (
-                    "You've been shown what you asked for. "
-                    if not fresh or asks >= ASK_LIMIT
+                    f"Not shown: {', '.join(exists)}. A delivery may have "
+                    f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
+                    if exists
                     else ""
                 )
+                + ("Everything else you named is already shown above. " if not fresh else "")
                 + "Do the work now with the files you can see, and leave `need_files` empty."
             )
             continue

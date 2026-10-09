@@ -15,6 +15,7 @@ import pytest
 
 from crew_org.crews.delivery_crew import FileWrite, FirstAttempt, FirstOrDone, Implementation
 from crew_org.events import EventKind
+from crew_org.flows import delivery
 from crew_org.tools import repo_context
 from crew_org.tools.repo_context import focused_context, repository_context, select_files
 from tests.test_delivery_flow import FakeIssues, FakeWorkspace, green, harness, story  # noqa: F401
@@ -170,6 +171,27 @@ def test_asking_forever_is_capped_and_told_to_work(harness, monkeypatch, tmp_pat
     _, calls, _ = _asking_delivery(harness, monkeypatch, tmp_path, [never, never, WORK])
     assert calls["implement"] == 3
     assert "nope.md" in calls["feedback"][2] and "leave `need_files` empty" in calls["feedback"][2]
+
+
+ASK_README = FirstAttempt(summary="need the readme", criteria_tests=[], need_files=["README.md"])
+
+
+def test_a_file_it_hasnt_seen_is_shown_however_often_it_has_asked(harness, monkeypatch, tmp_path):  # noqa: F811
+    """sprint-metrics#529 (2026-10-09): its third ask, for the one file its change
+    needed, was refused as past a limit of two asks, three times over."""
+    _, calls, seen = _asking_delivery(harness, monkeypatch, tmp_path, [ASK, ASK, ASK_README, WORK])
+    assert calls["implement"] == 4
+    shown = [e.detail["asked"] for e in seen if e.kind == EventKind.FILES_SHOWN]
+    assert shown[-1] == ["docs/metrics.md", "README.md"]
+
+
+def test_past_the_files_limit_it_is_told_which_were_not_shown(harness, monkeypatch, tmp_path):  # noqa: F811
+    """ "You've been shown what you asked for", said of a file it hadn't been shown,
+    drew the same ask again."""
+    monkeypatch.setattr(delivery, "ASKED_FILES_LIMIT", 1)
+    _, calls, _ = _asking_delivery(harness, monkeypatch, tmp_path, [ASK, ASK_README, WORK])
+    told = calls["feedback"][2]
+    assert "Not shown: README.md" in told and "shown what you asked for" not in told
 
 
 def test_each_attempt_records_its_context_size(harness, monkeypatch, tmp_path):  # noqa: F811
