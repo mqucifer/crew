@@ -54,6 +54,7 @@ from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import (
@@ -1557,6 +1558,7 @@ def refine_epics(
                             kind=EventKind.NOTE,
                             card=issue["number"],
                             summary=f"held in {REFINEMENT}: {verdict.reason}"[:100],
+                            detail={"rule": Rule.HOLD_WIP_LIMIT},
                         )
                     )
                     artifacts.label(

@@ -47,6 +47,7 @@ from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.rules import Rule
 from crew_org.tools import bounds, claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
@@ -66,6 +67,8 @@ class DeliveryOutcome:
     branch: str | None = None
     pr: int | None = None
     blocked_reason: str | None = None
+    # Which rule blocked it, by name (crew#449): the reason above is for a person.
+    blocked_rule: str | None = None
     attempts: int = 0
     # Counted per failure class: a mechanical mistake like naming a definition
     # that does not exist should not spend the budget kept for real failures.
@@ -786,6 +789,7 @@ def deliver_story(
         except MergeConflict as conflict:
             paths = ", ".join(conflict.files) or "unknown files"
             if not rework:
+                outcome.blocked_rule = Rule.CONFLICT_WITH_MAIN
                 outcome.blocked_reason = (
                     f"`{branch}` conflicts with main in {paths}; "
                     "resolving that is a decision for a person, not something to force"
@@ -814,6 +818,7 @@ def deliver_story(
     try:
         record = read_record(worktree)
     except ProjectRecordError as exc:
+        outcome.blocked_rule = Rule.RECORD_UNREADABLE
         outcome.blocked_reason = f"the project's record can't be read: {exc}"
         return outcome
     # Each file's profile comes from this project's parts, until the card is done (#404).
@@ -1004,6 +1009,7 @@ def deliver_story(
                     card=number,
                     summary=f"SCHEMA — {decision.disposition}",
                     detail={
+                        "rule": decision.rule,
                         # The reason is the whole diagnostic. Recording only the
                         # disposition says what happened and not why, which is
                         # exactly what a retro needs.
@@ -1027,6 +1033,7 @@ def deliver_story(
                         card=number,
                     )
                 continue
+            outcome.blocked_rule = decision.rule
             outcome.blocked_reason = decision.reason
             return outcome
 
@@ -1080,7 +1087,11 @@ def deliver_story(
                     role="Developer",
                     card=number,
                     summary=f"OVERWRITE — {decision.disposition}",
-                    detail={"failure_class": "OVERWRITE", "paths": overwrites},
+                    detail={
+                        "rule": decision.rule,
+                        "failure_class": "OVERWRITE",
+                        "paths": overwrites,
+                    },
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
@@ -1090,6 +1101,7 @@ def deliver_story(
                     "files. Only a file that does not exist yet belongs in new_files." + NOT_APPLIED
                 )
                 continue
+            outcome.blocked_rule = Rule.GUARD_OVERWRITE
             outcome.blocked_reason = f"kept rewriting existing files: {', '.join(overwrites)}"
             return outcome
 
@@ -1103,6 +1115,7 @@ def deliver_story(
         # now. Blocked, not retried: no retry grants a permission.
         missing = workflows_not_permitted(implementation)
         if missing:
+            outcome.blocked_rule = Rule.GUARD_WORKFLOW_PERMISSION
             outcome.blocked_reason = missing
             return outcome
 
@@ -1123,7 +1136,7 @@ def deliver_story(
                     role="Developer",
                     card=number,
                     summary=f"BOUNDS — {decision.disposition}",
-                    detail={"failure_class": "BOUNDS", "reasons": outside},
+                    detail={"rule": decision.rule, "failure_class": "BOUNDS", "reasons": outside},
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
@@ -1134,6 +1147,7 @@ def deliver_story(
                 )
                 continue
             outcome.failure_detail = "\n".join(outside)
+            outcome.blocked_rule = Rule.GUARD_PROTECTED
             outcome.blocked_reason = f"kept changing what the project protects: {outside[0]}"
             return outcome
 
@@ -1180,6 +1194,7 @@ def deliver_story(
                     card=number,
                     summary=f"REGRESSION — {decision.disposition}",
                     detail={
+                        "rule": decision.rule,
                         "failure_class": FailureClass.REGRESSION,
                         "attempt": outcome.seen("REGRESSION"),
                         "reason": decision.reason,
@@ -1191,6 +1206,7 @@ def deliver_story(
                 feedback = regression.describe_contracts(broken, merged) + NOT_APPLIED
                 continue
             outcome.failure_detail = regression.describe_contracts(broken, merged)
+            outcome.blocked_rule = decision.rule
             outcome.blocked_reason = decision.reason
             return outcome
 
@@ -1227,6 +1243,7 @@ def deliver_story(
                     card=number,
                     summary=f"EDIT — {decision.disposition}",
                     detail={
+                        "rule": decision.rule,
                         "failure_class": "EDIT",
                         "attempt": outcome.seen("EDIT"),
                         "error": str(exc)[:400],
@@ -1236,6 +1253,7 @@ def deliver_story(
             if decision.disposition is Disposition.RETRY_LOCAL:
                 feedback = f"An edit could not be applied:\n\n{exc}"
                 continue
+            outcome.blocked_rule = Rule.EDIT_NOT_APPLIED
             outcome.blocked_reason = f"edits could not be applied: {exc}"
             return outcome
 
@@ -1267,6 +1285,7 @@ def deliver_story(
                     card=number,
                     summary=f"SCOPE — {decision.disposition}",
                     detail={
+                        "rule": decision.rule,
                         "failure_class": FailureClass.SCOPE,
                         "reason": decision.reason,
                         "pinned": sorted(pinned),
@@ -1275,6 +1294,7 @@ def deliver_story(
                 )
             )
             outcome.failure_detail = check.failure_report
+            outcome.blocked_rule = decision.rule
             outcome.blocked_reason = decision.reason
             if decision.disposition is Disposition.RETURN_TO_REFINEMENT:
                 outcome.returned = story_problem.evidence(card, pinned, outcome.seen("VERIFY") + 1)
@@ -1296,6 +1316,7 @@ def deliver_story(
                 card=number,
                 summary=f"VERIFY — {decision.disposition}",
                 detail={
+                    "rule": decision.rule,
                     "failure_class": FailureClass.VERIFY,
                     "attempt": outcome.seen("VERIFY"),
                     "reason": decision.reason,
@@ -1341,6 +1362,7 @@ def deliver_story(
             if result.should_park:
                 # Not an outcome yet — the work is unfinished, not failed.
                 ledger.resolve(number, sprint, "parked on a usage limit")
+                outcome.blocked_rule = Rule.USAGE_LIMIT
                 outcome.blocked_reason = result.detail
                 return outcome
             check = workspace.check(worktree)
@@ -1349,10 +1371,12 @@ def deliver_story(
                 break
             ledger.resolve(number, sprint, "escalated but still failing")
             outcome.failure_detail = check.failure_report
+            outcome.blocked_rule = Rule.ESCALATION_UNRESOLVED
             outcome.blocked_reason = f"escalation did not resolve it: {check.failure_report[:200]}"
             return outcome
 
         outcome.failure_detail = check.failure_report
+        outcome.blocked_rule = decision.rule
         outcome.blocked_reason = decision.reason
         return outcome
 
@@ -1372,6 +1396,7 @@ def deliver_story(
             outcome.failure_detail = (
                 f"## The review\n\n{review}\n\n## The earlier answer\n\n{before}"
             )
+            outcome.blocked_rule = Rule.GATES_DISAGREE
             outcome.blocked_reason = (
                 f"PR #{live['number']} was answered without a change and sent back again: "
                 "the Code Reviewer and the Developer disagree, which is for a person to settle"
@@ -1387,6 +1412,7 @@ def deliver_story(
         ),
         allow_empty=answered or bool(done),
     ):
+        outcome.blocked_rule = Rule.GUARD_NO_CHANGE
         outcome.blocked_reason = "the implementation produced no change"
         return outcome
     # A branch left behind by an earlier attempt is the crew's own dead history:
@@ -1397,6 +1423,7 @@ def deliver_story(
     # instead, with the reason named.
     open_pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
     if open_pull is not None and not rework:
+        outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
         outcome.blocked_reason = (
             f"PR #{open_pull['number']} is still open on `{branch}`. "
             "Close it, or let that pull request finish; re-delivering would "
@@ -1421,6 +1448,7 @@ def deliver_story(
         # already knows — how many repairs it took, the diff it produced — where
         # letting this propagate discards all of it and the card blocks saying
         # "Attempts: 0". That is #10's defect in a path #10 did not cover.
+        outcome.blocked_rule = Rule.PUSH_FAILED
         outcome.blocked_reason = f"could not push `{branch}`: {exc}"[:400]
         return outcome
 
@@ -1904,6 +1932,7 @@ def _deliver_and_move(
             frm=IN_PROGRESS,
             summary=(outcome.blocked_reason or "")[:80],
             kind=EventKind.CARD_BLOCKED,
+            rule=getattr(outcome, "blocked_rule", None),
         )
         counts[IN_PROGRESS] -= 1
         artifacts.label(
@@ -2068,6 +2097,9 @@ def deliver(
             sink.note(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{blocker.number} in the same epic",
+                card=card.number,
+                waits_for=blocker.number,
+                rule=Rule.HOLD_SIBLING,
             )
             continue
         try:
@@ -2080,12 +2112,15 @@ def deliver(
             sink.note(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
+                card=card.number,
+                waits_for=needed.number,
+                rule=Rule.HOLD_BUILDS_ON,
             )
             continue
 
         verdict = rules.may_move(frm=SPRINT_BACKLOG, to=IN_PROGRESS, counts=counts)
         if not verdict.allowed:
-            sink.note(EventKind.NOTE, verdict.reason)
+            sink.note(EventKind.NOTE, verdict.reason, rule=Rule.HOLD_WIP_LIMIT)
             break
 
         move_card(

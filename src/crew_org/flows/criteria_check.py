@@ -16,6 +16,7 @@ from crew_org.crews.criteria_crew import CriteriaCheck
 from crew_org.crews.refinement_crew import CriteriaRepair, Story, StoryProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.rules import Rule
 
 # What the check is shown of other epics' planned stories. A pass can plan
 # dozens; past this, their titles are still in the split's own context.
@@ -149,4 +150,5 @@ def to_product_owner(
         EventKind.NOTE,
         f"#{number} not split: {len(check.conflicts)} criteria can't all pass",
         card=number,
+        rule=Rule.CRITERIA_CANNOT_ALL_PASS,
     )

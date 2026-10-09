@@ -103,6 +103,24 @@ class CrewEvent(BaseModel):
     ctx: dict[str, Any] = Field(default_factory=dict)
 
 
+def _named(event: CrewEvent) -> CrewEvent:
+    """The event, with its failure's kind and a return's rule as names (crew#449, crew#550).
+
+    Derived here from what the event already says, so every path that writes one
+    is covered without each call site restating it. One its site named is kept.
+    """
+    from crew_org import rules  # noqa: PLC0415
+
+    detail = dict(event.detail or {})
+    kind = event.kind.value
+    found = rules.kind_of(kind, event.summary, detail)
+    if found is not None:
+        detail.setdefault("failure_kind", found.value)
+    if kind == "story.returned" and (rule := rules.RETURN_RULES.get(str(detail.get("reason")))):
+        detail.setdefault("rule", rule.value)
+    return event if detail == event.detail else event.model_copy(update={"detail": detail})
+
+
 def repo_of(event: CrewEvent) -> str | None:
     """The event's repository: where it was written, or where its detail says."""
     return event.ctx.get("repo") or (event.detail or {}).get("repo")
@@ -139,6 +157,8 @@ class EventSink:
                 from crew_org import log  # noqa: PLC0415
 
                 event = event.model_copy(update={"ctx": log.scope()})
+        with contextlib.suppress(Exception):
+            event = _named(event)
         with self._lock:
             subscribers = list(self._subscribers)
             if self.path is not None:
@@ -384,6 +404,11 @@ def bridged_sinks() -> list[EventSink]:
 def reset_bridge() -> None:
     """Forget every target. For tests — the bus handler itself cannot be removed."""
     _TARGETS.clear()
+    _FAILED_CALLS.clear()
+
+
+# The calls whose failure was already forwarded, so a repeat isn't recorded twice.
+_FAILED_CALLS: set[Any] = set()
 
 
 def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
@@ -417,6 +442,14 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
         kind = _BRIDGE.get(type(event).__name__)
         if kind is None:
             return
+        # CrewAI reports one failed call twice, about 2 ms apart, with the same
+        # call id: every one of Sprint 18's 25 refusals was logged twice (crew#449).
+        if kind is EventKind.LLM_CALL_FAILED:
+            call = _first_attr(event, "call_id")
+            if call is not None and call in _FAILED_CALLS:
+                return
+            if call is not None:
+                _FAILED_CALLS.add(call)
         role = _first_attr(event, "role", "agent_role", "from_agent")
         name = _first_attr(event, "task_name", "tool_name", "model", "description") or ""
 
