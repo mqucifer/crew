@@ -30,6 +30,7 @@ from crew_org import log
 from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org
+from crew_org.crews import asks as file_asks
 from crew_org.crews.criteria_crew import check_criteria
 from crew_org.crews.refinement_crew import (
     Epic,
@@ -1377,7 +1378,7 @@ def refine_epics(
                     )
                     if not proposal.asks:
                         break
-                    wanted = [f.strip().removeprefix("./") for f in proposal.need_files]
+                    wanted = file_asks.paths(proposal.need_files)
                     fresh = [
                         f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
                     ]
@@ -1387,7 +1388,10 @@ def refine_epics(
                             role="Business Analyst",
                             card=number,
                             summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
-                            detail={"need_files": wanted},
+                            detail={
+                                "need_files": wanted,
+                                "why": file_asks.reasons(proposal.need_files),
+                            },
                         )
                     )
                     if fresh and asks < ANALYST_ASK_LIMIT:

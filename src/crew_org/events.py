@@ -405,10 +405,53 @@ def reset_bridge() -> None:
     """Forget every target. For tests — the bus handler itself cannot be removed."""
     _TARGETS.clear()
     _FAILED_CALLS.clear()
+    _CALL_VERSIONS.clear()
+    _TASK_SCHEMAS.clear()
 
 
 # The calls whose failure was already forwarded, so a repeat isn't recorded twice.
 _FAILED_CALLS: set[Any] = set()
+# Each call's prompt and schema versions, from its start, for its finish (crew#449).
+_CALL_VERSIONS: dict[Any, dict[str, str]] = {}
+# Each task's output form, from its start: a model call names only its task's id.
+_TASK_SCHEMAS: dict[str, str] = {}
+
+
+def _schema_of(model: Any) -> str | None:
+    """An output model's name and a fingerprint of its JSON schema, or None."""
+    import hashlib  # noqa: PLC0415
+
+    if model is None or not hasattr(model, "model_json_schema"):
+        return None
+    shape = json.dumps(model.model_json_schema(), sort_keys=True)
+    return f"{model.__name__}:{hashlib.sha256(shape.encode()).hexdigest()[:12]}"
+
+
+def _versions(event: Any) -> dict[str, str]:
+    """Which prompt and output form a model call ran with, as hashes, never content.
+
+    `prompt_hash` hashes the role's system message, which changes only when its
+    instructions do. `output_schema` is the output model's name and a fingerprint of its
+    JSON schema. A defect, its fix and a recurrence can then be placed either side
+    of the change (discussion 552).
+    """
+    import hashlib  # noqa: PLC0415
+
+    found: dict[str, str] = {}
+    system = [
+        str(m.get("content") or "")
+        for m in (_first_attr(event, "messages") or [])
+        if isinstance(m, dict) and m.get("role") == "system"
+    ]
+    if system:
+        found["prompt_hash"] = hashlib.sha256("\n".join(system).encode()).hexdigest()[:12]
+    task = _first_attr(event, "from_task")
+    schema = _schema_of(
+        getattr(task, "output_pydantic", None) or getattr(task, "output_json", None)
+    ) or _TASK_SCHEMAS.get(str(_first_attr(event, "task_id")))
+    if schema:
+        found["output_schema"] = schema
+    return found
 
 
 def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
@@ -479,6 +522,21 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
             if value is not None:
                 detail[field] = str(value)
         detail.update(_duration(kind, detail.get("call_id"), _first_attr(event, "timestamp")))
+        if kind is EventKind.TASK_STARTED:
+            with contextlib.suppress(Exception):
+                task = _first_attr(event, "task")
+                if (schema := _schema_of(getattr(task, "output_pydantic", None))) is not None:
+                    _TASK_SCHEMAS[str(getattr(task, "id", ""))] = schema
+        # The versions are read from the call's start and carried to its end.
+        call = detail.get("call_id")
+        if kind is EventKind.LLM_CALL_STARTED and call is not None:
+            with contextlib.suppress(Exception):
+                _CALL_VERSIONS[call] = _versions(event)
+        if call is not None:
+            detail.update(_CALL_VERSIONS.get(call, {}))
+            # Kept past a failure: a failed call can be retried under its id.
+            if kind is EventKind.LLM_CALL_FINISHED:
+                _CALL_VERSIONS.pop(call, None)
         about = working()
         detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
         if kind in (EventKind.LLM_CALL_FINISHED, EventKind.LLM_CALL_FAILED):

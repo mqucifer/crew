@@ -49,6 +49,9 @@ DETAIL = frozenset(
         "duration_s",
         "call_id",
         "response_id",
+        # Which prompt and output form it ran with: hashes, never content (crew#449).
+        "prompt_hash",
+        "output_schema",
         # The board: moves, and column counts at the start of a pass.
         "from",
         "to",

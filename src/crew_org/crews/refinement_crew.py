@@ -16,6 +16,7 @@ from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
+from crew_org.crews.asks import FileAsk
 
 # Modified Fibonacci, per constitution §6. Nothing larger enters a sprint.
 POINT_SCALE = (1, 2, 3, 5, 8)
@@ -299,12 +300,12 @@ class StoryProposal(BaseModel):
         ),
     )
 
-    need_files: list[str] = Field(
+    need_files: list[FileAsk] = Field(
         default_factory=list,
         description=(
             "Only if you can't split this epic without seeing a file the map above only "
-            "names: its path. You're asked again with it shown in full; leave the stories "
-            "empty then. Empty otherwise."
+            "names: its path, and in a line why. You're asked again with it shown in full; "
+            "leave the stories empty then. Empty otherwise."
         ),
     )
 
