@@ -49,7 +49,7 @@ from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
-from crew_org.rules import Rule
+from crew_org.rules import Kind, Rule
 from crew_org.tools import bounds, claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
@@ -1317,6 +1317,8 @@ def deliver_story(
                     detail={
                         "rule": decision.rule,
                         "failure_class": FailureClass.SCOPE,
+                        # What happened to the work, which the class doesn't say.
+                        "failure_kind": Kind.TESTS_FAILED,
                         "reason": decision.reason,
                         "pinned": sorted(pinned),
                         "first_error": first_error(check.failure_report),
