@@ -103,3 +103,20 @@ def test_an_edit_or_guard_retry_names_its_own_rule():
         disposition=Disposition.ESCALATE, reason="", rule=Rule.ESCALATION_ALLOWED
     )
     assert _local_rule(escalate, Rule.GUARD_LOCAL_REPAIR) is Rule.ESCALATION_ALLOWED
+
+
+def test_a_scope_return_for_pinned_tests_says_the_tests_failed(tmp_path):
+    """sprint-metrics#529's return (2026-10-09) carried no kind: SCOPE names none."""
+    sink = EventSink(tmp_path / "e.jsonl")
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.ESCALATION_DECIDED,
+            card=529,
+            summary="SCOPE — return_to_refinement",
+            detail={"failure_class": "SCOPE", "failure_kind": Kind.TESTS_FAILED},
+        )
+    )
+    import json
+
+    line = json.loads((tmp_path / "e.jsonl").read_text())
+    assert line["detail"]["failure_kind"] == "tests_failed"
