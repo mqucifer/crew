@@ -58,6 +58,11 @@ DETAIL = frozenset(
         "limit",
         # Outcomes.
         "failure_class",
+        # What kind of failure, and which rule decided, as names (crew#449, crew#550);
+        # the pull request a review judged.
+        "failure_kind",
+        "rule",
+        "pr",
         "accepted",
         "approved",
         "notes",

@@ -32,6 +32,7 @@ from crew_org.git_ops import Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.profiles import profile_for
 from crew_org.project import brief, read_record
+from crew_org.rules import Rule
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
@@ -605,6 +606,7 @@ def run_qa(
                     card=number,
                     frm=QAING,
                     summary=f"returned — {len(verdict.unproven)} unproven",
+                    rule=Rule.QA_UNPROVEN,
                 )
                 outcome = QAOutcome(
                     card=number,

@@ -16,6 +16,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from crew_org.rules import Rule
+
 # A justification must actually name what the agent could not do. This floor is
 # a blunt instrument against "too hard" one-liners; the reviewer of the ledger
 # is the real check.
@@ -76,6 +78,9 @@ class LocalFailure(BaseModel):
 class EscalationDecision(BaseModel):
     disposition: Disposition
     reason: str
+    # Which of the policy's rules decided it, by name (crew#449): the reason is
+    # for a person, the rule is what a count or a replay reads.
+    rule: Rule
 
     @property
     def escalates(self) -> bool:
@@ -196,12 +201,14 @@ class EscalationPolicy:
                 if failure.attempts < self.local_repair_attempts:
                     return EscalationDecision(
                         disposition=Disposition.RETRY_LOCAL,
+                        rule=Rule.REGRESSION_LOCAL_REPAIR,
                         reason=f"REGRESSION, attempt {failure.attempts + 1} of "
                         f"{self.local_repair_attempts}; the contracts it must keep are "
                         "named in the feedback.",
                     )
                 return EscalationDecision(
                     disposition=Disposition.BLOCK,
+                    rule=Rule.REGRESSION_PERSISTED,
                     reason="The implementation keeps rewriting interfaces other work "
                     "depends on, after being told exactly which to preserve. That needs "
                     "a person, not a larger model.",
@@ -209,17 +216,20 @@ class EscalationPolicy:
             if cls_ is FailureClass.SCOPE:
                 return EscalationDecision(
                     disposition=Disposition.RETURN_TO_REFINEMENT,
+                    rule=Rule.SCOPE_RETURN,
                     reason="SCOPE failures are a refinement defect; the card is "
                     "returned for decomposition rather than escalated.",
                 )
             if failure.attempts < self.local_repair_attempts:
                 return EscalationDecision(
                     disposition=Disposition.RETRY_LOCAL,
+                    rule=Rule.SCHEMA_LOCAL_REPAIR,
                     reason=f"SCHEMA failure, attempt {failure.attempts + 1} of "
                     f"{self.local_repair_attempts}; retrying with the validation error supplied.",
                 )
             return EscalationDecision(
                 disposition=Disposition.FILE_PROMPT_DEFECT,
+                rule=Rule.SCHEMA_PERSISTED,
                 reason="SCHEMA failure persisted past local repair. This is a prompt "
                 "or schema defect and is filed as one, not escalated.",
             )
@@ -228,6 +238,7 @@ class EscalationPolicy:
         if cls_ in self.require_justification and not _justified(failure.justification):
             return EscalationDecision(
                 disposition=Disposition.RETURN_TO_REFINEMENT,
+                rule=Rule.CAPABILITY_UNJUSTIFIED,
                 reason="A CAPABILITY claim without a substantive justification is "
                 "rejected and treated as SCOPE.",
             )
@@ -236,6 +247,7 @@ class EscalationPolicy:
         if cls_ is FailureClass.VERIFY and failure.attempts < self.local_repair_attempts:
             return EscalationDecision(
                 disposition=Disposition.RETRY_LOCAL,
+                rule=Rule.VERIFY_LOCAL_REPAIR,
                 reason=f"VERIFY failure, attempt {failure.attempts + 1} of "
                 f"{self.local_repair_attempts}; repairing locally before escalation.",
             )
@@ -244,12 +256,14 @@ class EscalationPolicy:
         if spent >= self.sprint_budget:
             return EscalationDecision(
                 disposition=Disposition.BLOCK,
+                rule=Rule.ESCALATION_BUDGET,
                 reason=f"Sprint escalation budget exhausted ({spent}/{self.sprint_budget}). "
                 "The card is blocked; the retro addresses the rate as a process defect.",
             )
 
         return EscalationDecision(
             disposition=Disposition.ESCALATE,
+            rule=Rule.ESCALATION_ALLOWED,
             reason=f"{cls_} failure eligible for escalation "
             f"({spent + 1}/{self.sprint_budget} of sprint budget).",
         )

@@ -1621,6 +1621,18 @@ def settle(
         flush_bridge()
 
 
+@app.command(name="reference")
+def reference_command() -> None:
+    """Write the reference for the crew's records into docs/reference/ (crew#449).
+
+    The context every record carries, the kinds of failure, the rules that decide,
+    and the event names, from the code.
+    """
+    from crew_org import reference  # noqa: PLC0415
+
+    console.print(f"wrote {reference.write().relative_to(reference.ROOT)}")
+
+
 @app.command(name="log")
 def log_command(
     level: str = typer.Option("INFO", "--level", help="DEBUG, INFO, WARNING, ERROR."),

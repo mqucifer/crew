@@ -241,3 +241,26 @@ def test_resolving_an_unescalated_card_does_nothing(tmp_path):
     ledger = EscalationLedger(tmp_path / "l.jsonl")
     ledger.resolve(99, "S1", "resolved")
     assert ledger.entries("S1") == []
+
+
+# --- crew#449: which rule decided, by name ---------------------------------------
+
+
+def test_each_decision_names_the_rule_that_made_it(policy):
+    from crew_org.rules import Rule
+
+    assert policy.decide(failure(FailureClass.SCHEMA), spent=0).rule is Rule.SCHEMA_LOCAL_REPAIR
+    assert policy.decide(failure(FailureClass.SCOPE), spent=0).rule is Rule.SCOPE_RETURN
+    assert policy.decide(failure(FailureClass.VERIFY), spent=0).rule is Rule.VERIFY_LOCAL_REPAIR
+    assert (
+        policy.decide(
+            failure(FailureClass.CAPABILITY, justification=GOOD_JUSTIFICATION), spent=BUDGET
+        ).rule
+        is Rule.ESCALATION_BUDGET
+    )
+    assert (
+        policy.decide(
+            failure(FailureClass.CAPABILITY, justification=GOOD_JUSTIFICATION), spent=0
+        ).rule
+        is Rule.ESCALATION_ALLOWED
+    )
