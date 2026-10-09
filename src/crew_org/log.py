@@ -409,8 +409,14 @@ def code_version() -> dict[str, Any]:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=here, capture_output=True, text=True, check=True
         ).stdout.strip()
+        # Tracked files only: an untracked file beside the code (the Sponsor's
+        # package.json) marked every tick dirty, though the code that ran was main's.
         changed = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=here, capture_output=True, text=True, check=True
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=here,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return {}
