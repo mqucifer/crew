@@ -241,6 +241,16 @@ def test_a_record_reads_as_one_line():
     assert log.line({**RECORD, "ctx": {"for": "deliver"}}).startswith("12:58:03 INFO    [deliver] ")
 
 
+def test_a_line_names_its_card_once():
+    """A run puts the card in the context, and most summaries already start with it."""
+    named = {
+        **RECORD,
+        "message": "#529 context: 242,562 chars",
+        "ctx": {"phase": "deliver", "card": 529},
+    }
+    assert log.line(named) == "12:58:03 INFO    [deliver] #529 context: 242,562 chars"
+
+
 def test_the_filters_match_level_card_phase_and_event():
     assert log.matches(RECORD)
     assert not log.matches(RECORD, level="WARNING")

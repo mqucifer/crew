@@ -227,17 +227,23 @@ class Console(logging.Formatter):
 def line(record: dict[str, Any]) -> str:
     """A record, as one line a person reads: time, level, phase, card, message."""
     ctx = record.get("ctx") or {}
+    message = str(record.get("message", ""))
+    card = ctx.get("card") and f"#{ctx['card']}"
+    # Most summaries already name their card ("#529 context: ..."); a run puts
+    # the card in the context too, and the line said it twice.
+    if card and message.startswith(f"{card} "):
+        card = None
     where = " ".join(
         part
         for part in (
             (ctx.get("phase") or ctx.get("for")) and f"[{ctx.get('phase') or ctx.get('for')}]",
-            ctx.get("card") and f"#{ctx['card']}",
+            card,
         )
         if part
     )
     at = str(record.get("at", ""))[11:19]
     level = f"{record.get('level', ''):<7}"
-    return f"{at} {level} {where + ' ' if where else ''}{record.get('message', '')}"
+    return f"{at} {level} {where + ' ' if where else ''}{message}"
 
 
 def _to_collector(
