@@ -20,6 +20,7 @@ from typing import Any
 
 from crew_org import log, profiles
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
+from crew_org.crews import asks as file_asks
 from crew_org.crews import epic_rows
 from crew_org.crews.delivery_crew import Implementation, implement_story
 from crew_org.escalation import (
@@ -35,7 +36,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
-from crew_org.flows.attempts import first_error
+from crew_org.flows.attempts import failing_tests, first_error
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
@@ -1040,7 +1041,7 @@ def deliver_story(
         # It asked to see files first (#231). Not a failure, and not applied:
         # it's asked again with them shown, up to ASK_LIMIT times a delivery.
         if implementation.asks:
-            wanted = [f.strip().removeprefix("./") for f in implementation.need_files]
+            wanted = file_asks.paths(implementation.need_files)
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
             exists = [f for f in fresh if (worktree / f).is_file()]
             sink.emit(
@@ -1049,7 +1050,11 @@ def deliver_story(
                     role="Developer",
                     card=number,
                     summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
-                    detail={"need_files": wanted},
+                    # Each file's reason, kept local (discussion 553).
+                    detail={
+                        "need_files": wanted,
+                        "why": file_asks.reasons(implementation.need_files),
+                    },
                 )
             )
             if exists and asks < ASK_LIMIT:
@@ -1325,6 +1330,7 @@ def deliver_story(
                     # From the whole report: the 600 above stop before pytest's
                     # summary, and the retro counts causes from this (#157).
                     "first_error": first_error(check.failure_report),
+                    "failing_tests": failing_tests(check.failure_report),
                 },
             )
         )

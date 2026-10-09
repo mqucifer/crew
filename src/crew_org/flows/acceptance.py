@@ -21,6 +21,7 @@ from pathlib import Path
 
 from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
+from crew_org.crews import asks as file_asks
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
@@ -295,11 +296,13 @@ def _judge(
             if not wanted or not can_ask:
                 break
         else:
-            wanted = [f for f in verdict.need_files if f not in asked]
+            wanted = [f for f in file_asks.paths(verdict.need_files) if f not in asked]
             judge_now = not wanted
         asked += wanted
     if not verdict.criteria:
-        raise ValueError(f"QA asked to see {', '.join(verdict.need_files)} past its limit")
+        raise ValueError(
+            f"QA asked to see {', '.join(file_asks.paths(verdict.need_files))} past its limit"
+        )
     return held_to_what_it_read(verdict, tests)
 
 
@@ -626,6 +629,10 @@ def run_qa(
                     detail={
                         "accepted": verdict.accepted,
                         "unproven": [c.criterion for c in verdict.unproven],
+                        # Which criteria, by their number on the card (crew#449).
+                        "unproven_numbers": [
+                            n for n, c in enumerate(verdict.criteria, start=1) if not c.proven
+                        ],
                     },
                 )
             )

@@ -198,3 +198,7 @@ def test_a_review_is_recorded_under_the_card_it_closes_with_its_pull_request(mon
     assert work and all(e.card == card.number for e in work)
     assert all(e.detail["pr"] == crew_pull()["number"] for e in work)
     assert len({e.ctx["run"] for e in work}) == 1
+    [finished] = [e for e in work if e.kind == EventKind.AGENT_FINISHED]
+    findings = finished.detail["findings"]
+    assert findings and all({"file", "statement", "blocking"} == set(f) for f in findings)
+    assert findings[0]["statement"] == " ".join(REJECTION.findings[0].concern.split())[:300]

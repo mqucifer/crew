@@ -19,6 +19,7 @@ from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
+from crew_org.crews.asks import FileAsk
 from crew_org.profiles import profile_for
 from crew_org.tools.ast_edit import Operation
 from crew_org.tools.ci_guard import is_workflow
@@ -340,12 +341,13 @@ class Implementation(BaseModel):
     )
     # Asked for, not guessed at (#231): the context shows the files the work
     # names in full and the rest by name and signature only.
-    need_files: list[str] = Field(
+    need_files: list[FileAsk] = Field(
         default_factory=list,
         description=(
             "Only when you can't do the work correctly without seeing files listed by "
-            "name but not shown in full: their paths. Naming any means this answer isn't "
-            "applied, and you're asked again with them shown. Leave empty otherwise."
+            "name but not shown in full: each path, and in a line why. Naming any means "
+            "this answer isn't applied, and you're asked again with them shown. Leave "
+            "empty otherwise."
         ),
     )
 
