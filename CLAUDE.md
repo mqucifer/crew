@@ -47,11 +47,14 @@ file never reaches them. Change it by pull request, like any other file.
   close; `crew#12` is plain text. Never a bare `#12`: GitHub links it in
   whichever repo the text lands in.
   *Guarded by the hook for `gh` issue and PR bodies.*
-- **Crew PRs are merged by the Sponsor; Claude doesn't approve them.** The
-  approver App has no access to this repo, by the Sponsor's decision, so
-  `crew review --repo crew` only gets a 403. Don't run it, and don't propose
-  giving the App access. In a delivery repo, `crew review --repo <name>`
-  approves Claude's PRs, which the Sponsor authors and can't approve.
+- **Claude works as its own GitHub account, `quarters-claude`** (crew#566):
+  Write, not admin, so branch protection applies to it. Its token is
+  `GH_TOKEN` in `~/.claude/settings.json`, never in a repo; git pushes with it
+  through `gh auth git-credential`, set in each clone with its noreply email.
+- **The Sponsor approves and merges Claude's PRs,** in every repo, without the
+  admin override. Claude doesn't approve PRs. The approver App has no access to
+  this repo, by the Sponsor's decision: don't run `crew review --repo crew`,
+  and don't propose giving the App access.
 - **When blocked on the Sponsor** (a merge, an approval, a decision), send a
   push notification. They step away.
 - **After merge:** close the issue, then remove the worktree and branch
