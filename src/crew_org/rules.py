@@ -81,6 +81,10 @@ class Rule(StrEnum):
     """A pull request is still open on the branch; re-delivering would overwrite it."""
     PUSH_FAILED = "delivery.push_failed"
     """The work was done, and the branch couldn't be pushed."""
+    EDIT_LOCAL_REPAIR = "edit.local_repair"
+    """Its edits couldn't be applied, retried with why shown, up to the local limit."""
+    GUARD_LOCAL_REPAIR = "guard.local_repair"
+    """A guard refused the change, retried with what it refused shown."""
     GUARD_OVERWRITE = "guard.overwrite"
     """It kept rewriting existing files whole instead of editing them."""
     GUARD_PROTECTED = "guard.protected"
@@ -138,6 +142,10 @@ _CLASS_KINDS = {
 }
 
 
+# CrewAI's error for an answer with nothing in it.
+_EMPTY = "none or empty"
+
+
 def call_kind(error: str) -> Kind:
     """A failed model call's kind, from its error: cut off, refused, or no answer."""
     text = error.lower()
@@ -160,6 +168,9 @@ def kind_of(kind: str, summary: str, detail: dict[str, Any]) -> Kind | None:
     if kind == "llm.empty":
         return Kind.EMPTY
     if kind == "escalation.decided":
+        # An empty answer reaches the policy as a refused form; it was neither.
+        if _EMPTY in str(detail.get("error") or "").lower():
+            return Kind.EMPTY
         # "EDIT — retry_local": the class is the part before the dash.
         named = str(detail.get("failure_class") or "")
         shown = summary.partition(" — ")[0].strip()

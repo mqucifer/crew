@@ -25,6 +25,7 @@ from crew_org.crews import epic_rows
 from crew_org.crews.delivery_crew import Implementation, implement_story
 from crew_org.escalation import (
     Disposition,
+    EscalationDecision,
     EscalationLedger,
     EscalationPolicy,
     EscalationRecord,
@@ -163,6 +164,18 @@ class DeliveryResult:
     # Reverts landed this pass, and those that could not land yet (#83).
     reverts: RevertLanding = field(default_factory=RevertLanding)
     rate_limited: bool = False
+
+
+def _local_rule(decision: EscalationDecision, retried: Rule, otherwise: Rule | None = None) -> Rule:
+    """The rule a guard's or an edit's decision names.
+
+    They reach the policy under another class (an edit as SCHEMA, a guard as
+    VERIFY or REGRESSION), so the policy's rule names that class. A local retry
+    was this guard's or edit's own; anything else keeps the policy's rule.
+    """
+    if decision.disposition is Disposition.RETRY_LOCAL:
+        return retried
+    return otherwise or decision.rule
 
 
 def awaiting_rework(
@@ -1093,7 +1106,7 @@ def deliver_story(
                     card=number,
                     summary=f"OVERWRITE — {decision.disposition}",
                     detail={
-                        "rule": decision.rule,
+                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
                         "failure_class": "OVERWRITE",
                         "paths": overwrites,
                     },
@@ -1141,7 +1154,11 @@ def deliver_story(
                     role="Developer",
                     card=number,
                     summary=f"BOUNDS — {decision.disposition}",
-                    detail={"rule": decision.rule, "failure_class": "BOUNDS", "reasons": outside},
+                    detail={
+                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
+                        "failure_class": "BOUNDS",
+                        "reasons": outside,
+                    },
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
@@ -1248,7 +1265,9 @@ def deliver_story(
                     card=number,
                     summary=f"EDIT — {decision.disposition}",
                     detail={
-                        "rule": decision.rule,
+                        "rule": _local_rule(
+                            decision, Rule.EDIT_LOCAL_REPAIR, Rule.EDIT_NOT_APPLIED
+                        ),
                         "failure_class": "EDIT",
                         "attempt": outcome.seen("EDIT"),
                         "error": str(exc)[:400],

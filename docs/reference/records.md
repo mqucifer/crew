@@ -64,6 +64,8 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.record_unreadable` | The project's record can't be read, so its rules are unknown. |
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
+| `edit.local_repair` | Its edits couldn't be applied, retried with why shown, up to the local limit. |
+| `guard.local_repair` | A guard refused the change, retried with what it refused shown. |
 | `guard.overwrite` | It kept rewriting existing files whole instead of editing them. |
 | `guard.protected` | It kept changing what the project protects. |
 | `guard.workflow_permission` | It changes a workflow the crew has no permission to push. |

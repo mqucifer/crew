@@ -362,6 +362,28 @@ def test_a_doc_criterion_named_as_a_test_is_told_the_doc_proves_it():
         CriterionTest(criterion="the doc explains it", path="docs/formats.md", test="doc")
 
 
+def test_a_doc_criterion_listed_with_no_test_is_dropped_not_refused():
+    """sprint-metrics#529: "for each criterion" drew its doc criterion five times,
+    with no test, and each was refused at the cost of a call. A test in it is still
+    refused: a doc's wording isn't tested."""
+    doc = {"criterion": "AC6: the doc names the fields", "path": "docs/service.md", "test": "doc"}
+    doc["source"] = ""
+    real = criterion_test().model_dump()
+    for form in (Implementation, FirstAttempt):
+        answer = form.model_validate(
+            {"summary": "s", "criteria_tests": [real, doc], "new_files": [code().model_dump()]}
+        )
+        assert [c.path for c in answer.criteria_tests] == [real["path"]]
+    with pytest.raises(ValidationError, match="proven by reading the doc"):
+        FirstAttempt.model_validate(
+            {
+                "summary": "s",
+                "criteria_tests": [real, {**doc, "source": "def test_doc(): ..."}],
+                "new_files": [code().model_dump()],
+            }
+        )
+
+
 def test_an_existing_test_named_without_code_is_told_where_it_goes():
     """sprint-metrics#386: four attempts bounced between two refusals that never said."""
     with pytest.raises(ValidationError, match="proven_by_existing") as raised:
