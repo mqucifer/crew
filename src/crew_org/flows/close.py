@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from crew_org.columns import DONE, MERGING
@@ -19,10 +19,18 @@ from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
-from crew_org.flows.loops import from_comments, loops_text, read_loops, sprint_window
+from crew_org.flows.loops import (
+    from_comments,
+    loops_text,
+    read_loops,
+    read_resplits,
+    sprint_window,
+    superseded_text,
+)
 from crew_org.flows.merge import Landing, land
 from crew_org.flows.moves import move_card
 from crew_org.flows.retro import (
+    SUPERSEDED,
     RetroLayout,
     RetroRecord,
     _retro_body,
@@ -100,15 +108,33 @@ BACK = "Back to refinement"
 
 
 def _sprint_dates(board: ProjectClient, sprint: str):
-    """The sprint's first and last day, or None where the board can't say."""
+    """The sprint's first and last day, or None where the board can't say.
+
+    `schema` keeps to current and planned sprints, and GitHub moves a one-day
+    sprint to its finished ones the night it ends, before any close runs. So
+    the finished ones are read too: without them the retro never read a
+    sprint's loops or re-splits from the event log (crew#558).
+    """
     try:
-        return board.schema.field("Sprint").iteration_dates(sprint)
+        found = board.schema.field("Sprint").iteration_dates(sprint)
+        if found is not None:
+            return found
+        for it in board.sprints():
+            if str(it["title"]) == sprint:
+                start = date.fromisoformat(it["startDate"])
+                return start, start + timedelta(days=int(it.get("duration", 14)) - 1)
     except Exception:  # noqa: BLE001
         return None
+    return None
 
 
 def sprint_cards(cards: list[Card], sprint: str) -> list[Card]:
     return [c for c in cards if c.sprint == sprint and c.work_type == STORY_TYPE]
+
+
+def shown_status(card: Card) -> str:
+    """A card's status as the retro reports it: a superseded story isn't Done (crew#558)."""
+    return SUPERSEDED if card.superseded else card.status or ""
 
 
 def board_summary(cards: list[Card], sprint: str) -> str:
@@ -123,7 +149,9 @@ def board_summary(cards: list[Card], sprint: str) -> str:
     lines = []
     for card in sorted(sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)):
         points = int(card.points or 0)
-        lines.append(f"{card.name(qualify=qualify)} [{points}pt] {card.status}: {card.title}")
+        lines.append(
+            f"{card.name(qualify=qualify)} [{points}pt] {shown_status(card)}: {card.title}"
+        )
     return "\n".join(lines) or "No stories in this sprint."
 
 
@@ -374,10 +402,13 @@ def close_sprint(
     # Loops the crew broke (#253): a story sent back to refinement lost its
     # Sprint field on the way, so only the event log still says it was here.
     chains = []
+    resplits = []
     dates = _sprint_dates(board, sprint)
     if events_dir is not None and dates is not None:
-        chains = read_loops(events_dir, *sprint_window(*dates, tz))
+        window = sprint_window(*dates, tz)
+        chains = read_loops(events_dir, *window)
         from_comments(chains, issues, repo)
+        resplits = read_resplits(events_dir, *window)
     ours = [
         c
         for c in cards
@@ -410,7 +441,7 @@ def close_sprint(
 
     layout = RetroLayout(
         stories=[
-            (c.name(qualify=qualify), int(c.points or 0), c.status or "", c.title)
+            (c.name(qualify=qualify), int(c.points or 0), shown_status(c), c.title)
             for c in sorted(
                 sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
             )
@@ -419,6 +450,16 @@ def close_sprint(
             (c.name(qualify=qualify), int(c.points or 0), BACK, c.title)
             for c in sorted(went_back, key=lambda c: (c.repo or "", c.number or 0))
         ],
+        superseded=superseded_text(
+            [
+                (c.repo, c.number or 0, c.name(qualify=qualify), int(c.points or 0))
+                for c in sorted(
+                    sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
+                )
+                if c.superseded
+            ],
+            resplits,
+        ),
         loops=loops_text(chains, {c.number or 0: int(c.points or 0) for c in ours}),
         retries=retries_text(report) if events_dir is not None else "",
         blocked=result.aging_blocked,

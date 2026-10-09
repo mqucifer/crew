@@ -16,6 +16,23 @@
           ],
           "title": "Closed"
         },
+        "closed_as": {
+          "anyOf": [
+            {
+              "enum": [
+                "completed",
+                "not_planned",
+                "duplicate"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the issue closed. A story closed as not planned was superseded: never built, though the board shows it Done.",
+          "title": "Closed As"
+        },
         "created": {
           "anyOf": [
             {
@@ -124,7 +141,8 @@
         "sprint",
         "status",
         "created",
-        "closed"
+        "closed",
+        "closed_as"
       ],
       "title": "Card",
       "type": "object"

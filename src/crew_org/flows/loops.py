@@ -122,6 +122,78 @@ def read_loops(events_dir: Path, start: str, end: str) -> list[Chain]:
     return chains
 
 
+@dataclass
+class Resplit:
+    """An epic split again, and the stories it superseded."""
+
+    epic: int
+    at: str
+    because: str
+    superseded: list[int]
+    repo: str | None = None
+
+
+def read_resplits(events_dir: Path, start: str, end: str) -> list[Resplit]:
+    """Every re-split between `start` and `end`, whether or not a return came first.
+
+    `read_loops` keeps a re-split only as the end of a return. One the Sponsor
+    asked for has none before it, and sprint-metrics#467's left no trace in the
+    retro for Sprint 19 (crew#558).
+    """
+    return [
+        Resplit(
+            epic=int(event["card"]),
+            at=event["at"],
+            because=str((event.get("detail") or {}).get("because") or ""),
+            superseded=[int(n) for n in (event.get("detail") or {}).get("superseded") or []],
+            repo=(event.get("detail") or {}).get("repo"),
+        )
+        for event in _events(events_dir, start, end)
+        if event.get("kind") == "epic.resplit" and event.get("card") is not None
+    ]
+
+
+def superseded_text(
+    stories: list[tuple[str | None, int, str, int]], resplits: list[Resplit]
+) -> list[str]:
+    """The retro's section on stories superseded: each, its points, and what replaced it.
+
+    `stories` is (repo, number, name, points) per superseded story in the sprint. A
+    superseded story is a plan that didn't hold, worth its own line rather than
+    a quiet absence from the delivered count: the Sponsor, 2026-10-09.
+    """
+    if not stories:
+        return []
+    lines = [
+        "Admitted to the sprint, then replaced by a new split and never built. "
+        "Each is a plan that didn't hold: worth asking why.",
+        "",
+    ]
+    why = {"sponsor": "at the Sponsor's request", "story problem": "after a story problem"}
+    # By repository and number: a re-split names its own repository's stories.
+    left = {(repo, number): (name, points) for repo, number, name, points in stories}
+    for r in resplits:
+        mine = [(r.repo, n) for n in r.superseded if (r.repo, n) in left]
+        if not mine:
+            continue
+        names = ", ".join(f"{left[n][0]} ({left[n][1]})" for n in mine)
+        total = sum(left[n][1] for n in mine)
+        # Named with its repository: the retro is filed in the crew's, where a
+        # bare number links to the crew's own issue.
+        epic = f"{r.repo}#{r.epic}" if r.repo else f"#{r.epic}"
+        lines.append(
+            f"- Epic {epic} was split again {why.get(r.because, 'for a reason not recorded')}"
+            f" at {r.at[:16].replace('T', ' ')}Z: {names}. {total} points."
+        )
+        for n in mine:
+            del left[n]
+    for name, points in left.values():
+        lines.append(f"- {name} ({points}): closed as not planned, with no re-split recorded.")
+    total = sum(points for _, _, _, points in stories)
+    lines += ["", f"{len(stories)} stories, {total} points, superseded."]
+    return lines
+
+
 def loops_text(chains: list[Chain], points: dict[int, int]) -> list[str]:
     """The retro's section on loops broken: each chain, then the points they cost."""
     if not chains:

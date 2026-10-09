@@ -288,12 +288,18 @@ def _defect_body(
     return "\n".join(parts)
 
 
+# A story's status in the retro once a re-split replaced it (crew#558).
+SUPERSEDED = "Superseded"
+
+
 @dataclass
 class RetroLayout:
     """What the crew lays out itself, around the model's words (#176)."""
 
     # (name, points, status, title) per story in the sprint.
     stories: list[tuple[str, int, str, str]] = field(default_factory=list)
+    # The superseded stories, each with the re-split that replaced it (crew#558).
+    superseded: list[str] = field(default_factory=list)
     retries: str = ""
     # (card, days blocked, or None when unknown), past the threshold (#175).
     blocked: list[tuple[str, int | None]] = field(default_factory=list)
@@ -324,10 +330,15 @@ def _retro_body(
 
     body += ["## Delivered", "", retro.summary, ""]
     if layout.stories:
-        points = sum(p for _, p, _, _ in layout.stories)
+        # A superseded story is listed but never counted as the sprint's work:
+        # GitHub shows it Done, and the Sprint 19 retro counted 5 of them (crew#558).
+        built = [s for s in layout.stories if s[2] != SUPERSEDED]
+        points = sum(p for _, p, _, _ in built)
         body += ["| Card | Points | Status | Story |", "|---|---|---|---|"]
         body += [f"| {n} | {p} | {st} | {t} |" for n, p, st, t in layout.stories]
-        body += ["", f"{len(layout.stories)} stories, {points} points.", ""]
+        body += ["", f"{len(built)} stories, {points} points.", ""]
+    if layout.superseded:
+        body += ["## Superseded", "", *layout.superseded, ""]
 
     if retro.went:
         body += ["## How it went", "", *[f"- {w}" for w in retro.went], ""]

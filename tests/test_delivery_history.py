@@ -339,6 +339,25 @@ def test_events_are_filed_by_the_sprint_their_day_falls_in_or_the_days_between()
     assert files["events/2026-10-04.json"].sprint is None
 
 
+def test_a_superseded_story_says_so_though_the_board_shows_it_done():
+    """sprint-metrics#475 was closed as not planned and moved to Done all the same (crew#558)."""
+    superseded = board_card("sprint-metrics", 475).model_copy(
+        update={"state": "CLOSED", "state_reason": "NOT_PLANNED"}
+    )
+    landed = board_card("sprint-metrics", 496).model_copy(
+        update={"state": "CLOSED", "state_reason": "COMPLETED"}
+    )
+    reopened = board_card("sprint-metrics", 501).model_copy(
+        update={"state": "OPEN", "state_reason": "REOPENED"}
+    )
+    data, _ = built([], cards=[superseded, landed, reopened])
+    by_number = {c["number"]: c for c in data["cards"]}
+    assert by_number[475]["status"] == "Done"
+    assert by_number[475]["closed_as"] == "not_planned"
+    assert by_number[496]["closed_as"] == "completed"
+    assert by_number[501]["closed_as"] is None
+
+
 def test_a_sprint_runs_its_duration_from_its_start():
     [sprint] = dh.sprints_from([{"title": "Sprint 19", "startDate": "2026-10-08", "duration": 1}])
 

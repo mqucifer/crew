@@ -15,7 +15,14 @@ from pathlib import Path
 
 from crew_org.crews.retro_crew import Retro
 from crew_org.flows.board_flow import PRODUCT_ANSWER_MARKER, STORY_PROBLEM_MARKER
-from crew_org.flows.loops import from_comments, loops_text, read_loops, sprint_window
+from crew_org.flows.loops import (
+    from_comments,
+    loops_text,
+    read_loops,
+    read_resplits,
+    sprint_window,
+    superseded_text,
+)
 from crew_org.flows.retro import RetroLayout, _retro_body
 
 DAY = ("2026-09-26T05:00:00", "2026-09-27T05:00:00")
@@ -163,3 +170,43 @@ def test_a_sprint_with_no_returns_has_no_loop_section():
         RetroLayout(),
     )
     assert "Loops" not in body
+
+
+# --- crew#558: a superseded story is called out, not counted ------------------------------
+
+
+def test_a_resplit_the_sponsor_asked_for_is_read_with_no_return_before_it(tmp_path):
+    """sprint-metrics#467's re-split had no return before it, and the retro lost it."""
+    event = resplit("2026-09-26T18:54:04", [75, 76])
+    event["detail"]["because"] = "sponsor"
+    events = write_events(tmp_path, [event])
+    assert read_loops(events, *DAY) == []
+    (found,) = read_resplits(events, *DAY)
+    assert (found.epic, found.because, found.superseded) == (59, "sponsor", [75, 76])
+
+
+def test_each_superseded_story_is_named_with_the_resplit_that_replaced_it(tmp_path):
+    event = resplit("2026-09-26T18:54:04", [75, 76])
+    event["detail"]["because"] = "sponsor"
+    stories = [
+        ("sprint-metrics", 75, "#75", 5),
+        ("sprint-metrics", 76, "#76", 3),
+        ("sprint-metrics", 80, "#80", 2),
+    ]
+    text = "\n".join(superseded_text(stories, read_resplits(write_events(tmp_path, [event]), *DAY)))
+    assert (
+        "- Epic sprint-metrics#59 was split again at the Sponsor's request at 2026-09-26 18:54Z: "
+        "#75 (5), #76 (3). 8 points." in text
+    )
+    assert "- #80 (2): closed as not planned, with no re-split recorded." in text
+    assert text.endswith("3 stories, 10 points, superseded.")
+
+
+def test_a_resplit_in_another_repository_doesnt_claim_a_story_with_its_number(tmp_path):
+    events = write_events(tmp_path, [resplit("2026-09-26T18:54:04", [75])])
+    text = "\n".join(superseded_text([("crew", 75, "crew#75", 1)], read_resplits(events, *DAY)))
+    assert "with no re-split recorded" in text
+
+
+def test_a_sprint_with_nothing_superseded_has_no_section():
+    assert superseded_text([], []) == []

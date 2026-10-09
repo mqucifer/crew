@@ -169,9 +169,10 @@ What made landing frightening was having no way to undo it. The answer is a reve
 **Why work doesn't land first time.** Every retry is recorded with its failure class and what went wrong (crew#157). A failure becomes a *cause* by keeping the rule and masking the names, paths and numbers, so the same mistake counts the same wherever it happens. At sprint close the retro is shown the first-try rate and the causes. A cause seen on two or more of the sprint's cards is filed as a crew defect, with its count and cards, unless one is still open for it. A recurring parse failure is filed as a prompt or schema defect. Two kinds of cause are counted but never filed as recurring: a test's own assertion failing, because that's the card's wrong answer, and a failure whose cause wasn't recorded. A cause a fix solved during the sprint isn't filed again, if every occurrence came before the fix (crew#199). The fix is a retro finding for that cause closed as completed, or a merged crew pull request whose body carries the cause's marker, `<!-- crew:cause:KEY -->`. The retro prints each cause's key. Only occurrences after a fix count as evidence it recurs. `crew export` writes the same data for sprint-metrics.
 
 **The retro's layout.** The sprint-close retro issue is laid out by the crew, around the Scrum Master's words (crew#176). It has these sections:
-- **Delivered:** a sentence, plus a table of the sprint's stories and points built from the board.
+- **Delivered:** a sentence, plus a table of the sprint's stories and points built from the board. A story closed as not planned shows as **Superseded**, not Done, though GitHub moves it to Done, and the totals leave it out (crew#558).
+- **Superseded:** each superseded story, its points, and the re-split that replaced it: at the Sponsor's request or after a story problem, read from the event log. A superseded story is a plan that didn't hold, so it's called out rather than dropped. Left out when there are none.
 - **How it went:** at most six bullets.
-- **Why work didn't land first time:** the first-try rate and causes.
+- **Why work didn't land first time:** the first-try rate and causes. The rate is over the stories that landed. A superseded story's failures still count as causes.
 - **Needs you:** blocked cards past the threshold, the approval queue as a count and range, and anything else raised for you. It says "Nothing." when there's nothing.
 - **Defects filed.**
 

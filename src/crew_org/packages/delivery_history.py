@@ -37,7 +37,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -82,6 +82,10 @@ class Card(_Part):
     status: str | None
     created: datetime | None
     closed: datetime | None
+    closed_as: Literal["completed", "not_planned", "duplicate"] | None = Field(
+        description="How the issue closed. A story closed as not planned was superseded: "
+        "never built, though the board shows it Done."
+    )
 
 
 Mover = Literal["crew", "person", "platform"]
@@ -537,6 +541,14 @@ def _pull_events(inputs: Inputs) -> list[PullMerged]:
     return out
 
 
+def _closed_as(card: Any) -> Literal["completed", "not_planned", "duplicate"] | None:
+    """GitHub's reason for a closed issue. An open one, or one reopened, has none."""
+    reason = (card.state_reason or "").lower()
+    if card.state != "CLOSED" or reason not in ("completed", "not_planned", "duplicate"):
+        return None
+    return reason  # type: ignore[return-value]
+
+
 def _cards(inputs: Inputs) -> list[Card]:
     out = []
     for c in inputs.cards:
@@ -555,6 +567,7 @@ def _cards(inputs: Inputs) -> list[Card]:
                 status=c.status,
                 created=c.created,
                 closed=c.closed,
+                closed_as=_closed_as(c),
             )
         )
     return sorted(out, key=lambda c: (c.repo, c.number))

@@ -55,6 +55,19 @@ def test_delivered_is_a_table_the_crew_builds_from_the_board():
     assert "2 stories, 8 points." in text
 
 
+def test_a_superseded_story_is_listed_but_not_counted_and_called_out():
+    """GitHub shows a superseded story Done; the Sprint 19 retro counted 5 (crew#558)."""
+    layout = RetroLayout(
+        stories=[*LAYOUT.stories, ("#75", 5, "Superseded", "Too large for one answer")],
+        superseded=["- Epic #50 was split again at the Sponsor's request: #75 (5). 5 points."],
+    )
+    text = body(layout=layout)
+    assert "| #75 | 5 | Superseded | Too large for one answer |" in text
+    assert "2 stories, 8 points." in text
+    assert "## Superseded\n\n- Epic #50 was split again" in text
+    assert text.index("## Delivered") < text.index("## Superseded") < text.index("## How it went")
+
+
 def test_the_first_try_causes_are_a_list():
     text = body()
     assert "1 of 2 stories landed on their first attempt.\n\n- SCHEMA: no test" in text
