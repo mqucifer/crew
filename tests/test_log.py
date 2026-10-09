@@ -327,3 +327,83 @@ def test_otlp_sends_no_debug_no_mirrored_events_and_writes_no_projection_file(tm
     EventSink(None).emit(CrewEvent(kind=EventKind.CARD_MOVED, card=406, summary="moved"))
     assert memory.get_finished_logs() == ()
     assert not (tmp_path / "telemetry" / "logs.jsonl").exists()
+
+
+# --- a record whose parts join up (crew#449 part 2, discussion 552) -------------------------------
+
+
+def test_a_runs_records_share_its_id_and_a_run_inside_another_has_its_own():
+    with log.run("Code Reviewer", card=455, repo="sprint-metrics") as review:
+        assert log.scope()["run"] == review and log.scope()["role"] == "Code Reviewer"
+        assert log.scope()["card"] == 455 and log.in_run()
+        with log.run("DevOps Engineer", card=455, repo="sprint-metrics") as deploy:
+            assert deploy != review and log.scope()["role"] == "DevOps Engineer"
+        assert log.scope()["run"] == review
+    assert not log.in_run() and "run" not in log.scope()
+
+
+def test_an_event_is_stamped_with_the_context_it_was_written_in(tmp_path):
+    sink = EventSink(tmp_path / "events" / "tick.jsonl")
+    with (
+        log.scoped(tick="t1", commit="abc", dirty=False),
+        log.run("Developer", card=502, repo="sprint-metrics", sprint="Sprint 20") as run,
+    ):
+        sink.note(EventKind.NOTE, "a note with no card of its own")
+    [written] = read(tmp_path / "events" / "tick.jsonl")
+    assert written["card"] is None, "the envelope's own fields are left as they were"
+    assert written["ctx"]["run"] == run and written["ctx"]["role"] == "Developer"
+    assert written["ctx"]["card"] == 502 and written["ctx"]["repo"] == "sprint-metrics"
+    assert written["ctx"]["sprint"] == "Sprint 20" and written["ctx"]["tick"] == "t1"
+    assert written["ctx"]["commit"] == "abc"
+    [line] = read(tmp_path / "telemetry" / "tick.jsonl")
+    assert line["run"] == run and line["commit"] == "abc" and line["repo"] == "sprint-metrics"
+
+
+def test_an_event_from_before_the_context_still_reads():
+    old = '{"at":"2026-09-18T15:56:40Z","kind":"note","role":null,"card":null,"summary":"x"}'
+    assert CrewEvent.model_validate_json(old).ctx == {}
+
+
+def test_a_model_call_outside_any_run_is_a_run_of_its_own():
+    from crew_org.events import attributed
+
+    seen = []
+    attributed(lambda: seen.append(log.scope().get("run")), card=1, repo="crew")()
+    attributed(lambda: seen.append(log.scope().get("run")), card=1, repo="crew")()
+    assert all(seen) and seen[0] != seen[1]
+    with log.run("Developer", card=1) as run:
+        attributed(lambda: seen.append(log.scope().get("run")), card=1)()
+    assert seen[-1] == run
+
+
+def test_what_a_role_was_shown_to_choose_from_stays_local(tmp_path):
+    sink = EventSink(tmp_path / "events" / "tick.jsonl")
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.FILES_SHOWN,
+            role="Developer",
+            card=502,
+            summary="#502 context: 64,189 chars, 2 files in full",
+            detail={"shown": ["a.py"], "selection_text": "the story's secret text"},
+        )
+    )
+    assert "secret" in (tmp_path / "events" / "tick.jsonl").read_text()
+    assert "secret" not in (tmp_path / "telemetry" / "tick.jsonl").read_text()
+
+
+def test_the_ticks_code_and_id_are_on_every_exported_record(tmp_path):
+    from opentelemetry.sdk._logs.export import InMemoryLogExporter
+
+    memory = InMemoryLogExporter()
+    log.setup(
+        var=tmp_path,
+        console=io.StringIO(),
+        exporter=memory,
+        resource={"service.version": "abc123", "service.instance.id": "t1"},
+    )
+    with log.run("QA Engineer", card=7, repo="crew") as run:
+        logging.getLogger("crew_org.x").info("judged")
+    [sent] = memory.get_finished_logs()
+    resource = dict(sent.resource.attributes)
+    assert resource["service.version"] == "abc123" and resource["service.instance.id"] == "t1"
+    assert dict(sent.log_record.attributes)["crew.run"] == run

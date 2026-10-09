@@ -30,10 +30,11 @@ from opentelemetry import trace
 _PROVIDER: Any = None
 
 
-def start(org: dict, *, exporter: Any = None) -> bool:
+def start(org: dict, *, exporter: Any = None, resource: dict[str, Any] | None = None) -> bool:
     """Start exporting spans, if org.yaml names an endpoint. True if started.
 
-    `exporter` replaces the OTLP one, for tests.
+    `exporter` replaces the OTLP one, for tests. `resource` is added to the process's
+    resource: the crew's commit and the tick's id (crew#449), as `log.setup` takes it.
     """
     global _PROVIDER  # noqa: PLW0603
     if _PROVIDER is not None:
@@ -49,7 +50,9 @@ def start(org: dict, *, exporter: Any = None) -> bool:
     )
 
     provider = TracerProvider(
-        resource=Resource.create({"service.name": "crew", "service.namespace": "crew"})
+        resource=Resource.create(
+            {"service.name": "crew", "service.namespace": "crew", **(resource or {})}
+        )
     )
     if exporter is not None:
         provider.add_span_processor(SimpleSpanProcessor(exporter))

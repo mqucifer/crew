@@ -26,6 +26,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 
+from crew_org import log
 from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org
@@ -55,7 +56,12 @@ from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
-from crew_org.tools.repo_context import Focus, focused_context, repository_context
+from crew_org.tools.repo_context import (
+    SELECTION_TEXT_CHARS,
+    Focus,
+    focused_context,
+    repository_context,
+)
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -1239,191 +1245,181 @@ def refine_epics(
     split_now: list[tuple[str, int, str, int]] = []
 
     for epic_card in approved_epics(cards):
-        repo = epic_card.repo or default_repo
-        number = epic_card.number
-        assert number is not None
-        if repo in holds and TECHNICAL not in epic_card.labels:
-            result.held_for_design.append((number, holds[repo]))
-            continue
-
-        done = known.for_repo(repo) if known else Delivered()
-        waited = waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
-        if waited:
-            settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
-            if settled != RESPLIT:
+        # One Business Analyst run per epic (crew#449).
+        with log.run(
+            "Business Analyst", card=epic_card.number, repo=epic_card.repo or default_repo
+        ):
+            repo = epic_card.repo or default_repo
+            number = epic_card.number
+            assert number is not None
+            if repo in holds and TECHNICAL not in epic_card.labels:
+                result.held_for_design.append((number, holds[repo]))
                 continue
-            # Something it waited for was superseded: split again, now.
-            epic_card = epic_card.model_copy(
-                update={"labels": frozenset(epic_card.labels) | {NEEDS_REWORK}}
+
+            done = known.for_repo(repo) if known else Delivered()
+            waited = (
+                waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
             )
-        if not product_step(
-            issues,
-            sink,
-            result,
-            epic_card,
-            repo,
-            goal=_goal_body(issues, repo, epic_card.parent) if epic_card.parent else "",
-            project=context.record_for(repo),
-            delivered=done.render(),
-        ):
-            continue
-
-        proceed, notes = rework_gate(
-            issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
-        )
-        if not proceed:
-            continue
-
-        # Four roles read it and the Product Owner settles what they raised into
-        # its conclusion, which the split reads (crew#440).
-        if panel_search is not None and not panel_step(
-            issues,
-            sink,
-            result,
-            epic_card,
-            repo,
-            project=context.record_for(repo),
-            search=panel_search,
-        ):
-            continue
-
-        # What this epic has already failed at. Read before the attempt, so a
-        # dead end is recognised rather than walked into again.
-        seen_failures = failures_since_parking(issues, repo, number)
-
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_STARTED,
-                role="Business Analyst",
-                card=number,
-                summary=f"split {epic_card.title[:50]}",
-            )
-        )
-        checked = None
-        try:
-            # The whole epic body. It was cut at 800 characters while the Product
-            # Owner one step earlier was given its goal whole — and the Business
-            # Analyst is the role that writes the acceptance criteria, so what it
-            # cannot see becomes a criterion nobody can satisfy.
-            # The conclusion is shown apart from the epic's own text, so it can't be
-            # missed or mistaken for what the Sponsor approved (crew#440).
-            body, conclusion = conclusion_flow.split_conclusion(_goal_body(issues, repo, number))
-            rows = conclusion_flow.row_ids(conclusion)
-            # The Goal, shown to the criteria check with the project's log (crew#440).
-            goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
-            # What the project has decided for every epic (crew#468).
-            project_log = read_log(issues, repo)
-            planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
-            pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
-            # Its own view of the repository, and it may ask for more (#231).
-            about = f"{epic_card.title}\n\n{body}\n\n{notes}"
-            asked: list[str] = []
-            told = ""
-            for asks in range(ANALYST_ASK_LIMIT + 1):
-                repository, focus = context.focused_for(repo, about, asked)
-                sink.note(
-                    EventKind.NOTE,
-                    f"#{number} split context: {focus.chars:,} chars, "
-                    f"{len(focus.shown)} files in full",
-                    card=number,
-                    focused=focus.focused,
-                    shown=focus.shown,
-                )
-                if focus.unknown:
-                    told = (
-                        f"These aren't files in the repository: {', '.join(focus.unknown)}. " + told
-                    )
-                asked_for = dict(
-                    repository=repository,
-                    pinning=pinning,
-                    superseded=result.superseded.get(number),
-                    feedback="\n\n".join(f for f in (notes, told) if f),
-                    delivered=done.render(),
-                    delivered_numbers=done.numbers if known else None,
-                    planned="\n".join(
-                        f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
-                    ),
-                    planned_numbers={n for n, _t, _e in planned},
-                    conclusion=conclusion,
-                    project_log=project_log,
-                )
-                proposal = attributed(split_epic, card=number, repo=repo)(
-                    epic_card.title, body, **asked_for
-                )
-                if not proposal.asks:
-                    break
-                wanted = [f.strip().removeprefix("./") for f in proposal.need_files]
-                fresh = [
-                    f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
-                ]
-                sink.note(
-                    EventKind.NOTE,
-                    f"#{number} asked to see {', '.join(wanted)[:200]}",
-                    card=number,
-                    need_files=wanted,
-                )
-                if fresh and asks < ANALYST_ASK_LIMIT:
-                    asked += fresh
-                    told = ""
+            if waited:
+                settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
+                if settled != RESPLIT:
                     continue
-                told = (
-                    "You've been shown what you asked for. Split the epic now with the files "
-                    "you can see, and leave `need_files` empty."
+                # Something it waited for was superseded: split again, now.
+                epic_card = epic_card.model_copy(
+                    update={"labels": frozenset(epic_card.labels) | {NEEDS_REWORK}}
                 )
-            if proposal.asks:
-                raise ValueError("it asked to see files past the limit instead of splitting")
-            # Every settled row is followed by a story, or named as not for stories
-            # (crew#440). One re-split with what is missing named; past that it fails.
-            found = conclusion_flow.problems(proposal, rows)
-            if found:
-                asked_for["feedback"] = "\n\n".join(
-                    f for f in (str(asked_for["feedback"]), conclusion_flow.feedback(found)) if f
+            if not product_step(
+                issues,
+                sink,
+                result,
+                epic_card,
+                repo,
+                goal=_goal_body(issues, repo, epic_card.parent) if epic_card.parent else "",
+                project=context.record_for(repo),
+                delivered=done.render(),
+            ):
+                continue
+
+            proceed, notes = rework_gate(
+                issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
+            )
+            if not proceed:
+                continue
+
+            # Four roles read it and the Product Owner settles what they raised into
+            # its conclusion, which the split reads (crew#440).
+            if panel_search is not None and not panel_step(
+                issues,
+                sink,
+                result,
+                epic_card,
+                repo,
+                project=context.record_for(repo),
+                search=panel_search,
+            ):
+                continue
+
+            # What this epic has already failed at. Read before the attempt, so a
+            # dead end is recognised rather than walked into again.
+            seen_failures = failures_since_parking(issues, repo, number)
+
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_STARTED,
+                    role="Business Analyst",
+                    card=number,
+                    summary=f"split {epic_card.title[:50]}",
                 )
-                proposal = attributed(split_epic, card=number, repo=repo)(
-                    epic_card.title, body, **asked_for
+            )
+            checked = None
+            try:
+                # The whole epic body. It was cut at 800 characters while the Product
+                # Owner one step earlier was given its goal whole — and the Business
+                # Analyst is the role that writes the acceptance criteria, so what it
+                # cannot see becomes a criterion nobody can satisfy.
+                # The conclusion is shown apart from the epic's own text, so it can't be
+                # missed or mistaken for what the Sponsor approved (crew#440).
+                body, conclusion = conclusion_flow.split_conclusion(
+                    _goal_body(issues, repo, number)
                 )
+                rows = conclusion_flow.row_ids(conclusion)
+                # The Goal, shown to the criteria check with the project's log (crew#440).
+                goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
+                # What the project has decided for every epic (crew#468).
+                project_log = read_log(issues, repo)
+                planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
+                pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
+                # Its own view of the repository, and it may ask for more (#231).
+                about = f"{epic_card.title}\n\n{body}\n\n{notes}"
+                asked: list[str] = []
+                told = ""
+                for asks in range(ANALYST_ASK_LIMIT + 1):
+                    repository, focus = context.focused_for(repo, about, asked)
+                    sink.emit(
+                        CrewEvent(
+                            kind=EventKind.FILES_SHOWN,
+                            role="Business Analyst",
+                            card=number,
+                            summary=f"#{number} split context: {focus.chars:,} chars, "
+                            f"{len(focus.shown)} files in full",
+                            detail={
+                                "context_chars": focus.chars,
+                                "focused": focus.focused,
+                                "shown": focus.shown,
+                                "asked": focus.asked,
+                                # Local only, like the Developer's (discussion 553).
+                                "selection_text": about[:SELECTION_TEXT_CHARS],
+                            },
+                        )
+                    )
+                    if focus.unknown:
+                        told = (
+                            f"These aren't files in the repository: {', '.join(focus.unknown)}. "
+                            + told
+                        )
+                    asked_for = dict(
+                        repository=repository,
+                        pinning=pinning,
+                        superseded=result.superseded.get(number),
+                        feedback="\n\n".join(f for f in (notes, told) if f),
+                        delivered=done.render(),
+                        delivered_numbers=done.numbers if known else None,
+                        planned="\n".join(
+                            f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
+                        ),
+                        planned_numbers={n for n, _t, _e in planned},
+                        conclusion=conclusion,
+                        project_log=project_log,
+                    )
+                    proposal = attributed(split_epic, card=number, repo=repo)(
+                        epic_card.title, body, **asked_for
+                    )
+                    if not proposal.asks:
+                        break
+                    wanted = [f.strip().removeprefix("./") for f in proposal.need_files]
+                    fresh = [
+                        f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
+                    ]
+                    sink.emit(
+                        CrewEvent(
+                            kind=EventKind.FILES_ASKED,
+                            role="Business Analyst",
+                            card=number,
+                            summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
+                            detail={"need_files": wanted},
+                        )
+                    )
+                    if fresh and asks < ANALYST_ASK_LIMIT:
+                        asked += fresh
+                        told = ""
+                        continue
+                    told = (
+                        "You've been shown what you asked for. Split the epic now with the files "
+                        "you can see, and leave `need_files` empty."
+                    )
+                if proposal.asks:
+                    raise ValueError("it asked to see files past the limit instead of splitting")
+                # Every settled row is followed by a story, or named as not for stories
+                # (crew#440). One re-split with what is missing named; past that it fails.
                 found = conclusion_flow.problems(proposal, rows)
                 if found:
-                    raise ValueError(
-                        "the split doesn't fit the epic's conclusion: " + " ".join(found)
+                    asked_for["feedback"] = "\n\n".join(
+                        f
+                        for f in (str(asked_for["feedback"]), conclusion_flow.feedback(found))
+                        if f
                     )
-            # Every criterion has to pass alongside the others and the code, and
-            # that shows before any story exists (#428). One repair of the flagged
-            # stories' criteria; what survives goes to the Product Owner.
-            others = criteria_check.planned_criteria(issues, repo, planned)
-            checked = attributed(check_criteria, card=number, repo=repo)(
-                stories=criteria_check.render_split(proposal),
-                repository=repository,
-                planned=others,
-                conclusion=conclusion,
-                goal=goal_text,
-                project_log=project_log,
-            )
-            named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
-            if named:
-                # Only those stories' criteria are rewritten: a whole re-split fixed
-                # the conflict it was told of and made a new one elsewhere (crew#440).
-                repair = attributed(repair_criteria, card=number, repo=repo)(
-                    epic_card.title,
-                    body,
-                    flagged=criteria_check.render_stories(named),
-                    others=criteria_check.render_stories(
-                        [s for s in proposal.stories if s not in named]
-                    ),
-                    conflicts=criteria_check.described(checked),
-                    repository=repository,
-                    conclusion=conclusion,
-                    project_log=project_log,
-                )
-                proposal = criteria_check.with_repairs(proposal, named, repair)
-            elif checked.conflicts:
-                asked_for["feedback"] = "\n\n".join(
-                    f for f in (asked_for["feedback"], criteria_check.feedback(checked)) if f
-                )
-                proposal = attributed(split_epic, card=number, repo=repo)(
-                    epic_card.title, body, **asked_for
-                )
-            if checked.conflicts:
+                    proposal = attributed(split_epic, card=number, repo=repo)(
+                        epic_card.title, body, **asked_for
+                    )
+                    found = conclusion_flow.problems(proposal, rows)
+                    if found:
+                        raise ValueError(
+                            "the split doesn't fit the epic's conclusion: " + " ".join(found)
+                        )
+                # Every criterion has to pass alongside the others and the code, and
+                # that shows before any story exists (#428). One repair of the flagged
+                # stories' criteria; what survives goes to the Product Owner.
+                others = criteria_check.planned_criteria(issues, repo, planned)
                 checked = attributed(check_criteria, card=number, repo=repo)(
                     stories=criteria_check.render_split(proposal),
                     repository=repository,
@@ -1432,184 +1428,222 @@ def refine_epics(
                     goal=goal_text,
                     project_log=project_log,
                 )
-        except Exception as exc:  # noqa: BLE001
-            reraise_if_down(exc)
-            result.failed.append((number, f"{type(exc).__name__}: {exc}"))
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.AGENT_FAILED,
-                    role="Business Analyst",
+                named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
+                if named:
+                    # Only those stories' criteria are rewritten: a whole re-split fixed
+                    # the conflict it was told of and made a new one elsewhere (crew#440).
+                    repair = attributed(repair_criteria, card=number, repo=repo)(
+                        epic_card.title,
+                        body,
+                        flagged=criteria_check.render_stories(named),
+                        others=criteria_check.render_stories(
+                            [s for s in proposal.stories if s not in named]
+                        ),
+                        conflicts=criteria_check.described(checked),
+                        repository=repository,
+                        conclusion=conclusion,
+                        project_log=project_log,
+                    )
+                    proposal = criteria_check.with_repairs(proposal, named, repair)
+                elif checked.conflicts:
+                    asked_for["feedback"] = "\n\n".join(
+                        f for f in (asked_for["feedback"], criteria_check.feedback(checked)) if f
+                    )
+                    proposal = attributed(split_epic, card=number, repo=repo)(
+                        epic_card.title, body, **asked_for
+                    )
+                if checked.conflicts:
+                    checked = attributed(check_criteria, card=number, repo=repo)(
+                        stories=criteria_check.render_split(proposal),
+                        repository=repository,
+                        planned=others,
+                        conclusion=conclusion,
+                        goal=goal_text,
+                        project_log=project_log,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.AGENT_FAILED,
+                        role="Business Analyst",
+                        card=number,
+                        summary=str(exc)[:100],
+                    )
+                )
+                fingerprint = failure_fingerprint(exc)
+                if seen_failures.count(fingerprint) + 1 >= IDENTICAL_FAILURES_BEFORE_PARKING:
+                    park_epic(
+                        board,
+                        issues,
+                        sink,
+                        epic_card,
+                        repo=repo,
+                        number=number,
+                        detail=f"{type(exc).__name__}: {exc}",
+                    )
+                    result.parked.append(number)
+                else:
+                    # Recorded so the next pass can tell a repeat from a new
+                    # failure. Nothing was written here at all, which is why every
+                    # pass saw an epic that had simply never been split.
+                    artifacts.comment(
+                        issues,
+                        sink,
+                        repo=repo,
+                        number=number,
+                        body=f"{SPLIT_FAILURE_MARKER} {fingerprint} -->\n"
+                        f"**The split failed.** `{type(exc).__name__}: {str(exc)[:300]}`\n\n"
+                        "It will be attempted once more. An identical failure after that "
+                        "parks the epic rather than retrying it every pass.",
+                        by=None,
+                    )
+                continue
+
+            if checked is not None and checked.conflicts:
+                criteria_check.to_product_owner(
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    check=checked,
+                    marker=STORY_PROBLEM_MARKER,
+                    rework=NEEDS_REWORK,
+                )
+                result.skipped.append((number, "its criteria can't all pass: to the Product Owner"))
+                continue
+
+            # The epic may have closed while the model worked: stories created under a
+            # closed epic had to be closed by hand (sprint-metrics#233-#235, #321).
+            if (_epic_state(issues, repo, number) or "").lower() == "closed":
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} closed while it was being split: no stories created",
                     card=number,
-                    summary=str(exc)[:100],
+                )
+                continue
+            numbers: dict[str, int] = {}
+            for story in proposal.stories:
+                issue = issues.create(
+                    repo, story.title, render_story_body(story, number, epic_card.title)
+                )
+                numbers[story.title] = issue["number"]
+                split_now.append((repo, issue["number"], story.title, number))
+
+                item = board.add_issue(issue["node_id"])
+                board.set_select(item, "Work Type", STORY_TYPE)
+                board.set_number(item, "Points", story.points)
+                if epic_card.priority:
+                    board.set_select(item, "Priority", epic_card.priority)
+
+                # Ready is a queue, but it still has a limit. A story that cannot
+                # enter waits in refinement rather than being dropped.
+                verdict = rules.may_move(frm=REFINEMENT, to=READY, counts=counts)
+                column = READY if verdict.allowed else REFINEMENT
+                move_card(
+                    board,
+                    sink,
+                    item_id=item,
+                    to=column,
+                    by="Business Analyst",
+                    card=issue["number"],
+                    summary=f"story card created — {story.title[:50]}",
+                )
+                counts[column] = counts.get(column, 0) + 1
+                if not verdict.allowed:
+                    sink.emit(
+                        CrewEvent(
+                            kind=EventKind.NOTE,
+                            card=issue["number"],
+                            summary=f"held in {REFINEMENT}: {verdict.reason}"[:100],
+                        )
+                    )
+                    artifacts.label(
+                        issues,
+                        sink,
+                        repo=repo,
+                        number=issue["number"],
+                        by=None,
+                        add=[HELD_FOR_ROOM],
+                    )
+
+                # Nesting is best effort; a missing link is not worth losing the story.
+                with contextlib.suppress(Exception):
+                    issues.add_sub_issue(repo, number, issue["id"])
+                result.stories_created.append(issue["number"])
+
+            decision = design.decide(
+                EpicShape(
+                    points_total=sum(s.points for s in proposal.stories),
+                    story_count=len(proposal.stories),
+                    labels=frozenset(epic_card.labels),
                 )
             )
-            fingerprint = failure_fingerprint(exc)
-            if seen_failures.count(fingerprint) + 1 >= IDENTICAL_FAILURES_BEFORE_PARKING:
-                park_epic(
-                    board,
-                    issues,
-                    sink,
-                    epic_card,
-                    repo=repo,
-                    number=number,
-                    detail=f"{type(exc).__name__}: {exc}",
+            if decision.required:
+                artifacts.label(
+                    issues, sink, repo=repo, number=number, by="Architect", add=[NEEDS_DESIGN]
                 )
-                result.parked.append(number)
-            else:
-                # Recorded so the next pass can tell a repeat from a new
-                # failure. Nothing was written here at all, which is why every
-                # pass saw an epic that had simply never been split.
-                artifacts.comment(
-                    issues,
-                    sink,
-                    repo=repo,
-                    number=number,
-                    body=f"{SPLIT_FAILURE_MARKER} {fingerprint} -->\n"
-                    f"**The split failed.** `{type(exc).__name__}: {str(exc)[:300]}`\n\n"
-                    "It will be attempted once more. An identical failure after that "
-                    "parks the epic rather than retrying it every pass.",
-                    by=None,
-                )
-            continue
+                result.design_required.append(number)
 
-        if checked is not None and checked.conflicts:
-            criteria_check.to_product_owner(
+            # Covered by stories other epics only plan: it waits for them, and
+            # closes when they land (#329). Closed at once, sprint-metrics#254 cited
+            # two planned stories as its delivery, and their epic's rework was
+            # about to supersede both.
+            waiting = (
+                sorted({d.by for d in proposal.already_delivered} - done.numbers)
+                if not proposal.stories
+                else []
+            )
+            body = render_split(epic_card.title, proposal, decision, numbers)
+            if waiting:
+                body += (
+                    "\n\n### Waiting, not closed\n\n"
+                    + ", ".join(f"#{n}" for n in waiting)
+                    + " cover this and are planned, not yet delivered. This epic closes when "
+                    "they land, and is split again if one is closed without landing.\n\n"
+                    + WAITS_FOR.format(numbers=",".join(str(n) for n in waiting))
+                )
+            artifacts.comment(
                 issues,
                 sink,
                 repo=repo,
                 number=number,
-                check=checked,
-                marker=STORY_PROBLEM_MARKER,
-                rework=NEEDS_REWORK,
-            )
-            result.skipped.append((number, "its criteria can't all pass: to the Product Owner"))
-            continue
-
-        # The epic may have closed while the model worked: stories created under a
-        # closed epic had to be closed by hand (sprint-metrics#233-#235, #321).
-        if (_epic_state(issues, repo, number) or "").lower() == "closed":
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} closed while it was being split: no stories created",
-                card=number,
-            )
-            continue
-        numbers: dict[str, int] = {}
-        for story in proposal.stories:
-            issue = issues.create(
-                repo, story.title, render_story_body(story, number, epic_card.title)
-            )
-            numbers[story.title] = issue["number"]
-            split_now.append((repo, issue["number"], story.title, number))
-
-            item = board.add_issue(issue["node_id"])
-            board.set_select(item, "Work Type", STORY_TYPE)
-            board.set_number(item, "Points", story.points)
-            if epic_card.priority:
-                board.set_select(item, "Priority", epic_card.priority)
-
-            # Ready is a queue, but it still has a limit. A story that cannot
-            # enter waits in refinement rather than being dropped.
-            verdict = rules.may_move(frm=REFINEMENT, to=READY, counts=counts)
-            column = READY if verdict.allowed else REFINEMENT
-            move_card(
-                board,
-                sink,
-                item_id=item,
-                to=column,
+                body=body,
                 by="Business Analyst",
-                card=issue["number"],
-                summary=f"story card created — {story.title[:50]}",
             )
-            counts[column] = counts.get(column, 0) + 1
-            if not verdict.allowed:
-                sink.emit(
-                    CrewEvent(
-                        kind=EventKind.NOTE,
-                        card=issue["number"],
-                        summary=f"held in {REFINEMENT}: {verdict.reason}"[:100],
-                    )
+
+            # Moving the card out of the gate *was* the approval. Leaving the label
+            # on means the board keeps asking for a decision already made — the same
+            # staleness the goal card had.
+            artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
+
+            result.epics_refined.append(number)
+            # Everything it asked for already exists: nothing will ever close it
+            # from below, so it closes now, citing what delivered it (#220).
+            if not proposal.stories and waiting:
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} waits for planned " + ", ".join(f"#{n}" for n in waiting),
+                    card=number,
                 )
-                artifacts.label(
-                    issues, sink, repo=repo, number=issue["number"], by=None, add=[HELD_FOR_ROOM]
+            elif not proposal.stories:
+                issues.close(repo, number, reason="completed")
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} closed: already delivered by "
+                    + ", ".join(f"#{d.by}" for d in proposal.already_delivered),
+                    card=number,
                 )
-
-            # Nesting is best effort; a missing link is not worth losing the story.
-            with contextlib.suppress(Exception):
-                issues.add_sub_issue(repo, number, issue["id"])
-            result.stories_created.append(issue["number"])
-
-        decision = design.decide(
-            EpicShape(
-                points_total=sum(s.points for s in proposal.stories),
-                story_count=len(proposal.stories),
-                labels=frozenset(epic_card.labels),
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_FINISHED,
+                    role="Business Analyst",
+                    card=number,
+                    summary=f"{len(numbers)} stories"
+                    + (" — design required" if decision.required else ""),
+                )
             )
-        )
-        if decision.required:
-            artifacts.label(
-                issues, sink, repo=repo, number=number, by="Architect", add=[NEEDS_DESIGN]
-            )
-            result.design_required.append(number)
-
-        # Covered by stories other epics only plan: it waits for them, and
-        # closes when they land (#329). Closed at once, sprint-metrics#254 cited
-        # two planned stories as its delivery, and their epic's rework was
-        # about to supersede both.
-        waiting = (
-            sorted({d.by for d in proposal.already_delivered} - done.numbers)
-            if not proposal.stories
-            else []
-        )
-        body = render_split(epic_card.title, proposal, decision, numbers)
-        if waiting:
-            body += (
-                "\n\n### Waiting, not closed\n\n"
-                + ", ".join(f"#{n}" for n in waiting)
-                + " cover this and are planned, not yet delivered. This epic closes when "
-                "they land, and is split again if one is closed without landing.\n\n"
-                + WAITS_FOR.format(numbers=",".join(str(n) for n in waiting))
-            )
-        artifacts.comment(
-            issues,
-            sink,
-            repo=repo,
-            number=number,
-            body=body,
-            by="Business Analyst",
-        )
-
-        # Moving the card out of the gate *was* the approval. Leaving the label
-        # on means the board keeps asking for a decision already made — the same
-        # staleness the goal card had.
-        artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
-
-        result.epics_refined.append(number)
-        # Everything it asked for already exists: nothing will ever close it
-        # from below, so it closes now, citing what delivered it (#220).
-        if not proposal.stories and waiting:
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} waits for planned " + ", ".join(f"#{n}" for n in waiting),
-                card=number,
-            )
-        elif not proposal.stories:
-            issues.close(repo, number, reason="completed")
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} closed: already delivered by "
-                + ", ".join(f"#{d.by}" for d in proposal.already_delivered),
-                card=number,
-            )
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="Business Analyst",
-                card=number,
-                summary=f"{len(numbers)} stories"
-                + (" — design required" if decision.required else ""),
-            )
-        )
 
 
 def tick(
@@ -1706,86 +1740,90 @@ def tick(
         if not proceed:
             continue
 
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.CARD_CLAIMED,
-                role="Product Owner",
-                card=number,
-                summary=card.title[:80],
-            )
-        )
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_STARTED,
-                role="Product Owner",
-                card=number,
-                summary="decompose goal into epics",
-            )
-        )
-        try:
-            goal_text = f"{card.title}\n\n{_goal_body(issues, repo, number)}"
-            proposal = (
-                attributed(propose_missing_epics, card=number, repo=repo)(
-                    goal_text,
-                    lacking=notes,
-                    repository=context.for_repo(repo),
-                    delivered=known.for_repo(repo).render(),
-                )
-                if extend
-                else attributed(propose_epics, card=number, repo=repo)(
-                    goal_text,
-                    repository=context.for_repo(repo),
-                    feedback=notes,
-                    delivered=known.for_repo(repo).render(),
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            reraise_if_down(exc)
-            result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+        # One Product Owner run per Goal (crew#449).
+        with log.run("Product Owner", card=number, repo=repo):
             sink.emit(
                 CrewEvent(
-                    kind=EventKind.AGENT_FAILED,
+                    kind=EventKind.CARD_CLAIMED,
                     role="Product Owner",
                     card=number,
-                    summary=str(exc)[:100],
+                    summary=card.title[:80],
                 )
             )
-            continue
-
-        epic_numbers = create_epic_cards(
-            board, issues, sink, repo=repo, goal=card, proposal=proposal
-        )
-        result.epics_created.extend(epic_numbers.values())
-
-        # The comment is written last, because it is also the idempotency
-        # marker: if card creation fails halfway, the next tick retries rather
-        # than recording work that did not happen.
-        artifacts.comment(
-            issues,
-            sink,
-            repo=repo,
-            number=number,
-            body=render_proposal(card.title, proposal, epic_numbers),
-            by="Product Owner",
-        )
-
-        # The decision has moved to the epics. Leaving needs:human on the goal
-        # would show the Sponsor four things demanding attention when only
-        # three do, and make the goal look like the card to move.
-        artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
-        if extend:
-            # The Sponsor's label, spent: no more epics until it's asked again.
-            artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_EPIC])
-
-        result.proposed.append(number)
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="Product Owner",
-                card=number,
-                summary=f"{len(epic_numbers)} epic cards awaiting approval",
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_STARTED,
+                    role="Product Owner",
+                    card=number,
+                    summary="decompose goal into epics",
+                )
             )
-        )
+            try:
+                goal_text = f"{card.title}\n\n{_goal_body(issues, repo, number)}"
+                proposal = (
+                    attributed(propose_missing_epics, card=number, repo=repo)(
+                        goal_text,
+                        lacking=notes,
+                        repository=context.for_repo(repo),
+                        delivered=known.for_repo(repo).render(),
+                    )
+                    if extend
+                    else attributed(propose_epics, card=number, repo=repo)(
+                        goal_text,
+                        repository=context.for_repo(repo),
+                        feedback=notes,
+                        delivered=known.for_repo(repo).render(),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.AGENT_FAILED,
+                        role="Product Owner",
+                        card=number,
+                        summary=str(exc)[:100],
+                    )
+                )
+                continue
+
+            epic_numbers = create_epic_cards(
+                board, issues, sink, repo=repo, goal=card, proposal=proposal
+            )
+            result.epics_created.extend(epic_numbers.values())
+
+            # The comment is written last, because it is also the idempotency
+            # marker: if card creation fails halfway, the next tick retries rather
+            # than recording work that did not happen.
+            artifacts.comment(
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                body=render_proposal(card.title, proposal, epic_numbers),
+                by="Product Owner",
+            )
+
+            # The decision has moved to the epics. Leaving needs:human on the goal
+            # would show the Sponsor four things demanding attention when only
+            # three do, and make the goal look like the card to move.
+            artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
+            if extend:
+                # The Sponsor's label, spent: no more epics until it's asked again.
+                artifacts.label(
+                    issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_EPIC]
+                )
+
+            result.proposed.append(number)
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_FINISHED,
+                    role="Product Owner",
+                    card=number,
+                    summary=f"{len(epic_numbers)} epic cards awaiting approval",
+                )
+            )
 
     # Epics approved in an earlier tick are refined now. Epics created moments
     # ago are not: they are sitting at the Sponsor's gate, unapproved.

@@ -223,6 +223,11 @@ def _phrase(text: str) -> str:
     return f" {_NOT_WORD.sub(' ', text.lower()).strip()} "
 
 
+# How much of what the selection read is kept with `files.shown` (crew#449): the
+# story and its verdicts fit; a whole failure report is cut.
+SELECTION_TEXT_CHARS = 20_000
+
+
 @dataclass
 class Focus:
     """What a focused context showed, for the event log and for measuring #231."""

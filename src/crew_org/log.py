@@ -30,6 +30,7 @@ import json
 import logging
 import subprocess
 import sys
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,6 +54,11 @@ _CONTEXT_OUT = frozenset(
         "sprint",
         "attempt",
         "for",
+        # One role's run on one card, and the code the tick ran (crew#449, discussion
+        # 552): ids that join a record to the others of its run and to its commit.
+        "run",
+        "commit",
+        "dirty",
         # The span the record was written in, so Grafana joins a log line to its trace.
         "trace_id",
         "span_id",
@@ -100,6 +106,46 @@ def enter(**context: Any) -> contextvars.Token[dict[str, Any]]:
 
 def leave(token: contextvars.Token[dict[str, Any]]) -> None:
     _SCOPE.reset(token)
+
+
+def new_id() -> str:
+    """An id to join records by: a tick's, or a role's run's. Unique across commands."""
+    return uuid.uuid4().hex[:16]
+
+
+@contextlib.contextmanager
+def run(
+    role: str,
+    *,
+    card: int | None = None,
+    repo: str | None = None,
+    sprint: str | None = None,
+    purpose: str | None = None,
+) -> Iterator[str]:
+    """One role's run on one card: every record and model call inside carries its id.
+
+    A run used to be rebuilt from the `agent.started` and `agent.finished` around it,
+    which is a guess when two runs on a card overlap (discussion 552). Inside, model
+    calls are attributed to the card as `working_on` does, and sit in the run's span.
+    """
+    from crew_org import tracing  # noqa: PLC0415
+    from crew_org.events import working_on  # noqa: PLC0415
+
+    run_id = new_id()
+    with (
+        working_on(card=card, repo=repo, sprint=sprint, purpose=purpose),
+        scoped(run=run_id, role=role),
+        tracing.span(
+            f"{role} #{card}" if card is not None else role,
+            **{"crew.run": run_id, "crew.role": role, "crew.card": card, "crew.repo": repo},
+        ),
+    ):
+        yield run_id
+
+
+def in_run() -> bool:
+    """Whether a record written now belongs to a role's run."""
+    return "run" in _SCOPE.get({})
 
 
 class _Context(logging.Filter):
@@ -194,7 +240,9 @@ def line(record: dict[str, Any]) -> str:
     return f"{at} {level} {where + ' ' if where else ''}{record.get('message', '')}"
 
 
-def _to_collector(endpoint: str | None, exporter: Any) -> logging.Handler | None:
+def _to_collector(
+    endpoint: str | None, exporter: Any, resource: dict[str, Any] | None = None
+) -> logging.Handler | None:
     """The stream, over OTLP to the Sponsor's collector, content-free (ADR 0010).
 
     The SDK's handler takes a record's message as its body and every field on it as an
@@ -240,7 +288,9 @@ def _to_collector(endpoint: str | None, exporter: Any) -> logging.Handler | None
             }
 
     global _provider
-    _provider = LoggerProvider(resource=Resource.create({"service.name": "crew"}))
+    _provider = LoggerProvider(
+        resource=Resource.create({"service.name": "crew", **(resource or {})})
+    )
     if exporter is not None:
         _provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     else:
@@ -267,13 +317,16 @@ def setup(
     console_level: int | None = None,
     otlp_endpoint: str | None = None,
     exporter: Any = None,
+    resource: dict[str, Any] | None = None,
 ) -> None:
     """Send the crew's records to its file, to Grafana and to the console. Once per process.
 
     With `otlp_endpoint` (org.yaml's `telemetry.otlp_endpoint`) the stream goes to the
     Sponsor's collector over OTLP; without it, an allow-list projection is written to
     `var/telemetry/logs.jsonl` for the collector to tail. Never both, so nothing is
-    counted twice. `exporter` replaces the OTLP one, for tests.
+    counted twice. `exporter` replaces the OTLP one, for tests. `resource` is what every
+    exported record says about the process: for a tick, the crew's commit as
+    `service.version` and the tick's id as `service.instance.id`.
     """
     global _configured
     if _configured:
@@ -290,7 +343,7 @@ def setup(
     full.addFilter(context)
     root.addHandler(full)
 
-    out = _to_collector(otlp_endpoint, exporter)
+    out = _to_collector(otlp_endpoint, exporter, resource)
     if out is None:
         (var / "telemetry").mkdir(parents=True, exist_ok=True)
         out = logging.FileHandler(var / "telemetry" / "logs.jsonl", encoding="utf-8")

@@ -102,8 +102,19 @@ def tick(
     # and the console. Redirected, the console shows progress live.
     from crew_org import log  # noqa: PLC0415
 
+    # Which code ran this tick, and an id for it, before anything is written: every
+    # record carries both, so a fix can be placed before or after a card's run
+    # (crew#449, discussion 552). A tick once crashed from mixed versions, and
+    # nothing recorded which code it was.
+    tick_id = log.new_id()
+    version = log.code_version()
+    this_tick = {"service.instance.id": tick_id, "service.version": version.get("commit", "")}
     # To Grafana over OTLP, through the Sponsor's collector, when org.yaml names it.
-    log.setup(var=VAR, otlp_endpoint=(org.get("telemetry") or {}).get("otlp_endpoint"))
+    log.setup(
+        var=VAR,
+        otlp_endpoint=(org.get("telemetry") or {}).get("otlp_endpoint"),
+        resource=this_tick,
+    )
 
     # The proxy is project-scoped and will not always be running. Say so plainly
     # rather than surfacing a connection error from deep inside an agent.
@@ -207,27 +218,23 @@ def tick(
     from crew_org import tracing
 
     # A trace per tick, to the Sponsor's collector, when org.yaml names it (#283).
-    tracing.start(org)
+    tracing.start(org, resource=this_tick)
     tick_log = logging.getLogger("crew_org.tick")
-    with log.scoped(sprint=sprint):
-        # Which code ran this tick, first: a tick once crashed from mixed versions,
-        # and nothing recorded which code it was (crew#449).
-        version = log.code_version()
-        with (
-            attach(sink, view),
-            tracing.span(
-                "tick", **{"crew.sprint": sprint, "crew.commit": version.get("commit", "")}
-            ),
-        ):
-            # Inside the tick's span, so its first record carries the trace's id.
-            log.event(
-                tick_log,
-                "tick.started",
-                f"tick on {', '.join(sorted(allowed))}, {sprint}",
-                repos=",".join(sorted(allowed)),
-                **version,
-            )
-            result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
+    with (
+        log.scoped(sprint=sprint, tick=tick_id, **version),
+        attach(sink, view),
+        tracing.span("tick", **{"crew.sprint": sprint, "crew.commit": version.get("commit", "")}),
+    ):
+        # Inside the tick's span, so its first record carries the trace's id.
+        log.event(
+            tick_log,
+            "tick.started",
+            f"tick on {', '.join(sorted(allowed))}, {sprint}",
+            repos=",".join(sorted(allowed)),
+            **version,
+        )
+        result = loop.run(crew, max_passes=passes or loop.MAX_PASSES)
+        # Inside the span too: written after it closed, it didn't join its trace.
         log.event(
             tick_log,
             "tick.finished",
