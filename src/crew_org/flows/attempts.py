@@ -53,6 +53,8 @@ _PYTEST = re.compile(r"^(?:E\s+|FAILED .* - )(\w+(?:Error|Exception|Failure))\b"
 _ASSERT = re.compile(r"^(?:E\s+assert |FAILED .* - assert )", re.MULTILINE)
 # pytest's short summary: "FAILED tests/test_x.py::test_y - AssertionError: assert 0 == 1".
 _FAILED_TEST = re.compile(r"^FAILED (\S+)(?: - (.*))?$", re.MULTILINE)
+# A failure's section in pytest's report: "___ TestX.test_y ___", then its traceback.
+_SECTION = re.compile(r"^_{3,} (.+?) _{3,}$", re.MULTILINE)
 
 
 def failing_tests(report: str) -> list[dict[str, str]]:
@@ -65,7 +67,25 @@ def failing_tests(report: str) -> list[dict[str, str]]:
     found: dict[str, str] = {}
     for match in _FAILED_TEST.finditer(report):
         found.setdefault(match.group(1), (match.group(2) or "").strip()[:200])
+    # Outside a terminal, pytest leaves the message off a summary line too long
+    # for 80 columns, as sprint-metrics#529's schema tests were: read the first
+    # `E` line of the test's own section instead.
+    raised = _first_errors(report)
+    for test, line in found.items():
+        if not line:
+            found[test] = raised.get(".".join(test.split("::")[1:]), "")[:200]
     return [{"id": test, "assertion": line} for test, line in list(found.items())[:50]]
+
+
+def _first_errors(report: str) -> dict[str, str]:
+    """Each failure section's first `E` line, by the name pytest heads it with."""
+    headers = list(_SECTION.finditer(report))
+    found: dict[str, str] = {}
+    for here, after in zip(headers, [*headers[1:], None], strict=False):
+        body = report[here.end() : after.start() if after else len(report)]
+        line = next((x[1:].strip() for x in body.splitlines() if x.startswith("E ")), "")
+        found.setdefault(here.group(1), line)
+    return found
 
 
 @dataclass(frozen=True)
