@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import subprocess
 
 import pytest
 
@@ -203,6 +204,23 @@ def test_the_crews_commit_is_known_and_unknown_is_empty(monkeypatch):
 
     monkeypatch.setattr(log.subprocess, "run", fails)
     assert log.code_version() == {}
+
+
+def test_an_untracked_file_does_not_make_the_code_dirty(tmp_path, monkeypatch):
+    """Only a change to tracked files means the code that ran wasn't the commit's."""
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "pkg" / "code.py").write_text("x = 1\n")
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "first"], check=True)
+    monkeypatch.setattr(log, "__file__", str(repo / "pkg" / "log.py"))
+
+    (repo / "package.json").write_text("{}")
+    assert log.code_version()["dirty"] is False
+    (repo / "pkg" / "code.py").write_text("x = 2\n")
+    assert log.code_version()["dirty"] is True
 
 
 # --- reading it back -----------------------------------------------------------------------------
