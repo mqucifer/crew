@@ -167,3 +167,17 @@ def test_the_tick_gives_the_check_the_projects_log(monkeypatch):
     checked_tick(monkeypatch, checker, issues=WithLog())
     assert "A card counts where it merges" in checker.calls[0]["project_log"]
     assert checker.calls[0]["goal"] == ""  # this epic has no Goal above it
+
+
+def test_the_epics_decision_is_shown_to_the_check_as_decided(monkeypatch):
+    """sprint-metrics#468 (2026-10-09): the Product Owner named the four new keys, and
+    every criterion naming them was refused as settling the open question left to
+    the design note, because the check was never shown the answer."""
+    text = described(
+        monkeypatch,
+        conclusion="| Q1 | JSON field names | Settled by: Design note |",
+        decided="**Decided:** the four new keys (points_delivered, ...) are additive.",
+    )
+    assert "## Decided on this epic since it was sent back" in text
+    assert text.index("the four new keys") < text.index("## The proposed stories")
+    assert "what was decided on this epic" in text
