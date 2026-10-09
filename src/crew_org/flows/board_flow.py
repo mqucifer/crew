@@ -333,6 +333,14 @@ def story_problem_evidence(issues: IssueClient, repo: str, number: int) -> str:
     return "\n\n".join(parts)
 
 
+def _decided_on(issues: IssueClient, repo: str, number: int) -> str:
+    """What the Product Owner (or the Sponsor, asked) decided on an epic sent back."""
+    # Imported here: design_notes imports this module.
+    from crew_org.flows import design_notes  # noqa: PLC0415
+
+    return design_notes.decided(issues, repo, number)
+
+
 def product_step(
     issues: IssueClient,
     sink: EventSink,
@@ -1439,6 +1447,7 @@ def refine_epics(
                     conclusion=conclusion,
                     goal=goal_text,
                     project_log=project_log,
+                    decided=_decided_on(issues, repo, number),
                 )
                 named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
                 if named:

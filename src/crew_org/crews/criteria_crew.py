@@ -48,6 +48,7 @@ def check_criteria(
     conclusion: str = "",
     goal: str = "",
     project_log: str = "",
+    decided: str = "",
 ) -> CriteriaCheck:
     """QA's check of a proposed split's criteria, against each other, the code and the rows.
 
@@ -69,6 +70,15 @@ def check_criteria(
             # Goal and in the project's log, were refused as settling an open question.
             + (f"## The Goal, set by the Sponsor\n\n{goal}\n\n" if goal else "")
             + (f"{project_log}\n\n" if project_log else "")
+            # The Product Owner's answer to the story problem the epic was sent back
+            # with (#189): the re-split follows it. Without it, sprint-metrics#468's
+            # field names, decided there, were refused as settling an open question
+            # 17 times (2026-10-09).
+            + (
+                f"## Decided on this epic since it was sent back\n\n{decided}\n\n"
+                if decided
+                else ""
+            )
             + (
                 f"## The epic's conclusion, decided before the split\n\n{conclusion}\n\n"
                 if conclusion
@@ -86,9 +96,9 @@ def check_criteria(
                 ";\n- a row of the epic's conclusion above: a criterion that expects the "
                 "opposite of what a row decides. A criterion that decides an open question "
                 "(Q) the row table leaves for the design note is a conflict too, since no "
-                "story settles it, unless the Goal, the project's decision log or a decided "
-                "row already says what the criterion states: restating a decision isn't "
-                "deciding the question"
+                "story settles it, unless the Goal, the project's decision log, what was "
+                "decided on this epic or a decided row already says what the criterion "
+                "states: restating a decision isn't deciding the question"
                 if conclusion
                 else ""
             )
