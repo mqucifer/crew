@@ -463,3 +463,47 @@ Sprint 18 delivered sprint-metrics' last stories for Goal 174 (epics 407 and 408
 - **"Ticks stopped" found nothing for a second sprint.** Candidate for removal.
 - **"The crew's retro against this one" found wrong items for a third sprint.** That's the case for proposal 1 and [D453](https://github.com/mqucifer/crew/discussions/453).
 - **A fix should carry its cause's marker:** a fix PR for a failure the retro counts puts `<!-- crew:cause:KEY -->` in its body. PR 512's didn't, so the retro filed crew#542.
+
+## Operator's retro: Sprint 19 (2026-10-08, closed 2026-10-09, crew#556)
+
+Sprint 19 delivered 18 sprint-metrics stories (39 points) and closed Goals mqucifer/sprint-metrics#461 and mqucifer/sprint-metrics#470, with epics 464–467, 471 and 472. Nothing was blocked at the end. From the working log, the event log, the merged PRs and the issues.
+
+**Ticks:** 6 runs, none crashed. Two ended with no `tick.finished`: 11:52Z (last event 13:43:17Z, as PR 546 merged at 13:43:16Z) and 13:53Z (last event 16:50:57Z, before PR 548 merged at 16:55Z). Both were stopped to land a crew PR. Three ended at the pass cap, and the last ended stable.
+
+**The close:** `crew sprint close --sprint "Sprint 19"`, named this time, as Sprint 18's close taught.
+
+### 1. Interventions
+- **Crew PRs merged during the sprint: 8.**
+  - **Incident (1):** PR 548. mqucifer/sprint-metrics#475's implementation was cut off at the length limit three times (16:02–16:50Z), so the Developer got room for a whole implementation.
+  - **Goal work (3):** PRs 545 and 546 (crew#521, `delivery-history`) and PR 547 (crew#280 criterion 1).
+  - **Could have waited (1):** PR 549. The crew's own block of mqucifer/sprint-metrics#475 was logged as a person's move.
+  - **Docs and experiments (3):** PRs 536, 537 and 544.
+- **By hand: one re-split.** A comment from the Sponsor's account on mqucifer/sprint-metrics#467 at 18:47Z said #475 was too large for one answer. The Business Analyst re-split the epic, and #475–479 were superseded by #496–501. It isn't in `operator.jsonl` or `sponsor.jsonl`: the event log has it only as `epic.resplit because: sponsor`.
+
+### 2. Where a person was asked
+- **One block: mqucifer/sprint-metrics#475, a mechanism, not content.** The story needed 31,000–42,000 tokens across 8 files in one answer. The fix was the re-split above, recorded on the epic, where the crew read it. #475 cost about 2 h 50 min, from In Progress at 15:44Z to blocked at 18:33Z.
+- **No question reached the Sponsor** except the epics' gate: `needs:human` came off 467, 469 and 468 between 19:12Z and 20:13Z.
+
+### 3. Drift between the Goal and the plan
+- **Nothing left unrecorded.** The release on request is in ADR 0019 (PR 527), one-day sprints are in docs/running-the-crew.md, and no partial `delivery-history` release is crew#521 criterion 2.
+
+### 4. Repeats and cost
+- **Gate round trips: 3.** mqucifer/sprint-metrics#497 (about 45 min), #498 (about 10 min) and #501 (about 20 min). Each was approved on re-delivery.
+- **EDIT refusals: 3 cards** (#475, #498, #501). Two fingerprints, filed by the crew as crew#554 and crew#555. Each of #498 and #501 was recovered by a local retry.
+- **ImportError again** on mqucifer/sprint-metrics#496 (crew#541), the second sprint running. A local retry recovered it.
+- **Model failures:** 3 length-limit cut-offs and 2 SCHEMA refusals, all on #475, plus 1 empty answer on #501. That's down from 25 refusals and 5 empty answers in Sprint 18.
+- **First time: 13 of 18 delivered stories.**
+
+### 5. The crew's own retro (crew#556) against this one
+- **It counts superseded stories as delivered.** It reports 23 stories and 56 points, against the real 18 and 39, and 17 of 23 landing first time, against 13 of 18. mqucifer/sprint-metrics#475–479 were closed as not planned, and GitHub moves them to Done all the same. `sprint_cards` in `flows/close.py` doesn't skip them, though `committed_points` (crew#327) and the parent close (crew#432) do. The same gap is in `delivery-history`: its `Card` carries `status` and `closed` but not the close reason, so crew-presentation would show #475–479 as delivered.
+- **It cites crew#539 again** for #475's SCHEMA refusal. Sprint 18's operator retro found that diagnosis wrong.
+- **Its two defects (crew#554, crew#555) are new and real.** crew#554's fingerprint holds the file's list of definitions, so the same failure on another file counts as a new cause.
+- **Repeats from Sprint 18:** "infra not onboarded", a repository that doesn't exist on purpose, and "Needs you" naming the paused mqucifer/crew-presentation#13 and #14. The second lasts only while the pause does, so it isn't filed.
+
+### 6. Proposed for the crew iteration (for the Sponsor to agree)
+1. **A superseded story is never delivered,** in the retro and in `delivery-history`. Evidence: 5 stories and 17 points over-counted in crew#556. It sits on the goal's path: crew-presentation reads the package.
+2. **Sprint 18's proposal 1 stands** (the retro diagnoses from the card's text, not its refusals). It repeated crew#539 this sprint.
+
+**Checks:**
+- **"Ticks stopped" found something this time** (two, to land PRs 546 and 548), so it stays.
+- **"The crew's retro against this one" found wrong items for a fourth sprint.**
