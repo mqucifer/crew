@@ -152,6 +152,17 @@ def test_the_retro_is_told_the_first_try_rate_and_the_causes():
     assert "(once, on #74; cause " in text, "each cause with its key, for a fix to cite (#199)"
 
 
+def test_a_superseded_story_never_landed_first_time_but_its_failures_count():
+    """Sprint 19 reported 17 of 23, counting four stories never started (crew#558)."""
+    gone = [s.model_copy(update={"state_reason": "NOT_PLANNED"}) for s in (story(75), story(76))]
+    attempts = [Attempt(75, "Developer", "SCHEMA", "no test", "no test")]
+    text = retries_text(sprint_report("S", [story(73), story(74), *gone], attempts, 0))
+    assert text.startswith(
+        "2 of 2 stories landed on their first attempt. 2 more were superseded before they landed."
+    )
+    assert "- SCHEMA: no test (once, on #75; cause " in text
+
+
 # --- 2: escalations come from the ledger ----------------------------------------------------
 
 

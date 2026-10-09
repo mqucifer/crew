@@ -44,6 +44,17 @@ def test_a_sprints_dates_and_the_one_after_it():
     assert ITERATIONS.iteration_dates("Sprint 99") is None
 
 
+def test_a_finished_sprints_dates_are_read_from_the_boards_finished_sprints():
+    """GitHub moves a one-day sprint out of `schema` the night it ends (crew#558)."""
+    board = SimpleNamespace(
+        schema=SimpleNamespace(field=lambda name: ITERATIONS),
+        sprints=lambda: [{"title": "Sprint 5", "startDate": "2026-09-24", "duration": 1}],
+    )
+    assert close_mod._sprint_dates(board, "Sprint 5") == (date(2026, 9, 24), date(2026, 9, 24))
+    assert close_mod._sprint_dates(board, "Sprint 6") == (date(2026, 9, 25), date(2026, 9, 25))
+    assert close_mod._sprint_dates(board, "Sprint 99") is None
+
+
 def crew_for(sprint: str, issues) -> SimpleNamespace:
     board = SimpleNamespace(schema=SimpleNamespace(field=lambda name: ITERATIONS))
     return SimpleNamespace(crew_repo=CREW, issues=issues, sprint=sprint, board=board)

@@ -202,6 +202,15 @@ class Card(BaseModel):
         """
         return (self.repo or "", self.number or 0)
 
+    @property
+    def superseded(self) -> bool:
+        """Closed as not planned: a re-split replaced it, and it was never built.
+
+        GitHub moves it to Done all the same, so its Status can't say this
+        (#327, crew#558).
+        """
+        return self.state == "CLOSED" and self.state_reason == "NOT_PLANNED"
+
     def name(self, *, qualify: bool = False) -> str:
         """How to write this card in something a person reads.
 

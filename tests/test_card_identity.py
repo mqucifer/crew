@@ -112,3 +112,11 @@ def test_a_two_repository_sprint_names_every_card_once():
 def test_a_single_repository_sprint_is_not_cluttered_with_it():
     cards = [card(32, "crew", work_type="Story", status="Sprint Backlog", sprint=SPRINT, points=3)]
     assert board_summary(cards, SPRINT).startswith("#32")
+
+
+def test_a_superseded_story_is_shown_to_the_retro_as_superseded_not_done():
+    """GitHub moves a story closed as not planned to Done (crew#558)."""
+    gone = card(
+        475, "sprint-metrics", work_type="Story", status="Done", sprint=SPRINT, points=5
+    ).model_copy(update={"state": "CLOSED", "state_reason": "NOT_PLANNED"})
+    assert board_summary([gone], SPRINT) == "#475 [5pt] Superseded: Card 475"

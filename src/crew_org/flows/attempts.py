@@ -233,6 +233,7 @@ def sprint_report(
                 "title": c.title,
                 "repo": c.repo,
                 "status": c.status,
+                "superseded": bool(getattr(c, "superseded", False)),
                 "first_try": not any(a.card == c.number for a in ours),
                 "attempts": [
                     {
@@ -283,8 +284,13 @@ def retries_text(report: dict[str, Any]) -> str:
     stories = report["stories"]
     if not stories:
         return "No stories this sprint."
-    first = sum(1 for s in stories if s["first_try"])
-    lines = [f"{first} of {len(stories)} stories landed on their first attempt."]
+    # A superseded story never landed, on any attempt: one never started would
+    # otherwise count as landing first time (crew#558). Its failures still count.
+    landed = [s for s in stories if not s.get("superseded")]
+    first = sum(1 for s in landed if s["first_try"])
+    lines = [f"{first} of {len(landed)} stories landed on their first attempt."]
+    if len(landed) < len(stories):
+        lines[0] += f" {len(stories) - len(landed)} more were superseded before they landed."
     for c in report["causes"]:
         cards = ", ".join(f"#{n}" for n in c["cards"])
         times = "once" if c["count"] == 1 else f"{c['count']} times"
