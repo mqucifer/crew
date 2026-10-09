@@ -12,6 +12,7 @@ import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from crew_org import log
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
@@ -178,198 +179,216 @@ def review_open_pulls(
     waiting = cards_by_branch(cards or []) if board is not None else {}
 
     for pull in issues.open_pulls(repo):
-        number = pull["number"]
-        author = (pull.get("user") or {}).get("login", "")
+        # One Code Reviewer run per pull request, under the card it closes (crew#449).
+        story = waiting.get((pull.get("head") or {}).get("ref", ""))
+        with log.run("Code Reviewer", card=story.number if story is not None else None, repo=repo):
+            number = pull["number"]
+            author = (pull.get("user") or {}).get("login", "")
 
-        if pull.get("draft"):
-            result.skipped.append(ReviewOutcome(pr=number, approved=False, skipped="draft"))
-            continue
+            if pull.get("draft"):
+                result.skipped.append(ReviewOutcome(pr=number, approved=False, skipped="draft"))
+                continue
 
-        head = (pull.get("head") or {}).get("sha", "")
-        reviews = issues.pull_reviews(repo, number)
-        if already_reviewed(reviews, bot_login, head):
-            # The crew's own approval already covers this head, and the card
-            # still waits in Reviewing. GitHub carries an approval forward to a
-            # commit with the same tree, so the empty commit that answers a QA
-            # return without a change (#161) lands already approved, and the
-            # card was never moved on (crew#321, sprint-metrics#261).
-            card = waiting.get((pull.get("head") or {}).get("ref", ""))
-            if card is not None and board is not None and approved_at(reviews, bot_login, head):
-                move_card(
-                    board,
-                    sink,
-                    item_id=card.item_id,
-                    to=QAING,
-                    by="Code Reviewer",
-                    card=card.number,
-                    frm=REVIEWING,
-                    summary="its approval stands at this head",
-                )
-            result.skipped.append(
-                ReviewOutcome(pr=number, approved=False, skipped="already reviewed at this head")
-            )
-            continue
-
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_STARTED,
-                role="Code Reviewer",
-                card=number,
-                summary=f"PR #{number} by {author}: {pull['title'][:40]}",
-            )
-        )
-        try:
-            diff = issues.pull_diff(repo, number)
-            base = (pull.get("base") or {}).get("ref") or "main"
-            story = waiting.get((pull.get("head") or {}).get("ref", ""))
-            verdict = attributed(
-                review_diff,
-                card=story.number if story is not None else None,
-                repo=repo,
-                purpose="review" if story is not None else f"review PR #{number}",
-            )(
-                pull["title"],
-                diff,
-                prior_verdicts=_with_answer(
-                    past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
-                    latest_answer(issues, repo, number),
-                ),
-                checks=_with_guard_notice(
-                    checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
-                    issues,
-                    repo,
-                    head,
-                    diff,
-                ),
-                imported=imported_code(
-                    _base_reader(issues, repo, base, clone),
-                    diff,
-                    read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
-                ),
-                design_note=story_notes(issues, story, repo) if story is not None else "",
-                acceptance_criteria=story_criteria(issues, story, repo),
-                decisions=story_rows(issues, story, repo),
-                importers=_importers(clone, diff),
-            )
-        except Exception as exc:  # noqa: BLE001
-            reraise_if_down(exc)
-            result.failed.append((number, f"{type(exc).__name__}: {exc}"))
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.AGENT_FAILED,
-                    role="Code Reviewer",
-                    card=number,
-                    summary=str(exc)[:80],
-                )
-            )
-            continue
-
-        # A mechanical finding, not the model's (#191): an option the diff adds
-        # that the project's user docs never mention.
-        verdict = with_docs_finding(
-            verdict,
-            diff,
-            user_docs(issues, repo, head),
-            lambda p, ref=head: issues.file_at(repo, p, ref),
-        )
-
-        # Anything that runs or deploys is also judged as it will be run (#335).
-        # One review carries both verdicts: a later review from the same
-        # identity would replace the first as GitHub's decision.
-        deploy: ReviewVerdict | None = None
-        if touches_runnable(diff):
-            try:
-                deploy = _deploy_review(
-                    issues, sink, repo=repo, pull=pull, story=story, diff=diff, clone=clone
-                )
-            except Exception as exc:  # noqa: BLE001
-                reraise_if_down(exc)
-                result.failed.append((number, f"deploy review: {type(exc).__name__}: {exc}"))
-                sink.emit(
-                    CrewEvent(
-                        kind=EventKind.AGENT_FAILED,
-                        role="DevOps Engineer",
-                        card=number,
-                        summary=str(exc)[:80],
+            head = (pull.get("head") or {}).get("sha", "")
+            reviews = issues.pull_reviews(repo, number)
+            if already_reviewed(reviews, bot_login, head):
+                # The crew's own approval already covers this head, and the card
+                # still waits in Reviewing. GitHub carries an approval forward to a
+                # commit with the same tree, so the empty commit that answers a QA
+                # return without a change (#161) lands already approved, and the
+                # card was never moved on (crew#321, sprint-metrics#261).
+                card = waiting.get((pull.get("head") or {}).get("ref", ""))
+                if card is not None and board is not None and approved_at(reviews, bot_login, head):
+                    move_card(
+                        board,
+                        sink,
+                        item_id=card.item_id,
+                        to=QAING,
+                        by="Code Reviewer",
+                        card=card.number,
+                        frm=REVIEWING,
+                        summary="its approval stands at this head",
+                    )
+                result.skipped.append(
+                    ReviewOutcome(
+                        pr=number, approved=False, skipped="already reviewed at this head"
                     )
                 )
                 continue
-        code = verdict
-        verdict = with_deploy(code, deploy)
 
-        # GitHub refuses an approval from the identity that opened the pull
-        # request. The crew reviews as a second app for exactly this reason, so
-        # this downgrade now only fires where it should: a pull request the
-        # reviewing identity opened itself.
-        event = "COMMENT" if author == bot_login else verdict.event
-        issues.create_review(repo, number, event=event, body=render_review(code, deploy))
-
-        result.reviewed.append(
-            ReviewOutcome(
-                pr=number,
-                approved=event == "APPROVE",
-                findings=len(verdict.findings),
-                event=event,
-            )
-        )
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="Code Reviewer",
-                card=number,
-                summary=f"{event} — {len(verdict.findings) - len(verdict.notes)} findings"
-                + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
-                # Counted by the retro: notes left on approved work (#214).
-                detail={"approved": event == "APPROVE", "notes": len(verdict.notes)},
-            )
-        )
-
-        card = waiting.get(pull.get("head", {}).get("ref", ""))
-        if card is not None and board is not None:
-            # A COMMENT verdict is the crew reviewing its own pull request,
-            # which GitHub will not let it approve. That is not a judgement, so
-            # the card stays where it is rather than being moved on an opinion
-            # nobody was allowed to record.
-            if event == "APPROVE":
-                move_card(
-                    board,
-                    sink,
-                    item_id=card.item_id,
-                    to=QAING,
-                    by="Code Reviewer",
-                    card=card.number,
-                    frm=REVIEWING,
-                    summary="diff approved",
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_STARTED,
+                    role="Code Reviewer",
+                    card=story.number if story is not None else None,
+                    summary=f"PR #{number} by {author}: {pull['title'][:40]}",
+                    detail={"pr": number},
                 )
-            elif (
-                event == "REQUEST_CHANGES"
-                and verdict.conflicts
-                and _to_product_owner(
-                    card,
-                    verdict,
-                    number,
-                    board=board,
-                    issues=writer or issues,
-                    sink=sink,
+            )
+            try:
+                diff = issues.pull_diff(repo, number)
+                base = (pull.get("base") or {}).get("ref") or "main"
+                story = waiting.get((pull.get("head") or {}).get("ref", ""))
+                verdict = attributed(
+                    review_diff,
+                    card=story.number if story is not None else None,
                     repo=repo,
+                    purpose="review" if story is not None else f"review PR #{number}",
+                )(
+                    pull["title"],
+                    diff,
+                    prior_verdicts=_with_answer(
+                        past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+                        latest_answer(issues, repo, number),
+                    ),
+                    checks=_with_guard_notice(
+                        checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
+                        issues,
+                        repo,
+                        head,
+                        diff,
+                    ),
+                    imported=imported_code(
+                        _base_reader(issues, repo, base, clone),
+                        diff,
+                        read_head=lambda path, ref=head: issues.file_at(repo, path, ref),
+                    ),
+                    design_note=story_notes(issues, story, repo) if story is not None else "",
+                    acceptance_criteria=story_criteria(issues, story, repo),
+                    decisions=story_rows(issues, story, repo),
+                    importers=_importers(clone, diff),
                 )
-            ):
-                result.returned.append((card.number or 0, card.parent or 0))
-            elif event == "REQUEST_CHANGES":
-                move_card(
-                    board,
-                    sink,
-                    item_id=card.item_id,
-                    to=IN_PROGRESS,
-                    by="Code Reviewer" if not code.approve else "DevOps Engineer",
-                    card=card.number,
-                    frm=REVIEWING,
-                    summary=f"changes requested — {len(verdict.findings)} findings",
-                    # What the retro counts the return as (#254).
-                    finding=next(
-                        (f"{f.file}: {f.concern}" for f in verdict.findings if f.blocking), ""
-                    )[:300],
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.AGENT_FAILED,
+                        role="Code Reviewer",
+                        card=story.number if story is not None else None,
+                        summary=str(exc)[:80],
+                        detail={"pr": number},
+                    )
                 )
+                continue
+
+            # A mechanical finding, not the model's (#191): an option the diff adds
+            # that the project's user docs never mention.
+            verdict = with_docs_finding(
+                verdict,
+                diff,
+                user_docs(issues, repo, head),
+                lambda p, ref=head: issues.file_at(repo, p, ref),
+            )
+
+            # Anything that runs or deploys is also judged as it will be run (#335).
+            # One review carries both verdicts: a later review from the same
+            # identity would replace the first as GitHub's decision.
+            deploy: ReviewVerdict | None = None
+            if touches_runnable(diff):
+                try:
+                    # The DevOps Engineer's own run, inside the Code Reviewer's.
+                    with log.run(
+                        "DevOps Engineer",
+                        card=story.number if story is not None else None,
+                        repo=repo,
+                    ):
+                        deploy = _deploy_review(
+                            issues, sink, repo=repo, pull=pull, story=story, diff=diff, clone=clone
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    reraise_if_down(exc)
+                    result.failed.append((number, f"deploy review: {type(exc).__name__}: {exc}"))
+                    sink.emit(
+                        CrewEvent(
+                            kind=EventKind.AGENT_FAILED,
+                            role="DevOps Engineer",
+                            card=story.number if story is not None else None,
+                            summary=str(exc)[:80],
+                            detail={"pr": number},
+                        )
+                    )
+                    continue
+            code = verdict
+            verdict = with_deploy(code, deploy)
+
+            # GitHub refuses an approval from the identity that opened the pull
+            # request. The crew reviews as a second app for exactly this reason, so
+            # this downgrade now only fires where it should: a pull request the
+            # reviewing identity opened itself.
+            event = "COMMENT" if author == bot_login else verdict.event
+            issues.create_review(repo, number, event=event, body=render_review(code, deploy))
+
+            result.reviewed.append(
+                ReviewOutcome(
+                    pr=number,
+                    approved=event == "APPROVE",
+                    findings=len(verdict.findings),
+                    event=event,
+                )
+            )
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_FINISHED,
+                    role="Code Reviewer",
+                    card=story.number if story is not None else None,
+                    summary=f"{event} — {len(verdict.findings) - len(verdict.notes)} findings"
+                    + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
+                    # Counted by the retro: notes left on approved work (#214).
+                    detail={
+                        "pr": number,
+                        "approved": event == "APPROVE",
+                        "notes": len(verdict.notes),
+                    },
+                )
+            )
+
+            card = waiting.get(pull.get("head", {}).get("ref", ""))
+            if card is not None and board is not None:
+                # A COMMENT verdict is the crew reviewing its own pull request,
+                # which GitHub will not let it approve. That is not a judgement, so
+                # the card stays where it is rather than being moved on an opinion
+                # nobody was allowed to record.
+                if event == "APPROVE":
+                    move_card(
+                        board,
+                        sink,
+                        item_id=card.item_id,
+                        to=QAING,
+                        by="Code Reviewer",
+                        card=card.number,
+                        frm=REVIEWING,
+                        summary="diff approved",
+                    )
+                elif (
+                    event == "REQUEST_CHANGES"
+                    and verdict.conflicts
+                    and _to_product_owner(
+                        card,
+                        verdict,
+                        number,
+                        board=board,
+                        issues=writer or issues,
+                        sink=sink,
+                        repo=repo,
+                    )
+                ):
+                    result.returned.append((card.number or 0, card.parent or 0))
+                elif event == "REQUEST_CHANGES":
+                    move_card(
+                        board,
+                        sink,
+                        item_id=card.item_id,
+                        to=IN_PROGRESS,
+                        by="Code Reviewer" if not code.approve else "DevOps Engineer",
+                        card=card.number,
+                        frm=REVIEWING,
+                        summary=f"changes requested — {len(verdict.findings)} findings",
+                        # What the retro counts the return as (#254).
+                        finding=next(
+                            (f"{f.file}: {f.concern}" for f in verdict.findings if f.blocking), ""
+                        )[:300],
+                    )
 
     return result
 
@@ -402,8 +421,9 @@ def _deploy_review(
         CrewEvent(
             kind=EventKind.AGENT_STARTED,
             role="DevOps Engineer",
-            card=number,
+            card=story.number if story is not None else None,
             summary=f"deploy review of PR #{number}",
+            detail={"pr": number},
         )
     )
     verdict = attributed(
@@ -426,10 +446,10 @@ def _deploy_review(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
             role="DevOps Engineer",
-            card=number,
+            card=story.number if story is not None else None,
             summary=f"{verdict.event} — {len(blocking)} findings"
             + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
-            detail={"approved": verdict.approve, "notes": len(verdict.notes)},
+            detail={"pr": number, "approved": verdict.approve, "notes": len(verdict.notes)},
         )
     )
     return verdict

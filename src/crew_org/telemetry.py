@@ -103,6 +103,13 @@ def view(event: Any) -> dict[str, Any]:
         "card": data.get("card"),
     }
     out.update(kept)
+    # The context it was written in (crew#449): ids and names, the same keys the log's
+    # projection sends, so an event and a log line of one run join in Grafana.
+    from crew_org.log import _CONTEXT_OUT  # noqa: PLC0415
+
+    for key, value in (data.get("ctx") or {}).items():
+        if key in _CONTEXT_OUT and out.get(key) is None:
+            out[key] = value
     return {k: v for k, v in out.items() if v is not None}
 
 

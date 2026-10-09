@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from crew_org import profiles
+from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
@@ -451,180 +451,182 @@ def run_qa(
     result = AcceptanceResult()
 
     for card in awaiting_qa(within(cards, repos)):
-        number = card.number or 0
-        card_repo = card.repo or repo
-        branch = branch_name(number, card.title)
-        # The worktree has to come from the card's own repository too, or QA
-        # verifies a branch of the same name in a different codebase.
-        card_ws = ws.for_repo(card_repo)
+        # One QA run per card (crew#449).
+        with log.run("QA Engineer", card=card.number, repo=card.repo or repo):
+            number = card.number or 0
+            card_repo = card.repo or repo
+            branch = branch_name(number, card.title)
+            # The worktree has to come from the card's own repository too, or QA
+            # verifies a branch of the same name in a different codebase.
+            card_ws = ws.for_repo(card_repo)
 
-        try:
-            worktree = card_ws.open_existing(branch)
-            revision = card_ws.head()
-        except Exception as exc:  # noqa: BLE001
-            result.failed.append((number, f"{type(exc).__name__}: {exc}"))
-            continue
+            try:
+                worktree = card_ws.open_existing(branch)
+                revision = card_ws.head()
+            except Exception as exc:  # noqa: BLE001
+                result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                continue
 
-        if issues.has_comment_marked(card_repo, number, qa_marker(revision)):
-            result.skipped.append((number, f"already judged at {revision[:7]}"))
-            continue
+            if issues.has_comment_marked(card_repo, number, qa_marker(revision)):
+                result.skipped.append((number, f"already judged at {revision[:7]}"))
+                continue
 
-        # Only CI workflows: QA can observe nothing of what
-        # they do until they run on `main`. The Code Reviewer judged the
-        # workflow; its run is the proof (§7.1, crew#333).
-        if ci_only(worktree):
-            card_ws.close()
+            # Only CI workflows: QA can observe nothing of what
+            # they do until they run on `main`. The Code Reviewer judged the
+            # workflow; its run is the proof (§7.1, crew#333).
+            if ci_only(worktree):
+                card_ws.close()
+                artifacts.comment(
+                    issues,
+                    sink,
+                    repo=card_repo,
+                    number=number,
+                    body=f"{QA_MARKER}\n{qa_marker(revision)}\n"
+                    "## QA — not applicable: a CI-only change\n\n"
+                    "This pull request changes CI workflows and nothing else. What a workflow "
+                    "does can only be observed when it runs, mostly on `main`, so it is judged "
+                    "by the Code Reviewer and proven by its own run (constitution §7.1). "
+                    "A check that fails on the pull request or in the merge queue still sends "
+                    "it back with the log.",
+                    by="QA Engineer",
+                )
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=MERGING,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary="CI-only change: judged by review, proven by its run",
+                )
+                result.verified.append(QAOutcome(card=number, accepted=True))
+                continue
+
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.AGENT_STARTED,
+                    role="QA Engineer",
+                    card=number,
+                    summary=f"verify {card.title[:46]}",
+                )
+            )
+            try:
+                check = workspace.check(worktree, sandbox=sandbox)
+                done = _already_done(issues, card_repo, number)
+                proof = _existing_proof(issues, card_repo, number)
+                if proof:
+                    done_or_proof = (
+                        "\n\n## Criteria the Developer says the existing tests prove\n\n"
+                        f"{proof}\n\nThese have no new test. Judge each from the named tests' "
+                        "results in the test run, and cite them as the evidence."
+                    )
+                else:
+                    done_or_proof = ""
+                answered = (
+                    "\n\n## The Developer answered that this is already done\n\n"
+                    f"{done}\n\nNothing was changed. Judge each criterion against the code "
+                    "and the tests named, as for any story."
+                    if done
+                    else done_or_proof
+                )
+                # Read first: it sets this project's parts, which the notice below needs (#404).
+                project = _project_brief(worktree)
+                verdict = _judge(
+                    f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
+                    worktree=worktree,
+                    sink=sink,
+                    number=number,
+                    repo=card_repo,
+                    test_output=collect_output(check.results),
+                    docs=collect_docs(worktree),
+                    checks=_with_unguarded(ci_checks(issues, card_repo, revision), worktree),
+                    prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
+                    project=project,
+                    decisions=story_rows(issues, card, card_repo),
+                )
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.AGENT_FAILED,
+                        role="QA Engineer",
+                        card=number,
+                        summary=str(exc)[:80],
+                    )
+                )
+                continue
+            finally:
+                card_ws.close()
+
             artifacts.comment(
                 issues,
                 sink,
                 repo=card_repo,
                 number=number,
-                body=f"{QA_MARKER}\n{qa_marker(revision)}\n"
-                "## QA — not applicable: a CI-only change\n\n"
-                "This pull request changes CI workflows and nothing else. What a workflow "
-                "does can only be observed when it runs, mostly on `main`, so it is judged "
-                "by the Code Reviewer and proven by its own run (constitution §7.1). "
-                "A check that fails on the pull request or in the merge queue still sends "
-                "it back with the log.",
+                body=render_qa(verdict, revision),
                 by="QA Engineer",
             )
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=MERGING,
-                by="QA Engineer",
-                card=number,
-                frm=QAING,
-                summary="CI-only change: judged by review, proven by its run",
-            )
-            result.verified.append(QAOutcome(card=number, accepted=True))
-            continue
 
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_STARTED,
-                role="QA Engineer",
-                card=number,
-                summary=f"verify {card.title[:46]}",
-            )
-        )
-        try:
-            check = workspace.check(worktree, sandbox=sandbox)
-            done = _already_done(issues, card_repo, number)
-            proof = _existing_proof(issues, card_repo, number)
-            if proof:
-                done_or_proof = (
-                    "\n\n## Criteria the Developer says the existing tests prove\n\n"
-                    f"{proof}\n\nThese have no new test. Judge each from the named tests' "
-                    "results in the test run, and cite them as the evidence."
+            if verdict.accepted and done:
+                # Nothing to merge (#221): the story closes, proven against main.
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=DONE,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary="already done — every criterion proven, no pull request",
                 )
+                issues.close(card_repo, number)
+                result.verified.append(QAOutcome(card=number, accepted=True))
+            elif verdict.accepted:
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=MERGING,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary="every criterion proven",
+                )
+                result.verified.append(QAOutcome(card=number, accepted=True))
             else:
-                done_or_proof = ""
-            answered = (
-                "\n\n## The Developer answered that this is already done\n\n"
-                f"{done}\n\nNothing was changed. Judge each criterion against the code "
-                "and the tests named, as for any story."
-                if done
-                else done_or_proof
-            )
-            # Read first: it sets this project's parts, which the notice below needs (#404).
-            project = _project_brief(worktree)
-            verdict = _judge(
-                f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
-                worktree=worktree,
-                sink=sink,
-                number=number,
-                repo=card_repo,
-                test_output=collect_output(check.results),
-                docs=collect_docs(worktree),
-                checks=_with_unguarded(ci_checks(issues, card_repo, revision), worktree),
-                prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
-                project=project,
-                decisions=story_rows(issues, card, card_repo),
-            )
-        except Exception as exc:  # noqa: BLE001
-            reraise_if_down(exc)
-            result.failed.append((number, f"{type(exc).__name__}: {exc}"))
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=IN_PROGRESS,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary=f"returned — {len(verdict.unproven)} unproven",
+                )
+                outcome = QAOutcome(
+                    card=number,
+                    accepted=False,
+                    unproven=len(verdict.unproven),
+                    reason=verdict.unproven[0].evidence if verdict.unproven else None,
+                )
+                result.returned.append(outcome)
+
             sink.emit(
                 CrewEvent(
-                    kind=EventKind.AGENT_FAILED,
+                    kind=EventKind.AGENT_FINISHED,
                     role="QA Engineer",
                     card=number,
-                    summary=str(exc)[:80],
+                    summary=f"{'accepted' if verdict.accepted else 'returned'} — "
+                    f"{len(verdict.unproven)} unproven",
+                    detail={
+                        "accepted": verdict.accepted,
+                        "unproven": [c.criterion for c in verdict.unproven],
+                    },
                 )
             )
-            continue
-        finally:
-            card_ws.close()
-
-        artifacts.comment(
-            issues,
-            sink,
-            repo=card_repo,
-            number=number,
-            body=render_qa(verdict, revision),
-            by="QA Engineer",
-        )
-
-        if verdict.accepted and done:
-            # Nothing to merge (#221): the story closes, proven against main.
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=DONE,
-                by="QA Engineer",
-                card=number,
-                frm=QAING,
-                summary="already done — every criterion proven, no pull request",
-            )
-            issues.close(card_repo, number)
-            result.verified.append(QAOutcome(card=number, accepted=True))
-        elif verdict.accepted:
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=MERGING,
-                by="QA Engineer",
-                card=number,
-                frm=QAING,
-                summary="every criterion proven",
-            )
-            result.verified.append(QAOutcome(card=number, accepted=True))
-        else:
-            move_card(
-                board,
-                sink,
-                item_id=card.item_id,
-                to=IN_PROGRESS,
-                by="QA Engineer",
-                card=number,
-                frm=QAING,
-                summary=f"returned — {len(verdict.unproven)} unproven",
-            )
-            outcome = QAOutcome(
-                card=number,
-                accepted=False,
-                unproven=len(verdict.unproven),
-                reason=verdict.unproven[0].evidence if verdict.unproven else None,
-            )
-            result.returned.append(outcome)
-
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="QA Engineer",
-                card=number,
-                summary=f"{'accepted' if verdict.accepted else 'returned'} — "
-                f"{len(verdict.unproven)} unproven",
-                detail={
-                    "accepted": verdict.accepted,
-                    "unproven": [c.criterion for c in verdict.unproven],
-                },
-            )
-        )
 
     return result
 

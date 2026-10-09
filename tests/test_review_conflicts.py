@@ -180,3 +180,21 @@ def test_a_conflict_that_does_not_block_is_only_a_note():
 def test_an_approval_still_cannot_carry_a_blocking_conflict():
     with pytest.raises(ValidationError):
         ReviewVerdict(summary="s", approve=True, findings=CONFLICT.findings)
+
+
+def test_a_review_is_recorded_under_the_card_it_closes_with_its_pull_request(monkeypatch):
+    """Keyed by the pull request's number, a review had to be matched to its card
+    through the delivery before it (crew#449, discussion 552)."""
+    from crew_org.events import EventKind
+
+    monkeypatch.setattr(review_flow, "review_diff", lambda *a, **k: REJECTION)
+    card = story()
+    issues, board = Issues([crew_pull()]), Board([card])
+    seen = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    review_open_pulls(issues, sink, repo="sprint-metrics", bot_login=BOT, board=board, cards=[card])
+    work = [e for e in seen if e.kind in (EventKind.AGENT_STARTED, EventKind.AGENT_FINISHED)]
+    assert work and all(e.card == card.number for e in work)
+    assert all(e.detail["pr"] == crew_pull()["number"] for e in work)
+    assert len({e.ctx["run"] for e in work}) == 1

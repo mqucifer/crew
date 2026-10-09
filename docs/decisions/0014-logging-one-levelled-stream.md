@@ -54,9 +54,14 @@ is a log record with an `event.name`, so events and logs are the same stream.
     failure);
   - `ERROR`: an operation failed;
   - `CRITICAL`: the tick stops.
-- **A common context on every record,** from context variables: `tick`,
-  `pass`, `phase`, `repo`, `card`, `role`, `attempt`, `sprint` and
-  `schema_version`. Call sites don't repeat it.
+- **A common context on every record,** from context variables: `tick` (an
+  id unique across commands), `commit` and `dirty`, `pass`, `phase`, `run`,
+  `repo`, `card`, `role`, `attempt`, `sprint` and `schema_version`. Call sites
+  don't repeat it. **A run** is one role's work on one card in one phase, and
+  every record and model call inside it carries its id. **The sink's events
+  carry the same context**, stamped once when emitted, and the tick's commit
+  and id go on the exported records' resource (`service.version`,
+  `service.instance.id`). Records join by these ids, never by time or prose.
 - **Failures are on the record.** A caught exception is re-raised, or
   recorded at `WARNING` or above with what was skipped and why. A silent skip
   needs a stated reason in its `noqa`. Enforced by lint: `BLE001`, `S110` and
@@ -85,3 +90,11 @@ is a log record with an `event.name`, so events and logs are the same stream.
   turn on.
 - The tick-watcher and the retro can filter by level. Grafana gets levels and
   context as attributes.
+
+## Changelog
+
+- 2026-10-09: The common context gains `run`, a unique `tick` id, and the
+  tick's `commit`, and the sink's events carry it too, so a record joins its
+  run, its card and the code that ran it by field (crew#449 part 2, from
+  discussions 552 and 553). The Sponsor asked for the telemetry context to come
+  first, for many kinds of experiments.

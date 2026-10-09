@@ -264,6 +264,40 @@ def test_a_review_is_work_on_its_pull_request_and_the_card_it_closes():
     assert merged["crews_own"] is False
 
 
+def test_a_review_keyed_by_its_card_with_its_pull_request_reads_the_same():
+    """Since crew#449 a review's card is the story, its pull request in `pr`, and the
+    repository in the context it was written in."""
+    review = (
+        "tick",
+        {
+            "at": at(0),
+            "kind": "agent.started",
+            "role": "Code Reviewer",
+            "card": 455,
+            "summary": "PR #463 by the crew",
+            "detail": {"pr": 463},
+            "ctx": {"repo": "sprint-metrics", "run": "r1"},
+        },
+    )
+    pulls = {
+        "sprint-metrics": [
+            {
+                "number": 463,
+                "title": "Document the /trend endpoint",
+                "created_at": at(-30),
+                "merged_at": at(10),
+                "closed_at": at(10),
+                "closes": [("sprint-metrics", 455)],
+            }
+        ]
+    }
+
+    data, _ = built([review], pulls=pulls)
+    [work] = [e for e in data["events"] if e["kind"] == "work_started"]
+    assert work["card"] == {"repo": "sprint-metrics", "number": 455}
+    assert work["pull"] == {"repo": "sprint-metrics", "number": 463}
+
+
 def test_a_reviewers_number_no_pull_request_fits_is_left_out_not_taken_for_a_card():
     """crew-presentation#15 and an unlisted sprint-metrics pull request 15 share a number."""
     review = (

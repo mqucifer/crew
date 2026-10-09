@@ -79,6 +79,11 @@ class EventKind(StrEnum):
     # GitHub asked the crew to slow down (#293): waited out, or the tick stopped.
     GITHUB_THROTTLED = "github.throttled"
 
+    # What a role was shown, and the files it asked to see (#231, crew#449). They
+    # were notes with no role or card, matched to their run by time (discussion 553).
+    FILES_SHOWN = "files.shown"
+    FILES_ASKED = "files.asked"
+
     NOTE = "note"
 
 
@@ -91,6 +96,16 @@ class CrewEvent(BaseModel):
     card: int | None = None
     summary: str = ""
     detail: dict[str, Any] = Field(default_factory=dict)
+    # The common context when it was written (crew#449, discussion 552): tick, commit,
+    # pass, phase, run, role, card, repo, sprint, attempt, trace and span. Stamped by
+    # the sink, so no call site repeats it, and a line written before it existed
+    # still reads, with none.
+    ctx: dict[str, Any] = Field(default_factory=dict)
+
+
+def repo_of(event: CrewEvent) -> str | None:
+    """The event's repository: where it was written, or where its detail says."""
+    return event.ctx.get("repo") or (event.detail or {}).get("repo")
 
 
 Subscriber = Callable[[CrewEvent], None]
@@ -118,6 +133,12 @@ class EventSink:
             self._subscribers.append(fn)
 
     def emit(self, event: CrewEvent) -> None:
+        if not event.ctx:
+            # Never at the cost of the work: an event without its context still lands.
+            with contextlib.suppress(Exception):
+                from crew_org import log  # noqa: PLC0415
+
+                event = event.model_copy(update={"ctx": log.scope()})
         with self._lock:
             subscribers = list(self._subscribers)
             if self.path is not None:
@@ -247,7 +268,7 @@ def attributed(fn: Callable[..., Any], **what: Any) -> Callable[..., Any]:
     def call(*args: Any, **kwargs: Any) -> Any:
         from crew_org import tracing  # noqa: PLC0415
 
-        with working_on(**what):
+        with working_on(**what), _own_run():
             about = working()
             # A span for the phase, or for the card within it (#283): the
             # same attributes the model calls carry, and no content.
@@ -260,6 +281,13 @@ def attributed(fn: Callable[..., Any], **what: Any) -> Callable[..., Any]:
                 return fn(*args, **kwargs)
 
     return call
+
+
+def _own_run() -> contextlib.AbstractContextManager[Any]:
+    """A model call made outside any role's run is a run of its own (crew#449)."""
+    from crew_org import log  # noqa: PLC0415
+
+    return contextlib.nullcontext() if log.in_run() else log.scoped(run=log.new_id())
 
 
 def working() -> dict[str, Any]:
