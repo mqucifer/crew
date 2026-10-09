@@ -146,3 +146,36 @@ def test_a_call_for_no_card_says_what_it_was_for(seen):
         emit(finished(call_id="c10"))
     done = seen[-1]
     assert done.detail["for"] == "retro" and "attempt" not in done.detail
+
+
+def test_a_calls_prompt_version_is_carried_from_its_start_to_its_end(seen):
+    """crew#449: which prompt a call ran with, so a fix can be placed either side of it."""
+    emit(
+        LLMCallStartedEvent(
+            model="crew-local",
+            call_id="v1",
+            messages=[{"role": "system", "content": "You are the Developer."}],
+        )
+    )
+    emit(
+        LLMCallCompletedEvent(
+            model="crew-local",
+            call_id="v1",
+            messages=[],
+            response="ok",
+            call_type=LLMCallType.LLM_CALL,
+        )
+    )
+    started, finished = seen[-2], seen[-1]
+    assert started.detail["prompt_hash"] == finished.detail["prompt_hash"]
+    assert "Developer" not in str(finished.detail)
+
+
+def test_a_failed_call_reported_twice_is_recorded_once(seen):
+    """crew#449: every one of Sprint 18's 25 refusals was logged twice."""
+    from crewai.events.types.llm_events import LLMCallFailedEvent
+
+    for _ in range(2):
+        emit(LLMCallFailedEvent(model="crew-local", call_id="d1", error="1 validation error"))
+    failed = [e for e in seen if e.kind is EventKind.LLM_CALL_FAILED]
+    assert len(failed) == 1 and failed[0].detail["failure_kind"] == "form_refused"

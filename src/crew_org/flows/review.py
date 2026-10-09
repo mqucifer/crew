@@ -340,6 +340,9 @@ def review_open_pulls(
                         "pr": number,
                         "approved": event == "APPROVE",
                         "notes": len(verdict.notes),
+                        # What it found, not only how many (crew#449, discussion 552).
+                        # Local: review text never leaves (ADR 0010, ADR 0020).
+                        "findings": _findings(verdict),
                     },
                 )
             )
@@ -393,6 +396,18 @@ def review_open_pulls(
                     )
 
     return result
+
+
+def _findings(verdict: ReviewVerdict) -> list[dict[str, object]]:
+    """Each finding as a file, a one-line statement and whether it blocks."""
+    return [
+        {
+            "file": f.file,
+            "statement": " ".join(f.concern.split())[:300],
+            "blocking": f.blocking,
+        }
+        for f in verdict.findings
+    ]
 
 
 def with_deploy(verdict: ReviewVerdict, deploy: ReviewVerdict | None) -> ReviewVerdict:
@@ -451,7 +466,12 @@ def _deploy_review(
             card=story.number if story is not None else None,
             summary=f"{verdict.event} — {len(blocking)} findings"
             + (f", {len(verdict.notes)} notes" if verdict.notes else ""),
-            detail={"pr": number, "approved": verdict.approve, "notes": len(verdict.notes)},
+            detail={
+                "pr": number,
+                "approved": verdict.approve,
+                "notes": len(verdict.notes),
+                "findings": _findings(verdict),
+            },
         )
     )
     return verdict

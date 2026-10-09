@@ -51,6 +51,21 @@ _NUMBER = re.compile(r"\d+")
 _LINT = re.compile(r"^([A-Z]{1,4}\d{3,4}) (.+)$", re.MULTILINE)
 _PYTEST = re.compile(r"^(?:E\s+|FAILED .* - )(\w+(?:Error|Exception|Failure))\b", re.MULTILINE)
 _ASSERT = re.compile(r"^(?:E\s+assert |FAILED .* - assert )", re.MULTILINE)
+# pytest's short summary: "FAILED tests/test_x.py::test_y - AssertionError: assert 0 == 1".
+_FAILED_TEST = re.compile(r"^FAILED (\S+)(?: - (.*))?$", re.MULTILINE)
+
+
+def failing_tests(report: str) -> list[dict[str, str]]:
+    """The tests that failed, by pytest id, each with its assertion line (crew#449).
+
+    sprint-metrics#443 was blocked after the same two tests failed on three runs,
+    and their names were nowhere: the record kept the report's first 600
+    characters, which stop before pytest's summary.
+    """
+    found: dict[str, str] = {}
+    for match in _FAILED_TEST.finditer(report):
+        found.setdefault(match.group(1), (match.group(2) or "").strip()[:200])
+    return [{"id": test, "assertion": line} for test, line in list(found.items())[:50]]
 
 
 @dataclass(frozen=True)

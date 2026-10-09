@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
 from crew_org.crews import epic_rows
+from crew_org.crews.asks import FileAsk
 
 MIN_EVIDENCE_CHARS = 20
 
@@ -56,11 +57,12 @@ class QAVerdict(BaseModel):
     # Asking to see more, as the Developer can (#231): a test file listed by
     # name only, needed in full to judge a criterion. An answer that asks is
     # not a verdict; QA is asked again with the files shown.
-    need_files: list[str] = Field(
+    need_files: list[FileAsk] = Field(
         default_factory=list,
         description=(
-            "Test files listed by name only that you need in full to judge a criterion. "
-            "Only when judging needs them; then leave `criteria` empty"
+            "Test files listed by name only that you need in full to judge a criterion, "
+            "each with a line saying why. Only when judging needs them; then leave "
+            "`criteria` empty"
         ),
     )
 
