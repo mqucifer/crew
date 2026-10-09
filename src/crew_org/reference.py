@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "docs" / "reference" / "records.md"
 
 # What each key of the common context means. Every record carries them where they
-# apply: the log's records under `ctx`, the event log's lines under `ctx`, and the
-# exported records as `crew.<key>` attributes.
+# apply: the log's records and the event log's lines under `ctx`; in Grafana, an
+# event (from var/telemetry) as `<key>`, and a log line sent over OTLP as `crew_<key>`.
 CONTEXT = {
     "tick": "The tick's id, unique across commands. Exported as `service.instance.id` too.",
     "commit": "The crew's commit that ran it. Exported as `service.version` too.",
