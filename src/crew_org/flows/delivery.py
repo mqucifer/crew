@@ -16,8 +16,9 @@ import contextlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from crew_org import profiles
+from crew_org import log, profiles
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
 from crew_org.crews import epic_rows
 from crew_org.crews.delivery_crew import Implementation, implement_story
@@ -49,7 +50,7 @@ from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools import bounds, claude_code, regression, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
-from crew_org.tools.repo_context import focused_context
+from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
 
 STORY_TYPE = "Story"
 
@@ -877,18 +878,27 @@ def deliver_story(
         # it is fixing code it cannot read. Focused on what the work names
         # when the repository is large (#231): the story, the gates' verdicts,
         # the last failure, and what the Developer asked for.
-        context, focus = focused_context(
-            worktree, about="\n\n".join([story_text, prior, feedback]), extra=asked
-        )
-        sink.note(
-            EventKind.NOTE,
-            f"#{number} context: {focus.chars:,} chars"
-            + (f", {len(focus.shown)} files in full" if focus.focused else ", whole repository"),
-            card=number,
-            context_chars=focus.chars,
-            focused=focus.focused,
-            shown=focus.shown,
-            asked=focus.asked,
+        about = "\n\n".join([story_text, prior, feedback])
+        context, focus = focused_context(worktree, about=about, extra=asked)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.FILES_SHOWN,
+                role="Developer",
+                card=number,
+                summary=f"#{number} context: {focus.chars:,} chars"
+                + (
+                    f", {len(focus.shown)} files in full" if focus.focused else ", whole repository"
+                ),
+                detail={
+                    "context_chars": focus.chars,
+                    "focused": focus.focused,
+                    "shown": focus.shown,
+                    "asked": focus.asked,
+                    # What the selection read to choose them (discussion 553). Local
+                    # only: it's the story, and telemetry never takes it (ADR 0010).
+                    "selection_text": about[:SELECTION_TEXT_CHARS],
+                },
+            )
         )
         header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
         header = (
@@ -1026,11 +1036,14 @@ def deliver_story(
             wanted = [f.strip().removeprefix("./") for f in implementation.need_files]
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
             exists = [f for f in fresh if (worktree / f).is_file()]
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} asked to see {', '.join(wanted)[:200]}",
-                card=number,
-                need_files=wanted,
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.FILES_ASKED,
+                    role="Developer",
+                    card=number,
+                    summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
+                    detail={"need_files": wanted},
+                )
             )
             if exists and asks < ASK_LIMIT:
                 asks += 1
@@ -1709,7 +1722,18 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     return True
 
 
-def _work_one_card(
+def _work_one_card(card: Card, **kwargs: Any) -> None:
+    """`_deliver_and_move`, as one Developer run: its records share the run's id (crew#449)."""
+    with log.run(
+        "Developer",
+        card=card.number,
+        repo=card.repo or kwargs["repo"],
+        sprint=kwargs["sprint"],
+    ):
+        _deliver_and_move(card, **kwargs)
+
+
+def _deliver_and_move(
     card: Card,
     *,
     board: ProjectClient,

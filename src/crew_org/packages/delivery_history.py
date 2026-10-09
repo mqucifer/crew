@@ -400,11 +400,13 @@ def _event(
     detail = raw.get("detail") or {}
     role = raw.get("role") or None
     number = raw.get("card")
+    # Where it was written, from its context since crew#449; its detail before that.
+    where = (raw.get("ctx") or {}).get("repo") or detail.get("repo")
 
     def card() -> CardRef | None:
         if not isinstance(number, int):
             return None
-        repo = placer.place(number, detail.get("repo"), at)
+        repo = placer.place(number, where, at)
         return CardRef(repo=repo, number=number) if repo else None
 
     def needs_card(what: str) -> CardRef | None:
@@ -445,11 +447,13 @@ def _event(
         if not role:
             return None
         cls = WorkStarted if kind == "agent.started" else WorkFinished
-        if role in REVIEWERS and isinstance(number, int):
-            # A reviewer's number is a pull request's. Never placed as a card: a
-            # pull request it can't place could share its number with another
-            # repository's card.
-            reviewed = placer.pull(number, detail.get("repo"), at)
+        # A review names its pull request in `pr` and its card as the card (crew#449).
+        # Before that, a reviewer's number was the pull request's.
+        pr = detail.get("pr") if "pr" in detail else number
+        if role in REVIEWERS and isinstance(pr, int):
+            # Placed by its pull request, never as a card: a pull request it can't
+            # place could share its number with another repository's card.
+            reviewed = placer.pull(pr, where, at)
             if reviewed is None:
                 left_out["work: pull request unknown"] = (
                     left_out.get("work: pull request unknown", 0) + 1
