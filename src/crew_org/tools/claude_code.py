@@ -35,6 +35,8 @@ ISOLATION_FLAGS = ("--safe-mode",)
 # reads its own OAuth credentials from the user's config, not from here.
 STRIPPED_ENV = (
     "GITHUB_TOKEN",
+    # The gh CLI's token: Claude's own GitHub account, when a tick runs from its session.
+    "GH_TOKEN",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_ID",
     "ANTHROPIC_API_KEY",

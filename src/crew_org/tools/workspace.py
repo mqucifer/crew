@@ -33,6 +33,8 @@ MAX_FAILURE_REPORT_CHARS = 200_000
 # Credentials must not be visible to code the model wrote.
 STRIPPED_ENV = (
     "GITHUB_TOKEN",
+    # The gh CLI's token: Claude's own GitHub account, when a tick runs from its session.
+    "GH_TOKEN",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_ID",
     "GITHUB_APP_INSTALLATION_ID",

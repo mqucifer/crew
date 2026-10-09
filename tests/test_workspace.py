@@ -78,17 +78,20 @@ def test_credentials_are_stripped_even_on_the_host_path(tmp_path, monkeypatch):
     """Host execution is an explicit opt-in, not a safe one — it must still
     refuse to hand a repository token to code the model wrote."""
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
+    monkeypatch.setenv("GH_TOKEN", "github_pat_secret")
     monkeypatch.setenv("HARMLESS", "visible")
     result = run(
         tmp_path,
         [
             "python3",
             "-c",
-            "import os; print(os.environ.get('GITHUB_TOKEN'), os.environ.get('HARMLESS'))",
+            "import os; e = os.environ; "
+            "print(e.get('GITHUB_TOKEN'), e.get('GH_TOKEN'), e.get('HARMLESS'))",
         ],
     )
     assert "ghs_secret" not in result.output
-    assert "None visible" in result.output
+    assert "github_pat_secret" not in result.output
+    assert "None None visible" in result.output
 
 
 def test_command_output_is_kept_whole(tmp_path):
