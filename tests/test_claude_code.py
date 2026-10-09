@@ -102,6 +102,7 @@ def test_escalation_cannot_push():
 
 def test_credentials_are_stripped_from_the_subprocess(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
+    monkeypatch.setenv("GH_TOKEN", "github_pat_secret")
     monkeypatch.setattr(claude_code, "available", lambda command="claude": True)
     seen: dict = {}
 
@@ -112,6 +113,7 @@ def test_credentials_are_stripped_from_the_subprocess(monkeypatch, tmp_path):
     monkeypatch.setattr(claude_code.subprocess, "run", capture)
     escalate(tmp_path, "fix it")
     assert "GITHUB_TOKEN" not in seen
+    assert "GH_TOKEN" not in seen
 
 
 def test_no_anthropic_api_key_is_ever_passed(monkeypatch, tmp_path):
