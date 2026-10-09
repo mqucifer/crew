@@ -98,3 +98,8 @@ is a log record with an `event.name`, so events and logs are the same stream.
   run, its card and the code that ran it by field (crew#449 part 2, from
   discussions 552 and 553). The Sponsor asked for the telemetry context to come
   first, for many kinds of experiments.
+- 2026-10-09: An exception to "never a live change during a sprint", by the
+  Sponsor's decision: part 2 (mqucifer/crew#570 to mqucifer/crew#574) merged
+  during Sprint 20, after its second tick. The sprint's remaining ticks are then
+  recorded with the joined context, and the real-tick check comes a day sooner.
+  The readers handle the old and new records, so the sprint's close reads both.
