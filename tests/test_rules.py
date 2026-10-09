@@ -25,6 +25,9 @@ def test_an_attempts_class_says_what_happened_to_the_work():
     assert kind_of("escalation.decided", "x", {"failure_class": "SCHEMA"}) is Kind.FORM_REFUSED
     assert kind_of("escalation.decided", "OVERWRITE — block", {}) is Kind.GUARD_REFUSED
     assert kind_of("llm.empty", "", {}) is Kind.EMPTY
+    # sprint-metrics#529, 2026-10-09: an empty answer read as a refused form.
+    empty = {"failure_class": "SCHEMA", "error": "Invalid response from LLM call - None or empty."}
+    assert kind_of("escalation.decided", "SCHEMA — retry_local", empty) is Kind.EMPTY
     assert kind_of("card.moved", "diff approved", {}) is None
 
 
@@ -76,3 +79,27 @@ def test_the_reference_explains_every_key_the_context_sends_out():
     from crew_org import log, reference
 
     assert set(log._CONTEXT_OUT) <= set(reference.CONTEXT)
+
+
+def test_an_edit_or_guard_retry_names_its_own_rule():
+    """An edit reaches the policy as SCHEMA, a guard as VERIFY or REGRESSION: their
+    retries named the schema or verify rule (sprint-metrics#529, 2026-10-09)."""
+    from crew_org.escalation import Disposition, EscalationDecision
+    from crew_org.flows.delivery import _local_rule
+
+    retry = EscalationDecision(
+        disposition=Disposition.RETRY_LOCAL, reason="", rule=Rule.SCHEMA_LOCAL_REPAIR
+    )
+    filed = EscalationDecision(
+        disposition=Disposition.FILE_PROMPT_DEFECT, reason="", rule=Rule.SCHEMA_PERSISTED
+    )
+    assert (
+        _local_rule(retry, Rule.EDIT_LOCAL_REPAIR, Rule.EDIT_NOT_APPLIED) is Rule.EDIT_LOCAL_REPAIR
+    )
+    assert (
+        _local_rule(filed, Rule.EDIT_LOCAL_REPAIR, Rule.EDIT_NOT_APPLIED) is Rule.EDIT_NOT_APPLIED
+    )
+    escalate = EscalationDecision(
+        disposition=Disposition.ESCALATE, reason="", rule=Rule.ESCALATION_ALLOWED
+    )
+    assert _local_rule(escalate, Rule.GUARD_LOCAL_REPAIR) is Rule.ESCALATION_ALLOWED

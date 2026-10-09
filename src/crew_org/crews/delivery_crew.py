@@ -307,7 +307,10 @@ class Implementation(BaseModel):
     # instructions ask. Required only of a first attempt (FirstAttempt).
     criteria_tests: list[CriterionTest] = Field(
         default_factory=list,
-        description="For each acceptance criterion, the test in this change that proves it",
+        description=(
+            "For each acceptance criterion a test proves, the test in this change that "
+            "proves it. A criterion about what a doc says has no entry here."
+        ),
     )
     new_files: list[FileWrite] = Field(
         default_factory=list,
@@ -355,6 +358,29 @@ class Implementation(BaseModel):
     @classmethod
     def _deleted_stay_in_the_repository(cls, value: list[str]) -> list[str]:
         return [FileWrite._stays_in_the_repository(v) for v in value]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drops_doc_criteria_with_no_test(cls, data: Any) -> Any:
+        """A doc criterion listed with no test is dropped, not refused.
+
+        A doc is proven by reading it, and the refusal says so. "For each
+        criterion" still drew one: sprint-metrics#529 listed `docs/service.md`
+        with an empty test five times on 2026-10-09, each refusal costing a
+        call, while its doc change was elsewhere in the answer. An entry with
+        a test in it is still refused, since a doc's wording isn't tested.
+        """
+        if not isinstance(data, dict) or not isinstance(data.get("criteria_tests"), list):
+            return data
+
+        def empty_doc(c: Any) -> bool:
+            return (
+                isinstance(c, dict)
+                and is_doc(str(c.get("path") or ""))
+                and not str(c.get("source") or "").strip()
+            )
+
+        return {**data, "criteria_tests": [c for c in data["criteria_tests"] if not empty_doc(c)]}
 
     @model_validator(mode="before")
     @classmethod
@@ -609,7 +635,7 @@ class FirstOrDone(FirstAttempt):
     criteria_tests: list[CriterionTest] = Field(
         default_factory=list,
         description=(
-            "Before the code: for each acceptance criterion, the test that proves it, "
+            "Before the code: for each acceptance criterion a test proves, that test, "
             "written in full. The crew adds each test to its file, so don't write these "
             "tests again in new_files or edits. Empty only for an already-done answer."
         ),
