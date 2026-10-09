@@ -30,3 +30,6 @@ build/
 
 # --- Runtime state: reconstructible, and may quote issue content ---------
 var/
+
+# Claude Code settings for this machine only: they can hold a token (crew#566).
+.claude/settings.local.json
