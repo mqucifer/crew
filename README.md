@@ -47,7 +47,12 @@ crew review                    # review every open pull request
 crew qa                        # verify delivered work against its criteria
 crew sprint close              # merge what you approved, and report
 crew revert <pr> --reason "…"  # undo a merged change, through review like any other
+crew log --follow              # what a tick is doing and deciding, as it happens
+crew runs --card repo#N        # a card's runs, joined from the record alone
 ```
+
+What the crew records, how its records join, and what leaves the machine:
+[docs/the-crews-record.md](docs/the-crews-record.md).
 
 A tick runs to quiescence. The human controls when the process runs, not the
 individual transitions between states.
