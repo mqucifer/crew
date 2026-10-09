@@ -84,6 +84,14 @@ class EventKind(StrEnum):
     FILES_SHOWN = "files.shown"
     FILES_ASKED = "files.asked"
 
+    # A crew issue and the cards it's about (crew#449, discussion 552): the link
+    # from a run's trouble to the issue it led to, as a field, whoever filed it.
+    ISSUE_CITES = "issue.cites"
+    # A bare number left unlinked because no such issue exists, and a comment
+    # from an account outside `trust` that was ignored (crew#456).
+    REFERENCE_UNRESOLVED = "reference.unresolved"
+    COMMENT_IGNORED = "comment.ignored"
+
     NOTE = "note"
 
 

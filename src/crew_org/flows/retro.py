@@ -22,6 +22,7 @@ from crew_org.crews.retro_crew import ProcessDefect, Retro
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.artifacts import link_references, signed
 from crew_org.flows.attempts import RECURRING_CARDS, Cause
+from crew_org.flows.deployed import live_at
 from crew_org.flows.standup import STANDUP_LABEL
 from crew_org.tools.github_issues import IssueClient
 
@@ -159,6 +160,7 @@ def record_retro(
     recurring: list | tuple = (),
     layout: RetroLayout | None = None,
     cards: Iterable[tuple[str | None, int | None]] = (),
+    commits: list[tuple[str, str]] | None = None,
 ) -> RetroRecord:
     """File each defect where it belongs, then the retro issue naming them all.
 
@@ -225,6 +227,7 @@ def record_retro(
         record=record,
         delivery_repos=delivery_repos,
         board_cards=cards,
+        commits=commits,
     )
 
     issue = issues.create(
@@ -372,7 +375,11 @@ _CAUSE_KEY = re.compile(r"<!-- crew:cause:(\w+) -->")
 
 
 def fixes_by_cause(
-    issues: IssueClient, crew_repo: str, findings: list[dict]
+    issues: IssueClient,
+    crew_repo: str,
+    findings: list[dict],
+    *,
+    commits: list[tuple[str, str]] | None = None,
 ) -> dict[str, tuple[str, str]]:
     """Each cause's latest fix: (what fixed it, when), from the crew repository (#199).
 
@@ -397,9 +404,34 @@ def fixes_by_cause(
         pulls = []
     for pull in pulls:
         if pull.get("merged_at"):
+            # When it went live, where the record knows: the first tick that ran
+            # it (crew#449). Its merge, where no recorded tick has.
+            went_live = None
+            if commits and pull.get("merge_commit_sha"):
+                went_live = live_at(pull["merge_commit_sha"], commits)
             for key in _CAUSE_KEY.findall(pull.get("body") or ""):
-                note(key, f"{crew_repo} PR #{pull['number']}", pull["merged_at"])
+                note(key, f"{crew_repo} PR #{pull['number']}", went_live or pull["merged_at"])
     return found
+
+
+def qualified(
+    numbers: Iterable[int],
+    cards: Iterable[tuple[str | None, int | None]],
+    repos: Iterable[str] = (),
+) -> list[str]:
+    """Each card number as `repo#n`, where the board says which repository is its.
+
+    A number two delivery repositories both have stays `#n`: guessing would join
+    the issue to the wrong card.
+    """
+    within = set(repos)
+    owners: dict[int, set[str]] = {}
+    for repo, number in cards:
+        if repo and number is not None and (not within or repo in within):
+            owners.setdefault(number, set()).add(repo)
+    return [
+        f"{next(iter(owners[n]))}#{n}" if len(owners.get(n, ())) == 1 else f"#{n}" for n in numbers
+    ]
 
 
 def _file_recurring(
@@ -412,6 +444,7 @@ def _file_recurring(
     record: RetroRecord,
     delivery_repos: Iterable[str] = (),
     board_cards: Iterable[tuple[str | None, int | None]] = (),
+    commits: list[tuple[str, str]] | None = None,
 ) -> list[str]:
     """File each recurring cause once, with its count and cards as evidence.
 
@@ -419,6 +452,7 @@ def _file_recurring(
     parse failure is filed as a prompt or schema defect: the escalation policy
     already reads a persistent SCHEMA failure that way.
     """
+    known = list(board_cards)
     causes = [c for c in recurring if c.recurring]
     if not causes:
         return []
@@ -427,7 +461,7 @@ def _file_recurring(
     except Exception:  # noqa: BLE001
         findings = []
     open_findings = [i for i in findings if i.get("state") == "open"]
-    fixes = fixes_by_cause(issues, crew_repo, findings)
+    fixes = fixes_by_cause(issues, crew_repo, findings, commits=commits)
     lines: list[str] = []
     for cause in causes:
         mark = CAUSE_MARKER.format(key=cause.key)
@@ -482,7 +516,7 @@ def _file_recurring(
                 owner=issues.owner,
                 home=crew_repo,
                 delivery=list(delivery_repos),
-                cards=board_cards,
+                cards=known,
             )
             issue = issues.create(
                 crew_repo,
@@ -501,7 +535,15 @@ def _file_recurring(
                 role=ROLE,
                 card=issue["number"],
                 summary=f"recurring {cause.failure_class}: {cause.cause}"[:100],
-                detail={"repo": crew_repo, "sprint": sprint, "cards": cause.cards},
+                detail={
+                    "repo": crew_repo,
+                    "sprint": sprint,
+                    # Qualified, so the issue joins the cards it's about by field,
+                    # not by a parse of its text (crew#449, discussion 552).
+                    "cards": qualified(cause.cards, known, delivery_repos),
+                    "cause": cause.key,
+                    "failure_class": cause.failure_class,
+                },
             )
         )
     return lines

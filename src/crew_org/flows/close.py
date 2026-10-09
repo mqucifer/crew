@@ -19,6 +19,7 @@ from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, attributed
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
+from crew_org.flows.deployed import commits_seen
 from crew_org.flows.loops import (
     from_comments,
     loops_text,
@@ -494,6 +495,8 @@ def close_sprint(
                 recurring=causes_of(report),
                 layout=layout,
                 cards=[(c.repo, c.number) for c in cards],
+                # Which code each tick ran, so a fix is dated by when it went live.
+                commits=commits_seen(events_dir) if events_dir is not None else None,
             )
         except Exception as exc:  # noqa: BLE001
             # The retro is still printed. What failed is the record of it.
