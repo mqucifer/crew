@@ -43,6 +43,9 @@ def test_a_story_sent_back_says_why_and_with_what():
         "epic": 54,
         "reason": "gate round trips",
         "with": [98],
+        # The return as names (crew#449): what kind, and which rule.
+        "failure_kind": "gate_returned",
+        "rule": "story.gate_round_trips",
     }
 
 

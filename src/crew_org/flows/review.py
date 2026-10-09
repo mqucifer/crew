@@ -27,6 +27,7 @@ from crew_org.flows.presentation_notes import story_notes
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
+from crew_org.rules import Rule
 from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
@@ -384,6 +385,7 @@ def review_open_pulls(
                         card=card.number,
                         frm=REVIEWING,
                         summary=f"changes requested — {len(verdict.findings)} findings",
+                        rule=Rule.REVIEW_CHANGES_REQUESTED,
                         # What the retro counts the return as (#254).
                         finding=next(
                             (f"{f.file}: {f.concern}" for f in verdict.findings if f.blocking), ""

@@ -456,8 +456,13 @@ def from_event(event: Any) -> None:
     attrs = {**detail, **({"card": event.card} if event.card is not None else {})}
     if event.role:
         attrs["role"] = event.role
+    level = _LEVELS.get(kind, logging.INFO)
+    if detail.get("failure_kind") == "form_refused":
+        # The repair loop's normal path, not an outage: logged as a WARNING, it
+        # read as the model failing (crew#449, crew#550).
+        level = logging.INFO
     _mirror.log(
-        _LEVELS.get(kind, logging.INFO),
+        level,
         message,
         extra={"event_name": _EVENTS + kind, "attrs": attrs},
     )
