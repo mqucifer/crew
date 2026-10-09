@@ -15,10 +15,11 @@ takes from it only what its own contract allows (ADRs 0020 and 0021).
 |---|---|---|
 | `var/events/*.jsonl` | The event log: what code reads and acts on, one line per event | No |
 | `var/logs/crew.jsonl` | Every log record, levelled, message included; events mirrored as `events.<kind>` | No |
-| OTLP to the Sponsor's collector, then Grafana | Logs and traces: names, ids and numbers only | Yes, without content (ADR 0010) |
+| `var/telemetry/*.jsonl`, tailed by the Sponsor's collector into Grafana | Every event, content-free: names, ids and numbers only | Yes, without content (ADR 0010) |
+| OTLP to the collector, then Grafana | The log's own records (not the mirrored events) and the traces, content-free | Yes, without content |
 
-Without `telemetry.otlp_endpoint`, a content-free projection goes to `var/telemetry/` for the
-collector to tail instead.
+Events reach Grafana once, through `var/telemetry`. The OTLP handler leaves the mirrored
+`events.<kind>` records out, so they aren't sent twice.
 
 ## How records join
 
@@ -58,12 +59,16 @@ issue.cites ─► cards (repo#n)        a fix's merge commit ─► the first t
 | Every event of one run | `jq -c 'select(.ctx.run == "RUN")' var/events/*.jsonl` |
 | What blocked cards this sprint, by rule | `jq -r 'select(.kind == "card.blocked" and .ctx.sprint == "Sprint 20") \| .detail.rule' var/events/*.jsonl \| sort \| uniq -c` |
 | Which issues cite a card | `jq -c 'select(.kind == "issue.cites" and (.detail.cites \| index("sprint-metrics#475")))' var/events/*.jsonl` |
-| In Grafana, one rule's records | `{service_name="crew"} \| crew_rule="escalation.budget"` |
-| In Grafana, records by rule over an hour (instant query) | `sum by (crew_rule) (count_over_time({service_name="crew"} \| crew_rule!="" [1h]))` |
-| In Grafana, what one commit's ticks did | `{service_name="crew", service_version="COMMIT"}` |
+| In Grafana, one run's events | `{service_name="crew"} \| run="RUN"` |
+| In Grafana, one rule's events | `{service_name="crew"} \| rule="escalation.budget"` |
+| In Grafana, a run's events by kind and rule (instant query) | `sum by (failure_kind, rule) (count_over_time({service_name="crew"} \| run="RUN" [6h]))` |
+| In Grafana, what one commit's ticks did | `{service_name="crew"} \| commit="COMMIT"` |
+| In Grafana, a tick's own log lines | `{service_name="crew"} \| crew_tick="TICK"` |
 
-In Grafana the context's keys are attributes named `crew_<key>`: `crew_run`, `crew_card`,
-`crew_rule`, `crew_failure_kind` and so on.
+**The names differ by path.** An event, read from `var/telemetry`, carries the context's keys as
+they are: `run`, `card`, `rule`, `failure_kind`, `commit`. A log line sent over OTLP carries them
+as `crew_<key>` (`crew_run`, `crew_tick`), with the commit as `service_version` and the tick as
+`service.instance.id`. Both carry `trace_id`, so an event and a log line of one run join on it.
 
 ## What leaves, and what stays
 
