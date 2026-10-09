@@ -776,6 +776,32 @@ def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
     )(crew)
 
 
+# What the issue client dropped that's already recorded, so each is recorded once.
+_DROPPED_REPORTED: set[tuple[Any, ...]] = set()
+
+
+def _record_citations(crew: Crew, cards: list[Any]) -> None:
+    """Record the cards each crew issue changed since the last pass cites (crew#449).
+
+    Any repository with cards on the board counts, not only the ones delivered to
+    now: a paused project's cards are still cited.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from crew_org.flows import citations  # noqa: PLC0415
+
+    citations.record_dropped(crew.issues, crew.sink, reported=_DROPPED_REPORTED)
+    if not crew.crew_repo:
+        return
+    citations.record_citations(
+        crew.issues,
+        crew.sink,
+        crew_repo=crew.crew_repo,
+        repos={*crew.repos, crew.crew_repo, *(c.repo for c in cards if c.repo)},
+        events_dir=crew.sink.path.parent if crew.sink.path else Path("var/events"),
+    )
+
+
 def _record_seen_moves(crew: Crew, cards: list[Any]) -> None:
     """Log the moves made since the last pass by anyone but the crew (crew#521).
 
@@ -881,6 +907,12 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                 _record_seen_moves(crew, cards)
             except Exception as exc:  # noqa: BLE001
                 crew.sink.note(EventKind.NOTE, f"moves by others not recorded: {exc}"[:160])
+        # Which crew issue is about which cards, and what the issue client dropped
+        # (crew#449): best effort, caught up by the next pass.
+        try:
+            _record_citations(crew, cards)
+        except Exception as exc:  # noqa: BLE001
+            crew.sink.note(EventKind.NOTE, f"citations not recorded: {exc}"[:160])
         crew.sink.note(
             EventKind.TICK_STARTED,
             f"pass {result.passes}",

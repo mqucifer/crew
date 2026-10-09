@@ -119,4 +119,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `github.throttled`
 - `files.shown`
 - `files.asked`
+- `issue.cites`
+- `reference.unresolved`
+- `comment.ignored`
 - `note`

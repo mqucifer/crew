@@ -1633,6 +1633,26 @@ def reference_command() -> None:
     console.print(f"wrote {reference.write().relative_to(reference.ROOT)}")
 
 
+@app.command(name="runs")
+def runs_command(
+    card: str = typer.Option(..., "--card", help="The card, as repo#N: sprint-metrics#475."),
+) -> None:
+    """A card's runs, joined from the event log alone (crew#449).
+
+    For each role's run: what it ran with, what went wrong and which rule decided,
+    how it ended, and the crew issues that cite the card.
+    """
+    from crew_org.flows import runs  # noqa: PLC0415
+
+    repo, _, number = card.partition("#")
+    if not repo or not number.isdigit():
+        console.print("[red]Name the card as repo#N, such as sprint-metrics#475.[/]")
+        raise typer.Exit(code=2)
+    found, citing = runs.card_runs(VAR / "events", repo, int(number))
+    for line in runs.render(repo, int(number), found, citing):
+        typer.echo(line)
+
+
 @app.command(name="log")
 def log_command(
     level: str = typer.Option("INFO", "--level", help="DEBUG, INFO, WARNING, ERROR."),
