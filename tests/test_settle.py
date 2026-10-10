@@ -779,3 +779,108 @@ def test_writing_the_conclusion_posts_one_comment_naming_its_rows(monkeypatch):
     [note] = [body for kind, body in gh.writes if kind == "comment"]
     assert note.startswith(record.CHANGE.format("R1"))
     assert "by the Product Owner" in note and "Settled from the panel's notes." in note
+
+
+# --- the Architect settles the design questions before the split (ADR 0018) ----------------
+
+from crew_org.crews.settle_crew import DesignAnswer, DesignSettlement  # noqa: E402
+
+DESIGNED = (
+    f"{APPROVED}\n\n## Refinement conclusion\n\n"
+    "| ID | Status | Context | Decision | Consequences | Source |\n|---|---|---|---|---|---|\n"
+    "| R1 | accepted | History | Postgres | A client | D1 |\n\n"
+    "| ID | Open question | Impact | Settled by |\n|---|---|---|---|\n"
+    "| Q1 | JSON field names? | Every reader | Design note |\n"
+    "| Q2 | Log format? | Nobody | Implementer |\n"
+)
+
+
+def answered(*ids):
+    return DesignSettlement(
+        settled=[
+            DesignAnswer(
+                question=i,
+                decision="first_attempt_count, first_attempt_total",
+                consequences="Every story names these keys",
+                source="metrics.py ALL_METRICS naming",
+            )
+            for i in ids
+        ]
+    )
+
+
+def design(gh, monkeypatch, *answers):
+    asked: list[dict] = []
+    queue = list(answers)
+
+    def fake(ctx, **kw):
+        asked.append(kw)
+        return queue.pop(0)
+
+    monkeypatch.setattr(flow, "settle_design", fake)
+    result = flow.settle_design_questions(
+        gh.client(), EventSink(None), repo="sprint-metrics", epic=406, context=context(), code="MAP"
+    )
+    return result, asked
+
+
+def test_the_architect_is_shown_only_its_questions_with_the_record_and_the_code(monkeypatch):
+    _, asked = design(Github(DESIGNED), monkeypatch, answered("Q1"))
+    assert "| Q1 | JSON field names? |" in asked[0]["questions"]
+    assert "Q2" not in asked[0]["questions"], "the implementer's question isn't the Architect's"
+    assert "| R1 |" in asked[0]["record"] and asked[0]["code"] == "MAP"
+
+
+def test_each_answer_becomes_a_binding_row_by_the_architect_that_replaces_its_question(
+    monkeypatch,
+):
+    gh = Github(DESIGNED)
+    result, _ = design(gh, monkeypatch, answered("Q1"))
+    assert result.outcome is flow.Outcome.WRITTEN
+    found = record.parse(record.split(gh.body)[1])
+    row = found.row("R2")
+    assert row.set_by == "Architect" and row.replaces == "Q1" and row.binding
+    assert "first_attempt_count" in row.decision
+    assert [q.id for q in found.open] == ["Q2"] and found.for_architect() == []
+    assert gh.body.startswith(APPROVED)
+
+
+def test_the_change_is_posted_once_naming_the_question_it_settles(monkeypatch):
+    gh = Github(DESIGNED)
+    design(gh, monkeypatch, answered("Q1"))
+    [note] = [body for kind, body in gh.writes if kind == "comment"]
+    assert "**R2** settles Q1" in note and "by the Architect" in note
+
+
+def test_a_question_left_out_is_asked_for_again_by_name(monkeypatch):
+    _, asked = design(Github(DESIGNED), monkeypatch, DesignSettlement(settled=[]), answered("Q1"))
+    assert "You didn't settle Q1" in asked[1]["feedback"]
+
+
+def test_a_question_never_settled_is_for_a_person_and_the_epic_waits(monkeypatch):
+    gh = Github(DESIGNED)
+    result, _ = design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    assert result.outcome is flow.Outcome.WAITING
+    assert "needs:human" in gh.labels
+    assert any(flow.DESIGN_QUESTION_MARKER in body for kind, body in gh.writes if kind == "comment")
+    assert record.parse(record.split(gh.body)[1]).for_architect(), "nothing was written"
+
+
+def test_an_epic_with_nothing_for_the_architect_makes_no_call(monkeypatch):
+    gh = Github(DESIGNED.replace("| Design note |", "| Implementer |"))
+    result, asked = design(gh, monkeypatch)
+    assert result.outcome is flow.Outcome.ALREADY and asked == []
+
+
+def test_an_answer_that_ran_into_its_limit_is_sent_back():
+    from crew_org.crews.settle_crew import DECISION_CHARS, check_design_cut
+
+    cut = DesignSettlement(
+        settled=[
+            DesignAnswer(
+                question="Q1", decision="x" * DECISION_CHARS, consequences="cc", source="ss"
+            )
+        ]
+    )
+    with pytest.raises(Unsettled, match="Q1 decision"):
+        check_design_cut(cut)

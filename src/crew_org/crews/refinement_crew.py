@@ -609,9 +609,10 @@ def split_epic(
                 f"## The epic's conclusion\n\n{conclusion}\n\n"
                 "Four roles read this epic and the Product Owner settled what they raised, "
                 "before this split. Its rows are decided: a story may not contradict one, and "
-                "each story names the rows it follows in `follows`. Don't settle an open "
-                "question (Q): the Architect does that after the split, so no story answers "
-                "one or waits for one unless the epic's own text says so. A row (R) that no "
+                "each story names the rows it follows in `follows`. The Architect settled the "
+                "design questions before this split, as rows. A question still open (Q) is "
+                "left to whoever builds it: no story's criterion settles it or waits for it, "
+                "unless the epic's own text says so. A row (R) that no "
                 "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
                 "items for infra (I) need no entry: no story takes them on.\n\n"
                 if conclusion

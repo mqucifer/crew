@@ -38,7 +38,8 @@ CONCLUSION = (
     "| R2 | accepted | Counting | Where it merges | Group by merge date | Goal decision D3 |\n"
     "| R3 | accepted | Proof | CI only | A CI check | Goal decision D6 |\n\n"
     "| ID | Open question | Impact | Settled by |\n|---|---|---|---|\n"
-    "| Q1 | Which key? | The store | Design note |\n\n"
+    # Left to the implementer: a question open for the Architect holds the split (ADR 0018).
+    "| Q1 | Which key? | The store | Implementer |\n\n"
     "_Settled by the Product Owner._"
 )
 BODY = f"{APPROVED}\n\n{CONCLUSION}\n"
@@ -374,8 +375,8 @@ def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repos
 ):
     seen = {}
 
-    def panel_step(issues, sink, result, epic, repo, *, project, search):
-        seen.update(repo=repo, search=search)
+    def panel_step(issues, sink, result, epic, repo, *, project, search, code):
+        seen.update(repo=repo, search=search, code=code)
         return True
 
     monkeypatch.setattr(board_flow, "panel_step", panel_step)
@@ -457,3 +458,57 @@ def test_the_split_is_told_questions_and_infra_items_need_no_entry(monkeypatch):
     with contextlib.suppress(Exception):
         refinement_crew.split_epic("E", "body", conclusion=CONCLUSION)
     assert "Open questions (Q) and items for infra (I) need no entry" in seen["description"]
+
+
+# --- the Architect's questions, before the split (ADR 0018) ----------------------------------
+
+OPEN_FOR_ARCHITECT = BODY.replace("| The store | Implementer |", "| The store | Architect |")
+
+
+class OpenForArchitect(FakeIssues):
+    def get(self, repo: str, number: int) -> dict:
+        return {"body": OPEN_FOR_ARCHITECT, "state": "open"}
+
+
+def test_a_question_open_for_the_architect_holds_the_split(monkeypatch):
+    result, asked, _ = run_tick(
+        monkeypatch, proposal(story("A", "R1", "R2", "R3")), issues=OpenForArchitect()
+    )
+    assert asked == []
+    assert any("Q1 still open for the Architect" in why for _, why in result.skipped)
+
+
+def test_the_architect_settles_an_open_question_before_the_split(monkeypatch):
+    calls = stub(monkeypatch)
+    asked = {}
+
+    def design(issues, sink, **kw):
+        asked.update(kw)
+        return settle_flow.Settled(settle_flow.Outcome.WRITTEN)
+
+    monkeypatch.setattr(settle_flow, "settle_design_questions", design)
+    ok, _ = step(Gh(OPEN_FOR_ARCHITECT))
+    assert ok and calls["settle"] == 0, "the conclusion was already written"
+    assert asked["epic"] == 406 and calls["gather"], "the Architect is shown the Goal"
+
+
+def test_an_epic_whose_design_questions_wait_for_a_person_is_not_split(monkeypatch):
+    stub(monkeypatch)
+    monkeypatch.setattr(
+        settle_flow,
+        "settle_design_questions",
+        lambda *a, **k: settle_flow.Settled(settle_flow.Outcome.WAITING),
+    )
+    ok, result = step(Gh(OPEN_FOR_ARCHITECT))
+    assert not ok and "design questions" in result.skipped[0][1]
+
+
+def test_no_question_for_the_architect_means_no_architect_call(monkeypatch):
+    stub(monkeypatch)
+    monkeypatch.setattr(
+        settle_flow,
+        "settle_design_questions",
+        lambda *a, **k: pytest.fail("the Architect was asked with nothing open"),
+    )
+    ok, _ = step(Gh(BODY))
+    assert ok

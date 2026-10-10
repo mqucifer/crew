@@ -90,7 +90,7 @@ def parts(
             + (
                 ";\n- a row of the epic's conclusion above: a criterion that expects the "
                 "opposite of what a row decides. A criterion that decides an open question "
-                "(Q) the row table leaves for the design note is a conflict too, since no "
+                "(Q) the record leaves to whoever builds it is a conflict too, since no "
                 "story settles it, unless the Goal, the project's decision log, what was "
                 "decided on this epic or a decided row already says what the criterion "
                 "states: restating a decision isn't deciding the question"
