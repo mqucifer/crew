@@ -53,6 +53,37 @@ class Part:
     text: str
 
 
+# How many rounds of tool calls a step may make before it answers: enough to read the
+# few files a step finds it needs, not a crawl of the repository.
+TOOL_ROUNDS = 4
+# Asked once the tool rounds end, when the answer itself is wanted in its form.
+ANSWER_NOW = "You have what you need. Give your answer now, in full and in its form."
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A tool a step's model may call before it answers: its schema, and what runs it.
+
+    `run` takes the call's arguments and returns what the model is told. It never
+    raises: what went wrong is the answer, so the model can ask differently.
+    """
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    run: Callable[[dict[str, Any]], str]
+
+    def spec(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
 class Refused(ValueError):
     """Every attempt was refused. The last reason is the message."""
 
@@ -170,17 +201,24 @@ def ask[Answer: BaseModel](
     step: str | None = None,
     check: Callable[[Answer], None] | None = None,
     attempts: int = ATTEMPTS,
+    tools: list[Tool] | None = None,
+    rounds: int = TOOL_ROUNDS,
     send: Callable[[dict[str, Any]], dict[str, Any]] = post,
 ) -> Answer:
     """The role's answer, in its form, asked for again with the reason when refused.
 
     `check` is the step's own refusal rules, beyond the schema: it raises
     `ValueError` with the reason, and the model is told that reason.
+
+    With `tools`, the model first calls them in rounds, without the answer's schema,
+    and is given each result; when it stops, or after `rounds`, it is asked for the
+    answer in its form (ADR 0025). A schema constrains every token, so a call held
+    to one can't also call a tool: CrewAI dropped the schema instead.
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
     system = system_text(spec)
-    messages: list[dict[str, str]] = [
+    messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": task_text(parts, expected)},
     ]
@@ -190,6 +228,8 @@ def ask[Answer: BaseModel](
         "output_schema": f"{answer.__name__}:{_fingerprint(json.dumps(form, sort_keys=True))}",
     }
     sizes = {p.name: len(p.text) for p in parts}
+    if tools:
+        messages = _use_tools(spec, messages, tools, rounds=rounds, send=send, sizes=sizes)
     reason = ""
     for attempt in range(1, attempts + 1):
         body = {
@@ -257,6 +297,79 @@ def ask[Answer: BaseModel](
                 }
             )
     raise Refused(reason, attempts)
+
+
+def _use_tools(
+    spec: dict[str, Any],
+    messages: list[dict[str, Any]],
+    tools: list[Tool],
+    *,
+    rounds: int,
+    send: Callable[[dict[str, Any]], dict[str, Any]],
+    sizes: dict[str, int],
+) -> list[dict[str, Any]]:
+    """The conversation after the tool rounds, ending with the request for the answer."""
+    by_name = {t.name: t for t in tools}
+    params = spec.get("llm_params") or {}
+    for turn in range(1, rounds + 1):
+        body = {
+            "model": spec.get("llm", "crew-local"),
+            "messages": messages,
+            "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
+            "tools": [t.spec() for t in tools],
+            "tool_choice": "auto",
+        }
+        detail = {"model": body["model"], "call_id": str(uuid.uuid4()), "round": turn}
+        record(EventKind.LLM_CALL_STARTED, spec["role"], role=spec["role"], parts=sizes, **detail)
+        started = time.monotonic()
+        data = send(body)
+        message = ((data.get("choices") or [{}])[0]).get("message") or {}
+        calls_made = message.get("tool_calls") or []
+        detail.update(
+            {
+                "response_id": str(data.get("id", "")),
+                "duration_s": round(time.monotonic() - started, 3),
+                "tool_calls": len(calls_made),
+                **_usage(data),
+            }
+        )
+        record(EventKind.LLM_CALL_FINISHED, spec["role"], role=spec["role"], **detail)
+        if not calls_made:
+            if (message.get("content") or "").strip():
+                messages = [*messages, {"role": "assistant", "content": message["content"]}]
+            break
+        messages = [
+            *messages,
+            {
+                "role": "assistant",
+                "content": message.get("content") or "",
+                "tool_calls": calls_made,
+            },
+        ]
+        for made in calls_made:
+            function = made.get("function") or {}
+            name = str(function.get("name") or "")
+            try:
+                arguments = json.loads(function.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                arguments = None
+            tool = by_name.get(name)
+            if tool is None:
+                said = f"There is no tool named {name!r}: use one of {', '.join(by_name)}."
+            elif not isinstance(arguments, dict):
+                said = "Those arguments aren't a JSON object: call the tool again."
+            else:
+                said = tool.run(arguments)
+            record(
+                EventKind.TOOL_FINISHED,
+                name,
+                role=spec["role"],
+                tool=name,
+                round=turn,
+                chars=len(said),
+            )
+            messages.append({"role": "tool", "tool_call_id": made.get("id", ""), "content": said})
+    return [*messages, {"role": "user", "content": ANSWER_NOW}]
 
 
 def _reason(exc: Exception) -> str:

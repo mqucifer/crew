@@ -90,3 +90,7 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   reconsidering a framework are recorded (Sponsor, "neither").
 - **2026-10-10:** the module is built, `crew_org/calls.py`, and the criteria check is its
   first site (crew#583, step D1a). The other sites wait for its proof on a real epic.
+- **2026-10-10:** tools in the call layer (crew#583, step D2). A step's model calls
+  its tools in rounds, without the answer's schema, and is given each result; then
+  it is asked for the answer in its form. Proven once through LiteLLM with a read
+  tool: two files read in one round, then a valid answer.
