@@ -898,23 +898,35 @@ def deliver_story(
         # Recomputed every pass: a repair must see the files it just wrote, or
         # it is fixing code it cannot read. Focused on what the work names
         # when the repository is large (#231): the story, the gates' verdicts,
-        # the last failure, and what the Developer asked for.
+        # the last failure, and what the Developer asked for. Under a ceiling,
+        # what it wrote and the failing tests come first, and what only a test
+        # report names comes last (crew#591): sprint-metrics#537's repair was
+        # shown every file its report's tracebacks passed through.
+        failing = list(dict.fromkeys(t["id"].split("::")[0] for t in failing_tests(feedback)))
+        report = feedback if failing else ""
         about = "\n\n".join([story_text, prior, feedback])
-        context, focus = focused_context(worktree, about=about, extra=asked)
+        context, focus = focused_context(
+            worktree,
+            about="\n\n".join([story_text, prior, "" if failing else feedback]),
+            extra=asked,
+            written=bounds.touched(implementation) if implementation is not None else (),
+            failing=failing,
+            report=report,
+        )
         sink.emit(
             CrewEvent(
                 kind=EventKind.FILES_SHOWN,
                 role="Developer",
                 card=number,
                 summary=f"#{number} context: {focus.chars:,} chars"
-                + (
-                    f", {len(focus.shown)} files in full" if focus.focused else ", whole repository"
-                ),
+                + (f", {len(focus.shown)} files in full" if focus.focused else ", whole repository")
+                + (f", {len(focus.omitted)} left out" if focus.omitted else ""),
                 detail={
                     "context_chars": focus.chars,
                     "focused": focus.focused,
                     "shown": focus.shown,
                     "asked": focus.asked,
+                    "omitted": focus.omitted,
                     # What the selection read to choose them (discussion 553). Local
                     # only: it's the story, and telemetry never takes it (ADR 0010).
                     "selection_text": about[:SELECTION_TEXT_CHARS],
