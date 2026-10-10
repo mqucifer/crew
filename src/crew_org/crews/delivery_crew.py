@@ -324,7 +324,9 @@ class Implementation(BaseModel):
         default_factory=list,
         description=(
             "Changes to existing files that are not Python (pyproject.toml, README.md, "
-            "CI workflows), each quoting the text it replaces."
+            "CI workflows), and to a Python file's lines outside any function or class "
+            "(its imports, an `if __name__` block, its docstring), each quoting the text "
+            "it replaces."
         ),
     )
     moves: list[Move] = Field(
