@@ -492,7 +492,15 @@ class Github:
             self.body = json.loads(request.content)["body"]
             self.writes.append(("body", self.body))
             return httpx.Response(200, json={})
-        return httpx.Response(200, json={"number": 406, "body": self.body, "state": "open"})
+        return httpx.Response(
+            200,
+            json={
+                "number": 406,
+                "body": self.body,
+                "state": "open",
+                "labels": [{"name": name} for name in self.labels],
+            },
+        )
 
     def client(self) -> IssueClient:
         return IssueClient(
@@ -864,6 +872,29 @@ def test_a_question_never_settled_is_for_a_person_and_the_epic_waits(monkeypatch
     assert "needs:human" in gh.labels
     assert any(flow.DESIGN_QUESTION_MARKER in body for kind, body in gh.writes if kind == "comment")
     assert record.parse(record.split(gh.body)[1]).for_architect(), "nothing was written"
+
+
+def test_the_approval_gates_label_doesnt_hold_an_approved_epic(monkeypatch):
+    # Every proposed epic carries needs:human until the split (crew#608).
+    gh = Github(DESIGNED)
+    gh.labels = ["needs:human"]
+    result, asked = design(gh, monkeypatch, answered("Q1"))
+    assert result.outcome is flow.Outcome.WRITTEN and len(asked) == 1
+
+
+def test_an_epic_waiting_on_the_architects_question_makes_no_call(monkeypatch):
+    gh = Github(DESIGNED)
+    design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    result, asked = design(gh, monkeypatch)
+    assert result.outcome is flow.Outcome.WAITING and asked == []
+
+
+def test_taking_the_label_off_has_the_architect_try_again(monkeypatch):
+    gh = Github(DESIGNED)
+    design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    gh.labels = []
+    result, asked = design(gh, monkeypatch, answered("Q1"))
+    assert result.outcome is flow.Outcome.WRITTEN and len(asked) == 1
 
 
 def test_an_epic_with_nothing_for_the_architect_makes_no_call(monkeypatch):

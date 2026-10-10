@@ -422,7 +422,12 @@ def settle_design_questions(
         (label.get("name") if isinstance(label, dict) else str(label))
         for label in issue.get("labels") or []
     }
-    if NEEDS_HUMAN in labels:
+    # Only its own wait holds it. The label is on every epic from its proposal
+    # (the approval gate) and after a settle question, until the split takes it
+    # off; read alone, it kept every approved epic from reaching the split (crew#608).
+    if NEEDS_HUMAN in labels and any(
+        DESIGN_QUESTION_MARKER in (c.get("body") or "") for c in issues.comments(repo, epic)
+    ):
         return Settled(Outcome.WAITING)
     ids, table = record_flow.architect_questions(text)
     try:
