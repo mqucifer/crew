@@ -402,3 +402,56 @@ def test_a_repair_records_what_it_left_out(harness, monkeypatch, tmp_path):  # n
         f"{PKG}/serve.py",
     ]
     assert "3 left out" in repair.summary
+
+
+# --- the graph: imports shown, importers and covering tests named (crew#583, C3) ------------
+
+
+@pytest.fixture
+def graph(repo: Path) -> Path:
+    (repo / PKG / "card.py").write_text("class Card:\n    points: int = 0\n")
+    (repo / PKG / "metrics.py").write_text(
+        "from sprint_metrics.card import Card\n\n\ndef calculate_cycle_time(cards):\n    return 0\n"
+    )
+    (repo / PKG / "report.py").write_text(
+        "from sprint_metrics.metrics import calculate_cycle_time\n\n\ndef format_table(cards):\n"
+        "    return calculate_cycle_time(cards)\n"
+    )
+    return repo
+
+
+class Map:
+    """The coverage map, standing in: which tests run which definitions."""
+
+    tests = {
+        "tests/test_report.py::test_table": {f"{PKG}/metrics.py::calculate_cycle_time", "a", "b"},
+        "tests/test_schema.py::test_keys": {f"{PKG}/metrics.py::calculate_cycle_time"},
+    }
+
+    def covering(self, files=(), names=()):
+        return sorted(t for t, units in self.tests.items() if units & set(names))
+
+    def executed_by(self, test):
+        return self.tests[test]
+
+
+def test_the_named_codes_own_imports_are_shown_with_it(graph: Path, monkeypatch):
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    _, focus = focused_context(graph, about=f"Change {PKG}/metrics.py")
+    assert f"{PKG}/card.py" in focus.shown
+
+
+def test_what_imports_it_and_the_tests_that_run_it_are_named_not_shown(graph, monkeypatch):
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    text, focus = focused_context(graph, about=f"Change {PKG}/metrics.py", coverage=Map())
+    close = text.split("Close to this work", 1)[1].split("Every other file", 1)[0]
+    assert f"`{PKG}/report.py`" in close and f"{PKG}/report.py" not in focus.shown
+    assert close.index("tests/test_schema.py::test_keys") < close.index(
+        "tests/test_report.py::test_table"
+    ), "the most specific test first"
+
+
+def test_without_a_map_only_the_importers_are_named(graph, monkeypatch):
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    text, _ = focused_context(graph, about=f"Change {PKG}/metrics.py")
+    assert "tests/test_schema.py::test_keys" not in text and f"`{PKG}/report.py`" in text

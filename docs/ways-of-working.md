@@ -607,7 +607,9 @@ Three rules for every limit on prompt content:
    Now a role is shown what its job needs: roles that decide see the source in
    full and tests by name (crew#230); the Developer, which edits tests, sees
    them whole; the Business Analyst is also shown, in full, the tests that pin
-   behaviour an epic touches (crew#189). What is left out is still said out
+   behaviour an epic touches (crew#189): from the project's coverage map, the
+   merged tests that run the code the epic names and check a whole shape, plus
+   any a story problem or the epic's record names (crew#583, ADR 0024). What is left out is still said out
    loud (rule 3).
 
    **The Developer sees the files its work names, and asks for the rest**
