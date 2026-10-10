@@ -35,6 +35,7 @@ from crew_org.crews.settle_crew import (
 )
 from crew_org.events import EventSink
 from crew_org.flows import panel as panel_flow
+from crew_org.flows import record
 from crew_org.flows import settle as flow
 from crew_org.tools.github_issues import IssueClient, Trust
 
@@ -172,7 +173,11 @@ def test_a_row_a_question_and_a_dismissal_together_cover_the_notes():
     settlement = Settlement(
         conclusion=Conclusion(
             rows=[row(settles=[1])],
-            open=[OpenQuestion(question="Which key?", impact="The store", settles=[2])],
+            open=[
+                OpenQuestion(
+                    question="Which key?", impact="The store", settled_by="architect", settles=[2]
+                )
+            ],
             dismissed=[Dismissal(note=3, why="Inside the delivered epic")],
         )
     )
@@ -204,7 +209,14 @@ def conclusion():
             ),
             row(settles=[2], context="Counting", source="crew#389, Goal decision D3"),
         ],
-        open=[OpenQuestion(question="Same version track?", impact="Every sender", settles=[3])],
+        open=[
+            OpenQuestion(
+                question="Same version track?",
+                impact="Every sender",
+                settled_by="architect",
+                settles=[3],
+            )
+        ],
         for_infra=[ForInfra(item="A Postgres schema and user for the service", settles=[5])],
         dismissed=[Dismissal(note=4, why="Wholly inside #186")],
     )
@@ -218,13 +230,14 @@ def test_the_conclusion_opens_with_its_header_and_the_bottom_line():
     lines = rendered().split("\n")
     assert lines[0] == "## Refinement conclusion"
     assert lines[2] == (
-        "Ready to split: 2 decided, 1 open for the design note, 1 for infra, 1 dismissed."
+        "Ready to split: 2 decided, 1 open for the Architect, 0 left to the implementer, "
+        "1 for infra, 1 dismissed."
     )
 
 
 def test_ids_and_status_are_the_codes_not_the_models():
     text = rendered()
-    assert "| R1 | accepted |" in text and "| R2 | accepted |" in text
+    assert "| R1 | binding |" in text and "| R2 | binding |" in text
     assert "| Q1 |" in text and "| N4 |" in text
 
 
@@ -256,7 +269,31 @@ def test_a_link_already_written_is_not_wrapped_again():
 
 
 def test_open_questions_say_who_settles_them():
-    assert "| Q1 | Same version track? | Every sender | Design note |" in rendered()
+    assert "| Q1 | Same version track? | Every sender | Architect |" in rendered()
+    left = Conclusion(
+        open=[
+            OpenQuestion(
+                question="Log format?", impact="None", settled_by="implementer", settles=[1]
+            )
+        ]
+    )
+    out = flow.render(left, owner="mqucifer", repo="sprint-metrics")
+    assert "| Q1 | Log format? | None | Implementer |" in out
+    assert "0 open for the Architect, 1 left to the implementer" in out
+
+
+def test_each_row_says_it_binds_who_set_it_and_when_and_that_it_replaces_nothing():
+    text = flow.render(
+        Conclusion(rows=[row()]), owner="mqucifer", repo="sprint-metrics", today="2026-10-10"
+    )
+    assert "| Set by | Date | Replaces | Source |" in text
+    assert "| R1 | binding | History | Postgres, own schema |" in text
+    assert "| Product Owner | 2026-10-10 | — | Goal decision D1 |" in text
+
+
+def test_a_question_must_say_who_settles_it():
+    with pytest.raises(ValidationError):
+        OpenQuestion(question="Which key?", impact="The store", settles=[1])
 
 
 def test_what_infra_has_to_provide_is_its_own_table_and_not_a_row():
@@ -557,7 +594,14 @@ def test_an_own_call_on_a_design_question_is_asked_for_again_as_an_open_question
     fixed = Settlement(
         conclusion=Conclusion(
             rows=[own("GOAL", settles=[1])],
-            open=[OpenQuestion(question="Which response shape?", impact="The API", settles=[2])],
+            open=[
+                OpenQuestion(
+                    question="Which response shape?",
+                    impact="The API",
+                    settled_by="architect",
+                    settles=[2],
+                )
+            ],
         )
     )
     two = PanelResult(
@@ -610,7 +654,7 @@ def test_a_panel_that_raised_nothing_is_settled_without_a_model_call(monkeypatch
     result, calls, _ = run(gh, monkeypatch, notes=nothing)
     assert result.outcome is flow.Outcome.WRITTEN and calls == []
     assert gh.body.startswith(APPROVED)
-    assert gh.body.rstrip().endswith("## Refinement conclusion\n\n" + flow.NOTHING_RAISED)
+    assert gh.body.rstrip().endswith("## Refinement conclusion\n\n" + record.NOTHING_RAISED)
     # And it is a conclusion, so the next tick leaves the epic alone.
     again, calls, _ = run(gh, monkeypatch, notes=nothing)
     assert again.outcome is flow.Outcome.ALREADY and calls == []
@@ -712,7 +756,7 @@ def test_no_panel_comment_means_no_panel_yet():
 def test_a_row_that_decides_for_every_epic_is_marked_in_the_conclusion():
     marked = Conclusion(rows=[row(), row(settles=[2], context="Counting", project_wide=True)])
     text = flow.render(marked, owner="mqucifer", repo="sprint-metrics")
-    assert flow.TO_LOG.format("R2") in text
+    assert record.TO_LOG.format("R2") in text
     assert "crew:to-log" not in rendered(), "a conclusion with none says nothing"
 
 
@@ -727,3 +771,11 @@ def test_an_epic_whose_rows_are_its_own_gets_no_label(monkeypatch):
     gh = Github()
     run(gh, monkeypatch, good())
     assert flow.TO_LOG_LABEL not in gh.labels
+
+
+def test_writing_the_conclusion_posts_one_comment_naming_its_rows(monkeypatch):
+    gh = Github()
+    run(gh, monkeypatch, good())
+    [note] = [body for kind, body in gh.writes if kind == "comment"]
+    assert note.startswith(record.CHANGE.format("R1"))
+    assert "by the Product Owner" in note and "Settled from the panel's notes." in note

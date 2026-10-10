@@ -22,7 +22,7 @@ from crew_org.crews.refinement_crew import (
     StoryProposal,
 )
 from crew_org.events import EventSink
-from crew_org.flows import board_flow, refine_panel
+from crew_org.flows import board_flow, record, refine_panel
 from crew_org.flows import conclusion as flow
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import settle as settle_flow
@@ -60,20 +60,20 @@ def proposal(*stories, left_out=()):
 
 
 def test_the_epics_own_text_and_its_conclusion_are_told_apart():
-    own, conclusion = flow.split_conclusion(BODY)
+    own, conclusion = record.split(BODY)
     assert own == APPROVED
     assert conclusion.startswith("## Refinement conclusion")
     assert conclusion.endswith("_Settled by the Product Owner._")
 
 
 def test_an_epic_with_no_conclusion_is_all_its_own_text():
-    assert flow.split_conclusion(APPROVED) == (APPROVED, "")
+    assert record.split(APPROVED) == (APPROVED, "")
 
 
 def test_the_rows_are_the_decisions_not_the_questions():
-    _, conclusion = flow.split_conclusion(BODY)
-    assert flow.row_ids(conclusion) == ["R1", "R2", "R3"]
-    assert flow.row_ids("") == []
+    _, conclusion = record.split(BODY)
+    assert record.parse(conclusion).binding_ids() == ["R1", "R2", "R3"]
+    assert record.parse("").binding_ids() == []
 
 
 def test_a_story_names_the_rows_it_follows_in_a_line():

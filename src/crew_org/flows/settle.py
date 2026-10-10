@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -35,19 +36,18 @@ from crew_org.crews.settle_crew import (
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
+from crew_org.flows import record as record_flow
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 
-CONCLUSION_HEADER = "## Refinement conclusion"
+CONCLUSION_HEADER = record_flow.HEADER
 SETTLE_QUESTION_MARKER = "<!-- crew:settle-question -->"
 NEEDS_HUMAN = "needs:human"
 # Rows that decide something for every epic go into the project's decision log
 # too (crew#468). The conclusion names them, and the label says the log hasn't
 # caught up yet; the revisit phase, which has the clone and the approving
 # identity, writes them and takes the label off once they've merged.
-TO_LOG = "<!-- crew:to-log {} -->"
 TO_LOG_LABEL = "decision:to-log"
-NOTHING_RAISED = "Ready to split: the panel raised nothing."
 # A conclusion the schema or the coverage check refuses is asked for again, told why.
 ATTEMPTS = 3
 
@@ -71,7 +71,7 @@ class Settled:
 
 
 def has_conclusion(body: str) -> bool:
-    return CONCLUSION_HEADER in body
+    return record_flow.has_record(body)
 
 
 def _cell(text: str, *, owner: str, repo: str, known: set[str]) -> str:
@@ -98,67 +98,70 @@ def _cell(text: str, *, owner: str, repo: str, known: set[str]) -> str:
     )
 
 
-def _own(conclusion: Conclusion) -> str:
-    n = sum(1 for r in conclusion.rows if r.own_call)
-    return f" ({n} the Product Owner's call)" if n else ""
-
-
 def _source(row: Row) -> str:
     """A call the Product Owner made itself says so, and the Goal's words it stays within."""
     if not row.own_call:
         return row.source
-    return f'Product Owner\'s call, within the Goal: "{row.goal_wording}". {row.source}'
+    return f'{record_flow.OWN_CALL}, within the Goal: "{row.goal_wording}". {row.source}'
 
 
-def render(conclusion: Conclusion, *, owner: str, repo: str, known: set[str] | None = None) -> str:
-    """The conclusion as the epic's body carries it. IDs and the bottom line are the code's."""
+def from_conclusion(
+    conclusion: Conclusion,
+    *,
+    owner: str,
+    repo: str,
+    today: str,
+    known: set[str] | None = None,
+) -> record_flow.Record:
+    """The epic's first record, from the settle. IDs, status and authorship are the code's."""
 
     def c(text: str) -> str:
         return _cell(text, owner=owner, repo=repo, known={repo, *(known or ())})
 
-    lines = [
-        CONCLUSION_HEADER,
-        "",
-        f"Ready to split: {len(conclusion.rows)} decided{_own(conclusion)}, "
-        f"{len(conclusion.open)} open for the "
-        f"design note, {len(conclusion.for_infra)} for infra, "
-        f"{len(conclusion.dismissed)} dismissed.",
-        "",
-    ]
-    if conclusion.rows:
-        lines += [
-            "| ID | Status | Context | Decision | Consequences | Source |",
-            "|---|---|---|---|---|---|",
-        ]
-        lines += [
-            f"| R{i} | accepted | {c(r.context)} | {c(r.decision)} | {c(r.consequences)} "
-            f"| {c(_source(r))} |"
-            for i, r in enumerate(conclusion.rows, 1)
-        ]
-        lines.append("")
-    if conclusion.open:
-        lines += ["| ID | Open question | Impact | Settled by |", "|---|---|---|---|"]
-        lines += [
-            f"| Q{i} | {c(q.question)} | {c(q.impact)} | Design note |"
-            for i, q in enumerate(conclusion.open, 1)
-        ]
-        lines.append("")
-    if conclusion.for_infra:
-        lines += ["| ID | For infra: what the deployed runtime has to provide |", "|---|---|"]
-        lines += [f"| I{i} | {c(f.item)} |" for i, f in enumerate(conclusion.for_infra, 1)]
-        lines.append("")
-    if conclusion.dismissed:
-        lines += ["| Note | Dismissed because |", "|---|---|"]
-        lines += [f"| N{d.note} | {c(d.why)} |" for d in conclusion.dismissed]
-        lines.append("")
-    lines.append(
-        "_Settled by the Product Owner from the panel's notes, which stay as the epic's "
-        "panel comment._"
+    decisions = tuple(
+        record_flow.Decision(
+            id=f"R{i}",
+            context=c(r.context),
+            decision=c(r.decision),
+            consequences=c(r.consequences),
+            source=c(_source(r)),
+            set_by=record_flow.PRODUCT_OWNER,
+            date=today,
+        )
+        for i, r in enumerate(conclusion.rows, 1)
     )
-    wide = [f"R{i}" for i, r in enumerate(conclusion.rows, 1) if r.project_wide]
-    if wide:
-        lines.append(TO_LOG.format(",".join(wide)))
-    return "\n".join(lines)
+    return record_flow.Record(
+        decisions=decisions,
+        open=tuple(
+            record_flow.Question(
+                f"Q{i}",
+                c(q.question),
+                c(q.impact),
+                record_flow.IMPLEMENTER if q.settled_by == "implementer" else record_flow.ARCHITECT,
+            )
+            for i, q in enumerate(conclusion.open, 1)
+        ),
+        for_infra=tuple(
+            record_flow.Item(f"I{i}", c(f.item)) for i, f in enumerate(conclusion.for_infra, 1)
+        ),
+        dismissed=tuple(record_flow.Item(f"N{d.note}", c(d.why)) for d in conclusion.dismissed),
+        to_log=tuple(f"R{i}" for i, r in enumerate(conclusion.rows, 1) if r.project_wide),
+    )
+
+
+def render(
+    conclusion: Conclusion,
+    *,
+    owner: str,
+    repo: str,
+    known: set[str] | None = None,
+    today: str | None = None,
+) -> str:
+    """The conclusion as the epic's body carries it: the epic's first record."""
+    day = today or datetime.now(UTC).date().isoformat()
+    return record_flow.render(
+        from_conclusion(conclusion, owner=owner, repo=repo, today=day, known=known)
+    )
 
 
 def _reply(issues: IssueClient, repo: str, epic: int) -> tuple[bool, str]:
@@ -216,6 +219,35 @@ def propose(
     raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {feedback}")
 
 
+def _write(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    epic: int,
+    record: record_flow.Record,
+    read: str,
+) -> record_flow.Record:
+    """The epic's first record, written as any edit of it is (ADR 0023).
+
+    `read` is the body before the model was asked: the approved text is the
+    Sponsor's, and an edit made while the model was thinking is not overwritten.
+    """
+    try:
+        return record_flow.edit(
+            issues,
+            sink,
+            repo=repo,
+            epic=epic,
+            by=record_flow.PRODUCT_OWNER,
+            change=lambda _: record,
+            expected=read,
+            why="Settled from the panel's notes.",
+        )
+    except record_flow.RecordChanged as exc:
+        raise SettleFailed(str(exc)) from exc
+
+
 def settle_epic(
     issues: IssueClient,
     sink: EventSink,
@@ -238,10 +270,16 @@ def settle_epic(
     if not numbered(panel):
         # Nothing was raised, so there is nothing to settle and no model call. The
         # conclusion still goes in: it is what marks the epic as settled.
-        text = f"{CONCLUSION_HEADER}\n\n{NOTHING_RAISED}"
-        issues.edit_issue(repo, epic, body=f"{(issue.get('body') or '').rstrip()}\n\n{text}\n")
+        written = _write(
+            issues,
+            sink,
+            repo=repo,
+            epic=epic,
+            record=record_flow.Record(nothing_raised=True),
+            read=issue.get("body") or "",
+        )
         sink.note(EventKind.NOTE, f"epic #{epic}: the panel raised nothing", card=epic)
-        return Settled(Outcome.WRITTEN, text)
+        return Settled(Outcome.WRITTEN, record_flow.render(written))
 
     asked, reply = _reply(issues, repo, epic)
     if asked and not reply:
@@ -272,13 +310,16 @@ def settle_epic(
         )
         return Settled(Outcome.WAITING, question)
 
-    text = render(settlement.conclusion, owner=issues.owner, repo=repo, known=known)
-    # Read again just before writing: the approved text is the Sponsor's, and an
-    # edit made while the model was thinking is not overwritten.
-    current = issues.get(repo, epic).get("body") or ""
-    if current != (issue.get("body") or ""):
-        raise SettleFailed(f"the epic's body changed while it was being settled: {repo}#{epic}")
-    issues.edit_issue(repo, epic, body=f"{current.rstrip()}\n\n{text}\n")
+    record = from_conclusion(
+        settlement.conclusion,
+        owner=issues.owner,
+        repo=repo,
+        today=datetime.now(UTC).date().isoformat(),
+        known=known,
+    )
+    text = record_flow.render(
+        _write(issues, sink, repo=repo, epic=epic, record=record, read=issue.get("body") or "")
+    )
     if any(r.project_wide for r in settlement.conclusion.rows):
         issues.ensure_label(
             repo,

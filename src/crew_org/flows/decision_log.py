@@ -22,7 +22,7 @@ from typing import Any
 
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
-from crew_org.flows.conclusion import split_conclusion
+from crew_org.flows import record as record_flow
 from crew_org.flows.merge import Landing, land
 from crew_org.flows.project_log import DECISIONS_DIR
 from crew_org.flows.settle import TO_LOG_LABEL
@@ -33,11 +33,8 @@ LOG_PR = "<!-- crew:decision-log -->"
 # In each entry: the epic and row it came from, so it is never written twice.
 FROM = "<!-- crew:from epic {epic} {row} -->"
 _FROM = re.compile(r"<!-- crew:from epic (\d+) (R\d+) -->")
-_TO_LOG = re.compile(r"<!-- crew:to-log (R\d+(?:,R\d+)*) -->")
 _ENTRY = re.compile(r"^(\d{4})-.+\.md$")
-# A conclusion row as the settle step renders it; a cell's own `|` is escaped.
-_CELLS = re.compile(r"(?<!\\)\|")
-OWN_CALL = "Product Owner's call"
+OWN_CALL = record_flow.OWN_CALL
 
 
 @dataclass
@@ -129,18 +126,13 @@ def _write_log(
 
 
 def to_log(epic: int, title: str, body: str) -> list[Row]:
-    """The rows the epic's conclusion marks as deciding something for every epic."""
-    _, conclusion = split_conclusion(body)
-    marked = _TO_LOG.search(conclusion)
-    if not marked:
-        return []
-    wanted = set(marked.group(1).split(","))
-    rows = []
-    for line in conclusion.splitlines():
-        cells = [c.strip().replace("\\|", "|") for c in _CELLS.split(line.strip())[1:-1]]
-        if len(cells) == 6 and cells[0] in wanted:
-            rows.append(Row(epic, title, cells[0], *cells[2:]))
-    return rows
+    """The binding rows the epic's record marks as deciding something for every epic."""
+    found = record_flow.parse(record_flow.split(body)[1])
+    return [
+        Row(epic, title, d.id, d.context, d.decision, d.consequences, d.source)
+        for d in found.binding()
+        if d.id in found.to_log
+    ]
 
 
 def entry(number: int, row: Row, today: date) -> tuple[str, str]:

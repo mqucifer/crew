@@ -1,12 +1,12 @@
-"""An epic's conclusion, as the split reads it (crew#440).
+"""How a split's stories follow the epic's record (crew#440).
 
-The conclusion sits at the end of the epic's body, under its own header
-(`flows/settle.py` writes it). The split is shown it apart from the epic's own
+The record sits at the end of the epic's body, under its own header; reading and
+editing it is `flows/record.py`'s. The split is shown it apart from the epic's own
 text, so it can't be missed or mistaken for part of what the Sponsor approved,
 and each story names the rows it follows ("Follows the epic's R1, R4") so that
 later steps can pull those rows alone.
 
-Every settled row has to reach a story, or be named as one that only guides the
+Every binding row has to reach a story, or be named as one that only guides the
 design note. A row no story follows is a decision the split dropped.
 """
 
@@ -15,44 +15,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from crew_org.flows.settle import CONCLUSION_HEADER
-
-# A decision row of the conclusion's table: `| R3 | accepted | ...`.
-_ROW = re.compile(r"^\|\s*(R\d+)\s*\|", re.M)
+from crew_org.flows import record
 
 FOLLOWS = "Follows the epic's"
 # The line a story carries: `Follows the epic's R1, R4.`
 _FOLLOWS_LINE = re.compile(rf"^{re.escape(FOLLOWS)} (R\d+(?:, R\d+)*)\.\s*$", re.M)
-_ROW_LINE = re.compile(r"^\|\s*(R\d+)\s*\|")
-_QUESTION_LINE = re.compile(r"^\|\s*(Q\d+)\s*\|")
-
-
-def split_conclusion(body: str) -> tuple[str, str]:
-    """The epic's own text, and its conclusion (empty if it has none)."""
-    head, found, tail = body.partition(CONCLUSION_HEADER)
-    if not found:
-        return body, ""
-    return head.rstrip(), f"{CONCLUSION_HEADER}{tail}".strip()
-
-
-def row_ids(conclusion: str) -> list[str]:
-    """The IDs of the decisions, in the order the table has them."""
-    return _ROW.findall(conclusion)
-
-
-def open_questions(conclusion: str) -> tuple[list[str], str]:
-    """The questions the conclusion leaves for the design note: their IDs, and the table.
-
-    The Architect settles these after the split, so each is shown to it and has to be
-    answered (crew#440).
-    """
-    lines = conclusion.split("\n")
-    start = next((i for i, line in enumerate(lines) if _QUESTION_LINE.match(line)), None)
-    if start is None or start < 2:
-        return [], ""
-    asked = [line for line in lines[start:] if _QUESTION_LINE.match(line)]
-    ids = [m.group(1) for line in asked if (m := _QUESTION_LINE.match(line))]
-    return ids, "\n".join([*lines[start - 2 : start], *asked])
 
 
 def follows_line(rows: list[str]) -> str:
@@ -66,28 +33,13 @@ def parse_follows(story_body: str) -> list[str]:
     return found.group(1).split(", ") if found else []
 
 
-def rows_for(conclusion: str, ids: list[str]) -> str:
-    """The table's header and just these rows, not the epic's whole table.
-
-    A row the conclusion no longer has is left out; none left gives nothing.
-    """
-    lines = conclusion.split("\n")
-    start = next((i for i, line in enumerate(lines) if _ROW_LINE.match(line)), None)
-    if start is None or start < 2:
-        return ""
-    wanted = set(ids)
-    picked = [
-        line for line in lines[start:] if (m := _ROW_LINE.match(line)) and m.group(1) in wanted
-    ]
-    return "\n".join([*lines[start - 2 : start], *picked]) if picked else ""
-
-
 def story_rows(issues: Any, story: Any, default_repo: str) -> str:
-    """The rows of the epic's conclusion this story names, for the steps that build and judge it.
+    """The rows of the epic's record this story names, for the steps that build and judge it.
 
-    "Whatever reads a story pulls only the rows it names": a long conclusion doesn't
-    bloat a story's context, and nothing the story relies on goes missing. A story
-    that names none, or an epic with no conclusion, gives nothing.
+    "Whatever reads a story pulls only the rows it names": a long record doesn't
+    bloat a story's context, and nothing the story relies on goes missing. A row
+    replaced since the split comes with the row that replaced it. A story that
+    names none, or an epic with no record, gives nothing.
     """
     if story is None or story.parent is None or story.number is None:
         return ""
@@ -96,10 +48,10 @@ def story_rows(issues: Any, story: Any, default_repo: str) -> str:
         ids = parse_follows(issues.get(repo, story.number).get("body") or "")
         if not ids:
             return ""
-        _, conclusion = split_conclusion(issues.get(repo, story.parent).get("body") or "")
+        _, text = record.split(issues.get(repo, story.parent).get("body") or "")
     except Exception:  # noqa: BLE001 - context, never a reason to stop the work
         return ""
-    return rows_for(conclusion, ids)
+    return record.rows_for(text, ids)
 
 
 def problems(proposal: Any, rows: list[str]) -> list[str]:

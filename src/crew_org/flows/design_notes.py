@@ -30,7 +30,7 @@ from crew_org.flows.board_flow import (
     STORY_PROBLEM_MARKER,
     STORY_SPLIT_MARKER,
 )
-from crew_org.flows.conclusion import open_questions, split_conclusion
+from crew_org.flows.record import architect_questions, split
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.github_issues import from_sponsor
@@ -184,8 +184,9 @@ def write_notes(
             project = brief(record) if record else ""
             epic_body = issues.get(repo, number).get("body") or ""
             epic_text = f"#{number} {epic.title}\n\n{epic_body}"
-            # What the conclusion left open for this note to settle (crew#440).
-            question_ids, question_table = open_questions(split_conclusion(epic_body)[1])
+            # What the record left open for the Architect to settle (crew#440); a
+            # question left to the implementer isn't this note's.
+            question_ids, question_table = architect_questions(split(epic_body)[1])
             ruling = decided(issues, repo, number)
             if ruling:
                 epic_text += (

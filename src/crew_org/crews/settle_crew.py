@@ -15,6 +15,8 @@ model's.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -124,6 +126,16 @@ class OpenQuestion(BaseModel):
         min_length=2,
         max_length=IMPACT_CHARS,
         description="Who or what it changes if it goes one way",
+    )
+    # Who settles it is part of the record (crew#583, ADR 0023): a question the
+    # stories' criteria depend on is the Architect's; one any reasonable choice
+    # answers is left to whoever builds it, and no gate checks it.
+    settled_by: Literal["architect", "implementer"] = Field(
+        description=(
+            "`architect` when the stories' criteria depend on the answer: a key, a path, a "
+            "response shape. `implementer` when any reasonable choice will do and nothing a "
+            "test or a reviewer checks depends on it"
+        )
     )
     settles: list[int] = Field(min_length=1, description="The panel notes it stands for")
 
@@ -368,7 +380,9 @@ def describe(
         "response shape, a parameter): it is an open question for the design note, unless a "
         "source settles it.\n"
         "- **An open question** when it is a design question that can't be settled until the "
-        "stories exist. The Architect settles those after the split.\n"
+        "stories exist. Say who settles it: the Architect, when the stories' criteria depend "
+        "on the answer (a key, a path, a response shape); or the implementer, when any "
+        "reasonable choice will do and nothing a test or a reviewer checks depends on it.\n"
         "- **For infra** when a member marked it infra: it is about the deployed runtime "
         "(where it runs, real addresses and secrets, provisioning, backups), which the "
         "project doesn't build. List what infra has to provide, in a few words. It is not a "
