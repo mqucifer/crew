@@ -48,6 +48,9 @@ class EventKind(StrEnum):
     # A call that answered nothing, typically after thinking (#312). CrewAI
     # retries it silently, so without this it's invisible in the log.
     LLM_CALL_EMPTY = "llm.empty"
+    # A model's answer its form refused, with the reason the next attempt is told
+    # (crew#583, ADR 0025). Recorded by the crew's own call layer, `calls.py`.
+    LLM_CALL_REFUSED = "llm.refused"
 
     TOOL_STARTED = "tool.started"
     TOOL_FINISHED = "tool.finished"
@@ -576,7 +579,7 @@ def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
     _INSTALLED = True
 
 
-def record(kind: EventKind, summary: str, **detail: Any) -> None:
+def record(kind: EventKind, summary: str, *, role: str | None = None, **detail: Any) -> None:
     """An event from outside a flow (the model client), to every sink forwarding CrewAI's."""
     about = working()
     detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
@@ -584,7 +587,7 @@ def record(kind: EventKind, summary: str, **detail: Any) -> None:
         target.emit(
             CrewEvent(
                 kind=kind,
-                role=about.get("role"),
+                role=role or about.get("role"),
                 card=about.get("card", target_card),
                 summary=summary[:120],
                 detail=detail,

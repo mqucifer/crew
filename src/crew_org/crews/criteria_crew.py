@@ -11,11 +11,9 @@ code exists.
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 
 class CriteriaConflict(BaseModel):
@@ -40,7 +38,7 @@ class CriteriaCheck(BaseModel):
     )
 
 
-def check_criteria(
+def parts(
     *,
     stories: str,
     repository: str = "",
@@ -49,43 +47,40 @@ def check_criteria(
     goal: str = "",
     project_log: str = "",
     decided: str = "",
-) -> CriteriaCheck:
-    """QA's check of a proposed split's criteria, against each other, the code and the rows.
-
-    The epic's conclusion (crew#440) is decided before the split: a criterion that
-    goes against one of its rows can't be right, however well it reads.
-    """
-    spec = load_agents()["qa_engineer"]
-    checker = build_agent("qa_engineer", {**spec, **spec["criteria_check"]})
-    task = Task(
-        description=(
-            (f"## The project's code as it stands\n\n{repository}\n\n" if repository else "")
-            + (
-                f"## Stories other epics already plan, with their criteria\n\n{planned}\n\n"
-                if planned
-                else ""
-            )
-            # What is already decided, so restating it isn't taken for deciding it: on
-            # sprint-metrics#406 two criteria naming the five event types, decided on the
-            # Goal and in the project's log, were refused as settling an open question.
-            + (f"## The Goal, set by the Sponsor\n\n{goal}\n\n" if goal else "")
-            + (f"{project_log}\n\n" if project_log else "")
-            # The Product Owner's answer to the story problem the epic was sent back
-            # with (#189): the re-split follows it. Without it, sprint-metrics#468's
-            # field names, decided there, were refused as settling an open question
-            # 17 times (2026-10-09).
-            + (
-                f"## Decided on this epic since it was sent back\n\n{decided}\n\n"
-                if decided
-                else ""
-            )
-            + (
-                f"## The epic's conclusion, decided before the split\n\n{conclusion}\n\n"
-                if conclusion
-                else ""
-            )
-            + "## The proposed stories\n\n"
-            f"{stories}\n\n"
+) -> list[calls.Part]:
+    """What the check is shown, part by part, in the order it reads them."""
+    return [
+        calls.Part(
+            "code", f"## The project's code as it stands\n\n{repository}" if repository else ""
+        ),
+        calls.Part(
+            "planned",
+            f"## Stories other epics already plan, with their criteria\n\n{planned}"
+            if planned
+            else "",
+        ),
+        # What is already decided, so restating it isn't taken for deciding it: on
+        # sprint-metrics#406 two criteria naming the five event types, decided on the
+        # Goal and in the project's log, were refused as settling an open question.
+        calls.Part("goal", f"## The Goal, set by the Sponsor\n\n{goal}" if goal else ""),
+        calls.Part("project_log", project_log),
+        # The Product Owner's answer to the story problem the epic was sent back
+        # with (#189): the re-split follows it. Without it, sprint-metrics#468's
+        # field names, decided there, were refused as settling an open question
+        # 17 times (2026-10-09).
+        calls.Part(
+            "decided",
+            f"## Decided on this epic since it was sent back\n\n{decided}" if decided else "",
+        ),
+        calls.Part(
+            "conclusion",
+            f"## The epic's conclusion, decided before the split\n\n{conclusion}"
+            if conclusion
+            else "",
+        ),
+        calls.Part("stories", f"## The proposed stories\n\n{stories}"),
+        calls.Part(
+            "task",
             "Report every criterion of the proposed stories that can't pass alongside:\n"
             "- another criterion, in the same story or another one, proposed or planned, "
             "that expects a different outcome from the same situation;\n"
@@ -103,11 +98,41 @@ def check_criteria(
                 else ""
             )
             + ".\n\nQuote both sides. A criterion that is merely vague, large or worded "
-            "differently from how you would write it is not a conflict."
+            "differently from how you would write it is not a conflict.",
         ),
-        expected_output="Every criterion that can't be met, or none.",
-        agent=checker,
-        output_pydantic=CriteriaCheck,
+    ]
+
+
+def check_criteria(
+    *,
+    stories: str,
+    repository: str = "",
+    planned: str = "",
+    conclusion: str = "",
+    goal: str = "",
+    project_log: str = "",
+    decided: str = "",
+) -> CriteriaCheck:
+    """QA's check of a proposed split's criteria, against each other, the code and the rows.
+
+    The epic's conclusion (crew#440) is decided before the split: a criterion that
+    goes against one of its rows can't be right, however well it reads. The first
+    step on the crew's own call layer (ADR 0025): a refused answer is asked for
+    again with the reason.
+    """
+    shown = parts(
+        stories=stories,
+        repository=repository,
+        planned=planned,
+        conclusion=conclusion,
+        goal=goal,
+        project_log=project_log,
+        decided=decided,
     )
-    crew = Crew(agents=[checker], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic
+    return calls.ask(
+        "qa_engineer",
+        shown,
+        CriteriaCheck,
+        step="criteria_check",
+        expected="Every criterion that can't be met, or none.",
+    )

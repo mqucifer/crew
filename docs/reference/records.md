@@ -103,6 +103,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `llm.finished`
 - `llm.failed`
 - `llm.empty`
+- `llm.refused`
 - `tool.started`
 - `tool.finished`
 - `tool.failed`

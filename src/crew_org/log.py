@@ -439,6 +439,7 @@ _LEVELS = {
     "tool.finished": logging.DEBUG,
     "llm.failed": logging.WARNING,
     "llm.empty": logging.WARNING,
+    "llm.refused": logging.WARNING,
     "task.failed": logging.WARNING,
     "tool.failed": logging.WARNING,
     "card.blocked": logging.WARNING,
@@ -446,8 +447,17 @@ _LEVELS = {
     "agent.failed": logging.ERROR,
 }
 # Kinds whose summary is model content (the bridge puts prompt text there): not mirrored.
+# A refusal's summary is its reason, which can quote the answer.
 _CONTENT = frozenset(
-    {"llm.started", "llm.finished", "llm.failed", "llm.empty", "task.started", "task.completed"}
+    {
+        "llm.started",
+        "llm.finished",
+        "llm.failed",
+        "llm.empty",
+        "llm.refused",
+        "task.started",
+        "task.completed",
+    }
 )
 _mirror = logging.getLogger(f"{ROOT}.events")
 
