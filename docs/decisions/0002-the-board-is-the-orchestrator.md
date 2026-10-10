@@ -43,3 +43,7 @@ inspect, so nothing felt orchestrated.
 - **2026-10-10:** Flows declined for the tick, with the condition for
   reconsidering them, when the Sponsor confirmed that no CrewAI layer is kept
   (ADR 0025).
+- **2026-10-10:** the call layer exists (`crew_org/calls.py`). The criteria
+  check is the first step to make its calls through it; the other steps still
+  go through CrewAI's Crew until they move, after that first step is proven on
+  a real epic (crew#583, step D1a).
