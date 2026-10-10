@@ -1,0 +1,6 @@
+split 19:15: 30 tests shown, 28,751 characters | sm#507 3/5 | sm#529 4/4
+  340 merged tests in all run the code this epic names; the rest don't check a whole shape.
+split 19:46: 30 tests shown, 28,751 characters | sm#507 3/5 | sm#529 4/4
+  340 merged tests in all run the code this epic names; the rest don't check a whole shape.
+split 21:04: 30 tests shown, 28,751 characters | sm#507 3/5 | sm#529 4/4
+  340 merged tests in all run the code this epic names; the rest don't check a whole shape.

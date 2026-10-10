@@ -15,70 +15,108 @@ from pydantic import ValidationError
 from crew_org.crews.refinement_crew import AcceptanceCriterion, Story
 from crew_org.flows.board_flow import render_story_body
 from crew_org.tools import pinning
-from crew_org.tools.pinning import named_tests, pinning_tests, terms
+from crew_org.tools.pinning import named_tests, pinning_tests
 
 TABLE_TESTS = """
 def test_default_table_rows():
     out = run([])
-    assert "| Current | 4 days | 6 days |" in out
+    assert out.splitlines() == ["| Sprint | Cycle |", "|---|---|", "| Current | 4 days |"]
 
 
 def test_thresholds_flag_the_table():
     out = run(["--thresholds", "t.json"])
-    assert "7 days ⚠️" in out
+    assert "7 days" in out
 
 
-def test_json_shape():
-    assert load(run(["--json"]))["api_version"] == "1"
+def test_json_matches_the_schema():
+    validate(load(run(["--json"])), SCHEMA)
 
 
-def helper_not_a_test():
-    return "--thresholds"
+def test_drift():
+    _check(Path("docs/formats.md"))
+
+
+def _check(path):
+    text = path.read_text()
+    section = text.split("BEGIN")[1]
+    assert section == generate()
 """
 
-EPIC = (
-    "Flag metrics that exceed thresholds in the table. Reuses `--thresholds` and "
-    "keeps `format_performance_table`'s rows."
-)
+REPORT = "src/pkg/report.py"
+
+
+class Map:
+    """The coverage map, standing in: every test here runs the report."""
+
+    tests = {
+        f"tests/test_table.py::{name}": {f"{REPORT}::format_performance_table"}
+        for name in (
+            "test_default_table_rows",
+            "test_thresholds_flag_the_table",
+            "test_json_matches_the_schema",
+            "test_drift",
+        )
+    }
+
+    def covering(self, files=(), names=()):
+        wanted = set(files)
+        return sorted(
+            t
+            for t, units in self.tests.items()
+            if any(u.partition("::")[0] in wanted for u in units)
+        )
+
+
+EPIC = f"Flag metrics that exceed thresholds in the table, in `{REPORT}`."
 
 
 @pytest.fixture
 def clone(tmp_path: Path) -> Path:
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests/test_table.py").write_text(TABLE_TESTS)
+    (tmp_path / "src/pkg").mkdir(parents=True)
+    (tmp_path / REPORT).write_text("def format_performance_table(rows):\n    return ''\n")
     return tmp_path
 
 
-def test_what_an_epic_names_is_read_from_its_text():
-    assert terms(EPIC) == {"--thresholds", "format_performance_table"}
+def test_a_story_problems_test_ids_are_read_from_its_text():
     assert named_tests("- `tests/test_table.py::test_default_table_rows`: rows") == {
         ("tests/test_table.py", "test_default_table_rows")
     }
 
 
-def test_tests_mentioning_what_the_epic_names_are_shown_whole(clone: Path):
-    shown = pinning_tests(clone, EPIC)
-    assert "def test_thresholds_flag_the_table" in shown and '"7 days ⚠️" in out' in shown
-    assert "def test_json_shape" not in shown, "it mentions nothing the epic names"
-    assert "helper_not_a_test" not in shown, "only tests"
+def test_the_tests_that_run_the_code_and_check_a_whole_shape_are_shown_whole(clone: Path):
+    """crew#584: the tests a shape change breaks assert a whole shape (crew#583, C2)."""
+    shown = pinning_tests(clone, EPIC, coverage=Map())
+    assert "def test_default_table_rows" in shown, "an exact list"
+    assert "def test_json_matches_the_schema" in shown, "a schema validation"
+    assert "def test_drift" in shown, "a file's content, through its module's helper"
+    assert "def test_thresholds_flag_the_table" not in shown, "a membership, not a shape"
+    assert "4 merged tests in all run the code" in shown
     assert "opt-in" in shown and "contract change" in shown
 
 
-def test_a_story_problems_tests_are_shown_even_if_the_epic_doesnt_name_them(clone: Path):
-    evidence = "- `tests/test_table.py::test_default_table_rows`: AssertionError"
-    shown = pinning_tests(clone, "Something unrelated", evidence)
-    assert "def test_default_table_rows" in shown
+def test_a_story_problems_tests_are_shown_even_if_no_rule_picks_them(clone: Path):
+    evidence = "- `tests/test_table.py::test_thresholds_flag_the_table`: AssertionError"
+    shown = pinning_tests(clone, "Something unrelated", evidence, coverage=Map())
+    assert "def test_thresholds_flag_the_table" in shown
 
 
-def test_nothing_named_shows_nothing(clone: Path):
-    assert pinning_tests(clone, "A plain sentence with no names in it") == ""
+def test_a_test_the_record_names_is_shown(clone: Path):
+    record = "| C1 | `tests/test_table.py::test_thresholds_flag_the_table` | x | y | declared |"
+    shown = pinning_tests(clone, f"An epic.\n\n{record}")
+    assert "def test_thresholds_flag_the_table" in shown
+
+
+def test_without_a_map_or_a_named_test_nothing_is_shown(clone: Path):
+    assert pinning_tests(clone, EPIC) == ""
 
 
 def test_what_doesnt_fit_is_named_not_dropped(clone: Path, monkeypatch):
     monkeypatch.setattr(pinning, "PINNING_CHAR_CEILING", 40)
-    shown = pinning_tests(clone, EPIC)
+    shown = pinning_tests(clone, EPIC, coverage=Map())
     assert "not shown because they did not fit" in shown
-    assert "tests/test_table.py::test_thresholds_flag_the_table" in shown
+    assert "tests/test_table.py::test_default_table_rows" in shown
 
 
 def story(**kw) -> Story:
