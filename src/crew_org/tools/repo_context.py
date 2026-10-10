@@ -14,6 +14,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # Files worth showing an agent so its work fits in with what is there.
 CONTEXT_FILES = ("pyproject.toml", "README.md")
@@ -383,6 +384,7 @@ def focused_context(
     report: str = "",
     above: int | None = None,
     editing: bool = True,
+    coverage: Any = None,
 ) -> tuple[str, Focus]:
     """The repository for a piece of work: all of it when small, the named part when not (#231).
 
@@ -395,6 +397,13 @@ def focused_context(
 
     `editing` is False for a role that decides rather than edits (refinement):
     the rules for editing by name are noise to it.
+
+    The graph (crew#583, step C3, ADR 0024): the named source files' own imports
+    are shown with them, and what is close to the work is named, not shown: the
+    files that import it, and with `coverage` (the project's coverage map) the
+    merged tests that run its definitions. On epic 468 the named files alone
+    covered none of the 23 files the Developer then asked for; showing the whole
+    graph covered 12 at five times the size, past where answers come back empty.
     """
     full = repository_context(worktree, editing=editing)
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
@@ -411,8 +420,11 @@ def focused_context(
     # (sprint-metrics' test_service.py is 160k characters), and it's chosen as
     # a pair, not because the work named it.
     rest = sorted(chosen, key=lambda r: _is_test(Path(r)))
+    named_code = [r for r in rest if r.endswith(".py") and not _is_test(Path(r))]
+    their_imports = [i for r in named_code for i in imported_files(worktree, r)]
     reported.sort(key=lambda r: _is_test(Path(r)))
-    order = list(dict.fromkeys([*kept, *exercised, *rest, *reported]))
+    order = list(dict.fromkeys([*kept, *exercised, *rest, *their_imports, *reported]))
+    close = _close_to(worktree, named_code, set(order), coverage)
 
     index = repository_context(worktree, editing=editing, bodies=False)
     lines = [index, "", "### The files this work names, in full", ""]
@@ -455,6 +467,15 @@ def focused_context(
             + ".",
             "",
         ]
+    if close:
+        lines += [
+            "Close to this work, and not shown: the files that import what it names, and "
+            "the merged tests that run its definitions, the most specific first. Ask for "
+            "one if the work needs it: a test here may pin behaviour the work changes.",
+            "",
+            *(f"- `{c}`" for c in close),
+            "",
+        ]
     lines += [
         "Every other file is listed above by name and what it defines, and not shown in "
         "full. If the work needs one you can't see, don't guess at it: name it in "
@@ -466,6 +487,35 @@ def focused_context(
     return text, Focus(
         focused=True, shown=shown, asked=asked, unknown=unknown, omitted=omitted, chars=len(text)
     )
+
+
+# How many files and tests "close to this work" names: enough to point at what a
+# change breaks, not a second map.
+CLOSE_LIMIT = 15
+
+
+def _close_to(worktree: Path, code: list[str], shown: set[str], coverage: Any) -> list[str]:
+    """Importers of the named code, then the merged tests that run it, not already shown."""
+    if not code:
+        return []
+    found = [
+        rel
+        for p in _files(worktree)
+        if (rel := str(p.relative_to(worktree))).endswith(".py")
+        and not _is_test(Path(rel))
+        and set(imported_files(worktree, rel)) & set(code)
+    ]
+    if coverage is not None:
+        from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
+
+        names = [
+            f"{rel}::{name}"
+            for rel in code
+            for name in definitions((worktree / rel).read_text(encoding="utf-8", errors="ignore"))
+        ]
+        tests = sorted(coverage.covering(names=names), key=lambda t: len(coverage.executed_by(t)))
+        found += tests
+    return [c for c in dict.fromkeys(found) if c not in shown][:CLOSE_LIMIT]
 
 
 def _is_test(rel: Path) -> bool:
