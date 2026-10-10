@@ -167,6 +167,9 @@ def kind_of(kind: str, summary: str, detail: dict[str, Any]) -> Kind | None:
         return call_kind(str(detail.get("error") or summary))
     if kind == "llm.empty":
         return Kind.EMPTY
+    # The crew's own call layer (ADR 0025): an empty answer is a refusal with that reason.
+    if kind == "llm.refused":
+        return Kind.EMPTY if detail.get("empty") else Kind.FORM_REFUSED
     if kind == "escalation.decided":
         # An empty answer reaches the policy as a refused form; it was neither.
         if _EMPTY in str(detail.get("error") or "").lower():

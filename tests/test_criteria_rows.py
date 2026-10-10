@@ -47,20 +47,13 @@ def checked_tick(monkeypatch, checker, *proposals, issues=None):
 def described(monkeypatch, **kw) -> str:
     seen = {}
 
-    class Crew:
-        def __init__(self, **_):
-            pass
+    def ask(role, parts, answer, **_):
+        seen["parts"] = parts
+        return CriteriaCheck()
 
-        def kickoff(self):
-            from types import SimpleNamespace
-
-            return SimpleNamespace(pydantic=CriteriaCheck())
-
-    monkeypatch.setattr(criteria_crew, "build_agent", lambda *a, **k: object())
-    monkeypatch.setattr(criteria_crew, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(criteria_crew, "Crew", Crew)
+    monkeypatch.setattr(criteria_crew.calls, "ask", ask)
     criteria_crew.check_criteria(stories="### Query metrics\n1. Given x", **kw)
-    return seen["description"]
+    return criteria_crew.calls.task_text(seen["parts"], "")
 
 
 def test_the_conclusion_is_shown_to_the_check_before_the_stories(monkeypatch):

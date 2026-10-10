@@ -10,7 +10,7 @@
   - Smaller answers: crew#276, a failed attempt retries in steps.
   - Neither makes the model "dumber": there's no thinking-off fallback (see [Decisions](#decisions)).
 - **What watches it:**
-  - Every empty answer is an `llm.empty` event.
+  - Every empty answer is an `llm.empty` event. In a step on the crew's own call layer (`calls.py`, ADR 0025; the criteria check first), it is an `llm.refused` event with `empty: true`, and the next attempt is told its answer was empty.
   - An alert rule counts model calls over 60k prompt tokens: pull, not a webhook, and owned by the DevOps/SRE role (crew#335). It starts at 60k, the low end of where empty answers begin, and is tuned from what it finds.
 
 This is the process we followed and the evidence at each step, so the next person, or the DevOps/SRE role (crew#335), can repeat it. It moves to the `infra` repo once that exists.
