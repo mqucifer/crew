@@ -1,0 +1,147 @@
+{
+ "base": "2ba575e8aa287152f7505c3d75091bcc353e17de",
+ "tests_in_map": 371,
+ "stories": {
+  "536": {
+   "changed": [
+    "src/sprint_metrics/_docs_gen.py::_generate_metrics_content",
+    "src/sprint_metrics/card.py::Card",
+    "src/sprint_metrics/card.py::parse_card",
+    "src/sprint_metrics/metrics.py::ALL_METRICS",
+    "src/sprint_metrics/metrics.py::metric_value"
+   ],
+   "covering": 335,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [],
+    "tests/test_schema.py::": [
+     "tests/test_schema.py::test_empty_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_schema_json_required_keys_and_properties",
+     "tests/test_schema.py::test_schema_json_single_sprint",
+     "tests/test_schema.py::test_schema_json_sprint_range",
+     "tests/test_schema.py::test_schema_markdown_exits_2",
+     "tests/test_schema.py::test_schema_rejects_type_mismatched_throughput",
+     "tests/test_schema.py::test_schema_without_json_exits_2",
+     "tests/test_schema.py::test_single_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_single_sprint_empty_validates_against_schema"
+    ],
+    "tests/test_docs.py::test_drift_check": [
+     "tests/test_docs.py::test_drift_check",
+     "tests/test_docs.py::test_drift_check_detects_stale_docstring"
+    ]
+   }
+  },
+  "537": {
+   "changed": [
+    "src/sprint_metrics/report.py::_DEFINITIONS",
+    "src/sprint_metrics/report.py::_HEALTH_DISPLAY",
+    "src/sprint_metrics/report.py::_LOWER_IS_BETTER",
+    "src/sprint_metrics/report.py::_changed_line",
+    "src/sprint_metrics/report.py::_sprint_section",
+    "src/sprint_metrics/report.py::format_json_report",
+    "src/sprint_metrics/report.py::format_performance_table",
+    "src/sprint_metrics/schema.py::METRIC_KEYS",
+    "src/sprint_metrics/schema.py::SINGLE_SPRINT_SCHEMA",
+    "src/sprint_metrics/sprint_range.py::format_sprint_range_json"
+   ],
+   "covering": 296,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [
+     "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time"
+    ],
+    "tests/test_schema.py::": [
+     "tests/test_schema.py::test_empty_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_schema_json_required_keys_and_properties",
+     "tests/test_schema.py::test_schema_json_single_sprint",
+     "tests/test_schema.py::test_schema_json_sprint_range",
+     "tests/test_schema.py::test_schema_markdown_exits_2",
+     "tests/test_schema.py::test_schema_rejects_type_mismatched_throughput",
+     "tests/test_schema.py::test_schema_without_json_exits_2",
+     "tests/test_schema.py::test_single_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_single_sprint_empty_validates_against_schema"
+    ],
+    "tests/test_docs.py::test_drift_check": [
+     "tests/test_docs.py::test_drift_check"
+    ]
+   }
+  },
+  "538": {
+   "changed": [
+    "src/sprint_metrics/cli.py::main",
+    "src/sprint_metrics/schema.py::SPRINT_RANGE_SCHEMA",
+    "src/sprint_metrics/sprint_range.py::format_sprint_range_json"
+   ],
+   "covering": 285,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [
+     "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time"
+    ],
+    "tests/test_schema.py::": [
+     "tests/test_schema.py::test_empty_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_schema_json_required_keys_and_properties",
+     "tests/test_schema.py::test_schema_json_single_sprint",
+     "tests/test_schema.py::test_schema_json_sprint_range",
+     "tests/test_schema.py::test_schema_markdown_exits_2",
+     "tests/test_schema.py::test_schema_rejects_type_mismatched_throughput",
+     "tests/test_schema.py::test_schema_without_json_exits_2",
+     "tests/test_schema.py::test_single_sprint_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_single_sprint_empty_validates_against_schema"
+    ],
+    "tests/test_docs.py::test_drift_check": []
+   }
+  },
+  "539": {
+   "changed": [
+    "src/sprint_metrics/service.py::_null_range_entry",
+    "src/sprint_metrics/service.py::_null_sprint_response",
+    "src/sprint_metrics/service.py::_sprint_json",
+    "src/sprint_metrics/service.py::_start_service",
+    "src/sprint_metrics/sprint_range.py::format_sprint_range_json",
+    "src/sprint_metrics/store.py::_reconstruct_card",
+    "src/sprint_metrics/store.py::query_sprint",
+    "src/sprint_metrics/store.py::sprint_has_events"
+   ],
+   "covering": 20,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [],
+    "tests/test_schema.py::": [
+     "tests/test_schema.py::test_sprint_range_json_output_validates_against_schema",
+     "tests/test_schema.py::test_sprint_range_single_sprint_empty_validates_against_schema"
+    ],
+    "tests/test_docs.py::test_drift_check": []
+   }
+  },
+  "540": {
+   "changed": [
+    "src/sprint_metrics/service.py::SERVICE_ENDPOINTS",
+    "src/sprint_metrics/service.py::_start_service"
+   ],
+   "covering": 3,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [],
+    "tests/test_schema.py::": [],
+    "tests/test_docs.py::test_drift_check": [
+     "tests/test_docs.py::test_drift_check",
+     "tests/test_docs.py::test_drift_check_service_md_detects_manual_edit"
+    ]
+   }
+  },
+  "541": {
+   "changed": [
+    "src/sprint_metrics/_docs_gen.py::_generate_metrics_content",
+    "src/sprint_metrics/report.py::_METRIC_COLUMNS"
+   ],
+   "covering": 165,
+   "found_by_hand": {
+    "tests/test_schema_gen.py::test_single_sprint_schema_required_and_cycle_time": [],
+    "tests/test_schema.py::": [],
+    "tests/test_docs.py::test_drift_check": [
+     "tests/test_docs.py::test_drift_check",
+     "tests/test_docs.py::test_drift_check_detects_stale_docstring"
+    ]
+   }
+  }
+ }
+}
