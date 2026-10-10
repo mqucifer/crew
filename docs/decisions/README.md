@@ -53,3 +53,6 @@ decision was first made.
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source | 2026-10-07 | Accepted (to be built by mqucifer/sprint-metrics#461 and crew#521) |
 | [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
+| [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan) |
+| [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it) |
+| [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first) |

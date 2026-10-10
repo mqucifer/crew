@@ -1,7 +1,7 @@
 # 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440; the Architect's settle before the split is still to be built there)
+- **Status:** Accepted (built by crew#440; the Architect's settle before the split is to be built as step A2 of `docs/plans/context-record-build.md`, ADR 0023)
 
 ## Context
 
