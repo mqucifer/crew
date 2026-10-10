@@ -74,7 +74,13 @@ FOOTER = (
 )
 
 _CELLS = re.compile(r"(?<!\\)\|")
-_ID = re.compile(r"^([RQIN])(\d+)$")
+_ID = re.compile(r"^([RQINC])(\d+)$")
+_TESTS = (
+    "| ID | Test | What it asserts after | Declared by | Status |",
+    "|---|---|---|---|---|",
+)
+# A C row's status: a story changes the test, or the split dropped it, with why.
+DECLARED = "declared"
 
 
 class RecordRefused(ValueError):
@@ -115,6 +121,25 @@ class Question:
 
 
 @dataclass(frozen=True)
+class TestRow:
+    """A merged test the epic changes (step A4): the split declares it, or a story problem.
+
+    The baseline for the tests as for the decisions: a re-split carries each into a
+    story or drops it with why, and a row is never deleted.
+    """
+
+    id: str
+    test: str
+    asserts: str
+    declared_by: str
+    status: str = DECLARED
+
+    @property
+    def declared(self) -> bool:
+        return self.status == DECLARED
+
+
+@dataclass(frozen=True)
 class Item:
     """A line of the infra or the dismissed table: its ID and its one cell."""
 
@@ -130,6 +155,7 @@ class Record:
     dismissed: tuple[Item, ...] = ()
     to_log: tuple[str, ...] = ()
     nothing_raised: bool = False
+    tests: tuple[TestRow, ...] = ()
 
     def row(self, row_id: str) -> Decision | None:
         return next((d for d in self.decisions if d.id == row_id), None)
@@ -143,9 +169,31 @@ class Record:
     def for_architect(self) -> list[Question]:
         return [q for q in self.open if q.settled_by == ARCHITECT]
 
+    def declared_tests(self) -> list[str]:
+        """The merged tests a story of this epic still has to change, as `path::test`."""
+        return [t.test for t in self.tests if t.declared]
+
+    def declare(self, test: str, asserts: str, declared_by: str) -> Record:
+        """This record with a merged test the epic changes; one row per test."""
+        if any(t.test == test for t in self.tests):
+            return self
+        row = TestRow(self.next_id("C"), test, asserts, declared_by)
+        return replace(self, tests=(*self.tests, row), nothing_raised=False)
+
+    def drop(self, test: str, why: str) -> Record:
+        """This record with a declared test dropped, saying why. Never deleted."""
+        return replace(
+            self,
+            tests=tuple(
+                replace(t, status=f"dropped: {why}") if t.test == test and t.declared else t
+                for t in self.tests
+            ),
+        )
+
     def next_id(self, kind: str) -> str:
         """The next free ID of a kind: numbers are never reused, even once replaced."""
         ids = [d.id for d in self.decisions] + [q.id for q in self.open]
+        ids += [t.id for t in self.tests]
         # A settled question leaves the table; the row that replaced it still names it.
         ids += [d.replaces for d in self.decisions if d.replaces]
         used = [int(m.group(2)) for i in ids if (m := _ID.match(i)) and m.group(1) == kind]
@@ -209,6 +257,7 @@ def parse(text: str) -> Record:
     questions: list[Question] = []
     infra: list[Item] = []
     dismissed: list[Item] = []
+    tests: list[TestRow] = []
     for line in text.splitlines():
         if not line.startswith("|"):
             continue
@@ -244,6 +293,9 @@ def parse(text: str) -> Record:
             infra.append(Item(cells[0], cells[1]))
         elif kind == "N" and len(cells) == 2:
             dismissed.append(Item(cells[0], cells[1]))
+        elif kind == "C" and len(cells) == 5:
+            test = cells[1].strip("`")
+            tests.append(TestRow(cells[0], test, cells[2], cells[3], cells[4]))
     marked = _TO_LOG.search(text)
     return Record(
         tuple(decisions),
@@ -252,6 +304,7 @@ def parse(text: str) -> Record:
         tuple(dismissed),
         tuple(marked.group(1).split(",")) if marked else (),
         NOTHING_RAISED in text,
+        tuple(tests),
     )
 
 
@@ -278,7 +331,8 @@ def bottom_line(record: Record) -> str:
         + (f", {replaced} replaced" if replaced else "")
         + f", {len(record.for_architect())} open for the Architect, "
         f"{len(record.open) - len(record.for_architect())} left to the implementer, "
-        f"{len(record.for_infra)} for infra, {len(record.dismissed)} dismissed."
+        f"{len(record.for_infra)} for infra, {len(record.dismissed)} dismissed"
+        + (f", {len(record.declared_tests())} merged tests it changes." if record.tests else ".")
     )
 
 
@@ -295,6 +349,18 @@ def render(record: Record) -> str:
             *(
                 f"| {q.id} | {_cell(q.question)} | {_cell(q.impact)} | {q.settled_by} |"
                 for q in record.open
+            ),
+            "",
+        ]
+    if record.tests:
+        lines += [
+            "Merged tests this epic changes:",
+            "",
+            *_TESTS,
+            *(
+                f"| {t.id} | `{t.test}` | {_cell(t.asserts)} | {_cell(t.declared_by)} | "
+                f"{_cell(t.status)} |"
+                for t in record.tests
             ),
             "",
         ]
@@ -360,6 +426,13 @@ def check_change(before: Record, after: Record) -> None:
             old.binding and new == replace(old, status=new.status) and by and by.replaces == old.id
         ):
             problems.append(f"{old.id} was changed in place; a later row replaces it instead")
+    tests_now = {t.id: t for t in after.tests}
+    for old_test in before.tests:
+        kept = tests_now.get(old_test.id)
+        if kept is None:
+            problems.append(f"{old_test.id} was deleted; a test row is only ever dropped, with why")
+        elif kept.test != old_test.test:
+            problems.append(f"{old_test.id} names another test now; add a row instead")
     before_ids = {d.id for d in before.decisions}
     asked = {q.id: q for q in before.open}
     still = {q.id for q in after.open}
@@ -446,9 +519,15 @@ def change_note(
         )
         lines.append(f"- **{d.id}** {what}: {d.context}: {d.decision}")
     lines += [f"- **{q.id}** opened, for the {q.settled_by}: {q.question}" for q in opened]
+    old_tests = {t.id: t for t in before.tests}
+    new_tests = [t for t in after.tests if t.id not in old_tests]
+    dropped = [t for t in after.tests if t.id in old_tests and old_tests[t.id] != t]
+    lines += [f"- **{t.id}** `{t.test}`, declared by {t.declared_by}" for t in new_tests]
+    lines += [f"- **{t.id}** `{t.test}` {t.status}" for t in dropped]
     if not lines and after.nothing_raised:
         lines.append("- Nothing to record: the panel raised nothing.")
     changed = [d.id for d in added] + [q.id for q in opened]
+    changed += [t.id for t in new_tests + dropped]
     return (
         f"{CHANGE.format(','.join(changed) + (f' {kind}' if kind else ''))}\n"
         f"**The epic's record changed**, by the {by}"

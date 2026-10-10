@@ -57,3 +57,19 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The epic, with its record | the epic's body | Which row or question the words change |
 | The Sponsor's words | the Sponsor's comment on the epic | Quoted as the row's decision, unchanged |
 | The last refusal | `record_sponsor_words` | Why the record refused the previous placing |
+
+## Business Analyst, the split
+
+`refinement_crew.split_epic`, called by `board_flow.refine_epics` (#14, crew#231, crew#440).
+
+| Part | From | Why |
+|---|---|---|
+| The repository | `RepoContext.focused_for`: the map, and the files the epic names | Criteria written against what the code has |
+| Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run what the epic and its record name and check a whole shape, and any the record names (C2) |
+| The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
+| What the project has delivered | `Delivered.render` | Not written again |
+| Stories other epics plan | `planned_elsewhere` | Not written again, or built on |
+| The project's decision log | the project's `docs/decisions/` | Decisions that hold for every epic |
+| The epic's record, whole | `record.split` | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
+| Why it was sent back | `story_problem_evidence` and the Sponsor's notes | The problem to answer; its answer is in the record |
+| The epic | its approved text | What to split |

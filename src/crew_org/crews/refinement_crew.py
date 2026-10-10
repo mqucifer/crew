@@ -281,6 +281,13 @@ class RowNotForStories(BaseModel):
         return found
 
 
+class TestDropped(BaseModel):
+    """A merged test the epic's record says a story changes, that no story changes now."""
+
+    test: str = Field(description="The test as the record names it, `path::name`")
+    why: str = Field(min_length=10, description="Why no story changes it any more")
+
+
 class StoryProposal(BaseModel):
     """What the Business Analyst proposes for one epic."""
 
@@ -306,6 +313,14 @@ class StoryProposal(BaseModel):
         ),
     )
 
+    tests_dropped: list[TestDropped] = Field(
+        default_factory=list,
+        description=(
+            "Merged tests the epic's record lists as changed (C rows) that no story of this "
+            "split changes, each with why. Every other one is named in the Existing tests "
+            "line of the story that changes it"
+        ),
+    )
     need_files: list[FileAsk] = Field(
         default_factory=list,
         description=(
@@ -743,7 +758,10 @@ def split_epic(
                 "left to whoever builds it: no story's criterion settles it or waits for it, "
                 "unless the epic's own text says so. A row (R) that no "
                 "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
-                "items for infra (I) need no entry: no story takes them on.\n\n"
+                "items for infra (I) need no entry: no story takes them on. A merged test the "
+                "record lists as changed (C) is named in the Existing tests line of the "
+                "story that changes it, as a contract change, or listed in `tests_dropped` "
+                "with why.\n\n"
                 if conclusion
                 else ""
             )

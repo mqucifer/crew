@@ -143,6 +143,7 @@ def return_to_refinement(
     )
     artifacts.label(issues, sink, repo=repo, number=epic, by="Developer", add=[NEEDS_REWORK])
     artifacts.comment(issues, sink, repo=repo, number=epic, body=comment, by="Developer")
+    record_pinned(issues, sink, repo=repo, epic=epic, card=card, comment=comment)
     sink.emit(
         CrewEvent(
             kind=EventKind.STORY_RETURNED,
@@ -160,6 +161,54 @@ def return_to_refinement(
         )
     )
     return True
+
+
+# One pinned test as `evidence` lists it.
+_LISTED = re.compile(r"^- `([^`\s]+\.py::\w+)`: (.*)$", re.MULTILINE)
+
+
+def record_pinned(
+    issues: Any, sink: EventSink, *, repo: str, epic: int, card: Card, comment: str
+) -> None:
+    """The merged tests a story kept breaking, as rows of its epic's record (step A4).
+
+    The re-split is shown them and has to carry each into a story or drop it with
+    why: sprint-metrics#529's re-splits each forgot the tests the last one named.
+    Only an epic with a record; a failure costs the rows, not the return.
+    """
+    from crew_org.flows import record  # noqa: PLC0415
+    from crew_org.llm import reraise_if_down  # noqa: PLC0415
+
+    listed = _LISTED.findall(comment)
+    if not listed:
+        return
+    try:
+        if not record.has_record(issues.get(repo, epic).get("body") or ""):
+            return
+
+        def change(current: record.Record) -> record.Record:
+            for test, why in listed:
+                current = current.declare(
+                    test,
+                    f"broken by the story as written: {why}",
+                    f"the story problem on {issues.owner}/{repo}#{card.number}",
+                )
+            return current
+
+        record.edit(
+            issues,
+            sink,
+            repo=repo,
+            epic=epic,
+            by="Developer",
+            change=change,
+            card=card.number,
+            kind="tests",
+            why="The merged tests this story kept breaking. The re-split carries or drops each.",
+        )
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"#{epic}: the pinned tests weren't recorded: {exc}"[:160])
 
 
 # A story delivered this many times and returned again goes back to refinement
