@@ -39,6 +39,11 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
   never by deletion. The Sponsor may replace any row, the Product Owner its own calls,
   the Architect design rows, and the Business Analyst the rows naming the merged tests a
   story changes. Each change posts one comment on the epic.
+- **A Sponsor reply on an epic is recorded as a row** (Sponsor, 2026-10-10: "if I
+  respond to an epic it should be recorded"). The Product Owner step enters it as a
+  binding row whose source is the Sponsor and whose Decision cell quotes the Sponsor's
+  words, so nothing is rewritten on the way in. A reply that never became a row is a
+  loss in the proof.
 - **The merged tests an epic changes are rows too,** declared by the split from the
   coverage map (ADR 0024) or by a story problem. During delivery, on the first failure
   of a merged test a story didn't declare, one focused Business Analyst pass amends the
@@ -77,3 +82,9 @@ its docs against its code.
   ADR 0024. crew#190 and crew#457 are closed or reshaped against it.
 - The proof is the review tool run again on a real epic, against epic 468's numbers, in
   the plan's success test.
+
+## Changelog
+
+- **2026-10-10:** the plan's Q3 answered the same day: a Sponsor reply on an epic is
+  recorded as a binding row by the Product Owner step, quoting the Sponsor's words
+  (Sponsor).
