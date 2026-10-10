@@ -104,6 +104,11 @@ def _cell(text: str, *, owner: str, repo: str, known: set[str]) -> str:
     )
 
 
+def explicit(text: str, *, owner: str, repo: str) -> str:
+    """A cell for the epic's record, from any writer: references explicit and linked."""
+    return _cell(text, owner=owner, repo=repo, known={repo})
+
+
 def _source(row: Row) -> str:
     """A call the Product Owner made itself says so, and the Goal's words it stays within."""
     if not row.own_call:

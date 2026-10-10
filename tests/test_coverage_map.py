@@ -202,3 +202,11 @@ def test_a_project_with_its_own_image_has_no_map_yet(repo, tmp_path_factory):
         mp.setattr(cm.workspace, "toolchain", lambda _: Own())
         with pytest.raises(cm.CoverageUnavailable, match="Python only"):
             cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=Runs())
+
+
+def test_a_constant_built_from_another_reads_it_too(repo):
+    """`SINGLE_SPRINT_SCHEMA` is built from `METRIC_KEYS`: a schema test pins the keys (C2)."""
+    only_generate = {"files": {"src/pkg/gen.py": {"contexts": {"5": [f"{GENERATE}|run"]}}}}
+    found = cm.from_report("pkg", "abc", repo, only_generate)
+    assert "src/pkg/schema.py::SINGLE_SPRINT_SCHEMA" in found.executed_by(GENERATE)
+    assert "src/pkg/schema.py::METRIC_KEYS" in found.executed_by(GENERATE)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from crew_org.flows import board_flow, design_notes
+from crew_org.flows import board_flow
 from crew_org.flows.board_flow import PRODUCT_QUESTION_MARKER
 from crew_org.tools import github_issues
 from crew_org.tools.github_issues import IssueClient, Trust, from_sponsor
@@ -108,12 +108,41 @@ def test_rework_notes_are_the_sponsor_s_words_only():
     assert notes == "Split the summary from the anomalies."
 
 
-def test_only_the_sponsor_answers_the_product_owner_s_question():
-    issues = Issues(
+def test_only_the_sponsor_answers_the_product_owner_s_question(monkeypatch):
+    """Only the Sponsor's reply becomes a row of the epic's record (ADR 0023)."""
+    from crew_org.crews.refinement_crew import SponsorRow
+    from crew_org.events import EventSink
+    from crew_org.flows import record
+    from crew_org.tools.github_project import Card
+
+    class Recording(Issues):
+        owner = "mqucifer"
+        body = "The epic.\n\n## Refinement conclusion\n\n| R1 | accepted | A | B | C | D |"
+
+        def get(self, repo, number):
+            return {"body": self.body}
+
+        def edit_issue(self, repo, number, *, body):
+            self.body = body
+
+        def comment(self, repo, number, body):
+            self._comments.append(said("mqucifer-crew[bot]", body))
+
+    issues = Recording(
         [
+            said("mqucifer-crew[bot]", f"{record.CHANGE.format('R1')}\nThe record began."),
             said("mqucifer-crew[bot]", f"{PRODUCT_QUESTION_MARKER}\nOpt-in or on by default?"),
-            said("dependabot[bot]", "On by default."),
-            said("mquarters", "Opt-in."),
+            {**said("dependabot[bot]", "On by default."), "html_url": "u/1"},
+            {**said("mquarters", "Opt-in."), "html_url": "u/2"},
         ]
     )
-    assert design_notes.decided(issues, "sprint-metrics", 62) == "Opt-in."
+    monkeypatch.setattr(
+        board_flow,
+        "place_sponsor_words",
+        lambda **_: SponsorRow(context="Flags", consequences="Opt-in only"),
+    )
+    epic = Card(item_id="e", number=62, title="Epic", work_type="Epic")
+    assert board_flow.record_sponsor_words(issues, EventSink(None), None, epic, "sprint-metrics")
+    rows = record.parse(record.split(issues.body)[1]).decisions
+    assert [(r.set_by, r.decision) for r in rows[1:]] == [("Sponsor", '"Opt-in."')]
+    assert "u/2" in rows[1].source

@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from crew_org.crews.refinement_crew import ProductAnswer
+from crew_org.crews.refinement_crew import AnswerRow, ProductAnswer
 from crew_org.events import EventSink
-from crew_org.flows import board_flow
+from crew_org.flows import board_flow, record
 from crew_org.flows.board_flow import (
     NEEDS_HUMAN,
     NEEDS_REWORK,
@@ -34,16 +34,38 @@ def epic(labels=(NEEDS_REWORK,)) -> Card:
     return Card(item_id="E54", number=54, title="Flags", repo=REPO, labels=frozenset(labels))
 
 
+RECORD = (
+    "epic body\n\n## Refinement conclusion\n\n"
+    "| ID | Status | Context | Decision | Consequences | Source |\n|---|---|---|---|---|---|\n"
+    "| R1 | accepted | Flags | Shown with --thresholds | One flag column | #100 |\n"
+)
+
+
+def rows(*decisions, replaces=""):
+    return [
+        AnswerRow(
+            context="Flags", decision=d, consequences="The table is unchanged", replaces=replaces
+        )
+        for d in decisions
+    ] or [AnswerRow(context="Flags", decision="Opt-in", consequences="Unchanged table")]
+
+
 class Issues:
+    owner = "mqucifer"
+
     def __init__(self, *bodies):
         self.bodies = list(bodies)
         self.posted, self.added = [], []
+        self.body = RECORD
 
     def comments(self, repo, number):
         return [{"body": b} for b in self.bodies]
 
     def get(self, repo, number):
-        return {"body": "epic body"}
+        return {"body": self.body}
+
+    def edit_issue(self, repo, number, *, body):
+        self.body = body
 
     def comment(self, repo, number, body):
         self.posted.append(body)
@@ -80,6 +102,7 @@ def test_an_answer_the_project_has_is_given_and_the_split_goes_ahead(monkeypatch
     issues = Issues(f"{STORY_SPLIT_MARKER}", EVIDENCE)
     reply = ProductAnswer(
         answer="Flags are opt-in via --thresholds; the default table is unchanged.",
+        rows=rows("Flags only with --thresholds"),
         based_on=["#100 made markdown flags opt-in", "#102 added --thresholds"],
     )
     go, _, calls = step(issues, monkeypatch, reply)
@@ -87,10 +110,50 @@ def test_an_answer_the_project_has_is_given_and_the_split_goes_ahead(monkeypatch
     assert "#97 broke 25 merged tests" in calls[0]["evidence"]
     assert "#100 opt-in flags" in calls[0]["delivered"] and calls[0]["goal"].startswith("Goal")
     (posted,) = issues.posted
-    assert posted.startswith(PRODUCT_ANSWER_MARKER) and "Following: #100 made" in posted
-    assert "opt-in via --thresholds" in story_problem_evidence(issues, REPO, 54), (
-        "the re-split reads the answer with the evidence"
+    assert record.has_change([posted], "answer")
+    assert PRODUCT_ANSWER_MARKER in posted and "Following: #100 made" in posted
+    found = record.parse(record.split(issues.body)[1])
+    assert found.row("R2").decision == "Flags only with --thresholds"
+    assert found.row("R2").set_by == "Product Owner"
+    assert story_problem_evidence(issues, REPO, 54).startswith("#97 broke 25 merged tests")
+    assert "opt-in via --thresholds" not in story_problem_evidence(issues, REPO, 54), (
+        "the re-split reads the answer in the record, not from the comments"
     )
+
+
+def test_the_product_owner_is_shown_the_record_with_its_earlier_answers(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", EVIDENCE)
+    reply = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    _, _, calls = step(issues, monkeypatch, reply)
+    assert "| R1 | accepted | Flags | Shown with --thresholds |" in calls[0]["epic"]
+
+
+def test_a_row_the_record_refuses_is_asked_for_again_with_the_reason(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", EVIDENCE)
+    issues.body = (
+        RECORD.replace("| R1 | accepted |", "| R1 | binding |")
+        .replace("| #100 |", "| Architect | 2026-10-09 | — | #100 |")
+        .replace(
+            "| Source |\n|---|---|---|---|---|---|",
+            "| Set by | Date | Replaces | Source |\n|---|---|---|---|---|---|---|---|---|",
+        )
+    )
+    bad = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in", replaces="R1"), based_on=["#100"])
+    good = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    replies = [bad, good]
+    calls = []
+
+    def product_owner(**kw):
+        calls.append(kw)
+        return replies.pop(0)
+
+    monkeypatch.setattr(board_flow, "answer_story_problem", product_owner)
+    go = product_step(
+        issues, EventSink(), TickResult(), epic(), REPO, goal="g", project="p", delivered="d"
+    )
+    assert go and len(calls) == 2
+    assert "only its author or the Sponsor" in calls[1]["feedback"]
+    assert record.parse(record.split(issues.body)[1]).row("R1").binding
 
 
 def test_when_nothing_written_answers_it_the_sponsor_gets_one_question(monkeypatch):
