@@ -180,3 +180,70 @@ def test_a_refusal_is_counted_as_its_kind_of_failure():
 
     assert kind_of("llm.refused", "", {"empty": True}) is Kind.EMPTY
     assert kind_of("llm.refused", "", {"empty": False}) is Kind.FORM_REFUSED
+
+
+# --- tools in rounds, then the answer in its form (ADR 0024, ADR 0025) -----------------------
+
+
+def called(*calls):
+    return {
+        "id": "resp-t",
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": f"c{i}",
+                            "type": "function",
+                            "function": {"name": name, "arguments": json.dumps(args)},
+                        }
+                        for i, (name, args) in enumerate(calls)
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+    }
+
+
+FILES = {"src/metrics.py": "def first_attempt_count():\n    return 1\n"}
+
+
+def reader() -> calls.Tool:
+    """A read tool over a dict, standing in for the repository's (step C4)."""
+    return calls.Tool(
+        name="read_file",
+        description="Read a file",
+        parameters={"type": "object", "properties": {"path": {"type": "string"}}},
+        run=lambda arguments: FILES.get(arguments.get("path", ""), "no such file"),
+    )
+
+
+def test_a_tool_is_called_in_rounds_and_the_answer_comes_in_its_form(seen):
+    proxy = Proxy(called(("read_file", {"path": "src/metrics.py"})), reply("Done reading."), GOOD)
+    found = ask(proxy, tools=[reader()])
+    assert found.approved
+    first, second, final = proxy.sent
+    assert "response_format" not in first and first["tools"][0]["function"]["name"] == "read_file"
+    told = [m for m in second["messages"] if m["role"] == "tool"]
+    assert told[0]["tool_call_id"] == "c0" and "def first_attempt_count" in told[0]["content"]
+    assert "tools" not in final and final["response_format"]["json_schema"]["name"] == "Verdict"
+    assert final["messages"][-1]["content"] == calls.ANSWER_NOW
+    assert [e.detail["tool"] for e in seen if e.kind is EventKind.TOOL_FINISHED] == ["read_file"]
+
+
+def test_the_rounds_end_at_their_limit():
+    reading = called(("read_file", {"path": "src/metrics.py"}))
+    proxy = Proxy(reading, reading, GOOD)
+    ask(proxy, tools=[reader()], rounds=2)
+    assert len(proxy.sent) == 3 and "response_format" in proxy.sent[2]
+
+
+def test_a_tool_that_does_not_exist_or_bad_arguments_are_told_not_raised():
+    bad = called(("write_file", {"path": "x"}))
+    proxy = Proxy(bad, reply(""), GOOD)
+    ask(proxy, tools=[reader()])
+    told = [m for m in proxy.sent[1]["messages"] if m["role"] == "tool"]
+    assert "no tool named 'write_file'" in told[0]["content"]
