@@ -1,7 +1,7 @@
 # 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440; the Architect's settle before the split is to be built as step A2 of `docs/plans/context-record-build.md`, ADR 0023)
+- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583)
 
 ## Context
 
@@ -77,3 +77,8 @@ Sponsor whenever its written sources ran out.
 - **2026-10-07:** the Architect settles open design questions before the split,
   not in the design note after it, so the split's criteria build on settled
   contracts (Sponsor, from the evidence on sprint-metrics epics 406 and 407).
+- **2026-10-10:** built (crew#583, step A2). Each answer is a binding row of the
+  epic's record, set by the Architect, that replaces its question (ADR 0023). A
+  question the settle leaves to the implementer isn't the Architect's, and no
+  gate checks it. The split refuses an epic with a question still open for the
+  Architect.

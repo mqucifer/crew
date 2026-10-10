@@ -29,3 +29,14 @@ def _criteria_pass(monkeypatch):
     from crew_org.flows import board_flow
 
     monkeypatch.setattr(board_flow, "check_criteria", lambda **_: CriteriaCheck())
+
+
+@pytest.fixture(autouse=True)
+def _no_coverage_runs(monkeypatch):
+    """No test runs a project's suite under coverage (crew#583, C3): there's no map.
+
+    Tests of the map itself build their own from a report.
+    """
+    from crew_org.flows import delivery
+
+    monkeypatch.setattr(delivery, "coverage_for", lambda *a, **k: None)

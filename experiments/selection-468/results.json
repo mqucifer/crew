@@ -1,0 +1,171 @@
+[
+ {
+  "story": 507,
+  "before": {
+   "prompt_tokens": 35677,
+   "asked": [
+    "src/sprint_metrics/schema.py",
+    "src/sprint_metrics/__init__.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26166,
+   "asked": [],
+   "changes": 7,
+   "empty": false,
+   "seconds": 335
+  }
+ },
+ {
+  "story": 529,
+  "before": {
+   "prompt_tokens": 76541,
+   "asked": [
+    "src/sprint_metrics/card.py",
+    "src/sprint_metrics/store.py",
+    "src/sprint_metrics/schema.py",
+    "src/sprint_metrics/report.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26687,
+   "asked": [
+    "src/sprint_metrics/service.py",
+    "src/sprint_metrics/schema.py",
+    "schemas/single-sprint.json",
+    "tests/test_service.py",
+    "docs/service.md",
+    "tests/test_schema.py"
+   ],
+   "changes": 0,
+   "empty": false,
+   "seconds": 60
+  }
+ },
+ {
+  "story": 536,
+  "before": {
+   "prompt_tokens": 32594,
+   "asked": [
+    "src/sprint_metrics/card.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26221,
+   "asked": [],
+   "changes": 6,
+   "empty": false,
+   "seconds": 435
+  }
+ },
+ {
+  "story": 537,
+  "before": {
+   "prompt_tokens": 38620,
+   "asked": [
+    "src/sprint_metrics/report.py",
+    "src/sprint_metrics/schema.py",
+    "tests/test_schema.py",
+    "schemas/single-sprint.json",
+    "schemas/sprint-range.json",
+    "tests/test_crew_performance.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26484,
+   "asked": [
+    "src/sprint_metrics/report.py",
+    "src/sprint_metrics/schema.py",
+    "src/sprint_metrics/cli.py",
+    "docs/formats.md",
+    "schemas/single-sprint.json",
+    "tests/test_schema.py"
+   ],
+   "changes": 0,
+   "empty": false,
+   "seconds": 57
+  }
+ },
+ {
+  "story": 538,
+  "before": {
+   "prompt_tokens": 56849,
+   "asked": [
+    "src/sprint_metrics/cli.py",
+    "src/sprint_metrics/schema.py",
+    "tests/test_schema.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 55879,
+   "asked": [
+    "src/sprint_metrics/cli.py",
+    "src/sprint_metrics/schema.py"
+   ],
+   "changes": 0,
+   "empty": false,
+   "seconds": 165
+  }
+ },
+ {
+  "story": 539,
+  "before": {
+   "prompt_tokens": 35460,
+   "asked": [
+    "src/sprint_metrics/service.py",
+    "src/sprint_metrics/store.py",
+    "tests/test_service.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26796,
+   "asked": [
+    "src/sprint_metrics/service.py",
+    "src/sprint_metrics/store.py",
+    "schemas/single-sprint.json",
+    "schemas/sprint-range.json"
+   ],
+   "changes": 1,
+   "empty": false,
+   "seconds": 197
+  }
+ },
+ {
+  "story": 540,
+  "before": {
+   "prompt_tokens": 36603,
+   "asked": [
+    "src/sprint_metrics/service.py",
+    "tests/test_service.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 20510,
+   "asked": [
+    "src/sprint_metrics/service.py",
+    "src/sprint_metrics/store.py",
+    "tests/test_service.py"
+   ],
+   "changes": 0,
+   "empty": false,
+   "seconds": 50
+  }
+ },
+ {
+  "story": 541,
+  "before": {
+   "prompt_tokens": 35517,
+   "asked": [
+    "src/sprint_metrics/_docs_gen.py",
+    "src/sprint_metrics/report.py"
+   ]
+  },
+  "after": {
+   "prompt_tokens": 26929,
+   "asked": [],
+   "changes": 4,
+   "empty": false,
+   "seconds": 102
+  }
+ }
+]

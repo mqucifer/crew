@@ -654,6 +654,22 @@ def _deliver_in_steps(
     return stepped.merge(plan, answers)
 
 
+def coverage_for(ws: Any, repo: str, sink: EventSink, number: int) -> Any:
+    """The project's coverage map at its default branch, or None, said why (crew#583, C3).
+
+    Built once per base commit, in the sandbox, and read from `var/coverage/` after.
+    Without it the Developer is shown the same, less the tests that run its code.
+    """
+    from crew_org.tools.coverage_map import build  # noqa: PLC0415
+
+    try:
+        return build(ws.current(), repo)
+    except Exception as exc:  # noqa: BLE001 - context, never a reason to stop the work
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"#{number} no coverage map: {exc}"[:160], card=number)
+        return None
+
+
 def declared_contract(body: str) -> set[str]:
     """The merged tests a story declares it changes, from its **Existing tests** line (#316).
 
@@ -794,6 +810,8 @@ def deliver_story(
     declared = declared_contract(story_text)
     if live is not None:
         declared |= carried_retirements(issues, repo, live["number"])
+    # Which merged tests run which code, on the base this story builds on (C3).
+    coverage = coverage_for(ws, repo, sink, number)
     worktree = ws.open(branch, resume=live is not None)
     # Set when a returned story's branch conflicted with main and it was rebuilt
     # from main instead (#158): the conflicting paths, for the Developer and the PR.
@@ -912,6 +930,7 @@ def deliver_story(
             written=bounds.touched(implementation) if implementation is not None else (),
             failing=failing,
             report=report,
+            coverage=coverage,
         )
         sink.emit(
             CrewEvent(
