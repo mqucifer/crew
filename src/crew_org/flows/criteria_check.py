@@ -10,6 +10,7 @@ the epic is split again following that.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import Any
 
 from crew_org.crews.criteria_crew import CriteriaCheck
@@ -42,6 +43,30 @@ def render_stories(stories: list[Story]) -> str:
             lines.append(f"Existing tests: {story.pinned_behaviour}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
+
+
+def check_each(
+    check: Callable[..., CriteriaCheck],
+    proposal: StoryProposal,
+    *,
+    code_for: Callable[[str], str],
+    **shown: Any,
+) -> CriteriaCheck:
+    """The criteria checked one story per call, every conflict found kept (crew#583, D3).
+
+    Checked all at once, the criteria check thought a median of 12.6k tokens to write
+    641 characters, at the edge where answers come back empty (the context review,
+    C5). Each call is shown one story, with the split's other stories and the planned
+    ones to check it against, the record, and the code its own text names. A conflict
+    between two stories can be found from both sides; the repair rewrites both.
+    """
+    conflicts = []
+    for story in proposal.stories:
+        mine = render_stories([story])
+        rest = render_stories([s for s in proposal.stories if s is not story])
+        found = check(stories=mine, siblings=rest, repository=code_for(mine), **shown)
+        conflicts += found.conflicts
+    return CriteriaCheck(conflicts=conflicts)
 
 
 def planned_criteria(issues: Any, repo: str, planned: list[tuple[int, str, int]]) -> str:
