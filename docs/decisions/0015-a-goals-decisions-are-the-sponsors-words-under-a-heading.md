@@ -27,6 +27,13 @@ rest of the body.
 The Sponsor's comments on a Goal's superseded epics and stories stay in. That a
 card was superseded, and why, is context the panel should have.
 
+**Who is shown the collection, and how it reaches the rest** (Sponsor,
+2026-10-10). The panel and the Product Owner's settle are shown the collection.
+The split and the gates are not: they read the epic's record (ADR 0023), where
+the settle has written each Sponsor decision that bears on the epic as a
+binding row whose source is the Sponsor. A comment carrying a crew or Claude
+marker is skipped by the rule, whoever posted it.
+
 ## Consequences
 
 - A decision written in an issue body, outside a heading that names the
@@ -39,3 +46,14 @@ card was superseded, and why, is context the panel should have.
   needs the Sponsor.
 - The rule is `src/crew_org/flows/decisions.py`, and `crew decisions <repo>#<n>`
   prints what it finds.
+- Whether every Sponsor decision that bears on an epic reached its record is
+  part of the proof in `docs/plans/context-record-build.md`, not a rule the
+  code can check alone.
+
+## Changelog
+
+- **2026-10-10:** the context review found that this ADR said the split is
+  shown the collection and the code showed it only to the panel, and that 64%
+  of the collection for Goal 462 was Claude's status comments posted under the
+  Sponsor's login before crew#566. The split and the gates now read the epic's
+  record instead (ADR 0023), and marked comments are skipped (Sponsor).
