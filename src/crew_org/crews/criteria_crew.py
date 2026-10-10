@@ -42,6 +42,7 @@ def parts(
     *,
     stories: str,
     repository: str = "",
+    siblings: str = "",
     planned: str = "",
     conclusion: str = "",
     goal: str = "",
@@ -52,6 +53,12 @@ def parts(
     return [
         calls.Part(
             "code", f"## The project's code as it stands\n\n{repository}" if repository else ""
+        ),
+        calls.Part(
+            "siblings",
+            f"## The other stories in this split, with their criteria\n\n{siblings}"
+            if siblings
+            else "",
         ),
         calls.Part(
             "planned",
@@ -107,6 +114,7 @@ def check_criteria(
     *,
     stories: str,
     repository: str = "",
+    siblings: str = "",
     planned: str = "",
     conclusion: str = "",
     goal: str = "",
@@ -123,6 +131,7 @@ def check_criteria(
     shown = parts(
         stories=stories,
         repository=repository,
+        siblings=siblings,
         planned=planned,
         conclusion=conclusion,
         goal=goal,

@@ -1461,9 +1461,11 @@ def refine_epics(
                 # that shows before any story exists (#428). One repair of the flagged
                 # stories' criteria; what survives goes to the Product Owner.
                 others = criteria_check.planned_criteria(issues, repo, planned)
-                checked = attributed(check_criteria, card=number, repo=repo)(
-                    stories=criteria_check.render_split(proposal),
-                    repository=repository,
+                code_for = partial(_focused_text, context, repo)
+                checked = criteria_check.check_each(
+                    attributed(check_criteria, card=number, repo=repo),
+                    proposal,
+                    code_for=code_for,
                     planned=others,
                     conclusion=conclusion,
                     goal=goal_text,
@@ -1495,9 +1497,10 @@ def refine_epics(
                         epic_card.title, body, **asked_for
                     )
                 if checked.conflicts:
-                    checked = attributed(check_criteria, card=number, repo=repo)(
-                        stories=criteria_check.render_split(proposal),
-                        repository=repository,
+                    checked = criteria_check.check_each(
+                        attributed(check_criteria, card=number, repo=repo),
+                        proposal,
+                        code_for=code_for,
                         planned=others,
                         conclusion=conclusion,
                         goal=goal_text,
