@@ -76,7 +76,7 @@ def test_a_return_and_what_followed_it_are_one_chain(tmp_path):
                 "at": "2026-09-26T16:55:58",
                 "kind": "product.answered",
                 "card": 59,
-                "detail": {"answer": "stdout stays empty on errors"},
+                "detail": {"answer": "stdout stays empty on errors", "story": 145},
             },
             resplit("2026-09-26T17:07:03", [145, 146]),
         ],
@@ -86,6 +86,30 @@ def test_a_return_and_what_followed_it_are_one_chain(tmp_path):
     assert chain.with_ == [146], "a sibling sent back with it is not a second return"
     assert chain.decided == "stdout stays empty on errors"
     assert chain.superseded == [145, 146]
+
+
+def test_an_answer_about_another_story_or_about_refinement_is_not_paired(tmp_path):
+    """Sprint 20's retro filed an answer about refinement under sm#529, by time (crew#583)."""
+    events = write_events(
+        tmp_path,
+        [
+            back(529, "2026-09-26T16:54:22"),
+            {
+                "at": "2026-09-26T16:55:58",
+                "kind": "product.answered",
+                "card": 59,
+                "detail": {"answer": "names are the design note's"},
+            },
+            {
+                "at": "2026-09-26T16:56:58",
+                "kind": "product.answered",
+                "card": 59,
+                "detail": {"answer": "about #530", "story": 530},
+            },
+        ],
+    )
+    (chain,) = read_loops(events, *DAY)
+    assert chain.decided == ""
 
 
 def test_a_return_outside_the_sprint_is_not_this_sprints(tmp_path):
@@ -103,6 +127,8 @@ def test_a_return_only_the_moves_recorded_takes_the_first_card_moved(tmp_path):
 
 
 class Comments:
+    owner = "mqucifer"
+
     def __init__(self, bodies: list[tuple[str, str]]):
         self.bodies = bodies
 
@@ -117,19 +143,33 @@ def test_what_only_the_epic_says_is_read_from_its_comments(tmp_path):
         chains,
         Comments(
             [
-                ("2026-09-26T12:00:00Z", f"{PRODUCT_ANSWER_MARKER}\n**Decided:** an older one"),
+                ("2026-09-26T12:00:00Z", answered(145, "R3", "an older one")),
                 (
                     "2026-09-26T16:54:29Z",
                     f"{STORY_PROBLEM_MARKER}\n**#145 went back to refinement: "
                     "the gates kept returning it.**",
                 ),
-                ("2026-09-26T16:55:58Z", f"{PRODUCT_ANSWER_MARKER}\n**Decided:** stdout empty"),
+                ("2026-09-26T16:55:30Z", answered(146, "R4", "about its sibling")),
+                ("2026-09-26T16:55:58Z", answered(145, "R5", "stdout empty")),
             ]
         ),
         "sprint-metrics",
     )
     assert chains[0].reason == "the gates kept returning it"
-    assert chains[0].decided == "stdout empty", "the decision after the return, not before"
+    assert chains[0].decided == "R5 added: Output: stdout empty", (
+        "the record's change for this story, after the return"
+    )
+
+
+def answered(story: int, row: str, decision: str) -> str:
+    """The record-change comment a Product Owner's answer posts (crew#583, A3 and A6)."""
+    from crew_org.flows import record
+
+    return (
+        f"{record.CHANGE.format(f'{row} answer')}\n**The epic's record changed**, by the "
+        f"Product Owner, for mqucifer/sprint-metrics#{story}.\n\n"
+        f"- **{row}** added: Output: {decision}\n\n{PRODUCT_ANSWER_MARKER}\n**Decided:** x"
+    )
 
 
 def test_the_retro_shows_each_chain_and_the_points_that_went_back(tmp_path):

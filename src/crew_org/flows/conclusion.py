@@ -13,6 +13,7 @@ design note. A row no story follows is a decision the split dropped.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from crew_org.flows import record
@@ -54,11 +55,13 @@ def story_rows(issues: Any, story: Any, default_repo: str) -> str:
     return record.rows_for(text, ids)
 
 
-def problems(proposal: Any, rows: list[str]) -> list[str]:
-    """What is wrong between a proposed split and the conclusion's rows. Empty if nothing.
+def problems(proposal: Any, rows: list[str], tests: Sequence[str] = ()) -> list[str]:
+    """What is wrong between a proposed split and the record's rows. Empty if nothing.
 
     Only a split that makes stories is checked: one that finds everything already
-    delivered has nothing to follow the rows.
+    delivered has nothing to follow the rows. `tests` are the merged tests the record
+    says the epic changes (C rows): each is carried into a story's Existing tests
+    line or dropped with why, as a superseded story is (#248, crew#583).
     """
     if not proposal.stories:
         return []
@@ -82,6 +85,15 @@ def problems(proposal: Any, rows: list[str]) -> list[str]:
         found.append(
             f"No story follows {', '.join(unused)}. Name the story that does in its `follows`, "
             "or list the row in `not_for_stories` with why it is not for stories."
+        )
+    carried = " ".join(s.pinned_behaviour for s in proposal.stories)
+    dropped = {d.test for d in getattr(proposal, "tests_dropped", [])}
+    silent = [t for t in tests if t not in dropped and t not in carried]
+    if silent:
+        found.append(
+            f"No story changes {', '.join(silent)}, which the record says this epic changes. "
+            "Name each in the Existing tests line of the story that changes it, or list it in "
+            "`tests_dropped` with why."
         )
     return found
 

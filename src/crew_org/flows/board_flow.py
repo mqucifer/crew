@@ -344,8 +344,24 @@ SPONSOR_WORDS = "sponsor"
 ANSWER_ATTEMPTS = 2
 
 
+# The story a story problem is about, in the crew's own words: "**#529 went back to
+# refinement". A problem raised inside refinement, by the criteria check, has none.
+_RETURNED = re.compile(r"\*\*#(\d+) went back to refinement")
+
+
+def returned_story(problem: str) -> int | None:
+    """The story whose return a story problem reports, or None for one raised in refinement."""
+    found = _RETURNED.search(problem)
+    return int(found.group(1)) if found else None
+
+
 def _record_answer(
-    issues: IssueClient, sink: EventSink, repo: str, number: int, reply: Any
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    number: int,
+    reply: Any,
+    about: int | None = None,
 ) -> None:
     """The Product Owner's answer, written as rows of the epic's record (ADR 0023)."""
     today = datetime.now(UTC).date().isoformat()
@@ -378,7 +394,9 @@ def _record_answer(
         epic=number,
         by=record_flow.PRODUCT_OWNER,
         change=change,
-        card=number,
+        # The story it answers for, so the retro pairs it with that story's return
+        # and no other (crew#583, step A6); the epic, for a problem raised in refinement.
+        card=about or number,
         kind=ANSWER,
         why=f"{PRODUCT_ANSWER_MARKER}\n**Decided:** {reply.answer.strip()}\n\n"
         "Following: " + "; ".join(reply.based_on),
@@ -537,6 +555,7 @@ def product_step(
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied
 
+    about = returned_story(since[problems[-1]])
     feedback = ""
     for _attempt in range(ANSWER_ATTEMPTS):
         try:
@@ -551,7 +570,7 @@ def product_step(
                 feedback=feedback,
             )
             if reply.answer.strip():
-                _record_answer(issues, sink, repo, number, reply)
+                _record_answer(issues, sink, repo, number, reply, about)
         except record_flow.RecordRefused as exc:
             feedback = f"Your rows broke the record's rules: {exc}"
             continue
@@ -570,7 +589,13 @@ def product_step(
                 role="Product Owner",
                 card=number,
                 summary=f"epic #{number}: decided — {reply.answer.strip()}"[:120],
-                detail={"repo": repo, "answer": reply.answer.strip(), "based_on": reply.based_on},
+                detail={
+                    "repo": repo,
+                    "answer": reply.answer.strip(),
+                    "based_on": reply.based_on,
+                    # The story whose return this answers, if one went back (A6).
+                    **({"story": about} if about is not None else {}),
+                },
             )
         )
         return True
@@ -1068,6 +1093,64 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
     return "\n".join(lines)
 
 
+_TEST_ID = re.compile(r"[\w/.-]+\.py::[\w.]+")
+
+
+def record_split_tests(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    epic: int,
+    proposal: StoryProposal,
+    numbers: dict[str, int],
+) -> None:
+    """The merged tests this split's stories change, as rows of the epic's record (A4).
+
+    Each test a story's Existing tests line declares as a contract change becomes a
+    C row naming the story; each the split dropped is marked so, with why. A later
+    re-split is shown them and has to carry or drop each, as it does a superseded
+    story. Only an epic with a record gets them: one split without the panel stays
+    as it was. A failure here costs the rows, not the split.
+    """
+    changes = [
+        (test, story, numbers.get(story.title))
+        for story in proposal.stories
+        if story.pinned_behaviour.lower().startswith("contract change")
+        for test in dict.fromkeys(_TEST_ID.findall(story.pinned_behaviour))
+    ]
+    if not (changes or proposal.tests_dropped):
+        return
+    try:
+        if not record_flow.has_record(issues.get(repo, epic).get("body") or ""):
+            return
+
+        def change(current: record_flow.Record) -> record_flow.Record:
+            for test, story, made in changes:
+                said = story.pinned_behaviour.split(":", 1)[-1].strip()
+                current = current.declare(
+                    test,
+                    settle_flow.explicit(said, owner=issues.owner, repo=repo),
+                    f"{issues.owner}/{repo}#{made}" if made else story.title,
+                )
+            for dropped in proposal.tests_dropped:
+                current = current.drop(dropped.test, dropped.why)
+            return current
+
+        record_flow.edit(
+            issues,
+            sink,
+            repo=repo,
+            epic=epic,
+            by="Business Analyst",
+            change=change,
+            kind="tests",
+            why="The merged tests this split's stories change, or that it dropped.",
+        )
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"#{epic}: the split's tests weren't recorded: {exc}"[:160])
+
+
 def render_split(
     epic_title: str, proposal: StoryProposal, decision, numbers: dict[str, int]
 ) -> str:
@@ -1524,6 +1607,8 @@ def refine_epics(
                 body, conclusion = record_flow.split(_goal_body(issues, repo, number))
                 # Only binding rows need a story: a replaced row lives on in its replacement.
                 rows = record_flow.parse(conclusion).binding_ids()
+                # The merged tests the record says this epic changes (crew#583, step A4).
+                declared = record_flow.parse(conclusion).declared_tests()
                 # The Goal, shown to the criteria check with the project's log (crew#440).
                 goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # What the project has decided for every epic (crew#468).
@@ -1617,7 +1702,7 @@ def refine_epics(
                     raise ValueError("it asked to see files past the limit instead of splitting")
                 # Every settled row is followed by a story, or named as not for stories
                 # (crew#440). One re-split with what is missing named; past that it fails.
-                found = conclusion_flow.problems(proposal, rows)
+                found = conclusion_flow.problems(proposal, rows, declared)
                 if found:
                     asked_for["feedback"] = "\n\n".join(
                         f
@@ -1627,7 +1712,7 @@ def refine_epics(
                     proposal = attributed(split_epic, card=number, repo=repo)(
                         epic_card.title, body, **asked_for
                     )
-                    found = conclusion_flow.problems(proposal, rows)
+                    found = conclusion_flow.problems(proposal, rows, declared)
                     if found:
                         raise ValueError(
                             "the split doesn't fit the epic's conclusion: " + " ".join(found)
@@ -1832,6 +1917,7 @@ def refine_epics(
                 body=body,
                 by="Business Analyst",
             )
+            record_split_tests(issues, sink, repo, number, proposal, numbers)
 
             # Moving the card out of the gate *was* the approval. Leaving the label
             # on means the board keeps asking for a decision already made — the same

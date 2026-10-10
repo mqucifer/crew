@@ -1131,25 +1131,82 @@ class MergedTable:
         )
 
 
-def test_the_same_merged_tests_failing_twice_sends_the_story_back(harness, monkeypatch):
-    """sprint-metrics#97: every attempt broke the table's merged tests, and it blocked."""
+TABLE_TEST = "tests/test_table.py::test_default_table_rows"
+
+
+def ruled(monkeypatch, ruling):
+    """The Business Analyst's ruling on undeclared merged failures, stood in (crew#584, A5)."""
+    asked = []
+
+    def rule(issues, sink, *, card, repo, story, rows, failures):
+        asked.append(failures)
+        return ruling
+
+    monkeypatch.setattr(delivery, "rule_on_contract", rule)
+    return asked
+
+
+def test_the_first_undeclared_merged_failure_the_analyst_returns_sends_it_back(
+    harness, monkeypatch
+):
+    """sprint-metrics#97 and #529: every attempt broke the merged tests, and it blocked.
+
+    Sent back on the first failure now, by the Business Analyst's ruling, not after
+    the same tests broke twice."""
+    from crew_org.crews.contract_crew import ContractRuling
+
     monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    asked = ruled(
+        monkeypatch,
+        ContractRuling(decision="return", why="No criterion asks to change the default rows."),
+    )
     child = story()
     child.parent = 54
-    result, board, issues, _, calls, seen = harness(
-        checks=[red(PINNED), red(PINNED), green()], cards=[child]
-    )
-    assert calls["implement"] == 2, "sent back on the repeat, not repaired a third time"
+    result, board, issues, _, calls, seen = harness(checks=[red(PINNED), green()], cards=[child])
+    assert calls["implement"] == 1, "sent back at once, not repaired"
+    assert asked == [{TABLE_TEST: "AssertionError: rows changed"}]
     assert calls["escalate"] == 0 and result.blocked == []
     assert result.returned == [(6, 54)]
     assert ("S6", "Ready") in board.moves and ("S6", "cleared Sprint") in board.moves
-    assert any(n == 54 and "test_default_table_rows" in body for n, body in issues.comments_)
+    epic_comments = [body for n, body in issues.comments_ if n == 54]
+    assert any("test_default_table_rows" in b and "No criterion asks" in b for b in epic_comments)
     assert (54, "needs:rework") in issues.labels
     decided = [e for e in seen if e.kind is EventKind.ESCALATION_DECIDED]
     assert decided[-1].detail["failure_class"] == FailureClass.SCOPE
 
 
-def test_different_failures_each_time_are_repaired_as_usual(harness, monkeypatch):
+def test_an_amended_contract_is_told_to_the_developer_who_repairs_it(harness, monkeypatch):
+    from crew_org.crews.contract_crew import ContractRuling
+
     monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    result, _, _, _, calls, _ = harness(checks=[red(PINNED), red("1 failed"), green()])
+    asked = ruled(
+        monkeypatch,
+        ContractRuling(
+            decision="amend",
+            tests=[TABLE_TEST],
+            asserts="the default table has the new points column",
+            why="Criterion 2 adds a points column to the default table.",
+        ),
+    )
+    result, _, _, _, calls, _ = harness(checks=[red(PINNED), red(PINNED), green()])
+    assert len(asked) == 1, "one ruling per delivery: the tests are declared now"
     assert calls["implement"] == 3 and result.returned == [] and result.delivered
+    assert "amended this story's contract" in calls["feedback"][1]
+    assert "the default table has the new points column" in calls["feedback"][1]
+
+
+def test_without_a_ruling_the_story_goes_back(harness, monkeypatch):
+    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    ruled(monkeypatch, None)
+    child = story()
+    child.parent = 54
+    result, _, _, _, calls, _ = harness(checks=[red(PINNED), green()], cards=[child])
+    assert calls["implement"] == 1 and result.returned == [(6, 54)]
+
+
+def test_failures_that_are_not_merged_tests_are_repaired_as_usual(harness, monkeypatch):
+    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    asked = ruled(monkeypatch, None)
+    result, _, _, _, calls, _ = harness(checks=[red("1 failed"), red("2 failed"), green()])
+    assert calls["implement"] == 3 and result.returned == [] and result.delivered
+    assert asked == []

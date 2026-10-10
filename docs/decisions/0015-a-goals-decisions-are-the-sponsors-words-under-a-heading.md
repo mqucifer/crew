@@ -57,3 +57,10 @@ marker is skipped by the rule, whoever posted it.
   of the collection for Goal 462 was Claude's status comments posted under the
   Sponsor's login before crew#566. The split and the gates now read the epic's
   record instead (ADR 0023), and marked comments are skipped (Sponsor).
+- **2026-10-10:** built (crew#583, step A7). The Claude marker is `<!-- claude -->`.
+  Claude's seven status comments on crew#280 and crew#521 carry it. The two
+  Sponsor decisions in crew#521's tables were moved into its body, under a
+  heading that names the Sponsor, and crew#280's dependency on
+  mqucifer/sprint-metrics#462, which only those comments stated, into its body.
+  `crew decisions sprint-metrics#462` fell from 14,857 to 5,762 characters, with
+  every decision kept.

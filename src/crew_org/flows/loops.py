@@ -108,8 +108,11 @@ def read_loops(events_dir: Path, start: str, end: str) -> list[Chain]:
             # first card moved is the story that went back.
             chains.append(Chain(card=int(card), epic=epic, at=event["at"]))
         elif kind == "product.answered":
+            # Only with the story whose return it answers (crew#583, step A6). Paired by
+            # time, Sprint 20's retro filed an answer about refinement under sm#529.
             chain = latest(card)
-            if chain is not None:
+            story = detail.get("story")
+            if chain is not None and story is not None and story in (chain.card, *chain.with_):
                 chain.decided = str(detail.get("answer") or event.get("summary") or "")
         elif kind == "product.asked":
             chain = latest(card)
@@ -229,21 +232,21 @@ def loops_text(chains: list[Chain], points: dict[int, int]) -> list[str]:
 
 
 def from_comments(chains: list[Chain], issues: Any, repo: str) -> None:
-    """Fill in what a return from before #246 left only on the epic.
+    """Fill in what a return's events left out, from the comments on its epic.
 
-    The event log then recorded the moves and the re-split. Why the story went
-    back and what the Product Owner decided are the comments the crew wrote on
-    the epic, and the first of each after the return is the one it wrote then.
+    Why the story went back is the story-problem comment the crew wrote then. What
+    the Product Owner decided is the epic's record, changed for that story: the
+    record-change comment that names it (crew#583, step A6). An answer is never
+    paired with a return by time: Sprint 20's retro filed an answer about
+    refinement under sm#529 that way.
     """
-    from crew_org.flows.board_flow import (
-        PRODUCT_ANSWER_MARKER,
-        PRODUCT_QUESTION_MARKER,
-        STORY_PROBLEM_MARKER,
-    )
+    from crew_org.flows.board_flow import PRODUCT_QUESTION_MARKER, STORY_PROBLEM_MARKER
+    from crew_org.flows.record import has_change
 
     for chain in chains:
         if chain.epic is None or (chain.reason and (chain.decided or chain.asked)):
             continue
+        owner = getattr(issues, "owner", "")
         try:
             comments = issues.comments(chain.repo or repo, chain.epic)
         except Exception:  # noqa: BLE001
@@ -259,12 +262,14 @@ def from_comments(chains: list[Chain], issues: Any, repo: str) -> None:
             chain.reason = said.split(": ", 1)[-1].rstrip(".")
         if chain.decided or chain.asked:
             continue
-        answer = next((b for b in after if PRODUCT_ANSWER_MARKER in b), "")
+        mine = f"for {owner}/{chain.repo or repo}#{chain.card}."
+        answer = next((b for b in after if has_change([b], "answer") and mine in b), "")
         question = next((b for b in after if PRODUCT_QUESTION_MARKER in b), "")
         if answer:
-            # From the marker on: since crew#583 it ends a record-change comment.
-            chain.decided = _first_line(answer.split(PRODUCT_ANSWER_MARKER, 1)[1]).removeprefix(
-                "Decided: "
+            chain.decided = "; ".join(
+                line.removeprefix("- ").replace("**", "")
+                for line in answer.splitlines()
+                if line.startswith("- **R")
             )
         elif question:
             chain.asked = _first_line(question.replace(PRODUCT_QUESTION_MARKER, "")).removeprefix(

@@ -3,7 +3,11 @@
 Epics are proposed from a Goal early and split much later, and the Sponsor
 decides things in between. On 2026-10-01 the split of sprint-metrics Goal 174
 contradicted four of those decisions because nothing put them in front of it.
-The panel and the split are shown what this returns.
+The panel and the Product Owner's settle are shown what this returns. The split
+and the gates read the epic's record instead, where the settle writes each
+decision that bears on the epic as a row whose source is the Sponsor (ADR 0015,
+ADR 0023). A comment carrying a crew or Claude marker is skipped, whoever posted
+it.
 
 **The rule.** Everything the Sponsor has written that is either on the Goal's
 own cards or names the Goal:
@@ -47,6 +51,11 @@ from typing import Any
 from crew_org.tools.github_issues import IssueClient, IssueError, author
 
 DECISION_HEADING = re.compile(r"^(#{1,6})\s+.*\bSponsor\b", re.I | re.M)
+# A comment the crew or Claude wrote, whoever's login posted it: never the Sponsor's
+# direction (ADR 0015). Claude's status comments went out under the Sponsor's login
+# before crew#566 and were 64% of what this collected for Goal 462.
+CLAUDE_MARKER = "<!-- claude -->"
+MARKED = ("<!-- crew:", CLAUDE_MARKER)
 
 
 @dataclass(frozen=True)
@@ -88,7 +97,11 @@ def decision_sections(body: str) -> list[str]:
 
 
 def _comments(issues: IssueClient, repo: str, number: int, sponsor: str) -> list[dict[str, Any]]:
-    return [c for c in issues.comments(repo, number) if author(c) == sponsor]
+    return [
+        c
+        for c in issues.comments(repo, number)
+        if author(c) == sponsor and not any(m in (c.get("body") or "") for m in MARKED)
+    ]
 
 
 def _comment(rule: int, source: str, c: dict[str, Any], title: str = "") -> Decision:

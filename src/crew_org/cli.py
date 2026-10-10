@@ -1450,7 +1450,7 @@ def design(
 def decisions(
     goal: str = typer.Argument(..., help="The Goal, as `repo#n` or `owner/repo#n`."),
 ) -> None:
-    """What the Sponsor has decided for a Goal, as the panel and the split are shown it (crew#440).
+    """What the Sponsor has decided for a Goal, as the panel and the settle are shown it (crew#440).
 
     Collected by rule: the Sponsor's comments and decision log on the Goal's own
     cards, plus anything of theirs elsewhere that names the Goal. Read-only.
