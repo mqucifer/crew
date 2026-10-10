@@ -15,6 +15,7 @@ model's.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from crewai import Crew, Process, Task
@@ -379,10 +380,10 @@ def describe(
         "does. A note a member marked for the Architect is a design question (a path, a "
         "response shape, a parameter): it is an open question for the design note, unless a "
         "source settles it.\n"
-        "- **An open question** when it is a design question that can't be settled until the "
-        "stories exist. Say who settles it: the Architect, when the stories' criteria depend "
-        "on the answer (a key, a path, a response shape); or the implementer, when any "
-        "reasonable choice will do and nothing a test or a reviewer checks depends on it.\n"
+        "- **An open question** when it is a design question. Say who settles it: the "
+        "Architect, next and before the split, when the stories' criteria depend on the "
+        "answer (a key, a path, a response shape); or the implementer, when any reasonable "
+        "choice will do and nothing a test or a reviewer checks depends on it.\n"
         "- **For infra** when a member marked it infra: it is about the deployed runtime "
         "(where it runs, real addresses and secrets, provisioning, backups), which the "
         "project doesn't build. List what infra has to provide, in a few words. It is not a "
@@ -411,4 +412,129 @@ def settle(
     answer = getattr(crew.kickoff(), "pydantic", None)
     if not isinstance(answer, Settlement):
         raise ValueError("the Product Owner gave no answer in the Settlement form")
+    return answer
+
+
+# --- the Architect settles the design questions, before the split (ADR 0018) -------------------
+
+
+class DesignAnswer(BaseModel):
+    """One of the record's design questions, decided by the Architect."""
+
+    question: str = Field(description="The question's ID, like Q1")
+    decision: str = Field(
+        min_length=2,
+        max_length=DECISION_CHARS,
+        description=(
+            "What you decide: the key, the path, the shape, named exactly. A short fragment, "
+            f"under {aim(DECISION_CHARS)} characters"
+        ),
+    )
+    consequences: str = Field(
+        min_length=2,
+        max_length=CONSEQUENCES_CHARS,
+        description=(
+            f"What follows from it for the stories, a fragment under "
+            f"{aim(CONSEQUENCES_CHARS)} characters"
+        ),
+    )
+    source: str = Field(
+        min_length=2,
+        max_length=SOURCE_CHARS,
+        description=(
+            "What you based it on: a file and its definition, a binding row by its ID, the "
+            f"Goal's words, or why it is your call. Under {aim(SOURCE_CHARS)} characters"
+        ),
+    )
+
+    @field_validator("question")
+    @classmethod
+    def _an_id(cls, value: str) -> str:
+        found = value.strip().upper()
+        if not re.fullmatch(r"Q\d+", found):
+            raise ValueError("name the question by its ID, like Q1")
+        return found
+
+
+class DesignSettlement(BaseModel):
+    settled: list[DesignAnswer] = Field(
+        description="Every question the record left for you, answered by its ID"
+    )
+
+
+def check_design_cut(settlement: DesignSettlement) -> None:
+    """No cell ran into its limit: a cell at the limit was cut off, not finished."""
+    cut = [
+        f"{a.question} {name}"
+        for a in settlement.settled
+        for name, limit in (
+            ("decision", DECISION_CHARS),
+            ("consequences", CONSEQUENCES_CHARS),
+            ("source", SOURCE_CHARS),
+        )
+        if len(getattr(a, name)) >= limit
+    ]
+    if cut:
+        raise Unsettled(
+            f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
+            "Say each in fewer words, well under the limit, and finish the thought."
+        )
+
+
+def check_design_covers(settlement: DesignSettlement, asked: list[str]) -> None:
+    """Every question the record left for the Architect is answered, and only those."""
+    answered = [a.question for a in settlement.settled]
+    missing = [q for q in asked if q not in answered]
+    unknown = sorted(set(answered) - set(asked))
+    twice = sorted({q for q in answered if answered.count(q) > 1})
+    if missing or unknown or twice:
+        raise Unsettled(
+            (f"You didn't settle {', '.join(missing)}. " if missing else "")
+            + (f"{', '.join(unknown)} aren't questions left for you. " if unknown else "")
+            + (f"{', '.join(twice)} answered more than once. " if twice else "")
+            + f"The questions are {', '.join(asked)}: answer each once, by its ID."
+        )
+
+
+def describe_design(
+    context: PanelContext, *, record: str, questions: str, code: str, feedback: str = ""
+) -> str:
+    """What the Architect is shown to settle the design questions before the split."""
+    return (
+        f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
+        + (f"{context.project}\n\n" if context.project else "")
+        + (f"{context.project_log}\n\n" if context.project_log else "")
+        + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
+        f"{record}\n\n"
+        + (f"## The code as it stands\n\n{code}\n\n" if code else "")
+        + f"## The questions the record leaves for you\n\n{questions}\n\n"
+        + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
+        + "## Your task\n\n"
+        "The Product Owner settled the panel's notes into the epic's record above and left "
+        "these design questions to you. Settle each one now, before the epic is split into "
+        "stories, so their criteria are written against your answer: name the key, the path, "
+        "the response shape or the parameter exactly. Each answer is your own call as the "
+        "Architect, within the Goal and the record's binding rows, and it becomes a binding "
+        "row the stories follow. Answer every question by its ID, once. Say what is decided, "
+        "what follows for the stories, and what you based it on."
+    )
+
+
+def settle_design(
+    context: PanelContext, *, record: str, questions: str, code: str, feedback: str = ""
+) -> DesignSettlement:
+    """The Architect's answers to the record's design questions."""
+    agent = build_agent("architect")
+    task = Task(
+        description=describe_design(
+            context, record=record, questions=questions, code=code, feedback=feedback
+        ),
+        expected_output="Every question answered by its ID.",
+        agent=agent,
+        output_pydantic=DesignSettlement,
+    )
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
+    answer = getattr(crew.kickoff(), "pydantic", None)
+    if not isinstance(answer, DesignSettlement):
+        raise ValueError("the Architect gave no answer in the DesignSettlement form")
     return answer

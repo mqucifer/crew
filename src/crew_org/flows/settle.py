@@ -24,15 +24,19 @@ from pydantic import ValidationError
 from crew_org.crews.panel_crew import PanelContext, PanelResult
 from crew_org.crews.settle_crew import (
     Conclusion,
+    DesignSettlement,
     Row,
     Settlement,
     Unsettled,
     check_covers,
+    check_design_covers,
+    check_design_cut,
     check_grounded,
     check_not_cut,
     check_product_calls,
     numbered,
     settle,
+    settle_design,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
@@ -42,6 +46,8 @@ from crew_org.tools.github_issues import IssueClient, from_sponsor
 
 CONCLUSION_HEADER = record_flow.HEADER
 SETTLE_QUESTION_MARKER = "<!-- crew:settle-question -->"
+# On the comment saying the Architect couldn't settle a design question before the split.
+DESIGN_QUESTION_MARKER = "<!-- crew:design-question -->"
 NEEDS_HUMAN = "needs:human"
 # Rows that decide something for every epic go into the project's decision log
 # too (crew#468). The conclusion names them, and the label says the log hasn't
@@ -346,3 +352,140 @@ def settle_epic(
         )
     )
     return Settled(Outcome.WRITTEN, text)
+
+
+def propose_design(
+    context: PanelContext,
+    *,
+    record: str,
+    questions: str,
+    asked: list[str],
+    code: str,
+    card: int,
+    repo: str,
+    sink: EventSink | None = None,
+) -> DesignSettlement:
+    """The Architect's answers, asked for again with the reason when refused."""
+    feedback = ""
+    for attempt in range(ATTEMPTS):
+        try:
+            answer: DesignSettlement = attributed(
+                settle_design, card=card, repo=repo, attempt=attempt + 1
+            )(context, record=record, questions=questions, code=code, feedback=feedback)
+            check_design_cut(answer)
+            check_design_covers(answer, asked)
+            return answer
+        except (ValidationError, Unsettled, ValueError) as exc:
+            reraise_if_down(exc)
+            feedback = str(exc)[:600]
+            if sink is not None:
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{card} design questions refused, attempt {attempt + 1} of {ATTEMPTS}: "
+                    f"{feedback[:160]}",
+                    card=card,
+                    attempt=attempt + 1,
+                    reason=feedback,
+                )
+    raise SettleFailed(f"the Architect's answers were refused {ATTEMPTS} times: {feedback}")
+
+
+def settle_design_questions(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    epic: int,
+    context: PanelContext,
+    code: str = "",
+) -> Settled:
+    """The Architect settles the record's design questions before the split (ADR 0018).
+
+    Each answer becomes a binding row, set by the Architect, that replaces its
+    question, so the split writes criteria against settled contracts and no
+    question is open for the Architect at split time (the Definition of Ready).
+    Answers still refused after the retries are for a person: the epic waits,
+    labelled, until one settles them in the record or takes the label off.
+    """
+    issue: dict[str, Any] = issues.get(repo, epic)
+    body = issue.get("body") or ""
+    _, text = record_flow.split(body)
+    asked = record_flow.parse(text).for_architect()
+    if not asked:
+        return Settled(Outcome.ALREADY)
+    labels = {
+        (label.get("name") if isinstance(label, dict) else str(label))
+        for label in issue.get("labels") or []
+    }
+    if NEEDS_HUMAN in labels:
+        return Settled(Outcome.WAITING)
+    ids, table = record_flow.architect_questions(text)
+    try:
+        answer = propose_design(
+            context,
+            record=text,
+            questions=table,
+            asked=ids,
+            code=code,
+            card=epic,
+            repo=repo,
+            sink=sink,
+        )
+    except SettleFailed as exc:
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=epic,
+            body=f"{DESIGN_QUESTION_MARKER}\n**{', '.join(ids)} can't be settled before the "
+            f"split.** {exc}\n\nSettle them in the record, as rows by the Architect or the "
+            "Sponsor that replace each question, or take `needs:human` off to have the "
+            "Architect try again. The epic isn't split until then.",
+            by=record_flow.ARCHITECT,
+        )
+        artifacts.label(
+            issues, sink, repo=repo, number=epic, by=record_flow.ARCHITECT, add=[NEEDS_HUMAN]
+        )
+        return Settled(Outcome.WAITING, str(exc))
+    today = datetime.now(UTC).date().isoformat()
+    questions = {q.id: q for q in asked}
+
+    def c(text: str) -> str:
+        return _cell(text, owner=issues.owner, repo=repo, known={repo})
+
+    def change(current: record_flow.Record) -> record_flow.Record:
+        for a in answer.settled:
+            current = current.add(
+                record_flow.Decision(
+                    id="",
+                    context=c(questions[a.question].question),
+                    decision=c(a.decision),
+                    consequences=c(a.consequences),
+                    source=c(a.source),
+                    set_by=record_flow.ARCHITECT,
+                    date=today,
+                    replaces=a.question,
+                )
+            )
+        return current
+
+    try:
+        written = record_flow.edit(
+            issues,
+            sink,
+            repo=repo,
+            epic=epic,
+            by=record_flow.ARCHITECT,
+            change=change,
+            expected=body,
+            why="The design questions, settled before the split (ADR 0018).",
+        )
+    except record_flow.RecordChanged as exc:
+        raise SettleFailed(str(exc)) from exc
+    sink.note(
+        EventKind.NOTE,
+        f"epic #{epic}: the Architect settled {', '.join(ids)} before the split",
+        card=epic,
+        settled=len(ids),
+    )
+    return Settled(Outcome.WRITTEN, record_flow.render(written))
