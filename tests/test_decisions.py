@@ -317,3 +317,22 @@ def test_a_repository_the_token_cannot_search_is_named_not_skipped_quietly():
     assert [d.text for d in got.decisions] == ["Postgres."]
     assert got.unsearched == ["infra", "crew"]
     assert "Not searched, no access: infra, crew" in render(got, goal="mqucifer/sprint-metrics#174")
+
+
+def test_a_marked_comment_under_the_sponsors_login_is_not_their_decision():
+    """Claude's status comments went out under the Sponsor's login before crew#566 (A7)."""
+    from crew_org.flows import decisions
+
+    class Issues:
+        def comments(self, repo, number):
+            return [
+                {"user": {"login": "mquarters"}, "body": "Keep history in Postgres."},
+                {
+                    "user": {"login": "mquarters"},
+                    "body": f"{decisions.CLAUDE_MARKER}\n| Criterion |",
+                },
+                {"user": {"login": "mquarters"}, "body": "<!-- crew:by Product Owner -->\nx"},
+            ]
+
+    kept = decisions._comments(Issues(), "crew", 280, "mquarters")
+    assert [c["body"] for c in kept] == ["Keep history in Postgres."]

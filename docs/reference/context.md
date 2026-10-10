@@ -1,10 +1,10 @@
 # What each step is shown
 
-The manifest of each step's context (crew#583, ADR 0023): its parts, in the order the step reads them, where each comes from, and why it is there. A step's context is changed here and in the code together. A test reads the tables and checks the code against them (step A7 of `docs/plans/context-record-build.md`); until then, a pull request that changes a step's context updates its table.
+The manifest of each step's context (crew#583, ADR 0023): its parts, in the order the step reads them, where each comes from, and why it is there. A step's context is changed here and in the code together. `tests/test_context_manifest.py` reads the tables and checks that every function, class and method they name exists in the code, so a pull request that renames or removes one updates its table too.
 
 This is a drift check, not a gate (the Sponsor, 2026-10-10): no rule here may slow how a team changes software. A new fact goes into the epic's record and into a table here, never into a new reader.
 
-Steps not yet listed are added as the plan's steps reach them.
+Every step the plan's table "What each step reads after Part A" names is listed. A step added later gets its table in the same pull request.
 
 ## Architect, settling the design questions (before the split)
 
@@ -83,3 +83,87 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The story | its issue | Its criteria and Existing tests line |
 | The rows it follows | `story_rows` | The decisions that may require the change |
 | The merged tests it broke and doesn't declare | `story_problem.pinned_failures`, less what it declares | What to rule on |
+
+## The refinement panel (four members)
+
+`panel_crew.describe`, called by `panel_crew.run_panel` (crew#440).
+
+| Part | From | Why |
+|---|---|---|
+| The Goal | the Goal's issue, `panel.gather` | What the epic is for |
+| The project's record | `.crew/project.yaml` | What the project is for and how it is built |
+| The Sponsor's decisions for the Goal | `decisions.collect_decisions` | What the Sponsor has already decided (ADR 0015) |
+| The project's decision log | `project_log.read_log` | Decisions that hold for every epic |
+| The other epics under this Goal | `panel.gather` | Where this epic meets its siblings |
+| The epic | its approved text | What each member reads, from its own role |
+
+## Product Owner, settling the panel's notes
+
+`settle_crew.describe`, called by `settle.propose` (crew#440).
+
+| Part | From | Why |
+|---|---|---|
+| The Goal, the project's record, the Sponsor's decisions, the decision log, the other epics | `panel.gather` | What settles a note, or what a call must stay within (ADR 0018) |
+| The epic | its approved text | What the notes are about |
+| The panel's notes | `settle_crew.numbered` | What to settle, by number |
+| The Sponsor's answer | `settle._reply` | When the Product Owner asked |
+| The last refusal | `settle.propose` | Why the previous conclusion was refused |
+
+## QA, the criteria check
+
+`criteria_crew.check_criteria`, called by `board_flow.refine_epics` (#428).
+
+| Part | From | Why |
+|---|---|---|
+| The project's code | the split's focused view | What the code defines and merged tests pin |
+| Stories other epics plan | `criteria_check.planned_criteria` | Criteria that can't both pass |
+| The Goal and the project's decision log | the Goal's issue, `project_log.read_log` | A criterion restating a decision isn't deciding a question |
+| The epic's record | `record.split` | Rows a criterion must not contradict, and questions it must not settle |
+| The proposed stories | `criteria_check.render_split` | What is checked |
+
+## Developer, delivering a story
+
+`delivery_crew.implement_story`, called by `delivery.deliver_story`.
+
+| Part | From | Why |
+|---|---|---|
+| The story | its issue | What to build, and its Existing tests line |
+| The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
+| The epic's notes | `presentation_notes.story_notes` | The Architect's design note and the UX Designer's presentation note |
+| What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
+| The repository | `repo_context.focused_context` | The map, and the files the work names |
+| The last failure | `deliver_story`'s feedback | What to repair, and why the previous answer was refused |
+
+## Code Reviewer, judging a diff
+
+`review_crew.review_diff`, called by the review phase.
+
+| Part | From | Why |
+|---|---|---|
+| The story and the rows it follows | its issue, `conclusion.story_rows` | What the change is judged against |
+| The design note | `presentation_notes.story_notes` | The direction the change follows |
+| The code the diff imports, and who imports what it changes | `review_evidence.importers_section` | What the change can break |
+| The diff | the pull request | What is judged |
+
+## QA, accepting a story
+
+`qa_crew.verify_story`, called by the acceptance phase.
+
+| Part | From | Why |
+|---|---|---|
+| The story and the rows it follows | its issue, `conclusion.story_rows` | Each criterion is proven or not |
+| The tests that were written | the pull request | Which test proves which criterion |
+| What running the suite produced | the sandbox | Proof, not a claim |
+| The docs the change edits | the pull request | A doc criterion is judged by reading the doc |
+
+## Scrum Master, the retro
+
+`retro_crew.write_retro`, called by the sprint close.
+
+| Part | From | Why |
+|---|---|---|
+| What the board says, the standups, the escalation ledger | the board, the event log | What happened in the sprint |
+| Why work didn't land first time | the event log | The causes, by fingerprint |
+| Stories that went back, and what was decided for each | `loops.from_comments` | Each answer paired with its own story's return, from the record (step A6) |
+| Known and closed crew issues | the crew repository | What's already filed |
+
