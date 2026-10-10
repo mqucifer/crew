@@ -25,6 +25,7 @@ import contextlib
 import hashlib
 import re
 from dataclasses import dataclass, field
+from functools import partial
 
 from crew_org import log
 from crew_org.columns import BLOCKED, INBOX, READY
@@ -1223,6 +1224,11 @@ def admit_held_stories(
     return [admitted.get(c.item_id, c) for c in cards]
 
 
+def _focused_text(context: RepoContext, repo: str, about: str) -> str:
+    """The repository as the split sees it, focused on `about`."""
+    return context.focused_for(repo, about)[0]
+
+
 def refine_epics(
     board: ProjectClient,
     issues: IssueClient,
@@ -1296,8 +1302,9 @@ def refine_epics(
             if not proceed:
                 continue
 
-            # Four roles read it and the Product Owner settles what they raised into
-            # its conclusion, which the split reads (crew#440).
+            # Four roles read it, the Product Owner settles what they raised into its
+            # record, and the Architect settles the design questions, all before the
+            # split reads it (crew#440, ADR 0018).
             if panel_search is not None and not panel_step(
                 issues,
                 sink,
@@ -1306,7 +1313,20 @@ def refine_epics(
                 repo,
                 project=context.record_for(repo),
                 search=panel_search,
+                code=partial(_focused_text, context, repo),
             ):
+                continue
+
+            # Ready only with no design question open (ADR 0018, Scrum's Definition of
+            # Ready): the split would write criteria on a contract nobody settled.
+            waiting = record_flow.parse(
+                record_flow.split(issues.get(repo, number).get("body") or "")[1]
+            ).for_architect()
+            if waiting:
+                open_ids = ", ".join(q.id for q in waiting)
+                result.skipped.append(
+                    (number, f"not ready: {open_ids} still open for the Architect")
+                )
                 continue
 
             # What this epic has already failed at. Read before the attempt, so a
