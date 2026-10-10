@@ -90,10 +90,11 @@ class DeliveryOutcome:
     failure_detail: str | None = None
     # Where an unexpected error happened: the crew's last frames (#390).
     where: str | None = None
-    # A story whose failures are the story's (#189): the evidence for its epic,
-    # and the merged tests the last attempt broke, to see them break again.
+    # A story whose failures are the story's (#189): the evidence for its epic.
     returned: str | None = None
-    last_pinned: set[str] = field(default_factory=set)
+    # Whether the Business Analyst has ruled on merged tests this story broke and
+    # didn't declare: once per delivery (crew#584, step A5).
+    contract_ruled: bool = False
     # A first attempt that answered the story is already done (#221): each
     # criterion with the code that meets it and the test that proves it.
     already_done: list = field(default_factory=list)
@@ -668,6 +669,95 @@ def coverage_for(ws: Any, repo: str, sink: EventSink, number: int) -> Any:
         reraise_if_down(exc)
         sink.note(EventKind.NOTE, f"#{number} no coverage map: {exc}"[:160], card=number)
         return None
+
+
+def amended_line(ruling: Any) -> str:
+    """The story's Existing tests line after the Business Analyst amended it."""
+    from crew_org.flows.board_flow import existing_tests_line  # noqa: PLC0415
+
+    return existing_tests_line(f"contract change: {', '.join(ruling.tests)}: {ruling.asserts}")
+
+
+def rule_on_contract(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    card: Card,
+    repo: str,
+    story: str,
+    rows: str,
+    failures: dict[str, str],
+) -> Any:
+    """The Business Analyst's ruling on merged tests a story broke and didn't declare (A5).
+
+    Amended, the story's issue carries the new Existing tests line, the comment
+    says so, and the tests become rows of the epic's record declared by the story.
+    Returned, the return writes them (`story_problem.record_pinned`). None when the
+    ruling couldn't be had: the story then goes back, as before.
+    """
+    from crew_org.crews.contract_crew import rule_on_contract as ask  # noqa: PLC0415
+    from crew_org.flows import record  # noqa: PLC0415
+    from crew_org.flows.board_flow import EXISTING_TESTS  # noqa: PLC0415
+
+    number = card.number or 0
+    try:
+        ruling = attributed(ask, card=number, repo=repo)(story=story, rows=rows, failures=failures)
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"#{number} no contract ruling: {exc}"[:160], card=number)
+        return None
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.NOTE,
+            role="Business Analyst",
+            card=number,
+            summary=f"#{number} contract {ruling.decision}: {ruling.why}"[:120],
+            detail={"repo": repo, "decision": ruling.decision, "tests": ruling.tests},
+        )
+    )
+    if ruling.decision != "amend":
+        return ruling
+    line = amended_line(ruling)
+    try:
+        body = issues.get(repo, number).get("body") or ""
+        lines = [ln for ln in body.splitlines() if not ln.startswith(EXISTING_TESTS)]
+        issues.edit_issue(repo, number, body="\n".join(lines).rstrip() + f"\n\n{line}\n")
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=f"**The story's contract, amended in delivery.** {line}\n\n{ruling.why}",
+            by="Business Analyst",
+        )
+        if card.parent is not None and record.has_record(
+            issues.get(repo, card.parent).get("body") or ""
+        ):
+
+            def change(current: record.Record) -> record.Record:
+                for test in ruling.tests:
+                    current = current.declare(
+                        test,
+                        ruling.asserts,
+                        f"{issues.owner}/{repo}#{number}, amended in delivery",
+                    )
+                return current
+
+            record.edit(
+                issues,
+                sink,
+                repo=repo,
+                epic=card.parent,
+                by="Business Analyst",
+                change=change,
+                card=number,
+                kind="tests",
+                why="A story's contract, amended in delivery by the Business Analyst (crew#584).",
+            )
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        sink.note(EventKind.NOTE, f"#{number} amendment not written: {exc}"[:160], card=number)
+    return ruling
 
 
 def declared_contract(body: str) -> set[str]:
@@ -1322,21 +1412,44 @@ def deliver_story(
         if check.ok:
             break
 
-        # The same merged tests, not this story's, failing again: the story is
-        # changing behaviour other work pinned and doesn't say whether it
-        # should. More attempts, or escalation, won't fix a story (#189).
+        # Merged tests, not this story's, that it breaks and doesn't declare: the
+        # story is changing behaviour other work pinned. On the first such failure
+        # the Business Analyst rules for this story alone: amend its contract, or
+        # return it (crew#584, step A5). More attempts won't fix a story (#189).
         pinned = story_problem.pinned_failures(
             check.failure_report, regression.merged_base(worktree), implementation
         )
-        repeated = bool(pinned) and set(pinned) == outcome.last_pinned
-        outcome.last_pinned = set(pinned)
-        if repeated:
+        undeclared = {k: why for k, why in pinned.items() if not regression._declares(declared, k)}
+        amended = ""
+        ruling = None
+        if undeclared and not outcome.contract_ruled:
+            outcome.contract_ruled = True
+            ruling = rule_on_contract(
+                issues,
+                sink,
+                card=card,
+                repo=repo,
+                story=story_text,
+                rows=decided,
+                failures=undeclared,
+            )
+            if ruling is not None and ruling.decision == "amend":
+                declared |= set(ruling.tests)
+                story_text += f"\n\n{amended_line(ruling)}"
+                amended = (
+                    "The Business Analyst amended this story's contract: it now changes "
+                    f"{', '.join(f'`{t}`' for t in ruling.tests)}. After your change they must "
+                    f"assert: {ruling.asserts}. Update them in this story.\n\n"
+                )
+        if undeclared and not amended:
             failure = LocalFailure(
                 card=number,
                 role="Developer",
                 failure_class=FailureClass.SCOPE,
                 attempts=outcome.seen("VERIFY"),
-                detail="breaks the same merged tests again: " + ", ".join(sorted(pinned))[:360],
+                detail="breaks merged tests it doesn't declare: "
+                + ", ".join(sorted(undeclared))[:300]
+                + (f"; the Business Analyst: {ruling.why}" if ruling is not None else ""),
             )
             decision = policy.decide(failure, spent=ledger.spent(sprint))
             sink.emit(
@@ -1360,7 +1473,9 @@ def deliver_story(
             outcome.blocked_rule = decision.rule
             outcome.blocked_reason = decision.reason
             if decision.disposition is Disposition.RETURN_TO_REFINEMENT:
-                outcome.returned = story_problem.evidence(card, pinned, outcome.seen("VERIFY") + 1)
+                outcome.returned = story_problem.evidence(
+                    card, undeclared, outcome.seen("VERIFY") + 1
+                ) + (f"\n\n**The Business Analyst:** {ruling.why}" if ruling is not None else "")
             return outcome
 
         failure = LocalFailure(
@@ -1394,7 +1509,7 @@ def deliver_story(
         )
 
         if decision.disposition is Disposition.RETRY_LOCAL:
-            feedback = f"Lint or tests failed:\n\n{check.failure_report}"
+            feedback = f"{amended}Lint or tests failed:\n\n{check.failure_report}"
             continue
 
         if decision.disposition is Disposition.ESCALATE:

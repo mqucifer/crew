@@ -73,3 +73,13 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The epic's record, whole | `record.split` | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
 | Why it was sent back | `story_problem_evidence` and the Sponsor's notes | The problem to answer; its answer is in the record |
 | The epic | its approved text | What to split |
+
+## Business Analyst, ruling on a story's contract in delivery
+
+`contract_crew.rule_on_contract`, called by `delivery.rule_on_contract` (crew#584, step A5).
+
+| Part | From | Why |
+|---|---|---|
+| The story | its issue | Its criteria and Existing tests line |
+| The rows it follows | `story_rows` | The decisions that may require the change |
+| The merged tests it broke and doesn't declare | `story_problem.pinned_failures`, less what it declares | What to rule on |
