@@ -34,6 +34,11 @@ Sponsor, 2026-10-10 (D4 of the plan).
   information retrieval, for when the graph's candidates exceed the ceiling. It is built
   only if the replay after the graph shows that gap. It need not be the crew's main
   model.
+- **The map sees the tests the sandbox doesn't run** (Sponsor, 2026-10-10, after Sprint
+  21's first run): the coverage run gets the services a project's tests need, and a
+  static half adds the tests that reference a name the epic or its rows name, skipped
+  ones included. Coverage alone missed all four tests mqucifer/sprint-metrics#551's
+  stories had to change (crew#612).
 - **No retrieval index.** It adds a system with nothing to test it against.
 
 **The standards.** Test impact analysis (Rothermel and Harrold's regression test
@@ -51,3 +56,8 @@ analysis; tool use, also called function calling; two-stage retrieval.
   story and prompt size, decides whether the scout is needed.
 - crew#584 is built as the split's declaration from the map, with the delivery pass of
   ADR 0023.
+
+## Changelog
+
+- **2026-10-10:** the map gains the services tests need and a static half (crew#612;
+  Sponsor).

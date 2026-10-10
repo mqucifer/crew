@@ -51,6 +51,11 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
 - **Every step's context is built in one place.** Each step has a manifest of its parts
   in `docs/reference/context.md`, a test checks the code against it, and each call's
   event records the parts and their sizes.
+- **A Goal's epics share what they decide** (Sponsor, 2026-10-10, after Sprint 21's
+  first run). A row that two epics of one Goal depend on is seen by both, and an epic
+  another builds on is settled through its split before the dependent one's design
+  questions are asked. Where those rows live, on the Goal or per epic with an index on
+  the Goal, is the plan's Q5.
 - **The condition on all of it:** no rule put on the crew's context may be detrimental
   to how a development team develops and changes software; that is the crew's whole
   goal. The manifest is a drift check, not a gate. A rule that slows an ordinary change
@@ -88,3 +93,6 @@ its docs against its code.
 - **2026-10-10:** the plan's Q3 answered the same day: a Sponsor reply on an epic is
   recorded as a binding row by the Product Owner step, quoting the Sponsor's words
   (Sponsor).
+- **2026-10-10:** a Goal's epics share what they decide, and dependent epics are refined
+  in order, after mqucifer/sprint-metrics#551 and mqucifer/sprint-metrics#552 settled the same schema
+  differently (crew#611; Sponsor).
