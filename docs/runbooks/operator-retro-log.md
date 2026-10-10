@@ -507,3 +507,82 @@ Sprint 19 delivered 18 sprint-metrics stories (39 points) and closed Goals mquci
 **Checks:**
 - **"Ticks stopped" found something this time** (two, to land PRs 546 and 548), so it stays.
 - **"The crew's retro against this one" found wrong items for a fourth sprint.**
+
+## Operator's retro: Sprint 20 (2026-10-09, closed 2026-10-10, crew#589)
+
+Sprint 20 delivered 12 sprint-metrics stories (34 points) and closed the Goal mqucifer/sprint-metrics#462 with its last epic, mqucifer/sprint-metrics#468. It then released 1.2.0 (mqucifer/sprint-metrics#549), at the Sponsor's request. Nothing was blocked at the end. From the working log, the event log, the merged PRs and the issues.
+
+**Ticks:** 8 runs, none crashed. Tick 3 waited until the second part of crew#449 had merged, the Sponsor's exception to "no live change mid-sprint" (ADR 0014's changelog). Six ended at the pass cap, and ticks 7 and 8 ended stable. Ticks 4 to 8 were the first real runs of PRs 579–581.
+
+**The close:** `crew sprint close --sprint "Sprint 20" --early` at 02:38Z on 10-10. The sprint had drained before its Chicago date was over.
+
+### 1. Interventions
+- **Crew PRs merged during the sprint: 16.**
+  - **Goal work, merged mid-sprint by the Sponsor's exception (8):** the second part of crew#449, PRs 570–574 and 576, with follow-ups 577 and 578.
+  - **Fixed live after watching mqucifer/sprint-metrics#529 and epic 468 (3):** these weren't incidents under this runbook. The Sponsor asked for them to be fixed live.
+    - PR 579: a doc criterion listed with no test.
+    - PR 580: asks for files were refused, and the reply was false.
+    - PR 581: the criteria check couldn't see the Product Owner's answer.
+  - **Claude's own GitHub account (2):** PRs 567 and 569 (crew#566).
+  - **Sprint 19's proposal 1 (1):** PR 559. A superseded story is no longer counted as delivered, and the crew's retro now shows sm#507 and sm#529 as "Back to refinement".
+  - **Docs (2):** PRs 557 and 582.
+- **By hand: 3 operator moves.**
+  - mqucifer/sprint-metrics#529 was given one retry, the Sponsor's decision.
+  - mqucifer/sprint-metrics#549 was filed by the operator as the release story (ADR 0019).
+  - mqucifer/sprint-metrics#549 was unblocked after the operator's own error: see 2.
+- **One move by a person outside the logs:** mqucifer/sprint-metrics#528 went to Inbox (Goals) at 13:34Z. It has no Work Type, so refinement skipped it on every pass.
+
+### 2. Where a person was asked
+- **Two blocks.**
+  - **mqucifer/sprint-metrics#529: mechanism, not content.** It looped on six refusals of a doc criterion, three empty answers, and asks for `report.py` refused with a false reply. After the retry, it went back to refinement for its pinned tests. PRs 579 and 580 fixed both mechanisms.
+  - **mqucifer/sprint-metrics#549: the operator's error.** Its "Existing tests" line was written as `**Existing tests:**`, not in the form `declared_contract` reads, so no test was declared. The guard correctly refused the release's renamed version tests and blocked the card at 02:18Z. The line was corrected, checked with `declared_contract`, and the card was unblocked at 02:24Z. It merged at 02:32Z.
+- **Epic 468 came back to the Sponsor's gate twice** (`needs:human`, with `needs:design`). It took 6 Product Owner answers and 6 re-splits. The criteria check refused 4 of the splits (on 2, 2, 17 and 28 criteria) until PR 581 let it read the PO's answer. The split was accepted at 21:25Z.
+- **One question reached the Sponsor:** whether to retry sm#529. It was theirs to answer.
+
+### 3. Drift between the Goal and the plan
+- **The field names in the PO's answer didn't hold.**
+  - The PO answered `first_attempt_count` and `first_attempt_total`.
+  - The design note written after it named `first_attempt_numerator` and `first_attempt_denominator`, and those shipped in 1.2.0.
+  - The split's criteria named neither, so no gate saw the difference.
+
+  The Sponsor (21:5xZ): names are the crew's unless the Goal is specific. Nothing was lost against the Goal. But a decided answer was silently overridden, which `design_notes.decided` exists to prevent. The Sponsor's framing is crew#583: what's non-negotiable, against what's left to the implementation.
+
+### 4. Repeats and cost
+- **First time: 4 of 12 delivered stories,** down from 13 of 18 in Sprint 19.
+- **Returned to refinement: 2,** both for pinned tests: mqucifer/sprint-metrics#507, and #529 after about 4 h 15 min (14:58Z to 19:12Z). It's the same mechanism as crew#189's returns in earlier sprints.
+- **Gate round trips: 4.** QA returned #506 twice and #538 once, and the reviewer returned #536 once.
+- **Model failures:**
+  - 15 SCHEMA refusals:
+    - 6 doc-criterion refusals on #529, fixed by PR 579;
+    - 8 "the edit changes nothing" (#506 three times, each logged twice, and #529 twice);
+    - 1 on #549.
+  - 4 empty answers: #529 three times, and #537 once.
+- **The Developer's context has no ceiling on a repair.**
+  - #537's VERIFY repair was 181,171 prompt tokens: 25 files in full, chosen from every file the failure report named. It came back empty after 885 s. The same prompt then answered.
+  - #529 reached 125k in tick 3.
+  - The empty-answers runbook puts the onset at about 60k.
+  - Nothing else in the sprint went over 89k.
+
+### 5. The crew's own retro (crew#589) against this one
+- **It counts right this time:** 12 stories and 34 points, with #507 and #529 shown as "Back to refinement". PR 559 worked.
+- **crew#584 agrees with item 4:** a split that changes a response shape doesn't name the merged tests it breaks.
+- **crew#585 is wrong.** It says #529–531 pinned hyphenated names before the design note. Their criteria use `points_delivered`, `first_attempt_count` and `escalation_count`. The hyphens were only in sm#507's prose. Diagnosing from what the card's text appears to say is Sprint 18's proposal 1 again, for a fifth sprint.
+- **crew#586 counts #549's REGRESSION,** which was the operator's wording error, not the crew's.
+- **crew#587 (EDIT, text not in the file)** may share a cause with Sprint 19's crew#554 and crew#555. Its fingerprint differs, because the message carries the file.
+- **crew#588 is the SCOPE policy's own sentence as a "cause".** It carries no content, and duplicates crew#584.
+- **It missed two things:**
+  - the repair context and its empty answers;
+  - the PO's answer being overridden by the design note.
+
+### 6. Proposed for the crew iteration (for the Sponsor to agree)
+1. **A repair's context has a ceiling.** It's chosen from the failing tests' own modules, not from every file the report names. Evidence:
+   - #537 at 181k tokens and #529 at 125k;
+   - 4 empty answers, about 15 min each;
+   - the runbook's onset of about 60k.
+2. **crew#584: a split names the merged tests a shape change breaks.** Evidence: 2 stories returned for pinned tests, #529 costing about 4 h. Epic 468's six re-splits followed from it.
+3. **Plan crew#583 with the Sponsor:** decisions the crew keeps, non-negotiable against open. Evidence: the PO's names overridden, and 6 PO answers on one epic.
+
+**Checks:**
+- **"Ticks stopped" found nothing this sprint.** None was stopped: tick 3 was held, not stopped. It stays for one more sprint.
+- **"The crew's retro against this one" found a wrong item for a fifth sprint** (crew#585). Sprint 18's proposal 1 is still the fix.
+- **New, for the operator: a story filed by hand runs the split's form checks.** At least `declared_contract`, before it's posted. sm#549 cost one block and about 10 minutes.
