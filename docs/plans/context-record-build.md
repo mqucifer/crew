@@ -2,7 +2,7 @@
 
 **Bottom line:** make one record per epic the crew's memory, edited in place and read whole by every step; fetch code by a graph, with a read tool for the rest; make the crew's own model calls, so a refused answer is retried with its reason. Then run the context review again on a real epic. Success means none of the eight kinds of loss traced on sprint-metrics#468 can happen, because the mechanism that lost them is gone, not patched.
 
-**Status:** 2026-10-10. D1, D2, D4, D5, D6 and D7 agreed in chat, D6 staged; D3 needs no decision. ADRs 0023 to 0025 record them. Q2 and Q3 are decided (see the open questions): the whole plan, proof included, lands before crew-presentation starts, and a Sponsor reply on an epic is recorded as a binding row. Nothing built. **D6's scope confirmed later that day (Sponsor: "neither"):** no CrewAI layer is kept, not for routing, memory or calls; its unused features were weighed one by one, and CrewAI 1.15.27's executor is unchanged on the two faults; task guardrails are the fallback only if the module fails on its first site. ADR 0025 and ADR 0002 record it.
+**Status:** 2026-10-10. D1, D2, D4, D5, D6 and D7 agreed in chat, D6 staged; D3 needs no decision. ADRs 0023 to 0025 record them. Q2 and Q3 are decided (see the open questions): the whole plan, proof included, lands before crew-presentation starts, and a Sponsor reply on an epic is recorded as a binding row. Nothing built. **D6's scope confirmed later that day (Sponsor: "neither"):** no CrewAI layer is kept, not for routing, memory or calls; its unused features were weighed one by one, and CrewAI 1.15.27's executor is unchanged on the two faults; task guardrails are the fallback only if the module fails on its first site. ADR 0025 and ADR 0002 record it. **Order (Sponsor, 2026-10-10): this plan first, before crew#280 and crew#521;** crew#583 is P1. The Sponsor starts the build in a clear session, from this file.
 
 **The condition on all of it (Sponsor, 2026-10-10):** no rule put on the crew's context may be detrimental to how a development team develops and changes software. That is still the whole goal of the crew. Where a rule here would slow an ordinary change, the rule yields. The evidence is the Crew Context Review (page v6; raw runs in `~/infra-results/context-review/`; the tool is `scripts/context_review.py` in mqucifer/infra, runbook `runbooks/context-review.md`). Each decision below is asked in chat and becomes an ADR by PR when the Sponsor decides, before its part is built. Every file and function named here exists at crew commit 63e5936.
 
@@ -115,7 +115,18 @@ A  the record (D1, D2, D3, D7) ──► C  the graph (D4) ──► C4  the rea
 E  the proof: after A, C1–C3 and D1–D3
 ```
 
-A comes first: everything else reads the record. C and D are independent of each other and can run in parallel. C4 needs D1. E is one real epic through the whole chain.
+A comes first: everything else reads the record. C and D are independent of each other and can run in parallel. C4 needs D1. E is one real epic through the whole chain, then the backlog reviewed against what was built.
+
+## Starting in a clear session
+
+The build starts in a fresh session (Sponsor, 2026-10-10). That session needs nothing from the planning session beyond this file, the ADRs and the review's data.
+
+1. **Read, in this order:** this file; ADRs 0023, 0024 and 0025, then 0015 and 0018 as edited, in `docs/decisions/`; the review page, https://claude.ai/artifact/ACNHXTNX2mMfRcd6dCXiqv, for the traced losses; the runbook `runbooks/context-review.md` in mqucifer/infra for the tool.
+2. **Check before touching anything:** PR 593 (this plan) and PR 594 (the ADRs) are merged, and if not, stop and ask. No tick is running (`pgrep -f "crew tick"`). Docker Desktop and the proxy are up (`crew doctor`). The main checkout of mqucifer/infra at `~/Documents/git/infra` is pulled, so `scripts/context_review.py` is there (its PR 26 merged 2026-10-10, and the checkout was behind it that day). The raw runs are in `~/infra-results/context-review/epic-468/`: `calls.jsonl` holds every request and answer, `events.jsonl` the crew's events.
+3. **Order of the steps,** from the dependencies above: A0, A1, then C1 beside Part A since the map reads no record; A2, A3, A4, A5, A6, A7; C2, C3; D1a, D3, D4, D1b, D2; C4; E1, E2, E3. Each is one PR from its own worktree, `git worktree add ../crew-583-<step> -b <type>/583-<summary> origin/main`, with a body "For mqucifer/crew#583" and Why, Change and Verification, never stacked. A step that closes another issue names it with `Closes`.
+4. **Real runs before Part E need a live epic.** The settle, the Architect's pass and the answer rows (A1 to A3) are proven on a real epic, never a throwaway issue. The replay from `calls.jsonl`, A0's method, proves the model-call side without one. When A1 is ready, ask the Sponsor which sprint-metrics Goal serves; mqucifer/sprint-metrics#528 is the only open one today.
+5. **Rules that bind every step:** `CLAUDE.md` as a whole; no crew change lands mid-sprint without the Sponsor's exception; an ADR is edited by PR when a step changes what it says; ADR 0025's fallback, task guardrails, is taken only if the module fails on its first site, never as a redesign; the condition in the status line above.
+6. **After each PR, a status comment on crew#583:** which step landed, what is left, what it waits on. The Sponsor follows the work there.
 
 ## Build steps
 
@@ -159,6 +170,7 @@ Each step is one PR from its own worktree, never stacked. Anything that calls a 
 |---|---|---|
 | E1 | The next approved epic with open questions runs through the whole chain in ticks | The success test below, read with `scripts/context_review.py` on that epic |
 | E2 | crew#583 closed as built, crew#584 closed by C2, crew#190 and crew#457 closed as superseded or reshaped, with a status comment each | Each issue says which step did what |
+| E3 | **The backlog reviewed against what was built** (Sponsor, 2026-10-10): every open crew issue and Discussion is checked against the steps above; anything completed or superseded gets a comment naming the step and PR that did it, and is proposed for closure in one list, on crew#583 and in chat; closed on the Sponsor's word | Every open issue and Discussion has been looked at; the list names each one kept, with why |
 
 ## The success test (E1)
 
