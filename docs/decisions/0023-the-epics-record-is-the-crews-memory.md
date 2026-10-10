@@ -54,8 +54,9 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
 - **A Goal's epics share what they decide** (Sponsor, 2026-10-10, after Sprint 21's
   first run). A row that two epics of one Goal depend on is seen by both, and an epic
   another builds on is settled through its split before the dependent one's design
-  questions are asked. Where those rows live, on the Goal or per epic with an index on
-  the Goal, is the plan's Q5.
+  questions are asked. The rows stay in each epic's record: every epic is shown its
+  sibling epics' records, a superseded epic's binding rows are carried to the epic that
+  replaces it, and the Goal shows an index of every row across its epics.
 - **The condition on all of it:** no rule put on the crew's context may be detrimental
   to how a development team develops and changes software; that is the crew's whole
   goal. The manifest is a drift check, not a gate. A rule that slows an ordinary change
