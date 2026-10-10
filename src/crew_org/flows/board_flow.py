@@ -1356,6 +1356,7 @@ def refine_epics(
                                 "focused": focus.focused,
                                 "shown": focus.shown,
                                 "asked": focus.asked,
+                                "omitted": focus.omitted,
                                 # Local only, like the Developer's (discussion 553).
                                 "selection_text": about[:SELECTION_TEXT_CHARS],
                             },

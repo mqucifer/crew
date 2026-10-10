@@ -626,10 +626,28 @@ Three rules for every limit on prompt content:
 
    The epic's design note is still shown, but it doesn't choose files: it
    describes the whole epic. Imports aren't followed, because the map carries
-   every signature. A file the Developer needs and can't see, it names in
+   every signature; the one exception is a failing test's imports, below. A
+   file the Developer needs and can't see, it names in
    `need_files`: that answer isn't applied, and it's asked again with them
    shown. It may ask twice per delivery, and asking isn't a failure. Every
    attempt records its context size and which files it was shown.
+
+   **A focused context has a ceiling, and a repair is shown what it needs
+   first** (crew#591, 2026-10-10). sprint-metrics#537's repair was shown all
+   25 files its test report's tracebacks passed through, 479,252 characters
+   (181k tokens), and came back empty after 885 s. The files are now shown in
+   this order, until the context reaches 270,000 characters:
+   - the files the Developer asked for and the files it just wrote, always,
+     even past the ceiling
+   - the failing tests' files, and the project modules they import
+   - the files the story, its criteria and the gates' verdicts name
+   - last, the files only the test report names
+
+   Code comes before tests within each group, because a paired test file is
+   often the largest thing chosen. A file that doesn't fit is named as left
+   out, and the Developer can ask for it in `need_files`. `files.shown`
+   records the files left out as `omitted`. The ceiling is a guard (rule 2):
+   in Sprint 20, every context up to 267,588 characters was ordinary work.
 
    **QA is shown the tests the work touches or names, and asks for more**
    (crew#231, #369, 2026-09-29). Found in Grafana: a QA call at 78,528 prompt

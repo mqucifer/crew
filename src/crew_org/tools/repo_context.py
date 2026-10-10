@@ -9,6 +9,7 @@ to know that the board already had an Owner Agent field sitting empty.
 
 from __future__ import annotations
 
+import ast
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -228,6 +229,16 @@ def _phrase(text: str) -> str:
 SELECTION_TEXT_CHARS = 20_000
 
 
+# The most a focused context holds, map included (crew#591). Focusing had no
+# bound once it began: sprint-metrics#537's repair was shown all 25 files its
+# failure report named, 479,252 characters (181k tokens), and came back empty
+# after 885 s. A guard, not a budget: in Sprint 20 every context up to 267,588
+# characters (89k tokens, at about 2.9 characters a token) was ordinary work,
+# and only repairs grown by their reports went past it. What brings a repair
+# down is the order `focused_context` fills in, not this number.
+FOCUSED_CHAR_CEILING = 270_000
+
+
 @dataclass
 class Focus:
     """What a focused context showed, for the event log and for measuring #231."""
@@ -236,6 +247,8 @@ class Focus:
     shown: list[str] = field(default_factory=list)
     asked: list[str] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)
+    # Chosen, and named rather than shown, because the ceiling was reached (crew#591).
+    omitted: list[str] = field(default_factory=list)
     chars: int = 0
 
 
@@ -328,15 +341,57 @@ def select_files(
     return sorted(chosen), unknown
 
 
+def imported_files(worktree: Path, rel: str) -> list[str]:
+    """The repository's own modules a Python file imports, by absolute import (crew#591).
+
+    What a failing test exercises: a repair needs that code, and a report's
+    tracebacks name every file they pass through, not only that.
+    """
+    path = worktree / rel
+    if path.suffix != ".py" or not path.is_file():
+        return []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return []
+    modules = {
+        _module_of(Path(r)): r
+        for r in (str(p.relative_to(worktree)) for p in _files(worktree))
+        if r.endswith(".py")
+    }
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            # `from pkg import mod` imports a module, not the package around it.
+            names = [f"{node.module}.{a.name}" for a in node.names]
+            names = [n for n in names if n in modules] or [node.module]
+        else:
+            continue
+        found += [modules[n] for n in names if n in modules and modules[n] != rel]
+    return list(dict.fromkeys(found))
+
+
 def focused_context(
     worktree: Path,
     *,
     about: str,
     extra: Iterable[str] = (),
+    written: Iterable[str] = (),
+    failing: Iterable[str] = (),
+    report: str = "",
     above: int | None = None,
     editing: bool = True,
 ) -> tuple[str, Focus]:
     """The repository for a piece of work: all of it when small, the named part when not (#231).
+
+    The named part has a ceiling, FOCUSED_CHAR_CEILING (crew#591), filled in
+    order of need: what the Developer asked for (`extra`) and what it just
+    wrote (`written`), which are always shown; the failing tests' files
+    (`failing`) and the code they import; what `about` names; and last, what
+    only the test `report` names, whose tracebacks pass through everything.
+    What doesn't fit is named, so it can be asked for.
 
     `editing` is False for a role that decides rather than edits (refinement):
     the rules for editing by name are noise to it.
@@ -345,12 +400,27 @@ def focused_context(
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
         return full, Focus(focused=False, chars=len(full))
 
+    extra = [a.strip().removeprefix("./") for a in extra]
     chosen, unknown = select_files(worktree, about, extra)
+    existing = {str(p.relative_to(worktree)) for p in _files(worktree)}
+    kept = [r for r in [*extra, *written] if r in existing]
+    exercised = [r for r in failing if r in existing]
+    exercised += [i for r in exercised for i in imported_files(worktree, r)]
+    reported = sorted(set(select_files(worktree, report)[0]) - set(chosen)) if report else []
+    # Code before tests in each: a test file is often the largest thing chosen
+    # (sprint-metrics' test_service.py is 160k characters), and it's chosen as
+    # a pair, not because the work named it.
+    rest = sorted(chosen, key=lambda r: _is_test(Path(r)))
+    reported.sort(key=lambda r: _is_test(Path(r)))
+    order = list(dict.fromkeys([*kept, *exercised, *rest, *reported]))
+
     index = repository_context(worktree, editing=editing, bodies=False)
     lines = [index, "", "### The files this work names, in full", ""]
+    budget = FOCUSED_CHAR_CEILING - len(index)
     shown: list[str] = []
     unshown: list[str] = []
-    for rel in chosen:
+    omitted: list[str] = []
+    for rel in order:
         path = worktree / rel
         if path.suffix == ".py":
             fence = "python"
@@ -365,12 +435,23 @@ def focused_context(
             shown.append(rel)
             continue  # already shown in full above
         body = path.read_text(encoding="utf-8", errors="ignore").strip()
+        if len(body) > budget and rel not in kept:
+            omitted.append(rel)
+            continue
+        budget -= len(body)
         lines += [f"`{rel}`", "", f"```{fence}", body, "```", ""]
         shown.append(rel)
     if unshown:
         lines += [
             "Not shown, because they aren't text: "
             + ", ".join(f"`{rel}`" for rel in unshown)
+            + ".",
+            "",
+        ]
+    if omitted:
+        lines += [
+            "Named by this work but not shown, to keep this prompt short enough to answer: "
+            + ", ".join(f"`{rel}`" for rel in omitted)
             + ".",
             "",
         ]
@@ -381,8 +462,10 @@ def focused_context(
         "",
     ]
     text = "\n".join(lines)
-    asked = [a.strip().removeprefix("./") for a in extra if a.strip().removeprefix("./") in chosen]
-    return text, Focus(focused=True, shown=shown, asked=asked, unknown=unknown, chars=len(text))
+    asked = [a for a in extra if a in chosen]
+    return text, Focus(
+        focused=True, shown=shown, asked=asked, unknown=unknown, omitted=omitted, chars=len(text)
+    )
 
 
 def _is_test(rel: Path) -> bool:

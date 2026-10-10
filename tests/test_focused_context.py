@@ -18,7 +18,14 @@ from crew_org.events import EventKind
 from crew_org.flows import delivery
 from crew_org.tools import repo_context
 from crew_org.tools.repo_context import focused_context, repository_context, select_files
-from tests.test_delivery_flow import FakeIssues, FakeWorkspace, green, harness, story  # noqa: F401
+from tests.test_delivery_flow import (  # noqa: F401
+    FakeIssues,
+    FakeWorkspace,
+    green,
+    harness,
+    red,
+    story,
+)
 
 PKG = "src/sprint_metrics"
 
@@ -275,3 +282,123 @@ def test_text_is_known_by_name_as_well_as_suffix():
     ]:
         assert repo_context.is_text(Path(name)), name
     assert not repo_context.is_text(Path("logo.png"))
+
+
+# --- a repair's ceiling (crew#591) -------------------------------------------------------------
+
+# A test report whose traceback passes through a file no failing test imports.
+REPORT = (
+    "src/sprint_metrics/serve.py:2: in serve_metrics\n"
+    "FAILED tests/test_metrics.py::test_cycle - assert 1 == 0\n"
+)
+
+
+@pytest.fixture
+def repairing(repo: Path) -> Path:
+    (repo / "tests/test_metrics.py").write_text(
+        "from sprint_metrics import metrics\n"
+        "from sprint_metrics.report import format_table\n\n\n"
+        "def test_cycle():\n    assert metrics.calculate_cycle_time([]) == 0\n"
+    )
+    return repo
+
+
+def _sizes(repo: Path, *rels: str) -> int:
+    return sum(len((repo / r).read_text().strip()) for r in rels)
+
+
+def test_the_code_a_failing_test_imports_is_found(repairing: Path):
+    found = repo_context.imported_files(repairing, "tests/test_metrics.py")
+    assert found == [f"{PKG}/metrics.py", f"{PKG}/report.py"]
+
+
+def test_a_repair_under_the_ceiling_shows_everything_it_names(repairing: Path):
+    _, focus = focused_context(
+        repairing, about="Round it.", failing=["tests/test_metrics.py"], report=REPORT, above=0
+    )
+    assert f"{PKG}/serve.py" in focus.shown and not focus.omitted
+
+
+def test_over_the_ceiling_what_only_the_report_names_is_left_out_and_named(
+    repairing: Path, monkeypatch
+):
+    """sprint-metrics#537's VERIFY repair was shown all 25 files its report named,
+    479,252 characters, and came back empty after 885 s."""
+    index = len(repository_context(repairing, bodies=False))
+    needed = ["tests/test_metrics.py", f"{PKG}/metrics.py", f"{PKG}/report.py"]
+    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", index + _sizes(repairing, *needed))
+    text, focus = focused_context(
+        repairing, about="Round it.", failing=["tests/test_metrics.py"], report=REPORT, above=0
+    )
+    assert focus.shown == needed, "the failing test, then the code it imports"
+    assert f"{PKG}/serve.py" in focus.omitted and f"{PKG}/serve.py" not in focus.shown
+    assert "def serve_metrics(port):\n    return None" not in text
+    assert "not shown, to keep this prompt short enough to answer: " in text
+    assert f"`{PKG}/serve.py`" in text and "`need_files`" in text
+
+
+def test_what_it_asked_for_and_wrote_is_shown_past_the_ceiling(repairing: Path, monkeypatch):
+    """Withheld, they would be asked for again and again: the asks are capped, these aren't
+    otherwise reachable."""
+    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
+    _, focus = focused_context(
+        repairing,
+        about="Round it.",
+        extra=["docs/usage.md"],
+        written=[f"{PKG}/serve.py", "tests/not_written_yet.py"],
+        failing=["tests/test_metrics.py"],
+        report=REPORT,
+        above=0,
+    )
+    assert focus.shown == ["docs/usage.md", f"{PKG}/serve.py"]
+    assert focus.omitted[0] == "tests/test_metrics.py", "the failing test is next in line"
+
+
+FIX = FirstAttempt(
+    summary="fixed",
+    criteria_tests=[],
+    new_files=[FileWrite(path="tests/test_y.py", content="def test_y():\n    assert True\n")],
+)
+
+
+def test_a_repair_records_what_it_left_out(harness, monkeypatch, tmp_path):  # noqa: F811
+    """The Developer is shown what it wrote and the failing tests first, and the
+    `files.shown` event names what didn't fit."""
+
+    def seeded_open(self, branch, *, resume=False):
+        self.resumed = False
+        path = tmp_path / branch.replace("/", "__")
+        (path / PKG).mkdir(parents=True, exist_ok=True)
+        (path / "tests").mkdir(exist_ok=True)
+        (path / f"{PKG}/metrics.py").write_text("def calculate_cycle_time(cards):\n    return 1\n")
+        (path / f"{PKG}/serve.py").write_text("def serve_metrics(port):\n    return None\n")
+        (path / "tests/test_metrics.py").write_text(
+            "from sprint_metrics.metrics import calculate_cycle_time\n\n\n"
+            "def test_cycle():\n    assert calculate_cycle_time([]) == 0\n"
+        )
+        return path
+
+    def write(worktree, impl):
+        for f in impl.new_files:
+            (worktree / f.path).write_text(f.content)
+        return []
+
+    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
+    report = (
+        "src/sprint_metrics/serve.py:2: in serve_metrics\n"
+        "FAILED tests/test_metrics.py::test_cycle - assert 1 == 0\n"
+    )
+    _, _, _, _, calls, seen = harness(
+        checks=[red(report), green()], implement=lambda n: WORK if n == 1 else FIX, apply=write
+    )
+    assert calls["implement"] == 2
+    repair = [e for e in seen if e.kind == EventKind.FILES_SHOWN][1]
+    assert repair.detail["shown"] == ["tests/test_x.py"], "what it wrote"
+    assert repair.detail["omitted"] == [
+        "tests/test_metrics.py",
+        f"{PKG}/metrics.py",
+        f"{PKG}/serve.py",
+    ]
+    assert "3 left out" in repair.summary
