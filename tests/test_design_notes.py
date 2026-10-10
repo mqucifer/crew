@@ -427,3 +427,16 @@ def test_a_note_is_written_against_the_live_stories_only(tmp_path):
     assert "### #166 Prior sprint in JSON" in shown
     assert "Error on stdout" not in shown, "superseded: not the epic's any more"
     assert "Already built in this epic: #143 api_version" in shown
+
+
+def test_the_note_reads_decisions_from_the_record_not_the_latest_answer(tmp_path):
+    """Epic 468's note was shown only the latest answer, and renamed the fields (crew#583)."""
+    from crew_org.flows.board_flow import PRODUCT_ANSWER_MARKER
+
+    answer = {"body": f"{PRODUCT_ANSWER_MARKER}\n**Decided:** names are the design note's."}
+    issues = ConcludedIssues(comments={50: [answer]})
+    architect = Architect(note())
+    run(tmp_path, issues, architect)
+    shown = architect.calls[0]["epic"]
+    assert "| R1 |" in shown and "Decided for this epic" not in shown
+    assert "names are the design note's" not in shown

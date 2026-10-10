@@ -25,14 +25,11 @@ from crew_org.flows.board_flow import (
     NEEDS_DESIGN,
     NEEDS_HUMAN,
     NEEDS_REWORK,
-    PRODUCT_ANSWER_MARKER,
-    PRODUCT_QUESTION_MARKER,
     STORY_PROBLEM_MARKER,
     STORY_SPLIT_MARKER,
 )
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
-from crew_org.tools.github_issues import from_sponsor
 from crew_org.tools.github_project import Card
 
 NOTE_MARKER = "<!-- crew:design-note -->"
@@ -84,31 +81,6 @@ def note_for(issues: Any, repo: str, epic: int) -> str:
     since = bodies[splits[-1] + 1 :] if splits else bodies
     notes = [b for b in since if NOTE_MARKER in b]
     return notes[-1] if notes else ""
-
-
-def decided(issues: Any, repo: str, epic: int) -> str:
-    """The latest decision on the epic about what its stories should do (#189).
-
-    The Product Owner's answer, or the Sponsor's reply to its question. A new
-    design note has to follow it, or it can contradict the stories again.
-    """
-    try:
-        comments = issues.comments(repo, epic)
-    except Exception:  # noqa: BLE001
-        return ""
-    bodies = [c.get("body") or "" for c in comments]
-    for i in range(len(bodies) - 1, -1, -1):
-        if PRODUCT_ANSWER_MARKER in bodies[i]:
-            return bodies[i].replace(PRODUCT_ANSWER_MARKER, "").split("<!-- crew:by")[0].strip()
-        if PRODUCT_QUESTION_MARKER in bodies[i]:
-            # The Sponsor's reply only (crew#399): anyone can comment on a public repo.
-            replies = [
-                c.get("body") or ""
-                for c in comments[i + 1 :]
-                if "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
-            ]
-            return "\n\n".join(replies).strip()
-    return ""
 
 
 def awaiting_design(issues: Any, cards: list[Card], default_repo: str) -> set[tuple[str, int]]:
@@ -183,12 +155,8 @@ def write_notes(
             project = brief(record) if record else ""
             epic_body = issues.get(repo, number).get("body") or ""
             epic_text = f"#{number} {epic.title}\n\n{epic_body}"
-            ruling = decided(issues, repo, number)
-            if ruling:
-                epic_text += (
-                    "\n\n## Decided for this epic\n\n"
-                    f"{ruling}\n\nThe design note follows this; it doesn't contradict it."
-                )
+            # Every decision so far is in the epic's record, part of its body (ADR 0023):
+            # the note no longer reads the latest answer from the comments.
             story_text = "\n\n".join(
                 f"### #{s['number']} {s['title']}\n\n{s.get('body') or ''}"
                 for s in sorted(stories, key=lambda s: s["number"])

@@ -17,6 +17,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agents
 from crew_org.crews.asks import FileAsk
+from crew_org.crews.settle_crew import (
+    CONSEQUENCES_CHARS,
+    CONTEXT_CHARS,
+    DECISION_CHARS,
+    aim,
+)
 
 # Modified Fibonacci, per constitution §6. Nothing larger enters a sprint.
 POINT_SCALE = (1, 2, 3, 5, 8)
@@ -321,6 +327,50 @@ class StoryProposal(BaseModel):
         return self
 
 
+def _record_id(value: str) -> str:
+    found = value.strip().upper()
+    if found and not re.fullmatch(r"[RQ]\d+", found):
+        raise ValueError("name a row or question of the epic's record by its ID, like R3 or Q1")
+    return found
+
+
+class AnswerRow(BaseModel):
+    """One decision, as a row of the epic's record (crew#583, ADR 0023)."""
+
+    context: str = Field(
+        min_length=2,
+        max_length=CONTEXT_CHARS,
+        description=f"What it is about, a few words, under {aim(CONTEXT_CHARS)} characters",
+    )
+    decision: str = Field(
+        min_length=2,
+        max_length=DECISION_CHARS,
+        description=(
+            "What is decided, named exactly (a key, a value, a test), as a short fragment "
+            f"under {aim(DECISION_CHARS)} characters"
+        ),
+    )
+    consequences: str = Field(
+        min_length=2,
+        max_length=CONSEQUENCES_CHARS,
+        description=(
+            f"What follows for the stories, a fragment under {aim(CONSEQUENCES_CHARS)} characters"
+        ),
+    )
+    replaces: str = Field(
+        default="",
+        description=(
+            "When this changes a row you set earlier, or settles a question left to the "
+            "implementer, its ID in the epic's record (R3, Q2). Empty for a new decision"
+        ),
+    )
+
+    @field_validator("replaces")
+    @classmethod
+    def _an_id(cls, value: str) -> str:
+        return _record_id(value)
+
+
 class ProductAnswer(BaseModel):
     """The Product Owner's answer to the question a story problem raised (#189).
 
@@ -331,6 +381,14 @@ class ProductAnswer(BaseModel):
     answer: str = Field(
         default="",
         description="What the stories should do, when the project already answers it",
+    )
+    rows: list[AnswerRow] = Field(
+        default_factory=list,
+        description=(
+            "With an answer: the decision as rows of the epic's record, which every later "
+            "step reads. A row that changes one of yours replaces it by ID; never contradict "
+            "a row without replacing it"
+        ),
     )
     based_on: list[str] = Field(
         default_factory=list,
@@ -353,11 +411,48 @@ class ProductAnswer(BaseModel):
             raise ValueError("give an answer grounded in the project, or one question; not both")
         if self.answer.strip() and not self.based_on:
             raise ValueError("an answer names what it follows: the Goal, the record, or a story")
+        if self.answer.strip() and not self.rows:
+            raise ValueError("an answer is written as rows of the epic's record: give at least one")
         return self
 
 
+class SponsorRow(BaseModel):
+    """Where the Sponsor's words go in the epic's record. The words themselves are quoted."""
+
+    context: str = Field(
+        min_length=2,
+        max_length=CONTEXT_CHARS,
+        description=f"What the Sponsor's words are about, under {aim(CONTEXT_CHARS)} characters",
+    )
+    consequences: str = Field(
+        min_length=2,
+        max_length=CONSEQUENCES_CHARS,
+        description=(
+            f"What follows for the stories, a fragment under {aim(CONSEQUENCES_CHARS)} characters"
+        ),
+    )
+    replaces: str = Field(
+        default="",
+        description=(
+            "When the words change a row or settle a question of the record, its ID (R3, Q2). "
+            "Empty when they add something new"
+        ),
+    )
+
+    @field_validator("replaces")
+    @classmethod
+    def _an_id(cls, value: str) -> str:
+        return _record_id(value)
+
+
 def answer_story_problem(
-    *, epic: str, goal: str, evidence: str, project: str = "", delivered: str = ""
+    *,
+    epic: str,
+    goal: str,
+    evidence: str,
+    project: str = "",
+    delivered: str = "",
+    feedback: str = "",
 ) -> ProductAnswer:
     """Product Owner only: answer the question a story problem raised, or ask the Sponsor.
 
@@ -373,11 +468,14 @@ def answer_story_problem(
             + _delivered_block(delivered, "a choice that contradicts what these delivered")
             + f"## The Goal\n\n{goal}\n\n## The epic\n\n{epic}\n\n"
             f"## Why it came back\n\n{evidence}\n\n"
-            "A story of this epic kept breaking merged tests, because the epic doesn't "
+            + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
+            + "A story of this epic kept breaking merged tests, because the epic doesn't "
             "say what the product should do here. Decide it, if the Goal, the project's "
             "record or what's already delivered answers it, and name what you followed. "
-            "If none of them does, ask the Sponsor one question instead: the one whose "
-            "answer settles it."
+            "The epic's record above holds every decision so far, your earlier answers "
+            "included: build on it. Write your decision as rows of it; a row that changes "
+            "one you set earlier replaces it by ID. If none of them answers it, ask the "
+            "Sponsor one question instead: the one whose answer settles it."
         ),
         expected_output="A grounded answer with what it follows, or one question.",
         agent=agents["product_owner"],
@@ -387,6 +485,37 @@ def answer_story_problem(
         agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
     )
     return crew.kickoff().pydantic
+
+
+def place_sponsor_words(*, epic: str, words: str, feedback: str = "") -> SponsorRow:
+    """Product Owner only: where the Sponsor's words on an epic go in its record (ADR 0023).
+
+    The Sponsor, 2026-10-10: "if I respond to an epic it should be recorded". The
+    words are quoted as the row's decision, unchanged; the Product Owner says what
+    they are about, what follows, and which row or question they change, if any.
+    """
+    agents = build_agents("product_owner")
+    task = Task(
+        description=(
+            f"## The epic, with its record\n\n{epic}\n\n"
+            f"## The Sponsor's words on this epic\n\n{words}\n\n"
+            + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
+            + "The Sponsor wrote this on the epic. It becomes a binding row of the epic's "
+            "record, set by the Sponsor, whose decision is their words as written. Say what "
+            "the words are about and what follows for the stories, and, when they change a "
+            "row or settle a question of the record, give its ID."
+        ),
+        expected_output="Where the Sponsor's words go in the record.",
+        agent=agents["product_owner"],
+        output_pydantic=SponsorRow,
+    )
+    crew = Crew(
+        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    )
+    placed = getattr(crew.kickoff(), "pydantic", None)
+    if not isinstance(placed, SponsorRow):
+        raise ValueError("the Product Owner gave no answer in the SponsorRow form")
+    return placed
 
 
 REWORK = (

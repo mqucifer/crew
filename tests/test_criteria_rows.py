@@ -154,15 +154,17 @@ def test_the_tick_gives_the_check_the_projects_log(monkeypatch):
     assert checker.calls[0]["goal"] == ""  # this epic has no Goal above it
 
 
-def test_the_epics_decision_is_shown_to_the_check_as_decided(monkeypatch):
+def test_the_epics_decisions_reach_the_check_as_rows_of_its_record(monkeypatch):
     """sprint-metrics#468 (2026-10-09): the Product Owner named the four new keys, and
-    every criterion naming them was refused as settling the open question left to
-    the design note, because the check was never shown the answer."""
-    text = described(
-        monkeypatch,
-        conclusion="| Q1 | JSON field names | Settled by: Design note |",
-        decided="**Decided:** the four new keys (points_delivered, ...) are additive.",
+    every criterion naming them was refused as settling an open question, because
+    the check was never shown the answer. The answer is now a row of the record."""
+    record = (
+        "## Refinement conclusion\n\n"
+        "| R3 | binding | Field names | points_delivered, first_attempt_count | Stories name "
+        "them | Product Owner | 2026-10-09 | — | The Goal |"
     )
-    assert "## Decided on this epic since it was sent back" in text
-    assert text.index("the four new keys") < text.index("## The proposed stories")
-    assert "what was decided on this epic" in text
+    text = described(monkeypatch, conclusion=record)
+    assert "first_attempt_count" in text
+    assert text.index("first_attempt_count") < text.index("## The proposed stories")
+    assert "Decided on this epic since it was sent back" not in text
+    assert "a row of the record already says" in text

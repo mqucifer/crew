@@ -169,6 +169,14 @@ class Record:
         )
 
 
+_CHANGE = re.compile(r"<!-- crew:record-change [^ ]*(?: (\w+))? -->")
+
+
+def has_change(bodies: list[str], kind: str) -> bool:
+    """Whether any of these comments records a change of this kind (`answer`, `sponsor`)."""
+    return any(m.group(1) == kind for b in bodies for m in _CHANGE.finditer(b))
+
+
 def has_record(body: str) -> bool:
     return HEADER in body
 
@@ -420,7 +428,9 @@ def _identified(d: Decision) -> list[str]:
     return found
 
 
-def change_note(before: Record, after: Record, *, by: str, ref: str = "", why: str = "") -> str:
+def change_note(
+    before: Record, after: Record, *, by: str, ref: str = "", why: str = "", kind: str = ""
+) -> str:
     """The one comment an edit posts: which rows changed, by whom, for which card."""
     before_ids = {d.id for d in before.decisions}
     added = [d for d in after.decisions if d.id not in before_ids]
@@ -440,7 +450,7 @@ def change_note(before: Record, after: Record, *, by: str, ref: str = "", why: s
         lines.append("- Nothing to record: the panel raised nothing.")
     changed = [d.id for d in added] + [q.id for q in opened]
     return (
-        f"{CHANGE.format(','.join(changed))}\n"
+        f"{CHANGE.format(','.join(changed) + (f' {kind}' if kind else ''))}\n"
         f"**The epic's record changed**, by the {by}"
         + (f", for {ref}" if ref else "")
         + ".\n\n"
@@ -460,13 +470,15 @@ def edit(
     expected: str | None = None,
     card: int | None = None,
     why: str = "",
+    kind: str = "",
 ) -> Record:
     """Change the epic's record, check the change, write it, and say what changed.
 
     `expected` is the body as the caller read it before deciding the change (the
     model may have thought for minutes): if the body differs now, nothing is
     written. The body is read once more just before writing, for the same reason.
-    An edit that changes nothing writes nothing.
+    An edit that changes nothing writes nothing. `kind` tags the change comment, so
+    a step can find its own changes without reading what they say.
     """
     body = issues.get(repo, epic).get("body") or ""
     if expected is not None and body != expected:
@@ -486,7 +498,7 @@ def edit(
         sink,
         repo=repo,
         number=epic,
-        body=change_note(before, after, by=by, ref=ref, why=why),
+        body=change_note(before, after, by=by, ref=ref, why=why, kind=kind),
         by=by,
     )
     return after

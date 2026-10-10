@@ -25,7 +25,9 @@ import contextlib
 import hashlib
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from functools import partial
+from typing import Any
 
 from crew_org import log
 from crew_org.columns import BLOCKED, INBOX, READY
@@ -39,6 +41,7 @@ from crew_org.crews.refinement_crew import (
     Story,
     StoryProposal,
     answer_story_problem,
+    place_sponsor_words,
     propose_epics,
     propose_missing_epics,
     repair_criteria,
@@ -49,6 +52,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
+from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
@@ -316,7 +320,8 @@ def story_problem_evidence(issues: IssueClient, repo: str, number: int) -> str:
     """The latest story-problem comment on an epic, since it was last split (#189).
 
     Written by the crew, so `sponsor_notes` skips it, and the re-split would
-    never read why it was sent back.
+    never read why it was sent back. What was decided about it is in the epic's
+    record, which the split reads whole (ADR 0023).
     """
     try:
         comments = issues.comments(repo, number)
@@ -328,19 +333,161 @@ def story_problem_evidence(issues: IssueClient, repo: str, number: int) -> str:
     found = [i for i, body in enumerate(since) if STORY_PROBLEM_MARKER in body]
     if not found:
         return ""
-    parts = [since[found[-1]].replace(STORY_PROBLEM_MARKER, "").strip()]
-    answers = [b for b in since[found[-1] :] if PRODUCT_ANSWER_MARKER in b]
-    if answers:
-        parts.append(answers[-1].replace(PRODUCT_ANSWER_MARKER, "").strip())
-    return "\n\n".join(parts)
+    return since[found[-1]].replace(STORY_PROBLEM_MARKER, "").strip()
 
 
-def _decided_on(issues: IssueClient, repo: str, number: int) -> str:
-    """What the Product Owner (or the Sponsor, asked) decided on an epic sent back."""
-    # Imported here: design_notes imports this module.
-    from crew_org.flows import design_notes  # noqa: PLC0415
+# The Product Owner's answer, as rows of the record, and the Sponsor's words entered
+# there by the Product Owner step: the kinds their change comments carry.
+ANSWER = "answer"
+SPONSOR_WORDS = "sponsor"
+# An answer whose rows the record refuses is asked for once more, told why.
+ANSWER_ATTEMPTS = 2
 
-    return design_notes.decided(issues, repo, number)
+
+def _record_answer(
+    issues: IssueClient, sink: EventSink, repo: str, number: int, reply: Any
+) -> None:
+    """The Product Owner's answer, written as rows of the epic's record (ADR 0023)."""
+    today = datetime.now(UTC).date().isoformat()
+
+    def cell(text: str) -> str:
+        return settle_flow.explicit(text, owner=issues.owner, repo=repo)
+
+    source = cell("; ".join(reply.based_on))
+
+    def change(current: record_flow.Record) -> record_flow.Record:
+        for row in reply.rows:
+            current = current.add(
+                record_flow.Decision(
+                    id="",
+                    context=cell(row.context),
+                    decision=cell(row.decision),
+                    consequences=cell(row.consequences),
+                    source=source,
+                    set_by=record_flow.PRODUCT_OWNER,
+                    date=today,
+                    replaces=row.replaces,
+                )
+            )
+        return current
+
+    record_flow.edit(
+        issues,
+        sink,
+        repo=repo,
+        epic=number,
+        by=record_flow.PRODUCT_OWNER,
+        change=change,
+        card=number,
+        kind=ANSWER,
+        why=f"{PRODUCT_ANSWER_MARKER}\n**Decided:** {reply.answer.strip()}\n\n"
+        "Following: " + "; ".join(reply.based_on),
+    )
+
+
+def record_sponsor_words(
+    issues: IssueClient, sink: EventSink, result: TickResult, epic: Card, repo: str
+) -> bool:
+    """Every reply the Sponsor writes on an epic becomes a row of its record (ADR 0023).
+
+    The Sponsor, 2026-10-10: "if I respond to an epic it should be recorded". The
+    Product Owner step places each reply in the record, as a binding row set by the
+    Sponsor whose decision is their words as written, so the split and the gates
+    read it as they read every other decision. Replies since the record began, each
+    once: the row's source names the comment. True when nothing is left to enter.
+    """
+    number = epic.number or 0
+    body = issues.get(repo, number).get("body") or ""
+    if not record_flow.has_record(body):
+        return True
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return True
+    began = next(
+        (i for i, c in enumerate(comments) if _RECORD_CHANGE in (c.get("body") or "")), None
+    )
+    if began is None:
+        # A record from before its changes were posted: nothing marks where it began.
+        return True
+    sources = " ".join(d.source for d in record_flow.parse(record_flow.split(body)[1]).decisions)
+    waiting = [
+        c
+        for c in comments[began + 1 :]
+        if "<!-- crew:" not in (c.get("body") or "")
+        and (c.get("body") or "").strip()
+        and from_sponsor(issues, c)
+        and _comment_ref(c) not in sources
+    ]
+    for comment in waiting:
+        feedback = ""
+        for _attempt in range(ANSWER_ATTEMPTS):
+            try:
+                placed = attributed(place_sponsor_words, card=number, repo=repo)(
+                    epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
+                    words=(comment.get("body") or "").strip(),
+                    feedback=feedback,
+                )
+                _enter_sponsor_words(issues, sink, repo, number, comment, placed)
+            except record_flow.RecordRefused as exc:
+                feedback = f"That placing broke the record's rules: {exc}"
+                continue
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                result.failed.append((number, f"the Sponsor's reply wasn't recorded: {exc}"[:200]))
+                return False
+            break
+        else:
+            result.failed.append((number, f"the Sponsor's reply wasn't recorded: {feedback}"[:200]))
+            return False
+    return True
+
+
+_RECORD_CHANGE = record_flow.CHANGE.split("{", 1)[0]
+
+
+def _comment_ref(comment: dict[str, Any]) -> str:
+    return str(comment.get("html_url") or f"comment {comment.get('id')}")
+
+
+def _enter_sponsor_words(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    number: int,
+    comment: dict[str, Any],
+    placed: Any,
+) -> None:
+    def cell(text: str) -> str:
+        return settle_flow.explicit(text, owner=issues.owner, repo=repo)
+
+    words = " ".join((comment.get("body") or "").split())
+
+    def change(current: record_flow.Record) -> record_flow.Record:
+        return current.add(
+            record_flow.Decision(
+                id="",
+                context=cell(placed.context),
+                decision=f'"{words}"',
+                consequences=cell(placed.consequences),
+                source=f"The Sponsor's reply, {_comment_ref(comment)}",
+                set_by=record_flow.SPONSOR,
+                date=str(comment.get("created_at") or "")[:10]
+                or datetime.now(UTC).date().isoformat(),
+                replaces=placed.replaces,
+            )
+        )
+
+    record_flow.edit(
+        issues,
+        sink,
+        repo=repo,
+        epic=number,
+        by=record_flow.PRODUCT_OWNER,
+        change=change,
+        kind=SPONSOR_WORDS,
+        why="The Sponsor's reply on this epic, entered as a row in their words (ADR 0023).",
+    )
 
 
 def product_step(
@@ -376,7 +523,7 @@ def product_step(
     if not problems:
         return True  # the Sponsor's own rework: theirs to explain
     after = since[problems[-1] :]
-    if any(PRODUCT_ANSWER_MARKER in b for b in after):
+    if record_flow.has_change(after, ANSWER):
         return True
     asked = [i for i, b in enumerate(after) if PRODUCT_QUESTION_MARKER in b]
     if asked:
@@ -390,17 +537,31 @@ def product_step(
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied
 
-    try:
-        reply = attributed(answer_story_problem, card=number, repo=repo)(
-            epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
-            goal=goal,
-            evidence=since[problems[-1]].replace(STORY_PROBLEM_MARKER, "").strip(),
-            project=project,
-            delivered=delivered,
-        )
-    except Exception as exc:  # noqa: BLE001
-        reraise_if_down(exc)
-        result.failed.append((number, f"the Product Owner couldn't answer: {exc}"[:200]))
+    feedback = ""
+    for _attempt in range(ANSWER_ATTEMPTS):
+        try:
+            # The epic's body carries its record: the Product Owner sees every decision
+            # so far, its own earlier answers included (ADR 0023).
+            reply = attributed(answer_story_problem, card=number, repo=repo)(
+                epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
+                goal=goal,
+                evidence=since[problems[-1]].replace(STORY_PROBLEM_MARKER, "").strip(),
+                project=project,
+                delivered=delivered,
+                feedback=feedback,
+            )
+            if reply.answer.strip():
+                _record_answer(issues, sink, repo, number, reply)
+        except record_flow.RecordRefused as exc:
+            feedback = f"Your rows broke the record's rules: {exc}"
+            continue
+        except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
+            result.failed.append((number, f"the Product Owner couldn't answer: {exc}"[:200]))
+            return False
+        break
+    else:
+        result.failed.append((number, f"the Product Owner's rows were refused: {feedback}"[:200]))
         return False
     if reply.answer.strip():
         sink.emit(
@@ -411,15 +572,6 @@ def product_step(
                 summary=f"epic #{number}: decided — {reply.answer.strip()}"[:120],
                 detail={"repo": repo, "answer": reply.answer.strip(), "based_on": reply.based_on},
             )
-        )
-        artifacts.comment(
-            issues,
-            sink,
-            repo=repo,
-            number=number,
-            body=f"{PRODUCT_ANSWER_MARKER}\n**Decided:** {reply.answer.strip()}\n\n"
-            "Following: " + "; ".join(reply.based_on),
-            by="Product Owner",
         )
         return True
     artifacts.comment(
@@ -620,7 +772,9 @@ def rework_gate(
                 "repo": repo,
                 "superseded": closable,
                 "because": "story problem" if evidence else "sponsor",
-                "reads_decision": PRODUCT_ANSWER_MARKER in _all_bodies(issues, repo, number),
+                "reads_decision": record_flow.has_change(
+                    [_all_bodies(issues, repo, number)], ANSWER
+                ),
             },
         )
     )
@@ -1330,6 +1484,11 @@ def refine_epics(
             ):
                 continue
 
+            # The Sponsor's replies on the epic, entered in its record before the split
+            # reads it (ADR 0023).
+            if not record_sponsor_words(issues, sink, result, epic_card, repo):
+                continue
+
             # Ready only with no design question open (ADR 0018, Scrum's Definition of
             # Ready): the split would write criteria on a contract nobody settled.
             waiting = record_flow.parse(
@@ -1486,7 +1645,6 @@ def refine_epics(
                     conclusion=conclusion,
                     goal=goal_text,
                     project_log=project_log,
-                    decided=_decided_on(issues, repo, number),
                 )
                 named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
                 if named:
