@@ -47,6 +47,7 @@ from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
+from crew_org.flows import record as record_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
@@ -1328,10 +1329,9 @@ def refine_epics(
                 # cannot see becomes a criterion nobody can satisfy.
                 # The conclusion is shown apart from the epic's own text, so it can't be
                 # missed or mistaken for what the Sponsor approved (crew#440).
-                body, conclusion = conclusion_flow.split_conclusion(
-                    _goal_body(issues, repo, number)
-                )
-                rows = conclusion_flow.row_ids(conclusion)
+                body, conclusion = record_flow.split(_goal_body(issues, repo, number))
+                # Only binding rows need a story: a replaced row lives on in its replacement.
+                rows = record_flow.parse(conclusion).binding_ids()
                 # The Goal, shown to the criteria check with the project's log (crew#440).
                 goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # What the project has decided for every epic (crew#468).

@@ -395,9 +395,10 @@ def test_an_epic_with_no_conclusion_is_not_asked_to_settle_anything(tmp_path):
 
 
 def test_the_open_questions_are_read_from_the_conclusions_second_table():
-    from crew_org.flows.conclusion import open_questions, split_conclusion
+    from crew_org.flows.record import architect_questions as open_questions
+    from crew_org.flows.record import split
 
-    ids, table = open_questions(split_conclusion(CONCLUDED)[1])
+    ids, table = open_questions(split(CONCLUDED)[1])
     assert ids == ["Q1", "Q2"]
     assert table.split("\n")[0].startswith("| ID | Open question")
     assert "R1" not in table and "Settled by the Product Owner" not in table

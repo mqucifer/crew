@@ -15,6 +15,7 @@ import pytest
 from crew_org.crews import deploy_review_crew, epic_rows, qa_crew, review_crew
 from crew_org.events import EventSink
 from crew_org.flows import conclusion as flow
+from crew_org.flows import record
 from crew_org.tools.github_project import Card
 from tests.test_delivery_flow import harness  # noqa: F401
 
@@ -80,20 +81,20 @@ def test_a_mention_of_the_line_in_prose_is_not_the_line():
 
 
 def test_only_the_named_rows_come_back_under_the_tables_header_in_table_order():
-    _, conclusion = flow.split_conclusion(EPIC)
-    rows = flow.rows_for(conclusion, ["R3", "R1"])
+    _, conclusion = record.split(EPIC)
+    rows = record.rows_for(conclusion, ["R3", "R1"])
     assert rows.split("\n")[0].startswith("| ID | Status |")
     assert [line.split("|")[1].strip() for line in rows.split("\n")[2:]] == ["R1", "R3"]
     assert "R2" not in rows and "Q1" not in rows and "Settled by the Product Owner" not in rows
 
 
 def test_a_row_the_conclusion_no_longer_has_is_left_out_and_none_gives_nothing():
-    _, conclusion = flow.split_conclusion(EPIC)
-    assert "R9" not in flow.rows_for(conclusion, ["R1", "R9"])
-    assert flow.rows_for(conclusion, ["R9"]) == ""
-    assert flow.rows_for("", ["R1"]) == ""
+    _, conclusion = record.split(EPIC)
+    assert "R9" not in record.rows_for(conclusion, ["R1", "R9"])
+    assert record.rows_for(conclusion, ["R9"]) == ""
+    assert record.rows_for("", ["R1"]) == ""
     assert (
-        flow.rows_for(
+        record.rows_for(
             "## Refinement conclusion\n\nReady to split: the panel raised nothing.", ["R1"]
         )
         == ""
