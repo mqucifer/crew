@@ -58,12 +58,38 @@ class Repairer:
 
 
 class Checker:
+    """One answer per round of checks, a round being one call per story (crew#583, D3).
+
+    Each call is given the round's conflicts about its own story. `rounds` holds the
+    first call of each round, which is what a test of the whole split reads.
+    """
+
     def __init__(self, *answers) -> None:
-        self.answers, self.calls = list(answers), []
+        self.answers, self.calls, self.rounds = list(answers), [], []
+        self._seen: set[str] = set()
+        self._current = CriteriaCheck()
 
     def __call__(self, **context):
         self.calls.append(context)
-        return self.answers.pop(0) if self.answers else CriteriaCheck()
+        title = context["stories"].split("\n", 1)[0]
+        if not self.rounds or title in self._seen:
+            self._current = self.answers.pop(0) if self.answers else CriteriaCheck()
+            self._seen = set()
+            self.rounds.append(context)
+        self._seen.add(title)
+        known = {
+            title,
+            *(ln for ln in context.get("siblings", "").splitlines() if ln[:4] == "### "),
+        }
+        # A conflict on a story the split doesn't have comes back from the first call.
+        first = len(self._seen) == 1
+        return CriteriaCheck(
+            conflicts=[
+                c
+                for c in self._current.conflicts
+                if f"### {c.story}" == title or (first and f"### {c.story}" not in known)
+            ]
+        )
 
 
 def splitting(monkeypatch, checker, proposals=None):
@@ -83,7 +109,7 @@ def test_a_split_whose_criteria_pass_creates_its_stories(monkeypatch):
     checker = Checker()
     issues = FakeIssues()
     result = run_split_checked(monkeypatch, issues, checker)
-    assert len(result.stories_created) == 2 and len(checker.calls) == 1
+    assert len(result.stories_created) == 2 and len(checker.rounds) == 1
 
 
 def test_a_conflict_on_a_story_it_does_not_have_is_split_again_whole(monkeypatch):
@@ -118,8 +144,8 @@ def test_a_conflict_repairs_only_the_flagged_story_and_the_rest_stay(monkeypatch
     [call] = repairer.calls
     assert "### Cycle time" in call["flagged"] and "Throughput" not in call["flagged"]
     assert "### Throughput" in call["others"] and "expects 6" in call["conflicts"]
-    assert len(result.stories_created) == 2 and len(checker.calls) == 2
-    assert "the cycle time is 4" in checker.calls[1]["stories"]
+    assert len(result.stories_created) == 2 and len(checker.rounds) == 2
+    assert any("the cycle time is 4" in c["stories"] for c in checker.calls[2:])
     bodies = {i["title"]: i["body"] for i in issues.created}
     assert "the cycle time is 4" in bodies["Cycle time"]
     assert "the cycle time is 4" not in bodies["Throughput"]
@@ -197,3 +223,32 @@ def run_split_tick(monkeypatch, issues):
     monkeypatch.setattr(board_flow, "propose_epics", lambda g, **kw: None)
     board = FakeBoard([epic_card(3)])
     return board_flow.tick(board, issues, EventSink(None), default_repo="sprint-metrics")
+
+
+def test_each_story_is_checked_in_its_own_call_against_the_others():
+    """At once, the check thought 12.6k tokens for 641 characters, at the empty-answer
+    edge (the context review, C5); one story per call (crew#583, step D3)."""
+    from crew_org.flows.criteria_check import check_each
+
+    seen, focused = [], []
+
+    def check(**shown):
+        seen.append(shown)
+        if shown["stories"].startswith("### Cycle time"):
+            return ON_CYCLE_TIME
+        return CriteriaCheck()
+
+    def code_for(text):
+        focused.append(text.split("\n", 1)[0])
+        return f"code for {text.split(chr(10), 1)[0]}"
+
+    found = check_each(check, SPLIT, code_for=code_for, conclusion="R1", goal="G")
+    titles = [s.title for s in SPLIT.stories]
+    assert [s["stories"].split("\n", 1)[0] for s in seen] == [f"### {t}" for t in titles]
+    assert all(s["conclusion"] == "R1" and s["goal"] == "G" for s in seen)
+    for shown, title in zip(seen, titles, strict=True):
+        others = [t for t in titles if t != title]
+        assert all(f"### {t}" in shown["siblings"] for t in others)
+        assert f"### {title}" not in shown["siblings"]
+        assert shown["repository"] == f"code for ### {title}"
+    assert found.conflicts == ON_CYCLE_TIME.conflicts

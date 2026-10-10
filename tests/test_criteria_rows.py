@@ -12,6 +12,7 @@ from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
 from crew_org.flows import board_flow
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER
 from tests.test_board_flow import SPLIT
+from tests.test_criteria_check import Checker
 from tests.test_split_conclusion import BODY, Concluded, proposal, run_tick, story
 
 ROW_CONFLICT = CriteriaCheck(
@@ -24,15 +25,6 @@ ROW_CONFLICT = CriteriaCheck(
         )
     ]
 )
-
-
-class Checker:
-    def __init__(self, *answers) -> None:
-        self.answers, self.calls = list(answers), []
-
-    def __call__(self, **context):
-        self.calls.append(context)
-        return self.answers.pop(0) if self.answers else CriteriaCheck()
 
 
 def checked_tick(monkeypatch, checker, *proposals, issues=None):
@@ -90,7 +82,7 @@ def test_the_checker_is_scoped_to_the_rows_too():
 def test_the_check_is_given_the_conclusion_both_times(monkeypatch):
     checker = Checker(ROW_CONFLICT, CriteriaCheck())
     result, asked, _ = checked_tick(monkeypatch, checker)
-    assert len(checker.calls) == 2
+    assert len(checker.rounds) == 2
     assert all(c["conclusion"].startswith("## Refinement conclusion") for c in checker.calls)
     assert len(result.stories_created) == 2
 
