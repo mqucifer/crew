@@ -29,9 +29,31 @@ Steps not yet listed are added as the plan's steps reach them.
 |---|---|---|
 | The project's record | `.crew/project.yaml` | What the project is for and how it is built |
 | The epic, with its record | the epic's body | The settled rows the note builds on, never re-decides |
-| Decided for this epic | `design_notes.decided`, the latest Product Owner answer | Until step A3, which removes it: answers become rows of the record |
 | Its stories | the epic's open sub-issues | What the note gives a direction to |
 | The code as it stands | `repository_context` | Which module owns what, where files go |
 | The last refusal | `_write_one` | Why the previous note was refused |
 
-The questions the record leaves open are no longer part of this step: the Architect settles them before the split.
+The questions the record leaves open are no longer part of this step: the Architect settles them before the split. Nor is the latest Product Owner answer, read from the comments: every answer is a row of the record (step A3).
+
+## Product Owner, answering a story problem
+
+`refinement_crew.answer_story_problem`, called by `board_flow.product_step` (#189).
+
+| Part | From | Why |
+|---|---|---|
+| The project's record | `.crew/project.yaml` | What the project is for |
+| What the project has delivered | `Delivered.render` | A choice that contradicts delivered work is caught |
+| The Goal | the Goal's issue | The answer stays within it |
+| The epic, with its record | the epic's body | Every decision so far, its own earlier answers included (ADR 0023) |
+| Why it came back | `story_problem_evidence`, the latest story problem | The question to answer |
+| The last refusal | `product_step` | Why the record refused the previous rows |
+
+## Product Owner, placing the Sponsor's words
+
+`refinement_crew.place_sponsor_words`, called by `board_flow.record_sponsor_words` (ADR 0023).
+
+| Part | From | Why |
+|---|---|---|
+| The epic, with its record | the epic's body | Which row or question the words change |
+| The Sponsor's words | the Sponsor's comment on the epic | Quoted as the row's decision, unchanged |
+| The last refusal | `record_sponsor_words` | Why the record refused the previous placing |

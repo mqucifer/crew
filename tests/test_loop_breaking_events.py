@@ -12,7 +12,7 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows import board_flow
 from crew_org.flows.board_flow import TickResult, product_step
 from crew_org.flows.story_problem import return_to_refinement
-from tests.test_product_answers import EVIDENCE, Issues, epic
+from tests.test_product_answers import EVIDENCE, Issues, epic, rows
 from tests.test_story_problem import Board, story
 from tests.test_story_problem import Issues as StoryIssues
 
@@ -52,7 +52,7 @@ def test_a_story_sent_back_says_why_and_with_what():
 def test_the_product_owners_decision_and_question_are_events(monkeypatch):
     for reply, kind in (
         (
-            ProductAnswer(answer="stdout stays empty", based_on=["#91", "#150"]),
+            ProductAnswer(answer="stdout stays empty", rows=rows("stdout empty"), based_on=["#91"]),
             EventKind.PRODUCT_ANSWERED,
         ),
         (ProductAnswer(question="stdout or stderr?"), EventKind.PRODUCT_ASKED),

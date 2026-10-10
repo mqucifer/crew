@@ -47,7 +47,6 @@ def parts(
     conclusion: str = "",
     goal: str = "",
     project_log: str = "",
-    decided: str = "",
 ) -> list[calls.Part]:
     """What the check is shown, part by part, in the order it reads them."""
     return [
@@ -71,14 +70,6 @@ def parts(
         # Goal and in the project's log, were refused as settling an open question.
         calls.Part("goal", f"## The Goal, set by the Sponsor\n\n{goal}" if goal else ""),
         calls.Part("project_log", project_log),
-        # The Product Owner's answer to the story problem the epic was sent back
-        # with (#189): the re-split follows it. Without it, sprint-metrics#468's
-        # field names, decided there, were refused as settling an open question
-        # 17 times (2026-10-09).
-        calls.Part(
-            "decided",
-            f"## Decided on this epic since it was sent back\n\n{decided}" if decided else "",
-        ),
         calls.Part(
             "conclusion",
             f"## The epic's conclusion, decided before the split\n\n{conclusion}"
@@ -98,8 +89,8 @@ def parts(
                 ";\n- a row of the epic's conclusion above: a criterion that expects the "
                 "opposite of what a row decides. A criterion that decides an open question "
                 "(Q) the record leaves to whoever builds it is a conflict too, since no "
-                "story settles it, unless the Goal, the project's decision log, what was "
-                "decided on this epic or a decided row already says what the criterion "
+                "story settles it, unless the Goal, the project's decision log or a row of "
+                "the record already says what the criterion "
                 "states: restating a decision isn't deciding the question"
                 if conclusion
                 else ""
@@ -119,12 +110,12 @@ def check_criteria(
     conclusion: str = "",
     goal: str = "",
     project_log: str = "",
-    decided: str = "",
 ) -> CriteriaCheck:
     """QA's check of a proposed split's criteria, against each other, the code and the rows.
 
-    The epic's conclusion (crew#440) is decided before the split: a criterion that
-    goes against one of its rows can't be right, however well it reads. The first
+    The epic's record (crew#440, ADR 0023) holds every decision so far, the Product
+    Owner's answers to story problems included: a criterion that goes against one of
+    its rows can't be right, however well it reads. The first
     step on the crew's own call layer (ADR 0025): a refused answer is asked for
     again with the reason.
     """
@@ -136,7 +127,6 @@ def check_criteria(
         conclusion=conclusion,
         goal=goal,
         project_log=project_log,
-        decided=decided,
     )
     return calls.ask(
         "qa_engineer",

@@ -262,7 +262,8 @@ def from_comments(chains: list[Chain], issues: Any, repo: str) -> None:
         answer = next((b for b in after if PRODUCT_ANSWER_MARKER in b), "")
         question = next((b for b in after if PRODUCT_QUESTION_MARKER in b), "")
         if answer:
-            chain.decided = _first_line(answer.replace(PRODUCT_ANSWER_MARKER, "")).removeprefix(
+            # From the marker on: since crew#583 it ends a record-change comment.
+            chain.decided = _first_line(answer.split(PRODUCT_ANSWER_MARKER, 1)[1]).removeprefix(
                 "Decided: "
             )
         elif question:
