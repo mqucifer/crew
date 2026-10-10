@@ -39,6 +39,36 @@ Asked in chat, one part at a time. "Replaces" is what the ADR removes.
 | D6 | CrewAI as the harness (Q6) | (a) keep it; (b) the crew's own call layer: messages, schema, retry with the reason, tools, the record of each call; CrewAI's Agent, Task and Crew leave the 22 call sites in `crews/`; (c) drop CrewAI | (b). (c) is a later mechanical step. The crew's `flows/` are plain Python already; CrewAI is used only at the call sites | ADR 0002's "Crews sit on the inside" line, by a changelog entry |
 | D7 | Who owns the whole (C8) | Each step's context is one function returning named parts; `docs/reference/context.md` lists each step's parts and why each is there; a test reads that table and checks the code against it; the event log records each part's size | as stated | 150 readers, each with its own rule |
 
+## The standards applied (D1 and D2)
+
+Nothing here is invented. The record is a **configuration baseline** under **configuration management**, the discipline standardised in ISO 10007, IEEE 828 and CMMI's Configuration Management process area, applied to decisions rather than to files. Its four functions are the validation checklist. The row attributes and the links from rows to stories to tests follow **requirements engineering** (ISO/IEC/IEEE 29148: requirement attributes and bidirectional traceability). The two kinds of row and the readiness rule follow **Example Mapping** (rules and questions) and Scrum's Definition of Ready. The line between what is fixed and what is left to the builder follows **Shape Up** (a pitch fixes the problem, appetite, core solution, rabbit holes and no-gos, and leaves the design latitude) and **commander's intent** (fix the intent, free the method), which crew#583 already cites.
+
+| Ours | The standard's term | Where |
+|---|---|---|
+| The record's binding rows at the split | The baseline: the agreed items the stories are written against, changed only through change control | CM: CMMI SG 1 "Establish baselines"; IEEE 828 identification |
+| Row ID, Status, Set by, Date, Replaces, Source | Configuration identification; requirement attributes (identifier, source, rationale, priority, dependency) | IEEE 828; ISO/IEC/IEEE 29148 "Requirements attributes" |
+| A binding row changes only by a replacing row, by its authority | Change control: a change request, approved by the change authority (the CCB), recorded | CM: CMMI SG 2 "Track and control changes" |
+| The Status column and the change comments (who, when, for which card) | Configuration status accounting: the current status of every item and its change history | CM: CMMI SP 3.1 "Establish CM records" |
+| Gates judge against binding rows; the review tool checks the record against what was decided | Configuration audit: functional (the product matches the baseline) and physical (the record is complete) | CM: CMMI SP 3.2 "Perform configuration audits" |
+| Row → story ("Follows R1") → test (C rows, `criteria_tests`) | Bidirectional traceability; a requirements traceability matrix | ISO/IEC/IEEE 29148 |
+| R rows and Q rows | Example Mapping's blue rule cards and red question cards; a table full of red cards means the story isn't understood yet | Example Mapping (Wynne, 2015) |
+| No Architect question open at split time | Definition of Ready | Scrum |
+| "Implementer's choice" rows | Shape Up's latitude for the people doing the work; commander's intent's "free the method" | Shape Up, "Write the pitch"; mission command |
+
+**The validation checklist.** Each line is checked by a test in the step named, and by the proof.
+
+| CM function | The record must | Checked by |
+|---|---|---|
+| Identification | Give every row a unique ID and its attributes; refuse one without them | A1's schema and `tests/test_settle.py` |
+| Baseline | Fix the set of binding rows at the split; every row reaches a story or is marked not for stories | the existing coverage check in `flows/conclusion.py` (`problems`), kept in A1 |
+| Change control | Never delete a binding row; accept a replacement only from its authority (the Sponsor any row, the Product Owner its own calls, the Architect design rows, the Business Analyst test rows); post one change comment per edit | A1 and A5 unit tests on `flows/record.py` |
+| Status accounting | Show every item's current status and history; every Product Owner answer and Sponsor reply is a row | A3's tests; E1: "answers that never became rows" is 0 |
+| Audit | The gates judge a story against the binding rows it cites; the review tool finds no decision outside the record | the criteria check, review and QA (unchanged); E1 |
+| Traceability | Every C row names the story that declares it; every story's cited rows exist | A4's tests; `tests/test_split_conclusion.py` |
+| Readiness | No row open for the Architect remains at split time | A2's done-when |
+
+What I could not verify: the exact attribute list in 29148's "Requirements attributes" clause, which is paywalled. The attributes named above (identifier, source, rationale, priority, dependency) are the ones its public summaries and templates agree on.
+
 ## What each step reads after Part A
 
 The review's binding layer, as it will be. ● shown, – not shown.
