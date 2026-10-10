@@ -48,7 +48,7 @@ Work through each item. Log a finding only when there's evidence: a card, an eve
 ### 4. Repeats and cost
 - [ ] Failure causes by fingerprint (the retro's "why work didn't land first time"). Has any repeated across sprints?
 - [ ] Rebuilds, gate round trips, stories returned to refinement: count them, and estimate the time each cost.
-- [ ] Model failures by class (`llm.failed`, `llm.empty`, SCHEMA refusals). Did any message mislead the model (as the doc-criterion refusal did)?
+- [ ] Model failures by class (`llm.failed`, `llm.empty`, SCHEMA refusals, `llm.refused` with its `reason`). Did any message mislead the model (as the doc-criterion refusal did)? Did the same refusal repeat after the retry was told why (ADR 0025's test)?
 
 ### 5. The crew's own retro
 - [ ] Compare it with this checklist. What did it see that I didn't, and the other way round?

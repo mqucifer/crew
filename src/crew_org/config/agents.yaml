@@ -122,7 +122,9 @@ architect:
   llm_params:
     max_tokens: 32768
   can: [write_design, propose_project_design, create_task, create_spike, comment]
-  constitution: [2, 9, 10, 13, 19]  # taxonomy, escalation, audit, when design happens, guidelines
+  # Not the escalation policy (§9): the crew's code classifies failures and
+  # escalates, never the Architect (crew#583, step D4).
+  constitution: [2, 10, 13, 19]  # taxonomy, audit, when design happens, guidelines
   # A project's design (#144): the same role, choosing a project's toolchain
   # once, and revisiting it when a story needs a different choice.
   project_design:
@@ -190,7 +192,10 @@ developer:
     # second: 65,536 takes about 2,400 seconds, past the 1,800 default.
     timeout: 3600
   can: [write_code, run_tests, open_pr, update_docs, file_bug, comment]
-  constitution: [7, 8, 9, 10, 19]  # DoD, branch/PR conventions, escalation, audit, guidelines
+  # Not the branch and commit conventions (§8) or the escalation policy (§9):
+  # the crew names branches, commits and escalates, never the Developer
+  # (crew#583, step D4).
+  constitution: [7, 10, 19]  # DoD, audit, guidelines
 
 qa_engineer:
   role: QA Engineer

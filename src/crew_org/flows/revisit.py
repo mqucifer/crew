@@ -36,8 +36,8 @@ from typing import Any
 from crew_org.columns import NEEDS_REFINEMENT
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows import record as record_flow
 from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, approved_epics
-from crew_org.flows.conclusion import split_conclusion
 from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
@@ -594,7 +594,7 @@ def _product_epics(cards: list[Card], repo: str) -> list[Card]:
 
 
 def _epic_summary(issues: Any, repo: str, epic: Card) -> str:
-    body, _ = split_conclusion(issues.get(repo, epic.number or 0).get("body") or "")
+    body, _ = record_flow.split(issues.get(repo, epic.number or 0).get("body") or "")
     return f"#{epic.number}: {epic.title}\n{body[:800]}"
 
 
@@ -606,7 +606,7 @@ def _give_to_epic(
     line = f"- {work} (from {source})"
     if line in body:
         return
-    head, conclusion = split_conclusion(body)
+    head, conclusion = record_flow.split(body)
     at = head.find(DESIGN_WORK_HEADER)
     if at < 0:
         head = f"{head.rstrip()}\n\n{DESIGN_WORK_HEADER}\n\n{line}"

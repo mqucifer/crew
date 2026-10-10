@@ -88,3 +88,5 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   after the Sponsor asked whether the crew had outgrown the framework or only under-used
   it: no CrewAI layer is kept, and the guardrail fallback and the condition for
   reconsidering a framework are recorded (Sponsor, "neither").
+- **2026-10-10:** the module is built, `crew_org/calls.py`, and the criteria check is its
+  first site (crew#583, step D1a). The other sites wait for its proof on a real epic.
