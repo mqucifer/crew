@@ -197,6 +197,38 @@ class _Reads:
         return self._bound[path]
 
     def of(self, path: str, node: ast.AST) -> set[str]:
+        """The module-level names `node` reads, and every name those are built from.
+
+        A table built from another (`SINGLE_SPRINT_SCHEMA` from `METRIC_KEYS`) is read
+        whenever the first is: a test of the schema pins the keys too.
+        """
+        found = self._direct(path, node)
+        todo = list(found)
+        while todo:
+            where, _, name = todo.pop().partition("::")
+            built = self._assigned(where, name)
+            for more in self._direct(where, built) if built is not None else set():
+                if more not in found:
+                    found.add(more)
+                    todo.append(more)
+        return found
+
+    def _assigned(self, path: str, name: str) -> ast.AST | None:
+        """The value a module assigns to `name` at its top level."""
+        for node in self.trees[path].body:
+            if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets
+            ):
+                return node.value
+            if (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == name
+            ):
+                return node.value
+        return None
+
+    def _direct(self, path: str, node: ast.AST) -> set[str]:
         if path not in self.trees:
             return set()
         own, bound = self.names[path], self._imports(path)

@@ -1012,13 +1012,26 @@ class RepoContext:
         return self._cache[repo]
 
     def pinning_for(self, repo: str, epic_text: str, evidence: str = "") -> str:
-        """The merged tests pinning what an epic names, in full (#189)."""
+        """The merged tests pinning what an epic and its record name, in full (#189).
+
+        From the project's coverage map (crew#583, C2): the tests that run the code
+        the epic names and check a whole shape. Without a map, only the tests a
+        story problem or the record names.
+        """
+        from crew_org.tools.coverage_map import build  # noqa: PLC0415
         from crew_org.tools.pinning import pinning_tests  # noqa: PLC0415
 
         if self._ws is None:
             return ""
         try:
-            return pinning_tests(self._ws.for_repo(repo).current(), epic_text, evidence)
+            clone = self._ws.for_repo(repo).current()
+            try:
+                coverage = build(clone, repo)
+            except Exception as exc:  # noqa: BLE001 - the split goes on without it
+                reraise_if_down(exc)
+                self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:120])
+                coverage = None
+            return pinning_tests(clone, epic_text, evidence, coverage=coverage)
         except Exception as exc:  # noqa: BLE001
             self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
             return ""
@@ -1357,7 +1370,10 @@ def refine_epics(
                 # What the project has decided for every epic (crew#468).
                 project_log = read_log(issues, repo)
                 planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
-                pinning = context.pinning_for(repo, f"{epic_card.title}\n\n{body}", notes)
+                # The epic and its record: a C row names a test the epic changes.
+                pinning = context.pinning_for(
+                    repo, f"{epic_card.title}\n\n{body}\n\n{conclusion}", notes
+                )
                 # Its own view of the repository, and it may ask for more (#231).
                 about = f"{epic_card.title}\n\n{body}\n\n{notes}"
                 asked: list[str] = []
