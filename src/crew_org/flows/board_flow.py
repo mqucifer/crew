@@ -344,8 +344,24 @@ SPONSOR_WORDS = "sponsor"
 ANSWER_ATTEMPTS = 2
 
 
+# The story a story problem is about, in the crew's own words: "**#529 went back to
+# refinement". A problem raised inside refinement, by the criteria check, has none.
+_RETURNED = re.compile(r"\*\*#(\d+) went back to refinement")
+
+
+def returned_story(problem: str) -> int | None:
+    """The story whose return a story problem reports, or None for one raised in refinement."""
+    found = _RETURNED.search(problem)
+    return int(found.group(1)) if found else None
+
+
 def _record_answer(
-    issues: IssueClient, sink: EventSink, repo: str, number: int, reply: Any
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    number: int,
+    reply: Any,
+    about: int | None = None,
 ) -> None:
     """The Product Owner's answer, written as rows of the epic's record (ADR 0023)."""
     today = datetime.now(UTC).date().isoformat()
@@ -378,7 +394,9 @@ def _record_answer(
         epic=number,
         by=record_flow.PRODUCT_OWNER,
         change=change,
-        card=number,
+        # The story it answers for, so the retro pairs it with that story's return
+        # and no other (crew#583, step A6); the epic, for a problem raised in refinement.
+        card=about or number,
         kind=ANSWER,
         why=f"{PRODUCT_ANSWER_MARKER}\n**Decided:** {reply.answer.strip()}\n\n"
         "Following: " + "; ".join(reply.based_on),
@@ -537,6 +555,7 @@ def product_step(
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied
 
+    about = returned_story(since[problems[-1]])
     feedback = ""
     for _attempt in range(ANSWER_ATTEMPTS):
         try:
@@ -551,7 +570,7 @@ def product_step(
                 feedback=feedback,
             )
             if reply.answer.strip():
-                _record_answer(issues, sink, repo, number, reply)
+                _record_answer(issues, sink, repo, number, reply, about)
         except record_flow.RecordRefused as exc:
             feedback = f"Your rows broke the record's rules: {exc}"
             continue
@@ -570,7 +589,13 @@ def product_step(
                 role="Product Owner",
                 card=number,
                 summary=f"epic #{number}: decided — {reply.answer.strip()}"[:120],
-                detail={"repo": repo, "answer": reply.answer.strip(), "based_on": reply.based_on},
+                detail={
+                    "repo": repo,
+                    "answer": reply.answer.strip(),
+                    "based_on": reply.based_on,
+                    # The story whose return this answers, if one went back (A6).
+                    **({"story": about} if about is not None else {}),
+                },
             )
         )
         return True

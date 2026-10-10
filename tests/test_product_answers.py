@@ -199,3 +199,15 @@ def test_an_answer_names_what_it_follows_and_is_never_also_a_question():
         ProductAnswer(answer="Opt-in.", based_on=["#100"], question="Or not?")
     with pytest.raises(ValidationError, match="not both"):
         ProductAnswer()
+
+
+def test_an_answer_names_the_story_whose_return_it_answers(monkeypatch):
+    """So the retro pairs it with that return and no other (crew#583, step A6)."""
+    returned = (
+        f"{STORY_PROBLEM_MARKER}\n**#97 went back to refinement: its failures are the story's"
+    )
+    issues = Issues(f"{STORY_SPLIT_MARKER}", returned)
+    reply = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    step(issues, monkeypatch, reply)
+    assert "for mqucifer/sprint-metrics#97." in issues.posted[0]
+    assert board_flow.returned_story(EVIDENCE) is None, "raised in refinement: no story"
