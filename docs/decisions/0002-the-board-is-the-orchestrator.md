@@ -17,6 +17,10 @@ inspect, so nothing felt orchestrated.
 - Deterministic routing is the crew's own Python (`flows/`). Bounded creative
   work is one model call per step, made by the crew's own call layer
   (ADR 0025).
+- CrewAI Flows are not adopted for the tick. The board holds the state the
+  Sponsor's gates live in (ADR 0003); a Flow would hold a second copy, and the
+  routing's conditions are about card state either way. Reconsidered only if
+  routing needs state the board cannot hold (Sponsor, 2026-10-10).
 - Hierarchical manager-agent crews are avoided: they were unreliable on a 27B
   local model.
 - Process questions are answered by how working teams do it, not by inventing
@@ -36,3 +40,6 @@ inspect, so nothing felt orchestrated.
   the crew's own Python from the start, and CrewAI's Crew was a one-task
   wrapper at the call sites; the crew now makes its own model calls (ADR 0025,
   Sponsor).
+- **2026-10-10:** Flows declined for the tick, with the condition for
+  reconsidering them, when the Sponsor confirmed that no CrewAI layer is kept
+  (ADR 0025).
