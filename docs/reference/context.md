@@ -111,15 +111,16 @@ The questions the record leaves open are no longer part of this step: the Archit
 
 ## QA, the criteria check
 
-`criteria_crew.check_criteria`, called by `board_flow.refine_epics` (#428).
+`criteria_crew.check_criteria`, called one story per call by `criteria_check.check_each` (#428, crew#583 D3).
 
 | Part | From | Why |
 |---|---|---|
-| The project's code | the split's focused view | What the code defines and merged tests pin |
+| The project's code | `RepoContext.focused_for`, on the story's own text | What the code defines and merged tests pin |
+| The split's other stories | `criteria_check.render_stories` | Criteria that can't both pass |
 | Stories other epics plan | `criteria_check.planned_criteria` | Criteria that can't both pass |
 | The Goal and the project's decision log | the Goal's issue, `project_log.read_log` | A criterion restating a decision isn't deciding a question |
 | The epic's record | `record.split` | Rows a criterion must not contradict, and questions it must not settle |
-| The proposed stories | `criteria_check.render_split` | What is checked |
+| The story | `criteria_check.render_stories` | What is checked |
 
 ## Developer, delivering a story
 
@@ -131,7 +132,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
 | The epic's notes | `presentation_notes.story_notes` | The Architect's design note and the UX Designer's presentation note |
 | What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
-| The repository | `repo_context.focused_context` | The map, and the files the work names |
+| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3) |
 | The last failure | `deliver_story`'s feedback | What to repair, and why the previous answer was refused |
 
 ## Code Reviewer, judging a diff
