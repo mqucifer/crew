@@ -34,6 +34,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from crew_org.constitution import excerpt
+from crew_org.cut_text import check_not_cut_at_a_quote
 from crew_org.events import EventKind, record
 from crew_org.llm import DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT, api_key, base_url
 from crew_org.permissions import load_agents
@@ -274,6 +275,9 @@ def ask[Answer: BaseModel](
                     "write the whole answer"
                 )
             found = answer.model_validate_json(text)
+            # Before the step's own rules: a value cut at a double quote reads as
+            # finished to every rule after it (crew#618).
+            check_not_cut_at_a_quote(found)
             if check is not None:
                 check(found)
             return found

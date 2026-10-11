@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org.agents import build_agent
 from crew_org.crews.panel_crew import PanelContext, PanelResult
+from crew_org.cut_text import REASON as CUT_REASON
+from crew_org.cut_text import cut_fields
 
 # Cell limits. Asking a model to be brief doesn't hold (crew#440); a schema does.
 CONTEXT_CHARS = 60
@@ -274,6 +276,13 @@ def check_not_cut(settlement: Settlement) -> None:
             f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
             "Say each in fewer words, well under the limit, and finish the thought."
         )
+    _not_cut_at_a_quote(settlement)
+
+
+def _not_cut_at_a_quote(answer: BaseModel) -> None:
+    """A cell cut where the model wrote a double quote reads as finished (crew#618)."""
+    if found := cut_fields(answer):
+        raise Unsettled(CUT_REASON.format(fields=", ".join(found)))
 
 
 def check_grounded(settlement: Settlement, goal: str) -> None:
@@ -479,6 +488,7 @@ def check_design_cut(settlement: DesignSettlement) -> None:
             f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
             "Say each in fewer words, well under the limit, and finish the thought."
         )
+    _not_cut_at_a_quote(settlement)
 
 
 def check_design_covers(settlement: DesignSettlement, asked: list[str]) -> None:

@@ -84,7 +84,15 @@ def test_the_panel_raising_nothing_is_a_record_too():
 def test_the_bottom_line_counts_what_binds_what_was_replaced_and_who_settles_the_rest():
     after = base().add(decision(replaces="R1"))
     line = record.bottom_line(after)
-    assert line.startswith("Ready to split: 2 decided, 1 replaced, 1 open for the Architect")
+    assert line.startswith(
+        "Waiting for the Architect: 2 decided, 1 replaced, 1 open for the Architect"
+    )
+
+
+def test_a_record_with_nothing_left_for_the_architect_is_ready_to_split():
+    """'Ready to split' stood over records the split would refuse (Sponsor, 2026-10-11)."""
+    settled = record.Record(decisions=base().decisions)
+    assert record.bottom_line(settled).startswith("Ready to split: ")
 
 
 # --- identification -------------------------------------------------------------------------
