@@ -1276,7 +1276,9 @@ class RepoContext:
             self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
             return ""
 
-    def focused_for(self, repo: str, about: str, extra: list[str] = ()) -> tuple[str, Focus]:
+    def focused_for(
+        self, repo: str, about: str, extra: list[str] = (), *, beside: int = 0
+    ) -> tuple[str, Focus]:
         """The repository for one epic's split: the record, a map, and what the epic names (#231).
 
         The whole repository was one text shared by every split in a pass, which
@@ -1298,7 +1300,8 @@ class RepoContext:
                 extra=extra,
                 editing=False,
                 above=REFINE_FOCUS_ABOVE_CHARS,
-                ceiling=repo_context.READ_FIRST_CHAR_CEILING,
+                # Sized from the rest of the split's prompt, so it has room to read.
+                ceiling=repo_context.shown_ceiling(beside),
                 reading=True,
             )
             return self._record(repo, clone) + text, focus
@@ -1654,7 +1657,18 @@ def refine_epics(
                 asked: list[str] = []
                 told = ""
                 for asks in range(ANALYST_ASK_LIMIT + 1):
-                    repository, focus = context.focused_for(repo, about, asked)
+                    beside = sum(
+                        len(part)
+                        for part in (
+                            pinning,
+                            siblings,
+                            conclusion,
+                            project_log,
+                            body,
+                            done.render(),
+                        )
+                    )
+                    repository, focus = context.focused_for(repo, about, asked, beside=beside)
                     sink.emit(
                         CrewEvent(
                             kind=EventKind.FILES_SHOWN,

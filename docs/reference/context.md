@@ -65,7 +65,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 
 | Part | From | Why |
 |---|---|---|
-| The repository | `RepoContext.focused_for`: the map, and the files the epic names, up to 120,000 characters | Criteria written against what the code has |
+| The repository | `RepoContext.focused_for`: the map, and the files the epic names, up to 120,000 characters and less beside a large prompt, keeping 40,000 free to read | Criteria written against what the code has |
 | What it reads | `RepoContext.reader_for`, its `read_file` tool | A file or one definition the epic needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
 | Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run, or by their own code read or call, what the epic and its record name and check a whole shape, and any the record names (C2, C5); a test that spells out a named file's table first |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |

@@ -22,7 +22,7 @@ from crew_org.crews.settle_crew import (
     DECISION_CHARS,
     aim,
 )
-from crew_org.tools.repo_context import READING_CHAR_CEILING
+from crew_org.tools.repo_context import READ_MIN_CHARS, READING_CHAR_CEILING
 from crew_org.tools.repo_read import Reader
 
 # Modified Fibonacci, per constitution §6. Nothing larger enters a sprint.
@@ -793,8 +793,11 @@ def split_epic(
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
         check_accounted(proposal, superseded or [])
 
+    room = max(READING_CHAR_CEILING - len(shown.text), 0)
     if reader is not None:
-        reader.reset(max(READING_CHAR_CEILING - len(shown.text), 0))
+        reader.reset(room)
+    if room < READ_MIN_CHARS:
+        reader = None
     return calls.ask(
         "business_analyst",
         [shown],

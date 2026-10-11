@@ -132,3 +132,27 @@ def test_a_split_that_drops_a_superseded_story_is_refused_inside_the_call(monkey
     dropped = StoryProposal(epic_title="E", stories=[make_story("the range table")])
     with pytest.raises(ValueError, match="doesn't say what became of #41"):
         seen["check"](dropped)
+
+
+def test_with_no_room_to_read_the_split_is_offered_no_tool(monkeypatch, tmp_path):
+    """sprint-metrics#561's first split with the tool had nothing left: it thought 17k
+    tokens before its first read, and every read was refused."""
+    from crew_org.tools.repo_context import READING_CHAR_CEILING  # noqa: PLC0415
+    from crew_org.tools.repo_read import Reader  # noqa: PLC0415
+
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
+        refinement_crew.split_epic(
+            "E", "body", repository="r" * READING_CHAR_CEILING, reader=Reader(tmp_path, budget=0)
+        )
+    assert seen["tools"] is None
+
+
+def test_the_code_a_split_is_shown_leaves_room_to_read_beside_the_rest():
+    from crew_org.tools import repo_context  # noqa: PLC0415
+
+    assert repo_context.shown_ceiling(0) == repo_context.READ_FIRST_CHAR_CEILING
+    beside = 100_000
+    shown = repo_context.shown_ceiling(beside)
+    assert beside + shown + repo_context.READ_ROOM_CHARS == repo_context.READING_CHAR_CEILING
+    assert repo_context.shown_ceiling(10**6) == 0

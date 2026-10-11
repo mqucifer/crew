@@ -247,6 +247,21 @@ FOCUSED_CHAR_CEILING = 270_000
 # and 175k keeps the answer under the 60k the plan's success test sets.
 READ_FIRST_CHAR_CEILING = 120_000
 READING_CHAR_CEILING = 175_000
+# What a call with the read tool keeps free to read, when the rest of its prompt is
+# large. The first real split with the tool (mqucifer/sprint-metrics#561, 2026-10-11)
+# was shown 128k of code beside 44k of pinning tests, the Goal's other records and its
+# own: it had nothing left, thought 17k tokens before its first read, and every read
+# was refused.
+READ_ROOM_CHARS = 40_000
+# Less room than this, and the tool isn't offered: a read it can't make still costs
+# the thinking that decided to make it.
+READ_MIN_CHARS = 5_000
+
+
+def shown_ceiling(beside: int) -> int:
+    """How much code a call with the read tool is shown, beside `beside` characters of
+    everything else, so the call keeps READ_ROOM_CHARS free to read."""
+    return max(min(READ_FIRST_CHAR_CEILING, READING_CHAR_CEILING - beside - READ_ROOM_CHARS), 0)
 
 
 @dataclass
