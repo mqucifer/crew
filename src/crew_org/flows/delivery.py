@@ -1235,8 +1235,11 @@ def deliver_story(
             outcome.blocked_reason = decision.reason
             return outcome
 
-        # It asked to see files first (#231). Not a failure, and not applied:
-        # it's asked again with them shown, up to ASKED_FILES_LIMIT files a delivery.
+        # It asked to see files (#231). Not a failure. An answer that only asks is
+        # asked again with them shown, up to ASKED_FILES_LIMIT files a delivery. One
+        # that also changes code is applied, and what it asked for is shown to the
+        # next attempt (crew#591): mqucifer/sprint-metrics#567's repair fixed the code
+        # and asked to see the docs, and its fix would have been thrown away.
         if implementation.asks:
             wanted = file_asks.paths(implementation.need_files)
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
@@ -1255,24 +1258,31 @@ def deliver_story(
                 )
             )
             added = exists[: max(ASKED_FILES_LIMIT - len(asked), 0)]
-            if added:
+            if not implementation.changes_nothing:
+                asked += added
+            elif added:
                 asked += added
                 continue
-            missing = [f for f in fresh if f not in exists]
-            # Said as it is: "you've been shown what you asked for", said of a file
-            # past the limit, had it ask again for the same file.
-            feedback = (
-                (f"These aren't files in the repository: {', '.join(missing)}. " if missing else "")
-                + (
-                    f"Not shown: {', '.join(exists)}. A delivery may have "
-                    f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
-                    if exists
-                    else ""
+            else:
+                missing = [f for f in fresh if f not in exists]
+                # Said as it is: "you've been shown what you asked for", said of a file
+                # past the limit, had it ask again for the same file.
+                feedback = (
+                    (
+                        f"These aren't files in the repository: {', '.join(missing)}. "
+                        if missing
+                        else ""
+                    )
+                    + (
+                        f"Not shown: {', '.join(exists)}. A delivery may have "
+                        f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
+                        if exists
+                        else ""
+                    )
+                    + ("Everything else you named is already shown above. " if not fresh else "")
+                    + "Do the work now with the files you can see, and leave `need_files` empty."
                 )
-                + ("Everything else you named is already shown above. " if not fresh else "")
-                + "Do the work now with the files you can see, and leave `need_files` empty."
-            )
-            continue
+                continue
 
         # A "new file" that already exists is a whole-file rewrite wearing a
         # different name, which is the thing editing by name exists to prevent.

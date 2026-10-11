@@ -362,9 +362,9 @@ class Implementation(BaseModel):
         default_factory=list,
         description=(
             "Only when you can't do the work correctly without seeing files listed by "
-            "name but not shown in full: each path, and in a line why. Naming any means "
-            "this answer isn't applied, and you're asked again with them shown. Leave "
-            "empty otherwise."
+            "name but not shown in full: each path, and in a line why. The rest of your "
+            "answer is applied, and the next attempt shows them; an answer that only "
+            "names files is asked again with them shown. Leave empty otherwise."
         ),
     )
 
@@ -578,7 +578,9 @@ class FirstAttempt(Implementation):
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:
-        if self.asks:
+        # An answer that only asks isn't applied, so it needs no test; one that also
+        # changes code is applied (crew#591), and brings its tests.
+        if self.asks and self.changes_nothing:
             return self
         """Definition of Done §7.1: every acceptance criterion needs a test.
 
@@ -668,7 +670,7 @@ class FirstOrDone(FirstAttempt):
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstOrDone:
-        if self.asks:
+        if self.asks and self.changes_nothing:
             return self
         if self.already_done:
             if not self.changes_nothing:
@@ -697,8 +699,8 @@ READ_FILES = (
     "The repository below may show some files only by name and signature. If you need "
     "one to do the work correctly, don't guess at it: read it with `read_file` before "
     "you answer, the whole file or one definition by name. Only if you can't read it "
-    "that way, name it in `need_files` (and nothing else), and you'll be asked again "
-    "with it shown.\n"
+    "that way, name it in `need_files`: do the rest of the work, which is applied, and "
+    "the next attempt shows the file.\n"
 )
 
 # Identical for every story and every repair, so it is the cacheable prefix.
