@@ -36,7 +36,7 @@ Sponsor, 2026-10-11: **option A.**
 - **A step that writes code answers in two parts:** a JSON part, held to the step's form as now, and plain code blocks. Each code field in the JSON names its block (`"source": "block 1"`), and each block is set off by markers the model can't mistake for code. A block's text is exactly the code, unescaped.
 - **The crew joins them before anything reads the answer.** The forms' checks, the guards and the downstream roles see the same joined answer they see today. A block named but missing, or a block no field names, is a refusal with that reason (ADR 0025).
 - **Edits by name stay as decided on 2026-09-18.** Only where the code sits changes, not how an edit addresses it.
-- **The server may still hold the shape.** SGLang takes a custom grammar (EBNF) as well as a JSON schema; whether the mixed answer is held to one is settled when it is built, by measuring.
+- **The server holds the shape.** The two-part answer is held to its own grammar (EBNF, through LiteLLM to SGLang): JSON with bounded whitespace, then at most 60 blocks of plain lines. Measured when built: without a grammar, the model went on reading after its reading rounds, writing tool calls as text, and three answers in four came back empty.
 - **The Developer first,** and its steps (`crews/stepped.py`). Other steps that write code or quote it (QA quoting criteria, the Architect's design note) follow only if their slips are measured.
 
 **The standard.** Structured output for control and plain text for content, the edit-block format coding agents such as Aider use, with the crew's own validation on the joined result.
@@ -52,7 +52,10 @@ Sponsor, 2026-10-11: **option A.**
 
 - **2026-10-11:** decided (Sponsor), from the lean-prompts plan's step L5 and crew#626.
 - **2026-10-11:** built for the Developer and its steps (`calls.ask(..., blocks=...)`,
-  `delivery_crew.CODE_FIELDS`). The answer isn't held to the server's grammar, which
-  would forbid the blocks; it is checked after it is written. Blocks are set off by
-  `@@@ name @@@` and `@@@ end @@@` lines; a block wrapped whole in a ``` fence has the
-  fence taken off.
+  `delivery_crew.CODE_FIELDS`). Blocks are set off by `@@@ name @@@` and `@@@ end @@@`
+  lines; a block wrapped whole in a ``` fence has the fence taken off.
+- **2026-10-11:** from its replays on mqucifer/sprint-metrics#567. Held to a grammar
+  (`calls.BLOCKS_GRAMMAR`), since without one the model drifted out of the answer. A
+  block's name is read loosely (`"@@b1"` is b1). A block no field names is left out, not
+  refused. At most 60 blocks: unbounded, two answers repeated one block thousands of
+  times. Ten replays: no quote slip, against 3 in 6 the same morning in JSON strings.
