@@ -421,7 +421,7 @@ def test_an_answer_with_blocks_is_asked_without_the_grammar_and_joined():
     assert found.writes[0].source == CODE
     sent = proxy.sent[0]
     assert "response_format" not in sent, "a JSON schema would forbid the blocks"
-    assert sent["extra_body"]["ebnf"] == calls.BLOCKS_GRAMMAR, "held to the two-part grammar"
+    assert sent["extra_body"]["ebnf"] == calls.blocks_grammar(Change.model_json_schema())
     prompt = sent["messages"][1]["content"]
     assert "@@@ b1 @@@" in prompt and "- `source` (code, as a block)" in prompt
 
@@ -457,3 +457,16 @@ def test_a_block_no_field_names_is_left_out():
 def test_the_grammar_bounds_the_number_of_blocks():
     """Unbounded, two answers wrote the same block 4,994 and 6,464 times."""
     assert "block{0,60}" in calls.BLOCKS_GRAMMAR
+
+
+def test_the_json_opens_with_the_forms_first_field_so_it_cant_be_empty():
+    """Answers came back as `{}`, refused as "summary: Field required", in the live tick."""
+    grammar = calls.blocks_grammar(Change.model_json_schema())
+    assert 'head ::= "{" ws "\\"summary\\"" ws ":" ws nonempty' in grammar
+    assert "root ::= head" in grammar and "nonempty ::=" in grammar
+
+    class Count(BaseModel):
+        count: int
+        source: str = ""
+
+    assert 'ws ":" ws value (' in calls.blocks_grammar(Count.model_json_schema())

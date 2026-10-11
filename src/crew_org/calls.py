@@ -173,7 +173,8 @@ def _block_named(value: Any) -> str | None:
 # bounded, so nothing in it can run away; a block's lines are any text but a line
 # starting `@@@`. At most 60 blocks: without a bound, two answers wrote the same empty
 # block 4,994 and 6,464 times, a runaway of blocks instead of whitespace.
-BLOCKS_GRAMMAR = r"""root ::= object "\n"+ block{0,60}
+BLOCKS_GRAMMAR = r"""root ::= head "\n"+ block{0,60}
+head ::= object
 block ::= "@@@ " name " @@@\n" line* "@@@ end @@@\n"
 name ::= "b" [0-9]+
 line ::= ([^@\n] [^\n]* | "@" [^@\n] [^\n]* | "@@" [^@\n] [^\n]*)? "\n"
@@ -185,7 +186,25 @@ string ::= "\"" ([^"\\\x00-\x1f] | escape)* "\""
 escape ::= "\\" (["\\/bfnrt] | "u" hex hex hex hex)
 hex ::= [0-9a-fA-F]
 number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+nonempty ::= "\"" ([^"\\\x00-\x1f] | escape)+ "\""
 ws ::= [ \t\n]{0,40}"""
+
+
+def blocks_grammar(schema: dict[str, Any]) -> str:
+    """BLOCKS_GRAMMAR with the JSON opening on the form's first field, holding a value.
+
+    The bare grammar let an empty object through: answers came back as `{}` after
+    thousands of tokens of thinking, refused as "summary: Field required", in replays
+    and in the live tick (mqucifer/sprint-metrics#585, 2026-10-11). Every form the
+    blocks serve opens with its `summary`; a text first field can't be empty.
+    """
+    fields = list((schema.get("properties") or {}).items())
+    if not fields:
+        return BLOCKS_GRAMMAR
+    name, field = fields[0]
+    first = "nonempty" if field.get("type") == "string" else "value"
+    head = f'head ::= "{{" ws "\\"{name}\\"" ws ":" ws {first} (ws "," ws member)* ws "}}"'
+    return BLOCKS_GRAMMAR.replace("head ::= object", head)
 
 
 @dataclass(frozen=True)
@@ -542,6 +561,7 @@ def ask[Answer: BaseModel](
         },
     ]
     form = response_format(answer)
+    grammar = blocks_grammar(answer.model_json_schema()) if blocks else ""
     versions = {
         "prompt_hash": _fingerprint(system),
         "output_schema": f"{answer.__name__}:{_fingerprint(json.dumps(form, sort_keys=True))}",
@@ -557,7 +577,7 @@ def ask[Answer: BaseModel](
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
             "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
-            **({"extra_body": {"ebnf": BLOCKS_GRAMMAR}} if blocks else {"response_format": form}),
+            **({"extra_body": {"ebnf": grammar}} if blocks else {"response_format": form}),
         }
         call = str(uuid.uuid4())
         detail = {"model": body["model"], "call_id": call, "try": attempt, **versions}
