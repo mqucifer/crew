@@ -68,9 +68,11 @@ _DECISIONS = (
 _OPEN = ("| ID | Open question | Impact | Settled by |", "|---|---|---|---|")
 _INFRA = ("| ID | For infra: what the deployed runtime has to provide |", "|---|---|")
 _DISMISSED = ("| Note | Dismissed because |", "|---|---|")
+# Each row names who set it. "Settled by the Product Owner" stood under records the
+# Product Owner had only turned into open questions (Sponsor, 2026-10-11).
 FOOTER = (
-    "_Settled by the Product Owner from the panel's notes, which stay as the epic's panel "
-    "comment. A binding row holds until a later row replaces it._"
+    "_From the panel's notes, which stay as the epic's panel comment. Each row names who "
+    "set it; a binding row holds until a later row replaces it._"
 )
 
 _CELLS = re.compile(r"(?<!\\)\|")
@@ -325,8 +327,11 @@ def bottom_line(record: Record) -> str:
     binding = record.binding()
     own = sum(1 for d in binding if d.own_call)
     replaced = len(record.decisions) - len(binding)
+    # The split refuses an epic with a question open for the Architect (ADR 0018), so
+    # such a record isn't ready to split, whatever else it holds.
+    ready = "Waiting for the Architect" if record.for_architect() else "Ready to split"
     return (
-        f"Ready to split: {len(binding)} decided"
+        f"{ready}: {len(binding)} decided"
         + (f" ({own} the Product Owner's call)" if own else "")
         + (f", {replaced} replaced" if replaced else "")
         + f", {len(record.for_architect())} open for the Architect, "

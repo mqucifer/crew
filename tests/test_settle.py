@@ -230,8 +230,8 @@ def test_the_conclusion_opens_with_its_header_and_the_bottom_line():
     lines = rendered().split("\n")
     assert lines[0] == "## Refinement conclusion"
     assert lines[2] == (
-        "Ready to split: 2 decided, 1 open for the Architect, 0 left to the implementer, "
-        "1 for infra, 1 dismissed."
+        "Waiting for the Architect: 2 decided, 1 open for the Architect, "
+        "0 left to the implementer, 1 for infra, 1 dismissed."
     )
 
 
