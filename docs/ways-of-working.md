@@ -633,8 +633,11 @@ Three rules for every limit on prompt content:
    describes the whole epic. Imports aren't followed, because the map carries
    every signature; the one exception is a failing test's imports, below. A
    file the Developer needs and can't see, it reads inside the call with
-   `read_file`: the whole file, or one definition by name (crew#583, step C4,
-   2026-10-11). Before, it named them in `need_files`, an answer that did no
+   `read_file`: the whole file, or one definition by name, and a Python file
+   over 12,000 characters by definition only, its imports and definitions
+   listed when it's asked for whole (crew#583, step C4,
+   2026-10-11). The first real call read one 43k-character file whole and had
+   too little left for the tests it needed. Before, it named them in `need_files`, an answer that did no
    work: on Goal mqucifer/sprint-metrics#558 the first answer only asked on 7
    of 7 stories, and each ask re-sent a larger prompt. `need_files` stays as
    the last resort, for a file too big for what is left to read: that answer
@@ -655,8 +658,10 @@ Three rules for every limit on prompt content:
    (181k tokens), and came back empty after 885 s. The files are now shown in
    this order, until the context reaches its ceiling (270,000 characters, or
    120,000 for the Developer, who reads the rest):
-   - the files the Developer asked for and the files it just wrote, always,
-     even past the ceiling
+   - the files the Developer just wrote, always, even past the ceiling; the
+     files it asked for come next, and keep to the ceiling, since it can read
+     what doesn't fit: shown regardless, asks grew
+     mqucifer/sprint-metrics#567's prompt to 82k tokens
    - the failing tests' files, and the project modules they import
    - the files the story, its criteria and the gates' verdicts name
    - last, the files only the test report names

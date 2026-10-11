@@ -218,6 +218,21 @@ def test_with_the_read_tool_it_is_told_to_read_and_shown_less(repo: Path):
     assert focus.shown == [] and focus.omitted == [f"{PKG}/metrics.py", "tests/test_metrics.py"]
 
 
+def test_with_the_read_tool_an_asked_file_keeps_to_the_ceiling(repairing: Path, monkeypatch):
+    """Shown past it, asks grew mqucifer/sprint-metrics#567's prompt to 82k tokens."""
+    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
+    _, focus = focused_context(
+        repairing,
+        about="Round it.",
+        extra=["docs/usage.md"],
+        written=[f"{PKG}/serve.py"],
+        above=0,
+        reading=True,
+    )
+    assert focus.shown == [f"{PKG}/serve.py"], "what it wrote, still"
+    assert focus.omitted[0] == "docs/usage.md", "what it asked for, first in line"
+
+
 def test_a_focused_delivery_reads_inside_the_call_and_says_what_it_read(
     harness,  # noqa: F811
     monkeypatch,

@@ -84,7 +84,25 @@ def test_the_messages_are_the_roles_text_and_the_steps_parts():
     system, user = proxy.sent[0]["messages"]
     assert system["content"].startswith("You are QA Engineer. You read criteria as the tests")
     assert "Your personal goal is: Before stories are created" in system["content"]
-    assert user["content"] == "## The stories\n\nS1\n\nJudge them.\n\nYour answer: A verdict."
+    assert user["content"].startswith(
+        "## The stories\n\nS1\n\nJudge them.\n\nYour answer: A verdict.\n\n"
+        "Write your answer as JSON in this form"
+    )
+
+
+def test_the_forms_field_descriptions_are_in_the_prompt():
+    """The server holds an answer to the schema's shape; only the prompt says what a
+    field means. Without it the Developer wrote a whole test function in `test`."""
+
+    class Named(BaseModel):
+        test: str = Field(description="The test function's name, e.g. test_range_as_json")
+
+    proxy = Proxy('{"test": "test_x"}')
+    calls.ask("qa_engineer", PARTS, Named, send=proxy)
+    assert (
+        "The test function's name, e.g. test_range_as_json"
+        in (proxy.sent[0]["messages"][1]["content"])
+    )
 
 
 def test_the_role_settings_and_the_schema_go_with_the_call():

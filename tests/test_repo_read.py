@@ -9,6 +9,8 @@ import pytest
 from crew_org.tools.repo_read import Reader
 
 METRICS = (
+    "from datetime import date\n"
+    "from sprint_metrics.cards import (\n    Card,\n)\n\n"
     "THRESHOLD = 3\n\n\n"
     "def cycle_time(cards):\n    return 0\n\n\n"
     "class Report:\n    @property\n    def rows(self):\n        return []\n"
@@ -68,3 +70,16 @@ def test_a_file_shown_or_read_already_costs_nothing_again(repo: Path):
     left = reader.left
     assert "read `src/metrics.py` already" in reader.run({"path": "src/metrics.py"})
     assert reader.left == left
+
+
+def test_a_large_python_file_is_read_a_definition_at_a_time(repo: Path, monkeypatch):
+    """The first real call spent 43k of 74k characters on one whole `report.py`."""
+    from crew_org.tools import repo_read  # noqa: PLC0415
+
+    monkeypatch.setattr(repo_read, "WHOLE_FILE_CHARS", 20)
+    reader = Reader(repo, budget=1_000)
+    said = reader.run({"path": "src/metrics.py"})
+    assert "too large to read whole" in said and "cycle_time" in said and reader.read == []
+    assert "from datetime import date\nfrom sprint_metrics.cards import (\n    Card,\n)" in said
+    assert "def cycle_time" in reader.run({"path": "src/metrics.py", "name": "cycle_time"})
+    assert "# Metrics" in reader.run({"path": "docs/metrics.md"}), "not Python: read whole"

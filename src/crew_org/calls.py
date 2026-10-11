@@ -140,10 +140,23 @@ def system_text(spec: dict[str, Any]) -> str:
     )
 
 
-def task_text(parts: list[Part], expected: str) -> str:
-    """What the step is shown, part by part, and what its answer should be."""
+def task_text(parts: list[Part], expected: str, form: dict[str, Any] | None = None) -> str:
+    """What the step is shown, part by part, what its answer should be, and its form.
+
+    The form is the answer's JSON schema, its field descriptions included. The server
+    holds the answer to the schema's shape, but the model reads only the prompt: with
+    the schema left out as CrewAI's framing, the Developer put a whole test function
+    in `test`, a name field, in every try (crew#583, 2026-10-11). CrewAI sent it the
+    same way, after the task.
+    """
     shown = "\n\n".join(p.text.strip() for p in parts if p.text.strip())
-    return f"{shown}\n\nYour answer: {expected}" if expected else shown
+    text = f"{shown}\n\nYour answer: {expected}" if expected else shown
+    if form is not None:
+        text += (
+            "\n\nWrite your answer as JSON in this form, each field as its description "
+            f"says:\n\n{json.dumps(form, indent=2)}"
+        )
+    return text
 
 
 def _strict(schema: dict[str, Any]) -> dict[str, Any]:
@@ -241,7 +254,7 @@ def ask[Answer: BaseModel](
     system = system_text(spec)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": task_text(parts, expected)},
+        {"role": "user", "content": task_text(parts, expected, answer.model_json_schema())},
     ]
     form = response_format(answer)
     versions = {

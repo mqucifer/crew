@@ -426,7 +426,11 @@ def focused_context(
     extra = [a.strip().removeprefix("./") for a in extra]
     chosen, unknown = select_files(worktree, about, extra)
     existing = {str(p.relative_to(worktree)) for p in _files(worktree)}
-    kept = [r for r in [*extra, *written] if r in existing]
+    # What it wrote is always shown. What it asked for too, unless it can read:
+    # then an ask is a file it found too large to read, and shown past the ceiling
+    # it grows the prompt back to where answers come back empty (crew#583, C4).
+    kept = [r for r in [*([] if reading else extra), *written] if r in existing]
+    asked_first = [r for r in extra if r in existing and r not in kept] if reading else []
     exercised = [r for r in failing if r in existing]
     exercised += [i for r in exercised for i in imported_files(worktree, r)]
     reported = sorted(set(select_files(worktree, report)[0]) - set(chosen)) if report else []
@@ -437,7 +441,7 @@ def focused_context(
     named_code = [r for r in rest if r.endswith(".py") and not _is_test(Path(r))]
     their_imports = [i for r in named_code for i in imported_files(worktree, r)]
     reported.sort(key=lambda r: _is_test(Path(r)))
-    order = list(dict.fromkeys([*kept, *exercised, *rest, *their_imports, *reported]))
+    order = list(dict.fromkeys([*kept, *asked_first, *exercised, *rest, *their_imports, *reported]))
     close = _close_to(worktree, named_code, set(order), coverage)
 
     index = repository_context(worktree, editing=editing, bodies=False)

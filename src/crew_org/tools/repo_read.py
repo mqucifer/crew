@@ -14,6 +14,7 @@ size at which answers come back empty. `need_files` stays as the last resort.
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -22,6 +23,10 @@ from crew_org.tools.ast_edit import definitions
 from crew_org.tools.repo_context import CONTEXT_FILES, IGNORED_DIRS, is_text
 
 NAME = "read_file"
+# A Python file larger than this is read one definition at a time. The first real
+# call (mqucifer/sprint-metrics#567, 2026-10-11) spent 43k of its 74k characters on
+# one whole `report.py`, then had too little left for the tests it needed, and asked.
+WHOLE_FILE_CHARS = 12_000
 
 
 class Reader:
@@ -86,6 +91,12 @@ class Reader:
             body = "\n".join(lines[start - 1 : node.end_lineno or node.lineno])
         else:
             body = source.strip()
+            if len(body) > WHOLE_FILE_CHARS and rel.endswith(".py") and definitions(source):
+                return (
+                    f"`{rel}` is {len(body):,} characters, too large to read whole. "
+                    + self._names(rel, source)
+                    + _imports(source)
+                )
         if len(body) > self.left:
             return (
                 f"`{key}` is {len(body):,} characters, more than is left to read in this call "
@@ -103,3 +114,26 @@ class Reader:
         if not names:
             return ""
         return f"Read one of its definitions by name: {', '.join(names)}. "
+
+
+def _imports(source: str) -> str:
+    """A module's import lines: no definition holds them, so reading by name can't reach them.
+
+    The fourth real call (mqucifer/sprint-metrics#567) wrote the whole story, then asked
+    for `report.py` in `need_files` only to see its imports, and an answer that asks
+    isn't applied.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ""
+    lines = source.splitlines()
+    found = [
+        "\n".join(lines[node.lineno - 1 : node.end_lineno or node.lineno])
+        for node in tree.body
+        if isinstance(node, ast.Import | ast.ImportFrom)
+    ]
+    if not found:
+        return ""
+    joined = "\n".join(found)
+    return f"Its imports:\n\n```python\n{joined}\n```"

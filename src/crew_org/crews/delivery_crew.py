@@ -232,6 +232,19 @@ class CriterionTest(BaseModel):
     def _stays_in_the_repository(cls, value: str) -> str:
         return FileWrite._stays_in_the_repository(value)
 
+    @field_validator("test")
+    @classmethod
+    def _a_name_not_its_code(cls, value: str) -> str:
+        # The first real call on the crew's own call layer (crew#583) put the whole
+        # function in `test` twice, told only that "the source for '<the function>'
+        # doesn't define it", which named no field to change.
+        if "\n" in value.strip() or value.lstrip().startswith(("def ", "async def ")):
+            raise ValueError(
+                "`test` is the test's name alone, e.g. test_range_as_json. Its code goes "
+                "in `source`"
+            )
+        return value.strip()
+
     @model_validator(mode="after")
     def _is_that_test(self) -> CriterionTest:
         profile = profile_for(self.path)

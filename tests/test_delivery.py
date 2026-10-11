@@ -433,3 +433,15 @@ def test_a_first_attempt_is_still_told_about_proven_by_existing():
 def test_code_that_defines_a_different_test_is_refused_as_before():
     with pytest.raises(ValidationError, match="doesn't define it"):
         criterion_test(source="def something_else():\n    pass\n")
+
+
+def test_a_tests_code_in_its_name_is_refused_naming_the_field():
+    """The first real call put the whole function in `test`, twice, under a refusal
+    that named no field."""
+    from crew_org.crews.delivery_crew import CriterionTest  # noqa: PLC0415
+
+    code = "def test_json(run_command):\n    assert run_command()\n"
+    with pytest.raises(ValidationError, match="`test` is the test's name alone"):
+        CriterionTest(criterion="AC1", path="tests/test_cli.py", test=code, source=code)
+    named = CriterionTest(criterion="AC1", path="tests/test_cli.py", test="test_json", source=code)
+    assert named.test == "test_json"
