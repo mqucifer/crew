@@ -2,7 +2,7 @@
 
 **Bottom line:** most of what a Developer call holds now is standing material, the same in every call, not the code the story needs. Cut it the way 2026-10-11's fixes cut the rest: show what the work needs, and let the model fetch the rest when it needs it. Then take code out of escaped JSON (crew#626), which is both the biggest answer-side cost and the day's one recurring failure. The goal: a Developer's first attempt under about 35k prompt tokens and a repair under about 40k, with no rise in refusals.
 
-**Status:** 2026-10-11, proposed by Claude after the Sponsor asked, of the model family's limits, whether context bloat can be solved at all. Nothing built. L1 to L4 are inside the decisions already made (ADR 0024, ADR 0025). **L5 is decided (Sponsor, 2026-10-11): option A, recorded as ADR 0026.** **Order (Sponsor):** L1 to L3 in one PR, then L5, then L4.
+**Status:** 2026-10-11. **Part of the context-record plan's E1** (`docs/plans/context-record-build.md`, "E1 so far"): these are E1's findings on Goal mqucifer/sprint-metrics#558, fixed while E1 runs, not a separate effort. Proposed by Claude after the Sponsor asked, of the model family's limits, whether context bloat can be solved at all. Nothing built. L1 to L4 are inside the decisions already made (ADR 0024, ADR 0025). **L5 is decided (Sponsor, 2026-10-11): option A, recorded as ADR 0026.** **Order (Sponsor):** L1 to L3 in one PR, then L5, then L4.
 
 **The condition on all of it** is the context-record plan's: no rule on the crew's context may be detrimental to how a development team develops and changes software. A cut that leaves a role guessing at something it used to be shown is a loss, and goes back.
 

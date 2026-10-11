@@ -174,9 +174,23 @@ Each step is one PR from its own worktree, never stacked. Anything that calls a 
 
 | Step | What | Done when |
 |---|---|---|
-| E1 | The next approved epic with open questions runs through the whole chain in ticks | The success test below, read with `scripts/context_review.py` on that epic |
+| E1 | The next approved epic with open questions runs through the whole chain in ticks. **Running on Goal mqucifer/sprint-metrics#558** (epics mqucifer/sprint-metrics#559 to mqucifer/sprint-metrics#561), from 2026-10-11; see "E1 so far" below | The success test below, read with `scripts/context_review.py` on those epics once their stories are delivered |
 | E2 | crew#583 closed as built, crew#584 closed by C2, crew#190 and crew#457 closed as superseded or reshaped, with a status comment each | Each issue says which step did what |
 | E3 | **The backlog reviewed against what was built** (Sponsor, 2026-10-10): every open crew issue and Discussion is checked against the steps above; anything completed or superseded gets a comment naming the step and PR that did it, and is proposed for closure in one list, on crew#583 and in chat; closed on the Sponsor's word | Every open issue and Discussion has been looked at; the list names each one kept, with why |
+
+### E1 so far
+
+E1 started as "checkpoint 3, the proof" on Goal mqucifer/sprint-metrics#558 (Sponsor, 2026-10-11). Its refinement ran before D1b, on CrewAI's call path, so its refinement rows read the old path; they passed (no refinement failures, no contradiction between epics) and are noted, not re-run. Its delivery runs in ticks on the stories left in Sprint 22. Each finding is fixed while E1 runs, under the Sponsor's mid-sprint exception for E1's fixes (2026-10-11), and E1 goes on:
+
+| E1 finding | Fix |
+|---|---|
+| The Developer's first answer only asked for files (7 of 7); mqucifer/sprint-metrics#567 answered empty ten times at 82k tokens | D1b and C4: mqucifer/crew#620, mqucifer/crew#621, mqucifer/crew#622 |
+| An answer that slipped on a quote ran on as whitespace for 40 minutes | mqucifer/crew#627 |
+| An answer that asked was counted as written, so its re-ask was 286k characters; four reading rounds were one short | mqucifer/crew#628 |
+| A repair at 142,865 tokens: the whole failure report, whole written files, no room to read; an answer that fixed the code and asked to see docs was thrown away | mqucifer/crew#630 (crew#591) |
+| 55% of a Developer prompt is standing material, and code escaped in JSON is the recurring slip | `docs/plans/lean-prompts.md`, steps L1 to L5; L5 decided as ADR 0026 (crew#626) |
+
+**E1 ends** when mqucifer/sprint-metrics#558's stories are delivered and the success test below is read on its epics. The lean-prompts steps land before that reading, in the Sponsor's order: L1 to L3, then L5, then L4. No new Goal is needed for E1.
 
 ## The success test (E1)
 
