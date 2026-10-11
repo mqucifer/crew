@@ -15,7 +15,7 @@ import textwrap
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from crew_org.crews.delivery_crew import FileWrite
+from crew_org.crews.delivery_crew import FileWrite, TextEdit
 from crew_org.tools.sandbox import Mode, Sandbox
 
 # A runaway test must not hang the tick.
@@ -291,7 +291,48 @@ def _outside_definitions(item, text: str) -> None:
             continue
         top = min([node.lineno, *(d.lineno for d in node.decorator_list)])
         if first <= (node.end_lineno or node.lineno) and top <= last:
-            raise EditError(f"this text edit reaches into `{node.name}`. {how}")
+            raise EditError(
+                f"this text edit reaches into `{node.name}`. {how}"
+                + _as_a_replace(text, node, item, first, last)
+            )
+
+
+# The most of a definition a refusal shows back, ready to send as a `replace`.
+REPLACE_SHOWN_CHARS = 12_000
+
+
+def _as_a_replace(text: str, node: ast.stmt, item: TextEdit, first: int, last: int) -> str:
+    """The definition the quote reaches into, with the quoted change made, to send by name.
+
+    mqucifer/sprint-metrics#585 (2026-10-11) was blocked after three tries at changing
+    one cell of a large expected table inside a test with a quoted edit: the refusal
+    said what not to do, and copying out the whole test was what it kept avoiding. A
+    quote wholly inside one definition (a method, if it's inside one) comes back as
+    that definition with the change made; otherwise as it stands.
+    """
+    lines = text.splitlines()
+    target, name = node, node.name
+    if isinstance(node, ast.ClassDef):
+        for child in node.body:
+            if (
+                isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
+                and min([child.lineno, *(d.lineno for d in child.decorator_list)]) <= first
+                and last <= (child.end_lineno or child.lineno)
+            ):
+                target, name = child, f"{node.name}.{child.name}"
+    top = min([target.lineno, *(d.lineno for d in getattr(target, "decorator_list", []))])
+    end = target.end_lineno or target.lineno
+    source = "\n".join(lines[top - 1 : end])
+    inside = top <= first and last <= end and source.count(item.find) == 1
+    if inside:
+        source = source.replace(item.find, item.replace)
+    if len(source) > REPLACE_SHOWN_CHARS:
+        return f" Send `{name}` whole as a `replace` edit, with your change made in it."
+    said = "with your change made" if inside else "as it stands; make your change in it"
+    return (
+        f" Here is `{name}` {said}: send it back whole as a `replace` edit of `{name}`."
+        f"\n\n```python\n{source}\n```"
+    )
 
 
 def apply(worktree: Path, files: list[FileWrite]) -> list[str]:
