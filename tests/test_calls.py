@@ -470,3 +470,17 @@ def test_the_json_opens_with_the_forms_first_field_so_it_cant_be_empty():
         source: str = ""
 
     assert 'ws ":" ws value (' in calls.blocks_grammar(Count.model_json_schema())
+
+
+def test_a_code_field_pointing_at_no_block_says_which_blocks_are_written():
+    """`@@criteria_test_1@@` was taken as code and refused for not defining its test."""
+    head = '{"summary": "s", "writes": [{"path": "p", "source": "@@criteria_test_1@@"}]}'
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\ndef test_x(): pass\n@@@ end @@@\n")
+    with pytest.raises(ValueError, match="isn't a block's name.*written are b1"):
+        calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
+
+
+def test_code_that_merely_mentions_at_signs_is_still_code():
+    head = '{"summary": "s", "writes": [{"path": "p", "source": "@decorator"}]}'
+    joined = calls.join_blocks(json.loads(head), {}, frozenset({"source"}))
+    assert joined["writes"][0]["source"] == "@decorator"
