@@ -274,10 +274,11 @@ FOCUSED_CHAR_CEILING = 270_000
 # tokens and went empty ten times at 82k. At about 2.9 characters a token, 120k
 # characters shown keeps the first call near 45k with the story and the rules,
 # and 175k keeps the answer under the 60k the plan's success test sets.
-# 85,000 since the map lists far test files in brief (lean-prompts plan, L1): the
-# 120,000 it was held 47k of map on mqucifer/sprint-metrics#567, now 13k, so the same
-# code is shown in 35k less.
-READ_FIRST_CHAR_CEILING = 85_000
+# 50,000 since the map lists far test files in brief (lean-prompts plan, L1). The
+# 120,000 it was held a 47k map and 36k of code on mqucifer/sprint-metrics#567; at
+# 85,000 the 15k map left room for 54k of code, and the call came to 45k tokens
+# against 51k. At 50,000 the same code as before is shown, and the rest is read.
+READ_FIRST_CHAR_CEILING = 50_000
 READING_CHAR_CEILING = 175_000
 # What a call with the read tool keeps free to read, when the rest of its prompt is
 # large. The first real split with the tool (mqucifer/sprint-metrics#561, 2026-10-11)

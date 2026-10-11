@@ -75,5 +75,5 @@ analysis; tool use, also called function calling; two-stage retrieval.
 - **2026-10-11:** the map lists a test file far from the work in brief: how many tests
   it holds and its helpers, any test read by name; source files keep every signature
   (lean-prompts plan, L1). Test names were 80% of the map on
-  mqucifer/sprint-metrics#567. The code shown before reading drops to 85,000 characters,
-  the same code in 35k less.
+  mqucifer/sprint-metrics#567. The code shown before reading drops to 50,000 characters,
+  the same code in 33k less.

@@ -65,7 +65,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 
 | Part | From | Why |
 |---|---|---|
-| The repository | `RepoContext.focused_for`: the map, and the files the epic names, up to 85,000 characters and less beside a large prompt, keeping 40,000 free to read | Criteria written against what the code has |
+| The repository | `RepoContext.focused_for`: the map, and the files the epic names, up to 50,000 characters and less beside a large prompt, keeping 40,000 free to read | Criteria written against what the code has |
 | What it reads | `RepoContext.reader_for`, its `read_file` tool | A file or one definition the epic needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
 | Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run, or by their own code read or call, what the epic and its record name and check a whole shape, and any the record names (C2, C5); a test that spells out a named file's table first |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
@@ -137,7 +137,7 @@ A split that names a story the project hasn't delivered or planned, or drops a s
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
 | The epic's notes | `presentation_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
 | What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
-| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 85,000 characters; a test file far from the work in brief (L1) |
+| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 50,000 characters; a test file far from the work in brief (L1) |
 | What it reads | `repo_read.Reader`, its `read_file` tool | A file or one definition the work needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
 | The last failure | `deliver_story`'s feedback, a test report through `attempts.repair_report` | What to repair, and why the previous answer was refused; a test report grouped by cause, every failing test named (crew#591) |
 
