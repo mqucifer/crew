@@ -180,7 +180,7 @@ def test_a_member_whose_model_gave_no_structured_answer_is_a_failure_not_a_none(
     from crew_org import calls
 
     empty = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
-    monkeypatch.setattr(calls, "post", lambda body, **_: empty)
+    monkeypatch.setattr(calls, "stream", lambda body, **_: empty)
     with pytest.raises(calls.Refused, match="the answer was empty"):
         panel_crew.review(context(), "qa_engineer")
 

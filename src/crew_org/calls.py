@@ -51,6 +51,15 @@ EMPTY_LIMIT = 2
 # Of a refused answer, how much is sent back with its reason: enough to see what
 # was wrong with it, not a second copy of a long answer.
 ECHO_CHARS = 4000
+# Whitespace in a row, in an answer's JSON, that means it has run away. The server
+# holds the answer to the schema, which allows whitespace between any two tokens:
+# a model that closes a string early wants a token the schema now forbids, and
+# writes whitespace instead, to the token limit. mqucifer/sprint-metrics#567 did,
+# 2026-10-11: 8,918 characters of answer, then 84,000 lines of whitespace over 40
+# minutes. A real answer has none: line breaks inside its strings are escaped.
+RUNAWAY_CHARS = 2000
+# How much of the answer before the run is shown to the model with the reason.
+RUNAWAY_TAIL = 300
 
 
 @dataclass(frozen=True)
@@ -227,6 +236,77 @@ def post(body: dict[str, Any], *, timeout: float = DEFAULT_TIMEOUT) -> dict[str,
     return result
 
 
+def stream(
+    body: dict[str, Any], *, timeout: float = DEFAULT_TIMEOUT, transport: Any = None
+) -> dict[str, Any]:
+    """One request to the proxy, read as it streams, and cut off if it runs away.
+
+    Returns what `post` returns, assembled from the stream. An answer cut off for
+    running on as whitespace has `finish_reason` "runaway", and closing the stream
+    ends the generation instead of letting it run to its token limit.
+    """
+    parts: list[str] = []
+    usage: dict[str, Any] = {}
+    finish: str | None = None
+    response_id = ""
+    run = 0
+    try:
+        with (
+            httpx.Client(transport=transport, timeout=timeout) as client,
+            client.stream(
+                "POST",
+                f"{base_url()}/chat/completions",
+                json={**body, "stream": True, "stream_options": {"include_usage": True}},
+                headers={"Authorization": f"Bearer {api_key()}"},
+            ) as response,
+        ):
+            if response.status_code >= 500:
+                response.read()
+                raise ServiceUnavailableError(f"{response.status_code}: {response.text[:300]}")
+            if response.status_code >= 400:
+                response.read()
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line.removeprefix("data:").strip()
+                if data == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                response_id = chunk.get("id") or response_id
+                usage = chunk.get("usage") or usage
+                for choice in chunk.get("choices") or []:
+                    piece = (choice.get("delta") or {}).get("content") or ""
+                    if piece:
+                        parts.append(piece)
+                        kept = piece.rstrip()
+                        run = run + len(piece) if not kept else len(piece) - len(kept)
+                    finish = choice.get("finish_reason") or finish
+                if run >= RUNAWAY_CHARS:
+                    finish = "runaway"
+                    break
+    except httpx.TransportError as exc:
+        if isinstance(exc, httpx.TimeoutException):
+            raise
+        raise ServiceUnavailableError(f"Connection error: {exc}") from exc
+    return {
+        "id": response_id,
+        "choices": [{"message": {"content": "".join(parts)}, "finish_reason": finish}],
+        "usage": usage,
+    }
+
+
+def _runaway(text: str) -> str:
+    """The reason an answer that ran on as whitespace is refused, with where it went wrong."""
+    tail = text.rstrip()[-RUNAWAY_TAIL:]
+    return (
+        "the answer ran on as whitespace after this, so a string closed early or a list "
+        f"or object was left open: ...{tail}\n\nCheck that each string ends exactly where "
+        "you mean it to, with every double quote inside it escaped, and close each list "
+        "and object you open"
+    )
+
+
 def ask[Answer: BaseModel](
     role: str,
     parts: list[Part],
@@ -252,8 +332,12 @@ def ask[Answer: BaseModel](
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
-    # The role's own timeout: a Developer's answer can take most of an hour.
-    sender = send or partial(post, timeout=float(params.get("timeout", DEFAULT_TIMEOUT)))
+    # The role's own timeout: a Developer's answer can take most of an hour. The answer
+    # is streamed, so one that runs away is stopped; tool rounds return tool calls, not
+    # text, and are asked for whole.
+    timeout = float(params.get("timeout", DEFAULT_TIMEOUT))
+    sender = send or partial(stream, timeout=timeout)
+    reader = send or partial(post, timeout=timeout)
     system = system_text(spec)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
@@ -267,7 +351,7 @@ def ask[Answer: BaseModel](
     sizes = {p.name: len(p.text) for p in parts}
     if tools:
         messages[-1]["content"] += f"\n\n{READ_FIRST}"
-        messages = _use_tools(spec, messages, tools, rounds=rounds, send=sender, sizes=sizes)
+        messages = _use_tools(spec, messages, tools, rounds=rounds, send=reader, sizes=sizes)
     reason = ""
     empties = 0
     for attempt in range(1, attempts + 1):
@@ -307,6 +391,8 @@ def ask[Answer: BaseModel](
         record(EventKind.LLM_CALL_FINISHED, spec["role"], role=spec["role"], **detail)
         _trace(began, detail, spec["role"])
         try:
+            if choice.get("finish_reason") == "runaway":
+                raise ValueError(_runaway(text))
             if not text.strip():
                 raise ValueError(
                     "the answer was empty: you stopped before writing it. Think less and "
