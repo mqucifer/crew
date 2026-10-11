@@ -169,23 +169,23 @@ def test_an_edit_path_cannot_escape_the_repository():
 
 
 def _repair_prompt(feedback: str = "1 failed") -> str:
-    """The task description the Developer sees on a repair."""
+    """The task the Developer sees on a repair, as the call layer sends it."""
     import crew_org.crews.delivery_crew as dc
 
     captured: dict[str, str] = {}
 
-    class FakeTask:
-        def __init__(self, *, description, **_kw):
-            captured["description"] = description
+    def ask(role, parts, answer, *, expected="", **_kw):
+        captured["description"] = dc.calls.task_text(parts, expected)
+        raise RuntimeError("only the prompt is under test")
 
-    original_task, original_crew = dc.Task, dc.Crew
-    dc.Task = FakeTask
+    original = dc.calls.ask
+    dc.calls.ask = ask
     try:
         dc.implement_story("a story", context="### Files", feedback=feedback)
-    except Exception:  # noqa: BLE001, S110 — only the prompt is under test
+    except RuntimeError:
         pass
     finally:
-        dc.Task, dc.Crew = original_task, original_crew
+        dc.calls.ask = original
     return captured.get("description", "")
 
 

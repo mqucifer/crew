@@ -15,10 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 from crew_org.crews.delivery_crew import (
     STANDING_INSTRUCTIONS,
     FileWrite,
@@ -156,17 +155,13 @@ class StepAnswer(Implementation):
 
 
 def _run(description: str, output: type[BaseModel]) -> Any:
-    agents = build_agents("developer")
-    task = Task(
-        description=description,
-        expected_output="The structured answer the schema describes.",
-        agent=agents["developer"],
-        output_pydantic=output,
+    """One step's call, on the crew's own call layer (ADR 0025)."""
+    return calls.ask(
+        "developer",
+        [calls.Part("task", description)],
+        output,
+        expected="The structured answer the schema describes.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic
 
 
 def plan_story(story: str, *, context: str, why: str = "") -> Plan:

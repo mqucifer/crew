@@ -207,6 +207,72 @@ def test_each_attempt_records_its_context_size(harness, monkeypatch, tmp_path): 
     assert sizes and sizes[0].detail["focused"] is True
 
 
+# --- reading inside the call (crew#583, step C4) ------------------------------------------------
+
+
+def test_with_the_read_tool_it_is_told_to_read_and_shown_less(repo: Path):
+    text, focus = focused_context(
+        repo, about="Round `calculate_cycle_time`.", above=10, reading=True, ceiling=10
+    )
+    assert "read it with `read_file`" in text and "`need_files`" not in text
+    assert focus.shown == [] and focus.omitted == [f"{PKG}/metrics.py", "tests/test_metrics.py"]
+
+
+def test_a_focused_delivery_reads_inside_the_call_and_says_what_it_read(
+    harness,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+):
+    def reads_then_works(n, *, read):
+        assert read is not None and read.name == "read_file"
+        assert "Cycle time counts completed cards." in read.run({"path": "docs/metrics.md"})
+        return WORK
+
+    def seeded_open(self, branch, *, resume=False):
+        self.resumed = False
+        path = tmp_path / branch.replace("/", "__")
+        (path / "docs").mkdir(parents=True, exist_ok=True)
+        (path / "docs/metrics.md").write_text("# Metrics\nCycle time counts completed cards.\n")
+        return path
+
+    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    result, _, _, _, calls, seen = harness(checks=[green()], implement=reads_then_works)
+    assert result.delivered and calls["implement"] == 1, "read, not asked for"
+    assert [e.detail["read"] for e in seen if (e.summary or "").startswith("#6 read")] == [
+        ["docs/metrics.md"]
+    ]
+
+
+def test_empty_answers_after_an_ask_go_in_steps(harness, monkeypatch, tmp_path):  # noqa: F811
+    """mqucifer/sprint-metrics#567 asked for files, then answered empty ten times:
+    steps were tried only after a first attempt, and its first attempt had asked."""
+    from crew_org import calls as call_layer  # noqa: PLC0415
+
+    def answers(n):
+        if n == 2:
+            raise call_layer.Refused("the answer was empty", 2, empty=True)
+        return ASK if n == 1 else WORK
+
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    result, _, _, _, calls, seen = harness(checks=[green()], implement=answers)
+    assert any("the next attempt goes in steps" in (e.summary or "") for e in seen)
+    assert result.delivered
+
+
+def test_empty_answers_once_work_is_written_are_repaired_not_planned_again(harness):  # noqa: F811
+    from crew_org import calls as call_layer  # noqa: PLC0415
+
+    def answers(n):
+        if n == 2:
+            raise call_layer.Refused("the answer was empty", 2, empty=True)
+        return WORK
+
+    result, _, _, _, _, seen = harness(checks=[red("1 failed"), green()], implement=answers)
+    assert not any("goes in steps" in (e.summary or "") for e in seen)
+    assert result.delivered
+
+
 # --- named in prose (sprint-metrics#281) -------------------------------------------------------
 
 
@@ -385,7 +451,7 @@ def test_a_repair_records_what_it_left_out(harness, monkeypatch, tmp_path):  # n
 
     monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
     monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
+    monkeypatch.setattr(repo_context, "READ_FIRST_CHAR_CEILING", 1)
     report = (
         "src/sprint_metrics/serve.py:2: in serve_metrics\n"
         "FAILED tests/test_metrics.py::test_cycle - assert 1 == 0\n"

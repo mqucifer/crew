@@ -136,8 +136,30 @@ def test_the_steps_own_rule_refuses_too_and_its_reason_is_told():
 
 
 def test_every_attempt_refused_ends_with_the_last_reason():
-    with pytest.raises(calls.Refused, match="refused 3 times; the last time: the answer was empty"):
-        ask(Proxy("", "", ""))
+    short = '{"approved": true, "why": "ok"}'
+    with pytest.raises(calls.Refused, match="refused 3 times; the last time: why") as refused:
+        ask(Proxy(short, short, short))
+    assert not refused.value.empty
+
+
+def test_two_empty_answers_in_a_row_end_the_call_early():
+    # mqucifer/sprint-metrics#567: the same prompt again answered empty ten times.
+    proxy = Proxy("", "", GOOD)
+    with pytest.raises(calls.Refused, match="refused 2 times; the last time: the answer was empty"):
+        ask(proxy)
+    assert len(proxy.sent) == 2
+
+
+def test_the_roles_own_timeout_goes_with_the_call(monkeypatch):
+    seen_timeouts: list[float] = []
+
+    def post(body, *, timeout):
+        seen_timeouts.append(timeout)
+        return reply(GOOD)
+
+    monkeypatch.setattr(calls, "post", post)
+    calls.ask("developer", PARTS, Verdict)
+    assert seen_timeouts == [3600.0]
 
 
 def test_each_attempt_is_recorded_with_its_tokens_and_the_parts_sizes(seen):
@@ -231,6 +253,7 @@ def test_a_tool_is_called_in_rounds_and_the_answer_comes_in_its_form(seen):
     assert told[0]["tool_call_id"] == "c0" and "def first_attempt_count" in told[0]["content"]
     assert "tools" not in final and final["response_format"]["json_schema"]["name"] == "Verdict"
     assert final["messages"][-1]["content"] == calls.ANSWER_NOW
+    assert first["messages"][1]["content"].endswith(calls.READ_FIRST)
     assert [e.detail["tool"] for e in seen if e.kind is EventKind.TOOL_FINISHED] == ["read_file"]
 
 

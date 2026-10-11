@@ -286,6 +286,8 @@ An escalation without a justification is rejected and treated as `SCOPE`.
 - **Then one small answer per file,** each shown the story, the plan, that file in full, and what the earlier steps wrote. A step may only change its own file.
 - **The pieces are merged into one ordinary answer,** which the guards, the checks, review and QA judge as any other.
 
+Empty answers at a later attempt go in steps too, while nothing of the delivery is written yet (crew#583, 2026-10-11): mqucifer/sprint-metrics#567's first answer asked for files, so its next nine, all empty, never did. A call gives up after two empty answers in a row rather than asking the same way a third time, since the same prompt rarely finishes.
+
 It's the same attempt count and the same SCHEMA budget. It happens once per delivery; if it fails too, the usual repairs follow. An answer that arrived but failed a check (a named test that doesn't exist, say) is repaired as before, because its problem is its content, not its size. Why: sprint-metrics#268's one answer (rewrite the README, move ~20 tests, delete a file) stopped mid-thought 3 times in 5 even on a focused prompt (#312). Splitting the work from its tests, the other option #276 records, is still to be compared.
 
 Each sprint has a fixed escalation budget. When it is exhausted, further
@@ -630,16 +632,29 @@ Three rules for every limit on prompt content:
    The epic's design note is still shown, but it doesn't choose files: it
    describes the whole epic. Imports aren't followed, because the map carries
    every signature; the one exception is a failing test's imports, below. A
-   file the Developer needs and can't see, it names in
-   `need_files`: that answer isn't applied, and it's asked again with them
-   shown. It may ask twice per delivery, and asking isn't a failure. Every
-   attempt records its context size and which files it was shown.
+   file the Developer needs and can't see, it reads inside the call with
+   `read_file`: the whole file, or one definition by name (crew#583, step C4,
+   2026-10-11). Before, it named them in `need_files`, an answer that did no
+   work: on Goal mqucifer/sprint-metrics#558 the first answer only asked on 7
+   of 7 stories, and each ask re-sent a larger prompt. `need_files` stays as
+   the last resort, for a file too big for what is left to read: that answer
+   isn't applied, and it's asked again with them shown, and asking isn't a
+   failure. Every attempt records its context size and which files it was
+   shown, and a note names what it read.
+
+   **What it reads shares one ceiling with what it is shown.** The Developer
+   is shown up to 120,000 characters, and reading may take the call to
+   175,000, about 60k tokens, the line the plan's success test sets. Answers
+   came back empty on 0% of prompts under 50k tokens, 6% from 50k to 90k and
+   26% above (runbook `empty-model-answers.md`); mqucifer/sprint-metrics#567
+   answered at 45k tokens and went empty ten times at 82k.
 
    **A focused context has a ceiling, and a repair is shown what it needs
    first** (crew#591, 2026-10-10). sprint-metrics#537's repair was shown all
    25 files its test report's tracebacks passed through, 479,252 characters
    (181k tokens), and came back empty after 885 s. The files are now shown in
-   this order, until the context reaches 270,000 characters:
+   this order, until the context reaches its ceiling (270,000 characters, or
+   120,000 for the Developer, who reads the rest):
    - the files the Developer asked for and the files it just wrote, always,
      even past the ceiling
    - the failing tests' files, and the project modules they import
@@ -648,7 +663,7 @@ Three rules for every limit on prompt content:
 
    Code comes before tests within each group, because a paired test file is
    often the largest thing chosen. A file that doesn't fit is named as left
-   out, and the Developer can ask for it in `need_files`. `files.shown`
+   out, and the Developer can read it. `files.shown`
    records the files left out as `omitted`. The ceiling is a guard (rule 2):
    in Sprint 20, every context up to 267,588 characters was ordinary work.
 

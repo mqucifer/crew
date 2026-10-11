@@ -50,10 +50,11 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Kind, Rule
-from crew_org.tools import bounds, claude_code, regression, workspace
+from crew_org.tools import bounds, claude_code, regression, repo_context, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
+from crew_org.tools.repo_read import Reader
 
 STORY_TYPE = "Story"
 
@@ -990,6 +991,9 @@ def deliver_story(
     # A first attempt with no usable answer is followed by one in steps (#276).
     in_steps = False
     stepped = False
+    # Set once an answer is applied: from then on the worktree holds this
+    # delivery's work, and a plan from the story would build it again.
+    applied = False
     # Offered once per story (#221): an already-done answer QA refused isn't
     # offered again, or the story would go round between the two.
     may_be_done = not rework and not _answered_done(issues, repo, number)
@@ -1021,6 +1025,9 @@ def deliver_story(
             failing=failing,
             report=report,
             coverage=coverage,
+            # Less shown, the rest read inside the call (crew#583, step C4).
+            ceiling=repo_context.READ_FIRST_CHAR_CEILING,
+            reading=True,
         )
         sink.emit(
             CrewEvent(
@@ -1084,16 +1091,37 @@ def deliver_story(
                     attempt=attempt,
                 )
             else:
-                implementation = attributed(
-                    implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
-                )(
-                    story_text,
-                    context=context,
-                    feedback=feedback,
-                    prior=prior,
-                    returned=rework,
-                    may_be_done=may_be_done,
+                # What it reads shares one ceiling with what it was shown. A whole
+                # repository shown leaves nothing to read.
+                reader = (
+                    Reader(
+                        worktree,
+                        budget=repo_context.READING_CHAR_CEILING - len(context),
+                        shown=focus.shown,
+                    )
+                    if focus.focused
+                    else None
                 )
+                try:
+                    implementation = attributed(
+                        implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
+                    )(
+                        story_text,
+                        context=context,
+                        feedback=feedback,
+                        prior=prior,
+                        returned=rework,
+                        may_be_done=may_be_done,
+                        read=reader.tool() if reader is not None else None,
+                    )
+                finally:
+                    if reader is not None and reader.read:
+                        sink.note(
+                            EventKind.NOTE,
+                            f"#{number} read {', '.join(reader.read)[:200]}",
+                            card=number,
+                            read=reader.read,
+                        )
             answered = True
             _keep_proposal(sink, repo, number, implementation)
             done_now = getattr(implementation, "already_done", None) or []
@@ -1161,8 +1189,17 @@ def deliver_story(
                 feedback = f"Your output did not validate:\n{exc}"
                 # One answer was too much to produce (#312): the next attempt plans
                 # the work and answers a file at a time (#276). Once per delivery,
-                # and only after a first attempt, whose answer is the whole story.
-                if attempt == 1 and not answered and not rework and not stepped:
+                # and only while nothing of it is written: after a first attempt, or
+                # after empty answers at any attempt before one applied
+                # (mqucifer/sprint-metrics#567 asked for files first, then went
+                # empty ten times, never in steps).
+                empty = getattr(exc, "empty", False)
+                if (
+                    (attempt == 1 or (empty and not applied))
+                    and not answered
+                    and not rework
+                    and not stepped
+                ):
                     in_steps = True
                     sink.note(
                         EventKind.NOTE,
@@ -1360,6 +1397,7 @@ def deliver_story(
             return outcome
 
         try:
+            applied = True
             workspace.apply_implementation(worktree, implementation)
             # Tests in a part that isn't Python are written as files: each one the
             # answer names must be in them, by its title (#404).

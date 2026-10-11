@@ -134,8 +134,11 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
 | The epic's notes | `presentation_notes.story_notes` | The Architect's design note and the UX Designer's presentation note |
 | What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
-| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3) |
+| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 120,000 characters |
+| What it reads | `repo_read.Reader`, its `read_file` tool | A file or one definition the work needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
 | The last failure | `deliver_story`'s feedback | What to repair, and why the previous answer was refused |
+
+The call is the crew's own (`calls.ask`, ADR 0025): a refused answer is asked for again with why, and two empty answers in a row end it.
 
 ## Code Reviewer, judging a diff
 
