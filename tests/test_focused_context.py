@@ -570,3 +570,24 @@ def test_without_a_map_only_the_importers_are_named(graph, monkeypatch):
     monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
     text, _ = focused_context(graph, about=f"Change {PKG}/metrics.py")
     assert "tests/test_schema.py::test_keys" not in text and f"`{PKG}/report.py`" in text
+
+
+def test_a_repair_sees_only_what_it_changed_of_a_large_written_file(repo: Path, monkeypatch):
+    """crew#591: sprint-metrics#567's repair was shown 251,860 characters."""
+    big = f"{PKG}/metrics.py"
+    (repo / big).write_text(
+        "import os\n\n\ndef calculate_cycle_time(cards):\n    return 0\n\n\n"
+        + "".join(f"def other_{i}():\n    return {i}\n\n\n" for i in range(800))
+    )
+    text, focus = focused_context(
+        repo,
+        about="x",
+        written=[big],
+        above=10,
+        reading=True,
+        changed={big: ["calculate_cycle_time"]},
+    )
+    assert big in focus.shown and "def calculate_cycle_time(cards):" in text
+    assert "def other_5():" not in text and "Read any other by name." in text
+    whole, _ = focused_context(repo, about="x", written=[big], above=10, reading=True)
+    assert "def other_5():" in whole, "without what it changed, the file is shown whole"

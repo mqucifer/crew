@@ -20,13 +20,9 @@ from typing import Any
 
 from crew_org import calls
 from crew_org.tools.ast_edit import definitions
-from crew_org.tools.repo_context import CONTEXT_FILES, IGNORED_DIRS, is_text
+from crew_org.tools.repo_context import CONTEXT_FILES, IGNORED_DIRS, WHOLE_FILE_CHARS, is_text
 
 NAME = "read_file"
-# A Python file larger than this is read one definition at a time. The first real
-# call (mqucifer/sprint-metrics#567, 2026-10-11) spent 43k of its 74k characters on
-# one whole `report.py`, then had too little left for the tests it needed, and asked.
-WHOLE_FILE_CHARS = 12_000
 
 
 class Reader:
