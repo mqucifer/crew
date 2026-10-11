@@ -191,6 +191,7 @@ Each step is one PR from its own worktree, never stacked. Anything that calls a 
 | Merged tests broken that the split didn't declare | 5 (sprint-metrics#507), 3 (sprint-metrics#529) | 0 |
 | Merged tests pinning the change that the split wasn't shown | 4 of 4 (mqucifer/sprint-metrics#551, Sprint 21) | 0 |
 | Rows that contradict a row of a sibling epic under the same Goal | 3 (mqucifer/sprint-metrics#551 and mqucifer/sprint-metrics#552, Sprint 21) | 0 |
+| Model time spent on repeats: re-checks, repairs, re-splits, refused attempts, as a share of the epic's model time | 31% (82 of 261 min, Sprint 21's dry run, stopped early; over half had it run on) | Near 0; and the criteria check's first pass measured, to decide whether checking each pair of stories once is worth building |
 | Readers of "the latest comment of a kind" outside `flows/record.py` | `decided`, `story_problem_evidence`, `note_for`, `_reply`, the retro's pairing | 0 |
 
 ## What to reuse
