@@ -103,3 +103,9 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   D1a had dropped it as framing, but the server enforces only the schema's shape, and
   without the descriptions the Developer wrote a whole test function in `test`, a name
   field, in every try of its first real call.
+- **2026-10-11:** the refinement steps move to the module (crew#583, step D1b): the panel,
+  the Product Owner's settle and its other five calls, the Architect's pass and design
+  note, the UX Designer's note, the split and the criteria repair. Prompts unchanged. The
+  split's own refusal rules, a delivered story that isn't and a superseded story left
+  out, are asked again with the reason inside the call. Each moved site made one real
+  call through LiteLLM with its latest recorded prompt.

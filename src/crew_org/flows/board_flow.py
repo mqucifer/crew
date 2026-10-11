@@ -63,6 +63,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Rule
+from crew_org.tools import repo_context
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import (
@@ -71,6 +72,7 @@ from crew_org.tools.repo_context import (
     focused_context,
     repository_context,
 )
+from crew_org.tools.repo_read import Reader
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -1289,13 +1291,32 @@ class RepoContext:
             return "", Focus()
         try:
             clone = self._ws.for_repo(repo).current()
+            # Less shown, the rest read inside the call (crew#583, step C4).
             text, focus = focused_context(
-                clone, about=about, extra=extra, editing=False, above=REFINE_FOCUS_ABOVE_CHARS
+                clone,
+                about=about,
+                extra=extra,
+                editing=False,
+                above=REFINE_FOCUS_ABOVE_CHARS,
+                ceiling=repo_context.READ_FIRST_CHAR_CEILING,
+                reading=True,
             )
             return self._record(repo, clone) + text, focus
         except Exception as exc:  # noqa: BLE001
             self._sink.note(EventKind.NOTE, f"refining {repo} without its code: {exc}"[:120])
             return "", Focus()
+
+    def reader_for(self, repo: str, focus: Focus) -> Reader | None:
+        """The split's read tool, over the clone it was shown (crew#583, step C4).
+
+        None when the whole repository was shown: there is nothing left to read.
+        """
+        if self._ws is None or not focus.focused:
+            return None
+        try:
+            return Reader(self._ws.for_repo(repo).current(), budget=0, shown=focus.shown)
+        except Exception:  # noqa: BLE001 - the split goes on, asking instead
+            return None
 
     def record_for(self, repo: str) -> str:
         """Only the project's record, for a role that decides without the code."""
@@ -1671,6 +1692,7 @@ def refine_epics(
                         conclusion=conclusion,
                         project_log=project_log,
                         siblings=siblings,
+                        reader=context.reader_for(repo, focus),
                     )
                     proposal = attributed(split_epic, card=number, repo=repo)(
                         epic_card.title, body, **asked_for

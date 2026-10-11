@@ -25,10 +25,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, model_validator
 
-from crew_org.agents import build_agent
+from crew_org import calls
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
 
@@ -171,17 +170,12 @@ def describe(context: PanelContext, role: str) -> str:
 
 def review(context: PanelContext, role: str) -> PanelAnswer:
     """One member's read of the epic."""
-    agent = build_agent(role)
-    task = Task(
-        description=describe(context, role),
-        expected_output="Your notes on this epic, or nothing to add.",
-        agent=agent,
-        output_pydantic=PanelAnswer,
+    answer = calls.ask(
+        role,
+        [calls.Part("task", describe(context, role))],
+        PanelAnswer,
+        expected="Your notes on this epic, or nothing to add.",
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-    answer = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(answer, PanelAnswer):
-        raise ValueError(f"the {role} gave no answer in the PanelAnswer form")
     return answer
 
 

@@ -12,10 +12,9 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 from crew_org.crews.asks import FileAsk
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
@@ -23,6 +22,8 @@ from crew_org.crews.settle_crew import (
     DECISION_CHARS,
     aim,
 )
+from crew_org.tools.repo_context import READING_CHAR_CEILING
+from crew_org.tools.repo_read import Reader
 
 # Modified Fibonacci, per constitution §6. Nothing larger enters a sprint.
 POINT_SCALE = (1, 2, 3, 5, 8)
@@ -325,8 +326,9 @@ class StoryProposal(BaseModel):
         default_factory=list,
         description=(
             "Only if you can't split this epic without seeing a file the map above only "
-            "names: its path, and in a line why. You're asked again with it shown in full; "
-            "leave the stories empty then. Empty otherwise."
+            "names, and couldn't read it with `read_file`: its path, and in a line why. "
+            "You're asked again with it shown in full; leave the stories empty then. Empty "
+            "otherwise."
         ),
     )
 
@@ -476,30 +478,28 @@ def answer_story_problem(
     from merged work (#100 and #102 already flagged opt-in via --thresholds),
     and took the Sponsor to settle.
     """
-    agents = build_agents("product_owner")
-    task = Task(
-        description=(
-            (f"{project}\n\n" if project else "")
-            + _delivered_block(delivered, "a choice that contradicts what these delivered")
-            + f"## The Goal\n\n{goal}\n\n## The epic\n\n{epic}\n\n"
-            f"## Why it came back\n\n{evidence}\n\n"
-            + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
-            + "A story of this epic kept breaking merged tests, because the epic doesn't "
-            "say what the product should do here. Decide it, if the Goal, the project's "
-            "record or what's already delivered answers it, and name what you followed. "
-            "The epic's record above holds every decision so far, your earlier answers "
-            "included: build on it. Write your decision as rows of it; a row that changes "
-            "one you set earlier replaces it by ID. If none of them answers it, ask the "
-            "Sponsor one question instead: the one whose answer settles it."
-        ),
-        expected_output="A grounded answer with what it follows, or one question.",
-        agent=agents["product_owner"],
-        output_pydantic=ProductAnswer,
+    return calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                (f"{project}\n\n" if project else "")
+                + _delivered_block(delivered, "a choice that contradicts what these delivered")
+                + f"## The Goal\n\n{goal}\n\n## The epic\n\n{epic}\n\n"
+                f"## Why it came back\n\n{evidence}\n\n"
+                + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
+                + "A story of this epic kept breaking merged tests, because the epic doesn't "
+                "say what the product should do here. Decide it, if the Goal, the project's "
+                "record or what's already delivered answers it, and name what you followed. "
+                "The epic's record above holds every decision so far, your earlier answers "
+                "included: build on it. Write your decision as rows of it; a row that changes "
+                "one you set earlier replaces it by ID. If none of them answers it, ask the "
+                "Sponsor one question instead: the one whose answer settles it.",
+            )
+        ],
+        ProductAnswer,
+        expected="A grounded answer with what it follows, or one question.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic
 
 
 def place_sponsor_words(*, epic: str, words: str, feedback: str = "") -> SponsorRow:
@@ -509,27 +509,23 @@ def place_sponsor_words(*, epic: str, words: str, feedback: str = "") -> Sponsor
     words are quoted as the row's decision, unchanged; the Product Owner says what
     they are about, what follows, and which row or question they change, if any.
     """
-    agents = build_agents("product_owner")
-    task = Task(
-        description=(
-            f"## The epic, with its record\n\n{epic}\n\n"
-            f"## The Sponsor's words on this epic\n\n{words}\n\n"
-            + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
-            + "The Sponsor wrote this on the epic. It becomes a binding row of the epic's "
-            "record, set by the Sponsor, whose decision is their words as written. Say what "
-            "the words are about and what follows for the stories, and, when they change a "
-            "row or settle a question of the record, give its ID."
-        ),
-        expected_output="Where the Sponsor's words go in the record.",
-        agent=agents["product_owner"],
-        output_pydantic=SponsorRow,
+    placed = calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                f"## The epic, with its record\n\n{epic}\n\n"
+                f"## The Sponsor's words on this epic\n\n{words}\n\n"
+                + (f"## Your last answer was refused\n\n{feedback}\n\n" if feedback else "")
+                + "The Sponsor wrote this on the epic. It becomes a binding row of the epic's "
+                "record, set by the Sponsor, whose decision is their words as written. Say what "
+                "the words are about and what follows for the stories, and, when they change a "
+                "row or settle a question of the record, give its ID.",
+            )
+        ],
+        SponsorRow,
+        expected="Where the Sponsor's words go in the record.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    placed = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(placed, SponsorRow):
-        raise ValueError("the Product Owner gave no answer in the SponsorRow form")
     return placed
 
 
@@ -550,30 +546,28 @@ def propose_epics(
     exist works better for knowing what already does — and the alternative is
     a decomposition of a product the model is imagining.
     """
-    agents = build_agents("product_owner")
     repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
     sent_back = REWORK.format(feedback=feedback) if feedback else ""
-    task = Task(
-        description=(
-            repo_block
-            + _delivered_block(delivered, "an epic whose outcome these already deliver")
-            + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
-            + sent_back
-            + f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
-            "Decompose by outcome, never by architectural layer. "
-            "Order them so the most valuable is deliverable first.\n\n"
-            "For each epic, state what a user could do with that epic alone, without "
-            "the others. If you cannot say, it is not a separate epic — merge it. "
-            "A goal that comes back as a single epic has not been decomposed."
-        ),
-        expected_output="A set of epics, each with a title, outcome and rationale.",
-        agent=agents["product_owner"],
-        output_pydantic=EpicProposal,
+    return calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                repo_block
+                + _delivered_block(delivered, "an epic whose outcome these already deliver")
+                + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
+                + sent_back
+                + f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
+                "Decompose by outcome, never by architectural layer. "
+                "Order them so the most valuable is deliverable first.\n\n"
+                "For each epic, state what a user could do with that epic alone, without "
+                "the others. If you cannot say, it is not a separate epic — merge it. "
+                "A goal that comes back as a single epic has not been decomposed.",
+            )
+        ],
+        EpicProposal,
+        expected="A set of epics, each with a title, outcome and rationale.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic
 
 
 def propose_missing_epics(
@@ -584,31 +578,27 @@ def propose_missing_epics(
     `lacking` is the Goal's epics already and what the Sponsor said is missing.
     Nothing it already has is closed or replaced; this only adds beside them.
     """
-    agents = build_agents("product_owner")
     repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
-    task = Task(
-        description=(
-            repo_block
-            + _delivered_block(delivered, "an epic whose outcome these already deliver")
-            + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
-            + f"{lacking}\n\n"
-            + "Propose epics only for what the Sponsor says the goal lacks, and nothing "
-            "else, however useful it would be: anything more is a new decision for the "
-            f"Sponsor. As few as that takes, one is fine, at most {MAX_EPICS}. Each delivers "
-            "something none of the goal's epics already delivers. Decompose by outcome, "
-            "never by architectural layer.\n\n"
-            "For each epic, state what a user could do with that epic alone."
-        ),
-        expected_output="The missing epics, each with a title, outcome and rationale.",
-        agent=agents["product_owner"],
-        output_pydantic=MissingEpics,
+    found = calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                repo_block
+                + _delivered_block(delivered, "an epic whose outcome these already deliver")
+                + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
+                + f"{lacking}\n\n"
+                + "Propose epics only for what the Sponsor says the goal lacks, and nothing "
+                "else, however useful it would be: anything more is a new decision for the "
+                f"Sponsor. As few as that takes, one is fine, at most {MAX_EPICS}. Each delivers "
+                "something none of the goal's epics already delivers. Decompose by outcome, "
+                "never by architectural layer.\n\n"
+                "For each epic, state what a user could do with that epic alone.",
+            )
+        ],
+        MissingEpics,
+        expected="The missing epics, each with a title, outcome and rationale.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    found = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(found, MissingEpics):
-        raise ValueError("the Product Owner's missing epics didn't parse")
     return found
 
 
@@ -642,26 +632,24 @@ def order_backlog(*, new: str, backlog: str, feedback: str = "") -> BacklogOrder
     criteria (the Sponsor: don't bloat the context; #312, #231). One call per
     repository when an epic arrives without a rank, not per story or per tick.
     """
-    agents = build_agents("product_owner")
     sent_back = REWORK.format(feedback=feedback) if feedback else ""
-    task = Task(
-        description=(
-            f"## New work, not yet ordered\n\n{new}\n\n"
-            f"## This repository's open epics and unstarted stories\n\n{backlog}\n\n"
-            + sent_back
-            + "Order every open epic, the first to be worked first: what the Goals need "
-            "soonest, what other work builds on, and the Architect's technical epics before "
-            "the product work they affect. Then, only where the new work changes it, name "
-            "the unstarted stories that must now wait for another epic or story, and why."
-        ),
-        expected_output="Every open epic in order, and any new holds.",
-        agent=agents["product_owner"],
-        output_pydantic=BacklogOrder,
+    return calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                f"## New work, not yet ordered\n\n{new}\n\n"
+                f"## This repository's open epics and unstarted stories\n\n{backlog}\n\n"
+                + sent_back
+                + "Order every open epic, the first to be worked first: what the Goals need "
+                "soonest, what other work builds on, and the Architect's technical epics before "
+                "the product work they affect. Then, only where the new work changes it, name "
+                "the unstarted stories that must now wait for another epic or story, and why.",
+            )
+        ],
+        BacklogOrder,
+        expected="Every open epic in order, and any new holds.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic
 
 
 def check_delivered(
@@ -709,6 +697,7 @@ def split_epic(
     conclusion: str = "",
     project_log: str = "",
     siblings: str = "",
+    reader: Reader | None = None,
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -717,95 +706,103 @@ def split_epic(
     so the proposal-time validators — which argue for why a slice deserves to
     exist — no longer apply and reconstructing one just to satisfy them would be
     inventing data.
+
+    With `reader` (crew#583, step C4), a file shown only by name is read inside the
+    call instead of asked for in `need_files`; what it reads shares one ceiling with
+    the rest of the prompt. A split that names a story the project hasn't delivered,
+    or drops a superseded one, is refused and asked for again with why (ADR 0025).
     """
-    agents = build_agents("business_analyst")
     # Stable first: the repository is identical between every split in a pass,
     # where the epic is not, so it goes ahead of it and the cached prefix holds.
     repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
     sent_back = REWORK.format(feedback=feedback) if feedback else ""
-    task = Task(
-        description=(
-            repo_block
-            + (f"{pinning}\n\n" if pinning else "")
-            + (
-                "## The stories this split replaces\n\n"
-                + "\n".join(f"- #{n} {title}" for n, title in superseded)
-                + "\n\nAccount for every one in `accounted`: rewritten here (name the new "
-                "story), already delivered (name the story), or dropped (say why). None may "
-                "be left out.\n\n"
-                if superseded
-                else ""
-            )
-            + _delivered_block(
-                delivered,
-                "a story these already deliver: list it in `already_delivered`, with the "
-                "story that did it",
-            )
-            + (
-                "## Stories other epics already plan, not yet built\n\n"
-                f"{planned}\n\n"
-                "Don't write these again. A story they cover goes in `already_delivered`, "
-                "naming the planned story; a story that needs one names it in `builds_on`.\n\n"
-                if planned
-                else ""
-            )
-            + (f"{project_log}\n\n" if project_log else "")
-            + (
-                "## The other epics under this Goal, with their records\n\n"
-                f"{siblings}\n\n"
-                "What they decided holds here too: a story doesn't contradict a binding row "
-                "of theirs (crew#611).\n\n"
-                if siblings
-                else ""
-            )
-            + (
-                f"## The epic's conclusion\n\n{conclusion}\n\n"
-                "Four roles read this epic and the Product Owner settled what they raised, "
-                "before this split. Its rows are decided: a story may not contradict one, and "
-                "each story names the rows it follows in `follows`. The Architect settled the "
-                "design questions before this split, as rows. A question still open (Q) is "
-                "left to whoever builds it: no story's criterion settles it or waits for it, "
-                "unless the epic's own text says so. A row (R) that no "
-                "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
-                "items for infra (I) need no entry: no story takes them on. A merged test the "
-                "record lists as changed (C) is named in the Existing tests line of the "
-                "story that changes it, as a contract change, or listed in `tests_dropped` "
-                "with why.\n\n"
-                if conclusion
-                else ""
-            )
-            + sent_back
-            + "Split this epic into stories.\n\n"
-            f"Epic: {title}\n\n{context}\n\n"
-            "Each story must satisfy INVEST and carry acceptance criteria a test can be "
-            "written from directly. Split by workflow step, by business rule, or by "
-            "happy-path-then-edge-cases — never by layer.\n\n"
-            "A story that changes what a user sees (a flag, an output format, a command, "
-            "a default) carries a criterion naming its documentation change: which doc, "
-            "which section, and what it says. The project's record names where its user "
-            "docs live. A story that changes nothing a user sees needs no such criterion. "
-            "A criterion about what a doc says is judged by reading the doc, not by a "
-            "test: say what the reader learns there, not strings it must contain.\n\n"
-            "Order them so that each story can be built on the ones before it. Your "
-            "order is the order they will be delivered in, one at a time: a story "
-            "that extends another must come after it, or it will be written against "
-            "a codebase that does not contain the thing it extends.\n\n"
-            "Write criteria against what the code above actually has. A criterion "
-            "asking for data the product does not carry cannot be satisfied by any "
-            "implementation, and the story will be delivered as something that passes "
-            "its tests and does nothing."
-        ),
-        expected_output="Stories with acceptance criteria and estimates.",
-        agent=agents["business_analyst"],
-        output_pydantic=StoryProposal,
+    shown = calls.Part(
+        "task",
+        repo_block
+        + (f"{pinning}\n\n" if pinning else "")
+        + (
+            "## The stories this split replaces\n\n"
+            + "\n".join(f"- #{n} {title}" for n, title in superseded)
+            + "\n\nAccount for every one in `accounted`: rewritten here (name the new "
+            "story), already delivered (name the story), or dropped (say why). None may "
+            "be left out.\n\n"
+            if superseded
+            else ""
+        )
+        + _delivered_block(
+            delivered,
+            "a story these already deliver: list it in `already_delivered`, with the "
+            "story that did it",
+        )
+        + (
+            "## Stories other epics already plan, not yet built\n\n"
+            f"{planned}\n\n"
+            "Don't write these again. A story they cover goes in `already_delivered`, "
+            "naming the planned story; a story that needs one names it in `builds_on`.\n\n"
+            if planned
+            else ""
+        )
+        + (f"{project_log}\n\n" if project_log else "")
+        + (
+            "## The other epics under this Goal, with their records\n\n"
+            f"{siblings}\n\n"
+            "What they decided holds here too: a story doesn't contradict a binding row "
+            "of theirs (crew#611).\n\n"
+            if siblings
+            else ""
+        )
+        + (
+            f"## The epic's conclusion\n\n{conclusion}\n\n"
+            "Four roles read this epic and the Product Owner settled what they raised, "
+            "before this split. Its rows are decided: a story may not contradict one, and "
+            "each story names the rows it follows in `follows`. The Architect settled the "
+            "design questions before this split, as rows. A question still open (Q) is "
+            "left to whoever builds it: no story's criterion settles it or waits for it, "
+            "unless the epic's own text says so. A row (R) that no "
+            "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
+            "items for infra (I) need no entry: no story takes them on. A merged test the "
+            "record lists as changed (C) is named in the Existing tests line of the "
+            "story that changes it, as a contract change, or listed in `tests_dropped` "
+            "with why.\n\n"
+            if conclusion
+            else ""
+        )
+        + sent_back
+        + "Split this epic into stories.\n\n"
+        f"Epic: {title}\n\n{context}\n\n"
+        "Each story must satisfy INVEST and carry acceptance criteria a test can be "
+        "written from directly. Split by workflow step, by business rule, or by "
+        "happy-path-then-edge-cases — never by layer.\n\n"
+        "A story that changes what a user sees (a flag, an output format, a command, "
+        "a default) carries a criterion naming its documentation change: which doc, "
+        "which section, and what it says. The project's record names where its user "
+        "docs live. A story that changes nothing a user sees needs no such criterion. "
+        "A criterion about what a doc says is judged by reading the doc, not by a "
+        "test: say what the reader learns there, not strings it must contain.\n\n"
+        "Order them so that each story can be built on the ones before it. Your "
+        "order is the order they will be delivered in, one at a time: a story "
+        "that extends another must come after it, or it will be written against "
+        "a codebase that does not contain the thing it extends.\n\n"
+        "Write criteria against what the code above actually has. A criterion "
+        "asking for data the product does not carry cannot be satisfied by any "
+        "implementation, and the story will be delivered as something that passes "
+        "its tests and does nothing.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+
+    def check(proposal: StoryProposal) -> None:
+        check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
+        check_accounted(proposal, superseded or [])
+
+    if reader is not None:
+        reader.reset(max(READING_CHAR_CEILING - len(shown.text), 0))
+    return calls.ask(
+        "business_analyst",
+        [shown],
+        StoryProposal,
+        expected="Stories with acceptance criteria and estimates.",
+        check=check,
+        tools=[reader.tool()] if reader is not None else None,
     )
-    proposal = crew.kickoff().pydantic
-    check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
-    check_accounted(proposal, superseded or [])
-    return proposal
 
 
 class RepairedStory(BaseModel):
@@ -861,38 +858,34 @@ def repair_criteria(
     mistake: on sprint-metrics#406 each split fixed the conflict it was told of and
     made a new one elsewhere (crew#440). The stories that passed stay as they were.
     """
-    agents = build_agents("business_analyst")
-    task = Task(
-        description=(
-            (f"## The repository as it stands\n\n{repository}\n\n" if repository else "")
-            + (f"{project_log}\n\n" if project_log else "")
-            + (f"## The epic's conclusion\n\n{conclusion}\n\n" if conclusion else "")
-            + f"## The epic\n\n{title}\n\n{context}\n\n"
-            + f"## The other stories of this split, which stay as they are\n\n{others}\n\n"
-            + f"## The stories to repair\n\n{flagged}\n\n"
-            + f"## Why their criteria can't all pass\n\n{conflicts}\n\n"
-            "Rewrite the acceptance criteria of the stories to repair, so that every "
-            "criterion can pass alongside the other stories, the project's code and the "
-            "epic's conclusion. Change only what the conflicts need; keep every criterion "
-            "they don't touch word for word. Where a conflict is a merged test the epic "
-            "means to change, keep the criterion and declare the test instead: set the "
-            "story's Existing tests to 'contract change: ' and the tests it updates. "
-            "Check each criterion's expected values "
-            "against its own inputs: a number the stated data can't produce can't pass. "
-            "Where the epic doesn't say which outcome it wants, leave the case out rather "
-            "than guess. Return each story to repair once, with its title exactly as given "
-            "and all of its criteria."
-        ),
-        expected_output="The repaired stories' criteria.",
-        agent=agents["business_analyst"],
-        output_pydantic=CriteriaRepair,
+    repair = calls.ask(
+        "business_analyst",
+        [
+            calls.Part(
+                "task",
+                (f"## The repository as it stands\n\n{repository}\n\n" if repository else "")
+                + (f"{project_log}\n\n" if project_log else "")
+                + (f"## The epic's conclusion\n\n{conclusion}\n\n" if conclusion else "")
+                + f"## The epic\n\n{title}\n\n{context}\n\n"
+                + f"## The other stories of this split, which stay as they are\n\n{others}\n\n"
+                + f"## The stories to repair\n\n{flagged}\n\n"
+                + f"## Why their criteria can't all pass\n\n{conflicts}\n\n"
+                "Rewrite the acceptance criteria of the stories to repair, so that every "
+                "criterion can pass alongside the other stories, the project's code and the "
+                "epic's conclusion. Change only what the conflicts need; keep every criterion "
+                "they don't touch word for word. Where a conflict is a merged test the epic "
+                "means to change, keep the criterion and declare the test instead: set the "
+                "story's Existing tests to 'contract change: ' and the tests it updates. "
+                "Check each criterion's expected values "
+                "against its own inputs: a number the stated data can't produce can't pass. "
+                "Where the epic doesn't say which outcome it wants, leave the case out rather "
+                "than guess. Return each story to repair once, with its title exactly as given "
+                "and all of its criteria.",
+            )
+        ],
+        CriteriaRepair,
+        expected="The repaired stories' criteria.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    repair = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(repair, CriteriaRepair):
-        raise ValueError("the Business Analyst gave no answer in the CriteriaRepair form")
     return repair
 
 

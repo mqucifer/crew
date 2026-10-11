@@ -643,7 +643,8 @@ Three rules for every limit on prompt content:
    the last resort, for a file too big for what is left to read: that answer
    isn't applied, and it's asked again with them shown, and asking isn't a
    failure. Every attempt records its context size and which files it was
-   shown, and a note names what it read.
+   shown, and a note names what it read. The Business Analyst's split reads
+   the same way, under the same ceilings.
 
    **What it reads shares one ceiling with what it is shown.** The Developer
    is shown up to 120,000 characters, and reading may take the call to

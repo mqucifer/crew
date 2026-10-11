@@ -65,7 +65,8 @@ The questions the record leaves open are no longer part of this step: the Archit
 
 | Part | From | Why |
 |---|---|---|
-| The repository | `RepoContext.focused_for`: the map, and the files the epic names | Criteria written against what the code has |
+| The repository | `RepoContext.focused_for`: the map, and the files the epic names, up to 120,000 characters | Criteria written against what the code has |
+| What it reads | `RepoContext.reader_for`, its `read_file` tool | A file or one definition the epic needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
 | Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run, or by their own code read or call, what the epic and its record name and check a whole shape, and any the record names (C2, C5); a test that spells out a named file's table first |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
 | What the project has delivered | `Delivered.render` | Not written again |
@@ -74,6 +75,8 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The other epics under this Goal, with their records | `panel.siblings_of` | A story doesn't contradict a binding row of theirs (crew#611) |
 | The epic's record, whole | `record.split` | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
 | Why it was sent back | `story_problem_evidence` and the Sponsor's notes | The problem to answer; its answer is in the record |
+
+A split that names a story the project hasn't delivered or planned, or drops a superseded one, is refused inside the call and asked for again with why (`calls.ask`, ADR 0025).
 | The epic | its approved text | What to split |
 
 ## Business Analyst, ruling on a story's contract in delivery

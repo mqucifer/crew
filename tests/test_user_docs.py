@@ -14,6 +14,7 @@ from crew_org.flows import review as review_flow
 from crew_org.flows.review import review_open_pulls, user_docs, with_docs_finding
 from crew_org.project import brief, parse
 from crew_org.tools.review_evidence import added_options, undocumented_options
+from tests import asked
 from tests.test_project import SPRINT_METRICS
 from tests.test_review import APPROVAL, BOT, FakeIssues, pull
 
@@ -108,18 +109,8 @@ def test_the_business_analyst_is_asked_for_a_docs_criterion(monkeypatch):
 
     from crew_org.crews import refinement_crew
 
-    seen: dict = {}
-
-    class Stop(Exception):
-        pass
-
-    def crew(**kwargs):
-        raise Stop
-
-    monkeypatch.setattr(refinement_crew, "build_agents", lambda *a: {"business_analyst": None})
-    monkeypatch.setattr(refinement_crew, "Task", lambda **k: seen.update(k))
-    monkeypatch.setattr(refinement_crew, "Crew", crew)
-    with pytest.raises(Stop):
+    seen = asked.capture(monkeypatch)
+    with pytest.raises(asked.Stop):
         refinement_crew.split_epic("Expose the API")
     assert "carries a criterion naming its documentation change" in seen["description"]
     assert "changes nothing a user sees needs no such criterion" in seen["description"]

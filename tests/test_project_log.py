@@ -15,6 +15,7 @@ from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, Pane
 from crew_org.flows import project_log
 from crew_org.flows.project_log import HEADER, accepted, read_log
 from crew_org.tools.github_issues import IssueClient, Trust
+from tests import asked
 
 
 def entry(title, status="Accepted", decision="A card counts in the sprint it merges.", more=""):
@@ -148,26 +149,10 @@ def test_a_project_without_a_log_reads_as_before():
 
 
 def test_the_split_is_shown_the_log(monkeypatch):
-    from types import SimpleNamespace
 
     from crew_org.crews import refinement_crew
 
-    seen = {}
-
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=None)
-
-    class Agents(dict):
-        def __missing__(self, key):
-            return object()
-
-    monkeypatch.setattr(refinement_crew, "build_agents", lambda *a, **k: Agents())
-    monkeypatch.setattr(refinement_crew, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(refinement_crew, "Crew", Crew)
+    seen = asked.capture(monkeypatch)
     with contextlib.suppress(Exception):  # only the prompt is under test
         refinement_crew.split_epic("E", "body", project_log="## The project's decision log\n\nX")
     assert "## The project's decision log\n\nX" in seen["description"]

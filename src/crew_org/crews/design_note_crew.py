@@ -16,11 +16,9 @@ questions before the split, as rows of its record, and the note follows them
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 
 class StoryDirection(BaseModel):
@@ -89,26 +87,25 @@ def write_note(
     feedback: str = "",
 ) -> DesignNote:
     """The Architect's note for one epic."""
-    spec = load_agents()["architect"]
-    architect = build_agent("architect", spec)
     refused = f"## Your last note was refused\n\n{feedback}\n\n" if feedback else ""
-    task = Task(
-        description=(
-            (f"{project}\n\n" if project else "")
-            + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
-            f"{stories}\n\n## The code as it stands\n\n{repository}\n\n" + f"{refused}"
-            "Write the design note for this epic: the least design its stories need. The "
-            "epic's record is settled: build on its binding rows, never re-decide them. "
-            "Say which module owns what and where new files go. Name the interfaces and data "
-            "shapes the stories share, so each "
-            "story builds on the one before instead of re-deciding it, and give each story "
-            "its direction. Say what you looked at.\n"
-            "The stories' acceptance criteria are the product's decisions: direct how each "
-            "is met, never drop, weaken or defer one."
-        ),
-        expected_output="The approach, interfaces, costly decisions, risks, and per-story work.",
-        agent=architect,
-        output_pydantic=DesignNote,
+    return calls.ask(
+        "architect",
+        [
+            calls.Part(
+                "task",
+                (f"{project}\n\n" if project else "")
+                + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
+                f"{stories}\n\n## The code as it stands\n\n{repository}\n\n" + f"{refused}"
+                "Write the design note for this epic: the least design its stories need. The "
+                "epic's record is settled: build on its binding rows, never re-decide them. "
+                "Say which module owns what and where new files go. Name the interfaces and data "
+                "shapes the stories share, so each "
+                "story builds on the one before instead of re-deciding it, and give each story "
+                "its direction. Say what you looked at.\n"
+                "The stories' acceptance criteria are the product's decisions: direct how each "
+                "is met, never drop, weaken or defer one.",
+            )
+        ],
+        DesignNote,
+        expected="The approach, interfaces, costly decisions, risks, and per-story work.",
     )
-    crew = Crew(agents=[architect], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic

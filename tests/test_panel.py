@@ -177,19 +177,11 @@ def test_a_member_that_fails_does_not_lose_the_others_notes(monkeypatch):
 
 
 def test_a_member_whose_model_gave_no_structured_answer_is_a_failure_not_a_none(monkeypatch):
-    from types import SimpleNamespace
+    from crew_org import calls
 
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=None)
-
-    monkeypatch.setattr(panel_crew, "build_agent", lambda role: object())
-    monkeypatch.setattr(panel_crew, "Task", lambda **_: object())
-    monkeypatch.setattr(panel_crew, "Crew", Crew)
-    with pytest.raises(ValueError, match="gave no answer"):
+    empty = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+    monkeypatch.setattr(calls, "post", lambda body, **_: empty)
+    with pytest.raises(calls.Refused, match="the answer was empty"):
         panel_crew.review(context(), "qa_engineer")
 
 

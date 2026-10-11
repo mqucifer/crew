@@ -18,10 +18,9 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agent
+from crew_org import calls
 from crew_org.crews.panel_crew import PanelContext, PanelResult
 from crew_org.cut_text import REASON as CUT_REASON
 from crew_org.cut_text import cut_fields
@@ -410,17 +409,12 @@ def settle(
     context: PanelContext, panel: PanelResult, *, reply: str = "", feedback: str = ""
 ) -> Settlement:
     """The Product Owner's settlement of the panel's notes."""
-    agent = build_agent("product_owner")
-    task = Task(
-        description=describe(context, panel, reply=reply, feedback=feedback),
-        expected_output="A conclusion that answers every note, or one question for the Sponsor.",
-        agent=agent,
-        output_pydantic=Settlement,
+    answer = calls.ask(
+        "product_owner",
+        [calls.Part("task", describe(context, panel, reply=reply, feedback=feedback))],
+        Settlement,
+        expected="A conclusion that answers every note, or one question for the Sponsor.",
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-    answer = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(answer, Settlement):
-        raise ValueError("the Product Owner gave no answer in the Settlement form")
     return answer
 
 
@@ -548,17 +542,17 @@ def settle_design(
     context: PanelContext, *, record: str, questions: str, code: str, feedback: str = ""
 ) -> DesignSettlement:
     """The Architect's answers to the record's design questions."""
-    agent = build_agent("architect")
-    task = Task(
-        description=describe_design(
-            context, record=record, questions=questions, code=code, feedback=feedback
-        ),
-        expected_output="Every question answered by its ID.",
-        agent=agent,
-        output_pydantic=DesignSettlement,
+    answer = calls.ask(
+        "architect",
+        [
+            calls.Part(
+                "task",
+                describe_design(
+                    context, record=record, questions=questions, code=code, feedback=feedback
+                ),
+            )
+        ],
+        DesignSettlement,
+        expected="Every question answered by its ID.",
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-    answer = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(answer, DesignSettlement):
-        raise ValueError("the Architect gave no answer in the DesignSettlement form")
     return answer

@@ -24,6 +24,7 @@ from crew_org.flows.design_notes import (
 from crew_org.flows.sprint import plan_sprint
 from crew_org.project import RECORD_PATH
 from crew_org.tools.github_project import Card
+from tests import asked
 from tests.test_delivery_flow import harness  # noqa: F401
 from tests.test_sprint import REPO, epic, parents, story
 
@@ -367,22 +368,10 @@ def test_a_written_note_carries_no_settled_questions(tmp_path):
 
 
 def test_the_architects_task_builds_on_the_record_and_settles_nothing(monkeypatch):
-    from types import SimpleNamespace
 
     from crew_org.crews import design_note_crew as crew_module
 
-    seen = {}
-
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=note())
-
-    monkeypatch.setattr(crew_module, "build_agent", lambda *a, **k: object())
-    monkeypatch.setattr(crew_module, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(crew_module, "Crew", Crew)
+    seen = asked.capture(monkeypatch, note())
     crew_module.write_note(epic="E", stories="S", project="", repository="R")
     text = seen["description"]
     assert "never re-decide them" in text and "which module owns what" in text
