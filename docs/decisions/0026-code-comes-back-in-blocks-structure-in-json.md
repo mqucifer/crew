@@ -1,7 +1,7 @@
 # 26. Code comes back in blocks, its structure in JSON
 
 - **Date:** 2026-10-11
-- **Status:** Accepted (to be built as step L5 of `docs/plans/lean-prompts.md`, crew#626)
+- **Status:** Accepted (built for the Developer and its steps, crew#626)
 
 ## Context
 
@@ -51,3 +51,8 @@ Sponsor, 2026-10-11: **option A.**
 ## Changelog
 
 - **2026-10-11:** decided (Sponsor), from the lean-prompts plan's step L5 and crew#626.
+- **2026-10-11:** built for the Developer and its steps (`calls.ask(..., blocks=...)`,
+  `delivery_crew.CODE_FIELDS`). The answer isn't held to the server's grammar, which
+  would forbid the blocks; it is checked after it is written. Blocks are set off by
+  `@@@ name @@@` and `@@@ end @@@` lines; a block wrapped whole in a ``` fence has the
+  fence taken off.

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
 from crew_org.crews.delivery_crew import (
+    CODE_FIELDS,
     STANDING_INSTRUCTIONS,
     FileWrite,
     Implementation,
@@ -161,6 +162,7 @@ def _run(description: str, output: type[BaseModel]) -> Any:
         [calls.Part("task", description)],
         output,
         expected="The structured answer the schema describes.",
+        blocks=CODE_FIELDS,
     )
 
 

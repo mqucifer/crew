@@ -491,6 +491,19 @@ mechanically rather than asked for:
 Private helpers are exempt — how a module organises itself internally is the
 author's business.
 
+**The code comes back in blocks, its structure in JSON** (ADR 0026,
+2026-10-11). The Developer's answer is JSON for what changes (paths,
+operations, targets, which test proves which criterion), and each body of code
+or file text is a block written after it, between an `@@@ b1 @@@` line and an
+`@@@ end @@@` line, exactly as it reads. The JSON names the block
+(`"source": "b1"`), and the crew joins them before any check or guard reads
+the answer, so everything after sees the answer it always did. A block named
+but not written, written but not named, or left open is refused with that
+reason. Code inside JSON strings had every double quote escaped, and a slip
+closed the string early: mqucifer/sprint-metrics#567 slipped on 3 of 6 answers,
+once running on as whitespace for 40 minutes. Edits are still by name (below);
+only where the code sits changed.
+
 **Moving a definition is not deleting it** (crew#202). What callers rely on is
 that a name reaches them with the same shape, not which file defines it. A
 definition deleted from one module and defined, unchanged in shape, in another

@@ -56,4 +56,4 @@ decision was first made.
 | [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan) |
 | [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it) |
 | [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first) |
-| [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (to be built as step L5 of the lean-prompts plan, crew#626) |
+| [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (built for the Developer, crew#626) |

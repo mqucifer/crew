@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import uuid
 from collections.abc import Callable
@@ -60,6 +61,101 @@ ECHO_CHARS = 4000
 RUNAWAY_CHARS = 2000
 # How much of the answer before the run is shown to the model with the reason.
 RUNAWAY_TAIL = 300
+
+# An answer whose code comes back in blocks (ADR 0026): the JSON holds the structure,
+# and each code field names a block written after it, exactly as the code reads.
+_BLOCK_START = re.compile(r"^@@@ ([A-Za-z0-9_-]+) @@@[ \t]*$")
+_BLOCK_END = "@@@ end @@@"
+_FENCE = re.compile(r"^```[\w+-]*[ \t]*$")
+BLOCKS_FORMAT = (
+    "Write your answer in two parts. First the JSON, in the form below, every field "
+    'present, each as its description says. A field marked "code, as a block" holds '
+    'the name of a block, such as "b1", not the code: an empty one may stay "". '
+    "Then, after the JSON, write each block once:\n\n"
+    "@@@ b1 @@@\n"
+    "the code or text exactly as it should read, nothing escaped, no ``` around it\n"
+    "@@@ end @@@\n\n"
+    "Every block the JSON names is written after it, and every block written is named."
+)
+
+
+def split_blocks(text: str) -> tuple[str, dict[str, str]]:
+    """An answer in two parts: its JSON, and its blocks by name (ADR 0026).
+
+    A block runs from its `@@@ name @@@` line to the next `@@@ end @@@` line, its text
+    exactly as written. A block wrapped whole in a ``` fence has the fence taken off:
+    the instruction says not to, and a habit is not the code.
+    """
+    lines = text.splitlines()
+    first = next((i for i, x in enumerate(lines) if _BLOCK_START.match(x)), len(lines))
+    head = "\n".join(lines[:first]).strip()
+    if head.startswith("```"):
+        head = "\n".join(x for x in head.splitlines() if not _FENCE.match(x)).strip()
+    blocks: dict[str, str] = {}
+    name: str | None = None
+    body: list[str] = []
+    for line in lines[first:]:
+        if name is None:
+            started = _BLOCK_START.match(line)
+            if started:
+                name, body = started.group(1), []
+            elif line.strip():
+                raise ValueError(
+                    f"text after the JSON outside any block: {line.strip()[:80]!r}. Write each "
+                    "block between its @@@ name @@@ line and @@@ end @@@"
+                )
+            continue
+        if line.strip() == _BLOCK_END:
+            if body and _FENCE.match(body[0]) and len(body) > 1 and body[-1].strip() == "```":
+                body = body[1:-1]
+            if name in blocks:
+                raise ValueError(f"block {name!r} is written twice: write each block once")
+            blocks[name] = "\n".join(body) + ("\n" if body else "")
+            name = None
+            continue
+        body.append(line)
+    if name is not None:
+        raise ValueError(f"block {name!r} has no @@@ end @@@ line: close every block")
+    return head, blocks
+
+
+def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> Any:
+    """The answer with each block named in a code field put in its place (ADR 0026).
+
+    A name no block answers, or a block no field names, is refused with that reason.
+    """
+    used: set[str] = set()
+
+    def walk(value: Any) -> Any:
+        if isinstance(value, dict):
+            out = {}
+            for key, item in value.items():
+                if key in fields and isinstance(item, str) and item.strip() in blocks:
+                    used.add(item.strip())
+                    out[key] = blocks[item.strip()]
+                elif key in fields and isinstance(item, str) and _BLOCK_NAME.match(item.strip()):
+                    raise ValueError(
+                        f"`{key}` names block {item.strip()!r}, which isn't written after the "
+                        "JSON: write it between @@@ " + item.strip() + " @@@ and @@@ end @@@"
+                    )
+                else:
+                    out[key] = walk(item)
+            return out
+        if isinstance(value, list):
+            return [walk(item) for item in value]
+        return value
+
+    joined = walk(data)
+    unused = sorted(set(blocks) - used)
+    if unused:
+        raise ValueError(
+            f"blocks {', '.join(unused)} are written but no field names them: name each "
+            "block in the code field it belongs to, or leave it out"
+        )
+    return joined
+
+
+_BLOCK_NAME = re.compile(r"^b\d+$")
 
 
 @dataclass(frozen=True)
@@ -151,7 +247,12 @@ def system_text(spec: dict[str, Any]) -> str:
     )
 
 
-def task_text(parts: list[Part], expected: str, form: dict[str, Any] | None = None) -> str:
+def task_text(
+    parts: list[Part],
+    expected: str,
+    form: dict[str, Any] | None = None,
+    blocks: frozenset[str] = frozenset(),
+) -> str:
     """What the step is shown, part by part, what its answer should be, and its form.
 
     The form is the answer's JSON schema, its field descriptions included. The server
@@ -163,11 +264,11 @@ def task_text(parts: list[Part], expected: str, form: dict[str, Any] | None = No
     shown = "\n\n".join(p.text.strip() for p in parts if p.text.strip())
     text = f"{shown}\n\nYour answer: {expected}" if expected else shown
     if form is not None:
-        text += f"\n\n{form_text(form)}"
+        text += f"\n\n{form_text(form, blocks)}"
     return text
 
 
-def form_text(schema: dict[str, Any]) -> str:
+def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> str:
     """An answer's JSON schema as the model reads it: each field, its type and what it is.
 
     The server holds the answer to the full schema; the prompt's copy says the same in
@@ -197,7 +298,7 @@ def form_text(schema: dict[str, Any]) -> str:
 
     def fields(model: dict[str, Any]) -> list[str]:
         return [
-            f"- `{name}` ({kind(field)})"
+            f"- `{name}` ({'code, as a block' if name in blocks else kind(field)})"
             + (
                 f": {' '.join(str(field['description']).split())}"
                 if field.get("description")
@@ -207,7 +308,9 @@ def form_text(schema: dict[str, Any]) -> str:
         ]
 
     lines = [
-        "Write your answer as JSON in this form, every field present, each as its "
+        BLOCKS_FORMAT
+        if blocks
+        else "Write your answer as JSON in this form, every field present, each as its "
         "description says.",
         "",
         f"**{schema.get('title', 'Answer')}**",
@@ -375,6 +478,7 @@ def ask[Answer: BaseModel](
     tools: list[Tool] | None = None,
     rounds: int = TOOL_ROUNDS,
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    blocks: frozenset[str] = frozenset(),
 ) -> Answer:
     """The role's answer, in its form, asked for again with the reason when refused.
 
@@ -385,6 +489,11 @@ def ask[Answer: BaseModel](
     and is given each result; when it stops, or after `rounds`, it is asked for the
     answer in its form (ADR 0025). A schema constrains every token, so a call held
     to one can't also call a tool: CrewAI dropped the schema instead.
+
+    With `blocks`, the fields named there hold code, and come back as blocks after the
+    JSON instead of inside it (ADR 0026): no code is escaped, so none can close a string
+    early. The server's grammar would forbid the blocks, so the answer is checked
+    after it is written, not held to the schema while it is.
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
@@ -397,7 +506,10 @@ def ask[Answer: BaseModel](
     system = system_text(spec)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": task_text(parts, expected, answer.model_json_schema())},
+        {
+            "role": "user",
+            "content": task_text(parts, expected, answer.model_json_schema(), blocks),
+        },
     ]
     form = response_format(answer)
     versions = {
@@ -415,7 +527,7 @@ def ask[Answer: BaseModel](
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
             "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
-            "response_format": form,
+            **({} if blocks else {"response_format": form}),
         }
         call = str(uuid.uuid4())
         detail = {"model": body["model"], "call_id": call, "try": attempt, **versions}
@@ -454,7 +566,15 @@ def ask[Answer: BaseModel](
                     "the answer was empty: you stopped before writing it. Think less and "
                     "write the whole answer"
                 )
-            found = answer.model_validate_json(text)
+            if blocks:
+                head, written = split_blocks(text)
+                try:
+                    data = json.loads(head)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"the JSON before the blocks isn't valid JSON: {exc}") from exc
+                found = answer.model_validate(join_blocks(data, written, blocks))
+            else:
+                found = answer.model_validate_json(text)
             # Before the step's own rules: a value cut at a double quote reads as
             # finished to every rule after it (crew#618).
             check_not_cut_at_a_quote(found)
