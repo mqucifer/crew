@@ -130,6 +130,56 @@ class _Tests:
         found = self._node(test)
         return found is not None and _checks_a_shape(found[1], found[2])
 
+    def restates(self, test: str, tables: list[set[str]]) -> bool:
+        """Whether the test writes out most of one of `tables` as a literal of its own."""
+        found = self._node(test)
+        if found is None:
+            return False
+        for written in _string_literals(found[1]):
+            for table in tables:
+                shared = len(written & table)
+                if shared >= 3 and shared >= 0.6 * len(written):
+                    return True
+        return False
+
+
+def _string_literals(node: ast.AST) -> list[set[str]]:
+    """The strings of each list, set, tuple or dict-key literal of three or more."""
+    found = []
+    for n in ast.walk(node):
+        if isinstance(n, ast.List | ast.Set | ast.Tuple):
+            items = n.elts
+        elif isinstance(n, ast.Dict):
+            items = [k for k in n.keys if k is not None]
+        else:
+            continue
+        strings = {
+            i.value for i in items if isinstance(i, ast.Constant) and isinstance(i.value, str)
+        }
+        if len(strings) >= 3:
+            found.append(strings)
+    return found
+
+
+def _tables(clone: Path, files: list[str]) -> list[set[str]]:
+    """The strings each module-level table in `files` holds, three or more to a table."""
+    found = []
+    for path in files:
+        try:
+            tree = ast.parse((clone / path).read_text(encoding="utf-8", errors="ignore"))
+        except (OSError, SyntaxError):
+            continue
+        for node in tree.body:
+            if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+                strings = {
+                    n.value
+                    for n in ast.walk(node.value)
+                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                }
+                if len(strings) >= 3:
+                    found.append(strings)
+    return found
+
 
 def _named_code(clone: Path, text: str, coverage: Any) -> tuple[list[str], list[str]]:
     """The source files the epic names, and the definitions it names by their own name."""
@@ -158,7 +208,13 @@ def pinning_tests(clone: Path, epic_text: str, evidence: str = "", *, coverage: 
         files, names = _named_code(clone, epic_text, coverage)
         candidates = coverage.covering(files=files, names=names)
         running = len(candidates)
-        wanted += [t for t in candidates if tests.checks_a_shape(t)]
+        shapes = [t for t in candidates if tests.checks_a_shape(t)]
+        # Under the ceiling, a test that spells out one of the named files' own
+        # tables comes first: an addition to the table breaks exactly that test.
+        # The static half of the map brings in every service test of a named file,
+        # and sorted by name the three sprint-metrics#551 broke didn't fit (crew#612).
+        tables = _tables(clone, files)
+        wanted += sorted(shapes, key=lambda t: not tests.restates(t, tables))
     chosen = [(t, body) for t in dict.fromkeys(wanted) if (body := tests.body(t))]
     if not chosen:
         return ""

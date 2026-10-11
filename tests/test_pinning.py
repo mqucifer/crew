@@ -119,6 +119,33 @@ def test_what_doesnt_fit_is_named_not_dropped(clone: Path, monkeypatch):
     assert "tests/test_table.py::test_default_table_rows" in shown
 
 
+RESTATED = """
+def test_the_default_table_rows():
+    assert len(run([])) == 3
+
+
+def test_the_metric_keys_spelled_out():
+    assert keys() == ["throughput", "cycle_time_days", "lead_time_days"]
+"""
+
+
+def test_a_test_that_spells_out_a_named_files_table_comes_first(clone: Path, monkeypatch):
+    """Under the ceiling, the tests an addition breaks are shown before the rest (crew#612)."""
+    (clone / REPORT).write_text(
+        'COLUMNS = ["throughput", "cycle_time_days", "lead_time_days"]\n\n'
+        "def format_performance_table(rows):\n    return ''\n"
+    )
+    (clone / "tests/test_a.py").write_text(RESTATED)
+    tests = {
+        f"tests/test_a.py::{name}": {f"{REPORT}::format_performance_table"}
+        for name in ("test_the_default_table_rows", "test_the_metric_keys_spelled_out")
+    }
+    monkeypatch.setattr(pinning, "PINNING_CHAR_CEILING", 120)
+    shown = pinning_tests(clone, EPIC, coverage=type("M", (Map,), {"tests": tests})())
+    assert "def test_the_metric_keys_spelled_out" in shown
+    assert "def test_the_default_table_rows" not in shown
+
+
 def story(**kw) -> Story:
     criteria = [
         AcceptanceCriterion(given="g", when="w", then="t"),

@@ -210,3 +210,60 @@ def test_a_constant_built_from_another_reads_it_too(repo):
     found = cm.from_report("pkg", "abc", repo, only_generate)
     assert "src/pkg/schema.py::SINGLE_SPRINT_SCHEMA" in found.executed_by(GENERATE)
     assert "src/pkg/schema.py::METRIC_KEYS" in found.executed_by(GENERATE)
+
+
+SERVICE_TESTS = """\
+import pytest
+
+from pkg.gen import generate
+from pkg.schema import METRIC_KEYS
+
+
+@pytest.mark.skipif(True, reason="needs a database")
+def test_the_service_returns_the_schema():
+    assert generate() == {"required": ["throughput", "cycle_time_days"]}
+
+
+def test_two_keys():
+    assert len(METRIC_KEYS) == 2
+"""
+SKIPPED = "tests/test_service.py::test_the_service_returns_the_schema"
+COUNTED = "tests/test_service.py::test_two_keys"
+
+
+def test_a_test_the_sandbox_skips_still_names_what_it_calls(repo):
+    """sprint-metrics' service tests need Postgres and never ran for the map (crew#612)."""
+    (repo / "tests/test_service.py").write_text(SERVICE_TESTS)
+    found = cm.with_static(cm.from_report("pkg", "abc", repo, REPORT), repo)
+    assert "src/pkg/gen.py::generate" in found.executed_by(SKIPPED)
+    assert SKIPPED in found.covering(files=["src/pkg/gen.py"])
+
+
+def test_a_test_that_only_counts_a_constant_is_in_the_map(repo):
+    """`len(ALL_METRICS) == 12` runs no line under the test; it reads the table (crew#612)."""
+    (repo / "tests/test_service.py").write_text(SERVICE_TESTS)
+    found = cm.with_static(cm.from_report("pkg", "abc", repo, REPORT), repo)
+    assert found.covering(names=["src/pkg/schema.py::METRIC_KEYS"]).count(COUNTED) == 1
+
+
+def test_the_static_half_adds_to_what_a_test_ran(repo):
+    found = cm.with_static(cm.from_report("pkg", "abc", repo, REPORT), repo)
+    assert "src/pkg/schema.py::required" in found.executed_by(REQUIRED)
+    assert "src/pkg/gen.py::generate" in found.executed_by(GENERATE)
+
+
+def test_a_stored_map_gets_the_static_half_without_a_new_run(repo, tmp_path_factory):
+    store = tmp_path_factory.mktemp("store")
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    path = cm.stored("pkg", head, store=store)
+    path.parent.mkdir(parents=True)
+    path.write_text(cm.from_report("pkg", head, repo, REPORT).to_json())
+    (repo / "tests/test_service.py").write_text(SERVICE_TESTS)
+
+    def never(*_a, **_k):
+        raise AssertionError("measured again")
+
+    found = cm.build(repo, "pkg", store=store, run=never)
+    assert SKIPPED in found.tests
