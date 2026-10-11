@@ -280,3 +280,28 @@ def test_an_import_directly_above_a_function_can_be_removed(repo):
     source = "import os\nimport sys\ndef main():\n    return os.sep\n"
     edit = TextEdit(path="entry.py", find="import sys\n", replace="")
     assert plan(python(repo, "entry.py", source), edit)["entry.py"].startswith("import os\ndef")
+
+
+def test_a_refused_quote_comes_back_as_the_definition_with_the_change_made(repo):
+    """sprint-metrics#585 was blocked after three tries at changing one cell of a test's
+    expected table with a quoted edit; the refusal only said what not to do."""
+    edit = TextEdit(path="metrics.py", find="    return 0", replace="    return 1")
+    with pytest.raises(EditError) as refused:
+        plan(python(repo, "metrics.py", MODULE), edit)
+    said = str(refused.value)
+    assert "Here is `throughput` with your change made" in said
+    assert "send it back whole as a `replace` edit of `throughput`" in said
+    assert "def throughput(cards):\n    return 1" in said
+
+
+def test_a_quote_inside_a_method_comes_back_as_that_method(repo):
+    module = (
+        "class Report:\n    def rows(self):\n        return []\n\n"
+        "    def total(self):\n        return 0\n"
+    )
+    edit = TextEdit(path="report.py", find="        return []", replace="        return [1]")
+    with pytest.raises(EditError) as refused:
+        plan(python(repo, "report.py", module), edit)
+    said = str(refused.value)
+    assert "Here is `Report.rows` with your change made" in said
+    assert "    def rows(self):\n        return [1]" in said and "def total" not in said
