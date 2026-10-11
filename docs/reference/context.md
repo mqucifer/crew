@@ -135,7 +135,7 @@ A split that names a story the project hasn't delivered or planned, or drops a s
 |---|---|---|
 | The story | its issue | What to build, and its Existing tests line |
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
-| The epic's notes | `presentation_notes.story_notes` | The Architect's design note and the UX Designer's presentation note |
+| The epic's notes | `presentation_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
 | What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
 | The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 85,000 characters; a test file far from the work in brief (L1) |
 | What it reads | `repo_read.Reader`, its `read_file` tool | A file or one definition the work needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |

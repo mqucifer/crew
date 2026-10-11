@@ -97,11 +97,56 @@ def story_presentation(issues: Any, card: Card, default_repo: str) -> str:
 
 
 def story_notes(issues: Any, card: Card, default_repo: str) -> str:
-    """The notes a story is built and reviewed against: its epic's design and presentation."""
+    """The notes a story is built and reviewed against: its epic's design and presentation,
+    cut to this story (lean-prompts plan, L2)."""
     from crew_org.flows.design_notes import story_note  # noqa: PLC0415
 
     notes = [story_note(issues, card, default_repo), story_presentation(issues, card, default_repo)]
-    return "\n\n".join(n for n in notes if n)
+    return for_story("\n\n".join(n for n in notes if n), card.number or 0)
+
+
+# Each other story's direction, as much as says what it covers.
+OTHER_STORY_CHARS = 200
+_DIVIDE = "**How the stories divide the work**"
+_PER_STORY = "**What each story adds for the reader**"
+
+
+def for_story(notes: str, number: int) -> str:
+    """An epic's notes as one story needs them (lean-prompts plan, L2).
+
+    The design note's shared parts stay whole; this story's direction stays whole and
+    each other story's shrinks to its first sentence, which says what it covers so this
+    one doesn't build it. The presentation note's per-story criteria go: this story's
+    are already among its own acceptance criteria, and the others' aren't its work. The
+    "Looked at" lines go. On mqucifer/sprint-metrics#567 the two notes were 29.4k
+    characters, 15.8k of it per-story text for other stories or repeated.
+    """
+    if not number:
+        return notes
+    mine = re.compile(rf"(?<!\d)#{number}(?!\d)|/issues/{number}\)")
+    out: list[str] = []
+    section = ""
+    skipping = False
+    for line in notes.splitlines():
+        if line.startswith(("## ", "**")) and not line.startswith("**Given**"):
+            section = line
+            skipping = line.startswith(_PER_STORY)
+            if skipping:
+                out.append("_Each story's reader criteria are among its own acceptance criteria._")
+                continue
+        if line.startswith("_Looked at"):
+            skipping = False
+            continue
+        if skipping:
+            continue
+        if section.startswith(_DIVIDE) and line.startswith("- ") and not mine.search(line):
+            head, _, rest = line.partition(": ")
+            first = re.split(r"(?<=[.;])\s", rest, maxsplit=1)[0]
+            line = f"{head}: {first[:OTHER_STORY_CHARS]}" + (
+                "…" if len(first) > OTHER_STORY_CHARS or first != rest else ""
+            )
+        out.append(line)
+    return "\n".join(out)
 
 
 def with_reader_criteria(body: str, criteria: list[Any], line: Callable[..., list[str]]) -> str:
