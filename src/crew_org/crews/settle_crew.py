@@ -499,11 +499,23 @@ def check_design_covers(settlement: DesignSettlement, asked: list[str]) -> None:
 def describe_design(
     context: PanelContext, *, record: str, questions: str, code: str, feedback: str = ""
 ) -> str:
-    """What the Architect is shown to settle the design questions before the split."""
+    """What the Architect is shown to settle the design questions before the split.
+
+    The other epics under the Goal come with their records: shown none of them,
+    sprint-metrics#552's Architect settled the schema sprint-metrics#551's had settled,
+    differently
+    (crew#611).
+    """
+    siblings = "\n\n".join(f"### {s.ref} ({s.state})\n\n{s.text}" for s in context.siblings)
     return (
         f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
         + (f"{context.project}\n\n" if context.project else "")
         + (f"{context.project_log}\n\n" if context.project_log else "")
+        + (
+            f"## The other epics under this Goal, with their records\n\n{siblings}\n\n"
+            if siblings
+            else ""
+        )
         + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
         f"{record}\n\n"
         + (f"## The code as it stands\n\n{code}\n\n" if code else "")
@@ -515,7 +527,9 @@ def describe_design(
         "stories, so their criteria are written against your answer: name the key, the path, "
         "the response shape or the parameter exactly. Each answer is your own call as the "
         "Architect, within the Goal and the record's binding rows, and it becomes a binding "
-        "row the stories follow. Answer every question by its ID, once. Say what is decided, "
+        "row the stories follow. Where another epic's record above already decides the same "
+        "thing, answer with its decision and name its row as your source. Answer every "
+        "question by its ID, once. Say what is decided, "
         "what follows for the stories, and what you based it on."
     )
 

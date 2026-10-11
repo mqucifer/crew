@@ -708,6 +708,7 @@ def split_epic(
     planned_numbers: set[int] | None = None,
     conclusion: str = "",
     project_log: str = "",
+    siblings: str = "",
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -749,6 +750,14 @@ def split_epic(
                 else ""
             )
             + (f"{project_log}\n\n" if project_log else "")
+            + (
+                "## The other epics under this Goal, with their records\n\n"
+                f"{siblings}\n\n"
+                "What they decided holds here too: a story doesn't contradict a binding row "
+                "of theirs (crew#611).\n\n"
+                if siblings
+                else ""
+            )
             + (
                 f"## The epic's conclusion\n\n{conclusion}\n\n"
                 "Four roles read this epic and the Product Owner settled what they raised, "

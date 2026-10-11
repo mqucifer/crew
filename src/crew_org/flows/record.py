@@ -580,4 +580,8 @@ def edit(
         body=change_note(before, after, by=by, ref=ref, why=why, kind=kind),
         by=by,
     )
+    # The Goal's index of every row across its epics follows each change (crew#611).
+    from crew_org.flows.goal_index import refresh_for_epic  # noqa: PLC0415
+
+    refresh_for_epic(issues, sink, repo=repo, epic=epic)
     return after

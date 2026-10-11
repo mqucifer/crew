@@ -115,8 +115,8 @@ class PanelAnswer(BaseModel):
 @dataclass(frozen=True)
 class Sibling:
     ref: str
-    # "open" or "delivered". A superseded epic isn't shown: it describes a plan
-    # the Sponsor set aside.
+    # "open" or "delivered", shown with its record; or "superseded", set aside,
+    # shown only by the binding rows it carries (crew#611).
     state: str
     text: str
 

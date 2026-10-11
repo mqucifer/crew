@@ -15,6 +15,7 @@ after the split, by the criteria check and the Product Owner (crew#428).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -87,9 +88,14 @@ def panel_step(
                 result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
                 return False
         # The design questions, before the split (ADR 0018).
-        _, text = record_flow.split(issues.get(repo, number).get("body") or "")
+        body = issues.get(repo, number).get("body") or ""
+        _, text = record_flow.split(body)
         asked = record_flow.parse(text).for_architect()
         if asked:
+            first = builds_on_unsplit(issues, repo, epic.parent, number, body)
+            if first is not None:
+                result.skipped.append((number, f"waits for #{first} to be split: it builds on it"))
+                return False
             context = context or _gather(issues, sink, repo, number, project=project, search=where)
             designed = settle_flow.settle_design_questions(
                 issues,
@@ -117,6 +123,40 @@ def panel_step(
         )
         return False
     return True
+
+
+def builds_on_unsplit(
+    issues: IssueClient, repo: str, goal: int, epic: int, body: str
+) -> int | None:
+    """An open sibling this epic names and that isn't split yet, or None (crew#611).
+
+    The epic another builds on is settled through its split first, so the dependent
+    one's design questions are answered against what it settled: in Sprint 21's dry
+    run sprint-metrics#552, whose record said it built on sprint-metrics#551's store, was designed
+    in the same pass and chose a different schema. Two epics that name each other
+    go in issue order. A sibling that never gets split holds this one too, and the
+    tick says so each pass.
+    """
+    from crew_org.flows.board_flow import STORY_SPLIT_MARKER  # noqa: PLC0415
+
+    named = _named(body, issues.owner, repo) - {epic}
+    if not named:
+        return None
+    for child in issues.sub_issues(repo, goal):
+        other = child["number"]
+        if other not in named or child.get("state") != "open":
+            continue
+        if epic in _named(child.get("body") or "", issues.owner, repo) and other > epic:
+            continue
+        if not issues.has_comment_marked(repo, other, STORY_SPLIT_MARKER):
+            return int(other)
+    return None
+
+
+def _named(text: str, owner: str, repo: str) -> set[int]:
+    """The issues of `repo` a text names, as owner/repo#n or a bare #n."""
+    found = re.findall(rf"(?:{re.escape(owner)}/{re.escape(repo)}|(?<![\w/-]))#(\d+)\b", text)
+    return {int(n) for n in found}
 
 
 def _gather(

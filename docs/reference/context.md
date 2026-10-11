@@ -15,6 +15,7 @@ Every step the plan's table "What each step reads after Part A" names is listed.
 | The Goal | the Goal's issue, `panel.gather` | Each answer stays within it |
 | The project's record | `.crew/project.yaml`, `panel.gather` | What the project is for and how it is built |
 | The project's decision log | the project's `docs/decisions/`, `panel.gather` | Decisions that hold for every epic |
+| The other epics under this Goal, with their records | `panel.siblings_of` | A question another epic already settled is answered the same way, citing its row (crew#611) |
 | The epic | its approved text | What the questions are about |
 | The epic's record, whole | `record.split` | The binding rows each answer must not contradict |
 | The code as it stands | `RepoContext.focused_for`, on the questions' text | The map, and the files the questions name |
@@ -70,6 +71,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 | What the project has delivered | `Delivered.render` | Not written again |
 | Stories other epics plan | `planned_elsewhere` | Not written again, or built on |
 | The project's decision log | the project's `docs/decisions/` | Decisions that hold for every epic |
+| The other epics under this Goal, with their records | `panel.siblings_of` | A story doesn't contradict a binding row of theirs (crew#611) |
 | The epic's record, whole | `record.split` | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
 | Why it was sent back | `story_problem_evidence` and the Sponsor's notes | The problem to answer; its answer is in the record |
 | The epic | its approved text | What to split |
@@ -94,7 +96,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The project's record | `.crew/project.yaml` | What the project is for and how it is built |
 | The Sponsor's decisions for the Goal | `decisions.collect_decisions` | What the Sponsor has already decided (ADR 0015) |
 | The project's decision log | `project_log.read_log` | Decisions that hold for every epic |
-| The other epics under this Goal | `panel.gather` | Where this epic meets its siblings |
+| The other epics under this Goal, with their records | `panel.siblings_of` | Where this epic meets its siblings, and what they already decided; a superseded one only by the binding rows it carries (crew#611) |
 | The epic | its approved text | What each member reads, from its own role |
 
 ## Product Owner, settling the panel's notes
