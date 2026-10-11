@@ -63,6 +63,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Rule
+from crew_org.tools import repo_context
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import (
@@ -71,6 +72,7 @@ from crew_org.tools.repo_context import (
     focused_context,
     repository_context,
 )
+from crew_org.tools.repo_read import Reader
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -1274,7 +1276,9 @@ class RepoContext:
             self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
             return ""
 
-    def focused_for(self, repo: str, about: str, extra: list[str] = ()) -> tuple[str, Focus]:
+    def focused_for(
+        self, repo: str, about: str, extra: list[str] = (), *, beside: int = 0
+    ) -> tuple[str, Focus]:
         """The repository for one epic's split: the record, a map, and what the epic names (#231).
 
         The whole repository was one text shared by every split in a pass, which
@@ -1289,13 +1293,33 @@ class RepoContext:
             return "", Focus()
         try:
             clone = self._ws.for_repo(repo).current()
+            # Less shown, the rest read inside the call (crew#583, step C4).
             text, focus = focused_context(
-                clone, about=about, extra=extra, editing=False, above=REFINE_FOCUS_ABOVE_CHARS
+                clone,
+                about=about,
+                extra=extra,
+                editing=False,
+                above=REFINE_FOCUS_ABOVE_CHARS,
+                # Sized from the rest of the split's prompt, so it has room to read.
+                ceiling=repo_context.shown_ceiling(beside),
+                reading=True,
             )
             return self._record(repo, clone) + text, focus
         except Exception as exc:  # noqa: BLE001
             self._sink.note(EventKind.NOTE, f"refining {repo} without its code: {exc}"[:120])
             return "", Focus()
+
+    def reader_for(self, repo: str, focus: Focus) -> Reader | None:
+        """The split's read tool, over the clone it was shown (crew#583, step C4).
+
+        None when the whole repository was shown: there is nothing left to read.
+        """
+        if self._ws is None or not focus.focused:
+            return None
+        try:
+            return Reader(self._ws.for_repo(repo).current(), budget=0, shown=focus.shown)
+        except Exception:  # noqa: BLE001 - the split goes on, asking instead
+            return None
 
     def record_for(self, repo: str) -> str:
         """Only the project's record, for a role that decides without the code."""
@@ -1633,7 +1657,18 @@ def refine_epics(
                 asked: list[str] = []
                 told = ""
                 for asks in range(ANALYST_ASK_LIMIT + 1):
-                    repository, focus = context.focused_for(repo, about, asked)
+                    beside = sum(
+                        len(part)
+                        for part in (
+                            pinning,
+                            siblings,
+                            conclusion,
+                            project_log,
+                            body,
+                            done.render(),
+                        )
+                    )
+                    repository, focus = context.focused_for(repo, about, asked, beside=beside)
                     sink.emit(
                         CrewEvent(
                             kind=EventKind.FILES_SHOWN,
@@ -1671,6 +1706,7 @@ def refine_epics(
                         conclusion=conclusion,
                         project_log=project_log,
                         siblings=siblings,
+                        reader=context.reader_for(repo, focus),
                     )
                     proposal = attributed(split_epic, card=number, repo=repo)(
                         epic_card.title, body, **asked_for

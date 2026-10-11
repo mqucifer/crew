@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import re
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 # Words that ask a reader to judge rather than a test to observe. Whole words,
 # so "clearly" is caught and "nuclear" isn't.
@@ -174,25 +172,24 @@ def write_note(
     *, goal: str, epic: str, stories: str, project: str, repository: str, feedback: str = ""
 ) -> PresentationNote:
     """The UX Designer's note for one epic."""
-    spec = load_agents()["ux_designer"]
-    designer = build_agent("ux_designer", spec)
     refused = f"## Your last note was refused\n\n{feedback}\n\n" if feedback else ""
-    task = Task(
-        description=(
-            (f"{project}\n\n" if project else "")
-            + (f"## The Goal this epic serves\n\n{goal}\n\n" if goal else "")
-            + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
-            f"{stories}\n\n## The code as it stands\n\n{repository}\n\n{refused}"
-            "Write the presentation note for this epic. Say who reads its output and the "
-            "question they bring to it. Give a sample of the finished output with realistic "
-            "data. For every story, add criteria about what the reader sees, in "
-            "Given/When/Then, each asserting something a test can observe in the output.\n"
-            "Add to the stories' criteria; never restate, weaken or drop one. A story's "
-            "scope is the Business Analyst's, and the tools and formats are the Architect's."
-        ),
-        expected_output="Who reads it, a sample of the output, and criteria per story.",
-        agent=designer,
-        output_pydantic=PresentationNote,
+    return calls.ask(
+        "ux_designer",
+        [
+            calls.Part(
+                "task",
+                (f"{project}\n\n" if project else "")
+                + (f"## The Goal this epic serves\n\n{goal}\n\n" if goal else "")
+                + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
+                f"{stories}\n\n## The code as it stands\n\n{repository}\n\n{refused}"
+                "Write the presentation note for this epic. Say who reads its output and the "
+                "question they bring to it. Give a sample of the finished output with realistic "
+                "data. For every story, add criteria about what the reader sees, in "
+                "Given/When/Then, each asserting something a test can observe in the output.\n"
+                "Add to the stories' criteria; never restate, weaken or drop one. A story's "
+                "scope is the Business Analyst's, and the tools and formats are the Architect's.",
+            )
+        ],
+        PresentationNote,
+        expected="Who reads it, a sample of the output, and criteria per story.",
     )
-    crew = Crew(agents=[designer], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic

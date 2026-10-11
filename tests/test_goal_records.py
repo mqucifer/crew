@@ -18,6 +18,7 @@ from crew_org.flows import goal_index, panel, refine_panel
 from crew_org.flows import record as record_flow
 from crew_org.flows.board_flow import STORY_SPLIT_MARKER
 from crew_org.tools.github_issues import IssueClient
+from tests import asked
 from tests.test_panel import FOOTER, TRUST, context, github, issue
 
 
@@ -242,22 +243,7 @@ def test_the_split_is_shown_the_other_epics_records(monkeypatch):
 
     from crew_org.crews import refinement_crew
 
-    seen: dict = {}
-
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=None)
-
-    class Agents(dict):
-        def __missing__(self, key):
-            return object()
-
-    monkeypatch.setattr(refinement_crew, "build_agents", lambda *a, **k: Agents())
-    monkeypatch.setattr(refinement_crew, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(refinement_crew, "Crew", Crew)
+    seen = asked.capture(monkeypatch)
     with contextlib.suppress(Exception):
         refinement_crew.split_epic("E", "body", siblings="### #551 (open)\n\nR3 because")
     assert "## The other epics under this Goal, with their records" in seen["description"]

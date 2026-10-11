@@ -43,6 +43,11 @@ class Reader:
         # What was read, in order, as path or path::name, for the event log.
         self.read: list[str] = []
 
+    def reset(self, budget: int) -> None:
+        """A new call over the same files: its own budget, and nothing read yet."""
+        self.left = budget
+        self.read = []
+
     def tool(self) -> calls.Tool:
         return calls.Tool(
             name=NAME,

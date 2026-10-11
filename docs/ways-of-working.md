@@ -643,7 +643,12 @@ Three rules for every limit on prompt content:
    the last resort, for a file too big for what is left to read: that answer
    isn't applied, and it's asked again with them shown, and asking isn't a
    failure. Every attempt records its context size and which files it was
-   shown, and a note names what it read.
+   shown, and a note names what it read. The Business Analyst's split reads
+   the same way. It carries much besides code (pinning tests, the Goal's other
+   records, its own), so its code is sized from the rest of its prompt to keep
+   40,000 characters free to read, and with under 5,000 free it isn't offered
+   the tool: the first real split with it had nothing left, thought 17k tokens
+   before its first read, and every read was refused.
 
    **What it reads shares one ceiling with what it is shown.** The Developer
    is shown up to 120,000 characters, and reading may take the call to

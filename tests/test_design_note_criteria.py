@@ -15,6 +15,7 @@ from crew_org.crews import design_crew, design_note_crew
 from crew_org.crews.design_crew import Conflict, DesignReview
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, story_problem_evidence
 from crew_org.flows.design_notes import awaiting_design
+from tests import asked
 from tests.test_design_notes import Architect, Issues, design_epic, note, run
 
 CRITERION = "the exit code is 2, stderr contains the label, and stdout is empty"
@@ -67,6 +68,11 @@ def test_a_note_that_still_overrules_a_criterion_is_not_written(tmp_path):
 
 
 def captured_description(monkeypatch, module, call):
+    if not hasattr(module, "Task"):  # on the crew's own call layer (ADR 0025)
+        seen = asked.capture(monkeypatch)
+        with contextlib.suppress(asked.Stop):
+            call()
+        return seen["description"]
     seen: dict = {}
 
     class Stop(Exception):
@@ -99,8 +105,6 @@ def test_the_reviewer_is_asked_about_criteria_only_when_shown_stories(monkeypatc
 
 
 def test_the_architect_is_told_criteria_are_the_products_decisions(monkeypatch):
-    monkeypatch.setattr(design_note_crew, "load_agents", lambda: {"architect": {}})
-    monkeypatch.setattr(design_note_crew, "build_agent", lambda *a: None)
     text = captured_description(
         monkeypatch,
         design_note_crew,

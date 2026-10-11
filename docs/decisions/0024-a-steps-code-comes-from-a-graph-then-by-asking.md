@@ -66,3 +66,6 @@ analysis; tool use, also called function calling; two-stage retrieval.
   reads a file or one definition by name inside the call. The Developer is shown up to
   120,000 characters and the call, reads included, is held to 175,000. The split's read
   tool follows with its move to the call layer.
+- **2026-10-11:** the split reads inside the call too (crew#583, step C4), shown up to
+  120,000 characters of the repository, with what it reads held under 175,000 for the
+  whole call.

@@ -26,6 +26,7 @@ from crew_org.flows import board_flow, record, refine_panel
 from crew_org.flows import conclusion as flow
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import settle as settle_flow
+from tests import asked
 from tests.test_board_flow import FakeBoard, FakeIssues, epic_card, make_story
 
 APPROVED = "# Run as a service\n\nThe approved text."
@@ -445,26 +446,10 @@ def test_a_story_following_a_question_or_infra_item_keeps_only_its_rows():
 
 def test_the_split_is_told_questions_and_infra_items_need_no_entry(monkeypatch):
     import contextlib
-    from types import SimpleNamespace
 
     from crew_org.crews import refinement_crew
 
-    seen = {}
-
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=None)
-
-    class Agents(dict):
-        def __missing__(self, key):
-            return object()
-
-    monkeypatch.setattr(refinement_crew, "build_agents", lambda *a, **k: Agents())
-    monkeypatch.setattr(refinement_crew, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(refinement_crew, "Crew", Crew)
+    seen = asked.capture(monkeypatch)
     with contextlib.suppress(Exception):
         refinement_crew.split_epic("E", "body", conclusion=CONCLUSION)
     assert "Open questions (Q) and items for infra (I) need no entry" in seen["description"]
