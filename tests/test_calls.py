@@ -401,10 +401,6 @@ def test_a_block_in_a_fence_or_json_in_a_fence_is_unwrapped():
             '{"summary": "s", "writes": [{"path": "p", "source": "b2"}]}',
             "names block 'b2', which isn't written",
         ),
-        (
-            '{"summary": "s", "writes": []}\n@@@ b1 @@@\nx\n@@@ end @@@',
-            "blocks b1 are written but no field names them",
-        ),
         ('{"summary": "s", "writes": []}\n@@@ b1 @@@\nx', "block 'b1' has no @@@ end @@@ line"),
         (
             '{"summary": "s", "writes": [{"path": "p", "source": "b1"}]}\n'
@@ -449,3 +445,15 @@ def test_a_block_is_found_however_its_name_is_marked(named):
 def test_code_that_merely_mentions_a_block_name_is_left_as_code():
     data = {"source": "print('b1')"}
     assert calls.join_blocks(data, {}, frozenset({"source"})) == data
+
+
+def test_a_block_no_field_names_is_left_out():
+    """Ask-only answers wrote an example block and were refused for it (2026-10-11)."""
+    head = '{"summary": "s", "writes": []}'
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b0 @@@\nexample\n@@@ end @@@\n")
+    assert calls.join_blocks(json.loads(head), blocks, frozenset({"source"})) == json.loads(head)
+
+
+def test_the_grammar_bounds_the_number_of_blocks():
+    """Unbounded, two answers wrote the same block 4,994 and 6,464 times."""
+    assert "block{0,60}" in calls.BLOCKS_GRAMMAR

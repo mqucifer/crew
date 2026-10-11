@@ -146,14 +146,10 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
             return [walk(item) for item in value]
         return value
 
-    joined = walk(data)
-    unused = sorted(set(blocks) - used)
-    if unused:
-        raise ValueError(
-            f"blocks {', '.join(unused)} are written but no field names them: name each "
-            "block in the code field it belongs to, or leave it out"
-        )
-    return joined
+    # A block no field names is left out, not refused: answers that only asked to read
+    # files wrote an example block and were refused for it (2026-10-11). Code meant for
+    # a field and left in a stray block still fails that field's own check.
+    return walk(data)
 
 
 # How a code field names its block. Read loosely: the first real answer wrote "@@b1",
@@ -175,8 +171,9 @@ def _block_named(value: Any) -> str | None:
 # reading after its reading rounds, writing tool calls as text, and three answers in
 # four came back empty (2026-10-11). The JSON holds no code, and its whitespace is
 # bounded, so nothing in it can run away; a block's lines are any text but a line
-# starting `@@@`.
-BLOCKS_GRAMMAR = r"""root ::= object "\n"+ block*
+# starting `@@@`. At most 60 blocks: without a bound, two answers wrote the same empty
+# block 4,994 and 6,464 times, a runaway of blocks instead of whitespace.
+BLOCKS_GRAMMAR = r"""root ::= object "\n"+ block{0,60}
 block ::= "@@@ " name " @@@\n" line* "@@@ end @@@\n"
 name ::= "b" [0-9]+
 line ::= ([^@\n] [^\n]* | "@" [^@\n] [^\n]* | "@@" [^@\n] [^\n]*)? "\n"
