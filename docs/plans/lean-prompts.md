@@ -47,6 +47,8 @@ Each step is one PR from its own worktree, measured the way 2026-10-11's were: r
 
 ## The decision for the Sponsor (L5)
 
+**This is a new choice, not a reversal.** On 2026-09-18 the Sponsor asked for research on how the Developer's edits address code, and edits by name were chosen over whole files, search/replace and unified diff (ways-of-working, "edit by name"; zero format failures against 11 and 31). That stays exactly as decided. What was never weighed is where the code itself sits in the answer: JSON came with CrewAI's typed answer (`output_pydantic`), and the substrate gate measured it on small answers only (5 of 5 valid). Since ADR 0025 the crew makes its own calls, so a mixed answer is an ordinary change. Prior art the 2026-09-18 research missed: Aider measured in 2024 that models write worse code when it is wrapped in JSON. Markdown-delimited code beat JSON for every model tried, for example 60.5% against 54.1% (Claude 3.5 Sonnet) and 60.6% against 51.1% (DeepSeek-Coder V2) on 133 problems ([aider.chat, 2024-08-14](https://aider.chat/2024/08/14/code-in-json.html)).
+
 **What structured JSON is for, and what it costs.** The structure earns its place:
 - every answer has a known shape;
 - about 40 checks, each from an incident, refuse a wrong field with a reason the re-ask can act on;
@@ -57,7 +59,7 @@ What fails is code inside it. Every quote in code is escaped, twice in a test th
 
 | Option | What it is | For | Against |
 |---|---|---|---|
-| **A. Structure in JSON, code in blocks** (recommended) | JSON for the structure; each code body in a delimited block the JSON names | Keeps every check and guard; no escaping; shorter answers | The answer has two parts, so the call layer splits and joins them; the forms' checks move to the joined answer |
+| **A. Structure in JSON, code in blocks** (recommended) | JSON for the structure; each code body in a delimited block the JSON names, joined by the crew before the forms' checks run | Keeps every check and guard; no escaping; shorter answers. The server can still hold the shape: SGLang takes a custom grammar (EBNF) as well as a JSON schema | The answer has two parts, so the call layer splits and joins them; the forms' checks move to the joined answer |
 | B. JSON without the server's grammar | The same form, checked after the answer instead of enforced while it's written | A slip can't run away; nothing else changes | Malformed JSON comes back instead, and is re-asked; escaping stays |
 | C. As now | The runaway guard and the reason in the re-ask (mqucifer/crew#627) | Nothing to build | A slip still costs a whole answer, minutes each |
 
