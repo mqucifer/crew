@@ -348,3 +348,106 @@ def first_error(report: str) -> str:
         if found:
             return _line_at(report, found.start())
     return ""
+
+
+# What a repair is shown of a failure report (crew#591). sprint-metrics#567's first
+# attempt broke 50 merged tests on 2026-10-11; the report was 352,767 characters, cut
+# to 200,000, and the repair it fed was 142,865 prompt tokens. Its 50 failures had a
+# handful of causes, each told once per test, with each schema test's whole schema
+# dumped in about 14,000 characters.
+REPAIR_REPORT_CHARS = 30_000
+# Of one test's output, as the example of its cause: its last lines of code, and the
+# first lines of what it raised.
+EXAMPLE_CODE_LINES = 25
+EXAMPLE_ERROR_LINES = 12
+# A command that isn't a test run (lint, a build) is shown up to this, head and tail.
+OTHER_OUTPUT_CHARS = 6_000
+_COMMAND = re.compile(r"^\$ .+$", re.MULTILINE)
+
+
+def repair_report(report: str, *, budget: int = REPAIR_REPORT_CHARS) -> str:
+    """A failure report as a repair needs it: each cause once, every failing test named.
+
+    Tests that fail the same way are grouped by their first error line, the way the
+    retro groups causes: one cause, how many tests it hit, each by id (as `FAILED <id>`,
+    so the crew still finds every failing test in it), and one test's output as the
+    example. What isn't a test run is kept, head and tail. A report already short
+    enough is returned as it is.
+    """
+    if len(report) <= budget:
+        return report
+    starts = [m.start() for m in _COMMAND.finditer(report)] or [0]
+    blocks = [report[a:b] for a, b in zip(starts, [*starts[1:], len(report)], strict=False)]
+    if starts[0] > 0:
+        blocks.insert(0, report[: starts[0]])
+    out: list[str] = []
+    for block in blocks:
+        if _SECTION.search(block) and _FAILED_TEST.search(block):
+            out.append(_tests_by_cause(block, budget))
+        elif len(block) > OTHER_OUTPUT_CHARS:
+            half = OTHER_OUTPUT_CHARS // 2
+            dropped = len(block) - OTHER_OUTPUT_CHARS
+            out.append(f"{block[:half]}\n… {dropped:,} characters left out …\n{block[-half:]}")
+        else:
+            out.append(block)
+    return "\n\n".join(part.strip() for part in out if part.strip())
+
+
+def _tests_by_cause(block: str, budget: int) -> str:
+    """One test run's failures, grouped by the first line of what each test raised."""
+    command = block.splitlines()[0] if block.startswith("$ ") else ""
+    headers = list(_SECTION.finditer(block))
+    failed = list(dict.fromkeys(m.group(1) for m in _FAILED_TEST.finditer(block)))
+    groups: dict[str, list[tuple[str, str, str]]] = {}
+    for here, after in zip(headers, [*headers[1:], None], strict=False):
+        body = block[here.end() : after.start() if after else len(block)]
+        lines = body.strip("\n").splitlines()
+        raised = next((x[1:].strip() for x in lines if x.startswith("E ") and x[1:].strip()), "")
+        first = raised or _first(body[::-1])[::-1] or "(no error line)"
+        groups.setdefault(_mask(first), []).append((here.group(1), first, body))
+
+    def ids_for(name: str) -> list[str]:
+        # pytest heads a section `test_x`, `Class.test_x` or `test_x[case]`; the id
+        # ends with the same, `::`-separated.
+        tail = name.replace(".", "::")
+        return [t for t in failed if t.split("::", 1)[-1] == tail or t.endswith(f"::{tail}")]
+
+    named: set[str] = set()
+    parts = [
+        f"{command}\n{len(failed)} tests failed, from {len(groups)} causes. Each cause is "
+        "shown once, with one test's output as its example; the tests it hit are listed "
+        "under it."
+    ]
+    spent = len(parts[0])
+    for number, tests in enumerate(sorted(groups.values(), key=len, reverse=True), start=1):
+        name, first, body = tests[0]
+        ids = [i for n, _f, _b in tests for i in ids_for(n)] or [n for n, _f, _b in tests]
+        named.update(ids)
+        head = f"### Cause {number}: {first[:300]} ({len(tests)} tests)\n" + "\n".join(
+            f"FAILED {i}" for i in ids
+        )
+        example = _example(body)
+        if spent + len(head) + len(example) > budget:
+            example = "(its output left out: the report is long; read the test by name)"
+        parts.append(f"{head}\n\n{example}")
+        spent += len(head) + len(example)
+    rest = [t for t in failed if t not in named]
+    if rest:
+        parts.append("Also failed:\n" + "\n".join(f"FAILED {t}" for t in rest))
+    summary = next(
+        (x for x in reversed(block.splitlines()) if re.search(r"\d+ (failed|passed)", x)), ""
+    )
+    if summary:
+        parts.append(summary.strip())
+    return "\n\n".join(parts)
+
+
+def _example(body: str) -> str:
+    """One test's output, shortened: its last lines of code, then what it raised."""
+    lines = body.strip("\n").splitlines()
+    at = next((i for i, x in enumerate(lines) if x.startswith("E ")), len(lines))
+    code = lines[max(0, at - EXAMPLE_CODE_LINES) : at]
+    raised = [x for x in lines[at:] if x.startswith("E ")][:EXAMPLE_ERROR_LINES]
+    where = next((x for x in reversed(lines) if re.match(r"^\S+:\d+: ", x)), "")
+    shown = [*code, *raised, *([where] if where else [])]
+    return "```\n" + "\n".join(x[:300] for x in shown) + "\n```"

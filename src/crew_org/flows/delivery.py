@@ -37,7 +37,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
-from crew_org.flows.attempts import failing_tests, first_error
+from crew_org.flows.attempts import failing_tests, first_error, repair_report
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import ANSWERED_MARKER, latest_answer
@@ -656,6 +656,19 @@ def _deliver_in_steps(
     return stepped.merge(plan, answers)
 
 
+def changed_definitions(implementation: Implementation) -> dict[str, list[str]]:
+    """By file, the definitions an applied answer changed: its edits, tests and moves.
+
+    A repair is shown these of a large written file, not all of it (crew#591).
+    """
+    found: dict[str, list[str]] = {}
+    for edit in implementation.all_edits:
+        found.setdefault(edit.path, []).append(edit.target)
+    for move in implementation.moves:
+        found.setdefault(move.to_path, []).append(move.name)
+    return found
+
+
 def coverage_for(ws: Any, repo: str, sink: EventSink, number: int) -> Any:
     """The project's coverage map at its default branch, or None, said why (crew#583, C3).
 
@@ -1022,6 +1035,22 @@ def deliver_story(
         failing = list(dict.fromkeys(t["id"].split("::")[0] for t in failing_tests(feedback)))
         report = feedback if failing else ""
         about = "\n\n".join([story_text, prior, feedback])
+        header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
+        header = (
+            epic_rows.block(
+                decided,
+                "These are decided for the epic. Build to them: don't contradict one, and "
+                "don't settle in code what the design note leaves open.",
+                level=1,
+            )
+            + header
+        )
+        if record is not None:
+            header = f"{brief(record)}\n\n{header}"
+        # The code is sized from everything else the call holds, so it keeps room to
+        # read (crew#591): the record, rows and note above the code put
+        # mqucifer/sprint-metrics#567's repair past the ceiling with nothing to read.
+        beside = sum(len(part) for part in (header, story_text, prior, feedback))
         context, focus = focused_context(
             worktree,
             about="\n\n".join([story_text, prior, "" if failing else feedback]),
@@ -1031,8 +1060,9 @@ def deliver_story(
             report=report,
             coverage=coverage,
             # Less shown, the rest read inside the call (crew#583, step C4).
-            ceiling=repo_context.READ_FIRST_CHAR_CEILING,
+            ceiling=repo_context.shown_ceiling(beside),
             reading=True,
+            changed=changed_definitions(last_applied) if last_applied is not None else None,
         )
         sink.emit(
             CrewEvent(
@@ -1054,18 +1084,6 @@ def deliver_story(
                 },
             )
         )
-        header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
-        header = (
-            epic_rows.block(
-                decided,
-                "These are decided for the epic. Build to them: don't contradict one, and "
-                "don't settle in code what the design note leaves open.",
-                level=1,
-            )
-            + header
-        )
-        if record is not None:
-            header = f"{brief(record)}\n\n{header}"
         if not images and (
             base_images.concerns("\n\n".join([story_text, prior, feedback]))
             or any(base_images.is_dockerfile(p) for p in focus.asked)
@@ -1096,15 +1114,16 @@ def deliver_story(
                     attempt=attempt,
                 )
             else:
-                # What it reads shares one ceiling with what it was shown. A whole
-                # repository shown leaves nothing to read.
+                # What it reads shares one ceiling with everything it was shown. A whole
+                # repository shown leaves nothing to read, and with too little room the
+                # tool isn't offered: a read it can't make still costs the thinking
+                # that chose it (mqucifer/sprint-metrics#567's repair, six rounds refused).
+                room = repo_context.READING_CHAR_CEILING - sum(
+                    len(part) for part in (context, story_text, prior, feedback)
+                )
                 reader = (
-                    Reader(
-                        worktree,
-                        budget=repo_context.READING_CHAR_CEILING - len(context),
-                        shown=focus.shown,
-                    )
-                    if focus.focused
+                    Reader(worktree, budget=room, shown=focus.shown)
+                    if focus.focused and room >= repo_context.READ_MIN_CHARS
                     else None
                 )
                 try:
@@ -1216,8 +1235,11 @@ def deliver_story(
             outcome.blocked_reason = decision.reason
             return outcome
 
-        # It asked to see files first (#231). Not a failure, and not applied:
-        # it's asked again with them shown, up to ASKED_FILES_LIMIT files a delivery.
+        # It asked to see files (#231). Not a failure. An answer that only asks is
+        # asked again with them shown, up to ASKED_FILES_LIMIT files a delivery. One
+        # that also changes code is applied, and what it asked for is shown to the
+        # next attempt (crew#591): mqucifer/sprint-metrics#567's repair fixed the code
+        # and asked to see the docs, and its fix would have been thrown away.
         if implementation.asks:
             wanted = file_asks.paths(implementation.need_files)
             fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
@@ -1236,24 +1258,31 @@ def deliver_story(
                 )
             )
             added = exists[: max(ASKED_FILES_LIMIT - len(asked), 0)]
-            if added:
+            if not implementation.changes_nothing:
+                asked += added
+            elif added:
                 asked += added
                 continue
-            missing = [f for f in fresh if f not in exists]
-            # Said as it is: "you've been shown what you asked for", said of a file
-            # past the limit, had it ask again for the same file.
-            feedback = (
-                (f"These aren't files in the repository: {', '.join(missing)}. " if missing else "")
-                + (
-                    f"Not shown: {', '.join(exists)}. A delivery may have "
-                    f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
-                    if exists
-                    else ""
+            else:
+                missing = [f for f in fresh if f not in exists]
+                # Said as it is: "you've been shown what you asked for", said of a file
+                # past the limit, had it ask again for the same file.
+                feedback = (
+                    (
+                        f"These aren't files in the repository: {', '.join(missing)}. "
+                        if missing
+                        else ""
+                    )
+                    + (
+                        f"Not shown: {', '.join(exists)}. A delivery may have "
+                        f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
+                        if exists
+                        else ""
+                    )
+                    + ("Everything else you named is already shown above. " if not fresh else "")
+                    + "Do the work now with the files you can see, and leave `need_files` empty."
                 )
-                + ("Everything else you named is already shown above. " if not fresh else "")
-                + "Do the work now with the files you can see, and leave `need_files` empty."
-            )
-            continue
+                continue
 
         # A "new file" that already exists is a whole-file rewrite wearing a
         # different name, which is the thing editing by name exists to prevent.
@@ -1553,7 +1582,9 @@ def deliver_story(
         )
 
         if decision.disposition is Disposition.RETRY_LOCAL:
-            feedback = f"{amended}Lint or tests failed:\n\n{check.failure_report}"
+            # Each cause once, every failing test named (crew#591): the whole report
+            # is for the escalation, which reads it with tools of its own.
+            feedback = f"{amended}Lint or tests failed:\n\n{repair_report(check.failure_report)}"
             continue
 
         if decision.disposition is Disposition.ESCALATE:

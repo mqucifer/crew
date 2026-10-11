@@ -253,6 +253,12 @@ READING_CHAR_CEILING = 175_000
 # own: it had nothing left, thought 17k tokens before its first read, and every read
 # was refused.
 READ_ROOM_CHARS = 40_000
+# A Python file larger than this is read one definition at a time (crew#583, C4), and
+# a repair is shown only the definitions its last answer changed in it (crew#591).
+# The first real call spent 43k of its 74k characters on one whole `report.py`;
+# mqucifer/sprint-metrics#567's repair was shown all of a 111k-character test file
+# it had added to.
+WHOLE_FILE_CHARS = 12_000
 # Less room than this, and the tool isn't offered: a read it can't make still costs
 # the thinking that decided to make it.
 READ_MIN_CHARS = 5_000
@@ -411,6 +417,7 @@ def focused_context(
     coverage: Any = None,
     ceiling: int | None = None,
     reading: bool = False,
+    changed: dict[str, list[str]] | None = None,
 ) -> tuple[str, Focus]:
     """The repository for a piece of work: all of it when small, the named part when not (#231).
 
@@ -432,7 +439,9 @@ def focused_context(
     graph covered 12 at five times the size, past where answers come back empty.
 
     `reading` is for a call with the read tool (step C4): what isn't shown is read,
-    not asked for, and `ceiling` is lower to leave room for it.
+    not asked for, and `ceiling` is lower to leave room for it. `changed` names, by
+    file, the definitions the last applied answer changed: a written file too large to
+    read whole is shown as those alone, with its imports (crew#591).
     """
     full = repository_context(worktree, editing=editing)
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
@@ -480,6 +489,8 @@ def focused_context(
             shown.append(rel)
             continue  # already shown in full above
         body = path.read_text(encoding="utf-8", errors="ignore").strip()
+        if reading and changed and rel in changed and len(body) > WHOLE_FILE_CHARS:
+            body = changed_only(body, changed[rel])
         if len(body) > budget and rel not in kept:
             omitted.append(rel)
             continue
@@ -561,3 +572,37 @@ def _is_test(rel: Path) -> bool:
     from crew_org.profiles import profile_for  # noqa: PLC0415
 
     return profile_for(rel.as_posix()).is_test_path(rel.as_posix())
+
+
+def changed_only(source: str, names: Iterable[str]) -> str:
+    """A large written file as a repair needs it: its imports and the definitions changed.
+
+    The rest is in the map and read by name. A name the file doesn't define (an import's
+    label, a definition since deleted) is skipped; the source is returned whole when the
+    file doesn't parse or none of the names is found.
+    """
+    from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return source
+    lines = source.splitlines()
+    found = definitions(source)
+
+    def span(node: ast.stmt) -> str:
+        start = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
+        return "\n".join(lines[start - 1 : node.end_lineno or node.lineno])
+
+    picked = [span(found[n]) for n in dict.fromkeys(names) if n in found]
+    if not picked:
+        return source
+    imports = [span(n) for n in tree.body if isinstance(n, ast.Import | ast.ImportFrom)]
+    return "\n\n".join(
+        [
+            *(["\n".join(imports)] if imports else []),
+            *picked,
+            "# Only the definitions your last answer changed are shown, and the imports. Read "
+            "any other by name.",
+        ]
+    )

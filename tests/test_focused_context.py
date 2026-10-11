@@ -259,19 +259,20 @@ def test_a_focused_delivery_reads_inside_the_call_and_says_what_it_read(
     ]
 
 
-def test_an_answer_that_asks_isnt_counted_as_written(harness, monkeypatch, tmp_path):  # noqa: F811
-    """mqucifer/sprint-metrics#567 (2026-10-11) wrote the whole story and asked for one
-    file; its re-ask was shown every file the unapplied answer touched, 286k characters."""
+def test_an_answer_that_works_and_asks_is_applied_and_shown_the_file_next(
+    harness,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+):
+    """crew#591: mqucifer/sprint-metrics#567's repair fixed the code and asked to see the
+    docs. Not applied, its fix would have been thrown away for the part it couldn't see."""
     from crew_org.crews.delivery_crew import FileEdit  # noqa: PLC0415
 
     work_and_ask = FirstAttempt(
         summary="the work, and one more file",
         criteria_tests=[],
-        edits=[
-            FileEdit(
-                path="docs/metrics.md.py", operation="add", target="f", source="def f():\n    pass"
-            )
-        ],
+        new_files=[FileWrite(path="tests/test_x.py", content="def test_x():\n    assert True\n")],
+        edits=[FileEdit(path="src/m.py", operation="add", target="f", source="def f():\n    pass")],
         need_files=["docs/metrics.md"],
     )
 
@@ -279,18 +280,22 @@ def test_an_answer_that_asks_isnt_counted_as_written(harness, monkeypatch, tmp_p
         self.resumed = False
         path = tmp_path / branch.replace("/", "__")
         (path / "docs").mkdir(parents=True, exist_ok=True)
-        (path / "docs/metrics.md").write_text("# Metrics\n" + "x" * 500)
-        (path / "docs/metrics.md.py").write_text("def g():\n    pass\n" + "# y\n" * 200)
+        (path / "src").mkdir(exist_ok=True)
+        (path / "docs/metrics.md").write_text("# Metrics\n")
+        (path / "src/m.py").write_text("def g():\n    pass\n")
         return path
 
+    applied: list = []
     monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
     monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    monkeypatch.setattr(repo_context, "READ_FIRST_CHAR_CEILING", 1)
     _, _, _, _, calls, seen = harness(
-        checks=[green()], implement=lambda n: work_and_ask if n == 1 else WORK
+        checks=[red("1 failed"), green()],
+        implement=lambda n: work_and_ask if n == 1 else WORK,
+        apply=lambda w, impl: applied.append(impl) or [],
     )
+    assert applied[0] is work_and_ask, "its work is applied"
     shown = [e.detail for e in seen if e.kind == EventKind.FILES_SHOWN]
-    assert "docs/metrics.md.py" not in shown[1]["shown"], "not applied, so not written"
+    assert "docs/metrics.md" in shown[1]["asked"], "and the next attempt is shown the file"
 
 
 def test_empty_answers_after_an_ask_go_in_steps(harness, monkeypatch, tmp_path):  # noqa: F811
@@ -570,3 +575,24 @@ def test_without_a_map_only_the_importers_are_named(graph, monkeypatch):
     monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
     text, _ = focused_context(graph, about=f"Change {PKG}/metrics.py")
     assert "tests/test_schema.py::test_keys" not in text and f"`{PKG}/report.py`" in text
+
+
+def test_a_repair_sees_only_what_it_changed_of_a_large_written_file(repo: Path, monkeypatch):
+    """crew#591: sprint-metrics#567's repair was shown 251,860 characters."""
+    big = f"{PKG}/metrics.py"
+    (repo / big).write_text(
+        "import os\n\n\ndef calculate_cycle_time(cards):\n    return 0\n\n\n"
+        + "".join(f"def other_{i}():\n    return {i}\n\n\n" for i in range(800))
+    )
+    text, focus = focused_context(
+        repo,
+        about="x",
+        written=[big],
+        above=10,
+        reading=True,
+        changed={big: ["calculate_cycle_time"]},
+    )
+    assert big in focus.shown and "def calculate_cycle_time(cards):" in text
+    assert "def other_5():" not in text and "Read any other by name." in text
+    whole, _ = focused_context(repo, about="x", written=[big], above=10, reading=True)
+    assert "def other_5():" in whole, "without what it changed, the file is shown whole"

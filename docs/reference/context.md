@@ -139,7 +139,7 @@ A split that names a story the project hasn't delivered or planned, or drops a s
 | What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
 | The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 120,000 characters |
 | What it reads | `repo_read.Reader`, its `read_file` tool | A file or one definition the work needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
-| The last failure | `deliver_story`'s feedback | What to repair, and why the previous answer was refused |
+| The last failure | `deliver_story`'s feedback, a test report through `attempts.repair_report` | What to repair, and why the previous answer was refused; a test report grouped by cause, every failing test named (crew#591) |
 
 The call is the crew's own (`calls.ask`, ADR 0025): a refused answer is asked for again with why, and two empty answers in a row end it.
 

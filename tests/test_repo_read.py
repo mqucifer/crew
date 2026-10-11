@@ -83,3 +83,14 @@ def test_a_large_python_file_is_read_a_definition_at_a_time(repo: Path, monkeypa
     assert "from datetime import date\nfrom sprint_metrics.cards import (\n    Card,\n)" in said
     assert "def cycle_time" in reader.run({"path": "src/metrics.py", "name": "cycle_time"})
     assert "# Metrics" in reader.run({"path": "docs/metrics.md"}), "not Python: read whole"
+
+
+def test_a_large_written_file_is_shown_as_the_definitions_changed():
+    """mqucifer/sprint-metrics#567's repair was shown all of a 111k-character test file."""
+    from crew_org.tools.repo_context import changed_only  # noqa: PLC0415
+
+    shown = changed_only(METRICS, ["cycle_time", "add_import label", "Report.rows"])
+    assert "from datetime import date" in shown and "def cycle_time(cards):" in shown
+    assert "@property\n    def rows(self):" in shown and "THRESHOLD = 3" not in shown
+    assert "Read any other by name." in shown
+    assert changed_only(METRICS, ["nothing_here"]) == METRICS

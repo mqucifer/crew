@@ -642,9 +642,11 @@ Three rules for every limit on prompt content:
    too little left for the tests it needed. Before, it named them in `need_files`, an answer that did no
    work: on Goal mqucifer/sprint-metrics#558 the first answer only asked on 7
    of 7 stories, and each ask re-sent a larger prompt. `need_files` stays as
-   the last resort, for a file too big for what is left to read: that answer
-   isn't applied, and it's asked again with them shown, and asking isn't a
-   failure. Every attempt records its context size and which files it was
+   the last resort, for a file it couldn't read: an answer that only asks is
+   asked again with them shown, and an answer that also changes code is
+   applied, the files it asked for shown to the next attempt (crew#591): one
+   repair fixed the code and asked to see the docs, and its fix would have been
+   thrown away. Asking isn't a failure. Every attempt records its context size and which files it was
    shown, and a note names what it read. The Business Analyst's split reads
    the same way. It carries much besides code (pinning tests, the Goal's other
    records, its own), so its code is sized from the rest of its prompt to keep
@@ -653,8 +655,10 @@ Three rules for every limit on prompt content:
    before its first read, and every read was refused.
 
    **What it reads shares one ceiling with what it is shown.** The Developer
-   is shown up to 120,000 characters, and reading may take the call to
-   175,000, about 60k tokens, the line the plan's success test sets. Answers
+   is shown up to 120,000 characters of code, less beside a large record,
+   design note or failure report, so 40,000 stay free to read; reading may
+   take the call to 175,000, about 60k tokens, the line the plan's success test
+   sets. With under 5,000 free, the read tool isn't offered. Answers
    came back empty on 0% of prompts under 50k tokens, 6% from 50k to 90k and
    26% above (runbook `empty-model-answers.md`); mqucifer/sprint-metrics#567
    answered at 45k tokens and went empty ten times at 82k.
@@ -666,13 +670,25 @@ Three rules for every limit on prompt content:
    this order, until the context reaches its ceiling (270,000 characters, or
    120,000 for the Developer, who reads the rest):
    - the files the Developer's last applied answer wrote, always, even past
-     the ceiling (an answer that asked to see files isn't applied); the
+     the ceiling; one over 12,000 characters as its imports and the
+     definitions that answer changed, the rest read by name (crew#591:
+     mqucifer/sprint-metrics#567's repair was shown a whole 111k-character
+     test file it had added to); the
      files it asked for come next, and keep to the ceiling, since it can read
      what doesn't fit: shown regardless, asks grew
      mqucifer/sprint-metrics#567's prompt to 82k tokens
    - the failing tests' files, and the project modules they import
    - the files the story, its criteria and the gates' verdicts name
    - last, the files only the test report names
+
+   **A repair is shown the failure report grouped by cause** (crew#591,
+   2026-10-11): each first error line once, with how many tests it hit, every
+   failing test as `FAILED <id>`, and one test's output as its example. What
+   isn't a test run (lint) is kept, head and tail. mqucifer/sprint-metrics#567's
+   first attempt broke 50 merged tests: the report was 200,062 characters
+   (cut from 352,767) and fed a repair of 142,865 prompt tokens; grouped, it is
+   15,597 characters, and its first line is the cause of 46 of the 50. An
+   escalation is given the whole report.
 
    Code comes before tests within each group, because a paired test file is
    often the largest thing chosen. A file that doesn't fit is named as left
