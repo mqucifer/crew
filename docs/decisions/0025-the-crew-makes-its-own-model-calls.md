@@ -126,3 +126,7 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   generation on the server, which a stopped tick's unstreamed call never did.
 - **2026-10-11:** six tool rounds, not four: mqucifer/sprint-metrics#567 read twelve
   times in four, then asked for a file it could have read.
+- **2026-10-11:** the prompt's copy of the answer's schema is a plain field list, each
+  field with its type and description (lean-prompts plan, L3); the server still holds
+  the answer to the full JSON Schema. The Developer's copy went from 13.2k characters to
+  6.9k.

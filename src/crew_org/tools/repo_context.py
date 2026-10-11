@@ -80,7 +80,21 @@ IGNORED_DIRS = frozenset(
 )
 
 
-def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = True) -> str:
+def _tests_in_brief(signatures: dict[str, str]) -> str:
+    """A test file far from the work: how many tests, and its helpers by signature."""
+    tests = [n for n in signatures if n.split(".")[-1].startswith(("test_", "Test"))]
+    helpers = [f"{n}{sig}" for n, sig in sorted(signatures.items()) if n not in tests]
+    said = f"{len(tests)} tests, read any by name"
+    return said + (f"; helpers: {', '.join(helpers)}" if helpers else "")
+
+
+def repository_context(
+    worktree: Path,
+    *,
+    editing: bool = True,
+    bodies: bool = True,
+    near: Iterable[str] | None = None,
+) -> str:
     """What the repository looks like, and what each file defines.
 
     Editing works by name, so the names are the context that matters. Listing
@@ -109,8 +123,16 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
     what may not be reshaped. Refinement reads this to decide what work should
     exist; it is not editing anything, and instructions for a job it is not
     doing are noise competing with the ones it must follow.
+
+    `near` is for a call that can read (lean-prompts plan, L1): a test file not in it
+    is one line, how many tests it holds and its helpers by signature, since any test
+    is read by name. Test names were 80% of the map on mqucifer/sprint-metrics#567
+    (37.7k of 47k characters); source files keep every signature, for the reason
+    above.
     """
     from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    near_set = set(near) if near is not None else None
 
     paths = sorted(
         p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
@@ -123,6 +145,13 @@ def repository_context(worktree: Path, *, editing: bool = True, bodies: bool = T
             signatures = profile_for(rel.as_posix()).definitions(
                 path.read_text(encoding="utf-8", errors="ignore")
             )
+            if (
+                near_set is not None
+                and rel.as_posix() not in near_set
+                and profile_for(rel.as_posix()).is_test_file(rel.as_posix())
+            ):
+                lines.append(f"- `{rel}` — {_tests_in_brief(signatures)}")
+                continue
             defined = (
                 ", ".join(f"{name}{sig}" for name, sig in sorted(signatures.items()))
                 if signatures
@@ -245,7 +274,11 @@ FOCUSED_CHAR_CEILING = 270_000
 # tokens and went empty ten times at 82k. At about 2.9 characters a token, 120k
 # characters shown keeps the first call near 45k with the story and the rules,
 # and 175k keeps the answer under the 60k the plan's success test sets.
-READ_FIRST_CHAR_CEILING = 120_000
+# 50,000 since the map lists far test files in brief (lean-prompts plan, L1). The
+# 120,000 it was held a 47k map and 36k of code on mqucifer/sprint-metrics#567; at
+# 85,000 the 15k map left room for 54k of code, and the call came to 45k tokens
+# against 51k. At 50,000 the same code as before is shown, and the rest is read.
+READ_FIRST_CHAR_CEILING = 50_000
 READING_CHAR_CEILING = 175_000
 # What a call with the read tool keeps free to read, when the rest of its prompt is
 # large. The first real split with the tool (mqucifer/sprint-metrics#561, 2026-10-11)
@@ -468,7 +501,13 @@ def focused_context(
     order = list(dict.fromkeys([*kept, *asked_first, *exercised, *rest, *their_imports, *reported]))
     close = _close_to(worktree, named_code, set(order), coverage)
 
-    index = repository_context(worktree, editing=editing, bodies=False)
+    # With the read tool, a test file far from the work is listed in brief (L1).
+    index = repository_context(
+        worktree,
+        editing=editing,
+        bodies=False,
+        near=[*order, *close] if reading else None,
+    )
     lines = [index, "", "### The files this work names, in full", ""]
     budget = (FOCUSED_CHAR_CEILING if ceiling is None else ceiling) - len(index)
     shown: list[str] = []

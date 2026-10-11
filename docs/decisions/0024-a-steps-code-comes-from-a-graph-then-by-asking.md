@@ -72,3 +72,8 @@ analysis; tool use, also called function calling; two-stage retrieval.
 - **2026-10-11:** a repair's view follows the graph's rule too (crew#591): a large
   written file is shown as the definitions its answer changed, the code is sized to keep
   room to read, and the failure report is grouped by cause.
+- **2026-10-11:** the map lists a test file far from the work in brief: how many tests
+  it holds and its helpers, any test read by name; source files keep every signature
+  (lean-prompts plan, L1). Test names were 80% of the map on
+  mqucifer/sprint-metrics#567. The code shown before reading drops to 50,000 characters,
+  the same code in 33k less.

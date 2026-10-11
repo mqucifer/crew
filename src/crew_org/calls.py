@@ -163,11 +163,65 @@ def task_text(parts: list[Part], expected: str, form: dict[str, Any] | None = No
     shown = "\n\n".join(p.text.strip() for p in parts if p.text.strip())
     text = f"{shown}\n\nYour answer: {expected}" if expected else shown
     if form is not None:
-        text += (
-            "\n\nWrite your answer as JSON in this form, each field as its description "
-            f"says:\n\n{json.dumps(form, indent=2)}"
-        )
+        text += f"\n\n{form_text(form)}"
     return text
+
+
+def form_text(schema: dict[str, Any]) -> str:
+    """An answer's JSON schema as the model reads it: each field, its type and what it is.
+
+    The server holds the answer to the full schema; the prompt's copy says the same in
+    about half (lean-prompts plan, L3): the Developer's was 13.5k characters of JSON
+    Schema's own wrapping (`title`, `$ref`, `properties`). Every field is written,
+    because the server requires each; a list may be empty and a text may be blank where
+    its description says so.
+    """
+    defs = schema.get("$defs") or {}
+
+    def kind(field: dict[str, Any]) -> str:
+        if "$ref" in field:
+            name = field["$ref"].rsplit("/", 1)[-1]
+            target = defs.get(name, {})
+            if "enum" in target:
+                return "one of " + ", ".join(f"`{v}`" for v in target["enum"])
+            return name
+        if "anyOf" in field:
+            options = [kind(f) for f in field["anyOf"] if f.get("type") != "null"]
+            nullable = any(f.get("type") == "null" for f in field["anyOf"])
+            return " or ".join(options) + (" or null" if nullable else "")
+        if "enum" in field:
+            return "one of " + ", ".join(f"`{v}`" for v in field["enum"])
+        if field.get("type") == "array":
+            return f"list of {kind(field.get('items') or {})}"
+        return str(field.get("type", "any"))
+
+    def fields(model: dict[str, Any]) -> list[str]:
+        return [
+            f"- `{name}` ({kind(field)})"
+            + (
+                f": {' '.join(str(field['description']).split())}"
+                if field.get("description")
+                else ""
+            )
+            for name, field in (model.get("properties") or {}).items()
+        ]
+
+    lines = [
+        "Write your answer as JSON in this form, every field present, each as its "
+        "description says.",
+        "",
+        f"**{schema.get('title', 'Answer')}**",
+        *fields(schema),
+    ]
+    for name, model in defs.items():
+        if "properties" not in model:
+            continue
+        lines += [
+            "",
+            f"**{name}**" + (f": {model['description']}" if model.get("description") else ""),
+        ]
+        lines += fields(model)
+    return "\n".join(lines)
 
 
 def _strict(schema: dict[str, Any]) -> dict[str, Any]:

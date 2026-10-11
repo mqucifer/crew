@@ -655,7 +655,7 @@ Three rules for every limit on prompt content:
    before its first read, and every read was refused.
 
    **What it reads shares one ceiling with what it is shown.** The Developer
-   is shown up to 120,000 characters of code, less beside a large record,
+   is shown up to 50,000 characters of code, less beside a large record,
    design note or failure report, so 40,000 stay free to read; reading may
    take the call to 175,000, about 60k tokens, the line the plan's success test
    sets. With under 5,000 free, the read tool isn't offered. Answers
@@ -668,7 +668,7 @@ Three rules for every limit on prompt content:
    25 files its test report's tracebacks passed through, 479,252 characters
    (181k tokens), and came back empty after 885 s. The files are now shown in
    this order, until the context reaches its ceiling (270,000 characters, or
-   120,000 for the Developer, who reads the rest):
+   50,000 for the Developer, who reads the rest):
    - the files the Developer's last applied answer wrote, always, even past
      the ceiling; one over 12,000 characters as its imports and the
      definitions that answer changed, the rest read by name (crew#591:

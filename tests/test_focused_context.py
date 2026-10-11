@@ -596,3 +596,18 @@ def test_a_repair_sees_only_what_it_changed_of_a_large_written_file(repo: Path, 
     assert "def other_5():" not in text and "Read any other by name." in text
     whole, _ = focused_context(repo, about="x", written=[big], above=10, reading=True)
     assert "def other_5():" in whole, "without what it changed, the file is shown whole"
+
+
+def test_with_the_read_tool_a_far_test_file_is_listed_in_brief(repo: Path):
+    """Lean prompts, L1: test names were 80% of sprint-metrics#567's map."""
+    (repo / "tests/test_serve.py").write_text(
+        "def run_it(tmp_path):\n    return 1\n\n\n"
+        + "".join(f"def test_case_{i}():\n    assert True\n\n\n" for i in range(40))
+    )
+    brief, _ = focused_context(repo, about="Round `calculate_cycle_time`.", above=10, reading=True)
+    assert "`tests/test_serve.py` — 40 tests, read any by name; helpers: run_it(tmp_path)" in brief
+    assert "test_case_7" not in brief
+    assert "def calculate_cycle_time" in brief and "test_cycle" in brief, "near tests stay whole"
+    assert "serve_metrics(port)" in brief, "source files keep their signatures"
+    whole, _ = focused_context(repo, about="Round `calculate_cycle_time`.", above=10)
+    assert "test_case_7" in whole, "without the read tool, the map is as it was"
