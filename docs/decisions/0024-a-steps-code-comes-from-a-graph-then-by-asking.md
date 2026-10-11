@@ -62,3 +62,7 @@ analysis; tool use, also called function calling; two-stage retrieval.
 
 - **2026-10-10:** the map gains a static half (crew#612; Sponsor). The services half
   was dropped the same night for crew#614.
+- **2026-10-11:** the read tool is built for the Developer (crew#583, step C4): `read_file`
+  reads a file or one definition by name inside the call. The Developer is shown up to
+  120,000 characters and the call, reads included, is held to 175,000. The split's read
+  tool follows with its move to the call layer.

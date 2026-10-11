@@ -238,6 +238,15 @@ SELECTION_TEXT_CHARS = 20_000
 # and only repairs grown by their reports went past it. What brings a repair
 # down is the order `focused_context` fills in, not this number.
 FOCUSED_CHAR_CEILING = 270_000
+# With a read tool (crew#583, step C4), what is shown before the model reads, and
+# the most the call holds once it has. On crew-code-think, answers came back empty
+# on 0% of prompts under 50k tokens, 6% from 50k to 90k and 26% above
+# (runbook `empty-model-answers.md`); mqucifer/sprint-metrics#567 answered at 45k
+# tokens and went empty ten times at 82k. At about 2.9 characters a token, 120k
+# characters shown keeps the first call near 45k with the story and the rules,
+# and 175k keeps the answer under the 60k the plan's success test sets.
+READ_FIRST_CHAR_CEILING = 120_000
+READING_CHAR_CEILING = 175_000
 
 
 @dataclass
@@ -385,6 +394,8 @@ def focused_context(
     above: int | None = None,
     editing: bool = True,
     coverage: Any = None,
+    ceiling: int | None = None,
+    reading: bool = False,
 ) -> tuple[str, Focus]:
     """The repository for a piece of work: all of it when small, the named part when not (#231).
 
@@ -404,6 +415,9 @@ def focused_context(
     merged tests that run its definitions. On epic 468 the named files alone
     covered none of the 23 files the Developer then asked for; showing the whole
     graph covered 12 at five times the size, past where answers come back empty.
+
+    `reading` is for a call with the read tool (step C4): what isn't shown is read,
+    not asked for, and `ceiling` is lower to leave room for it.
     """
     full = repository_context(worktree, editing=editing)
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
@@ -412,7 +426,11 @@ def focused_context(
     extra = [a.strip().removeprefix("./") for a in extra]
     chosen, unknown = select_files(worktree, about, extra)
     existing = {str(p.relative_to(worktree)) for p in _files(worktree)}
-    kept = [r for r in [*extra, *written] if r in existing]
+    # What it wrote is always shown. What it asked for too, unless it can read:
+    # then an ask is a file it found too large to read, and shown past the ceiling
+    # it grows the prompt back to where answers come back empty (crew#583, C4).
+    kept = [r for r in [*([] if reading else extra), *written] if r in existing]
+    asked_first = [r for r in extra if r in existing and r not in kept] if reading else []
     exercised = [r for r in failing if r in existing]
     exercised += [i for r in exercised for i in imported_files(worktree, r)]
     reported = sorted(set(select_files(worktree, report)[0]) - set(chosen)) if report else []
@@ -423,12 +441,12 @@ def focused_context(
     named_code = [r for r in rest if r.endswith(".py") and not _is_test(Path(r))]
     their_imports = [i for r in named_code for i in imported_files(worktree, r)]
     reported.sort(key=lambda r: _is_test(Path(r)))
-    order = list(dict.fromkeys([*kept, *exercised, *rest, *their_imports, *reported]))
+    order = list(dict.fromkeys([*kept, *asked_first, *exercised, *rest, *their_imports, *reported]))
     close = _close_to(worktree, named_code, set(order), coverage)
 
     index = repository_context(worktree, editing=editing, bodies=False)
     lines = [index, "", "### The files this work names, in full", ""]
-    budget = FOCUSED_CHAR_CEILING - len(index)
+    budget = (FOCUSED_CHAR_CEILING if ceiling is None else ceiling) - len(index)
     shown: list[str] = []
     unshown: list[str] = []
     omitted: list[str] = []
@@ -467,10 +485,11 @@ def focused_context(
             + ".",
             "",
         ]
+    get = "Read" if reading else "Ask for"
     if close:
         lines += [
             "Close to this work, and not shown: the files that import what it names, and "
-            "the merged tests that run its definitions, the most specific first. Ask for "
+            f"the merged tests that run its definitions, the most specific first. {get} "
             "one if the work needs it: a test here may pin behaviour the work changes.",
             "",
             *(f"- `{c}`" for c in close),
@@ -478,8 +497,12 @@ def focused_context(
         ]
     lines += [
         "Every other file is listed above by name and what it defines, and not shown in "
-        "full. If the work needs one you can't see, don't guess at it: name it in "
-        "`need_files` and you'll be asked again with it shown.",
+        "full. If the work needs one you can't see, don't guess at it: "
+        + (
+            "read it with `read_file`, the whole file or one definition by name."
+            if reading
+            else "name it in `need_files` and you'll be asked again with it shown."
+        ),
         "",
     ]
     text = "\n".join(lines)

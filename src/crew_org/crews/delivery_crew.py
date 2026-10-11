@@ -15,10 +15,9 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Any
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 from crew_org.crews.asks import FileAsk
 from crew_org.profiles import profile_for
 from crew_org.tools.ast_edit import Operation
@@ -232,6 +231,19 @@ class CriterionTest(BaseModel):
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
         return FileWrite._stays_in_the_repository(value)
+
+    @field_validator("test")
+    @classmethod
+    def _a_name_not_its_code(cls, value: str) -> str:
+        # The first real call on the crew's own call layer (crew#583) put the whole
+        # function in `test` twice, told only that "the source for '<the function>'
+        # doesn't define it", which named no field to change.
+        if "\n" in value.strip() or value.lstrip().startswith(("def ", "async def ")):
+            raise ValueError(
+                "`test` is the test's name alone, e.g. test_range_as_json. Its code goes "
+                "in `source`"
+            )
+        return value.strip()
 
     @model_validator(mode="after")
     def _is_that_test(self) -> CriterionTest:
@@ -674,6 +686,21 @@ class FirstOrDone(FirstAttempt):
         return self
 
 
+# How the Developer sees a file it is shown only by name: asked for, and since
+# crew#583's step C4 read inside the call, with asking the last resort.
+ASK_FOR_FILES = (
+    "The repository below may show some files only by name and signature. If you need "
+    "one in full to do the work correctly, don't guess at it: name it in `need_files` "
+    "(and nothing else), and you'll be asked again with it shown.\n"
+)
+READ_FILES = (
+    "The repository below may show some files only by name and signature. If you need "
+    "one to do the work correctly, don't guess at it: read it with `read_file` before "
+    "you answer, the whole file or one definition by name. Only if you can't read it "
+    "that way, name it in `need_files` (and nothing else), and you'll be asked again "
+    "with it shown.\n"
+)
+
 # Identical for every story and every repair, so it is the cacheable prefix.
 STANDING_INSTRUCTIONS = (
     "Implement one story.\n\n"
@@ -689,10 +716,8 @@ STANDING_INSTRUCTIONS = (
     "the Code Reviewer and QA read it. Don't write a test that matches a doc's wording. "
     "A command example a doc shows is still run by the project's doc tests, where it "
     "has them.\n"
-    "The repository below may show some files only by name and signature. If you need "
-    "one in full to do the work correctly, don't guess at it: name it in `need_files` "
-    "(and nothing else), and you'll be asked again with it shown.\n"
-    "A change to CI workflows alone needs no test: it's judged by review, and proven "
+    + ASK_FOR_FILES
+    + "A change to CI workflows alone needs no test: it's judged by review, and proven "
     "when it runs. Leave `criteria_tests` and `proven_by_existing` empty for it: a CI "
     "run isn't a test to name. A workflow may change together with the code or tests "
     "it runs, when changing one breaks the other.\n"
@@ -736,6 +761,15 @@ STANDING_INSTRUCTIONS = (
 )
 
 
+def standing_instructions(*, reading: bool = False) -> str:
+    """The standing instructions, telling a call with the read tool to read, not ask."""
+    return (
+        STANDING_INSTRUCTIONS.replace(ASK_FOR_FILES, READ_FILES)
+        if reading
+        else STANDING_INSTRUCTIONS
+    )
+
+
 def implement_story(
     story: str,
     *,
@@ -744,6 +778,7 @@ def implement_story(
     prior: str = "",
     returned: bool = False,
     may_be_done: bool = False,
+    read: calls.Tool | None = None,
 ) -> Implementation:
     """Produce the files that satisfy one story.
 
@@ -759,10 +794,13 @@ def implement_story(
     the same reason. With only half of it — a verdict describing files a reset
     worktree no longer holds — the model tries to edit a phantom file, which is
     worse.
+
+    `read` is the read tool (crew#583, step C4): with it, a file shown only by
+    name is read inside the call instead of asked for in `need_files`. The call
+    is the crew's own (ADR 0025), so a refused answer is asked for again with why.
     """
-    agents = build_agents("developer")
     repair = (
-        f"\n\nA previous attempt failed. Fix it.\n\n{feedback}\n\n"
+        f"A previous attempt failed. Fix it.\n\n{feedback}\n\n"
         "## What is already in the repository\n\n"
         "Your previous attempt has ALREADY BEEN WRITTEN. Every definition it "
         "added is in the listing above and is in the files right now. That "
@@ -782,39 +820,33 @@ def implement_story(
         if feedback
         else ""
     )
-    # Ordered stable-first. Prefix caching matches a common prefix, so anything
-    # after the first varying block re-tokenises every call. These standing
-    # instructions are identical for every story and every repair, so they go
-    # first; the story varies per card, the repository per attempt, and the
-    # failure most of all. Measured cache hit rate before reordering: 31%.
     # Ordered stable-first for the prefix cache, then by how much each part
     # varies: the story is fixed for this card, what the gates said is fixed for
     # this delivery, the repository changes per attempt, the failure most of all.
-    previously = f"\n\n# This story has been delivered before\n\n{prior}\n" if prior else ""
-    task = Task(
-        description=(
-            STANDING_INSTRUCTIONS
-            + f"\n\n## The story\n\n{story}\n"
-            + previously
-            + f"\n## The repository as it stands\n\n{context}\n"
-            + repair
-        ),
-        expected_output=(
-            "A summary, plus the new files and the named edits that implement the story."
-        ),
-        agent=agents["developer"],
-        # A repair fixes a failure; returned work answers a gate, and may answer
-        # that nothing needs to change (#161); a first attempt builds the story.
-        # A first attempt may instead answer that the story is already done (#221).
-        output_pydantic=Implementation
+    # Measured cache hit rate before ordering this way: 31%.
+    parts = [
+        calls.Part("instructions", standing_instructions(reading=read is not None)),
+        calls.Part("story", f"## The story\n\n{story}"),
+        calls.Part("prior", f"# This story has been delivered before\n\n{prior}" if prior else ""),
+        calls.Part("repository", f"## The repository as it stands\n\n{context}"),
+        calls.Part("repair", repair),
+    ]
+    # A repair fixes a failure; returned work answers a gate, and may answer
+    # that nothing needs to change (#161); a first attempt builds the story.
+    # A first attempt may instead answer that the story is already done (#221).
+    form: type[Implementation] = (
+        Implementation
         if feedback
         else Rework
         if returned
         else FirstOrDone
         if may_be_done
-        else FirstAttempt,
+        else FirstAttempt
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
+    return calls.ask(
+        "developer",
+        parts,
+        form,
+        expected="A summary, plus the new files and the named edits that implement the story.",
+        tools=[read] if read is not None else None,
     )
-    return crew.kickoff().pydantic

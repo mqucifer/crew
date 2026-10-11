@@ -94,3 +94,12 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   its tools in rounds, without the answer's schema, and is given each result; then
   it is asked for the answer in its form. Proven once through LiteLLM with a read
   tool: two files read in one round, then a valid answer.
+- **2026-10-11:** the Developer moves to the module (crew#583, step D1b), its one-shot
+  answer and its steps alike, with the read tool. Two empty answers in a row end a call:
+  mqucifer/sprint-metrics#567 answered empty ten times on the same prompt under CrewAI.
+  A tool call is told to say only "Ready." when it has read enough, so the answer is
+  written once, in its form. A call takes the role's own timeout. The answer's schema,
+  field descriptions included, is back in the prompt, after the task as CrewAI sent it:
+  D1a had dropped it as framing, but the server enforces only the schema's shape, and
+  without the descriptions the Developer wrote a whole test function in `test`, a name
+  field, in every try of its first real call.

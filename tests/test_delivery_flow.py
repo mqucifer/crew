@@ -7,6 +7,8 @@ reaching for a stronger model.
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from crew_org.crews.delivery_crew import FileEdit, FileWrite, Implementation
@@ -227,7 +229,14 @@ def harness(tmp_path, monkeypatch):
         sequence = list(checks)
 
         def fake_implement(
-            story_text, *, context, feedback="", prior="", returned=False, may_be_done=False
+            story_text,
+            *,
+            context,
+            feedback="",
+            prior="",
+            returned=False,
+            may_be_done=False,
+            read=None,
         ):
             calls["implement"] += 1
             calls.setdefault("may_be_done", []).append(may_be_done)
@@ -235,7 +244,11 @@ def harness(tmp_path, monkeypatch):
             calls["context"].append(context)
             calls["prior"].append(prior)
             calls["returned"].append(returned)
+            calls.setdefault("read", []).append(read)
             if implement:
+                # An answer that reads takes the read tool too (crew#583, step C4).
+                if "read" in inspect.signature(implement).parameters:
+                    return implement(calls["implement"], read=read)
                 return implement(calls["implement"])
             return IMPL
 

@@ -28,6 +28,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 import httpx
@@ -41,6 +42,12 @@ from crew_org.permissions import load_agents
 
 # Three attempts, as CrewAI gave: the first, and two that are told why.
 ATTEMPTS = 3
+# Empty answers in a row before the call gives up early. An empty answer is the
+# model thinking itself out on a prompt or an answer too big to finish (crew#312),
+# and the same prompt again rarely finishes: mqucifer/sprint-metrics#567 answered
+# empty ten times in two hours at 82k prompt tokens (2026-10-11). The caller has
+# a smaller way to ask, such as the Developer's attempt in steps.
+EMPTY_LIMIT = 2
 # Of a refused answer, how much is sent back with its reason: enough to see what
 # was wrong with it, not a second copy of a long answer.
 ECHO_CHARS = 4000
@@ -59,6 +66,12 @@ class Part:
 TOOL_ROUNDS = 4
 # Asked once the tool rounds end, when the answer itself is wanted in its form.
 ANSWER_NOW = "You have what you need. Give your answer now, in full and in its form."
+# Said before the tool rounds. Without it a model that needs nothing more writes its
+# whole answer as text, and then again in its form: twice the longest part of a call.
+READ_FIRST = (
+    "Before you answer, use the tools to read anything you need. When you have what "
+    'you need, reply only "Ready.": your answer is asked for next, in its form.'
+)
 
 
 @dataclass(frozen=True)
@@ -86,12 +99,17 @@ class Tool:
 
 
 class Refused(ValueError):
-    """Every attempt was refused. The last reason is the message."""
+    """Every attempt was refused. The last reason is the message.
 
-    def __init__(self, reason: str, attempts: int) -> None:
+    `empty` says the last answers were empty: not a wrong answer but none, which
+    asking the same way again doesn't fix.
+    """
+
+    def __init__(self, reason: str, attempts: int, *, empty: bool = False) -> None:
         super().__init__(f"refused {attempts} times; the last time: {reason}")
         self.reason = reason
         self.attempts = attempts
+        self.empty = empty
 
 
 class ServiceUnavailableError(RuntimeError):
@@ -122,10 +140,23 @@ def system_text(spec: dict[str, Any]) -> str:
     )
 
 
-def task_text(parts: list[Part], expected: str) -> str:
-    """What the step is shown, part by part, and what its answer should be."""
+def task_text(parts: list[Part], expected: str, form: dict[str, Any] | None = None) -> str:
+    """What the step is shown, part by part, what its answer should be, and its form.
+
+    The form is the answer's JSON schema, its field descriptions included. The server
+    holds the answer to the schema's shape, but the model reads only the prompt: with
+    the schema left out as CrewAI's framing, the Developer put a whole test function
+    in `test`, a name field, in every try (crew#583, 2026-10-11). CrewAI sent it the
+    same way, after the task.
+    """
     shown = "\n\n".join(p.text.strip() for p in parts if p.text.strip())
-    return f"{shown}\n\nYour answer: {expected}" if expected else shown
+    text = f"{shown}\n\nYour answer: {expected}" if expected else shown
+    if form is not None:
+        text += (
+            "\n\nWrite your answer as JSON in this form, each field as its description "
+            f"says:\n\n{json.dumps(form, indent=2)}"
+        )
+    return text
 
 
 def _strict(schema: dict[str, Any]) -> dict[str, Any]:
@@ -204,7 +235,7 @@ def ask[Answer: BaseModel](
     attempts: int = ATTEMPTS,
     tools: list[Tool] | None = None,
     rounds: int = TOOL_ROUNDS,
-    send: Callable[[dict[str, Any]], dict[str, Any]] = post,
+    send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> Answer:
     """The role's answer, in its form, asked for again with the reason when refused.
 
@@ -218,10 +249,12 @@ def ask[Answer: BaseModel](
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
+    # The role's own timeout: a Developer's answer can take most of an hour.
+    sender = send or partial(post, timeout=float(params.get("timeout", DEFAULT_TIMEOUT)))
     system = system_text(spec)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
-        {"role": "user", "content": task_text(parts, expected)},
+        {"role": "user", "content": task_text(parts, expected, answer.model_json_schema())},
     ]
     form = response_format(answer)
     versions = {
@@ -230,8 +263,10 @@ def ask[Answer: BaseModel](
     }
     sizes = {p.name: len(p.text) for p in parts}
     if tools:
-        messages = _use_tools(spec, messages, tools, rounds=rounds, send=send, sizes=sizes)
+        messages[-1]["content"] += f"\n\n{READ_FIRST}"
+        messages = _use_tools(spec, messages, tools, rounds=rounds, send=sender, sizes=sizes)
     reason = ""
+    empties = 0
     for attempt in range(1, attempts + 1):
         body = {
             "model": spec.get("llm", "crew-local"),
@@ -245,7 +280,7 @@ def ask[Answer: BaseModel](
         started = time.monotonic()
         began = datetime.now(UTC)
         try:
-            data = send(body)
+            data = sender(body)
         except Exception as exc:
             record(
                 EventKind.LLM_CALL_FAILED,
@@ -291,6 +326,9 @@ def ask[Answer: BaseModel](
                 empty=not text.strip(),
                 **detail,
             )
+            empties = 0 if text.strip() else empties + 1
+            if empties >= EMPTY_LIMIT:
+                raise Refused(reason, attempt, empty=True) from exc
             if text.strip():
                 messages.append({"role": "assistant", "content": text[:ECHO_CHARS]})
             messages.append(

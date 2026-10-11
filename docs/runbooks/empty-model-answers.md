@@ -7,10 +7,12 @@
 - **Where it happens,** as the share of calls answering empty, by prompt size (`crew-code-think`, constrained JSON, 7 days to 2026-09-28): under 50k, 0%; 50–90k, 6%; 90k and up, 26% (62% when served warm from the cache). This is the baseline the fixes are measured against.
 - **What the crew does about it:**
   - A smaller prompt: crew#231, focused context.
-  - Smaller answers: crew#276, a failed attempt retries in steps.
+  - Smaller answers: crew#276, a failed attempt retries in steps; since 2026-10-11 also empty answers at a later attempt, while nothing is written yet.
+  - Reading inside the call (crew#583, step C4): the Developer is shown up to 120,000 characters and reads the rest with a tool, the whole call held to 175,000 (about 60k tokens). mqucifer/sprint-metrics#567 answered at 45k prompt tokens and went empty ten times at 82k, each after 8–18k thinking tokens.
+  - Two empty answers in a row end a call on the crew's call layer, rather than a third ask of the same prompt.
   - Neither makes the model "dumber": there's no thinking-off fallback (see [Decisions](#decisions)).
 - **What watches it:**
-  - Every empty answer is an `llm.empty` event. In a step on the crew's own call layer (`calls.py`, ADR 0025; the criteria check first), it is an `llm.refused` event with `empty: true`, and the next attempt is told its answer was empty.
+  - Every empty answer is an `llm.empty` event. In a step on the crew's own call layer (`calls.py`, ADR 0025; the criteria check and the Developer), it is an `llm.refused` event with `empty: true`, and the next attempt is told its answer was empty.
   - An alert rule counts model calls over 60k prompt tokens: pull, not a webhook, and owned by the DevOps/SRE role (crew#335). It starts at 60k, the low end of where empty answers begin, and is tuned from what it finds.
 
 This is the process we followed and the evidence at each step, so the next person, or the DevOps/SRE role (crew#335), can repeat it. It moves to the `infra` repo once that exists.
