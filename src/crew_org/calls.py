@@ -139,6 +139,13 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
                         f"`{key}` names block {named!r}, which isn't written after the "
                         f"JSON: write it between @@@ {named} @@@ and @@@ end @@@"
                     )
+                elif key in fields and _NOT_A_BLOCK_NAME.match(str(item)):
+                    written = ", ".join(blocks) or "none"
+                    raise ValueError(
+                        f"`{key}` holds {str(item).strip()!r}, which isn't a block's name: "
+                        f"blocks are named b1, b2 and so on, and the blocks written are "
+                        f"{written}. Put the name of the block holding its code in `{key}`"
+                    )
                 else:
                     out[key] = walk(item)
             return out
@@ -156,6 +163,12 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
 # and a field holding only a block's name, with marks around it, can't be code. Aider
 # measured permissive parsing at a ninth of the errors of strict (ways-of-working).
 _BLOCK_NAME = re.compile(r"^[\s@`'\"]*(?:block\s+)?(b\d+)[\s@`'\"]*$", re.IGNORECASE)
+
+
+# A code field that points at a block by some other name, such as "@@criteria_test_1@@"
+# (mqucifer/sprint-metrics#569, 2026-10-11). Taken as code it was refused for not
+# defining its test, which didn't say what was wrong.
+_NOT_A_BLOCK_NAME = re.compile(r"^\s*@{2,3}\s*[\w.-]+\s*@{0,3}\s*$")
 
 
 def _block_named(value: Any) -> str | None:
