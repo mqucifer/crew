@@ -8,7 +8,7 @@
 - **What the crew does about it:**
   - A smaller prompt: crew#231, focused context.
   - Smaller answers: crew#276, a failed attempt retries in steps; since 2026-10-11 also empty answers at a later attempt, while nothing is written yet.
-  - Reading inside the call (crew#583, step C4): the Developer is shown up to 120,000 characters and reads the rest with a tool, the whole call held to 175,000 (about 60k tokens). mqucifer/sprint-metrics#567 answered at 45k prompt tokens and went empty ten times at 82k, each after 8–18k thinking tokens.
+  - Reading inside the call (crew#583, step C4): the Developer is shown up to 120,000 characters (85,000 since the map lists far test files in brief, lean-prompts L1) and reads the rest with a tool, the whole call held to 175,000 (about 60k tokens). mqucifer/sprint-metrics#567 answered at 45k prompt tokens and went empty ten times at 82k, each after 8–18k thinking tokens.
   - Two empty answers in a row end a call on the crew's call layer, rather than a third ask of the same prompt.
   - Neither makes the model "dumber": there's no thinking-off fallback (see [Decisions](#decisions)).
 - **What watches it:**
