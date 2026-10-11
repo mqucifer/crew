@@ -59,3 +59,7 @@ Sponsor, 2026-10-11: **option A.**
   block's name is read loosely (`"@@b1"` is b1). A block no field names is left out, not
   refused. At most 60 blocks: unbounded, two answers repeated one block thousands of
   times. Ten replays: no quote slip, against 3 in 6 the same morning in JSON strings.
+- **2026-10-11:** the JSON opens with the form's first field, and a text first field
+  can't be empty (`calls.blocks_grammar`). The bare grammar let `{}` through: answers
+  came back empty-bodied after thousands of tokens of thinking, in replays and on
+  mqucifer/sprint-metrics#585 in the live tick.
