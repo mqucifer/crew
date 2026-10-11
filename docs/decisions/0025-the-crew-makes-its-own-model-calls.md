@@ -118,3 +118,9 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   which is now one call through the module. The live view marks a role working from
   its model calls. Each moved site made one real call through LiteLLM with its latest
   recorded prompt.
+- **2026-10-11:** the final answer is streamed, and cut off once it runs on as 2,000
+  characters of whitespace. The server holds an answer to its schema, which allows
+  whitespace between tokens: a model that closes a string early writes whitespace to the
+  token limit. mqucifer/sprint-metrics#567 did, for 40 minutes; 2 such answers in 30
+  days. The re-ask says where the answer went wrong. Closing the stream also ends the
+  generation on the server, which a stopped tick's unstreamed call never did.

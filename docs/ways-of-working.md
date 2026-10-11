@@ -286,6 +286,8 @@ An escalation without a justification is rejected and treated as `SCOPE`.
 - **Then one small answer per file,** each shown the story, the plan, that file in full, and what the earlier steps wrote. A step may only change its own file.
 - **The pieces are merged into one ordinary answer,** which the guards, the checks, review and QA judge as any other.
 
+An answer that runs on as whitespace is cut off after 2,000 characters of it, and asked for again saying where it went wrong (2026-10-11): a model that closes a string early can only write whitespace after it, and mqucifer/sprint-metrics#567's did for 40 minutes, to its token limit.
+
 Empty answers at a later attempt go in steps too, while nothing of the delivery is written yet (crew#583, 2026-10-11): mqucifer/sprint-metrics#567's first answer asked for files, so its next nine, all empty, never did. A call gives up after two empty answers in a row rather than asking the same way a third time, since the same prompt rarely finishes.
 
 It's the same attempt count and the same SCHEMA budget. It happens once per delivery; if it fails too, the usual repairs follow. An answer that arrived but failed a check (a named test that doesn't exist, say) is repaired as before, because its problem is its content, not its size. Why: sprint-metrics#268's one answer (rewrite the README, move ~20 tests, delete a file) stopped mid-thought 3 times in 5 even on a focused prompt (#312). Splitting the work from its tests, the other option #276 records, is still to be compared.

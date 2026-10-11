@@ -175,7 +175,7 @@ def test_the_roles_own_timeout_goes_with_the_call(monkeypatch):
         seen_timeouts.append(timeout)
         return reply(GOOD)
 
-    monkeypatch.setattr(calls, "post", post)
+    monkeypatch.setattr(calls, "stream", post)
     calls.ask("developer", PARTS, Verdict)
     assert seen_timeouts == [3600.0]
 
@@ -288,3 +288,52 @@ def test_a_tool_that_does_not_exist_or_bad_arguments_are_told_not_raised():
     ask(proxy, tools=[reader()])
     told = [m for m in proxy.sent[1]["messages"] if m["role"] == "tool"]
     assert "no tool named 'write_file'" in told[0]["content"]
+
+
+# --- an answer that runs away as whitespace (mqucifer/sprint-metrics#567) ------------------
+
+
+def sse(*pieces, usage=None, finish="stop"):
+    """A streamed answer as the proxy sends it: one chunk per piece, then usage."""
+    chunks = [
+        {"id": "s1", "choices": [{"delta": {"content": p}, "finish_reason": None}]} for p in pieces
+    ]
+    chunks.append({"id": "s1", "choices": [{"delta": {}, "finish_reason": finish}]})
+    if usage:
+        chunks.append({"id": "s1", "choices": [], "usage": usage})
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    return httpx.MockTransport(
+        lambda request: httpx.Response(200, text="\n\n".join(lines) + "\n\n")
+    )
+
+
+def test_a_streamed_answer_is_assembled_with_its_usage():
+    usage = {"prompt_tokens": 100, "completion_tokens": 20}
+    data = calls.stream({"model": "m"}, transport=sse('{"approved": ', "true}", usage=usage))
+    choice = data["choices"][0]
+    assert choice["message"]["content"] == '{"approved": true}'
+    assert choice["finish_reason"] == "stop" and data["usage"] == usage and data["id"] == "s1"
+
+
+def test_whitespace_running_on_is_cut_off_as_a_runaway():
+    pieces = ['{"approved": true, "why": "ok"}', *(["\n   "] * (calls.RUNAWAY_CHARS // 4 + 1))]
+    data = calls.stream({"model": "m"}, transport=sse(*pieces, "never read"))
+    choice = data["choices"][0]
+    assert choice["finish_reason"] == "runaway"
+    assert "never read" not in choice["message"]["content"]
+
+
+def test_a_runaway_answer_is_refused_saying_where_it_went_wrong(seen):
+    ran = {
+        "choices": [
+            {
+                "message": {"content": '{"approved": true, "why": "x"}],"' + " " * 3000},
+                "finish_reason": "runaway",
+            }
+        ]
+    }
+    proxy = Proxy(ran, GOOD)
+    assert ask(proxy).approved
+    told = proxy.sent[1]["messages"][-1]["content"]
+    assert "ran on as whitespace after this" in told and '"why": "x"}],"' in told
+    assert "EOF" not in told
