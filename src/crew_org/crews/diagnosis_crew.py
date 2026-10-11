@@ -9,11 +9,9 @@ chosen by it and read by the flow, and nothing it returns can write.
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 MAX_FILES = 8
 
@@ -44,22 +42,14 @@ class Diagnosis(BaseModel):
     )
 
 
-def _engineer():
-    return build_agent("senior_engineer", load_agents()["senior_engineer"])
-
-
-def _run(agent, description: str, expected: str, model: type[BaseModel]):
-    task = Task(
-        description=description, expected_output=expected, agent=agent, output_pydantic=model
-    )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic
+def _run[Answer: BaseModel](description: str, expected: str, model: type[Answer]) -> Answer:
+    """The Senior Engineer's answer, on the crew's own call layer (ADR 0025)."""
+    return calls.ask("senior_engineer", [calls.Part("task", description)], model, expected=expected)
 
 
 def choose_files(*, failure: str, index: str) -> FileRequest:
     """The files the Senior Engineer wants to read, from the index."""
     return _run(
-        _engineer(),
         f"## What failed\n\n{failure}\n\n## The crew's source: an index\n\n{index}\n\n"
         f"Name up to {MAX_FILES} files from the index that most likely hold the cause.",
         "The files to read, and why.",
@@ -70,7 +60,6 @@ def choose_files(*, failure: str, index: str) -> FileRequest:
 def diagnose(*, failure: str, files: str, why: str) -> Diagnosis:
     """The Senior Engineer's findings, from the files it chose."""
     return _run(
-        _engineer(),
         f"## What failed\n\n{failure}\n\n## The files you asked for ({why})\n\n{files}\n\n"
         "Diagnose it. Each finding names a file and a line shown above, what is wrong "
         "there, and the one change that fixes it.",

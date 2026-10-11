@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator
+
+from crew_org import calls
 
 # A defect's issue title, and how many bullets "how it went" gets (#176).
 MAX_TITLE = 80
@@ -127,68 +128,65 @@ def write_retro(
     retries: str = "",
     fixed: str = "",
 ) -> Retro:
-    agents_module = __import__("crew_org.agents", fromlist=["build_agents"])
-    agents = agents_module.build_agents("scrum_master")
-    task = Task(
-        description=(
-            f"Write the retro for sprint {sprint}.\n\n"
-            f"## What the board says\n\n{board_summary}\n\n"
-            f"## The escalation ledger\n\n{escalations or 'No escalations this sprint.'}\n\n"
-            f"## The sprint's standups, one per tick\n\n{standups or 'None recorded.'}\n\n"
-            "The board and the ledger say how the sprint ended; the standups say how it "
-            "went. Read them for what they show over time: cards that stayed blocked or "
-            "waiting across many ticks, long runs where nothing moved, work that stalled "
-            "and restarted. Epics listed as awaiting approval are the Sponsor's queue at "
-            "the gate, not stuck work: they are expected to wait until the Sponsor "
-            "decides, and are not a defect.\n\n"
-            + (
-                "## Why work didn't land first time\n\n"
-                f"{retries}\n\n"
-                "A cause seen on more than one card is filed as a defect by the crew "
-                "itself, with its count and cards as evidence; do not propose those again. "
-                "Read the rest for what they say about how stories were written or "
-                "delivered.\n\n"
-                if retries
-                else ""
+    return calls.ask(
+        "scrum_master",
+        [
+            calls.Part(
+                "task",
+                f"Write the retro for sprint {sprint}.\n\n"
+                f"## What the board says\n\n{board_summary}\n\n"
+                f"## The escalation ledger\n\n{escalations or 'No escalations this sprint.'}\n\n"
+                f"## The sprint's standups, one per tick\n\n{standups or 'None recorded.'}\n\n"
+                "The board and the ledger say how the sprint ended; the standups say how it "
+                "went. Read them for what they show over time: cards that stayed blocked or "
+                "waiting across many ticks, long runs where nothing moved, work that stalled "
+                "and restarted. Epics listed as awaiting approval are the Sponsor's queue at "
+                "the gate, not stuck work: they are expected to wait until the Sponsor "
+                "decides, and are not a defect.\n\n"
+                + (
+                    "## Why work didn't land first time\n\n"
+                    f"{retries}\n\n"
+                    "A cause seen on more than one card is filed as a defect by the crew "
+                    "itself, with its count and cards as evidence; do not propose those again. "
+                    "Read the rest for what they say about how stories were written or "
+                    "delivered.\n\n"
+                    if retries
+                    else ""
+                )
+                + (
+                    "## Closed during this sprint\n\n"
+                    f"{fixed}\n\n"
+                    "Crew issues closed while the sprint ran. A problem one of these fixed is "
+                    "already handled, and one decided against was considered and rejected by the "
+                    "Sponsor: either way, cite it with `explained_by` and don't propose it "
+                    "again (#174).\n\n"
+                    if fixed
+                    else ""
+                )
+                + f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
+                "These are defects and work already understood and filed. Before proposing a "
+                "defect, check it against them. If one already explains what happened, cite it "
+                "as the cause (write it as it is written above, e.g. crew#116) and set "
+                "`explained_by` to its number rather than proposing it again: the symptom a "
+                "sprint shows is often not the cause. For a finding that is new, list in "
+                "`checked_against` the known issues you compared it with.\n\n"
+                "Report what happened, including what went badly, for a Sponsor who was not "
+                "present, and who reads it at a glance. The crew lays the retro out: it lists "
+                "the stories, the first-try causes and what's blocked itself, so don't repeat "
+                f"them. Give `summary` one or two sentences, `went` at most {MAX_WENT} short "
+                "bullets of what was notable, and `needs_you` only what needs the Sponsor. "
+                "Cite cards by number.\n"
+                "Where escalation was needed, name the specific story that was too large or "
+                "whose criteria were ambiguous, and propose the design change. A larger "
+                "escalation budget is never the answer.\n\n"
+                "Each defect is filed as an issue where the thing it found lives. Mark it "
+                "`process` if it is about how the crew works, or `product` if it is about "
+                "something the crew built, and for a product defect name the repository: "
+                f"{', '.join(delivery_repos or []) or 'none configured'}. One observation can "
+                "be both — a story that should have named its module is a process defect, the "
+                "duplicate it produced is a product defect — so file both rather than choosing.",
             )
-            + (
-                "## Closed during this sprint\n\n"
-                f"{fixed}\n\n"
-                "Crew issues closed while the sprint ran. A problem one of these fixed is "
-                "already handled, and one decided against was considered and rejected by the "
-                "Sponsor: either way, cite it with `explained_by` and don't propose it "
-                "again (#174).\n\n"
-                if fixed
-                else ""
-            )
-            + f"## Known issues on the crew repository, open now\n\n{known or 'None.'}\n\n"
-            "These are defects and work already understood and filed. Before proposing a "
-            "defect, check it against them. If one already explains what happened, cite it "
-            "as the cause (write it as it is written above, e.g. crew#116) and set "
-            "`explained_by` to its number rather than proposing it again: the symptom a "
-            "sprint shows is often not the cause. For a finding that is new, list in "
-            "`checked_against` the known issues you compared it with.\n\n"
-            "Report what happened, including what went badly, for a Sponsor who was not "
-            "present, and who reads it at a glance. The crew lays the retro out: it lists "
-            "the stories, the first-try causes and what's blocked itself, so don't repeat "
-            f"them. Give `summary` one or two sentences, `went` at most {MAX_WENT} short "
-            "bullets of what was notable, and `needs_you` only what needs the Sponsor. "
-            "Cite cards by number.\n"
-            "Where escalation was needed, name the specific story that was too large or "
-            "whose criteria were ambiguous, and propose the design change. A larger "
-            "escalation budget is never the answer.\n\n"
-            "Each defect is filed as an issue where the thing it found lives. Mark it "
-            "`process` if it is about how the crew works, or `product` if it is about "
-            "something the crew built, and for a product defect name the repository: "
-            f"{', '.join(delivery_repos or []) or 'none configured'}. One observation can "
-            "be both — a story that should have named its module is a process defect, the "
-            "duplicate it produced is a product defect — so file both rather than choosing."
-        ),
-        expected_output="A summary and any process defects this sprint argues for.",
-        agent=agents["scrum_master"],
-        output_pydantic=Retro,
+        ],
+        Retro,
+        expected="A summary and any process defects this sprint argues for.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic

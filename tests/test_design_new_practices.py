@@ -14,6 +14,7 @@ import contextlib
 
 from crew_org.crews import design_crew
 from crew_org.crews.design_crew import Change, DesignReview, Undeclared
+from tests import asked
 from tests.test_project_design import Architect, proposal, run
 
 CHECKS = ("uv run ruff check .", "uv run pytest -q")
@@ -68,18 +69,8 @@ def test_one_still_undeclared_is_refused():
 
 
 def captured(monkeypatch, **kwargs) -> str:
-    seen: dict = {}
-
-    class Stop(Exception):
-        pass
-
-    def crew(**_):
-        raise Stop
-
-    monkeypatch.setattr(design_crew, "_role", lambda *a: None)
-    monkeypatch.setattr(design_crew, "Task", lambda **k: seen.update(k))
-    monkeypatch.setattr(design_crew, "Crew", crew)
-    with contextlib.suppress(Stop):
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
         design_crew.review_design(project="p", design="d", **kwargs)
     return seen["description"]
 

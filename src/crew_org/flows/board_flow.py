@@ -14,9 +14,8 @@ is a project field that nothing filing an issue can set, so this records what a
 person already said in the only place they could say it. It changes no column
 and decides nothing.
 
-This is plain reconciliation code, not a CrewAI Flow. A Flow earns its place
-when routing genuinely branches by card state; for a single linear pass it
-would add ceremony that obscures what is happening. It arrives with Phase 2.
+This is plain reconciliation code, not a framework's flow engine: the board holds
+the state, and a single linear pass needs no more (ADR 0025).
 """
 
 from __future__ import annotations

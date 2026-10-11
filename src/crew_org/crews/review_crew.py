@@ -10,10 +10,9 @@ is not a review and an author cannot act on it.
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 from crew_org.crews import epic_rows
 
 # The whole diff, or no approval. A head slice of 30,000 characters meant the
@@ -159,46 +158,44 @@ def review_diff(
         if prior_verdicts
         else ""
     )
-    agents = build_agents("code_reviewer")
-    task = Task(
-        description=(
-            f"Review this pull request.\n\n## Title\n\n{title}{criteria}{previously}\n\n"
-            f"## Diff\n\n```diff\n{diff}\n```\n\n"
-            + (f"{checks}\n\n" if checks else "")
-            + (f"{imported}\n\n" if imported else "")
-            + (f"{importers}\n\n" if importers else "")
-            + epic_rows.block(
-                decisions,
-                "These are decided for the epic. Judge the diff against them as well: a "
-                "change that contradicts one is a finding, whatever else it gets right.",
+    return calls.ask(
+        "code_reviewer",
+        [
+            calls.Part(
+                "task",
+                f"Review this pull request.\n\n## Title\n\n{title}{criteria}{previously}\n\n"
+                f"## Diff\n\n```diff\n{diff}\n```\n\n"
+                + (f"{checks}\n\n" if checks else "")
+                + (f"{imported}\n\n" if imported else "")
+                + (f"{importers}\n\n" if importers else "")
+                + epic_rows.block(
+                    decisions,
+                    "These are decided for the epic. Judge the diff against them as well: a "
+                    "change that contradicts one is a finding, whatever else it gets right.",
+                )
+                + (
+                    "## The Architect's design note for this story's epic\n\n"
+                    f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"
+                    if design_note
+                    else ""
+                )
+                + (
+                    "The acceptance criteria are the product's decisions. If a finding would "
+                    "have the author break one of them, whatever the design note says, set its "
+                    "`conflicts_with` to that criterion: the story goes to the Product Owner to "
+                    "settle, not back to the author.\n"
+                    if acceptance_criteria
+                    else ""
+                )
+                + "Review for correctness first, then reuse and simplification. Name the file "
+                "for every finding and say what to do about it. Reject scope creep: a diff "
+                "doing more than its change is not ready, however good the extra is.\n"
+                "Do not ask whether it works at runtime — that is QA's evidence to produce. "
+                "Judge the diff.\n"
+                "If it is sound, approve it. Approving good work quickly matters as much as "
+                "catching bad work.",
             )
-            + (
-                "## The Architect's design note for this story's epic\n\n"
-                f"{design_note}\n\nJudge the diff against this approach as well (#155).\n\n"
-                if design_note
-                else ""
-            )
-            + (
-                "The acceptance criteria are the product's decisions. If a finding would "
-                "have the author break one of them, whatever the design note says, set its "
-                "`conflicts_with` to that criterion: the story goes to the Product Owner to "
-                "settle, not back to the author.\n"
-                if acceptance_criteria
-                else ""
-            )
-            + "Review for correctness first, then reuse and simplification. Name the file "
-            "for every finding and say what to do about it. Reject scope creep: a diff "
-            "doing more than its change is not ready, however good the extra is.\n"
-            "Do not ask whether it works at runtime — that is QA's evidence to produce. "
-            "Judge the diff.\n"
-            "If it is sound, approve it. Approving good work quickly matters as much as "
-            "catching bad work."
-        ),
-        expected_output="A verdict with a summary and any findings.",
-        agent=agents["code_reviewer"],
-        output_pydantic=ReviewVerdict,
+        ],
+        ReviewVerdict,
+        expected="A verdict with a summary and any findings.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic

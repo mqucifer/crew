@@ -68,28 +68,13 @@ def test_a_note_that_still_overrules_a_criterion_is_not_written(tmp_path):
 
 
 def captured_description(monkeypatch, module, call):
-    if not hasattr(module, "Task"):  # on the crew's own call layer (ADR 0025)
-        seen = asked.capture(monkeypatch)
-        with contextlib.suppress(asked.Stop):
-            call()
-        return seen["description"]
-    seen: dict = {}
-
-    class Stop(Exception):
-        pass
-
-    def crew(**kwargs):
-        raise Stop
-
-    monkeypatch.setattr(module, "Task", lambda **k: seen.update(k))
-    monkeypatch.setattr(module, "Crew", crew)
-    with contextlib.suppress(Stop):
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
         call()
     return seen["description"]
 
 
 def test_the_reviewer_is_asked_about_criteria_only_when_shown_stories(monkeypatch):
-    monkeypatch.setattr(design_crew, "_role", lambda *a: None)
     with_stories = captured_description(
         monkeypatch,
         design_crew,

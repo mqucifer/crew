@@ -47,3 +47,5 @@ inspect, so nothing felt orchestrated.
   check is the first step to make its calls through it; the other steps still
   go through CrewAI's Crew until they move, after that first step is proven on
   a real epic (crew#583, step D1a).
+- **2026-10-11:** the last steps moved to the crew's own call layer and CrewAI left
+  `pyproject.toml` (crew#583, ADR 0025). Nothing of it remains, as decided.

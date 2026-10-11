@@ -322,265 +322,36 @@ def _own_run() -> contextlib.AbstractContextManager[Any]:
 
 
 def working() -> dict[str, Any]:
-    """What the current model calls are for. For tests, and the bridge."""
+    """What the current model calls are for. For tests, and `record`."""
     return dict(_WORKING.get())
 
 
-# --- CrewAI bridge -------------------------------------------------------
+# --- where model calls are recorded --------------------------------------
 
-# CrewAI event payload attributes differ between versions, so every field is
-# read defensively and the mapping is data rather than code.
-_BRIDGE: dict[str, EventKind] = {
-    "TaskStartedEvent": EventKind.TASK_STARTED,
-    "TaskCompletedEvent": EventKind.TASK_COMPLETED,
-    "TaskFailedEvent": EventKind.TASK_FAILED,
-    "LLMCallStartedEvent": EventKind.LLM_CALL_STARTED,
-    "LLMCallCompletedEvent": EventKind.LLM_CALL_FINISHED,
-    "LLMCallFailedEvent": EventKind.LLM_CALL_FAILED,
-    "ToolUsageStartedEvent": EventKind.TOOL_STARTED,
-    "ToolUsageFinishedEvent": EventKind.TOOL_FINISHED,
-    "ToolUsageErrorEvent": EventKind.TOOL_FAILED,
-    "LiteAgentExecutionStartedEvent": EventKind.AGENT_STARTED,
-    "LiteAgentExecutionCompletedEvent": EventKind.AGENT_FINISHED,
-    "LiteAgentExecutionErrorEvent": EventKind.AGENT_FAILED,
-}
-
-
-def _first_attr(obj: Any, *names: str) -> Any:
-    for n in names:
-        value = getattr(obj, n, None)
-        if value is not None:
-            return value
-    return None
-
-
-# What a token count is called, across providers and CrewAI versions. Read
-# defensively for the same reason the rest of the bridge is: a live view that
-# breaks on upgrade is worse than no live view.
-_TOKEN_KEYS = {
-    "prompt_tokens": "prompt_tokens",
-    "input_tokens": "prompt_tokens",
-    "completion_tokens": "completion_tokens",
-    "output_tokens": "completion_tokens",
-    "total_tokens": "total_tokens",
-    "reasoning_tokens": "reasoning_tokens",
-    "cached_tokens": "cached_tokens",
-}
-
-
-def _usage(event: Any) -> dict[str, Any]:
-    """Token counts off a CrewAI LLM event, normalised and flattened.
-
-    The crew's own event model is the contract, so provider spellings are
-    mapped onto one set of names here rather than leaking into the log — and a
-    shape nobody anticipated yields nothing rather than an exception.
-
-    `reasoning_tokens` is picked out deliberately: a generation that spends its
-    whole budget reasoning and emits no text is the failure mode that hung an
-    epic split six times, and it is invisible in a total.
-    """
-    raw = _first_attr(event, "usage", "token_usage")
-    if not isinstance(raw, dict):
-        raw = getattr(raw, "__dict__", None) if raw is not None else None
-        if not isinstance(raw, dict):
-            return {}
-
-    out: dict[str, Any] = {}
-    for key, value in raw.items():
-        name = _TOKEN_KEYS.get(str(key))
-        if name is not None and isinstance(value, int):
-            out[name] = value
-        elif isinstance(value, dict):
-            # Nested details — OpenAI puts reasoning_tokens inside
-            # completion_tokens_details, and providers disagree about depth.
-            for inner, inner_value in value.items():
-                name = _TOKEN_KEYS.get(str(inner))
-                if name is not None and isinstance(inner_value, int):
-                    out.setdefault(name, inner_value)
-    return out
-
-
-# Where forwarded events go, and whether the handler is on the bus yet. The
-# bus is global and a handler registered twice delivers twice, so a command
-# that bridges more than one sink must not install a second handler.
+# The sinks every model call's events go to (`record`), each with the card it stands
+# for when the call itself doesn't say. The crew's own call layer writes them (ADR
+# 0025); CrewAI's bus, which this once forwarded, left with CrewAI (crew#583).
 _TARGETS: list[tuple[EventSink, int | None]] = []
-_INSTALLED = False
+
+
+def forward_calls_to(sink: EventSink, *, card: int | None = None) -> None:
+    """Send every model call's events to `sink` too. Idempotent per sink."""
+    if not any(existing is sink for existing, _ in _TARGETS):
+        _TARGETS.append((sink, card))
 
 
 def bridged_sinks() -> list[EventSink]:
-    """The sinks currently receiving CrewAI's events. For tests."""
+    """The sinks currently receiving model calls' events. For tests."""
     return [sink for sink, _card in _TARGETS]
 
 
 def reset_bridge() -> None:
-    """Forget every target. For tests — the bus handler itself cannot be removed."""
+    """Forget every target. For tests."""
     _TARGETS.clear()
-    _FAILED_CALLS.clear()
-    _CALL_VERSIONS.clear()
-    _TASK_SCHEMAS.clear()
-
-
-# The calls whose failure was already forwarded, so a repeat isn't recorded twice.
-_FAILED_CALLS: set[Any] = set()
-# Each call's prompt and schema versions, from its start, for its finish (crew#449).
-_CALL_VERSIONS: dict[Any, dict[str, str]] = {}
-# Each task's output form, from its start: a model call names only its task's id.
-_TASK_SCHEMAS: dict[str, str] = {}
-
-
-def _schema_of(model: Any) -> str | None:
-    """An output model's name and a fingerprint of its JSON schema, or None."""
-    import hashlib  # noqa: PLC0415
-
-    if model is None or not hasattr(model, "model_json_schema"):
-        return None
-    shape = json.dumps(model.model_json_schema(), sort_keys=True)
-    return f"{model.__name__}:{hashlib.sha256(shape.encode()).hexdigest()[:12]}"
-
-
-def _versions(event: Any) -> dict[str, str]:
-    """Which prompt and output form a model call ran with, as hashes, never content.
-
-    `prompt_hash` hashes the role's system message, which changes only when its
-    instructions do. `output_schema` is the output model's name and a fingerprint of its
-    JSON schema. A defect, its fix and a recurrence can then be placed either side
-    of the change (discussion 552).
-    """
-    import hashlib  # noqa: PLC0415
-
-    found: dict[str, str] = {}
-    system = [
-        str(m.get("content") or "")
-        for m in (_first_attr(event, "messages") or [])
-        if isinstance(m, dict) and m.get("role") == "system"
-    ]
-    if system:
-        found["prompt_hash"] = hashlib.sha256("\n".join(system).encode()).hexdigest()[:12]
-    task = _first_attr(event, "from_task")
-    schema = _schema_of(
-        getattr(task, "output_pydantic", None) or getattr(task, "output_json", None)
-    ) or _TASK_SCHEMAS.get(str(_first_attr(event, "task_id")))
-    if schema:
-        found["output_schema"] = schema
-    return found
-
-
-def bridge_crewai(sink: EventSink, *, card: int | None = None) -> None:
-    """Forward CrewAI's internal bus onto the crew's sink.
-
-    Nothing called this, so no real run's log has ever held a model call, a
-    token count or a tool invocation — `tui.py` defines and renders all four
-    kinds and they appeared only in the synthetic demo. The cost of a run was
-    unanswerable the moment it ended.
-
-    Best-effort by design: if CrewAI changes its bus, the live view degrades to
-    the crew's own events rather than crashing the tick.
-
-    Idempotent. Calling it again adds a target; the handler is installed once,
-    because the bus is global and registering twice delivers twice.
-    """
-    global _INSTALLED  # noqa: PLW0603
-
-    if not any(existing is sink for existing, _ in _TARGETS):
-        _TARGETS.append((sink, card))
-    if _INSTALLED:
-        return
-
-    try:
-        from crewai.events import crewai_event_bus  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        sink.note(EventKind.NOTE, "CrewAI event bus unavailable; live view uses crew events only.")
-        return
-
-    def _forward(_source: Any, event: Any) -> None:
-        kind = _BRIDGE.get(type(event).__name__)
-        if kind is None:
-            return
-        # CrewAI reports one failed call twice, about 2 ms apart, with the same
-        # call id: every one of Sprint 18's 25 refusals was logged twice (crew#449).
-        if kind is EventKind.LLM_CALL_FAILED:
-            call = _first_attr(event, "call_id")
-            if call is not None and call in _FAILED_CALLS:
-                return
-            if call is not None:
-                _FAILED_CALLS.add(call)
-        role = _first_attr(event, "role", "agent_role", "from_agent")
-        name = _first_attr(event, "task_name", "tool_name", "model", "description") or ""
-
-        # What the call cost and what it did, not just that it happened. The
-        # log had no tokens, no model and no tool names, so the cost of a run
-        # was unanswerable after the fact and a generation that burned its
-        # budget looked the same as one that answered.
-        detail: dict[str, Any] = {}
-        for field, value in (
-            ("model", _first_attr(event, "model")),
-            ("tool", _first_attr(event, "tool_name")),
-            ("finish_reason", _first_attr(event, "finish_reason")),
-        ):
-            if value is not None:
-                detail[field] = str(value)[:120]
-        # Why a call failed. Dropped until #223: three of the Architect's design
-        # notes failed at ten minutes each and the log said only "failed".
-        if kind is EventKind.LLM_CALL_FAILED and (error := _first_attr(event, "error")):
-            detail["error"] = str(error)[:400]
-        detail.update(_usage(event))
-        # Which call this is, and the provider's id for its response: the key
-        # the proxy stores the call's prompt and reasoning under (#179).
-        for field, value in (
-            ("call_id", _first_attr(event, "call_id")),
-            ("response_id", _first_attr(event, "response_id")),
-        ):
-            if value is not None:
-                detail[field] = str(value)
-        detail.update(_duration(kind, detail.get("call_id"), _first_attr(event, "timestamp")))
-        if kind is EventKind.TASK_STARTED:
-            with contextlib.suppress(Exception):
-                task = _first_attr(event, "task")
-                if (schema := _schema_of(getattr(task, "output_pydantic", None))) is not None:
-                    _TASK_SCHEMAS[str(getattr(task, "id", ""))] = schema
-        # The versions are read from the call's start and carried to its end.
-        call = detail.get("call_id")
-        if kind is EventKind.LLM_CALL_STARTED and call is not None:
-            with contextlib.suppress(Exception):
-                _CALL_VERSIONS[call] = _versions(event)
-        if call is not None:
-            detail.update(_CALL_VERSIONS.get(call, {}))
-            # Kept past a failure: a failed call can be retried under its id.
-            if kind is EventKind.LLM_CALL_FINISHED:
-                _CALL_VERSIONS.pop(call, None)
-        about = working()
-        detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
-        if kind in (EventKind.LLM_CALL_FINISHED, EventKind.LLM_CALL_FAILED):
-            _trace_call(kind, event, detail, role, about)
-
-        for target, target_card in list(_TARGETS):
-            target.emit(
-                CrewEvent(
-                    kind=kind,
-                    role=str(role) if role else None,
-                    card=about.get("card", target_card),
-                    summary=str(name)[:120],
-                    detail=detail,
-                )
-            )
-
-    # One registration per concrete class. The bus dispatches on the event's
-    # exact type — `_sync_handlers.get(type(event))`, no walk up the class
-    # hierarchy — so the single handler this used to register on `BaseEvent`
-    # was never called for any real event, and no tick ever recorded a model
-    # call (#117).
-    classes = _bridged_classes()
-    for cls in classes:
-        crewai_event_bus.on(cls)(_forward)
-    missing = sorted(set(_BRIDGE) - {cls.__name__ for cls in classes})
-    if missing:
-        sink.note(EventKind.NOTE, f"CrewAI no longer has {', '.join(missing)}; not bridged.")
-
-    _INSTALLED = True
 
 
 def record(kind: EventKind, summary: str, *, role: str | None = None, **detail: Any) -> None:
-    """An event from outside a flow (the model client), to every sink forwarding CrewAI's."""
+    """An event from outside a flow (the model client), to every sink calls go to."""
     about = working()
     detail.update({k: about[k] for k in _WORKING_KEYS if k in about and k != "card"})
     for target, target_card in list(_TARGETS):
@@ -593,94 +364,3 @@ def record(kind: EventKind, summary: str, *, role: str | None = None, **detail: 
                 detail=detail,
             )
         )
-
-
-def _trace_call(kind: EventKind, event: Any, detail: dict, role: Any, about: dict) -> None:
-    """A finished model call as a span, under the card or phase that made it (#283).
-
-    Run in the caller's context (CrewAI copies it onto the thread that delivers
-    the event), so the current span is the card's. Attributes, never content.
-    """
-    with contextlib.suppress(Exception):
-        from crew_org import tracing  # noqa: PLC0415
-
-        at = _first_attr(event, "timestamp")
-        if not isinstance(at, datetime):
-            return
-        end_ns = int(at.timestamp() * 1e9)
-        start_ns = end_ns - int(float(detail.get("duration_s") or 0) * 1e9)
-        tracing.model_call(
-            start_ns=start_ns,
-            end_ns=end_ns,
-            failed=kind is EventKind.LLM_CALL_FAILED,
-            attributes={
-                "gen_ai.operation.name": "chat",
-                "gen_ai.request.model": detail.get("model"),
-                "gen_ai.response.id": detail.get("response_id"),
-                "gen_ai.response.finish_reasons": detail.get("finish_reason"),
-                "gen_ai.usage.input_tokens": detail.get("prompt_tokens"),
-                "gen_ai.usage.output_tokens": detail.get("completion_tokens"),
-                "crew.reasoning_tokens": detail.get("reasoning_tokens"),
-                "crew.role": str(role) if role else None,
-                **{f"crew.{k}": v for k, v in about.items()},
-            },
-        )
-
-
-# When each call in flight started, by call id, for its duration. Measured,
-# not computed from: a raw number the export carries (#179).
-# The events' own timestamps, not when a handler ran: the bus delivers on a
-# thread pool, and a queued handler would stretch the call.
-_STARTED: dict[str, datetime] = {}
-_STARTED_LOCK = threading.Lock()
-
-
-def _duration(kind: EventKind, call_id: str | None, at: Any) -> dict[str, float]:
-    if call_id is None or not isinstance(at, datetime):
-        return {}
-    with _STARTED_LOCK:
-        if kind is EventKind.LLM_CALL_STARTED:
-            _STARTED[call_id] = at
-            return {}
-        if kind in (EventKind.LLM_CALL_FINISHED, EventKind.LLM_CALL_FAILED):
-            began = _STARTED.pop(call_id, None)
-            if began is None:
-                return {}
-            return {"duration_s": round((at - began).total_seconds(), 3)}
-    return {}
-
-
-def _bridged_classes() -> list[type]:
-    """The CrewAI event classes `_BRIDGE` names, found wherever CrewAI defines them."""
-    import importlib  # noqa: PLC0415
-    import pkgutil  # noqa: PLC0415
-
-    import crewai.events.types as types  # noqa: PLC0415
-
-    found: dict[str, type] = {}
-    for module in pkgutil.walk_packages(types.__path__, types.__name__ + "."):
-        try:
-            loaded = importlib.import_module(module.name)
-        except Exception:  # noqa: BLE001, S112
-            continue
-        for name in _BRIDGE:
-            cls = getattr(loaded, name, None)
-            if isinstance(cls, type) and name not in found:
-                found[name] = cls
-    return list(found.values())
-
-
-def flush_bridge(timeout: float = 30.0) -> None:
-    """Wait for CrewAI's bus to deliver what it has queued.
-
-    Its handlers run on a thread pool, so the last model call of a tick can
-    still be in flight when the tick returns. Best effort, as the bridge is.
-    """
-    if not _INSTALLED:
-        return
-    try:
-        from crewai.events import crewai_event_bus  # noqa: PLC0415
-
-        crewai_event_bus.flush(timeout=timeout)
-    except Exception:  # noqa: BLE001, S110
-        pass

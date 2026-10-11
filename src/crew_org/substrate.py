@@ -6,8 +6,8 @@ launch-flag dependent under SGLang:
   * tool calling      — needs a Qwen-matched --tool-call-parser
   * constrained JSON  — needs a grammar backend (xgrammar / outlines)
 
-These probes talk raw OpenAI-compatible HTTP rather than going through CrewAI or
-LiteLLM, so a failure is attributable to the server and not to a layer above it.
+These probes talk raw OpenAI-compatible HTTP rather than through the crew's call
+layer, so a failure is attributable to the server and not to a layer above it.
 """
 
 from __future__ import annotations
@@ -259,8 +259,8 @@ TOOL_SPEC = [
 def probe_tool_calling(base_url: str, model: str) -> ProbeResult:
     """0c — does the server emit well-formed tool_calls?
 
-    Without this, CrewAI agents cannot reliably use tools and the delivery tier
-    is not viable.
+    Without this, a role can't read files inside its call (ADR 0024), and the
+    delivery tier is not viable.
     """
     try:
         out = _chat(
@@ -382,66 +382,57 @@ def probe_structured_output(
 
 
 def probe_crew(base_url: str, model: str) -> ProbeResult:
-    """The whole stack: CrewAI -> proxy -> server -> a validated Pydantic model.
+    """The whole stack: the crew's call layer -> proxy -> server -> a validated answer.
 
-    Every earlier probe can pass while this fails, because CrewAI adds its own
-    prompt scaffolding and output parsing on top. Costs real tokens and a minute
-    or so, so it is opt-in.
+    Every earlier probe can pass while this fails, because the call layer adds the
+    role's text, the answer's schema and its validation on top (ADR 0025). Costs
+    real tokens and a minute or so, so it is opt-in.
     """
+    from pydantic import BaseModel as _BaseModel  # noqa: PLC0415
+
+    from crew_org import calls  # noqa: PLC0415
+
+    class _Probe(_BaseModel):
+        title: str
+        stories: list[str]
+
+    def send(body: dict) -> dict:
+        return _chat(base_url, model, **{k: v for k, v in body.items() if k != "model"})
+
     try:
-        from crewai import Agent, Crew, Process, Task  # noqa: PLC0415
-        from pydantic import BaseModel as _BaseModel  # noqa: PLC0415
-
-        from crew_org.llm import build_llm  # noqa: PLC0415
-
-        class _Probe(_BaseModel):
-            title: str
-            stories: list[str]
-
-        alias = model.removeprefix("openai/")
-        agent = Agent(
-            role="Product Owner",
-            goal="Turn a goal statement into one coherent epic.",
-            backstory="You decompose by outcome, never by architectural layer.",
-            llm=build_llm(alias, base_url=base_url),
-            verbose=False,
+        epic = calls.ask(
+            "product_owner",
+            [
+                calls.Part(
+                    "task",
+                    "Goal: report how the crew is performing.\n"
+                    "Propose exactly ONE epic that delivers part of it.",
+                )
+            ],
+            _Probe,
+            expected="An epic title and candidate story titles.",
+            send=send,
         )
-        task = Task(
-            description=(
-                "Goal: report how the crew is performing.\n"
-                "Propose exactly ONE epic that delivers part of it."
-            ),
-            expected_output="An epic title and candidate story titles.",
-            agent=agent,
-            output_pydantic=_Probe,
+    except calls.Refused as exc:
+        return ProbeResult(
+            check="call-layer round-trip",
+            status=Status.FAIL,
+            detail=str(exc)[:160],
+            hint="The answer never validated. Expect the SCHEMA repair path to carry the "
+            "load, and check that max_tokens leaves room above reasoning.",
         )
-        result = Crew(
-            agents=[agent], tasks=[task], process=Process.sequential, verbose=False
-        ).kickoff()
     except Exception as exc:  # noqa: BLE001
         return ProbeResult(
-            check="crewai round-trip",
+            check="call-layer round-trip",
             status=Status.FAIL,
             detail=f"{type(exc).__name__}: {exc}"[:160],
-            hint="The substrate is sound but CrewAI cannot drive it. Check the alias "
-            "exists on the proxy and that max_tokens leaves room above reasoning.",
+            hint="The substrate is sound but the call layer cannot drive it. Check the "
+            "alias exists on the proxy.",
         )
-
-    epic = getattr(result, "pydantic", None)
-    if epic is None:
-        return ProbeResult(
-            check="crewai round-trip",
-            status=Status.FAIL,
-            detail="crew ran but returned no typed output",
-            hint="output_pydantic did not parse. Expect the SCHEMA repair path to carry "
-            "the load, and tighten task descriptions.",
-        )
-    usage = getattr(result, "token_usage", None)
-    cost = f", {usage.total_tokens} tokens" if usage else ""
     return ProbeResult(
-        check="crewai round-trip",
+        check="call-layer round-trip",
         status=Status.PASS,
-        detail=f"typed output: {epic.title!r}, {len(epic.stories)} stories{cost}",
+        detail=f"typed output: {epic.title!r}, {len(epic.stories)} stories",
     )
 
 

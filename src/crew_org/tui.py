@@ -19,12 +19,17 @@ from rich.text import Text
 from crew_org.columns import BLOCKED
 from crew_org.events import CrewEvent, EventKind, EventSink
 
-_ACTIVITY_START = {EventKind.AGENT_STARTED, EventKind.TASK_STARTED}
+# A role is working from its first model call to its last: the crew's own call
+# layer records each with the role (ADR 0025). CrewAI's task events, which marked
+# this before, left with CrewAI (crew#583).
+_ACTIVITY_START = {EventKind.AGENT_STARTED, EventKind.TASK_STARTED, EventKind.LLM_CALL_STARTED}
 _ACTIVITY_END = {
     EventKind.AGENT_FINISHED,
     EventKind.AGENT_FAILED,
     EventKind.TASK_COMPLETED,
     EventKind.TASK_FAILED,
+    EventKind.LLM_CALL_FINISHED,
+    EventKind.LLM_CALL_FAILED,
 }
 
 _KIND_STYLE = {

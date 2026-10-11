@@ -87,7 +87,7 @@ def test_every_role_in_the_constitution_has_an_agent_definition(agents):
     assert not missing, f"roles absent from the constitution: {missing}"
 
 
-def test_agents_declare_the_fields_crewai_requires(agents):
+def test_agents_declare_the_fields_the_call_layer_requires(agents):
     for key, agent in agents.items():
         for field in ("role", "goal", "backstory", "llm"):
             assert agent.get(field), f"{key} is missing {field}"

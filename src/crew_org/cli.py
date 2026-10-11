@@ -698,7 +698,7 @@ def doctor(
         DOCTOR_MODEL, "--model", help="The proxy alias to probe. Defaults to crew-local."
     ),
     deep: bool = typer.Option(
-        False, "--deep", help="Also run a real CrewAI crew end to end. Costs tokens."
+        False, "--deep", help="Also run one real call through the crew's call layer. Costs tokens."
     ),
 ) -> None:
     """Validate the inference path the crew uses before anything is built on it.
@@ -1506,7 +1506,7 @@ def panel(
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.crews.panel_crew import run_panel
-    from crew_org.events import bridge_crewai, flush_bridge, working_on
+    from crew_org.events import forward_calls_to, working_on
     from crew_org.flows import panel as flow
     from crew_org.tools.github_issues import IssueClient
 
@@ -1522,12 +1522,9 @@ def panel(
         f"{len(context.decisions):,} characters of decisions."
     )
     # The panel's model calls are recorded like a tick's.
-    bridge_crewai(EventSink(VAR / "events" / "panel.jsonl"))
-    try:
-        with working_on(card=number, repo=repo):
-            result = run_panel(context)
-    finally:
-        flush_bridge()
+    forward_calls_to(EventSink(VAR / "events" / "panel.jsonl"))
+    with working_on(card=number, repo=repo):
+        result = run_panel(context)
     typer.echo(flow.render(result))
     if post:
         posted = flow.post(issues, repo, number, result)
@@ -1575,7 +1572,7 @@ def settle(
     from crew_org.config import load_env
     from crew_org.crews.panel_crew import run_panel
     from crew_org.crews.settle_crew import numbered
-    from crew_org.events import bridge_crewai, flush_bridge, working_on
+    from crew_org.events import forward_calls_to, working_on
     from crew_org.flows import panel as panel_flow
     from crew_org.flows import settle as flow
     from crew_org.tools.github_issues import IssueClient
@@ -1587,38 +1584,35 @@ def settle(
     context = _panel_context(issues, repo, number, env)
 
     sink = EventSink(VAR / "events" / "settle.jsonl")
-    bridge_crewai(sink)
-    try:
-        notes = panel_flow.panel_on(issues, repo, number)
-        if notes is None:
-            console.print("No panel comment on the epic: running the panel first.")
-            with working_on(card=number, repo=repo):
-                notes = run_panel(context)
-            if post:
-                panel_flow.post(issues, repo, number, notes)
-        console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
+    forward_calls_to(sink)
+    notes = panel_flow.panel_on(issues, repo, number)
+    if notes is None:
+        console.print("No panel comment on the epic: running the panel first.")
+        with working_on(card=number, repo=repo):
+            notes = run_panel(context)
         if post:
-            done = flow.settle_epic(
-                issues,
-                sink,
-                repo=repo,
-                epic=number,
-                context=context,
-                panel=notes,
-                known=set(_decision_repos(repo, env)),
-            )
-            console.print(f"[green]{done.outcome.value}[/]")
-            typer.echo(done.text)
-        else:
-            with working_on(card=number, repo=repo):
-                found = flow.propose(context, notes, "", card=number, repo=repo, sink=sink)
-            typer.echo(
-                flow.render(found.conclusion, owner=issues.owner, repo=repo)
-                if found.conclusion
-                else f"A question for the Sponsor: {found.sponsor_question}"
-            )
-    finally:
-        flush_bridge()
+            panel_flow.post(issues, repo, number, notes)
+    console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
+    if post:
+        done = flow.settle_epic(
+            issues,
+            sink,
+            repo=repo,
+            epic=number,
+            context=context,
+            panel=notes,
+            known=set(_decision_repos(repo, env)),
+        )
+        console.print(f"[green]{done.outcome.value}[/]")
+        typer.echo(done.text)
+    else:
+        with working_on(card=number, repo=repo):
+            found = flow.propose(context, notes, "", card=number, repo=repo, sink=sink)
+        typer.echo(
+            flow.render(found.conclusion, owner=issues.owner, repo=repo)
+            if found.conclusion
+            else f"A question for the Sponsor: {found.sponsor_question}"
+        )
 
 
 @app.command(name="reference")
@@ -2066,11 +2060,11 @@ def sprint_close(
         )
         raise typer.Exit(code=2)
 
-    from crew_org.events import bridge_crewai, flush_bridge
+    from crew_org.events import forward_calls_to
 
     # The retro's model calls are recorded like a tick's (#179).
     close_sink = EventSink(VAR / "events" / "close.jsonl")
-    bridge_crewai(close_sink)
+    forward_calls_to(close_sink)
     result = close_sprint(
         board,
         IssueClient(token, owner),
@@ -2085,7 +2079,6 @@ def sprint_close(
         delivery_repos=list(org.get("delivery", {}).get("repos") or []),
         tz=clock_zone(org),
     )
-    flush_bridge()
 
     console.print(f"\n[bold]{result.sprint}[/]")
     for number in result.merged:

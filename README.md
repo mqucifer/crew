@@ -1,9 +1,11 @@
 # crew
 
-An agile engineering organization run as CrewAI agents, orchestrated by a
-GitHub Projects v2 board.
+An agile engineering organization of model-backed roles, orchestrated by a
+GitHub Projects v2 board. Each role's model call is the crew's own: a role's text
+from `agents.yaml`, the step's parts, an answer form checked on the way back, and
+a refusal asked for again with its reason ([ADR 0025](docs/decisions/0025-the-crew-makes-its-own-model-calls.md)).
 
-The board is the orchestrator. Crews are stateless workers that claim a card,
+The board is the orchestrator. Roles are stateless workers that claim a card,
 perform exactly one state transition, and write the result back to the issue.
 The process is a reconciliation loop: idempotent, restartable, and auditable by
 reading the board.

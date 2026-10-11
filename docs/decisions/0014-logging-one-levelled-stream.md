@@ -71,7 +71,7 @@ is a log record with an `event.name`, so events and logs are the same stream.
 - **Content stays local.** Records in `var/` may hold content. Export goes
   through OpenTelemetry's log model, carrying level, context and `event.name`
   as attributes, and never content (ADR 0010).
-- **Third-party loggers** (CrewAI, LiteLLM, httpx) are set to `WARNING` and
+- **Third-party loggers** (httpx, OpenTelemetry, urllib3) are set to `WARNING` and
   above.
 - **The console is for people.** The crew writes its own full record, so
   console output is never redirected to keep one, and nothing reads the
@@ -104,3 +104,5 @@ is a log record with an `event.name`, so events and logs are the same stream.
   was pulled between ticks. The sprint's remaining ticks are then
   recorded with the joined context, and the real-tick check comes a day sooner.
   The readers handle the old and new records, so the sprint's close reads both.
+- **2026-10-11:** CrewAI and LiteLLM's SDK leave the quiet-logger list with CrewAI
+  (crew#583, ADR 0025); httpx, OpenTelemetry and urllib3 stay.

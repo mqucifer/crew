@@ -135,9 +135,9 @@ def describe(given: dict, epic: int, role: str, decisions: bool) -> str:
 
 
 def member(arm: str, run: int, epic: int, role: str, given: dict, decisions: bool) -> dict:
+    from crew_org.agents import build_agent
     from crewai import Crew, Process, Task
 
-    from crew_org.agents import build_agent
     from crew_org.events import attributed
 
     start, t = datetime.now(UTC), time.monotonic()

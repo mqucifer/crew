@@ -8,13 +8,10 @@ reason (discussion 553).
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from pydantic import BaseModel
 
 from crew_org.crews.asks import FileAsk, paths, reasons
 from crew_org.crews.delivery_crew import Implementation
-from crew_org.events import _versions
 from crew_org.flows.attempts import failing_tests
 
 REPORT = """\
@@ -96,19 +93,22 @@ class Verdict(BaseModel):
 
 
 def test_a_call_says_which_prompt_and_form_it_ran_with_as_hashes():
-    call = SimpleNamespace(
-        messages=[
-            {"role": "system", "content": "You are the Code Reviewer. Secret instructions."},
-            {"role": "user", "content": "the diff"},
-        ],
-        from_task=SimpleNamespace(output_pydantic=Verdict),
-    )
-    found = _versions(call)
-    assert len(found["prompt_hash"]) == 12 and "Secret" not in str(found)
-    assert found["output_schema"].startswith("Verdict:")
-    reworded = SimpleNamespace(
-        messages=[{"role": "system", "content": "You are the Code Reviewer. New instructions."}],
-        from_task=None,
-    )
-    assert _versions(reworded)["prompt_hash"] != found["prompt_hash"]
-    assert "output_schema" not in _versions(reworded)
+    """Recorded by the crew's own call layer (ADR 0025), as CrewAI's bridge did."""
+    from crew_org import calls, events  # noqa: PLC0415
+    from crew_org.events import EventKind, EventSink  # noqa: PLC0415
+
+    seen: list = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    events.reset_bridge()
+    events.forward_calls_to(sink)
+    answer = {"choices": [{"message": {"content": '{"approve": true}'}, "finish_reason": "stop"}]}
+    try:
+        for role in ("code_reviewer", "qa_engineer"):
+            calls.ask(role, [calls.Part("task", "the diff")], Verdict, send=lambda body: answer)
+    finally:
+        events.reset_bridge()
+    started = [e.detail for e in seen if e.kind is EventKind.LLM_CALL_STARTED]
+    assert len(started[0]["prompt_hash"]) == 12 and "Code Reviewer" not in str(started[0])
+    assert started[0]["output_schema"].startswith("Verdict:")
+    assert started[0]["prompt_hash"] != started[1]["prompt_hash"], "another role's text"

@@ -26,7 +26,7 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "crew_org"
 # Reached by something other than production code, with the reason. A name here
 # is a claim that nothing *should* call it, which is worth stating out loud.
 EXEMPT = {
-    "bridged_sinks": "test-only: asserts the CrewAI bridge registered a sink",
+    "bridged_sinks": "test-only: asserts model calls are forwarded to a sink",
     "reset_bridge": "test-only: the global bus handler cannot be unregistered",
 }
 

@@ -1,14 +1,13 @@
 [project]
 name = "crew-org"
 version = "0.1.0"
-description = "An agile engineering organization run as CrewAI agents, orchestrated by a GitHub Projects v2 board."
+description = "An agile engineering organization of model-backed roles, orchestrated by a GitHub Projects v2 board."
 readme = "README.md"
-# CrewAI 1.15.x declares >=3.10,<3.14. Pinned to 3.12 as the well-trodden
-# version within that range; the system default 3.14 is excluded outright.
+# Pinned to 3.12, the version the crew has always run on. CrewAI set the range
+# and has gone (crew#583, ADR 0025); widening it is a change of its own.
 requires-python = ">=3.12,<3.13"
 
 dependencies = [
-    "crewai>=1.15.22,<2",
     "pydantic>=2.9,<3",
     "httpx>=0.27",          # Projects v2 GraphQL
     "pyyaml>=6.0",

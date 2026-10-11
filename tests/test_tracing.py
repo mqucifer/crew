@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from crewai.events.types.llm_events import LLMCallCompletedEvent, LLMCallStartedEvent, LLMCallType
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from pydantic import BaseModel
 
-from crew_org import tracing
-from crew_org.events import EventSink, attributed, bridge_crewai, reset_bridge
-from tests.test_bridge_live_bus import emit
+from crew_org import calls, tracing
+from crew_org.events import EventSink, attributed, forward_calls_to, reset_bridge
 
 EXPORTED = InMemorySpanExporter()
 
@@ -43,23 +42,20 @@ def test_a_phase_and_the_card_it_works_are_nested_spans_with_the_attributes():
     assert card.attributes["crew.sprint"] == "Sprint 8" and card.attributes["crew.attempt"] == 1
 
 
+class Said(BaseModel):
+    text: str
+
+
 def test_a_model_call_is_a_span_under_its_card_with_genai_attributes_and_no_content():
-    bridge_crewai(EventSink(None))
+    forward_calls_to(EventSink(None))
+    answer = {
+        "id": "abc123",
+        "choices": [{"message": {"content": '{"text": "THE RESPONSE"}'}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+    }
 
     def call():
-        emit(LLMCallStartedEvent(model="crew-code-think", call_id="t1", messages=[]))
-        emit(
-            LLMCallCompletedEvent(
-                model="crew-code-think",
-                call_id="t1",
-                messages=[{"role": "user", "content": "THE PROMPT"}],
-                response="THE RESPONSE",
-                call_type=LLMCallType.LLM_CALL,
-                usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
-                finish_reason="stop",
-                response_id="abc123",
-            )
-        )
+        calls.ask("developer", [calls.Part("task", "THE PROMPT")], Said, send=lambda body: answer)
 
     attributed(attributed(call, card=147, repo="sprint-metrics"), purpose="deliver")()
     got = spans()
