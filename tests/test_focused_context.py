@@ -259,6 +259,40 @@ def test_a_focused_delivery_reads_inside_the_call_and_says_what_it_read(
     ]
 
 
+def test_an_answer_that_asks_isnt_counted_as_written(harness, monkeypatch, tmp_path):  # noqa: F811
+    """mqucifer/sprint-metrics#567 (2026-10-11) wrote the whole story and asked for one
+    file; its re-ask was shown every file the unapplied answer touched, 286k characters."""
+    from crew_org.crews.delivery_crew import FileEdit  # noqa: PLC0415
+
+    work_and_ask = FirstAttempt(
+        summary="the work, and one more file",
+        criteria_tests=[],
+        edits=[
+            FileEdit(
+                path="docs/metrics.md.py", operation="add", target="f", source="def f():\n    pass"
+            )
+        ],
+        need_files=["docs/metrics.md"],
+    )
+
+    def seeded_open(self, branch, *, resume=False):
+        self.resumed = False
+        path = tmp_path / branch.replace("/", "__")
+        (path / "docs").mkdir(parents=True, exist_ok=True)
+        (path / "docs/metrics.md").write_text("# Metrics\n" + "x" * 500)
+        (path / "docs/metrics.md.py").write_text("def g():\n    pass\n" + "# y\n" * 200)
+        return path
+
+    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
+    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
+    monkeypatch.setattr(repo_context, "READ_FIRST_CHAR_CEILING", 1)
+    _, _, _, _, calls, seen = harness(
+        checks=[green()], implement=lambda n: work_and_ask if n == 1 else WORK
+    )
+    shown = [e.detail for e in seen if e.kind == EventKind.FILES_SHOWN]
+    assert "docs/metrics.md.py" not in shown[1]["shown"], "not applied, so not written"
+
+
 def test_empty_answers_after_an_ask_go_in_steps(harness, monkeypatch, tmp_path):  # noqa: F811
     """mqucifer/sprint-metrics#567 asked for files, then answered empty ten times:
     steps were tried only after a first attempt, and its first attempt had asked."""

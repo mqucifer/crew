@@ -665,7 +665,8 @@ Three rules for every limit on prompt content:
    (181k tokens), and came back empty after 885 s. The files are now shown in
    this order, until the context reaches its ceiling (270,000 characters, or
    120,000 for the Developer, who reads the rest):
-   - the files the Developer just wrote, always, even past the ceiling; the
+   - the files the Developer's last applied answer wrote, always, even past
+     the ceiling (an answer that asked to see files isn't applied); the
      files it asked for come next, and keep to the ceiling, since it can read
      what doesn't fit: shown regardless, asks grew
      mqucifer/sprint-metrics#567's prompt to 82k tokens

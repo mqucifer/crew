@@ -71,8 +71,10 @@ class Part:
 
 
 # How many rounds of tool calls a step may make before it answers: enough to read the
-# few files a step finds it needs, not a crawl of the repository.
-TOOL_ROUNDS = 4
+# few files a step finds it needs, not a crawl of the repository. Four was one short for
+# mqucifer/sprint-metrics#567 (2026-10-11): twelve reads, then it asked for a 11k-character
+# file it could have read, and an answer that asks isn't applied. A round costs seconds.
+TOOL_ROUNDS = 6
 # Asked once the tool rounds end, when the answer itself is wanted in its form.
 ANSWER_NOW = "You have what you need. Give your answer now, in full and in its form."
 # Said before the tool rounds. Without it a model that needs nothing more writes its
