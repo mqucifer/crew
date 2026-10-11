@@ -1,6 +1,6 @@
-"""LLM construction for agents.
+"""The proxy the crew's model calls go through, and how to tell it's down.
 
-Agents name a LiteLLM alias (`crew-local`, `crew-analysis`, `crew-code-think`,
+Roles name a LiteLLM alias (`crew-local`, `crew-analysis`, `crew-code-think`,
 ...), never a model. The proxy owns the mapping to a backend, so re-pointing the
 crew at different hardware is a config change rather than a code change.
 
@@ -11,11 +11,7 @@ turning it off was a workaround for near-greedy sampling (#213).
 
 from __future__ import annotations
 
-import contextlib
 import os
-from typing import Any
-
-from crewai import LLM
 
 DEFAULT_BASE_URL = "http://localhost:4000/v1"
 
@@ -27,9 +23,7 @@ PLACEHOLDER_KEY = "sk-not-used"
 # Reasoning models need headroom ABOVE their thinking, and real refinement work
 # thinks hard: a single "propose epics for this goal" task was measured spending
 # 4,097 reasoning tokens and emitting 0 text tokens against a 4,096 ceiling —
-# the whole budget consumed before the answer began. CrewAI retries, so it
-# surfaces only as a slow task and a logged parse error, which is a genuinely
-# confusing way to discover a token budget problem.
+# the whole budget consumed before the answer began.
 #
 # The context window is 262,144, so headroom is cheap. Spend it.
 DEFAULT_MAX_TOKENS = 16384
@@ -60,65 +54,6 @@ def base_url() -> str:
 
 def api_key() -> str:
     return _setting("CREW_LLM_API_KEY", PLACEHOLDER_KEY)
-
-
-def build_llm(alias: str = "crew-local", **overrides: Any) -> LLM:
-    """Build a CrewAI LLM bound to a proxy alias.
-
-    The `openai/` prefix tells LiteLLM the backend speaks the OpenAI protocol;
-    it is not a statement about the provider.
-    """
-    params: dict[str, Any] = {
-        "model": f"openai/{alias}",
-        "base_url": base_url(),
-        "api_key": api_key(),
-        "max_tokens": DEFAULT_MAX_TOKENS,
-        "timeout": DEFAULT_TIMEOUT,
-    }
-    params.update(overrides)
-    llm = LLM(**params)
-    with contextlib.suppress(TypeError):
-        # Same object, one method wrapped: CrewAI chooses the client class.
-        llm.__class__ = _recording(type(llm))
-    return llm
-
-
-def _empty(answer: Any) -> bool:
-    return answer is None or (isinstance(answer, str) and not answer.strip())
-
-
-_RECORDING: dict[type, type] = {}
-
-
-def _recording(base: type) -> type:
-    """`base`, with an empty answer recorded as an event (#312). Behaviour is unchanged.
-
-    The model can think for thousands of tokens and answer nothing; CrewAI
-    then resends the same prompt, and the crew's log showed only a call
-    finishing and another starting. Measured first, because the cause isn't
-    known and making the call weaker isn't an acceptable fix.
-    """
-    if base in _RECORDING:
-        return _RECORDING[base]
-
-    class Recording(base):  # type: ignore[misc, valid-type]
-        def call(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
-            answer = super().call(messages, *args, **kwargs)
-            if _empty(answer):
-                from crew_org.events import EventKind, record  # noqa: PLC0415
-
-                response_model = kwargs.get("response_model")
-                record(
-                    EventKind.LLM_CALL_EMPTY,
-                    f"{self.model} answered nothing",
-                    model=str(self.model),
-                    structured=bool(response_model),
-                )
-            return answer
-
-    Recording.__name__ = f"Recording{base.__name__}"
-    _RECORDING[base] = Recording
-    return Recording
 
 
 def health() -> tuple[bool, str]:

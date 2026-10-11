@@ -120,6 +120,7 @@ def main() -> None:
         # the review applies a rule. Hidden, it has to find them: the case where
         # a panel should earn its cost, and where correlated misses would show.
         import crew_org.agents as agents
+
         from crew_org.constitution import excerpt
 
         def without_rule_8(*sections):

@@ -11,10 +11,9 @@ while any criterion is unproven.
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 from crew_org.crews import epic_rows
 from crew_org.crews.asks import FileAsk
 
@@ -110,7 +109,6 @@ def verify_story(
     `project` is the project's record, as `project.brief` writes it (#131): what
     done means in this project, and what agents must not touch, beside the story.
     """
-    agents = build_agents("qa_engineer")
     # Stable-first for the prefix cache: the story is fixed for this card, the
     # trail is fixed for this attempt, the tests and their output change every
     # time.
@@ -124,53 +122,52 @@ def verify_story(
         if prior_verdicts
         else ""
     )
-    task = Task(
-        description=(
-            (f"{project}\n\n" if project else "")
-            + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
-            + epic_rows.block(
-                decisions,
-                "These are decided for the epic. A criterion is proven only by work that also "
-                "keeps to them: hold it unproven if the code does what a row rules out.",
+    return calls.ask(
+        "qa_engineer",
+        [
+            calls.Part(
+                "task",
+                (f"{project}\n\n" if project else "")
+                + f"Verify this story against its acceptance criteria.\n\n{story}{previously}\n\n"
+                + epic_rows.block(
+                    decisions,
+                    "These are decided for the epic. A criterion is proven only by work that also "
+                    "keeps to them: hold it unproven if the code does what a row rules out.",
+                )
+                + f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
+                f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
+                + (
+                    f"{checks}\n\nA criterion only CI can run (an image build, a workflow) "
+                    "is proven by naming the passing check above **that runs it**. A check "
+                    "proves only what its steps execute: a `tests` check that runs lint and "
+                    "pytest proves nothing about a workflow it never runs, and a test the run "
+                    "skipped proves nothing at all. A check that failed or is still running "
+                    "proves nothing yet. If no check runs it, the criterion is unproven.\n\n"
+                    if checks
+                    else ""
+                )
+                + (
+                    f"## The docs this change edits, as they now read\n\n{docs}\n\n"
+                    "A criterion about what a doc says is proven by the doc, not a test "
+                    "(Definition of Done §7.1). Read it: quote the passage that meets the "
+                    "criterion as your evidence, and hold it unproven if the doc doesn't say "
+                    "it or says something the code doesn't do.\n\n"
+                    if docs
+                    else ""
+                )
+                + (
+                    "Test files listed by name only weren't shown in full. If judging a "
+                    "criterion needs one, name it in `need_files` (and nothing else) and you'll "
+                    "be asked again with it shown. Don't cite a test you haven't read.\n"
+                    if can_ask
+                    else ""
+                )
+                + "For each acceptance criterion, decide whether a test actually exercises it "
+                "and name that test. A passing suite is not the same claim as a proven "
+                "criterion — a test that exists but checks something adjacent proves nothing. "
+                "Report what you found, including what went badly. Do not soften a failure.",
             )
-            + f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
-            f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"
-            + (
-                f"{checks}\n\nA criterion only CI can run (an image build, a workflow) "
-                "is proven by naming the passing check above **that runs it**. A check "
-                "proves only what its steps execute: a `tests` check that runs lint and "
-                "pytest proves nothing about a workflow it never runs, and a test the run "
-                "skipped proves nothing at all. A check that failed or is still running "
-                "proves nothing yet. If no check runs it, the criterion is unproven.\n\n"
-                if checks
-                else ""
-            )
-            + (
-                f"## The docs this change edits, as they now read\n\n{docs}\n\n"
-                "A criterion about what a doc says is proven by the doc, not a test "
-                "(Definition of Done §7.1). Read it: quote the passage that meets the "
-                "criterion as your evidence, and hold it unproven if the doc doesn't say "
-                "it or says something the code doesn't do.\n\n"
-                if docs
-                else ""
-            )
-            + (
-                "Test files listed by name only weren't shown in full. If judging a "
-                "criterion needs one, name it in `need_files` (and nothing else) and you'll "
-                "be asked again with it shown. Don't cite a test you haven't read.\n"
-                if can_ask
-                else ""
-            )
-            + "For each acceptance criterion, decide whether a test actually exercises it "
-            "and name that test. A passing suite is not the same claim as a proven "
-            "criterion — a test that exists but checks something adjacent proves nothing. "
-            "Report what you found, including what went badly. Do not soften a failure."
-        ),
-        expected_output="A verdict per acceptance criterion, with evidence.",
-        agent=agents["qa_engineer"],
-        output_pydantic=QAVerdict,
+        ],
+        QAVerdict,
+        expected="A verdict per acceptance criterion, with evidence.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    return crew.kickoff().pydantic

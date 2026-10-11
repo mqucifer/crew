@@ -13,6 +13,7 @@ import httpx
 from crew_org.flows.ci import CI_MARKER, job_id, log_tail
 from crew_org.flows.delivery import awaiting_rework, prior_verdicts
 from crew_org.tools.github_issues import IssueClient, QueueState
+from tests import asked
 from tests.test_merge import FakeIssues, QueueIssues, card, run
 
 HEAD = "c0ffee"
@@ -297,18 +298,8 @@ def test_qa_is_told_a_check_proves_only_what_it_runs(monkeypatch):
 
     from crew_org.crews import qa_crew
 
-    seen: dict = {}
-
-    class Stop(Exception):
-        pass
-
-    def crew(**_):
-        raise Stop
-
-    monkeypatch.setattr(qa_crew, "build_agents", lambda *a: {"qa_engineer": None})
-    monkeypatch.setattr(qa_crew, "Task", lambda **k: seen.update(k))
-    monkeypatch.setattr(qa_crew, "Crew", crew)
-    with contextlib.suppress(Stop):
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
         qa_crew.verify_story("S", test_output="", test_code="", checks="- `tests`: success")
     assert "**that runs it**" in seen["description"]
     assert "a test the run skipped proves nothing" in seen["description"]

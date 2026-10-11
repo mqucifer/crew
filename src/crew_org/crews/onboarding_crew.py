@@ -10,11 +10,9 @@ interview with a required answer unsettled.
 
 from __future__ import annotations
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 # Every field optional: a turn reports only what it learned. The flow merges it
 # into the answers so far, so an answer settled three turns ago is not lost
@@ -129,25 +127,27 @@ def interview_turn(
     still_open: str = "",
 ) -> Turn:
     """The Product Owner's next turn in an onboarding interview."""
-    spec = load_agents()["product_owner"]
-    agent = build_agent("product_owner", {**spec, **spec["onboarding"]})
-    task = Task(
-        description=turn_description(
-            repository=repository,
-            intent=intent,
-            draft=draft,
-            proposed=proposed,
-            missing=missing,
-            problems=problems,
-            conversation=conversation,
-            still_open=still_open,
-        ),
-        expected_output="The answers this turn settled, what to say, and what is left to ask.",
-        agent=agent,
-        output_pydantic=Turn,
+    return calls.ask(
+        "product_owner",
+        [
+            calls.Part(
+                "task",
+                turn_description(
+                    repository=repository,
+                    intent=intent,
+                    draft=draft,
+                    proposed=proposed,
+                    missing=missing,
+                    problems=problems,
+                    conversation=conversation,
+                    still_open=still_open,
+                ),
+            )
+        ],
+        Turn,
+        expected="The answers this turn settled, what to say, and what is left to ask.",
+        step="onboarding",
     )
-    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic
 
 
 def turn_description(

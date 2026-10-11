@@ -52,7 +52,7 @@ recover from a host reboot mid-tick.
 
 ## What the crew depends on
 
-If serving is iterated to better suit CrewAI, three things must not regress.
+If serving is iterated to better suit the crew's calls, three things must not regress.
 `crew doctor` checks all three, so run it after any change:
 
 1. **`--tool-call-parser qwen3_coder`** — agents cannot use tools without it.

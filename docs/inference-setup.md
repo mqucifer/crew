@@ -81,7 +81,7 @@ fail with "arguments unparseable" or JSON wrapped in prose.
 
 ```bash
 crew doctor           # through the proxy, as crew-local
-crew doctor --deep    # and a real CrewAI crew end to end
+crew doctor --deep    # and one real call through the crew's call layer
 ```
 
 **Everything goes through the proxy, the doctor included.** It probes
@@ -99,8 +99,9 @@ unexplained agent failures that are far more expensive to diagnose.
 
 ## Proxy verification (2026-09-18)
 
-The full stack is proven end to end: CrewAI -> LiteLLM -> SGLang -> Qwen3.8-27B,
-returning a validated Pydantic model.
+The full stack is proven end to end: the crew's call layer -> LiteLLM -> SGLang ->
+Qwen3.8-27B, returning a validated Pydantic model. (Proven first through CrewAI, which
+the call layer replaced on 2026-10-11, ADR 0025; the probe now uses the call layer.)
 
 ```
 crew doctor --base-url http://localhost:4000/v1 --model crew-local --deep
@@ -110,7 +111,7 @@ crew doctor --base-url http://localhost:4000/v1 --model crew-local --deep
   constrained JSON     pass   5/5 schema-valid
   context length       warn   not reported by this endpoint
   thinking control     pass   enable_thinking=false honoured
-  crewai round-trip    pass   typed output, 3 stories, 624 tokens
+  call-layer round-trip  pass   typed output, 3 stories
 ```
 
 Tool calling and constrained JSON both survive the proxy hop — that was the

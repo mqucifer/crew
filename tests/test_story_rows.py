@@ -8,7 +8,6 @@ bloat every story's context, and nothing the story relies on goes missing.
 from __future__ import annotations
 
 import contextlib
-from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +16,7 @@ from crew_org.events import EventSink
 from crew_org.flows import conclusion as flow
 from crew_org.flows import record
 from crew_org.tools.github_project import Card
+from tests import asked
 from tests.test_delivery_flow import harness  # noqa: F401
 
 CONCLUSION = (
@@ -159,23 +159,8 @@ def test_no_rows_means_no_block():
 
 
 def prompt(monkeypatch, module, call, **kw) -> str:
-    seen = {}
-
-    class Crew:
-        def __init__(self, **_):
-            pass
-
-        def kickoff(self):
-            return SimpleNamespace(pydantic=object())
-
-    class Agents(dict):
-        def __missing__(self, key):
-            return object()
-
-    monkeypatch.setattr(module, "build_agents", lambda *a, **k: Agents(), raising=False)
-    monkeypatch.setattr(module, "Task", lambda **k: seen.update(k) or object())
-    monkeypatch.setattr(module, "Crew", Crew)
-    with contextlib.suppress(Exception):  # only the prompt is under test, not the verdict
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):  # only the prompt is under test, not the verdict
         call(**kw)
     return seen["description"]
 

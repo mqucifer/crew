@@ -19,10 +19,9 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agents
+from crew_org import calls
 
 _TEST_ID = re.compile(r"^[\w/.-]+\.py::\w+$")
 
@@ -64,29 +63,26 @@ class ContractRuling(BaseModel):
 
 def rule_on_contract(*, story: str, rows: str, failures: dict[str, str]) -> ContractRuling:
     """The Business Analyst's ruling on merged tests a story broke and didn't declare."""
-    agents = build_agents("business_analyst")
     broken = "\n".join(f"- `{test}`: {why or 'failed'}" for test, why in sorted(failures.items()))
-    task = Task(
-        description=(
-            f"## The story\n\n{story}\n\n"
-            + (f"{rows}\n\n" if rows else "")
-            + f"## Merged tests it broke that its Existing tests line doesn't name\n\n{broken}\n\n"
-            "The Developer's change to this story breaks merged tests the story doesn't "
-            "declare. Decide for this story alone. If its criteria, or the rows it follows, "
-            "require changing what these tests pin, amend its contract: name the tests it "
-            "now declares and say what they must assert after; the Developer updates them in "
-            "this story. If the story shouldn't change that behaviour, or you can't tell "
-            "from what's written, return it to refinement and say why. Quote the criterion "
-            "or row that decides it."
-        ),
-        expected_output="Amend the story's contract, or return it, with why.",
-        agent=agents["business_analyst"],
-        output_pydantic=ContractRuling,
+    ruling = calls.ask(
+        "business_analyst",
+        [
+            calls.Part(
+                "task",
+                f"## The story\n\n{story}\n\n"
+                + (f"{rows}\n\n" if rows else "")
+                + "## Merged tests it broke that its Existing tests line doesn't name\n\n"
+                + f"{broken}\n\n"
+                "The Developer's change to this story breaks merged tests the story doesn't "
+                "declare. Decide for this story alone. If its criteria, or the rows it follows, "
+                "require changing what these tests pin, amend its contract: name the tests it "
+                "now declares and say what they must assert after; the Developer updates them in "
+                "this story. If the story shouldn't change that behaviour, or you can't tell "
+                "from what's written, return it to refinement and say why. Quote the criterion "
+                "or row that decides it.",
+            )
+        ],
+        ContractRuling,
+        expected="Amend the story's contract, or return it, with why.",
     )
-    crew = Crew(
-        agents=list(agents.values()), tasks=[task], process=Process.sequential, verbose=False
-    )
-    ruling = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(ruling, ContractRuling):
-        raise ValueError("the Business Analyst gave no answer in the ContractRuling form")
     return ruling

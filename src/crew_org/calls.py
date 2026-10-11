@@ -189,14 +189,17 @@ def _fingerprint(text: str) -> str:
 
 
 def _usage(data: dict[str, Any]) -> dict[str, int]:
+    """Token counts off a response, reasoning picked out: a shape nobody anticipated is none."""
     usage = data.get("usage") or {}
+    if not isinstance(usage, dict):
+        return {}
     found = {
         k: usage[k]
         for k in ("prompt_tokens", "completion_tokens", "total_tokens")
         if isinstance(usage.get(k), int)
     }
     details = usage.get("completion_tokens_details") or {}
-    if isinstance(details.get("reasoning_tokens"), int):
+    if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
         found["reasoning_tokens"] = details["reasoning_tokens"]
     cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
     if isinstance(cached, int):

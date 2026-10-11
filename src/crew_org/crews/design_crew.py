@@ -15,11 +15,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from crewai import Crew, Process, Task
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from crew_org.agents import build_agent
-from crew_org.permissions import load_agents
+from crew_org import calls
 
 
 class Choice(BaseModel):
@@ -207,11 +205,6 @@ class DesignReview(BaseModel):
     )
 
 
-def _role(key: str, section: str):
-    spec = load_agents()[key]
-    return build_agent(key, {**spec, **spec[section]})
-
-
 def propose_design(
     *, project: str, repository: str, current: str = "", reason: str = "", feedback: str = ""
 ) -> DesignProposal:
@@ -221,7 +214,6 @@ def propose_design(
     `reason` is why it is being revisited. `feedback` is a previous proposal's
     refusal, when this is a retry.
     """
-    architect = _role("architect", "project_design")
     revising = (
         f"## The design in the record now\n\n```yaml\n{current}\n```\n\n"
         f"It is being revisited because: {reason or '(no reason given)'}\n\n"
@@ -230,29 +222,31 @@ def propose_design(
         else ""
     )
     refused = f"## Your last proposal was refused\n\n{feedback}\n\n" if feedback else ""
-    task = Task(
-        description=(
-            f"{project}\n\n## The project's code\n\n{repository or '(the repository is empty)'}"
-            f"\n\n{revising}{refused}"
-            "Propose this project's design: language, dependencies, what the sandbox must "
-            "provide, the commands that enforce its definition of done, how a release "
-            "happens, how its code is divided into modules, and which files its user "
-            "documentation lives in. The crew's tools differ by language: Python gets edits "
-            "by definition name, a guard that refuses a change removing an existing "
-            "definition, and a map of what every file defines; any other language gets "
-            "whole-file and find-and-replace edits, tests found by title in its declared test "
-            "files, and no such guard. Weigh that where the language is a choice. Give the "
-            "basis of each choice. Where the project already has an answer (its CI, its "
-            "lockfile, its "
-            "build, its modules), record it; anything that differs from what it does today "
-            "goes in `changes`, with why, and whether making it so needs work on the code."
-        ),
-        expected_output="The design, each choice with its basis, and any changes with why.",
-        agent=architect,
-        output_pydantic=DesignProposal,
+    return calls.ask(
+        "architect",
+        [
+            calls.Part(
+                "task",
+                f"{project}\n\n## The project's code\n\n{repository or '(the repository is empty)'}"
+                f"\n\n{revising}{refused}"
+                "Propose this project's design: language, dependencies, what the sandbox must "
+                "provide, the commands that enforce its definition of done, how a release "
+                "happens, how its code is divided into modules, and which files its user "
+                "documentation lives in. The crew's tools differ by language: Python gets edits "
+                "by definition name, a guard that refuses a change removing an existing "
+                "definition, and a map of what every file defines; any other language gets "
+                "whole-file and find-and-replace edits, tests found by title in its declared test "
+                "files, and no such guard. Weigh that where the language is a choice. Give the "
+                "basis of each choice. Where the project already has an answer (its CI, its "
+                "lockfile, its "
+                "build, its modules), record it; anything that differs from what it does today "
+                "goes in `changes`, with why, and whether making it so needs work on the code.",
+            )
+        ],
+        DesignProposal,
+        expected="The design, each choice with its basis, and any changes with why.",
+        step="project_design",
     )
-    crew = Crew(agents=[architect], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic
 
 
 def review_design(
@@ -271,7 +265,6 @@ def review_design(
     new practice arrived looking like a record of existing fact. The role that
     proposes doesn't grade itself.
     """
-    reviewer = _role("code_reviewer", "design_review")
     against = (
         "## The stories this note directs, with their acceptance criteria\n\n"
         f"{stories}\n\n"
@@ -291,22 +284,24 @@ def review_design(
         if repository
         else ""
     )
-    task = Task(
-        description=(
-            f"{project}\n\n## The proposed design\n\n```yaml\n{design}\n```\n\n"
-            + against
-            + new
-            + "Check each choice against the crew-wide guidelines (§19, in your rules) and "
-            "the project's own guidelines above. Report every choice that contradicts one, "
-            "naming the guideline. A choice that is merely different from what you would "
-            "pick is not a conflict."
-        ),
-        expected_output="Every conflict with a guideline, or none.",
-        agent=reviewer,
-        output_pydantic=DesignReview,
+    return calls.ask(
+        "code_reviewer",
+        [
+            calls.Part(
+                "task",
+                f"{project}\n\n## The proposed design\n\n```yaml\n{design}\n```\n\n"
+                + against
+                + new
+                + "Check each choice against the crew-wide guidelines (§19, in your rules) and "
+                "the project's own guidelines above. Report every choice that contradicts one, "
+                "naming the guideline. A choice that is merely different from what you would "
+                "pick is not a conflict.",
+            )
+        ],
+        DesignReview,
+        expected="Every conflict with a guideline, or none.",
+        step="design_review",
     )
-    crew = Crew(agents=[reviewer], tasks=[task], process=Process.sequential, verbose=False)
-    return crew.kickoff().pydantic
 
 
 # Where a merged design's declared work goes (crew#439). sprint-metrics' design of
@@ -351,19 +346,18 @@ def place_changes(*, project: str, changes: str, epics: str) -> Placements:
     `changes` is numbered from 1; `epics` is the project's open product epics,
     approved or proposed, each with its number and what it delivers.
     """
-    architect = _role("architect", "design_placement")
-    task = Task(
-        description=(
-            f"{project}\n\n## The changes the merged design declares as needing work\n\n"
-            f"{changes}\n\n## The project's open epics\n\n{epics or '(none)'}\n\n"
-            "Place every change, once each. Name an epic only from the list above."
-        ),
-        expected_output="One placement per change.",
-        agent=architect,
-        output_pydantic=Placements,
+    placed = calls.ask(
+        "architect",
+        [
+            calls.Part(
+                "task",
+                f"{project}\n\n## The changes the merged design declares as needing work\n\n"
+                f"{changes}\n\n## The project's open epics\n\n{epics or '(none)'}\n\n"
+                "Place every change, once each. Name an epic only from the list above.",
+            )
+        ],
+        Placements,
+        expected="One placement per change.",
+        step="design_placement",
     )
-    crew = Crew(agents=[architect], tasks=[task], process=Process.sequential, verbose=False)
-    placed = getattr(crew.kickoff(), "pydantic", None)
-    if not isinstance(placed, Placements):
-        raise ValueError("the Architect's placement didn't parse")
     return placed

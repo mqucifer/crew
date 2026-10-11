@@ -35,8 +35,7 @@ from crew_org.events import (
     EventKind,
     EventSink,
     attributed,
-    bridge_crewai,
-    flush_bridge,
+    forward_calls_to,
 )
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
@@ -870,10 +869,9 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
 
-    # Model calls, their tokens and the tools they used. Installed once, for
-    # the whole tick: the bridge existed and nothing called it, so every real
-    # run's log was blind to everything the model did.
-    bridge_crewai(crew.sink)
+    # Model calls, their tokens and the tools they used, for the whole tick: a
+    # log blind to what the model did can't say what a run cost.
+    forward_calls_to(crew.sink)
     # Every throttle GitHub asks for, waited out, is seen (#293).
     github_http.observe(
         lambda wait, detail: crew.sink.emit(
@@ -1020,7 +1018,4 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         f"{'stable' if result.settled else 'stopped at the pass cap'}, "
         f"{len(result.failed)} failed",
     )
-    # The bus delivers on a thread pool; the tick's last model calls can still
-    # be in flight. Wait for them, or the log loses exactly the end of the run.
-    flush_bridge()
     return result

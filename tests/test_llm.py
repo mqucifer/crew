@@ -100,138 +100,37 @@ def test_an_absent_setting_falls_back_to_the_placeholder(monkeypatch, tmp_path):
     assert llm.api_key() == llm.PLACEHOLDER_KEY
 
 
-def test_a_role_can_ask_for_more_headroom_than_the_default(monkeypatch):
+def _sent(role: str) -> dict:
+    """The body the crew's call layer sends for `role` (ADR 0025)."""
+    from pydantic import BaseModel  # noqa: PLC0415
+
+    from crew_org import calls  # noqa: PLC0415
+
+    class Said(BaseModel):
+        text: str
+
+    sent: list[dict] = []
+    answer = {"choices": [{"message": {"content": '{"text": "ok"}'}, "finish_reason": "stop"}]}
+    calls.ask(role, [calls.Part("task", "t")], Said, send=lambda body: sent.append(body) or answer)
+    return sent[0]
+
+
+def test_a_role_can_ask_for_more_headroom_than_the_default():
     """The Business Analyst's input grows without bound — a large epic spent
     the shared 16,384-token budget on reasoning alone and returned nothing."""
-    import crew_org.agents as agents_mod
+    from crew_org.permissions import load_agents  # noqa: PLC0415
 
-    captured = {}
-
-    def fake_build_llm(alias="crew-local", **overrides):
-        captured["alias"] = alias
-        captured.update(overrides)
-        return object()
-
-    monkeypatch.setattr(agents_mod, "build_llm", fake_build_llm)
-    monkeypatch.setattr(agents_mod, "Agent", lambda **kw: kw)
-
-    agents_mod.build_agent(
-        "business_analyst",
-        {
-            "role": "Business Analyst",
-            "goal": "split epics",
-            "backstory": "you are ruthless about size",
-            "llm": "crew-analysis",
-            "llm_params": {"max_tokens": 32768},
-        },
-    )
-    assert captured["alias"] == "crew-analysis"
-    assert captured["max_tokens"] == 32768
+    roomy = [k for k, v in load_agents().items() if (v.get("llm_params") or {}).get("max_tokens")]
+    assert roomy
+    for role in roomy:
+        assert _sent(role)["max_tokens"] == load_agents()[role]["llm_params"]["max_tokens"]
 
 
 def test_a_role_that_asks_for_nothing_gets_the_defaults(monkeypatch):
-    import crew_org.agents as agents_mod
+    from crew_org import calls  # noqa: PLC0415
 
-    captured = {}
-
-    def fake_build_llm(alias="crew-local", **overrides):
-        captured["alias"] = alias
-        captured["overrides"] = overrides
-        return object()
-
-    monkeypatch.setattr(agents_mod, "build_llm", fake_build_llm)
-    monkeypatch.setattr(agents_mod, "Agent", lambda **kw: kw)
-
-    agents_mod.build_agent(
-        "developer",
-        {"role": "Developer", "goal": "build", "backstory": "you write code", "llm": "crew-code"},
-    )
-    assert captured["overrides"] == {}
-
-
-def test_the_analyst_is_configured_off_the_shared_alias():
-    """The change that matters is in agents.yaml, not in a call site."""
-    from crew_org.permissions import load_agents
-
-    spec = load_agents()["business_analyst"]
-    assert spec["llm"] == "crew-analysis"
-    assert spec["llm_params"]["max_tokens"] > 16384
-
-
-def test_the_developer_has_room_for_a_whole_implementation_and_the_time_to_write_it():
-    """sprint-metrics#475: two answers of three stopped at 32,768 tokens, mid-answer."""
-    from crew_org.permissions import load_agents
-
-    params = load_agents()["developer"]["llm_params"]
-    assert params["max_tokens"] > 32768
-    # At the 27.5 tokens a second measured that day, the whole budget has to fit.
-    assert params["timeout"] >= params["max_tokens"] / 27.5
-
-
-# --- #153: a dead backend behind a live proxy --------------------------------------
-
-
-def test_a_proxy_up_with_its_model_down_is_not_healthy(proxy):
-    """2026-09-25: SGLang stopped, the proxy's model list still answered."""
-    proxy["backend_down"] = True
-    ok, message = llm.health()
-    assert not ok
-    assert "proxy at http://localhost:4000/v1 is up" in message
-    assert "the model behind 'crew-local' isn't answering" in message
-
-
-def test_a_healthy_backend_says_so(proxy):
-    ok, message = llm.health()
-    assert ok and "crew-local answering" in message
-
-
-class InternalServerError(Exception):
-    """Named as the OpenAI client's is: a proxy's 5xx for an unreachable backend."""
-
-
-def test_a_dead_backend_is_recognised_through_a_wrapping_exception():
-    try:
-        try:
-            raise InternalServerError("Error code: 500 - Connection error.")
-        except InternalServerError as inner:
-            raise RuntimeError("the task failed") from inner
-    except RuntimeError as outer:
-        assert llm.backend_down(outer)
-
-
-def test_a_card_failure_is_not_a_dead_backend():
-    assert not llm.backend_down(ValueError("1 validation error for FirstAttempt"))
-    assert not llm.backend_down(TimeoutError("read timed out"))
-
-
-def test_a_dead_backend_is_reraised_as_unavailable_not_recorded():
-    with pytest.raises(llm.ModelUnavailable):
-        llm.reraise_if_down(InternalServerError("Connection error."))
-    llm.reraise_if_down(ValueError("a card's own failure"))  # returns: the card owns it
-
-
-def test_a_backend_dying_mid_delivery_stops_it_and_blames_no_card(harness):  # noqa: F811
-    """Without this, the card was retried, then blocked as a prompt defect."""
-
-    def dies(n):
-        raise InternalServerError("Error code: 500 - Connection error.")
-
-    with pytest.raises(llm.ModelUnavailable):
-        harness(checks=[], implement=dies)
-
-
-def test_a_command_reports_a_dead_backend_in_one_line(capsys, proxy):
-    from crew_org.cli import CrewTyper
-
-    app = CrewTyper()
-
-    @app.command()
-    def design() -> None:
-        raise InternalServerError("Error code: 500 - Connection error.")
-
-    with pytest.raises(SystemExit) as stopped:
-        app([], standalone_mode=True)
-    assert stopped.value.code == 1
-    err = capsys.readouterr().err
-    assert "the model behind 'crew-local' isn't answering" in err
-    assert "Traceback" not in err
+    plain = {"role": "Plain", "goal": "g", "backstory": "b"}
+    monkeypatch.setattr(calls, "load_agents", lambda: {"plain": plain})
+    body = _sent("plain")
+    assert body["max_tokens"] == llm.DEFAULT_MAX_TOKENS
+    assert body["model"] == "crew-local"

@@ -667,12 +667,10 @@ def test_the_interview_has_nowhere_to_record_a_tool():
 
 
 def test_the_product_owner_is_bound_by_the_crew_wide_guidelines():
-    from crew_org.agents import build_agent
-    from crew_org.permissions import load_agents
+    from crew_org import calls
 
-    spec = load_agents()["product_owner"]
-    agent = build_agent("product_owner", {**spec, **spec["onboarding"]})
-    assert "## 19. Engineering guidelines" in agent.backstory
+    spec = calls.role_spec("product_owner", "onboarding")
+    assert "## 19. Engineering guidelines" in calls.system_text(spec)
 
 
 def conflicting(**overrides) -> Turn:

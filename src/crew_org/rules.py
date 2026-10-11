@@ -142,7 +142,8 @@ _CLASS_KINDS = {
 }
 
 
-# CrewAI's error for an answer with nothing in it.
+# CrewAI's error for an answer with nothing in it, read from logs written before the
+# crew made its own calls (ADR 0025).
 _EMPTY = "none or empty"
 
 

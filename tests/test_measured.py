@@ -13,20 +13,20 @@ call.
   data it was handed.
 - `process.over_limit()` detects a column over its WIP limit. Nothing called
   it either.
-- `events.bridge_crewai()` forwards CrewAI's bus onto the sink and was called
-  from nowhere, so no real run's log held a model call, a token count or a
-  tool invocation.
+- The forwarding of model calls onto the sink (then CrewAI's bus, now the
+  crew's own call layer) was called from nowhere, so no real run's log held a
+  model call, a token count or a tool invocation.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from crew_org.calls import _usage
 from crew_org.events import (
     CrewEvent,
     EventKind,
     EventSink,
-    _usage,
     blocked_since,
     replay_dir,
 )
@@ -162,22 +162,8 @@ def test_a_column_at_its_limit_is_not_a_breach():
 # --- what a model call cost ----------------------------------------------
 
 
-class Usage:
-    def __init__(self, usage):
-        self.usage = usage
-
-
 def test_token_counts_are_recorded():
-    assert _usage(Usage({"prompt_tokens": 100, "completion_tokens": 20})) == {
-        "prompt_tokens": 100,
-        "completion_tokens": 20,
-    }
-
-
-def test_provider_spellings_are_normalised():
-    """The crew's own event model is the contract; provider names do not leak
-    into the log."""
-    assert _usage(Usage({"input_tokens": 100, "output_tokens": 20})) == {
+    assert _usage({"usage": {"prompt_tokens": 100, "completion_tokens": 20}}) == {
         "prompt_tokens": 100,
         "completion_tokens": 20,
     }
@@ -186,10 +172,11 @@ def test_provider_spellings_are_normalised():
 def test_reasoning_tokens_are_picked_out_of_nested_details():
     """A generation that spends its whole budget reasoning and emits no text is
     what hung an epic split six times, and it is invisible in a total."""
-    usage = Usage({"total_tokens": 16386, "completion_tokens_details": {"reasoning_tokens": 16386}})
-    assert _usage(usage) == {"total_tokens": 16386, "reasoning_tokens": 16386}
+    usage = {"total_tokens": 16386, "completion_tokens_details": {"reasoning_tokens": 16386}}
+    assert _usage({"usage": usage}) == {"total_tokens": 16386, "reasoning_tokens": 16386}
 
 
 def test_a_shape_nobody_anticipated_yields_nothing_rather_than_raising():
-    assert _usage(Usage("not a mapping")) == {}
-    assert _usage(Usage(None)) == {}
+    assert _usage({"usage": "not a mapping"}) == {}
+    assert _usage({"usage": None}) == {}
+    assert _usage({"usage": {"completion_tokens_details": "odd"}}) == {}

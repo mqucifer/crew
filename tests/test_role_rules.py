@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from crew_org.agents import build_agent
+from crew_org import calls
 from crew_org.permissions import load_agents
 
 _SECTION = re.compile(r"^## (\d+)\. ", re.M)
@@ -20,7 +20,7 @@ _SECTION = re.compile(r"^## (\d+)\. ", re.M)
 
 def system_sections(key: str) -> set[int]:
     """The constitution's sections in the role's system text, by their headings."""
-    return {int(n) for n in _SECTION.findall(build_agent(key).backstory)}
+    return {int(n) for n in _SECTION.findall(calls.system_text(calls.role_spec(key)))}
 
 
 @pytest.mark.parametrize("key", sorted(load_agents()))

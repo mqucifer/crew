@@ -257,7 +257,7 @@ def test_deep_is_opt_in_so_the_plain_gate_costs_nothing(server, monkeypatch):
         sub, "probe_crew", lambda *a, **k: pytest.fail("deep probe ran without --deep")
     )
     checks = [r.check for r in sub.run_all(BASE)]
-    assert "crewai round-trip" not in checks
+    assert "call-layer round-trip" not in checks
 
 
 # --- through the proxy, as every tick is ------------------------------------------

@@ -41,7 +41,7 @@ SCHEMA_VERSION = 1
 # The common context every record carries (ADR 0014), beyond what `working_on` sets.
 _SCOPE: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("crew_log_scope")
 # Libraries that talk too much at INFO: warnings and above from the start (ADR 0014).
-QUIET = ("crewai", "litellm", "LiteLLM", "httpx", "httpcore", "opentelemetry", "urllib3")
+QUIET = ("httpx", "httpcore", "opentelemetry", "urllib3")
 # What the context may carry out to Grafana: identifiers and names, never text.
 _CONTEXT_OUT = frozenset(
     {

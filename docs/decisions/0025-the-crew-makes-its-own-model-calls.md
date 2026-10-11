@@ -109,3 +109,12 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   split's own refusal rules, a delivered story that isn't and a superseded story left
   out, are asked again with the reason inside the call. Each moved site made one real
   call through LiteLLM with its latest recorded prompt.
+- **2026-10-11:** the last ten sites move (crew#583, step D1b): the Code Reviewer,
+  QA's verdict, the contract ruling, the Senior Engineer's diagnosis, the project's
+  design and its review and placement, the deploy review, onboarding and the retro.
+  CrewAI leaves `pyproject.toml`, and with it `agents.py`, `llm.py`'s client wrapper,
+  the bridge of its event bus (model calls' events come from the module, forwarded by
+  `events.forward_calls_to`), the switch for its telemetry, and the deep probe's crew,
+  which is now one call through the module. The live view marks a role working from
+  its model calls. Each moved site made one real call through LiteLLM with its latest
+  recorded prompt.
