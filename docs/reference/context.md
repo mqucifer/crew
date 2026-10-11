@@ -65,7 +65,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 | Part | From | Why |
 |---|---|---|
 | The repository | `RepoContext.focused_for`: the map, and the files the epic names | Criteria written against what the code has |
-| Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run what the epic and its record name and check a whole shape, and any the record names (C2) |
+| Tests that pin behaviour this epic touches | `RepoContext.pinning_for`, from the coverage map | The merged tests that run, or by their own code read or call, what the epic and its record name and check a whole shape, and any the record names (C2, C5); a test that spells out a named file's table first |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
 | What the project has delivered | `Delivered.render` | Not written again |
 | Stories other epics plan | `planned_elsewhere` | Not written again, or built on |

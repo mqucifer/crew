@@ -608,8 +608,9 @@ Three rules for every limit on prompt content:
    full and tests by name (crew#230); the Developer, which edits tests, sees
    them whole; the Business Analyst is also shown, in full, the tests that pin
    behaviour an epic touches (crew#189): from the project's coverage map, the
-   merged tests that run the code the epic names and check a whole shape, plus
-   any a story problem or the epic's record names (crew#583, ADR 0024). What is left out is still said out
+   merged tests that run the code the epic names, or read or call it in their
+   own code when the sandbox skips them, and check a whole shape, plus any a
+   story problem or the epic's record names (crew#583, crew#612, ADR 0024). What is left out is still said out
    loud (rule 3).
 
    **The Developer sees the files its work names, and asks for the rest**

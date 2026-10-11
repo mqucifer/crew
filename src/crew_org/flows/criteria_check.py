@@ -10,10 +10,11 @@ the epic is split again following that.
 from __future__ import annotations
 
 import contextlib
+import re
 from collections.abc import Callable
 from typing import Any
 
-from crew_org.crews.criteria_crew import CriteriaCheck
+from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
 from crew_org.crews.refinement_crew import CriteriaRepair, Story, StoryProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
@@ -50,6 +51,7 @@ def check_each(
     proposal: StoryProposal,
     *,
     code_for: Callable[[str], str],
+    only: list[Story] | None = None,
     **shown: Any,
 ) -> CriteriaCheck:
     """The criteria checked one story per call, every conflict found kept (crew#583, D3).
@@ -59,14 +61,43 @@ def check_each(
     C5). Each call is shown one story, with the split's other stories and the planned
     ones to check it against, the record, and the code its own text names. A conflict
     between two stories can be found from both sides; the repair rewrites both.
+
+    `only` checks just those stories, each still against all the others: after a
+    repair, a story nobody changed can't have a new conflict except with a repaired
+    one, and the repaired one's own check sees it. sprint-metrics#551's re-check ran
+    all ten stories again, about an hour, for the few the repair touched (crew#612).
     """
+    titles = {_key(s.title) for s in only} if only is not None else None
     conflicts = []
     for story in proposal.stories:
+        if titles is not None and _key(story.title) not in titles:
+            continue
         mine = render_stories([story])
         rest = render_stories([s for s in proposal.stories if s is not story])
         found = check(stories=mine, siblings=rest, repository=code_for(mine), **shown)
         conflicts += found.conflicts
-    return CriteriaCheck(conflicts=conflicts)
+    return CriteriaCheck(conflicts=_once(conflicts))
+
+
+# A test function, not its file: `tests/test_service.py :: test_x` names test_x.
+_TEST_NAME = re.compile(r"\btest_\w+\b(?!\.py)")
+
+
+def _once(conflicts: list[CriteriaConflict]) -> list[CriteriaConflict]:
+    """Each story's conflict with one merged test once, however often it was found.
+
+    Checked one story per call, the same test was named against the same story from
+    several calls: sprint-metrics#551's refusal listed 14 conflicts for 4 tests.
+    """
+    seen: set[tuple[str, str]] = set()
+    kept = []
+    for c in conflicts:
+        test = _TEST_NAME.search(c.against)
+        key = (_key(c.story), test.group(0) if test else c.criterion.strip())
+        if key not in seen:
+            seen.add(key)
+            kept.append(c)
+    return kept
 
 
 def planned_criteria(issues: Any, repo: str, planned: list[tuple[int, str, int]]) -> str:
@@ -115,16 +146,24 @@ def with_repairs(
 ) -> StoryProposal:
     """The proposal with the named stories' criteria replaced by their repair.
 
-    Only the criteria change, and only for stories named: titles, order, rows
-    followed and dependencies were checked already and stay. A named story the
-    repair left out keeps its criteria, and the check refuses it again.
+    Only the criteria and the Existing tests line change, and only for stories
+    named: titles, order, rows followed and dependencies were checked already and
+    stay. A conflict with a merged test the epic means to change is fixed by
+    declaring the test, not by rewriting the criterion (crew#612). A named story the
+    repair left out keeps what it had, and the check refuses it again.
     """
-    repaired = {_key(r.title): r.acceptance_criteria for r in repair.stories}
+    repaired = {_key(r.title): r for r in repair.stories}
     allowed = {_key(s.title) for s in named}
+
+    def mended(story: Story) -> Story:
+        fix = repaired[_key(story.title)]
+        update: dict[str, Any] = {"acceptance_criteria": fix.acceptance_criteria}
+        if fix.pinned_behaviour is not None:
+            update["pinned_behaviour"] = fix.pinned_behaviour
+        return story.model_copy(update=update)
+
     stories = [
-        s.model_copy(update={"acceptance_criteria": repaired[_key(s.title)]})
-        if _key(s.title) in allowed and _key(s.title) in repaired
-        else s
+        mended(s) if _key(s.title) in allowed and _key(s.title) in repaired else s
         for s in proposal.stories
     ]
     return proposal.model_copy(update={"stories": stories})

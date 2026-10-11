@@ -809,10 +809,24 @@ class RepairedStory(BaseModel):
         )
     )
 
+    pinned_behaviour: str | None = Field(
+        default=None,
+        description=(
+            "The story's Existing tests line, rewritten only when a conflict is a merged "
+            "test the story has to change: 'contract change: <the tests it updates>'. "
+            "Leave it out to keep the line as it is"
+        ),
+    )
+
     @field_validator("acceptance_criteria")
     @classmethod
     def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
         return Story._enough_criteria(value)
+
+    @field_validator("pinned_behaviour")
+    @classmethod
+    def _opt_in_or_contract(cls, value: str | None) -> str | None:
+        return None if value is None else Story._opt_in_or_contract(value)
 
 
 class CriteriaRepair(BaseModel):
@@ -851,7 +865,10 @@ def repair_criteria(
             "Rewrite the acceptance criteria of the stories to repair, so that every "
             "criterion can pass alongside the other stories, the project's code and the "
             "epic's conclusion. Change only what the conflicts need; keep every criterion "
-            "they don't touch word for word. Check each criterion's expected values "
+            "they don't touch word for word. Where a conflict is a merged test the epic "
+            "means to change, keep the criterion and declare the test instead: set the "
+            "story's Existing tests to 'contract change: ' and the tests it updates. "
+            "Check each criterion's expected values "
             "against its own inputs: a number the stated data can't produce can't pass. "
             "Where the epic doesn't say which outcome it wants, leave the case out rather "
             "than guess. Return each story to repair once, with its title exactly as given "

@@ -1756,10 +1756,14 @@ def refine_epics(
                         epic_card.title, body, **asked_for
                     )
                 if checked.conflicts:
+                    # After a repair, only the stories it changed: each is still
+                    # checked against all the others (crew#612). A whole re-split is
+                    # checked whole.
                     checked = criteria_check.check_each(
                         attributed(check_criteria, card=number, repo=repo),
                         proposal,
                         code_for=code_for,
+                        only=named or None,
                         planned=others,
                         conclusion=conclusion,
                         goal=goal_text,

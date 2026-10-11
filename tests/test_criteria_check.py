@@ -252,3 +252,63 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
         assert f"### {title}" not in shown["siblings"]
         assert shown["repository"] == f"code for ### {title}"
     assert found.conflicts == ON_CYCLE_TIME.conflicts
+
+
+def test_after_a_repair_only_the_repaired_story_is_checked_again(monkeypatch):
+    """sprint-metrics#551's re-check ran all ten stories again for the few repaired (crew#612)."""
+    checker = Checker(ON_CYCLE_TIME, CriteriaCheck())
+    repairer = Repairer(
+        CriteriaRepair(stories=[RepairedStory(title="Cycle time", acceptance_criteria=FIXED)])
+    )
+    monkeypatch.setattr(board_flow, "repair_criteria", repairer)
+    run_split_checked(monkeypatch, FakeIssues(), checker)
+    first = len(SPLIT.stories)
+    again = checker.calls[first:]
+    assert [c["stories"].split("\n", 1)[0] for c in again] == ["### Cycle time"]
+    assert "### Throughput" in again[0]["siblings"], "still checked against the others"
+
+
+def test_a_repair_may_declare_the_merged_tests_a_story_changes():
+    """The fix for a test the epic means to change is declaring it (crew#612)."""
+    proposal = StoryProposal(
+        epic_title="E", stories=[make_story("Cycle time", 3), make_story("Throughput", 2)]
+    )
+    named = criteria_check.flagged(proposal, ON_CYCLE_TIME)
+    declared = "contract change: tests/test_service.py::test_sprint_keys"
+    repair = CriteriaRepair(
+        stories=[
+            RepairedStory(title="Cycle time", acceptance_criteria=FIXED, pinned_behaviour=declared)
+        ]
+    )
+    out = criteria_check.with_repairs(proposal, named, repair)
+    assert out.stories[0].pinned_behaviour == declared
+    kept = criteria_check.with_repairs(
+        proposal,
+        named,
+        CriteriaRepair(stories=[RepairedStory(title="Cycle time", acceptance_criteria=FIXED)]),
+    )
+    assert kept.stories[0].pinned_behaviour == proposal.stories[0].pinned_behaviour
+    with pytest.raises(ValueError):
+        RepairedStory(title="Cycle time", acceptance_criteria=FIXED, pinned_behaviour="maybe")
+
+
+def test_a_story_conflicting_with_one_test_is_reported_once():
+    """sprint-metrics#551's refusal listed 14 conflicts for 4 tests (crew#612)."""
+
+    def against(text):
+        return CriteriaConflict(story="Sprint keys", criterion="c", against=text, why="w")
+
+    def check(**_shown):
+        return CriteriaCheck(
+            conflicts=[
+                against("test_sprint_keys (tests/test_service.py)"),
+                against("tests/test_service.py :: test_sprint_keys"),
+                against("test_enum_exact in tests/test_service.py"),
+            ]
+        )
+
+    found = criteria_check.check_each(check, SPLIT, code_for=lambda _t: "")
+    assert [c.against for c in found.conflicts] == [
+        "test_sprint_keys (tests/test_service.py)",
+        "test_enum_exact in tests/test_service.py",
+    ]
