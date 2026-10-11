@@ -130,13 +130,14 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
         if isinstance(value, dict):
             out = {}
             for key, item in value.items():
-                if key in fields and isinstance(item, str) and item.strip() in blocks:
-                    used.add(item.strip())
-                    out[key] = blocks[item.strip()]
-                elif key in fields and isinstance(item, str) and _BLOCK_NAME.match(item.strip()):
+                named = _block_named(item) if key in fields else None
+                if named is not None and named in blocks:
+                    used.add(named)
+                    out[key] = blocks[named]
+                elif named is not None:
                     raise ValueError(
-                        f"`{key}` names block {item.strip()!r}, which isn't written after the "
-                        "JSON: write it between @@@ " + item.strip() + " @@@ and @@@ end @@@"
+                        f"`{key}` names block {named!r}, which isn't written after the "
+                        f"JSON: write it between @@@ {named} @@@ and @@@ end @@@"
                     )
                 else:
                     out[key] = walk(item)
@@ -155,7 +156,39 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
     return joined
 
 
-_BLOCK_NAME = re.compile(r"^b\d+$")
+# How a code field names its block. Read loosely: the first real answer wrote "@@b1",
+# and a field holding only a block's name, with marks around it, can't be code. Aider
+# measured permissive parsing at a ninth of the errors of strict (ways-of-working).
+_BLOCK_NAME = re.compile(r"^[\s@`'\"]*(?:block\s+)?(b\d+)[\s@`'\"]*$", re.IGNORECASE)
+
+
+def _block_named(value: Any) -> str | None:
+    """The block a code field names, or None when it holds anything else."""
+    if not isinstance(value, str):
+        return None
+    found = _BLOCK_NAME.match(value)
+    return found.group(1).lower() if found else None
+
+
+# The grammar a two-part answer is held to while it's written (ADR 0026): JSON, then
+# blocks of plain lines. Without one, mqucifer/sprint-metrics#567's Developer went on
+# reading after its reading rounds, writing tool calls as text, and three answers in
+# four came back empty (2026-10-11). The JSON holds no code, and its whitespace is
+# bounded, so nothing in it can run away; a block's lines are any text but a line
+# starting `@@@`.
+BLOCKS_GRAMMAR = r"""root ::= object "\n"+ block*
+block ::= "@@@ " name " @@@\n" line* "@@@ end @@@\n"
+name ::= "b" [0-9]+
+line ::= ([^@\n] [^\n]* | "@" [^@\n] [^\n]* | "@@" [^@\n] [^\n]*)? "\n"
+object ::= "{" ws (member (ws "," ws member)*)? ws "}"
+member ::= string ws ":" ws value
+value ::= object | array | string | number | "true" | "false" | "null"
+array ::= "[" ws (value (ws "," ws value)*)? ws "]"
+string ::= "\"" ([^"\\\x00-\x1f] | escape)* "\""
+escape ::= "\\" (["\\/bfnrt] | "u" hex hex hex hex)
+hex ::= [0-9a-fA-F]
+number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+ws ::= [ \t\n]{0,40}"""
 
 
 @dataclass(frozen=True)
@@ -492,8 +525,8 @@ def ask[Answer: BaseModel](
 
     With `blocks`, the fields named there hold code, and come back as blocks after the
     JSON instead of inside it (ADR 0026): no code is escaped, so none can close a string
-    early. The server's grammar would forbid the blocks, so the answer is checked
-    after it is written, not held to the schema while it is.
+    early. The answer is held to BLOCKS_GRAMMAR while it's written, JSON then blocks,
+    and to its form when it's joined.
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
@@ -527,7 +560,7 @@ def ask[Answer: BaseModel](
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
             "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
-            **({} if blocks else {"response_format": form}),
+            **({"extra_body": {"ebnf": BLOCKS_GRAMMAR}} if blocks else {"response_format": form}),
         }
         call = str(uuid.uuid4())
         detail = {"model": body["model"], "call_id": call, "try": attempt, **versions}

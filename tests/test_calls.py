@@ -424,7 +424,8 @@ def test_an_answer_with_blocks_is_asked_without_the_grammar_and_joined():
     found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
     assert found.writes[0].source == CODE
     sent = proxy.sent[0]
-    assert "response_format" not in sent, "the server's grammar would forbid the blocks"
+    assert "response_format" not in sent, "a JSON schema would forbid the blocks"
+    assert sent["extra_body"]["ebnf"] == calls.BLOCKS_GRAMMAR, "held to the two-part grammar"
     prompt = sent["messages"][1]["content"]
     assert "@@@ b1 @@@" in prompt and "- `source` (code, as a block)" in prompt
 
@@ -434,3 +435,17 @@ def test_a_bad_json_part_is_refused_and_asked_again():
     found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
     assert found.summary == "add it"
     assert "isn't valid JSON" in proxy.sent[1]["messages"][-1]["content"]
+
+
+@pytest.mark.parametrize("named", ["b1", "@@b1", "@@@ b1 @@@", "block b1", "`b1`", " B1 "])
+def test_a_block_is_found_however_its_name_is_marked(named):
+    """The first real answer wrote "@@b1"; a field holding only a block's name isn't code."""
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
+    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
+    assert joined["writes"][0]["source"] == "x = 1\n"
+
+
+def test_code_that_merely_mentions_a_block_name_is_left_as_code():
+    data = {"source": "print('b1')"}
+    assert calls.join_blocks(data, {}, frozenset({"source"})) == data
