@@ -312,6 +312,12 @@ class IssueClient:
             "POST", f"/repos/{self.owner}/{repo}/issues/{number}/comments", body=body
         )
 
+    def edit_comment(self, repo: str, comment_id: int, body: str) -> dict[str, Any]:
+        """Rewrite one of the crew's comments in place: a view kept current, not a new post."""
+        return self._request(
+            "PATCH", f"/repos/{self.owner}/{repo}/issues/comments/{comment_id}", body=body
+        )
+
     def comments(self, repo: str, number: int) -> list[dict[str, Any]]:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/issues/{number}/comments?per_page=100"

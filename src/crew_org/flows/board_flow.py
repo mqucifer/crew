@@ -51,6 +51,7 @@ from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
+from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
@@ -1613,6 +1614,15 @@ def refine_epics(
                 goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # What the project has decided for every epic (crew#468).
                 project_log = read_log(issues, repo)
+                # What the Goal's other epics decided, as rows (crew#611).
+                siblings = (
+                    "\n\n".join(
+                        f"### {s.ref} ({s.state})\n\n{s.text}"
+                        for s in panel_flow.siblings_of(issues, repo, epic_card.parent, number)
+                    )
+                    if epic_card.parent
+                    else ""
+                )
                 planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
                 # The epic and its record: a C row names a test the epic changes.
                 pinning = context.pinning_for(
@@ -1660,6 +1670,7 @@ def refine_epics(
                         planned_numbers={n for n, _t, _e in planned},
                         conclusion=conclusion,
                         project_log=project_log,
+                        siblings=siblings,
                     )
                     proposal = attributed(split_epic, card=number, repo=repo)(
                         epic_card.title, body, **asked_for

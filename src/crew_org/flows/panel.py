@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelResult, Sibling
+from crew_org.flows import record as record_flow
 from crew_org.flows.decisions import collect_decisions
 from crew_org.flows.decisions import render as render_decisions
 from crew_org.flows.project_log import read_log
@@ -52,11 +53,34 @@ def _parent(issue: dict[str, Any]) -> int | None:
     return int(found.group(1)) if found else None
 
 
-def siblings_of(issues: IssueClient, repo: str, goal: int, epic: int) -> list[Sibling]:
-    """The Goal's other epics: open ones, and delivered ones as background.
+def _record(issue: dict[str, Any]) -> str:
+    return record_flow.split(issue.get("body") or "")[1]
 
-    One closed as not planned was set aside by the Sponsor; it describes a plan
-    the epic is not to be read against.
+
+def _with_record(issue: dict[str, Any]) -> str:
+    record = _record(issue)
+    return f"{_text(issue)}\n\n{record}" if record else _text(issue)
+
+
+def _carried(issue: dict[str, Any]) -> str:
+    """A superseded epic's binding rows, without the plan that was set aside."""
+    binding = record_flow.parse(_record(issue)).binding()
+    if not binding:
+        return ""
+    rows = "\n".join(f"- {d.id}: {d.context}: {d.decision} ({d.set_by})" for d in binding)
+    return (
+        f"# {issue.get('title', '')}\n\nSet aside, and its plan isn't to be followed. Its "
+        f"binding rows still hold for this Goal unless a later row replaces them:\n\n{rows}"
+    )
+
+
+def siblings_of(issues: IssueClient, repo: str, goal: int, epic: int) -> list[Sibling]:
+    """The Goal's other epics, each with its record (ADR 0023, crew#611).
+
+    Open ones and delivered ones are shown with what they decided: the text alone
+    left out the record below the approval footer, and sprint-metrics#552's panel
+    and Architect settled the same schema as sprint-metrics#551 differently. One closed as not
+    planned describes a plan set aside, so only its binding rows are carried.
     """
     found = []
     for child in issues.sub_issues(repo, goal):
@@ -64,9 +88,11 @@ def siblings_of(issues: IssueClient, repo: str, goal: int, epic: int) -> list[Si
             continue
         ref = f"{issues.owner}/{repo}#{child['number']}"
         if child.get("state") == "open":
-            found.append(Sibling(ref, "open", _text(child)))
+            found.append(Sibling(ref, "open", _with_record(child)))
         elif child.get("state_reason") == "completed":
-            found.append(Sibling(ref, "delivered", _text(child)))
+            found.append(Sibling(ref, "delivered", _with_record(child)))
+        elif carried := _carried(child):
+            found.append(Sibling(ref, "superseded", carried))
     return found
 
 

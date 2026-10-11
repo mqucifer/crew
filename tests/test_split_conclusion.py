@@ -150,11 +150,21 @@ class Epic:
 
 
 class Gh:
-    def __init__(self, body=APPROVED):
+    owner = "mqucifer"
+
+    def __init__(self, body=APPROVED, siblings=(), split=()):
         self.body = body
+        self.siblings = list(siblings)
+        self.split = set(split)
 
     def get(self, repo, number):
         return {"body": self.body}
+
+    def sub_issues(self, repo, number):
+        return self.siblings
+
+    def has_comment_marked(self, repo, number, marker):
+        return number in self.split
 
 
 def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=None):
