@@ -7,6 +7,7 @@ The real call, through LiteLLM, is in the pull request.
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 import pytest
@@ -350,3 +351,109 @@ def test_the_form_is_written_plainly_each_field_with_its_type_and_meaning():
     assert "- `operation` (one of `replace`, `add`, `add_method`, `add_import`, `delete`)" in text
     assert "**FileEdit**: One change to an existing file" in text
     assert '"$ref"' not in text and '"title"' not in text
+
+
+# --- code in blocks after the JSON (ADR 0026) ------------------------------------------
+
+
+class Write(BaseModel):
+    path: str
+    source: str = ""
+
+
+class Change(BaseModel):
+    summary: str
+    writes: list[Write]
+
+
+CODE = (
+    "def test_json(run_command):\n    data = run_command()\n"
+    '    assert data["superseded_breakdown"] == {"sponsor": 0}}],"\n'
+)
+TWO_PARTS = (
+    '{"summary": "add it", "writes": [{"path": "tests/test_x.py", "source": "b1"}, '
+    '{"path": "src/x.py", "source": ""}]}\n\n'
+    "@@@ b1 @@@\n" + CODE + "@@@ end @@@\n"
+)
+
+
+def test_code_in_a_block_comes_back_exactly_as_written():
+    """sprint-metrics#567's slip, `{\\"sponsor\\": 0}}],"`, inside a block is just code."""
+    head, blocks = calls.split_blocks(TWO_PARTS)
+    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
+    assert joined["writes"][0]["source"] == CODE
+    assert joined["writes"][1]["source"] == "", "an empty code field stays empty"
+
+
+def test_a_block_in_a_fence_or_json_in_a_fence_is_unwrapped():
+    fenced = (
+        '```json\n{"summary": "s", "writes": [{"path": "p", "source": "b1"}]}\n```\n'
+        "@@@ b1 @@@\n```python\nx = 1\n```\n@@@ end @@@\n"
+    )
+    head, blocks = calls.split_blocks(fenced)
+    assert json.loads(head)["summary"] == "s" and blocks == {"b1": "x = 1\n"}
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        (
+            '{"summary": "s", "writes": [{"path": "p", "source": "b2"}]}',
+            "names block 'b2', which isn't written",
+        ),
+        ('{"summary": "s", "writes": []}\n@@@ b1 @@@\nx', "block 'b1' has no @@@ end @@@ line"),
+        (
+            '{"summary": "s", "writes": [{"path": "p", "source": "b1"}]}\n'
+            "@@@ b1 @@@\nx\n@@@ end @@@\nstray words\n",
+            "text after the JSON outside any block",
+        ),
+    ],
+)
+def test_a_missing_unused_or_unclosed_block_is_refused_with_why(text, said):
+    with pytest.raises(ValueError, match=re.escape(said)):
+        head, blocks = calls.split_blocks(text)
+        calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
+
+
+def test_an_answer_with_blocks_is_asked_without_the_grammar_and_joined():
+    proxy = Proxy(TWO_PARTS)
+    found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
+    assert found.writes[0].source == CODE
+    sent = proxy.sent[0]
+    assert "response_format" not in sent, "a JSON schema would forbid the blocks"
+    assert sent["extra_body"]["ebnf"] == calls.BLOCKS_GRAMMAR, "held to the two-part grammar"
+    prompt = sent["messages"][1]["content"]
+    assert "@@@ b1 @@@" in prompt and "- `source` (code, as a block)" in prompt
+
+
+def test_a_bad_json_part_is_refused_and_asked_again():
+    proxy = Proxy('{"summary": "s", "writes": [}\n', TWO_PARTS)
+    found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
+    assert found.summary == "add it"
+    assert "isn't valid JSON" in proxy.sent[1]["messages"][-1]["content"]
+
+
+@pytest.mark.parametrize("named", ["b1", "@@b1", "@@@ b1 @@@", "block b1", "`b1`", " B1 "])
+def test_a_block_is_found_however_its_name_is_marked(named):
+    """The first real answer wrote "@@b1"; a field holding only a block's name isn't code."""
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
+    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
+    assert joined["writes"][0]["source"] == "x = 1\n"
+
+
+def test_code_that_merely_mentions_a_block_name_is_left_as_code():
+    data = {"source": "print('b1')"}
+    assert calls.join_blocks(data, {}, frozenset({"source"})) == data
+
+
+def test_a_block_no_field_names_is_left_out():
+    """Ask-only answers wrote an example block and were refused for it (2026-10-11)."""
+    head = '{"summary": "s", "writes": []}'
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b0 @@@\nexample\n@@@ end @@@\n")
+    assert calls.join_blocks(json.loads(head), blocks, frozenset({"source"})) == json.loads(head)
+
+
+def test_the_grammar_bounds_the_number_of_blocks():
+    """Unbounded, two answers wrote the same block 4,994 and 6,464 times."""
+    assert "block{0,60}" in calls.BLOCKS_GRAMMAR

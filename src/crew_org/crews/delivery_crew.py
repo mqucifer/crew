@@ -24,6 +24,10 @@ from crew_org.tools.ast_edit import Operation
 from crew_org.tools.ci_guard import is_workflow
 
 MAX_FILE_BYTES = 120_000
+# The fields that hold code or file text, which come back as blocks after the answer's
+# JSON (ADR 0026): written inside a JSON string, a double quote in code closed the
+# string early, and mqucifer/sprint-metrics#567 slipped on 3 of 6 answers that way.
+CODE_FIELDS = frozenset({"content", "source", "find", "replace"})
 
 
 class FileWrite(BaseModel):
@@ -851,4 +855,5 @@ def implement_story(
         form,
         expected="A summary, plus the new files and the named edits that implement the story.",
         tools=[read] if read is not None else None,
+        blocks=CODE_FIELDS,
     )
