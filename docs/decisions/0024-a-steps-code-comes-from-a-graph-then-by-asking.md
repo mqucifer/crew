@@ -35,10 +35,11 @@ Sponsor, 2026-10-10 (D4 of the plan).
   only if the replay after the graph shows that gap. It need not be the crew's main
   model.
 - **The map sees the tests the sandbox doesn't run** (Sponsor, 2026-10-10, after Sprint
-  21's first run): the coverage run gets the services a project's tests need, and a
-  static half adds the tests that reference a name the epic or its rows name, skipped
-  ones included. Coverage alone missed all four tests mqucifer/sprint-metrics#551's
-  stories had to change (crew#612).
+  21's first run): a static half adds each test's reads and calls of the project's
+  code, skipped tests included, and under the ceiling a test that spells out a named
+  file's table is shown first. Coverage alone missed all three tests
+  mqucifer/sprint-metrics#551's stories had to change (crew#612). Giving the sandbox
+  a project's services, such as its database, is crew#614.
 - **No retrieval index.** It adds a system with nothing to test it against.
 
 **The standards.** Test impact analysis (Rothermel and Harrold's regression test
@@ -59,5 +60,5 @@ analysis; tool use, also called function calling; two-stage retrieval.
 
 ## Changelog
 
-- **2026-10-10:** the map gains the services tests need and a static half (crew#612;
-  Sponsor).
+- **2026-10-10:** the map gains a static half (crew#612; Sponsor). The services half
+  was dropped the same night for crew#614.

@@ -245,12 +245,64 @@ class _Reads:
         return found
 
     def of_definition(self, path: str, name: str) -> set[str]:
+        node = self._definition(path, name)
+        return self.of(path, node) if node is not None else set()
+
+    def _definition(self, path: str, name: str) -> ast.AST | None:
         if path not in self.trees:
-            return set()
+            return None
         if path not in self._defined:
             self._defined[path] = _definitions(self.trees[path])
-        node = self._defined[path].get(name)
-        return self.of(path, node) if node is not None else set()
+        return self._defined[path].get(name)
+
+    def called_by(self, path: str, name: str, depth: int = 1) -> set[str]:
+        """The project's definitions a function calls by a name it imports, as `path::name`.
+
+        A module's own helpers are followed `depth` calls deep, and what they read
+        counts too. This is the static half of the map: a test the sandbox skips,
+        such as one that needs a database, still names what it would run (crew#612).
+        """
+        node = self._definition(path, name)
+        if node is None:
+            return set()
+        bound = self._imports(path)
+        found: set[str] = set()
+        for call in ast.walk(node):
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
+                continue
+            called = call.func.id
+            if called in bound:
+                target, original = bound[called]
+                if self._definition(target, original) is not None:
+                    found.add(f"{target}::{original}")
+            elif depth and called != name and self._definition(path, called) is not None:
+                found |= self.called_by(path, called, depth - 1)
+                found |= self.of_definition(path, called)
+        return found
+
+
+def _is_test_file(path: str) -> bool:
+    name = Path(path).name
+    return name.startswith("test_") or name.endswith("_test.py")
+
+
+def static_tests(reads: _Reads) -> dict[str, set[str]]:
+    """Every test function the project has, with what its body reads and calls.
+
+    Coverage only sees a test the sandbox runs. A skipped test, or one that only
+    reads a constant (`len(ALL_METRICS) == 12` runs no line of `metrics.py` under
+    the test), is otherwise absent from the map: sprint-metrics#551's split was
+    shown none of the four tests it had to change (crew#612).
+    """
+    found: dict[str, set[str]] = {}
+    for path in sorted(p for p in reads.files if _is_test_file(p)):
+        for qualified in _definitions(reads.trees[path]):
+            if not qualified.rpartition(".")[2].startswith("test"):
+                continue
+            units = reads.of_definition(path, qualified) | reads.called_by(path, qualified)
+            if units:
+                found[f"{path}::{qualified.replace('.', '::')}"] = units
+    return found
 
 
 def from_report(repo: str, commit: str, clone: Path, report: dict[str, Any]) -> CoverageMap:
@@ -287,6 +339,18 @@ def from_report(repo: str, commit: str, clone: Path, report: dict[str, Any]) -> 
     return CoverageMap(repo, commit, tests)
 
 
+def with_static(measured: CoverageMap, clone: Path) -> CoverageMap:
+    """The measured map with every test's static reads and calls added.
+
+    Added when the map is used, not stored with it: a stored map stays valid as
+    this half changes, and costs a parse, not a run of the suite.
+    """
+    tests = dict(measured.tests)
+    for test, units in static_tests(_Reads(clone)).items():
+        tests[test] = tests.get(test, frozenset()) | units
+    return CoverageMap(measured.repo, measured.commit, tests)
+
+
 def _head(clone: Path) -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=clone, capture_output=True, text=True, check=True
@@ -312,7 +376,7 @@ def build(
     commit = _head(clone)
     path = stored(repo, commit, store=store)
     if path.exists():
-        return CoverageMap.from_json(path.read_text())
+        return with_static(CoverageMap.from_json(path.read_text()), clone)
     tools = workspace.toolchain(clone)
     if tools.image:
         raise CoverageUnavailable(f"{repo} has its own sandbox image; the map is Python only")
@@ -341,4 +405,4 @@ def build(
         raise CoverageUnavailable(f"{repo}@{commit[:7]}: no test executed any measured code")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(found.to_json())
-    return found
+    return with_static(found, clone)
