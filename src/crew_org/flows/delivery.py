@@ -985,6 +985,11 @@ def deliver_story(
         carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
         sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
     implementation: Implementation | None = None
+    # The last answer applied to the worktree: what it wrote is shown again, always.
+    # Not the last answer: one that asked to see files isn't applied, and since the
+    # read tool (crew#583, C4) it can carry a whole story's work. Counted as written,
+    # mqucifer/sprint-metrics#567's re-ask was shown 286k characters (2026-10-11).
+    last_applied: Implementation | None = None
     attempt = 0
     # Files the Developer asked to see in full (#231).
     asked: list[str] = []
@@ -1021,7 +1026,7 @@ def deliver_story(
             worktree,
             about="\n\n".join([story_text, prior, "" if failing else feedback]),
             extra=asked,
-            written=bounds.touched(implementation) if implementation is not None else (),
+            written=bounds.touched(last_applied) if last_applied is not None else (),
             failing=failing,
             report=report,
             coverage=coverage,
@@ -1398,6 +1403,7 @@ def deliver_story(
 
         try:
             applied = True
+            last_applied = implementation
             workspace.apply_implementation(worktree, implementation)
             # Tests in a part that isn't Python are written as files: each one the
             # answer names must be in them, by its title (#404).

@@ -124,3 +124,5 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   token limit. mqucifer/sprint-metrics#567 did, for 40 minutes; 2 such answers in 30
   days. The re-ask says where the answer went wrong. Closing the stream also ends the
   generation on the server, which a stopped tick's unstreamed call never did.
+- **2026-10-11:** six tool rounds, not four: mqucifer/sprint-metrics#567 read twelve
+  times in four, then asked for a file it could have read.
