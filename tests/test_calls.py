@@ -337,3 +337,16 @@ def test_a_runaway_answer_is_refused_saying_where_it_went_wrong(seen):
     told = proxy.sent[1]["messages"][-1]["content"]
     assert "ran on as whitespace after this" in told and '"why": "x"}],"' in told
     assert "EOF" not in told
+
+
+def test_the_form_is_written_plainly_each_field_with_its_type_and_meaning():
+    """Lean prompts, L3: the Developer's form was 13.5k characters of JSON Schema."""
+    from crew_org.crews.delivery_crew import FirstOrDone  # noqa: PLC0415
+
+    schema = FirstOrDone.model_json_schema()
+    text = calls.form_text(schema)
+    assert len(text) < len(json.dumps(schema, indent=2)) * 0.6
+    assert "- `edits` (list of FileEdit): Changes to Python files that already exist" in text
+    assert "- `operation` (one of `replace`, `add`, `add_method`, `add_import`, `delete`)" in text
+    assert "**FileEdit**: One change to an existing file" in text
+    assert '"$ref"' not in text and '"title"' not in text
