@@ -2,7 +2,7 @@
 
 **Bottom line:** most of what a Developer call holds now is standing material, the same in every call, not the code the story needs. Cut it the way 2026-10-11's fixes cut the rest: show what the work needs, and let the model fetch the rest when it needs it. Then take code out of escaped JSON (crew#626), which is both the biggest answer-side cost and the day's one recurring failure. The goal: a Developer's first attempt under about 35k prompt tokens and a repair under about 40k, with no rise in refusals.
 
-**Status:** 2026-10-11, proposed by Claude after the Sponsor asked, of the model family's limits, whether context bloat can be solved at all. Nothing built. L1 to L4 are inside the decisions already made (ADR 0024, ADR 0025). L5 changes how the Developer answers, so it is a decision for the Sponsor, by ADR, before it is built.
+**Status:** 2026-10-11, proposed by Claude after the Sponsor asked, of the model family's limits, whether context bloat can be solved at all. Nothing built. L1 to L4 are inside the decisions already made (ADR 0024, ADR 0025). **L5 is decided (Sponsor, 2026-10-11): option A, recorded as ADR 0026.** **Order (Sponsor):** L1 to L3 in one PR, then L5, then L4.
 
 **The condition on all of it** is the context-record plan's: no rule on the crew's context may be detrimental to how a development team develops and changes software. A cut that leaves a role guessing at something it used to be shown is a loss, and goes back.
 
@@ -43,9 +43,9 @@ Each step is one PR from its own worktree, measured the way 2026-10-11's were: r
 | L4 | **QA's prompt** gets the same: QA's acceptance check ran at 74.7k tokens on mqucifer/sprint-metrics#564 on 2026-10-11, its context still given whole | `crews/qa_crew.py`, `flows/acceptance.py` | QA under 50k on that story's replay |
 | L5 | **Code leaves the JSON (crew#626, P1).** The answer keeps its structure in JSON (paths, operations, targets, which test proves which criterion), and each body of code goes in a plain delimited block the JSON names, the edit-block approach tools such as Aider use. No quote is escaped, so no string can close early | `crews/delivery_crew.py` (the forms), `crew_org/calls.py` (the answer's two parts), `tools/workspace.py` | The decision is taken (below); sm#567's replays: no quote slips in 10 runs where 3 in 6 slipped, and fewer tokens written |
 
-**Order:** L1, L2 and L3 are independent, mechanical and inside decisions already made; they can land as one PR, a commit each. L4 follows the same pattern for QA. L5 waits for its decision.
+**Order (Sponsor, 2026-10-11):** L1, L2 and L3 as one PR, a commit each; they are independent, mechanical and inside decisions already made. Then L5 (ADR 0026), then L4 for QA.
 
-## The decision for the Sponsor (L5)
+## The decision on L5 (ADR 0026)
 
 **This is a new choice, not a reversal.** On 2026-09-18 the Sponsor asked for research on how the Developer's edits address code, and edits by name were chosen over whole files, search/replace and unified diff (ways-of-working, "edit by name"; zero format failures against 11 and 31). That stays exactly as decided. What was never weighed is where the code itself sits in the answer: JSON came with CrewAI's typed answer (`output_pydantic`), and the substrate gate measured it on small answers only (5 of 5 valid). Since ADR 0025 the crew makes its own calls, so a mixed answer is an ordinary change. Prior art the 2026-09-18 research missed: Aider measured in 2024 that models write worse code when it is wrapped in JSON. Markdown-delimited code beat JSON for every model tried, for example 60.5% against 54.1% (Claude 3.5 Sonnet) and 60.6% against 51.1% (DeepSeek-Coder V2) on 133 problems ([aider.chat, 2024-08-14](https://aider.chat/2024/08/14/code-in-json.html)).
 
@@ -63,7 +63,7 @@ What fails is code inside it. Every quote in code is escaped, twice in a test th
 | B. JSON without the server's grammar | The same form, checked after the answer instead of enforced while it's written | A slip can't run away; nothing else changes | Malformed JSON comes back instead, and is re-asked; escaping stays |
 | C. As now | The runaway guard and the reason in the re-ask (mqucifer/crew#627) | Nothing to build | A slip still costs a whole answer, minutes each |
 
-**Recommendation: A.** It removes the cause, not the cost of the cause, and it is the shape crew-presentation's web code (HTML, CSS, JavaScript, quote-heavy all) needs most: files that aren't Python change by whole-file and quoted edits today, all inside JSON strings.
+**Decided: A** (Sponsor, 2026-10-11; ADR 0026). It removes the cause, not the cost of the cause, and it is the shape crew-presentation's web code (HTML, CSS, JavaScript, quote-heavy all) needs most: files that aren't Python change by whole-file and quoted edits today, all inside JSON strings.
 
 ## Not in this plan
 
