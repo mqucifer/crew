@@ -807,6 +807,18 @@ class IssueClient:
             state_reason=reason,
         )
 
+    def permission(self, repo: str, user: str) -> str:
+        """`user`'s permission on `repo`: admin, maintain, write, triage, read or none.
+
+        Read is everyone's on a public repository, so it says nothing about who
+        was given access.
+        """
+        return str(
+            self._request("GET", f"/repos/{self.owner}/{repo}/collaborators/{user}/permission").get(
+                "permission", "none"
+            )
+        )
+
     def edit_issue(self, repo: str, number: int, *, body: str) -> dict[str, Any]:
         """Replace an issue's body."""
         return self._request("PATCH", f"/repos/{self.owner}/{repo}/issues/{number}", body=body)

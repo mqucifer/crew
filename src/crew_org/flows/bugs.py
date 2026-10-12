@@ -29,8 +29,11 @@ from crew_org.work_types import BUG
 BUG_LABEL = "bug"
 NEEDS_HUMAN = "needs:human"
 ROLE = "Business Analyst"
-# Who GitHub says may file one: the owner, an organization member, a collaborator.
-COLLABORATORS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+# Who may file one: anyone given access to the repository. Read isn't access given:
+# a public repository grants it to everyone. GitHub's `author_association` was
+# tried first and is wrong for this: the crew's App can't see private organization
+# membership, and read Claude's account as NONE (2026-10-12).
+COLLABORATORS = frozenset({"admin", "maintain", "write", "triage"})
 NOT_A_COLLABORATOR = (
     "This was filed by someone who isn't a collaborator on the project, and only a "
     "collaborator files a bug (ADR 0027). Left for a person to decide."
@@ -89,7 +92,8 @@ def triage_bugs(
         repo = card.repo or default_repo
         number = card.number or 0
         issue = issues.get(repo, number)
-        if issue.get("author_association") not in COLLABORATORS:
+        author = (issue.get("user") or {}).get("login") or ""
+        if issues.permission(repo, author) not in COLLABORATORS:
             artifacts.comment(
                 issues, sink, repo=repo, number=number, body=NOT_A_COLLABORATOR, by=ROLE
             )
