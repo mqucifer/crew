@@ -48,7 +48,7 @@ from crew_org.crews.refinement_crew import (
 )
 from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import artifacts, criteria_check
+from crew_org.flows import artifacts, bugs, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
@@ -189,6 +189,8 @@ class TickResult:
     # Epic -> the stories its rework supersedes, (number, title), for the
     # re-split to account for (#248).
     superseded: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
+    # Filed bugs triaged this pass, (number, outcome) (crew#407).
+    bugs_triaged: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -2180,6 +2182,18 @@ def tick(
                     summary=f"{len(epic_numbers)} epic cards awaiting approval",
                 )
             )
+
+    # Filed bugs are triaged into the flow: accepted into Ready, closed with why, or
+    # asked about (crew#407, ADR 0027).
+    result.bugs_triaged = bugs.triage_bugs(
+        board,
+        issues,
+        sink,
+        cards,
+        default_repo=default_repo,
+        context=context,
+        failed=result.failed,
+    )
 
     # Epics approved in an earlier tick are refined now. Epics created moments
     # ago are not: they are sitting at the Sponsor's gate, unapproved.
