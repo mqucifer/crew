@@ -6,8 +6,10 @@ independently. The crew's escalations run `claude -p --safe-mode`, so this
 file never reaches them. Change it by pull request, like any other file.
 
 ## Starting work
-- **Work comes from crew issues, in P-label order** (P0 first). The Issues
-  view decides; the board's field does not.
+- **Work comes from the plan:** the current milestones' items in the Crew
+  roadmap project (https://github.com/orgs/mqucifer/projects/2, ADR 0029).
+  An idea or finding off the plan gets one line ("parked: doesn't move M-n")
+  and goes into a themed Discussion as a part, not a new issue.
 - **One worktree per issue:** `git worktree add ../crew-<n> -b <type>/<n>-<summary> origin/main`.
   Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `exp`.
   The main checkout is where ticks run, so new work never happens there.
