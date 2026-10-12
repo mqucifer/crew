@@ -801,6 +801,15 @@ def _record_citations(crew: Crew, cards: list[Any]) -> None:
     )
 
 
+def _push_to_sprint_metrics(crew: Crew) -> None:
+    """Push the sprint under way to sprint-metrics, where org.yaml names it (crew#280)."""
+    from pathlib import Path  # noqa: PLC0415
+
+    from crew_org.flows.metrics_push import push_after_pass  # noqa: PLC0415
+
+    push_after_pass(crew, var=crew.sink.path.parent.parent if crew.sink.path else Path("var"))
+
+
 def _record_seen_moves(crew: Crew, cards: list[Any]) -> None:
     """Log the moves made since the last pass by anyone but the crew (crew#521).
 
@@ -966,6 +975,13 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             result.outcomes.append(outcome)
             _record(outcome)
             moved_this_pass = moved_this_pass or outcome.moved
+        # What this pass recorded goes to sprint-metrics (crew#280). Best effort: a
+        # push that fails is sent again by the next pass, and never stops a tick.
+        if not result.throttled:
+            try:
+                _push_to_sprint_metrics(crew)
+            except Exception as exc:  # noqa: BLE001
+                crew.sink.note(EventKind.NOTE, f"sprint-metrics not pushed: {exc}"[:160])
         log.leave(in_pass)
         if result.throttled:
             break

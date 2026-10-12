@@ -186,3 +186,30 @@ def push(found: Feed, send: Callable[[str, dict[str, Any]], tuple[int, str]]) ->
                 f"{event['type']} {status}", f"{event['card_id']}: {text[:200]}"
             )
     return pushed
+
+
+def only(found: Feed, sprints: Iterable[str]) -> Feed:
+    """The feed for some sprints: their definitions and their events.
+
+    The feed is built from the whole history and cut afterwards. A story's
+    `finished` counts its misses in every sprint, not only the ones sent.
+    """
+    names = set(sprints)
+    return Feed(
+        sprints=[s for s in found.sprints if s["name"] in names],
+        events=[e for e in found.events if e["sprint"] in names],
+        left_out=found.left_out,
+    )
+
+
+def push_to(url: str, found: Feed, *, timeout: float = 10.0) -> Pushed:
+    """`push` over HTTP to the service at `url`. A service that can't be reached raises."""
+    import httpx  # noqa: PLC0415
+
+    with httpx.Client(base_url=url, timeout=timeout) as client:
+
+        def send(path: str, body: dict[str, Any]) -> tuple[int, str]:
+            response = client.post(path, json=body)
+            return response.status_code, response.text
+
+        return push(found, send)

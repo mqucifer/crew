@@ -496,3 +496,21 @@ def test_what_land_leaves_in_the_queue_is_waited_for(crew, monkeypatch):
     crew.issues = Queue(for_polls=1)
     loop.run(crew)
     assert passes["n"] == 2, "waited for the queue, then ran the pass that sees it land"
+
+
+def test_each_pass_pushes_to_sprint_metrics_and_a_failure_never_stops_the_tick(crew, monkeypatch):
+    """crew#280, criterion 3: pushed as the crew records it, never blocking a tick."""
+    from crew_org.flows import metrics_push
+
+    pushes = []
+
+    def push(crew, *, var):
+        pushes.append(var)
+        raise ConnectionError("sprint-metrics is down")
+
+    monkeypatch.setattr(metrics_push, "push_after_pass", push)
+    phases(monkeypatch, ("refine", [True, False]))
+    result = loop.run(crew)
+
+    assert len(pushes) == 2, "once after each pass"
+    assert result.passes == 2 and result.settled
