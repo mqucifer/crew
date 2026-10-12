@@ -118,11 +118,11 @@ isn't offered the answer again (crew#221).
 
 | Type | Definition | Sizing |
 |---|---|---|
-| **Goal** | A Sponsor-written outcome statement. The only artifact the human authors. | not estimated |
+| **Goal** | A Sponsor-written outcome statement. Only the Sponsor authors one. | not estimated |
 | **Epic** | A coherent slice of a Goal delivering visible value. Decomposes into Stories. | not estimated |
 | **Story** | A user-visible behaviour change, independently valuable and testable. | 1–8 points |
 | **Task** | A unit of technical work serving a Story. Not independently valuable. | ≤ 1 day |
-| **Bug** | Observed behaviour contradicting accepted acceptance criteria. | 1–5 points |
+| **Bug** | Observed behaviour contradicting accepted acceptance criteria. Filed by a collaborator in the organization: today the Sponsor and Claude's account (ADR 0027). | 1–5 points |
 | **Spike** | A timeboxed investigation answering a specific question. | fixed timebox |
 
 A Spike's output is always a written answer, never production code.
