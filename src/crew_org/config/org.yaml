@@ -70,6 +70,13 @@ telemetry:
   # up a Grafana address and go around the collector. Remove to send nothing.
   otlp_endpoint: http://localhost:4318
 
+sprint_metrics:
+  # The sprint-metrics service in deploy/sprint-metrics (crew#280). After each pass,
+  # the tick pushes the sprint under way to it, and any sprint not yet sent
+  # cleanly. A push that fails is sent again by the next pass and never stops a
+  # tick. Remove to push nothing.
+  url: http://127.0.0.1:8080
+
 design:
   # The Architect is the role a 27B model is weakest at, and therefore the one
   # most likely to drain the escalation budget. Small epics skip design

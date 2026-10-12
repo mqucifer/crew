@@ -2168,48 +2168,21 @@ def package_schema() -> None:
 
 def _history() -> tuple[Any, dict[str, Any], Any]:
     """delivery-history built from the crew's events, the board and GitHub, up to today."""
-    import json  # noqa: PLC0415
-    from datetime import UTC, datetime  # noqa: PLC0415
-
     from crew_org.auth import resolve_credentials  # noqa: PLC0415
     from crew_org.config import load_env  # noqa: PLC0415
-    from crew_org.packages import delivery_history as dh  # noqa: PLC0415
+    from crew_org.packages.gather import history_now  # noqa: PLC0415
     from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
     from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
 
     env = load_env()
-    org = load_org()
     token, _ = resolve_credentials(env)
     owner = env["GITHUB_OWNER"]
-    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
-    issues = IssueClient(token, owner)
-    crew_repo = env.get("CREW_REPO", "crew")
-
-    events: list[tuple[str, dict[str, Any]]] = []
-    for path in sorted((VAR / "events").glob("*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                events.append((path.stem, json.loads(line)))
-            except ValueError:
-                continue
-    cards = board.cards()
-    # Every repository with cards on the board, paused or not: a pause doesn't
-    # take a project out of the history.
-    repositories = sorted({c.repo for c in cards if c.repo})
-    pulls = {repo: issues.all_pulls(repo) for repo in [*repositories, crew_repo]}
-    today = sprint_today(org)
-    return dh.build(
-        dh.Inputs(
-            events=events,
-            cards=cards,
-            sprints=dh.sprints_from(board.sprints()),
-            pulls=pulls,
-            crew_repository=crew_repo,
-            repositories=repositories,
-            timezone=clock_zone(org),
-            date=today,
-            generated=datetime.now(UTC),
-        )
+    return history_now(
+        ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"])),
+        IssueClient(token, owner),
+        org=load_org(),
+        crew_repo=env.get("CREW_REPO", "crew"),
+        events_dir=VAR / "events",
     )
 
 
@@ -2258,8 +2231,6 @@ def package_push(
     Built from delivery-history, so only what may leave the crew goes. Safe to run
     again: the service stores each event once.
     """
-    import httpx  # noqa: PLC0415
-
     from crew_org.packages import sprint_metrics_feed as smf  # noqa: PLC0415
 
     history, files, _ = _history()
@@ -2269,13 +2240,7 @@ def package_push(
         console.print(f"[dim]left out: {count} × {escape(why)}[/]")
     if dry_run:
         return
-    with httpx.Client(base_url=url, timeout=30) as client:
-
-        def send(path: str, body: dict[str, Any]) -> tuple[int, str]:
-            response = client.post(path, json=body)
-            return response.status_code, response.text
-
-        pushed = smf.push(found, send)
+    pushed = smf.push_to(url, found, timeout=30)
     console.print(f"sprints: {dict(pushed.sprints)} · events: {dict(pushed.events)}")
     for kind, reason in pushed.reasons.items():
         console.print(f"[red]{escape(kind)}[/]: {escape(reason)}")
