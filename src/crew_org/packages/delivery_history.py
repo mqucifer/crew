@@ -37,7 +37,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -73,7 +73,7 @@ class Card(_Part):
 
     repo: str
     number: int
-    type: Literal["Goal", "Epic", "Story"] | None
+    type: Literal["Goal", "Epic", "Story", "Bug"] | None
     title: str
     url: str | None
     parent: int | None = Field(description="The parent card's number, in the same repository.")
@@ -562,7 +562,7 @@ def _cards(inputs: Inputs) -> list[Card]:
             Card(
                 repo=c.repo,
                 number=c.number,
-                type=c.work_type if c.work_type in ("Goal", "Epic", "Story") else None,
+                type=c.work_type if c.work_type in ("Goal", "Epic", "Story", "Bug") else None,
                 title=c.title,
                 url=c.url,
                 parent=c.parent,

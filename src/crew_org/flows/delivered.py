@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.tools.github_project import Card
+from crew_org.work_types import DELIVERED
 
 # Every closed issue since this, which is all of them.
 SINCE = "2000-01-01T00:00:00Z"
@@ -66,7 +67,7 @@ def delivered(issues: Any, cards: list[Card], repo: str) -> Delivered:
     stories = {
         c.number
         for c in cards
-        if (c.repo or repo) == repo and c.work_type == STORY_TYPE and c.number is not None
+        if (c.repo or repo) == repo and c.work_type in DELIVERED and c.number is not None
     }
     found = [
         DeliveredStory(

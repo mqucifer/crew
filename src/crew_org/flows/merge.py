@@ -32,6 +32,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.work_types import DELIVERED
 
 STORY_TYPE = "Story"
 
@@ -217,7 +218,7 @@ def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card
             c
             for c in cards
             if c.status == MERGING
-            and c.work_type == STORY_TYPE
+            and c.work_type in DELIVERED
             and c.state != "CLOSED"
             and (repos is None or c.repo in repos)
         ),
@@ -425,7 +426,7 @@ def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[C
         c
         for c in cards
         if c.status == MERGING
-        and c.work_type == STORY_TYPE
+        and c.work_type in DELIVERED
         and c.state == "CLOSED"
         and (repos is None or c.repo in repos)
     ]
@@ -437,7 +438,7 @@ def done_but_open(cards: list[Card], repos: set[str] | None = None) -> list[Card
         c
         for c in cards
         if c.status == DONE
-        and c.work_type == STORY_TYPE
+        and c.work_type in DELIVERED
         and c.state != "CLOSED"
         and (repos is None or c.repo in repos)
     ]

@@ -5,7 +5,7 @@ feed is built from delivery-history, the crew's allow-listed record, not from th
 raw events: what may leave the crew is already decided there (ADR 0020), and the
 feed takes only measures, names and states from it.
 
-Stories only: a Goal or an Epic moving to Done isn't delivered work. Every event
+Stories and bugs only (ADR 0027): a Goal or an Epic moving to Done isn't delivered work. Every event
 goes to the sprint whose days it falls in; an event between sprints, or on a card
 the history doesn't know, is left out and counted, never guessed.
 
@@ -34,6 +34,7 @@ from typing import Any
 
 from crew_org import columns
 from crew_org.packages.delivery_history import Card, DeliveryHistory, PeriodEvents
+from crew_org.work_types import DELIVERED
 
 API_VERSION = "1"
 # Seen at the same card within this many seconds, a block and a move to Blocked
@@ -76,7 +77,7 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
             if card is None:
                 left_out["card not in the history"] += 1
                 continue
-            if card.type != "Story":
+            if card.type not in DELIVERED:
                 continue
             if card.created is None:
                 left_out["story with no created date"] += 1

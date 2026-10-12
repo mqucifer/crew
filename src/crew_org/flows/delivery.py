@@ -55,6 +55,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
 from crew_org.tools.repo_read import Reader
+from crew_org.work_types import DELIVERED
 
 STORY_TYPE = "Story"
 
@@ -307,7 +308,7 @@ def needs_rework(issues: IssueClient, cards: list[Card], *, repo: str) -> list[C
                 c
                 for c in cards
                 if c.status in (IN_PROGRESS, REVIEWING)
-                and c.work_type == STORY_TYPE
+                and c.work_type in DELIVERED
                 and c.state != "CLOSED"
             ),
             key=lambda c: c.number or 0,
@@ -355,7 +356,7 @@ def reconcile_orphans(
 
     A card with an open pull request is not stranded; it is waiting for review.
     """
-    in_progress = [c for c in cards if c.status == IN_PROGRESS and c.work_type == STORY_TYPE]
+    in_progress = [c for c in cards if c.status == IN_PROGRESS and c.work_type in DELIVERED]
     if not in_progress:
         return []
 
@@ -414,7 +415,7 @@ def sprint_stories(cards: list[Card], sprint: str, *, repos: set[str] | None = N
             c
             for c in cards
             if c.status == SPRINT_BACKLOG
-            and c.work_type == STORY_TYPE
+            and c.work_type in DELIVERED
             and c.state != "CLOSED"
             and (c.sprint == sprint or sprint is None)
             and (repos is None or c.repo in repos)
@@ -851,7 +852,7 @@ def not_ours(cards: list[Card], sprint: str, repos: set[str]) -> list[Card]:
         c
         for c in cards
         if c.status == SPRINT_BACKLOG
-        and c.work_type == STORY_TYPE
+        and c.work_type in DELIVERED
         and c.state != "CLOSED"
         and (c.sprint == sprint or sprint is None)
         and c.repo not in repos

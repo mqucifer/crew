@@ -34,6 +34,7 @@ from crew_org.flows.moves import move_card
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.work_types import DELIVERED
 
 EPIC_TYPE = "Epic"
 STORY_TYPE = "Story"
@@ -168,7 +169,7 @@ def plan_sprint(
     candidates = {
         c.key: c
         for c in cards
-        if c.status == READY and c.work_type == STORY_TYPE and c.state != "CLOSED"
+        if c.status == READY and c.work_type in DELIVERED and c.state != "CLOSED"
     }
     # Same test as `delivery.sprint_stories`, so the two ends of the loop agree
     # about what the crew can work.
@@ -271,7 +272,7 @@ def committed_points(cards: list[Card], sprint: str, *, repos: set[str] | None =
         int(c.points or 0)
         for c in cards
         if c.sprint == sprint
-        and c.work_type == STORY_TYPE
+        and c.work_type in DELIVERED
         and (repos is None or c.repo in repos)
         and not (c.state == "CLOSED" and c.state_reason == "NOT_PLANNED")
     )
@@ -305,7 +306,7 @@ def _waits_on_work_outside(
         target = by_key.get((story.repo or "", number))
         if target is None or target.state == "CLOSED" or target.status == DONE:
             continue
-        if target.work_type == STORY_TYPE:
+        if target.work_type in DELIVERED:
             if not lands(target):
                 return True
             continue
@@ -328,7 +329,7 @@ def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) 
         c
         for c in cards
         if c.status == SPRINT_BACKLOG
-        and c.work_type == STORY_TYPE
+        and c.work_type in DELIVERED
         and c.state != "CLOSED"
         and c.sprint
         and c.sprint != sprint
@@ -411,7 +412,7 @@ def start_sprint(
         for card in cards:
             if not (
                 card.status == READY
-                and card.work_type == STORY_TYPE
+                and card.work_type in DELIVERED
                 and card.state != "CLOSED"
                 and (repos is None or card.repo in repos)
             ):
