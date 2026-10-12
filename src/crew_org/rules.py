@@ -87,6 +87,8 @@ class Rule(StrEnum):
     """A guard refused the change, retried with what it refused shown."""
     GUARD_OVERWRITE = "guard.overwrite"
     """It kept rewriting existing files whole instead of editing them."""
+    GUARD_NOT_REPRODUCED = "guard.not_reproduced"
+    """A bug's tests kept passing, or being skipped, against the code as merged."""
     GUARD_PROTECTED = "guard.protected"
     """It kept changing what the project protects."""
     GUARD_WORKFLOW_PERMISSION = "guard.workflow_permission"
