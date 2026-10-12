@@ -182,6 +182,19 @@ def test_an_html_error_page_where_json_belongs_is_retried():
     assert client([page, OK], clock).get("/repos/o/r/issues/1/comments").status_code == 200
 
 
+def test_a_job_log_s_redirect_to_its_storage_is_followed_not_retried():
+    clock = Clock()
+    moved = (
+        302,
+        {"content-type": "text/html;charset=utf-8", "location": "https://logs.example/job/7"},
+        b"<html>You are being redirected.</html>",
+    )
+    log = (200, {"content-type": "text/plain"}, b"FAILED tests/test_dockerfile.py")
+    logs = client([moved, log], clock).get("/repos/o/r/actions/jobs/7/logs", follow_redirects=True)
+    assert logs.text == "FAILED tests/test_dockerfile.py"
+    assert clock.slept == [], "no outage wait"
+
+
 def test_a_create_that_may_have_landed_is_not_repeated():
     clock = Clock()
     response = client([(502, {}, b""), OK], clock).post("/repos/o/r/issues/1/comments", json={})
