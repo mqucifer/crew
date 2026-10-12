@@ -56,7 +56,7 @@ Solid arrows are the path. Dotted arrows are the ways back: a card returns to In
 
 WIP limits are deterministic rules in `crew_org.process`, not an agent's judgement. A limit an agent can decide to ignore is not a limit.
 
-Two human gates and no more: an epic awaiting approval in Inbox (Goals), and the sprint review at `crew sprint close`. Admission to a sprint is **not** a gate — approving the epic was the scope decision, so filling the sprint from approved epics is arithmetic.
+Two human gates and no more: an epic awaiting approval in Inbox (Goals), and the sprint review, which reads the report a sprint records when it closes itself (ADR 0028). Admission to a sprint is **not** a gate — approving the epic was the scope decision, so filling the sprint from approved epics is arithmetic.
 
 ## A tick
 
@@ -147,7 +147,7 @@ uv run crew tick                                      # the whole loop, and it l
 | `crew tick --passes N` | — | Caps the passes. Useful the first time you run it against a changed board |
 | `crew deliver`, `review`, `qa` | the board, GitHub | The individual phases, still available |
 | `crew sprint start --dry-run` | nothing | Shows what would be admitted and why |
-| `crew sprint close [--early]` | the board, GitHub | The sprint review. A human gate. Records the retro as an issue, once per sprint. Refused while the sprint's dates run on, unless `--early`; a sprint with a retro admits nothing more (crew#193) |
+| `crew sprint close [--early]` | the board, GitHub | Closes a sprint by hand. A tick already closes one when its time is up, at the tick's start or end (ADR 0028), so this is for closing early or a sprint no tick has closed. Merges what you approved, carries approved unmerged stories to the next sprint, and records the retro as an issue, once per sprint. Refused while the sprint's dates run on, unless `--early`; a sprint with a retro admits nothing more (crew#193) |
 | `crew sprint retro --preview [--sprint NAME] [--out FILE]` | the board, GitHub (reads only) | The retro exactly as it would be recorded, for any sprint, past or current, even one already closed. Records nothing, merges nothing, moves nothing (crew#193) |
 | `crew package schema` | `contracts/` | Writes `delivery-history`'s schema from its model. Refused when the schema changed and `SCHEMA_VERSION` didn't (ADR 0021, crew#521) |
 | `crew package build [--out DIR]` | `var/packages/` | Builds `delivery-history` from the event log, the board and GitHub, up to today: its index, one events file per sprint, its manifest and its schemas, and an archive of them. Releases nothing. Events it can't place in a repository are left out and counted in the manifest, never guessed |
@@ -238,7 +238,7 @@ Escalation is a release valve, never a substitute for task design. The Scrum Mas
 - A card in Blocked — always, by construction
 - A merge conflict — two changes disagree, and the crew should not decide which wins
 - A card returned by a revert — decide whether to re-scope it, re-deliver it, or close it
-- `crew sprint close` — the sprint review
+- The sprint review: the report a sprint records when it closes itself at a tick's start or end (ADR 0028), or `crew sprint close` to close one early
 - The sprint's `retro` issue on the crew repository — read it, triage the `retro-finding` issues it filed, and close it
 
 **Reading what happened.** `var/events/*.jsonl` is the append-only record: every card move carries the acting role, the columns it moved between and its card's repository. A move the crew didn't make is recorded too, as `card.seen_moved`, when the next pass sees it: dated by when the board says its Status was set, and attributed to the board workflow if a run of `board.yml` was acting then, otherwise to a person. Two moves between passes read as one. The last pass's view is `var/events/board-statuses.json`. Every comment the crew writes is signed with its role. `var/diffs/` keeps the rejected diff and the failure output of a card that blocked — deliberately kept, because the worktree is deleted and the evidence would go with it.

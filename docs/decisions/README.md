@@ -58,3 +58,4 @@ decision was first made.
 | [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first) |
 | [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (built for the Developer, crew#626) |
 | [0027](0027-collaborators-file-bugs.md) | Collaborators file bugs | 2026-10-12 | Accepted (the path through the flow to be built by crew#407) |
+| [0028](0028-a-sprint-closes-itself-when-its-time-is-up.md) | A sprint closes itself when its time is up | 2026-10-12 | Accepted |

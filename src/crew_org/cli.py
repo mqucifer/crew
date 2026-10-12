@@ -184,6 +184,18 @@ def tick(
         f"{escape(sprint)} · "
         f"{escape(', '.join(sorted(allowed)))}[/]"
     )
+    # A sprint whose time is up closes itself, at a tick's start or end (ADR 0028):
+    # here, the last one to end, if nothing has closed it yet.
+    from crew_org.flows.rollover import last_ended  # noqa: PLC0415
+
+    _roll_over(
+        board,
+        IssueClient(token, owner),
+        org=org,
+        sprint=last_ended(board.sprints(), sprint_today(org)),
+        owner=owner,
+        env=env,
+    )
 
     # Refinement reads the code it is deciding about, and delivery opens its
     # worktrees off the same clone.
@@ -247,6 +259,45 @@ def tick(
 
     _render_tick(result)
     _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)
+    # And at its end: the sprint it worked, if its time ran out while it did.
+    _roll_over(board, crew.issues, org=org, sprint=sprint, owner=owner, env=env)
+
+
+def _roll_over(
+    board: Any,
+    issues: Any,
+    *,
+    org: dict[str, Any],
+    sprint: str | None,
+    owner: str,
+    env: dict[str, str],
+) -> None:
+    """Close `sprint` if its time is up and nothing has closed it (ADR 0028).
+
+    Never fails a tick: a close that can't finish is said, and the next tick's
+    start tries again, since the sprint still has no retro.
+    """
+    from crew_org.flows.rollover import due  # noqa: PLC0415
+
+    crew_repo = env.get("CREW_REPO", "crew")
+    try:
+        if not due(board, issues, sprint=sprint, today=sprint_today(org), crew_repo=crew_repo):
+            return
+        console.print(f"\n[bold]{escape(sprint or '')} is over: closing it.[/]")
+        _close_and_report(
+            board,
+            issues,
+            org=org,
+            sprint=sprint or "",
+            owner=owner,
+            repo=env.get("PILOT_REPO", "crew"),
+            crew_repo=crew_repo,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(
+            f"[yellow]{escape(sprint or '')} not closed:[/] {escape(str(exc))}. "
+            "The next tick tries again."
+        )
 
 
 def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
@@ -2028,10 +2079,7 @@ def sprint_close(
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger
-    from crew_org.flows.close import close_sprint
     from crew_org.llm import health
-    from crew_org.process import ProcessRules
     from crew_org.tools.github_issues import IssueClient
     from crew_org.tools.github_project import ProjectClient
 
@@ -2061,19 +2109,47 @@ def sprint_close(
         )
         raise typer.Exit(code=2)
 
-    from crew_org.events import forward_calls_to
+    _close_and_report(
+        board,
+        IssueClient(token, owner),
+        org=org,
+        sprint=sprint,
+        owner=owner,
+        repo=repo,
+        crew_repo=crew_repo,
+        merge=not no_merge,
+    )
+
+
+def _close_and_report(
+    board: Any,
+    issues: Any,
+    *,
+    org: dict[str, Any],
+    sprint: str,
+    owner: str,
+    repo: str,
+    crew_repo: str,
+    merge: bool = True,
+) -> None:
+    """Close `sprint` and print its report: `crew sprint close`, and a tick at a
+    sprint's end (ADR 0028)."""
+    from crew_org.escalation import EscalationLedger  # noqa: PLC0415
+    from crew_org.events import forward_calls_to  # noqa: PLC0415
+    from crew_org.flows.close import close_sprint  # noqa: PLC0415
+    from crew_org.process import ProcessRules  # noqa: PLC0415
 
     # The retro's model calls are recorded like a tick's (#179).
     close_sink = EventSink(VAR / "events" / "close.jsonl")
     forward_calls_to(close_sink)
     result = close_sprint(
         board,
-        IssueClient(token, owner),
+        issues,
         close_sink,
         EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         sprint=sprint,
         repo=repo,
-        merge=not no_merge,
+        merge=merge,
         rules=ProcessRules.from_config(org),
         events_dir=VAR / "events",
         crew_repo=crew_repo,
