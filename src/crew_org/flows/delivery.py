@@ -1683,14 +1683,14 @@ def deliver_story(
         if before:
             # Answered with evidence once already, and sent back again: the gate
             # and the Developer disagree, and another round would only repeat it.
-            review = _latest_review(issues, repo, live["number"])
+            gate, said = _what_sent_it_back(issues, repo, number, live["number"])
             outcome.failure_detail = (
-                f"## The review\n\n{review}\n\n## The earlier answer\n\n{before}"
+                f"## What {gate} said\n\n{said}\n\n## The earlier answer\n\n{before}"
             )
             outcome.blocked_rule = Rule.GATES_DISAGREE
             outcome.blocked_reason = (
                 f"PR #{live['number']} was answered without a change and sent back again: "
-                "the Code Reviewer and the Developer disagree, which is for a person to settle"
+                f"{gate} and the Developer disagree, which is for a person to settle"
             )
             return outcome
     if not ws.commit(
@@ -2467,9 +2467,32 @@ def deliver(
     return result
 
 
-def _latest_review(issues: IssueClient, repo: str, pull: int) -> str:
+def _what_sent_it_back(issues: IssueClient, repo: str, number: int, pull: int) -> tuple[str, str]:
+    """The gate that last sent the work back, and what it said.
+
+    QA sends back work whose diff the Code Reviewer approved. On
+    mqucifer/sprint-metrics#569 the block named the Code Reviewer and showed its
+    approval, so whoever settled it read the wrong side (crew#645).
+    """
+    from crew_org.flows.acceptance import QA_MARKER  # noqa: PLC0415
+
     try:
         reviews = issues.pull_reviews(repo, pull)
     except Exception:  # noqa: BLE001
-        return ""
-    return (reviews[-1].get("body") or "") if reviews else ""
+        reviews = []
+    review = reviews[-1] if reviews else {}
+    if review.get("state") == "APPROVED":
+        try:
+            qa = [
+                c.get("body") or ""
+                for c in issues.comments(repo, number)
+                if QA_MARKER in (c.get("body") or "")
+            ]
+        except Exception:  # noqa: BLE001
+            qa = []
+        if qa and "not accepted" in qa[-1]:
+            return "QA", qa[-1]
+        ci = latest_ci_verdict(issues, repo, pull)
+        if ci:
+            return "CI", ci
+    return "the Code Reviewer", review.get("body") or ""

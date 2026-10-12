@@ -717,14 +717,23 @@ Three rules for every limit on prompt content:
    Above that, it's shown in full only the test files the branch changed and
    any a story, its criteria or the Developer's proof names by file — read
    from those, never inferred from prose — and every other test file by name
-   only. QA may ask for a named file back (`need_files`, twice per delivery,
-   the same shape as the Developer's ask); asking isn't a verdict, and asking
-   twice for a file it already has means there's nothing more to show, so the
-   next try must judge. **QA can cite only what it read.** A proven criterion
-   citing a test QA wasn't shown gets that file shown and is judged again;
-   past the ask limit, a cited test QA never read, or one no file defines,
-   isn't proof — the criterion is unproven with the reason, and acceptance
-   follows from that. The context is logged the same way the Developer's is.
+   only. **A large test file is shown in part** (lean-prompts plan, L4,
+   2026-10-12): its imports, the tests the branch added or changed or the
+   work names, and the fixtures those take, with every other definition
+   listed by name. On mqucifer/sprint-metrics#569, a 200,000-character
+   `tests/test_service.py` was shown whole for eight new tests. **QA reads
+   what else it needs with the read tool**, by file and name, as the
+   Developer does, within one ceiling shared with what it was shown.
+   `need_files` remains the last resort (twice per delivery, the same shape
+   as the Developer's ask); asking isn't a verdict, and asking twice for a
+   file it already has means there's nothing more to show, so the next try
+   must judge. **QA can cite only what it saw.** A criterion citing a test QA
+   neither was shown nor read gets that test shown and is judged again,
+   whether QA held it proven or not. On the same story, criterion 6 was held
+   unproven only because its test wasn't shown (crew#645). Past the ask limit, a cited
+   test QA never saw, or one no file defines, isn't proof: the criterion is
+   unproven with the reason, and acceptance follows from that. The context
+   is logged the same way the Developer's is, along with what QA read.
 
    **The Business Analyst splits each epic from its own view of the
    repository** (crew#231, 2026-09-30). Refinement used to hand it the whole

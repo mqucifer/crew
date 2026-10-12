@@ -15,6 +15,7 @@ whose stories are all Done is done, and so is a goal whose epics are.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,7 +38,13 @@ from crew_org.rules import Rule
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
-from crew_org.tools.repo_context import IGNORED_DIRS
+from crew_org.tools.repo_context import (
+    IGNORED_DIRS,
+    READ_MIN_CHARS,
+    READING_CHAR_CEILING,
+    WHOLE_FILE_CHARS,
+)
+from crew_org.tools.repo_read import Reader
 from crew_org.tools.sandbox import Sandbox
 from crew_org.work_types import BUG, DELIVERED
 
@@ -179,15 +186,37 @@ class QATests:
     focused: bool
     # Test name -> the file that defines it, for every test in the suite.
     defined: dict[str, str]
+    # A large file shown in part: its path -> the names of the definitions shown.
+    cut: dict[str, set[str]] = field(default_factory=dict)
+    # What QA read with the tool, as `path` or `path::name`.
+    read: list[str] = field(default_factory=list)
+
+    def seen(self, name: str) -> bool:
+        """Whether QA was shown the test `name`, or read it."""
+        rel = self.defined.get(name)
+        if rel is None:
+            return False
+        read = {key.split("::", 1)[1].rsplit(".", 1)[-1] for key in self.read if "::" in key}
+        return (
+            rel in self.shown
+            or name in self.cut.get(rel, ())
+            or rel in self.read
+            or (name in read and any(key.startswith(f"{rel}::") for key in self.read))
+        )
 
 
 def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> QATests:
     """The tests, for QA: all of them when small, else the ones the work touches or names.
 
-    Chosen, whole: the test files the branch changed, those defining a test
-    `about` names (the story, the Developer's proof, the criteria), and those
-    QA asked for. Every other test file is listed with the tests it defines,
-    so QA can ask for one by name.
+    Chosen: the test files the branch changed, those defining a test `about`
+    names (the story, the Developer's proof, the criteria), and those QA asked
+    for. A chosen file is shown whole unless it's large: then it's shown in
+    part, its imports and the tests the branch changed or the work names, with
+    the fixtures those use (lean-prompts plan, L4). Every other test file is
+    listed with the tests it defines, so QA can read one by name.
+
+    `extra` holds what QA asked for: a path is shown whole, and `path::name`
+    adds that test to its file's part.
     """
     files = [p for p in sorted(worktree.rglob("test_*.py")) if not (IGNORED_DIRS & set(p.parts))]
     bodies = {
@@ -198,17 +227,37 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
     }
     if sum(len(b) for b in bodies.values()) <= QA_FOCUS_ABOVE_CHARS:
         return QATests(collect_tests(worktree), list(bodies), False, defined)
-    wanted = {str(Path(e.strip().removeprefix("./"))) for e in extra if e.strip()}
+    asked = [str(Path(e.strip().removeprefix("./"))) for e in extra if e.strip()]
+    wanted = {e for e in asked if "::" not in e}
+    named = set(profile_for().test_names_in(about)) | {
+        e.split("::", 1)[1].rsplit(".", 1)[-1] for e in asked if "::" in e
+    }
     changed = set(changed_paths(worktree))
+    lines = changed_lines(worktree)
     chosen = [
         rel
         for rel in bodies
         if rel in changed
         or rel in wanted
         or rel in about
-        or any(defined.get(name) == rel for name in profile_for().test_names_in(about))
+        or any(defined.get(name) == rel for name in named)
     ]
-    parts = [f"# {rel}\n{bodies[rel]}" for rel in chosen]
+    parts: list[str] = []
+    shown: list[str] = []
+    cut: dict[str, set[str]] = {}
+    for rel in chosen:
+        body = bodies[rel]
+        part = (
+            in_part(body, lines.get(rel, set()), named)
+            if len(body) > WHOLE_FILE_CHARS and rel not in wanted
+            else None
+        )
+        if part is None:
+            parts.append(f"# {rel}\n{body}")
+            shown.append(rel)
+        else:
+            parts.append(f"# {rel} (in part: read any other definition by name)\n{part[0]}")
+            cut[rel] = part[1]
     others = [
         f"- `{rel}`: " + (", ".join(profile_for(rel).tests_defined(body)) or "no tests")
         for rel, body in bodies.items()
@@ -219,7 +268,70 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
             "# Every other test file, and the tests it defines (not shown in full)\n"
             + "\n".join(others)
         )
-    return QATests("\n\n".join(parts), chosen, True, defined)
+    return QATests("\n\n".join(parts), shown, True, defined, cut)
+
+
+def in_part(source: str, lines: set[int], names: set[str]) -> tuple[str, set[str]] | None:
+    """A large test file as QA needs it, and the names it shows; None if it doesn't parse.
+
+    Its imports, the functions the branch added or changed (`lines`, as the file
+    now numbers them) or `names` names, and the fixtures those take from this
+    file. Every other definition is listed by name, to read with the tool.
+    """
+    import ast  # noqa: PLC0415
+
+    from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    found = definitions(source)
+    functions = {
+        k: n for k, n in found.items() if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+    def span(node: ast.stmt) -> tuple[int, int]:
+        start = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
+        return start, node.end_lineno or node.lineno
+
+    picked = [
+        k
+        for k, n in functions.items()
+        if k.rsplit(".", 1)[-1] in names or any(span(n)[0] <= x <= span(n)[1] for x in lines)
+    ]
+    # A test is read with its fixtures: a test's arguments name them.
+    taken = {a.arg for k in picked for a in functions[k].args.args}
+    picked += [k for k in functions if k not in picked and k in taken]
+    picked.sort(key=lambda k: span(functions[k])[0])
+    text = source.splitlines()
+    imports = [
+        "\n".join(text[n.lineno - 1 : n.end_lineno or n.lineno])
+        for n in tree.body
+        if isinstance(n, ast.Import | ast.ImportFrom)
+    ]
+    shown = [
+        (f"# in class {k.rsplit('.', 1)[0]}\n" if "." in k else "")
+        + "\n".join(text[span(functions[k])[0] - 1 : span(functions[k])[1]])
+        for k in picked
+    ]
+    rest = [k for k, n in found.items() if k not in picked and not isinstance(n, ast.ClassDef)]
+    listing = [f"# Not shown, read by name: {', '.join(rest)}"] if rest else []
+    return (
+        "\n\n".join(["\n".join(imports), *shown, *listing]).strip(),
+        {k.rsplit(".", 1)[-1] for k in picked},
+    )
+
+
+def unread(verdict, tests: QATests) -> dict[str, str]:
+    """Tests any criterion cites that QA wasn't shown and didn't read: name -> its file.
+
+    An unproven criterion counts too: mqucifer/sprint-metrics#569's criterion 6 was
+    held unproven because its test's file wasn't shown in full, though the test
+    proved it (crew#645).
+    """
+    cited = {name for c in verdict.criteria for name in profile_for().test_names_in(c.evidence)}
+    return {n: tests.defined[n] for n in cited if n in tests.defined and not tests.seen(n)}
 
 
 def unseen_citations(verdict, tests: QATests) -> dict[str, str | None]:
@@ -230,7 +342,7 @@ def unseen_citations(verdict, tests: QATests) -> dict[str, str | None]:
         if c.proven
         for name in profile_for().test_names_in(c.evidence)
     }
-    return {n: tests.defined.get(n) for n in cited if tests.defined.get(n) not in tests.shown}
+    return {n: tests.defined.get(n) for n in cited if not tests.seen(n)}
 
 
 def held_to_what_it_read(verdict: QAVerdict, tests: QATests) -> QAVerdict:
@@ -265,8 +377,9 @@ def _judge(
 ) -> QAVerdict:
     """QA's verdict, shown the tests the work touches or names, asking for more if it must (#231).
 
-    A test a proven criterion cites that wasn't shown is added and the story
-    judged again, as if QA had asked for its file. Past the limit, what it
+    QA reads what else it needs with the tool, as the Developer does (L4). A
+    test a criterion cites that QA neither was shown nor read is added and the
+    story judged again, as if QA had asked for it. Past the limit, what it
     cites and didn't read doesn't count.
     """
     asked: list[str] = []
@@ -277,23 +390,57 @@ def _judge(
         sink.note(
             EventKind.NOTE,
             f"#{number} QA context: {len(tests.text):,} chars of tests"
-            + (f", {len(tests.shown)} files in full" if tests.focused else ", the whole suite"),
+            + (
+                f", {len(tests.shown)} files in full, {len(tests.cut)} in part"
+                if tests.focused
+                else ", the whole suite"
+            ),
             card=number,
             context_chars=len(tests.text),
             focused=tests.focused,
             shown=tests.shown,
+            cut=sorted(tests.cut),
             asked=asked,
         )
         can_ask = tests.focused and ask < QA_ASK_LIMIT and not judge_now
         # Offered only when there's something to ask for: the whole suite shown
         # leaves nothing listed by name.
         ask_for = {"can_ask": True} if can_ask else {}
-        verdict = attributed(verify_story, card=number, repo=repo)(
-            story, test_code=tests.text, **ask_for, **evidence
+        # What it reads shares one ceiling with what it was shown, as the Developer's does.
+        room = (
+            READING_CHAR_CEILING
+            - len(story)
+            - len(tests.text)
+            - sum(len(str(v)) for v in evidence.values())
         )
+        reader = (
+            Reader(worktree, budget=room, shown=tests.shown)
+            if tests.focused and room >= READ_MIN_CHARS
+            else None
+        )
+        try:
+            verdict = attributed(verify_story, card=number, repo=repo)(
+                story,
+                test_code=tests.text,
+                **({"read": reader.tool()} if reader is not None else {}),
+                **ask_for,
+                **evidence,
+            )
+        finally:
+            if reader is not None and reader.read:
+                tests.read = list(reader.read)
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{number} QA read {', '.join(reader.read)[:200]}",
+                    card=number,
+                    read=reader.read,
+                )
         if verdict.criteria:
-            unseen = [f for f in unseen_citations(verdict, tests).values() if f]
-            wanted = [f for f in unseen if f not in asked]
+            wanted = [
+                f"{rel}::{name}"
+                for name, rel in unread(verdict, tests).items()
+                if f"{rel}::{name}" not in asked
+            ]
             if not wanted or not can_ask:
                 break
         else:
@@ -327,6 +474,38 @@ def changed_paths(worktree: Path) -> list[str]:
         text=True,
     )
     return diff.stdout.split()
+
+
+_HUNK = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@")
+
+
+def changed_lines(worktree: Path) -> dict[str, set[int]]:
+    """The lines the branch added or changed in each file, numbered as the file now is."""
+    import subprocess  # noqa: PLC0415
+
+    from crew_org.tools.regression import merged_base  # noqa: PLC0415
+
+    merged = merged_base(worktree)
+    if merged is None:
+        return {}
+    diff = subprocess.run(
+        ["git", "diff", "-U0", merged.sha],
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+    )
+    found: dict[str, set[int]] = {}
+    rel = ""
+    for line in diff.stdout.splitlines():
+        if line.startswith("+++ "):
+            rel = line[6:] if line.startswith("+++ b/") else ""
+            continue
+        hunk = _HUNK.match(line)
+        if hunk and rel:
+            start = int(hunk.group(1))
+            count = int(hunk.group(2)) if hunk.group(2) is not None else 1
+            found.setdefault(rel, set()).update(range(start, start + count))
+    return found
 
 
 def _with_unguarded(checks: str, worktree: Path) -> str:
