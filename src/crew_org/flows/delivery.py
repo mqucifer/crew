@@ -50,12 +50,12 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Kind, Rule
-from crew_org.tools import bounds, claude_code, regression, repo_context, workspace
+from crew_org.tools import bounds, claude_code, regression, repo_context, reproduction, workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
 from crew_org.tools.repo_read import Reader
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import BUG, DELIVERED
 
 STORY_TYPE = "Story"
 
@@ -1484,7 +1484,43 @@ def deliver_story(
 
         check = workspace.check(worktree)
         if check.ok:
-            break
+            # A bug's tests have to fail without the fix (crew#407, B3): a test that
+            # passes there, or is skipped, doesn't reproduce the bug.
+            unreproduced = not_reproduced(card, worktree, implementation, sink)
+            if not unreproduced:
+                break
+            failure = LocalFailure(
+                card=number,
+                role="Developer",
+                failure_class=FailureClass.VERIFY,
+                attempts=outcome.seen("REPRODUCE"),
+                detail=unreproduced[:400],
+            )
+            decision = policy.decide(failure, spent=ledger.spent(sprint))
+            outcome.count("REPRODUCE")
+            sink.emit(
+                CrewEvent(
+                    kind=EventKind.ESCALATION_DECIDED,
+                    role="Developer",
+                    card=number,
+                    summary=f"REPRODUCE — {decision.disposition}",
+                    detail={
+                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
+                        "failure_class": "REPRODUCE",
+                        "attempt": outcome.seen("REPRODUCE"),
+                        "reason": unreproduced[:600],
+                    },
+                )
+            )
+            if decision.disposition is Disposition.RETRY_LOCAL:
+                feedback = (
+                    f"The fix passes the checks, but {unreproduced}. Change them so at least "
+                    "one fails against the code as merged, for the reason the bug describes."
+                )
+                continue
+            outcome.blocked_rule = Rule.GUARD_NOT_REPRODUCED
+            outcome.blocked_reason = f"its tests don't reproduce the bug: {unreproduced}"
+            return outcome
 
         # Merged tests, not this story's, that it breaks and doesn't declare: the
         # story is changing behaviour other work pinned. On the first such failure
@@ -1796,6 +1832,28 @@ def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:
     except Exception:  # noqa: BLE001
         return True
     return any(ALREADY_DONE_MARKER in (c.get("body") or "") for c in comments)
+
+
+def not_reproduced(card: Card, worktree: Path, implementation: Any, sink: EventSink) -> str:
+    """Why a bug's criteria tests don't reproduce it, or "" (crew#407, B3).
+
+    Only a bug is checked, and only when the check can run: a story's tests show
+    new behaviour, which nothing had before, and a project without pytest is noted,
+    not refused.
+    """
+    if card.work_type != BUG:
+        return ""
+    tests = [(c.path, c.test) for c in getattr(implementation, "criteria_tests", None) or []]
+    merged = regression.merged_base(worktree)
+    if not tests or merged is None:
+        return ""
+    found = reproduction.reproduces(worktree, merged, tests)
+    if found.unchecked:
+        sink.note(
+            EventKind.NOTE, f"reproduction not checked: {found.unchecked}"[:160], card=card.number
+        )
+        return ""
+    return found.refusal()
 
 
 def existing_proof_block(proven: list) -> str:

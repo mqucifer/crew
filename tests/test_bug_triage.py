@@ -69,12 +69,15 @@ class Board:
 
 
 class Issues:
-    def __init__(self, association: str = "OWNER") -> None:
-        self.association = association
+    def __init__(self, permission: str = "write") -> None:
+        self.granted = permission
         self.done: list[tuple] = []
 
     def get(self, repo: str, number: int) -> dict:
-        return {"body": REPORT, "author_association": self.association}
+        return {"body": REPORT, "user": {"login": "quarters-claude"}}
+
+    def permission(self, repo: str, user: str) -> str:
+        return self.granted
 
     def edit_issue(self, repo: str, number: int, *, body: str) -> None:
         self.done.append(("edit", body))
@@ -183,7 +186,7 @@ def test_a_bug_from_someone_not_a_collaborator_is_left_for_a_person(monkeypatch)
         raise AssertionError("a non-collaborator's bug isn't triaged")
 
     monkeypatch.setattr(bugs, "triage_bug", never)
-    issues = Issues(association="NONE")
+    issues = Issues(permission="read")
     done = bugs.triage_bugs(
         Board(), issues, Sink(), [_card()], default_repo="sm", context=None, failed=[]
     )

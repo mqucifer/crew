@@ -39,7 +39,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import IGNORED_DIRS
 from crew_org.tools.sandbox import Sandbox
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import BUG, DELIVERED
 
 # QA reasons about the test code, so what it is shown decides its verdict. A
 # 12,000-character slice in the prompt cut story #13's two new tests off the end
@@ -537,8 +537,17 @@ def run_qa(
                 )
                 # Read first: it sets this project's parts, which the notice below needs (#404).
                 project = _project_brief(worktree)
+                # A bug's body is its report, then the criteria that reproduce it
+                # (crew#407): judged the same, said so the report isn't read as scope.
+                bug = (
+                    "This is a bug fix. The report above the criteria says what was wrong; "
+                    "judge the criteria, which reproduce it.\n\n"
+                    if card.work_type == BUG
+                    else ""
+                )
+                body = issues.get(card_repo, number).get("body") or ""
                 verdict = _judge(
-                    f"{card.title}\n\n{issues.get(card_repo, number).get('body') or ''}{answered}",
+                    f"{bug}{card.title}\n\n{body}{answered}",
                     worktree=worktree,
                     sink=sink,
                     number=number,

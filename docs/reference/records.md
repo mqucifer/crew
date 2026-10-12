@@ -67,6 +67,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `edit.local_repair` | Its edits couldn't be applied, retried with why shown, up to the local limit. |
 | `guard.local_repair` | A guard refused the change, retried with what it refused shown. |
 | `guard.overwrite` | It kept rewriting existing files whole instead of editing them. |
+| `guard.not_reproduced` | A bug's tests kept passing, or being skipped, against the code as merged. |
 | `guard.protected` | It kept changing what the project protects. |
 | `guard.workflow_permission` | It changes a workflow the crew has no permission to push. |
 | `guard.no_change` | The implementation produced no change. |
