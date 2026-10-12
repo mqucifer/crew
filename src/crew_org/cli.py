@@ -2165,22 +2165,13 @@ def package_schema() -> None:
         console.print(f"wrote {path.relative_to(contract.ROOT)}")
 
 
-@package_app.command("build")
-def package_build(
-    out: str = typer.Option(None, "--out", help="Where to write it. Defaults to var/packages/."),
-) -> None:
-    """Build delivery-history from the crew's events, the board and GitHub. Releases nothing.
-
-    Everything up to today, by the sprint clock. It's written as a directory and
-    an archive: the package, its manifest and the schemas it follows.
-    """
+def _history() -> tuple[Any, dict[str, Any], Any]:
+    """delivery-history built from the crew's events, the board and GitHub, up to today."""
     import json  # noqa: PLC0415
-    import shutil  # noqa: PLC0415
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from crew_org.auth import resolve_credentials  # noqa: PLC0415
     from crew_org.config import load_env  # noqa: PLC0415
-    from crew_org.packages import contract  # noqa: PLC0415
     from crew_org.packages import delivery_history as dh  # noqa: PLC0415
     from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
     from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
@@ -2206,7 +2197,7 @@ def package_build(
     repositories = sorted({c.repo for c in cards if c.repo})
     pulls = {repo: issues.all_pulls(repo) for repo in [*repositories, crew_repo]}
     today = sprint_today(org)
-    history, files, manifest = dh.build(
+    return dh.build(
         dh.Inputs(
             events=events,
             cards=cards,
@@ -2219,6 +2210,25 @@ def package_build(
             generated=datetime.now(UTC),
         )
     )
+
+
+@package_app.command("build")
+def package_build(
+    out: str = typer.Option(None, "--out", help="Where to write it. Defaults to var/packages/."),
+) -> None:
+    """Build delivery-history from the crew's events, the board and GitHub. Releases nothing.
+
+    Everything up to today, by the sprint clock. It's written as a directory and
+    an archive: the package, its manifest and the schemas it follows.
+    """
+    import json  # noqa: PLC0415
+    import shutil  # noqa: PLC0415
+
+    from crew_org.packages import contract  # noqa: PLC0415
+    from crew_org.packages import delivery_history as dh  # noqa: PLC0415
+
+    history, files, manifest = _history()
+    today = history.date
     name = f"{dh.NAME}-{today.isoformat()}"
     directory = Path(out) if out else VAR / "packages" / name
     directory.mkdir(parents=True, exist_ok=True)
@@ -2233,6 +2243,43 @@ def package_build(
     console.print(f"{manifest.events} events · schema {manifest.schema_version} · {archive}")
     for why, count in manifest.left_out.items():
         console.print(f"[dim]left out: {count} × {escape(why)}[/]")
+
+
+@package_app.command("push")
+def package_push(
+    url: str = typer.Option(
+        "http://127.0.0.1:8080", "--url", help="The sprint-metrics service (deploy/sprint-metrics)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Say what would go; send nothing."),
+) -> None:
+    """Push the crew's history to sprint-metrics: its sprints, then its stories' events (#280).
+
+    Built from delivery-history, so only what may leave the crew goes. Safe to run
+    again: the service stores each event once.
+    """
+    import httpx  # noqa: PLC0415
+
+    from crew_org.packages import sprint_metrics_feed as smf  # noqa: PLC0415
+
+    history, files, _ = _history()
+    found = smf.feed(history, files.values())
+    console.print(f"{len(found.sprints)} sprints · {len(found.events)} events")
+    for why, count in sorted(found.left_out.items()):
+        console.print(f"[dim]left out: {count} × {escape(why)}[/]")
+    if dry_run:
+        return
+    with httpx.Client(base_url=url, timeout=30) as client:
+
+        def send(path: str, body: dict[str, Any]) -> tuple[int, str]:
+            response = client.post(path, json=body)
+            return response.status_code, response.text
+
+        pushed = smf.push(found, send)
+    console.print(f"sprints: {dict(pushed.sprints)} · events: {dict(pushed.events)}")
+    for kind, reason in pushed.reasons.items():
+        console.print(f"[red]{escape(kind)}[/]: {escape(reason)}")
+    if pushed.reasons:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
