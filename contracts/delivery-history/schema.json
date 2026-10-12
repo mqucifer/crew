@@ -108,7 +108,8 @@
               "enum": [
                 "Goal",
                 "Epic",
-                "Story"
+                "Story",
+                "Bug"
               ],
               "type": "string"
             },

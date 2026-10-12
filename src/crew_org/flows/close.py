@@ -45,6 +45,7 @@ from crew_org.git_ops import branch_name
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, many_repos
+from crew_org.work_types import BUG, DELIVERED
 
 STORY_TYPE = "Story"
 
@@ -130,12 +131,18 @@ def _sprint_dates(board: ProjectClient, sprint: str):
 
 
 def sprint_cards(cards: list[Card], sprint: str) -> list[Card]:
-    return [c for c in cards if c.sprint == sprint and c.work_type == STORY_TYPE]
+    return [c for c in cards if c.sprint == sprint and c.work_type in DELIVERED]
 
 
 def shown_status(card: Card) -> str:
     """A card's status as the retro reports it: a superseded story isn't Done (crew#558)."""
     return SUPERSEDED if card.superseded else card.status or ""
+
+
+def shown_title(card: Card) -> str:
+    """A card's title as the review reports it: a bug fixed is told apart from a story
+    delivered (ADR 0027)."""
+    return f"Bug: {card.title}" if card.work_type == BUG else card.title
 
 
 def board_summary(cards: list[Card], sprint: str) -> str:
@@ -151,7 +158,7 @@ def board_summary(cards: list[Card], sprint: str) -> str:
     for card in sorted(sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)):
         points = int(card.points or 0)
         lines.append(
-            f"{card.name(qualify=qualify)} [{points}pt] {shown_status(card)}: {card.title}"
+            f"{card.name(qualify=qualify)} [{points}pt] {shown_status(card)}: {shown_title(card)}"
         )
     return "\n".join(lines) or "No stories in this sprint."
 
@@ -413,7 +420,7 @@ def close_sprint(
     ours = [
         c
         for c in cards
-        if c.work_type == STORY_TYPE and (not delivery_repos or c.repo in delivery_repos)
+        if c.work_type in DELIVERED and (not delivery_repos or c.repo in delivery_repos)
     ]
     returned = {ch.card for ch in chains}
     went_back = [c for c in ours if c.number in returned and c.sprint != sprint]
@@ -442,7 +449,7 @@ def close_sprint(
 
     layout = RetroLayout(
         stories=[
-            (c.name(qualify=qualify), int(c.points or 0), shown_status(c), c.title)
+            (c.name(qualify=qualify), int(c.points or 0), shown_status(c), shown_title(c))
             for c in sorted(
                 sprint_cards(cards, sprint), key=lambda c: (c.repo or "", c.number or 0)
             )

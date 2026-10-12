@@ -1787,6 +1787,7 @@ def export(
     from crew_org.escalation import EscalationLedger
     from crew_org.flows.attempts import read_attempts, retries_text, sprint_report
     from crew_org.tools.github_project import ProjectClient
+    from crew_org.work_types import DELIVERED
 
     env = load_env()
     token, _ = resolve_credentials(env)
@@ -1794,7 +1795,7 @@ def export(
     sprint = sprint or board.schema.field("Sprint").current_iteration(sprint_today(load_org()))
     from crew_org.flows.loops import read_loops, sprint_window
 
-    cards = [c for c in board.cards() if c.work_type == "Story" and c.repo == repo]
+    cards = [c for c in board.cards() if c.work_type in DELIVERED and c.repo == repo]
     # A story sent back to refinement lost its Sprint field; the event log
     # still says it was in this sprint (#253).
     dates = board.schema.field("Sprint").iteration_dates(sprint)
