@@ -138,6 +138,9 @@ def transient(request: httpx.Request, response: httpx.Response) -> bool:
     """
     if response.status_code in (500, 502, 503, 504):
         return True
+    if response.is_redirect:
+        # A job log answers 302 to its storage, as text/html: followed, not retried (#669).
+        return False
     if response.headers.get("content-type", "").startswith("text/html"):
         return True  # an error page where the API's JSON belongs
     if response.status_code == 200 and request.url.path.endswith("/graphql"):
