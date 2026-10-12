@@ -16,7 +16,8 @@ the process runs, not the individual hops between."
   - the `goal` label, applied by hand, marks a drafted Goal as ready; the crew
     doesn't touch a Goal before it (crew#62, 2026-09-22);
   - epic approval and prioritisation;
-  - sprint-end review of the increment.
+  - sprint-end review of the increment. The sprint closes itself when its time
+    is up (ADR 0028), and the Sponsor reviews the report it records.
 - **Everything else is automated.** Merges are gated by branch protection,
   required checks and the reviewer agent.
 - **The Sponsor starts each run** with a manual `crew tick`, which runs until
@@ -28,3 +29,7 @@ the process runs, not the individual hops between."
   or an Action: that would remove the gate. The template sets `needs:human`
   only.
 - The Sponsor wants a real-time view of agent activity while a tick runs.
+
+## Changelog
+
+- **2026-10-12:** the sprint-end review reads the report the sprint records when it closes itself (ADR 0028), rather than starting the close. Decided by the Sponsor in chat.
