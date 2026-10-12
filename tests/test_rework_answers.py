@@ -141,6 +141,43 @@ def test_a_second_answer_without_a_change_goes_to_a_person_with_both_sides(
     assert ws.committed == []
 
 
+def test_a_second_answer_to_qa_names_qa_and_shows_what_it_said(
+    harness,  # noqa: F811
+    refused,  # noqa: F811
+    monkeypatch,
+):
+    """crew#645: QA returned sm#569 on an approved diff, and the block named the reviewer."""
+    from crew_org.flows.acceptance import QA_MARKER, qa_marker
+
+    earlier = f"{ANSWERED_MARKER}\n**Re-worked.** Already implemented by #73."
+    returned = (
+        f"{QA_MARKER}\n{qa_marker(REFUSED_HEAD)}\n## QA — not accepted\n\n"
+        "criterion 6: test_schema.py not shown"
+    )
+    monkeypatch.setattr(
+        FakeIssues,
+        "comments",
+        lambda self, repo, n: [{"body": returned}, {"body": earlier}],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        FakeIssues,
+        "pull_reviews",
+        lambda self, repo, n: [
+            {"state": "APPROVED", "commit_id": REFUSED_HEAD, "body": "No findings."}
+        ],
+        raising=False,
+    )
+    result, _, _, _, _, _ = harness(
+        checks=[green()], cards=[_returned_card("In Progress")], implement=lambda n: ANSWER
+    )
+
+    (blocked,) = result.blocked
+    assert "QA and the Developer disagree" in blocked.blocked_reason
+    assert "criterion 6: test_schema.py not shown" in blocked.failure_detail
+    assert "No findings." not in blocked.failure_detail
+
+
 def test_the_developer_is_offered_the_answer_only_for_returned_work(
     harness,  # noqa: F811
     refused,  # noqa: F811
