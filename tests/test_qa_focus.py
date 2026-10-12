@@ -135,3 +135,85 @@ def test_on_its_last_try_it_isnt_offered_an_ask(repo):
     result, calls = judge(repo, answers)
     assert [ask for _, ask in calls] == [True, True, False]
     assert result.accepted
+
+
+# --- a large file in part, and the read tool (lean-prompts plan, L4) -------------------------
+
+SERVICE = """import pytest
+
+from app import serve
+
+
+@pytest.fixture
+def client():
+    return serve()
+
+
+def test_sprint_label(client):
+    assert client.get("/sprint")
+
+
+def test_range_one_sprint(client):
+    assert client.get("/range")
+
+
+def test_trend(client):
+    assert client.get("/trend")
+"""
+
+
+@pytest.fixture
+def large(repo, monkeypatch):
+    (repo / "tests" / "test_service.py").write_text(SERVICE)
+    monkeypatch.setattr(flow, "WHOLE_FILE_CHARS", 50)
+    monkeypatch.setattr(flow, "changed_paths", lambda w: ["tests/test_service.py"])
+    # test_range_one_sprint's assert line is what the branch changed.
+    line = SERVICE.splitlines().index('    assert client.get("/range")') + 1
+    monkeypatch.setattr(flow, "changed_lines", lambda w: {"tests/test_service.py": {line}})
+    return repo
+
+
+def test_a_large_file_is_shown_as_what_the_change_touches_and_its_fixtures(large):
+    tests = qa_tests(large)
+    assert "tests/test_service.py" not in tests.shown
+    assert tests.cut["tests/test_service.py"] == {"test_range_one_sprint", "client"}
+    assert "from app import serve" in tests.text and "def client" in tests.text
+    assert "def test_range_one_sprint" in tests.text
+    assert "def test_trend" not in tests.text
+    assert "read by name: test_sprint_label, test_trend" in tests.text
+
+
+def test_a_test_the_story_names_is_shown_from_a_large_file(large):
+    tests = qa_tests(large, about="Proven by test_trend.")
+    assert "def test_trend" in tests.text and tests.seen("test_trend")
+    assert not tests.seen("test_sprint_label")
+
+
+def test_a_test_it_read_is_seen(large):
+    tests = qa_tests(large)
+    tests.read = ["tests/test_service.py::test_sprint_label"]
+    v = verdict("test_sprint_label covers it")
+    assert held_to_what_it_read(v, tests) == v
+
+
+def test_qa_is_offered_the_read_tool_when_the_tests_are_cut(large):
+    offered = []
+
+    def fake(story, *, test_code, read=None, **evidence):
+        offered.append(read)
+        return verdict("test_range_one_sprint covers it")
+
+    flow.verify_story, original = fake, flow.verify_story
+    try:
+        flow._judge("the story", worktree=large, sink=EventSink(None), number=1, repo="sm")
+    finally:
+        flow.verify_story = original
+    assert offered[0] is not None and offered[0].name == "read_file"
+
+
+def test_a_criterion_unproven_for_a_test_it_wasnt_shown_is_judged_again_with_it(large):
+    """crew#645: sm#569's criterion 6 was held unproven for a test QA wasn't shown."""
+    unshown = verdict("test_trend is named, but its file wasn't shown in full", proven=False)
+    result, calls = judge(large, [unshown, verdict("test_trend checks the trend")])
+    assert len(calls) == 2 and "def test_trend" in calls[1][0]
+    assert result.accepted

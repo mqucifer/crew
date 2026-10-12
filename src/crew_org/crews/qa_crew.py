@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from crew_org import calls
 from crew_org.crews import epic_rows
 from crew_org.crews.asks import FileAsk
+from crew_org.tools import repo_read
 
 MIN_EVIDENCE_CHARS = 20
 
@@ -98,8 +99,12 @@ def verify_story(
     checks: str = "",
     can_ask: bool = False,
     decisions: str = "",
+    read: calls.Tool | None = None,
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
+
+    `read` is the read tool, offered when the tests are shown in part: QA reads
+    a test it wasn't shown instead of judging without it (lean-prompts plan, L4).
 
     `prior_verdicts` is what QA itself said about this card on earlier
     attempts. Without it every attempt was judged cold, so a story returned for
@@ -156,8 +161,18 @@ def verify_story(
                     else ""
                 )
                 + (
+                    "Some test files are shown in part or listed by name only. Before you "
+                    "judge a criterion on a test you weren't shown, read it with "
+                    f"`{repo_read.NAME}`, by its file and name: a test you haven't seen is "
+                    "neither proof nor a reason to hold a criterion unproven.\n"
+                    if read is not None
+                    else ""
+                )
+                + (
                     "Test files listed by name only weren't shown in full. If judging a "
-                    "criterion needs one, name it in `need_files` (and nothing else) and you'll "
+                    "criterion needs one"
+                    + (" and you can't read it" if read is not None else "")
+                    + ", name it in `need_files` (and nothing else) and you'll "
                     "be asked again with it shown. Don't cite a test you haven't read.\n"
                     if can_ask
                     else ""
@@ -170,4 +185,5 @@ def verify_story(
         ],
         QAVerdict,
         expected="A verdict per acceptance criterion, with evidence.",
+        tools=[read] if read is not None else None,
     )
