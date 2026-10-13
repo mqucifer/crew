@@ -121,6 +121,7 @@ def test_a_story_becomes_started_attempts_and_finished_with_its_first_miss():
     )
     assert finished["card"] == {
         "created": "2026-10-11",
+        "created_at": "2026-10-11T01:00:00+00:00",
         "points": 3,
         "attempts": 3,
         "failure_class": "VERIFY",
@@ -131,7 +132,12 @@ def test_a_story_becomes_started_attempts_and_finished_with_its_first_miss():
 
 def test_a_story_that_landed_first_time_finishes_with_one_attempt():
     found = smf.feed(_history([_card(1)]), [_period([_moved(1, 30, "Merging", "Done")])])
-    assert found.events[0]["card"] == {"created": "2026-10-11", "points": 3, "attempts": 1}
+    assert found.events[0]["card"] == {
+        "created": "2026-10-11",
+        "created_at": "2026-10-11T01:00:00+00:00",
+        "points": 3,
+        "attempts": 1,
+    }
 
 
 def test_a_block_and_the_move_to_blocked_are_one_block_and_leaving_it_unblocks():
@@ -188,7 +194,11 @@ def test_a_superseded_story_is_sent_as_superseded_with_why():
             "type": "superseded",
             "timestamp": (T0).isoformat(),
             "sprint": "Sprint 22",
-            "card": {"created": "2026-10-11", "points": 3},
+            "card": {
+                "created": "2026-10-11",
+                "created_at": "2026-10-11T01:00:00+00:00",
+                "points": 3,
+            },
             "because": "story_problem",
         }
     ]
