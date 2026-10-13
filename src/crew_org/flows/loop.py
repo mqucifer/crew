@@ -505,6 +505,7 @@ def _admit(crew: Crew) -> PhaseOutcome:
             f"{c.name(qualify=True)} — waits for its epic to be split again"
             for c in plan.waiting_on_rework
         ]
+        + [f"{c.name(qualify=True)} — its epic is parked in Inbox" for c in plan.parked]
         + (
             [f"{plan.sprint} is full: {plan.committed} of {plan.capacity} points"]
             if plan.full and any(s.deferred for s in plan.slices)

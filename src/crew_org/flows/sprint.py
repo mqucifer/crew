@@ -90,6 +90,8 @@ class SprintPlan:
     # Stories whose epic is waiting to be split again (`needs:rework`): they're
     # about to be superseded (#189, #242).
     waiting_on_rework: list[Card] = field(default_factory=list)
+    # Stories whose epic the Sponsor parked in Inbox (Goals): they wait with it (crew#673).
+    parked: list[Card] = field(default_factory=list)
     # Points already in the sprint before this run, whatever their column (#222).
     committed: int = 0
 
@@ -222,8 +224,21 @@ def plan_sprint(
             remaining = _fill(piece, story, remaining)
         plan.slices.append(piece)
 
+    # A parked epic isn't approved, so its stories are missing from `parents`
+    # and would otherwise be taken as stories with no epic (crew#673).
+    parked = parked_epics(cards)
+    plan.parked = sorted(
+        (
+            c
+            for key, c in ready.items()
+            if key not in parents and c.parent is not None and (c.repo or "", c.parent) in parked
+        ),
+        key=lambda c: (c.repo or "", c.number or 0),
+    )
+    waiting = {c.key for c in plan.parked}
+
     # After every epic: epic priority orders the work that has it.
-    parentless = [c for key, c in ready.items() if key not in parents]
+    parentless = [c for key, c in ready.items() if key not in parents and key not in waiting]
     plan.unestimated = sorted(
         (c for c in parentless if c.points is None),
         key=lambda c: (c.repo or "", c.number or 0),
@@ -337,6 +352,30 @@ def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) 
     ]
 
 
+def parked_epics(cards: list[Card]) -> set[tuple[str, int]]:
+    """Epics in Inbox (Goals): not yet approved, or parked there by the Sponsor."""
+    return {
+        c.key
+        for c in cards
+        if c.work_type == EPIC_TYPE and c.status == INBOX and c.state != "CLOSED"
+    }
+
+
+def under_a_parked_epic(cards: list[Card], *, repos: set[str] | None = None) -> list[Card]:
+    """Admitted stories not started whose epic was parked after they were admitted (crew#673)."""
+    parked = parked_epics(cards)
+    return [
+        c
+        for c in cards
+        if c.status == SPRINT_BACKLOG
+        and c.work_type in DELIVERED
+        and c.state != "CLOSED"
+        and c.parent is not None
+        and (c.repo or "", c.parent) in parked
+        and (repos is None or c.repo in repos)
+    ]
+
+
 def _fill(piece: EpicSlice, story: Card, remaining: int) -> int:
     """Admit a story whole if it fits, defer it if not. Returns what is left."""
     points = int(story.points or 0)
@@ -366,7 +405,16 @@ def start_sprint(
 
     # Back to Ready first, so planning weighs them with their siblings.
     returned = {}
-    for card in left_over(cards, sprint, repos=repos):
+    back = [
+        (c, f"not started in {c.sprint}: back to Ready for planning")
+        for c in left_over(cards, sprint, repos=repos)
+    ]
+    back += [
+        (c, "its epic is parked in Inbox: back to Ready until it returns")
+        for c in under_a_parked_epic(cards, repos=repos)
+        if c.key not in {k.key for k, _ in back}
+    ]
+    for card, why in back:
         move_card(
             board,
             sink,
@@ -375,7 +423,7 @@ def start_sprint(
             by="Scrum Master",
             card=card.number,
             frm=SPRINT_BACKLOG,
-            summary=f"not started in {card.sprint}: back to Ready for planning",
+            summary=why,
         )
         try:
             board.clear_field(card.item_id, "Sprint")
