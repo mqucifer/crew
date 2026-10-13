@@ -80,6 +80,11 @@ is ADR 0022.
   file and `manifest.schema.json` for its manifest.
   Both are generated from the code that builds it (`crew package schema`), and
   `versions.json` lists every schema version.
+- **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
+  a whole package, laid out as a release's archive is, built by the same code
+  from illustrative inputs, so a project can build against it before the first
+  release. It's regenerated with the schema and shows every kind of event,
+  pattern and finding the schema allows. Its numbers and titles are made up.
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`
   (`-2` for a second on one day), with the archive as its asset. It reaches a
   project as a pull request that changes one line: `delivery-history.tag` at the
