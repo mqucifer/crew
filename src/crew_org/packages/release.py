@@ -32,12 +32,13 @@ from crew_org.packages import delivery_history as dh
 
 # The one line in a consumer's repository that names the release it shows.
 TAG_FILE = "delivery-history.tag"
-# Who builds on the package: each gets a pull request per release (ADR 0021).
-CONSUMERS = ("crew-presentation",)
+# Who builds on the package, and the Goal there it serves: each gets a pull request
+# per release (ADR 0021), on a branch naming that Goal, since a branch names its issue.
+CONSUMERS = {"crew-presentation": 10}
 # Releases whose archives are kept, newest first, beside the first of each month.
 KEEP_DAILY = 7
 # A consumer pull request's branch: one per release, so a later one supersedes it.
-BRANCH_PREFIX = "chore/delivery-history-"
+_BRANCH = re.compile(rf"^chore/\d+-{dh.NAME}-")
 
 _TAG = re.compile(rf"^{dh.NAME}-(\d{{4}}-\d{{2}}-\d{{2}})(?:-(\d+))?$")
 
@@ -172,7 +173,7 @@ def propose(ws: Any, issues: Any, *, consumer: str, tag: str, url: str) -> str:
 
     It changes `TAG_FILE` and nothing else. Returns its URL, or what stopped it.
     """
-    branch = f"{BRANCH_PREFIX}{tag.removeprefix(f'{dh.NAME}-')}"
+    branch = f"chore/{CONSUMERS[consumer]}-{tag}"
     open_pulls = issues.open_pulls(consumer)
     if any(p["head"]["ref"] == branch for p in open_pulls):
         return f"already proposed on {branch}"
@@ -193,7 +194,7 @@ def propose(ws: Any, issues: Any, *, consumer: str, tag: str, url: str) -> str:
         consumer, title=f"chore: delivery-history is {tag}", head=branch, base=base, body=body
     )
     for older in open_pulls:
-        if older["head"]["ref"].startswith(BRANCH_PREFIX):
+        if _BRANCH.match(older["head"]["ref"]):
             issues.comment(
                 consumer, older["number"], f"Superseded by {pull['html_url']}: {tag} is later."
             )
