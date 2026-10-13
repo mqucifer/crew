@@ -11,7 +11,13 @@ DAY = date(2026, 10, 11)
 T0 = datetime(2026, 10, 11, 6, 0, tzinfo=UTC)
 
 
-def _card(number: int, *, type_: str = "Story", closed_as: str | None = "completed") -> dh.Card:
+def _card(
+    number: int,
+    *,
+    type_: str = "Story",
+    closed_as: str | None = "completed",
+    because: str | None = None,
+) -> dh.Card:
     return dh.Card(
         repo="sm",
         number=number,
@@ -27,6 +33,7 @@ def _card(number: int, *, type_: str = "Story", closed_as: str | None = "complet
         created=T0 - timedelta(hours=5),
         closed=None,
         closed_as=closed_as,  # type: ignore[arg-type]
+        superseded_because=because,  # type: ignore[arg-type]
     )
 
 
@@ -162,10 +169,30 @@ def test_what_cant_be_placed_is_left_out_and_counted_never_guessed():
     )
     assert found.events == []
     assert found.left_out == {
-        "superseded: 1.2.0 has no event for it": 1,
+        "superseded with no reason recorded": 1,
         "card not in the history": 1,
         "between sprints": 1,
     }
+
+
+def test_a_superseded_story_is_sent_as_superseded_with_why():
+    """sprint-metrics 1.3.0's event (crew#680): not finished, and no replaced_by."""
+    found = smf.feed(
+        _history([_card(1, closed_as="not_planned", because="story_problem")]),
+        [_period([_moved(1, 0, "Ready", "Done")])],
+    )
+    assert found.events == [
+        {
+            "api_version": "1",
+            "card_id": "sm#1",
+            "type": "superseded",
+            "timestamp": (T0).isoformat(),
+            "sprint": "Sprint 22",
+            "card": {"created": "2026-10-11", "points": 3},
+            "because": "story_problem",
+        }
+    ]
+    assert not found.left_out
 
 
 def test_push_sends_sprints_first_and_keeps_going_past_a_refusal():

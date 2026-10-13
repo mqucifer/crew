@@ -18,8 +18,11 @@ What a story's events become:
 - moved to Done: `finished`, carrying how many attempts it took, and the class and
   role of its first miss: why it didn't land first time.
 
-A story closed as not planned was superseded, not finished. sprint-metrics 1.2.0
-has no event type for that, so its move to Done is left out, and counted.
+A story closed as not planned was superseded, not finished: its move to Done is
+sent as `superseded` (sprint-metrics 1.3.0), with `because`, the reason its epic
+was split again. One with no reason recorded is left out and counted, never
+guessed. `replaced_by` isn't sent: the crew doesn't record which stories replaced
+it.
 
 Pushing is safe to repeat: the service stores an event once by card, type and
 time, and updates a sprint registered again in place.
@@ -102,9 +105,13 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
                 continue
             blocks.setdefault(key, []).append(event.at)
         if kind == "finished" and card.closed_as == "not_planned":
-            left_out["superseded: 1.2.0 has no event for it"] += 1
-            continue
+            if card.superseded_because is None:
+                left_out["superseded with no reason recorded"] += 1
+                continue
+            kind = "superseded"
         body = _event(card, kind, sprint, event.at.isoformat())
+        if kind == "superseded":
+            body["because"] = card.superseded_because
         if kind == "attempt_failed":
             misses.setdefault(key, []).append(event)
             body["attempt_number"] = event.number or len(misses[key])

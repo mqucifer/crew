@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import jsonschema
 import pytest
@@ -393,6 +394,31 @@ def test_a_superseded_story_says_so_though_the_board_shows_it_done():
     assert by_number[475]["closed_as"] == "not_planned"
     assert by_number[496]["closed_as"] == "completed"
     assert by_number[501]["closed_as"] is None
+
+
+def test_a_superseded_story_carries_why_from_the_re_split_that_closed_it():
+    """The re-split's reason, sprint-metrics 1.3.0's `because` (crew#680); none is never guessed."""
+
+    def closed(number: int, reason: str) -> Any:
+        return board_card("sprint-metrics", number).model_copy(
+            update={"state": "CLOSED", "state_reason": reason}
+        )
+
+    def resplit(at: str, because: str, superseded: list[int]) -> tuple[str, dict[str, Any]]:
+        detail = {"repo": "sprint-metrics", "because": because, "superseded": superseded}
+        return ("tick", {"kind": "epic.resplit", "at": at, "card": 468, "detail": detail})
+
+    data, _ = built(
+        [
+            resplit("2026-10-07T15:00:00Z", "sponsor", [475]),
+            resplit("2026-10-07T16:00:00Z", "story problem", [475, 496]),
+        ],
+        cards=[closed(475, "NOT_PLANNED"), closed(496, "COMPLETED"), closed(501, "NOT_PLANNED")],
+    )
+    by_number = {c["number"]: c for c in data["cards"]}
+    assert by_number[475]["superseded_because"] == "story_problem"
+    assert by_number[496]["superseded_because"] is None
+    assert by_number[501]["superseded_because"] is None
 
 
 def test_the_crews_design_decisions_are_read_from_their_labels():

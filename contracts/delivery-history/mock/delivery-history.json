@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "1.3.0",
+ "schema_version": "1.4.0",
  "date": "2026-09-25",
  "timezone": "America/Chicago",
  "crew_repository": "crew",
@@ -34,7 +34,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -50,7 +51,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -66,7 +68,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -82,7 +85,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -98,7 +102,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-25T01:30:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -114,7 +119,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-24T23:53:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -130,7 +136,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-25T00:23:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -146,7 +153,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-25T01:03:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -162,7 +170,8 @@
    "created": "2026-09-25T23:38:00Z",
    "closed": null,
    "technical": true,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -178,7 +187,8 @@
    "created": "2026-09-25T23:38:00Z",
    "closed": null,
    "technical": true,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -194,7 +204,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T00:13:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -210,7 +221,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T00:51:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -226,7 +238,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T01:55:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -242,7 +255,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T02:23:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -258,7 +272,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -274,7 +289,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T02:50:00Z",
    "technical": false,
-   "closed_as": "not_planned"
+   "closed_as": "not_planned",
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -290,7 +306,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": null,
    "technical": false,
-   "closed_as": null
+   "closed_as": null,
+   "superseded_because": null
   },
   {
    "repo": "sprint-metrics",
@@ -306,7 +323,8 @@
    "created": "2026-09-22T23:30:00Z",
    "closed": "2026-09-26T03:03:00Z",
    "technical": false,
-   "closed_as": "completed"
+   "closed_as": "completed",
+   "superseded_because": null
   }
  ],
  "periods": [

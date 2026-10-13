@@ -37,7 +37,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.4.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -90,6 +90,12 @@ class Card(_Part):
     closed_as: Literal["completed", "not_planned", "duplicate"] | None = Field(
         description="How the issue closed. A story closed as not planned was superseded: "
         "never built, though the board shows it Done."
+    )
+    superseded_because: Literal["sponsor", "story_problem"] | None = Field(
+        default=None,
+        description="Why a story closed as not planned was superseded: its epic was split "
+        "again at the Sponsor's request, or after a story problem. None when no re-split "
+        "recorded it.",
     )
 
 
@@ -723,7 +729,33 @@ def _closed_as(card: Any) -> Literal["completed", "not_planned", "duplicate"] | 
     return reason  # type: ignore[return-value]
 
 
+# A re-split's reason as the tick records it, and as the package names it.
+_RESPLIT_BECAUSE: dict[str, Literal["sponsor", "story_problem"]] = {
+    "sponsor": "sponsor",
+    "story problem": "story_problem",
+}
+
+
+def _superseded_because(
+    inputs: Inputs,
+) -> dict[tuple[str, int], Literal["sponsor", "story_problem"]]:
+    """Why each superseded story was, by (repo, number): the last re-split that closed it."""
+    out: dict[tuple[str, int], Literal["sponsor", "story_problem"]] = {}
+    resplits = (e for _, e in inputs.events if e.get("kind") == "epic.resplit")
+    for event in sorted(resplits, key=lambda e: str(e.get("at") or "")):
+        detail = event.get("detail") or {}
+        because = _RESPLIT_BECAUSE.get(str(detail.get("because") or ""))
+        repo = detail.get("repo")
+        if because is None or not repo:
+            continue
+        for number in detail.get("superseded") or []:
+            if isinstance(number, int):
+                out[(repo, number)] = because
+    return out
+
+
 def _cards(inputs: Inputs) -> list[Card]:
+    because = _superseded_because(inputs)
     out = []
     for c in inputs.cards:
         if not (c.repo and c.number):
@@ -744,6 +776,9 @@ def _cards(inputs: Inputs) -> list[Card]:
                 created=c.created,
                 closed=c.closed,
                 closed_as=_closed_as(c),
+                superseded_because=(
+                    because.get((c.repo, c.number)) if _closed_as(c) == "not_planned" else None
+                ),
             )
         )
     return sorted(out, key=lambda c: (c.repo, c.number))
