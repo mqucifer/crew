@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from crew_org.packages import delivery_history as dh
+from crew_org.packages import sprint_metrics_answers as sma
 from crew_org.tools.github_project import Card
 
 DIRECTORY = "mock"
@@ -218,8 +219,19 @@ def _events() -> list[Raw]:
         _refused(185, 133, 2, "VERIFY", "escalate"),
         _plain(186, "escalation.sent", 133),
         *_delivered(190, 133, 139, calls=1)[2:],
-        # #130 was superseded by the split: closed as not planned, which the board
-        # shows as Done.
+        # #130 was superseded when its epic was split again after a story problem:
+        # closed as not planned, which the board shows as Done.
+        (
+            "tick",
+            {
+                "at": _at(199),
+                "kind": "epic.resplit",
+                "role": None,
+                "card": 123,
+                "summary": "epic #123 split again after a story problem",
+                "detail": {"repo": SM, "superseded": [130], "because": "story problem"},
+            },
+        ),
         _by_person(200, 130, "Ready", "Done", by="platform"),
         # Still going at the sprint's end, and one blocked.
         _moved(220, 129, "Sprint Backlog", "In Progress"),
@@ -415,24 +427,88 @@ def _pulls() -> dict[str, list[dict[str, Any]]]:
     }
 
 
-def _answers() -> dict[str, dict[str, Any]]:
-    """sprint-metrics' answers, in its 1.2.0 shape, until criterion 2 sends the real ones."""
-    return {
-        "Sprint 6": {
-            "first_attempt_rate_percent": 50,
-            "throughput": 6,
-            "points_delivered": 18,
-            "escalation_count": 1,
-            "wip_violations": 0,
-            "prior": {
-                "first_attempt_rate_percent": 67,
-                "throughput": 3,
-                "points_delivered": 9,
-                "escalation_count": 0,
-                "wip_violations": 0,
-            },
+# Each sprint's numbers as sprint-metrics would compute them from the mock's cards.
+_SPRINT_5 = {
+    "throughput": 3,
+    "points_delivered": 9,
+    "first_attempt_numerator": 2,
+    "first_attempt_denominator": 3,
+    "first_attempt_rate_percent": 67,
+    "escalation_count": 0,
+    "escalation_rate_percent": 0,
+    "wip_violations": 0,
+    "blocked_aging_days": 0,
+    "cycle_time_days": 0,
+    "lead_time_days": 1,
+    "cycle_time_minutes": 410,
+    "lead_time_minutes": 1900,
+    "superseded_count": 0,
+    "superseded_points": 0,
+    "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
+    "top_failure_causes": {"VERIFY": 1},
+}
+_SPRINT_6 = {
+    "throughput": 6,
+    "points_delivered": 18,
+    "first_attempt_numerator": 3,
+    "first_attempt_denominator": 6,
+    "first_attempt_rate_percent": 50,
+    "escalation_count": 1,
+    "escalation_rate_percent": 17,
+    "wip_violations": 0,
+    "blocked_aging_days": 1,
+    "cycle_time_days": 0,
+    "lead_time_days": 1,
+    "cycle_time_minutes": 655,
+    "lead_time_minutes": 1500,
+    "superseded_count": 1,
+    "superseded_points": 3,
+    "superseded_breakdown": {"sponsor": 0, "story_problem": 1},
+    "top_failure_causes": {"VERIFY": 2, "EDIT": 1},
+}
+
+
+def _answer(now: dict[str, Any], prior: dict[str, Any] | None, **rest: Any) -> dict[str, Any]:
+    """One sprint's entry of sprint-metrics' GET /range, with the sprint before as `prior`."""
+    delta = None
+    if prior is not None:
+        delta = {
+            k: v - prior[k]
+            for k, v in now.items()
+            if isinstance(v, int) and isinstance(prior.get(k), int)
         }
+        delta["superseded_breakdown"] = sum(now["superseded_breakdown"].values()) - sum(
+            prior["superseded_breakdown"].values()
+        )
+    flags = {k: False for k in now if k.endswith(("_days", "_minutes", "_percent"))}
+    flags |= {k: False for k in ("throughput", "wip_violations")}
+    return {**now, **rest, "flags": flags, "prior": prior, "delta": delta}
+
+
+def _sprint_metrics() -> dh.SprintMetrics:
+    """sprint-metrics' part, checked against its schema as the service's answer is."""
+    body: dict[str, Any] = {
+        "api_version": "1",
+        "sprints": {
+            "Sprint 5": _answer(
+                _SPRINT_5,
+                None,
+                failure_breakdown=[{"class": "VERIFY", "role": "Developer", "count": 1}],
+            ),
+            "Sprint 6": _answer(
+                _SPRINT_6,
+                dict(_SPRINT_5),
+                failure_breakdown=[
+                    {"class": "VERIFY", "role": "Developer", "count": 2},
+                    {"class": "EDIT", "role": "Developer", "count": 1},
+                ],
+            ),
+        },
     }
+    body["sprints"]["Sprint 6"]["flags"]["first_attempt_rate_percent"] = True
+    return dh.SprintMetrics(
+        release=sma.RELEASE, answers=sma.checked(body, ["Sprint 5", "Sprint 6"])
+    )
 
 
 def inputs() -> dh.Inputs:
@@ -446,7 +522,7 @@ def inputs() -> dh.Inputs:
         timezone="America/Chicago",
         date=date(2026, 9, 25),
         generated=T + timedelta(hours=6),
-        answers=_answers(),
+        sprint_metrics=_sprint_metrics(),
     )
 
 

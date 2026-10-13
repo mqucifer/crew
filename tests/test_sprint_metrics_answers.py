@@ -1,0 +1,215 @@
+"""sprint-metrics' answers in delivery-history (crew#521, criterion 2).
+
+The package carries sprint-metrics' answer for every sprint it covers, checked
+against sprint-metrics' published schema at the release the crew runs, and its
+schema embeds that one (ADR 0021, ADR 0022).
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import re
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import httpx
+import jsonschema
+import pytest
+
+from crew_org.packages import contract, mock, release
+from crew_org.packages import delivery_history as dh
+from crew_org.packages import sprint_metrics_answers as sma
+from crew_org.packages.gather import history_now
+
+ROOT = Path(__file__).resolve().parents[1]
+FIVE, SIX = "Sprint 5", "Sprint 6"
+
+
+def body() -> dict:
+    """A /range answer for Sprints 5 and 6 in the pinned release's shape: the mock's."""
+    answers = mock.inputs().sprint_metrics
+    assert answers is not None
+    return {"api_version": "1", "sprints": copy.deepcopy(answers.answers)}
+
+
+# --- the release the crew runs ------------------------------------------------------------
+
+
+def test_the_release_is_the_one_deploy_pins():
+    compose = (ROOT / "deploy" / "sprint-metrics" / "docker-compose.yaml").read_text()
+    [pinned] = re.findall(r"ghcr\.io/mqucifer/sprint-metrics:([\d.]+)", compose)
+    assert pinned == sma.RELEASE
+
+
+def test_the_release_s_published_schema_is_here():
+    schema = sma.range_schema()
+    assert schema["$schema"].startswith("https://json-schema.org/")
+    assert "cycle_time_minutes" in sma.entry_schema()["required"]
+
+
+def test_the_package_schema_embeds_sprint_metrics_own():
+    answers = contract.schemas()["schema.json"]["$defs"]["SprintMetrics"]["properties"]["answers"]
+    embedded = dict(answers["additionalProperties"])
+    assert embedded.pop("$comment") == sma.SCHEMA_URL.format(release=sma.RELEASE)
+    assert embedded == sma.entry_schema()
+
+
+# --- checking an answer -------------------------------------------------------------------
+
+
+def test_an_answer_is_carried_with_only_what_the_schema_names():
+    found = body()
+    found["sprints"][SIX]["new_measure"] = 4
+    found["sprints"][SIX]["failure_breakdown"][0]["why"] = "the model wrote a sentence here"
+    found["sprints"][SIX]["flags"]["a sentence as a key"] = True
+    answers = sma.checked(found, [FIVE, SIX])
+    six = answers[SIX]
+    assert "new_measure" not in six
+    assert six["failure_breakdown"][0] == {"class": "VERIFY", "role": "Developer", "count": 2}
+    assert "a sentence as a key" not in six["flags"]
+    assert six["prior"]["throughput"] == 3 and answers[FIVE]["prior"] is None
+
+
+def test_an_answer_from_an_older_release_is_refused_and_says_which_it_needs():
+    found = body()
+    del found["sprints"][SIX]["cycle_time_minutes"]  # 1.2.0 doesn't answer it
+    with pytest.raises(sma.Unanswered, match=r"Is the service running 1\.3\.0\?"):
+        sma.checked(found, [FIVE, SIX])
+
+
+def test_a_sprint_with_no_answer_is_refused():
+    found = body()
+    del found["sprints"][FIVE]
+    with pytest.raises(sma.Unanswered, match="no answer for Sprint 5"):
+        sma.checked(found, [FIVE, SIX])
+
+
+# --- asking the service -------------------------------------------------------------------
+
+
+def test_the_service_is_asked_once_for_the_range(monkeypatch):
+    asked = []
+
+    def get(url, *, params, timeout):
+        asked.append((url, params))
+        return httpx.Response(200, json=body())
+
+    monkeypatch.setattr(httpx, "get", get)
+    answers = sma.ask("http://127.0.0.1:8080/", [FIVE, SIX])
+    assert asked == [("http://127.0.0.1:8080/range", {"start": FIVE, "end": SIX})]
+    assert list(answers) == [FIVE, SIX]
+
+
+@pytest.mark.parametrize(
+    "answer, said",
+    [
+        (httpx.ConnectError("refused"), "couldn't be reached"),
+        (httpx.Response(503, json={"retryable": True}), "answered 503"),
+    ],
+)
+def test_a_service_that_doesn_t_answer_says_why(monkeypatch, answer, said):
+    def get(url, *, params, timeout):
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(httpx, "get", get)
+    with pytest.raises(sma.Unanswered, match=said):
+        sma.ask("http://127.0.0.1:8080", [FIVE, SIX])
+
+
+# --- in the package -----------------------------------------------------------------------
+
+
+def test_the_mock_carries_every_sprint_s_answer_and_follows_the_schema():
+    history, _, _ = dh.build(mock.inputs())
+    assert history.sprint_metrics is not None
+    assert set(history.sprint_metrics.answers) == {FIVE, SIX}
+    schema = json.loads((contract.CONTRACTS / "schema.json").read_text())
+    jsonschema.validate(json.loads(history.model_dump_json()), schema)
+    broken = json.loads(history.model_dump_json())
+    del broken["sprint_metrics"]["answers"][SIX]["throughput"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(broken, schema)
+
+
+def test_a_package_goes_only_with_an_answer_for_every_sprint_it_covers():
+    history, _, _ = dh.build(mock.inputs())
+    assert release.refusal(history) is None
+    part = history.sprint_metrics
+    assert part is not None
+    short = history.model_copy(
+        update={"sprint_metrics": part.model_copy(update={"answers": {SIX: part.answers[SIX]}})}
+    )
+    assert release.refusal(short) == "sprint-metrics has no answer for Sprint 5"
+    none = history.model_copy(update={"sprint_metrics": None})
+    assert "sprint-metrics' answers aren't in the package" in (release.refusal(none) or "")
+
+
+# --- gathering ----------------------------------------------------------------------------
+
+
+class Board:
+    def cards(self):
+        return mock.inputs().cards
+
+    def sprints(self):
+        return mock.SPRINTS
+
+
+class Issues:
+    def all_pulls(self, repo):
+        return mock.inputs().pulls.get(repo, [])
+
+
+ORG = {"sprint": {"timezone": "America/Chicago"}}
+
+
+def gathered(monkeypatch, tmp_path, **kw):
+    import crew_org.packages.gather as gather
+
+    monkeypatch.setattr(gather, "sprint_today", lambda org: date(2026, 9, 25))
+    monkeypatch.setattr(gather, "datetime", _Frozen)
+    return history_now(Board(), Issues(), org=ORG, crew_repo="crew", events_dir=tmp_path, **kw)
+
+
+class _Frozen(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 9, 26, tzinfo=UTC)
+
+
+def test_without_answers_history_now_builds_as_before(monkeypatch, tmp_path):
+    """The tick's push passes no `answers`: its build is the one it always was."""
+    history, files, manifest = gathered(monkeypatch, tmp_path)
+    inputs = mock.inputs()
+    expected = dh.build(
+        dh.Inputs(
+            events=[],
+            cards=inputs.cards,
+            sprints=dh.sprints_from(mock.SPRINTS),
+            pulls={"crew": inputs.pulls.get("crew", [])}
+            | {r: inputs.pulls.get(r, []) for r in history.repositories},
+            crew_repository="crew",
+            repositories=history.repositories,
+            timezone=history.timezone,
+            date=date(2026, 9, 25),
+            generated=datetime(2026, 9, 26, tzinfo=UTC),
+        )
+    )
+    assert history.sprint_metrics is None
+    assert (history, files, manifest) == expected
+
+
+def test_answers_are_asked_for_the_sprints_started_by_today(monkeypatch, tmp_path):
+    asked = []
+    part = mock.inputs().sprint_metrics
+
+    def answers(sprints):
+        asked.append([s.name for s in sprints])
+        return part
+
+    history, _, _ = gathered(monkeypatch, tmp_path, answers=answers)
+    assert asked == [[FIVE, SIX]]
+    assert history.sprint_metrics == part

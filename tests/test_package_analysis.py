@@ -320,6 +320,28 @@ def test_what_changed_is_sprint_metrics_numbers_worded_by_the_crew():
     assert {c.source for c in sprint.changed} == {"sprint-metrics"}
 
 
+def test_times_are_worded_in_days_hours_and_minutes_and_superseding_is_neither():
+    answers = {
+        SPRINT.name: {
+            "cycle_time_minutes": 655,
+            "lead_time_minutes": 2939,
+            "superseded_count": 2,
+            "prior": {"cycle_time_minutes": 410, "lead_time_minutes": 2880, "superseded_count": 0},
+        }
+    }
+    [sprint] = analyse([], [], answers=answers).sprints
+    # 2 days and 59 minutes against 2 days: too small a move to say, so unsaid.
+    assert [(c.measure, c.better, c.text) for c in sprint.changed] == [
+        (
+            "cycle_time_minutes",
+            False,
+            "The time from starting a story to delivering it rose from 6 hours 50 minutes "
+            "to 10 hours 55 minutes.",
+        ),
+        ("superseded_count", None, "Stories superseded rose from 0 to 2."),
+    ]
+
+
 def test_fixes_to_the_crew_are_the_crews_own_measure_against_the_sprint_before():
     events = [crew_fix(1, -60 * 24), crew_fix(2, 0), crew_fix(3, 5), crew_fix(4, 10)]
     first, second = analyse(events, [], sprints=(BEFORE, SPRINT)).sprints

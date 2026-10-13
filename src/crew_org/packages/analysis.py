@@ -37,14 +37,18 @@ from crew_org.work_types import DELIVERED, EPIC
 REPEATS = 3
 
 # sprint-metrics' measures the crew words, in the order it says them: what it
-# calls each, and whether a rise is for the better.
-MEASURES: dict[dh.Measure, tuple[str, bool]] = {
+# calls each, and whether a rise is for the better (None: neither).
+MEASURES: dict[dh.Measure, tuple[str, bool | None]] = {
     "first_attempt_rate_percent": ("the first-try rate", True),
     "throughput": ("stories delivered", True),
     "points_delivered": ("points delivered", True),
     "escalation_count": ("escalations", False),
     "blocked_aging_days": ("days spent blocked", False),
     "wip_violations": ("breaks of the work-in-progress limit", False),
+    "cycle_time_minutes": ("the time from starting a story to delivering it", False),
+    "lead_time_minutes": ("the time from filing a story to delivering it", False),
+    # More stories set aside is neither: the plan changed, or a story was wrong.
+    "superseded_count": ("stories superseded", None),
 }
 
 
@@ -93,15 +97,22 @@ def _changed(
         now, previous = _number(answer.get(measure)), _number(prior.get(measure))
         if now is None or previous is None or now == previous:
             continue
-        unit = "%" if measure.endswith("_percent") else ""
+        if measure.endswith("_minutes"):
+            if _minutes(previous) == _minutes(now):
+                continue  # a move too small to say in days, hours and minutes
+            way = "rose" if now > previous else "fell"
+            text = f"{_capital(name)} {way} from {_minutes(previous)} to {_minutes(now)}."
+        else:
+            unit = "%" if measure.endswith("_percent") else ""
+            text = _moved(name, previous, now, unit)
         out.append(
             dh.Change(
                 measure=measure,
                 source="sprint-metrics",
                 previous=previous,
                 now=now,
-                better=(now > previous) == rise_is_better,
-                text=_moved(name, previous, now, unit),
+                better=None if rise_is_better is None else (now > previous) == rise_is_better,
+                text=text,
             )
         )
     if before is not None:
@@ -417,6 +428,19 @@ def _times(n: int) -> str:
 
 def _join(names: list[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _minutes(value: float) -> str:
+    """A duration in its two largest units, e.g. "2 days 3 hours", "40 minutes"."""
+    left = max(int(value), 0)
+    parts: list[str] = []
+    for unit, size in (("day", 1440), ("hour", 60), ("minute", 1)):
+        if left >= size and len(parts) < 2:
+            n, left = divmod(left, size)
+            parts.append(f"{n} {unit}{'' if n == 1 else 's'}")
+        elif parts:
+            break
+    return " ".join(parts) or "under a minute"
 
 
 def _span(gap: timedelta) -> str:

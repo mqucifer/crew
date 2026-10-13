@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "api_version",
+    "sprints"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "sprints": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "cycle_time_days",
+          "lead_time_days",
+          "throughput",
+          "wip_violations",
+          "blocked_aging_days",
+          "escalation_rate_percent",
+          "points_delivered",
+          "first_attempt_numerator",
+          "first_attempt_denominator",
+          "escalation_count",
+          "superseded_count",
+          "superseded_points",
+          "first_attempt_rate_percent",
+          "failure_breakdown",
+          "top_failure_causes",
+          "superseded_breakdown",
+          "flags",
+          "prior",
+          "delta",
+          "cycle_time_minutes",
+          "lead_time_minutes"
+        ],
+        "properties": {
+          "cycle_time_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lead_time_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "throughput": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "wip_violations": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "blocked_aging_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "escalation_rate_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "points_delivered": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_numerator": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_denominator": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "escalation_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "superseded_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "superseded_points": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_rate_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failure_breakdown": {
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "top_failure_causes": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "superseded_breakdown": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "flags": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "cycle_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lead_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "prior": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_points": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_breakdown": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          },
+          "delta": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "escalation_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_points": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_breakdown": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
