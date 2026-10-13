@@ -174,7 +174,7 @@ Each step is one PR from its own worktree, never stacked. Anything that calls a 
 
 | Step | What | Done when |
 |---|---|---|
-| E1 | The next approved epic with open questions runs through the whole chain in ticks. **Running on Goal mqucifer/sprint-metrics#558** (epics mqucifer/sprint-metrics#559 to mqucifer/sprint-metrics#561), from 2026-10-11; see "E1 so far" below | The success test below, read with `scripts/context_review.py` on those epics once their stories are delivered |
+| E1 | The next approved epic with open questions runs through the whole chain in ticks. **Read on Goal mqucifer/sprint-metrics#558** (epics mqucifer/sprint-metrics#559 to mqucifer/sprint-metrics#561), 2026-10-11 to 2026-10-13; see "E1 so far" and "E1's reading" below | The success test below, read with `scripts/context_review.py` on those epics once their stories are delivered |
 | E2 | crew#583 closed as built, crew#584 closed by C2, crew#190 and crew#457 closed as superseded or reshaped, with a status comment each | Each issue says which step did what |
 | E3 | **The backlog reviewed against what was built** (Sponsor, 2026-10-10): every open crew issue and Discussion is checked against the steps above; anything completed or superseded gets a comment naming the step and PR that did it, and is proposed for closure in one list, on crew#583 and in chat; closed on the Sponsor's word | Every open issue and Discussion has been looked at; the list names each one kept, with why |
 
@@ -192,6 +192,12 @@ E1 started as "checkpoint 3, the proof" on Goal mqucifer/sprint-metrics#558 (Spo
 
 **E1 ends** when mqucifer/sprint-metrics#558's stories are delivered and the success test below is read on its epics. The lean-prompts steps land before that reading, in the Sponsor's order: L1 to L3, then L5, then L4. No new Goal is needed for E1.
 
+### E1's reading
+
+Read on 2026-10-13 (the full table is on crew#583): 617 model calls, 23.9 h of model time. Six checks pass, four of them only after the fixes E1 brought (the Developer's reads inside its call, the lean prompts L1 to L5, QA reading a test by name, and CI's log reaching a return). Two fail, and the Sponsor carried both forward and closed E1 (2026-10-13):
+- **Merged tests the split didn't declare:** mqucifer/sprint-metrics#573 broke 7, and 6 were in the split's pinning tests, declared by no story (kind: buried). Carried forward as mqucifer/crew#687, a check after the split.
+- **Readers of the latest comment:** four remain, and each reads an input, not a decision. The check now reads "no reader takes a decision from a comment" (below).
+
 ## The success test (E1)
 
 | Check | Epic 468 | Success |
@@ -206,7 +212,7 @@ E1 started as "checkpoint 3, the proof" on Goal mqucifer/sprint-metrics#558 (Spo
 | Merged tests pinning the change that the split wasn't shown | 4 of 4 (mqucifer/sprint-metrics#551, Sprint 21) | 0 |
 | Rows that contradict a row of a sibling epic under the same Goal | 3 (mqucifer/sprint-metrics#551 and mqucifer/sprint-metrics#552, Sprint 21) | 0 |
 | Model time spent on repeats: re-checks, repairs, re-splits, refused attempts, as a share of the epic's model time | 31% (82 of 261 min, Sprint 21's dry run, stopped early; over half had it run on) | Near 0; and the criteria check's first pass measured, to decide whether checking each pair of stories once is worth building |
-| Readers of "the latest comment of a kind" outside `flows/record.py` | `decided`, `story_problem_evidence`, `note_for`, `_reply`, the retro's pairing | 0 |
+| Readers that take a decision from "the latest comment of a kind" instead of the record | `decided`, `story_problem_evidence`, `note_for`, `_reply`, the retro's pairing | 0. Reading an input from the latest comment is allowed: `story_problem_evidence` (a return's evidence), the two `note_for` (a note since the last split) and `settle._reply` (the Sponsor's reply since the question). Changed from "outside `flows/record.py`" after E1's reading (Sponsor, 2026-10-13) |
 
 ## What to reuse
 
