@@ -2226,18 +2226,19 @@ def _close_and_report(
 
 @package_app.command("schema")
 def package_schema() -> None:
-    """Write delivery-history's schema into contracts/, from the model (ADR 0021).
+    """Write delivery-history's schema and its mock into contracts/, from the model (ADR 0021).
 
     Refused when the schema changed and SCHEMA_VERSION didn't: raise it, MAJOR
     if a consumer could break on the change, MINOR if it only adds.
     """
-    from crew_org.packages import contract  # noqa: PLC0415
+    from crew_org.packages import contract, mock  # noqa: PLC0415
 
     try:
         written = contract.write()
     except contract.StaleVersion as exc:
         console.print(f"[red]{escape(str(exc))}[/]")
         raise typer.Exit(code=1) from None
+    written += mock.write(contract.CONTRACTS)
     for path in written:
         console.print(f"wrote {path.relative_to(contract.ROOT)}")
 
