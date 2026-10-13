@@ -80,9 +80,13 @@ is ADR 0022.
   file and `manifest.schema.json` for its manifest.
   Both are generated from the code that builds it (`crew package schema`), and
   `versions.json` lists every schema version.
-- **A release** is dated, not versioned: the tag `delivery-history-<date>`, with
-  the archive as its asset. The archive holds `manifest.json`, the index
-  `delivery-history.json` (sprints, cards, periods and the analysis), one events file per
+- **A release** is dated, not versioned: the tag `delivery-history-<date>`
+  (`-2` for a second on one day), with the archive as its asset. It reaches a
+  project as a pull request that changes one line: `delivery-history.tag` at the
+  project's root, which names the release it shows. Old releases keep their
+  tags, but only the latest seven and each month's first keep their archives.
+  The archive holds `manifest.json`, the index `delivery-history.json` (sprints,
+  cards, periods and the analysis), one events file per
   sprint under `events/` (days between sprints get their own), and the schemas
   it follows. It carries everything up to its date, so a consumer needs only
   the latest, and loads only the events files for what it shows.
@@ -92,7 +96,7 @@ is ADR 0022.
   against the schema in the archive, and keeps no copy of its own.
 - **Nothing is released yet.** The first release follows once sprint-metrics'
   answers join the package (crew#521). `crew package build` builds one locally,
-  under `var/packages/`.
+  under `var/packages/`, and `crew package release` releases it.
 
 ## The two gates
 

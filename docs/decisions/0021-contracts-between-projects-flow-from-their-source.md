@@ -44,11 +44,16 @@ going to inherently contain sprint metrics data)."
   versioned: `<name>-<date>`. Its archive is the Release's asset, and its manifest
   names the schema version it follows. It carries everything up to its date, so a
   consumer needs only the latest.
+- **Old releases keep their tags; only their archives are pruned,**
+  grandfather-father-son: the latest seven releases and the first release of each
+  month keep their archives. A consumer needs only the latest, and a package's
+  release is never marked the repository's latest, which stays its software's.
 - **The schema's version lives in the producer's code:** MAJOR when a consumer
   could break on the change, MINOR when it only adds. A schema change without a
   version bump fails the producer's tests.
 - **A release reaches its consumer as a pull request** the producer opens, which
-  changes the one line naming the package's tag. The consumer's CI fetches the
+  changes the one line naming the package's tag: a file at the consumer's root
+  named for the package, such as `delivery-history.tag`. The consumer's CI fetches the
   package and validates it against the schema it names. Merging deploys.
 - **The consumer's own check is which major versions it can display.** A package on
   a major version it can't display fails the pull request that brought it. It
@@ -79,3 +84,6 @@ going to inherently contain sprint metrics data)."
 - 2026-10-07: Data arrives as a dated package from one producer, by a pull request
   that bumps its tag, in place of data files that each name a schema. The Sponsor
   decided the package, its name and its delivery (crew#521).
+- 2026-10-13: Old releases keep their tags and lose their archives beyond the
+  latest seven and each month's first; the consumer's line is a file named for the
+  package. The Sponsor agreed the plan for crew#521's release in chat.
