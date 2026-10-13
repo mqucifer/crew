@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 # The sprint-metrics release the crew runs: deploy/sprint-metrics pins the same tag.
-RELEASE = "1.3.0"
+RELEASE = "1.3.1"
 UPSTREAM = Path(__file__).resolve().parent / "upstream"
 SCHEMA_URL = (
     "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v{release}/schemas/sprint-range.json"
