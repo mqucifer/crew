@@ -2271,28 +2271,80 @@ def package_build(
     Everything up to today, by the sprint clock. It's written as a directory and
     an archive: the package, its manifest and the schemas it follows.
     """
-    import json  # noqa: PLC0415
-    import shutil  # noqa: PLC0415
-
-    from crew_org.packages import contract  # noqa: PLC0415
     from crew_org.packages import delivery_history as dh  # noqa: PLC0415
+    from crew_org.packages import release  # noqa: PLC0415
 
     history, files, manifest = _history()
-    today = history.date
-    name = f"{dh.NAME}-{today.isoformat()}"
+    name = f"{dh.NAME}-{history.date.isoformat()}"
     directory = Path(out) if out else VAR / "packages" / name
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "manifest.json").write_text(manifest.model_dump_json(indent=2) + "\n")
-    (directory / f"{dh.NAME}.json").write_text(history.model_dump_json(indent=1) + "\n")
-    for name, period in files.items():
-        (directory / name).parent.mkdir(parents=True, exist_ok=True)
-        (directory / name).write_text(period.model_dump_json(indent=1) + "\n")
-    for schema, content in contract.schemas().items():
-        (directory / schema).write_text(json.dumps(content, indent=2, sort_keys=True) + "\n")
-    archive = shutil.make_archive(str(directory), "gztar", directory.parent, directory.name)
+    archive = release.write(history, files, manifest, directory)
     console.print(f"{manifest.events} events · schema {manifest.schema_version} · {archive}")
     for why, count in manifest.left_out.items():
         console.print(f"[dim]left out: {count} × {escape(why)}[/]")
+
+
+@package_app.command("release")
+def package_release(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Say what it would do; change nothing."),
+) -> None:
+    """Release delivery-history: tag it, attach its archive, and propose it to its consumers.
+
+    The tag is `delivery-history-<date>` (`-2` for a second on one day). Each
+    consumer gets a pull request changing the one line that names the tag
+    (ADR 0021). Old releases keep their tags; archives beyond the retention are
+    pruned. Refused until sprint-metrics' answers are in the package (crew#521).
+    """
+    from crew_org.auth import resolve_credentials  # noqa: PLC0415
+    from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.git_ops import Workspace  # noqa: PLC0415
+    from crew_org.packages import release  # noqa: PLC0415
+    from crew_org.packages.gather import history_now  # noqa: PLC0415
+    from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
+    from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
+
+    env = load_env()
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    crew_repo = env.get("CREW_REPO", "crew")
+    issues = IssueClient(token, owner)
+    history, files, manifest = history_now(
+        ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"])),
+        issues,
+        org=load_org(),
+        crew_repo=crew_repo,
+        events_dir=VAR / "events",
+    )
+    refused = release.refusal(history)
+    releases = issues.releases(crew_repo)
+    taken = [str(r["tag_name"]) for r in releases]
+    tag = release.next_tag(history.date, taken)
+    # A tag can exist without a release; it's never moved.
+    while issues.tag_exists(crew_repo, tag):
+        taken.append(tag)
+        tag = release.next_tag(history.date, taken)
+    archive = release.write(history, files, manifest, VAR / "packages" / tag)
+    console.print(f"{tag} · {manifest.events} events · schema {manifest.schema_version}")
+    console.print(f"archive: {archive}")
+    if refused:
+        console.print(f"[red]Not released:[/] {escape(refused)}")
+    if dry_run or refused:
+        prunable = [str(r["tag_name"]) for r in release.to_prune(releases)]
+        console.print(f"[dim]would prune the archives of: {', '.join(prunable) or 'none'}[/]")
+        for consumer in release.CONSUMERS:
+            console.print(f"[dim]would propose {tag} to {consumer} ({release.TAG_FILE})[/]")
+        if refused:
+            raise typer.Exit(code=1)
+        return
+    published = release.publish(issues, repo=crew_repo, tag=tag, archive=archive, manifest=manifest)
+    console.print(f"[green]released[/] {published['html_url']}")
+    for pruned in release.prune(issues, crew_repo):
+        console.print(f"[dim]pruned the archive of {pruned}[/]")
+    ws = Workspace(owner, crew_repo, token, _bot_identity(token, identity))
+    for consumer in release.CONSUMERS:
+        outcome = release.propose(
+            ws, issues, consumer=consumer, tag=tag, url=str(published["html_url"])
+        )
+        console.print(f"{consumer}: {escape(outcome)}")
 
 
 @package_app.command("push")

@@ -13,6 +13,7 @@ import functools
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -512,6 +513,58 @@ class IssueClient:
             return None
         response.raise_for_status()
         return response.json()
+
+    def releases(self, repo: str) -> list[dict[str, Any]]:
+        """Every GitHub Release in `repo`, newest first, with its assets (crew#521)."""
+        out: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"{API}/repos/{self.owner}/{repo}/releases",
+                params={"per_page": 100, "page": page},
+            )
+            response.raise_for_status()
+            found = response.json()
+            out += found
+            if len(found) < 100:
+                return out
+            page += 1
+
+    def create_release(
+        self, repo: str, *, tag: str, target: str, name: str, body: str
+    ) -> dict[str, Any]:
+        """A Release that creates `tag` at `target`. Never marked latest: a data
+        package's release isn't the repository's software version (crew#521)."""
+        return self._request(
+            "POST",
+            f"/repos/{self.owner}/{repo}/releases",
+            tag_name=tag,
+            target_commitish=target,
+            name=name,
+            body=body,
+            make_latest="false",
+        )
+
+    def upload_release_asset(self, release: dict[str, Any], path: Path) -> dict[str, Any]:
+        """Attach the file at `path` to `release`, under its own name."""
+        url = str(release["upload_url"]).split("{", 1)[0]
+        response = self._client.post(
+            url,
+            params={"name": path.name},
+            content=path.read_bytes(),
+            headers={"Content-Type": "application/gzip"},
+        )
+        if response.status_code >= 400:
+            detail = response.json().get("message", response.text[:120])
+            raise IssueError(f"POST {url} -> {response.status_code}: {detail}")
+        uploaded: dict[str, Any] = response.json()
+        return uploaded
+
+    def delete_release_asset(self, repo: str, asset_id: int) -> None:
+        response = self._client.delete(
+            f"{API}/repos/{self.owner}/{repo}/releases/assets/{asset_id}"
+        )
+        response.raise_for_status()
 
     def attestations(self, repo: str, digest: str) -> list[dict[str, Any]]:
         """GitHub artifact attestations for a subject digest (`sha256:…`), or none."""
