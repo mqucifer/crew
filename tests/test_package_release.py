@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from crew_org.git_ops import validate_branch_name
 from crew_org.packages import delivery_history as dh
 from crew_org.packages import release
 from crew_org.tools.github_issues import IssueClient, Trust
@@ -174,6 +175,8 @@ class Workspace:
         return False
 
     def open(self, branch):
+        # The real workspace's rule, which the first real release met (crew#521).
+        validate_branch_name(branch)
         self.calls.append(("open", self.repo, branch))
         self.root.mkdir(parents=True, exist_ok=True)
         return self.root
@@ -215,7 +218,7 @@ def test_pruning_deletes_old_archives_and_keeps_every_release():
 
 
 def test_a_consumer_gets_a_pull_request_changing_only_the_line_naming_the_tag(tmp_path: Path):
-    older = {"number": 31, "head": {"ref": "chore/delivery-history-2026-10-16"}}
+    older = {"number": 31, "head": {"ref": "chore/10-delivery-history-2026-10-16"}}
     other = {"number": 32, "head": {"ref": "feat/13-latest-sprint"}}
     issues = Issues(open_pulls=[older, other])
     ws = Workspace(tmp_path / "clone")
@@ -231,17 +234,17 @@ def test_a_consumer_gets_a_pull_request_changing_only_the_line_naming_the_tag(tm
     assert (tmp_path / "clone" / "delivery-history.tag").read_text() == (
         "delivery-history-2026-10-17\n"
     )
-    assert ws.calls[0] == ("open", "crew-presentation", "chore/delivery-history-2026-10-17")
+    assert ws.calls[0] == ("open", "crew-presentation", "chore/10-delivery-history-2026-10-17")
     pull = next(c for c in issues.calls if c[0] == "create_pull")
     assert pull[2]["base"] == "main"
-    assert pull[2]["head"] == "chore/delivery-history-2026-10-17"
+    assert pull[2]["head"] == "chore/10-delivery-history-2026-10-17"
     # The older release's pull request is superseded; anyone else's is left alone.
     assert ("close_pull", "crew-presentation", 31) in issues.calls
     assert not any(c[0] == "close_pull" and c[2] == 32 for c in issues.calls)
 
 
 def test_a_release_already_proposed_or_already_named_opens_nothing(tmp_path: Path):
-    same = {"number": 40, "head": {"ref": "chore/delivery-history-2026-10-17"}}
+    same = {"number": 40, "head": {"ref": "chore/10-delivery-history-2026-10-17"}}
     issues = Issues(open_pulls=[same])
     tag = "delivery-history-2026-10-17"
     outcome = release.propose(
