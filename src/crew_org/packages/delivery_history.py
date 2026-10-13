@@ -37,7 +37,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -80,8 +80,13 @@ class Card(_Part):
     points: float | None
     sprint: str | None
     status: str | None
+    status_set: datetime | None = Field(description="When its status was last set, by anyone.")
     created: datetime | None
     closed: datetime | None
+    technical: bool = Field(
+        description="Technical work the crew found itself, from a design or a failing main. "
+        "It skips the Sponsor's gate (crew#192, crew#335)."
+    )
     closed_as: Literal["completed", "not_planned", "duplicate"] | None = Field(
         description="How the issue closed. A story closed as not planned was superseded: "
         "never built, though the board shows it Done."
@@ -198,6 +203,14 @@ class PullMerged(_Part):
     title: str
     closes: list[CardRef]
     crews_own: bool = Field(description="Merged into the crew's own repository.")
+    design_revision: bool = Field(
+        description="The Architect's revision of a project's design, which the crew merges "
+        "itself (crew#192)."
+    )
+    about: list[CardRef] = Field(
+        description="The cards the crew issues it closes cite, as the crew recorded them "
+        "(crew#449). A fix to the crew names the stories whose trouble led to it."
+    )
 
 
 Event = Annotated[
@@ -214,6 +227,125 @@ class Period(_Part):
     end: date = Field(description="The period's last day, inclusive.")
     file: str = Field(description="Its events file, relative to the package's root.")
     events: int
+
+
+# --- the crew's analysis (ADR 0022): written by `analysis.py` from the data, never a model
+
+
+Measure = Literal[
+    "first_attempt_rate_percent",
+    "throughput",
+    "points_delivered",
+    "escalation_count",
+    "blocked_aging_days",
+    "wip_violations",
+    "crew_fixes_merged",
+]
+
+
+class Change(_Part):
+    """A measure that moved since the sprint before.
+
+    sprint-metrics' measures are its own numbers, as it answered them: the crew
+    picks which moves to say and words them, and never recomputes one.
+    """
+
+    measure: Measure
+    source: Literal["sprint-metrics", "crew"]
+    previous: float
+    now: float
+    better: bool | None = Field(description="Whether it moved for the better; none if neither.")
+    text: str = Field(description="The sentence the crew's code wrote from these values.")
+
+
+class Attention(_Part):
+    """Something that needed a person, or kept going wrong, as the sprint stood at its end."""
+
+    kind: Literal["waiting_on_sponsor", "blocked", "repeated_refusal"]
+    card: CardRef
+    since: datetime | None = Field(description="When it started waiting, or was blocked.")
+    count: int | None = Field(description="For a repeated refusal, how many times it came.")
+    reason: str | None = Field(description="For a repeated refusal, the reason that repeated.")
+    text: str = Field(description="The sentence the crew's code wrote from these values.")
+
+
+class Decided(_Part):
+    """Something the crew decided on its own in the sprint, without asking anyone."""
+
+    kind: Literal["design_revision_merged", "technical_epic_filed"]
+    at: datetime
+    repo: str
+    number: int = Field(description="The pull request merged, or the epic filed.")
+    text: str = Field(description="The sentence the crew's code wrote from these values.")
+
+
+class SprintAnalysis(_Part):
+    sprint: str
+    as_of: datetime = Field(
+        description="The moment it describes: the sprint's end, or the "
+        "package's date for a sprint still running."
+    )
+    changed: list[Change]
+    attention: list[Attention]
+    decided: list[Decided]
+
+
+Pattern = Literal["first_try", "crew_fix", "escalated", "retried", "superseded", "blocked", "open"]
+
+
+class Repeated(_Part):
+    """The refusal a story got most often, when the crew's check wrote its reason."""
+
+    failure_class: str
+    reason: str
+    count: int
+
+
+class StoryCost(_Part):
+    """What a story's model calls cost in tokens and time. No money is recorded."""
+
+    model_calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    model_seconds: float = Field(description="Time spent in its model calls.")
+
+
+class StoryPattern(_Part):
+    """A story's path, as one pattern, the facts behind it, and a sentence.
+
+    The patterns, first that fits: `superseded` (closed as not planned),
+    `first_try` (delivered with no miss and no block), `crew_fix` (delivered,
+    and a fix to the crew merged between its first miss and its delivery, from
+    a crew issue that cites it), `escalated`, `retried` (delivered after
+    misses), `blocked` (in Blocked now), `open`. A fix whose issue doesn't cite
+    the story isn't counted, however close in time: nothing is guessed.
+    """
+
+    card: CardRef
+    pattern: Pattern
+    misses: int = Field(description="Attempts that didn't land.")
+    blocks: int = Field(description="Moves into Blocked.")
+    escalations: int
+    crew_fixes: list[PullRef] = Field(
+        description="Fixes to the crew, from issues that cite it, that merged between its "
+        "first miss and its delivery."
+    )
+    repeated: Repeated | None
+    delivered: datetime | None
+    wall_clock_seconds: float | None = Field(
+        description="From the first work on it to its delivery; none until it's delivered."
+    )
+    cost: StoryCost | None = Field(
+        description="None when none of its model calls could be placed: older calls don't "
+        "name their repository, and are left out rather than guessed."
+    )
+    text: str = Field(description="The sentence the crew's code wrote from these values.")
+
+
+class Analysis(_Part):
+    sprints: list[SprintAnalysis] = Field(description="Every sprint started by the package's date.")
+    stories: list[StoryPattern] = Field(description="Every story and bug with events.")
 
 
 class DeliveryHistory(_Part):
@@ -233,6 +365,7 @@ class DeliveryHistory(_Part):
     sprints: list[Sprint]
     cards: list[Card]
     periods: list[Period] = Field(description="Every period with events, oldest first.")
+    analysis: Analysis
 
 
 class PeriodEvents(_Part):
@@ -277,7 +410,16 @@ class Inputs:
     timezone: str
     date: date
     generated: datetime
+    # sprint-metrics' single-sprint answer for each sprint, by name. Empty until
+    # its answers join the package (crew#521's second criterion).
+    answers: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+
+# The labels that mark the crew's own design decisions (crew#192): on a technical
+# epic, and on the issue a design revision's pull request closes. The flows'
+# own constants, restated so the package doesn't import the tick's modules.
+TECHNICAL = "technical"
+REVISIT_LABEL = "design:revisit"
 
 # Roles whose work events name the pull request they review, not a card.
 REVIEWERS = frozenset({"Code Reviewer", "DevOps Engineer"})
@@ -520,8 +662,27 @@ def _by(at: datetime, inputs: Inputs) -> bool:
     return at.astimezone(ZoneInfo(inputs.timezone)).date() <= inputs.date
 
 
+def _citations(inputs: Inputs) -> dict[int, list[CardRef]]:
+    """Each crew issue's cited cards, the latest recorded (crew#449). Only qualified names."""
+    out: dict[int, list[CardRef]] = {}
+    for _, raw in sorted(inputs.events, key=lambda pair: str(pair[1].get("at") or "")):
+        detail = raw.get("detail") or {}
+        if raw.get("kind") != "issue.cites" or detail.get("repo") != inputs.crew_repository:
+            continue
+        if not isinstance(raw.get("card"), int):
+            continue
+        refs = []
+        for name in detail.get("cites") or []:
+            repo, _, number = str(name).partition("#")
+            if repo and number.isdigit():
+                refs.append(CardRef(repo=repo, number=int(number)))
+        out[raw["card"]] = refs
+    return out
+
+
 def _pull_events(inputs: Inputs) -> list[PullMerged]:
     out: list[PullMerged] = []
+    cites = _citations(inputs)
     for repo, pulls in inputs.pulls.items():
         for pull in pulls:
             # Every pull request is listed; only a merge is an event here.
@@ -540,6 +701,15 @@ def _pull_events(inputs: Inputs) -> list[PullMerged]:
                         if r and isinstance(n, int)
                     ],
                     crews_own=repo == inputs.crew_repository,
+                    design_revision=REVISIT_LABEL in (pull.get("closes_labels") or []),
+                    about=list(
+                        dict.fromkeys(
+                            ref
+                            for r, n in pull.get("closes") or []
+                            if r == inputs.crew_repository
+                            for ref in cites.get(n, [])
+                        )
+                    ),
                 )
             )
     return out
@@ -569,6 +739,8 @@ def _cards(inputs: Inputs) -> list[Card]:
                 points=c.points,
                 sprint=c.sprint,
                 status=c.status,
+                status_set=c.status_set,
+                technical=TECHNICAL in (getattr(c, "labels", None) or ()),
                 created=c.created,
                 closed=c.closed,
                 closed_as=_closed_as(c),
@@ -633,6 +805,10 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
             schema_version=SCHEMA_VERSION, sprint=sprint, start=start, end=end, events=grouped
         )
         periods.append(Period(sprint=sprint, start=start, end=end, file=path, events=len(grouped)))
+    # Imported here: the analysis reads this module's models.
+    from crew_org.packages.analysis import analyse  # noqa: PLC0415
+
+    cards = _cards(inputs)
     history = DeliveryHistory(
         schema_version=SCHEMA_VERSION,
         date=inputs.date,
@@ -640,8 +816,17 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
         crew_repository=inputs.crew_repository,
         repositories=sorted(inputs.repositories),
         sprints=sprints,
-        cards=_cards(inputs),
+        cards=cards,
         periods=periods,
+        analysis=analyse(
+            events,
+            cards,
+            sprints,
+            answers=inputs.answers,
+            crew_repository=inputs.crew_repository,
+            zone=ZoneInfo(inputs.timezone),
+            day=inputs.date,
+        ),
     )
     manifest = Manifest(
         date=inputs.date,

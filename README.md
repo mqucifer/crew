@@ -69,8 +69,11 @@ substitute for using that gate.
 
 The crew publishes data about how it works as **packages**, like reports
 (ADR 0021). `delivery-history` is the first: the board's sprints and cards, and
-every move, attempt, model call and merge, up to its date. What it may carry is
-ADR 0020; who does what with it is ADR 0022.
+every move, attempt, model call and merge, up to its date, and the crew's own
+analysis of them: what changed each sprint, what needed attention at its end,
+and each story's pattern. The crew's code writes that analysis from fixed
+sentences, never a model. What it may carry is ADR 0020; who does what with it
+is ADR 0022.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -79,7 +82,7 @@ ADR 0020; who does what with it is ADR 0022.
   `versions.json` lists every schema version.
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`, with
   the archive as its asset. The archive holds `manifest.json`, the index
-  `delivery-history.json` (sprints, cards and periods), one events file per
+  `delivery-history.json` (sprints, cards, periods and the analysis), one events file per
   sprint under `events/` (days between sprints get their own), and the schemas
   it follows. It carries everything up to its date, so a consumer needs only
   the latest, and loads only the events files for what it shows.

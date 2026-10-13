@@ -22,6 +22,8 @@ def _card(number: int, *, type_: str = "Story", closed_as: str | None = "complet
         points=3,
         sprint="Sprint 22",
         status="Done",
+        status_set=None,
+        technical=False,
         created=T0 - timedelta(hours=5),
         closed=None,
         closed_as=closed_as,  # type: ignore[arg-type]
@@ -65,6 +67,7 @@ def _history(cards: list[dh.Card]) -> dh.DeliveryHistory:
         sprints=[dh.Sprint(name="Sprint 22", start=DAY, end=DAY)],
         cards=cards,
         periods=[],
+        analysis=dh.Analysis(sprints=[], stories=[]),
     )
 
 

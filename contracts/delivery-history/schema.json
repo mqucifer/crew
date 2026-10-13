@@ -1,5 +1,102 @@
 {
   "$defs": {
+    "Analysis": {
+      "additionalProperties": false,
+      "properties": {
+        "sprints": {
+          "description": "Every sprint started by the package's date.",
+          "items": {
+            "$ref": "#/$defs/SprintAnalysis"
+          },
+          "title": "Sprints",
+          "type": "array"
+        },
+        "stories": {
+          "description": "Every story and bug with events.",
+          "items": {
+            "$ref": "#/$defs/StoryPattern"
+          },
+          "title": "Stories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sprints",
+        "stories"
+      ],
+      "title": "Analysis",
+      "type": "object"
+    },
+    "Attention": {
+      "additionalProperties": false,
+      "description": "Something that needed a person, or kept going wrong, as the sprint stood at its end.",
+      "properties": {
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a repeated refusal, how many times it came.",
+          "title": "Count"
+        },
+        "kind": {
+          "enum": [
+            "waiting_on_sponsor",
+            "blocked",
+            "repeated_refusal"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a repeated refusal, the reason that repeated.",
+          "title": "Reason"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When it started waiting, or was blocked.",
+          "title": "Since"
+        },
+        "text": {
+          "description": "The sentence the crew's code wrote from these values.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "card",
+        "since",
+        "count",
+        "reason",
+        "text"
+      ],
+      "title": "Attention",
+      "type": "object"
+    },
     "Card": {
       "additionalProperties": false,
       "description": "A card on the board. Its title is already public on GitHub.",
@@ -98,6 +195,24 @@
           ],
           "title": "Status"
         },
+        "status_set": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When its status was last set, by anyone.",
+          "title": "Status Set"
+        },
+        "technical": {
+          "description": "Technical work the crew found itself, from a design or a failing main. It skips the Sponsor's gate (crew#192, crew#335).",
+          "title": "Technical",
+          "type": "boolean"
+        },
         "title": {
           "title": "Title",
           "type": "string"
@@ -141,11 +256,137 @@
         "points",
         "sprint",
         "status",
+        "status_set",
         "created",
         "closed",
+        "technical",
         "closed_as"
       ],
       "title": "Card",
+      "type": "object"
+    },
+    "CardRef": {
+      "additionalProperties": false,
+      "description": "A card, by repository and number: numbers repeat across repositories.",
+      "properties": {
+        "number": {
+          "title": "Number",
+          "type": "integer"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "number"
+      ],
+      "title": "CardRef",
+      "type": "object"
+    },
+    "Change": {
+      "additionalProperties": false,
+      "description": "A measure that moved since the sprint before.\n\nsprint-metrics' measures are its own numbers, as it answered them: the crew\npicks which moves to say and words them, and never recomputes one.",
+      "properties": {
+        "better": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether it moved for the better; none if neither.",
+          "title": "Better"
+        },
+        "measure": {
+          "enum": [
+            "first_attempt_rate_percent",
+            "throughput",
+            "points_delivered",
+            "escalation_count",
+            "blocked_aging_days",
+            "wip_violations",
+            "crew_fixes_merged"
+          ],
+          "title": "Measure",
+          "type": "string"
+        },
+        "now": {
+          "title": "Now",
+          "type": "number"
+        },
+        "previous": {
+          "title": "Previous",
+          "type": "number"
+        },
+        "source": {
+          "enum": [
+            "sprint-metrics",
+            "crew"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "text": {
+          "description": "The sentence the crew's code wrote from these values.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "measure",
+        "source",
+        "previous",
+        "now",
+        "better",
+        "text"
+      ],
+      "title": "Change",
+      "type": "object"
+    },
+    "Decided": {
+      "additionalProperties": false,
+      "description": "Something the crew decided on its own in the sprint, without asking anyone.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "design_revision_merged",
+            "technical_epic_filed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "number": {
+          "description": "The pull request merged, or the epic filed.",
+          "title": "Number",
+          "type": "integer"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "text": {
+          "description": "The sentence the crew's code wrote from these values.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "repo",
+        "number",
+        "text"
+      ],
+      "title": "Decided",
       "type": "object"
     },
     "Period": {
@@ -195,6 +436,50 @@
       "title": "Period",
       "type": "object"
     },
+    "PullRef": {
+      "additionalProperties": false,
+      "properties": {
+        "number": {
+          "title": "Number",
+          "type": "integer"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "number"
+      ],
+      "title": "PullRef",
+      "type": "object"
+    },
+    "Repeated": {
+      "additionalProperties": false,
+      "description": "The refusal a story got most often, when the crew's check wrote its reason.",
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "failure_class": {
+          "title": "Failure Class",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure_class",
+        "reason",
+        "count"
+      ],
+      "title": "Repeated",
+      "type": "object"
+    },
     "Sprint": {
       "additionalProperties": false,
       "description": "A board iteration: its name and the days it runs, in the package's timezone.",
@@ -222,11 +507,204 @@
       ],
       "title": "Sprint",
       "type": "object"
+    },
+    "SprintAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "as_of": {
+          "description": "The moment it describes: the sprint's end, or the package's date for a sprint still running.",
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "attention": {
+          "items": {
+            "$ref": "#/$defs/Attention"
+          },
+          "title": "Attention",
+          "type": "array"
+        },
+        "changed": {
+          "items": {
+            "$ref": "#/$defs/Change"
+          },
+          "title": "Changed",
+          "type": "array"
+        },
+        "decided": {
+          "items": {
+            "$ref": "#/$defs/Decided"
+          },
+          "title": "Decided",
+          "type": "array"
+        },
+        "sprint": {
+          "title": "Sprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sprint",
+        "as_of",
+        "changed",
+        "attention",
+        "decided"
+      ],
+      "title": "SprintAnalysis",
+      "type": "object"
+    },
+    "StoryCost": {
+      "additionalProperties": false,
+      "description": "What a story's model calls cost in tokens and time. No money is recorded.",
+      "properties": {
+        "completion_tokens": {
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "model_calls": {
+          "title": "Model Calls",
+          "type": "integer"
+        },
+        "model_seconds": {
+          "description": "Time spent in its model calls.",
+          "title": "Model Seconds",
+          "type": "number"
+        },
+        "prompt_tokens": {
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "reasoning_tokens": {
+          "title": "Reasoning Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model_calls",
+        "prompt_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "model_seconds"
+      ],
+      "title": "StoryCost",
+      "type": "object"
+    },
+    "StoryPattern": {
+      "additionalProperties": false,
+      "description": "A story's path, as one pattern, the facts behind it, and a sentence.\n\nThe patterns, first that fits: `superseded` (closed as not planned),\n`first_try` (delivered with no miss and no block), `crew_fix` (delivered,\nand a fix to the crew merged between its first miss and its delivery, from\na crew issue that cites it), `escalated`, `retried` (delivered after\nmisses), `blocked` (in Blocked now), `open`. A fix whose issue doesn't cite\nthe story isn't counted, however close in time: nothing is guessed.",
+      "properties": {
+        "blocks": {
+          "description": "Moves into Blocked.",
+          "title": "Blocks",
+          "type": "integer"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoryCost"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None when none of its model calls could be placed: older calls don't name their repository, and are left out rather than guessed."
+        },
+        "crew_fixes": {
+          "description": "Fixes to the crew, from issues that cite it, that merged between its first miss and its delivery.",
+          "items": {
+            "$ref": "#/$defs/PullRef"
+          },
+          "title": "Crew Fixes",
+          "type": "array"
+        },
+        "delivered": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Delivered"
+        },
+        "escalations": {
+          "title": "Escalations",
+          "type": "integer"
+        },
+        "misses": {
+          "description": "Attempts that didn't land.",
+          "title": "Misses",
+          "type": "integer"
+        },
+        "pattern": {
+          "enum": [
+            "first_try",
+            "crew_fix",
+            "escalated",
+            "retried",
+            "superseded",
+            "blocked",
+            "open"
+          ],
+          "title": "Pattern",
+          "type": "string"
+        },
+        "repeated": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Repeated"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "description": "The sentence the crew's code wrote from these values.",
+          "title": "Text",
+          "type": "string"
+        },
+        "wall_clock_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "From the first work on it to its delivery; none until it's delivered.",
+          "title": "Wall Clock Seconds"
+        }
+      },
+      "required": [
+        "card",
+        "pattern",
+        "misses",
+        "blocks",
+        "escalations",
+        "crew_fixes",
+        "repeated",
+        "delivered",
+        "wall_clock_seconds",
+        "cost",
+        "text"
+      ],
+      "title": "StoryPattern",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "description": "The package's index: everything up to its date, so a consumer needs only the latest.\n\nThe events are in one file per period, so a page loads only the sprint it\nshows: the history grows by a sprint's worth each sprint, and a year of it\nin one file would be tens of megabytes (the Sponsor, 2026-10-08).",
   "properties": {
+    "analysis": {
+      "$ref": "#/$defs/Analysis"
+    },
     "cards": {
       "items": {
         "$ref": "#/$defs/Card"
@@ -291,7 +769,8 @@
     "repositories",
     "sprints",
     "cards",
-    "periods"
+    "periods",
+    "analysis"
   ],
   "title": "DeliveryHistory",
   "type": "object"

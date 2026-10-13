@@ -29,7 +29,9 @@ def at(minutes: float) -> str:
     return (T + timedelta(minutes=minutes)).isoformat().replace("+00:00", "Z")
 
 
-def board_card(repo, number, *, created=None, work_type="Story", title=None) -> Card:
+def board_card(
+    repo, number, *, created=None, work_type="Story", title=None, labels=frozenset()
+) -> Card:
     return Card(
         item_id=f"{repo}-{number}",
         number=number,
@@ -38,6 +40,7 @@ def board_card(repo, number, *, created=None, work_type="Story", title=None) -> 
         work_type=work_type,
         status="Done",
         created=created or T - timedelta(days=1),
+        labels=labels,
     )
 
 
@@ -392,6 +395,65 @@ def test_a_superseded_story_says_so_though_the_board_shows_it_done():
     assert by_number[501]["closed_as"] is None
 
 
+def test_the_crews_design_decisions_are_read_from_their_labels():
+    """A design revision by the label on the issue its pull request closes (crew#192)."""
+    pulls = {
+        "sprint-metrics": [
+            {
+                "number": 122,
+                "title": "chore: revisit this project's design",
+                "created_at": at(-30),
+                "merged_at": at(5),
+                "closes": [("sprint-metrics", 121)],
+                "closes_labels": ["design:revisit"],
+            },
+            # Built before the labels were read: not a revision.
+            {"number": 125, "title": "feat: card.py", "created_at": at(-30), "merged_at": at(6)},
+        ]
+    }
+    cards = [
+        board_card("sprint-metrics", 123, work_type="Epic", labels=frozenset({"technical"})),
+        board_card("sprint-metrics", 59, work_type="Epic"),
+    ]
+    data, _ = built([], cards=cards, pulls=pulls)
+    assert [(e["number"], e["design_revision"]) for e in data["events"]] == [
+        (122, True),
+        (125, False),
+    ]
+    assert {c["number"]: c["technical"] for c in data["cards"]} == {59: False, 123: True}
+
+
+def test_a_fix_to_the_crew_names_the_cards_its_issue_cites():
+    """By the citations the crew recorded (crew#449), the latest for each issue."""
+
+    def cites(minutes, names):
+        detail = {"repo": "crew", "cites": names}
+        return ("tick", {"at": at(minutes), "kind": "issue.cites", "card": 208, "detail": detail})
+
+    pulls = {
+        "crew": [
+            {
+                "number": 209,
+                "title": "fix: a refusal names the missing step",
+                "created_at": at(-30),
+                "merged_at": at(5),
+                "closes": [("crew", 208), ("crew", 300)],
+            }
+        ]
+    }
+    events = [cites(-20, ["sprint-metrics#126"]), cites(-10, ["sprint-metrics#127", "bare"])]
+    data, _ = built(events, pulls=pulls)
+    [merge] = data["events"]
+    assert merge["about"] == [{"repo": "sprint-metrics", "number": 127}]
+
+
+def test_the_labels_are_the_flows_own():
+    from crew_org.flows.board_flow import TECHNICAL
+    from crew_org.flows.design import REVISIT_LABEL
+
+    assert (dh.TECHNICAL, dh.REVISIT_LABEL) == (TECHNICAL, REVISIT_LABEL)
+
+
 def test_a_sprint_runs_its_duration_from_its_start():
     [sprint] = dh.sprints_from([{"title": "Sprint 19", "startDate": "2026-10-08", "duration": 1}])
 
@@ -547,3 +609,67 @@ def test_a_package_built_from_every_kind_of_event_matches_the_committed_schema()
         "work_finished",
         "pull_merged",
     }
+
+
+def test_every_pull_is_paged_through_with_the_labels_of_the_issues_it_closes():
+    """A pull whose issues carry no labels gives an empty list; nothing fails (crew#521)."""
+    import httpx
+
+    from crew_org.tools.github_issues import IssueClient, Trust
+
+    pages = {
+        None: {
+            "pageInfo": {"hasNextPage": True, "endCursor": "c1"},
+            "nodes": [
+                {
+                    "number": 122,
+                    "title": "chore: revisit this project's design",
+                    "createdAt": at(-30),
+                    "mergedAt": at(5),
+                    "closedAt": at(5),
+                    "closingIssuesReferences": {
+                        "nodes": [
+                            {
+                                "number": 121,
+                                "repository": {"name": "sprint-metrics"},
+                                "labels": {"nodes": [{"name": "design:revisit"}]},
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+        "c1": {
+            "pageInfo": {"hasNextPage": False, "endCursor": None},
+            "nodes": [
+                {
+                    "number": 125,
+                    "title": "feat: card.py",
+                    "createdAt": at(-30),
+                    "mergedAt": None,
+                    "closedAt": None,
+                    "closingIssuesReferences": {
+                        "nodes": [{"number": 124, "repository": {"name": "sprint-metrics"}}]
+                    },
+                },
+                {"number": 126, "title": "", "createdAt": at(-30), "mergedAt": None},
+            ],
+        },
+    }
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        cursor = json.loads(request.content)["variables"]["cursor"]
+        return httpx.Response(200, json={"data": {"repository": {"pullRequests": pages[cursor]}}})
+
+    issues = IssueClient(
+        "t",
+        "mqucifer",
+        client=httpx.Client(transport=httpx.MockTransport(answer)),
+        trust=Trust(sponsor="s", crew=frozenset(), tools=frozenset()),
+    )
+    pulls = issues.all_pulls("sprint-metrics")
+    assert [(p["number"], p["closes_labels"]) for p in pulls] == [
+        (122, ["design:revisit"]),
+        (125, []),
+        (126, []),
+    ]

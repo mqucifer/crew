@@ -387,6 +387,14 @@
       "additionalProperties": false,
       "description": "A pull request merging. In the crew's own repository, that's a fix to the crew.",
       "properties": {
+        "about": {
+          "description": "The cards the crew issues it closes cite, as the crew recorded them (crew#449). A fix to the crew names the stories whose trouble led to it.",
+          "items": {
+            "$ref": "#/$defs/CardRef"
+          },
+          "title": "About",
+          "type": "array"
+        },
         "at": {
           "format": "date-time",
           "title": "At",
@@ -402,6 +410,11 @@
         "crews_own": {
           "description": "Merged into the crew's own repository.",
           "title": "Crews Own",
+          "type": "boolean"
+        },
+        "design_revision": {
+          "description": "The Architect's revision of a project's design, which the crew merges itself (crew#192).",
+          "title": "Design Revision",
           "type": "boolean"
         },
         "kind": {
@@ -430,7 +443,9 @@
         "number",
         "title",
         "closes",
-        "crews_own"
+        "crews_own",
+        "design_revision",
+        "about"
       ],
       "title": "PullMerged",
       "type": "object"
