@@ -70,7 +70,9 @@ query($owner: String!, $repo: String!, $cursor: String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title createdAt mergedAt closedAt
-        closingIssuesReferences(first: 10) { nodes { number repository { name } } }
+        closingIssuesReferences(first: 10) {
+          nodes { number repository { name } labels(first: 20) { nodes { name } } }
+        }
       }
     }
   }
@@ -641,7 +643,8 @@ class IssueClient:
         """Every pull request in `repo`, open, closed or merged, oldest first (crew#521).
 
         Its number, title, when it was opened, merged and closed, and the issues it
-        closes, by GitHub's own link rather than a reading of its body.
+        closes, by GitHub's own link rather than a reading of its body, with
+        their labels: a design revision is told by the issue it closes.
         `closed_pulls` keeps to the latest hundred; this pages through them all.
         """
         pulls: list[dict[str, Any]] = []
@@ -665,6 +668,17 @@ class IssueClient:
                             for c in closes
                             if c
                         ],
+                        # A pull with no labelled issue gives an empty list: the
+                        # tick builds the history after every pass.
+                        "closes_labels": sorted(
+                            {
+                                label["name"]
+                                for c in closes
+                                if c
+                                for label in (c.get("labels") or {}).get("nodes") or []
+                                if label and label.get("name")
+                            }
+                        ),
                     }
                 )
             info = page.get("pageInfo") or {}
