@@ -26,6 +26,8 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.tui import LiveView, attach
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from crew_org.crews.panel_crew import PanelContext
     from crew_org.tools.github_issues import IssueClient
 
@@ -2232,7 +2234,11 @@ def package_schema() -> None:
     if a consumer could break on the change, MINOR if it only adds.
     """
     from crew_org.packages import contract, mock  # noqa: PLC0415
+    from crew_org.packages import sprint_metrics_answers as sma  # noqa: PLC0415
 
+    fetched = sma.fetch_schema()
+    if fetched is not None:
+        console.print(f"fetched {fetched.relative_to(contract.ROOT)}")
     try:
         written = contract.write()
     except contract.StaleVersion as exc:
@@ -2241,6 +2247,34 @@ def package_schema() -> None:
     written += mock.write(contract.CONTRACTS)
     for path in written:
         console.print(f"wrote {path.relative_to(contract.ROOT)}")
+
+
+def _sprint_metrics(org: dict[str, Any]) -> Callable[[list[Any]], Any] | None:
+    """What asks sprint-metrics for its part of the package, or None if it isn't configured.
+
+    A service that doesn't answer is said, and the package is built without the
+    part, which isn't released (crew#521).
+    """
+    from crew_org.flows.metrics_push import url  # noqa: PLC0415
+    from crew_org.packages import delivery_history as dh  # noqa: PLC0415
+    from crew_org.packages import sprint_metrics_answers as sma  # noqa: PLC0415
+
+    address = url(org)
+    if address is None:
+        console.print(
+            "[yellow]sprint_metrics.url isn't in org.yaml: built without sprint-metrics' part.[/]"
+        )
+        return None
+
+    def answers(sprints: list[Any]) -> Any:
+        try:
+            found = sma.ask(address, [s.name for s in sprints])
+        except sma.Unanswered as exc:
+            console.print(f"[yellow]Built without sprint-metrics' part: {escape(str(exc))}[/]")
+            return None
+        return dh.SprintMetrics(release=sma.RELEASE, answers=found)
+
+    return answers
 
 
 def _history() -> tuple[Any, dict[str, Any], Any]:
@@ -2254,12 +2288,14 @@ def _history() -> tuple[Any, dict[str, Any], Any]:
     env = load_env()
     token, _ = resolve_credentials(env)
     owner = env["GITHUB_OWNER"]
+    org = load_org()
     return history_now(
         ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"])),
         IssueClient(token, owner),
-        org=load_org(),
+        org=org,
         crew_repo=env.get("CREW_REPO", "crew"),
         events_dir=VAR / "events",
+        answers=_sprint_metrics(org),
     )
 
 
@@ -2293,7 +2329,7 @@ def package_release(
     The tag is `delivery-history-<date>` (`-2` for a second on one day). Each
     consumer gets a pull request changing the one line that names the tag
     (ADR 0021). Old releases keep their tags; archives beyond the retention are
-    pruned. Refused until sprint-metrics' answers are in the package (crew#521).
+    pruned. Refused unless sprint-metrics answered for every sprint it covers (crew#521).
     """
     from crew_org.auth import resolve_credentials  # noqa: PLC0415
     from crew_org.config import load_env  # noqa: PLC0415
@@ -2308,12 +2344,14 @@ def package_release(
     owner = env["GITHUB_OWNER"]
     crew_repo = env.get("CREW_REPO", "crew")
     issues = IssueClient(token, owner)
+    org = load_org()
     history, files, manifest = history_now(
         ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"])),
         issues,
-        org=load_org(),
+        org=org,
         crew_repo=crew_repo,
         events_dir=VAR / "events",
+        answers=_sprint_metrics(org),
     )
     refused = release.refusal(history)
     releases = issues.releases(crew_repo)

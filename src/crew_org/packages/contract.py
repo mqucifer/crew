@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from crew_org.packages import delivery_history as dh
+from crew_org.packages import sprint_metrics_answers as sma
 
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACTS = ROOT / "contracts" / dh.NAME
@@ -29,10 +30,26 @@ class StaleVersion(Exception):
 def schemas() -> dict[str, dict[str, Any]]:
     """Each schema file's content: what the package writes, as a consumer reads it."""
     return {
-        "schema.json": dh.DeliveryHistory.model_json_schema(mode="serialization"),
+        "schema.json": _with_sprint_metrics(
+            dh.DeliveryHistory.model_json_schema(mode="serialization")
+        ),
         "events.schema.json": dh.PeriodEvents.model_json_schema(mode="serialization"),
         "manifest.schema.json": dh.Manifest.model_json_schema(mode="serialization"),
     }
+
+
+def _with_sprint_metrics(schema: dict[str, Any]) -> dict[str, Any]:
+    """The index's schema, each sprint-metrics answer following sprint-metrics' own.
+
+    Embedded from its published schema at the release the crew runs (crew#521),
+    so the package's one schema covers sprint-metrics' part too.
+    """
+    answers = schema["$defs"]["SprintMetrics"]["properties"]["answers"]
+    answers["additionalProperties"] = {
+        "$comment": sma.SCHEMA_URL.format(release=sma.RELEASE),
+        **sma.entry_schema(),
+    }
+    return schema
 
 
 def fingerprint(files: dict[str, dict[str, Any]]) -> str:
