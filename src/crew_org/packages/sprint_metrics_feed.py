@@ -152,6 +152,9 @@ def _kind(event: Any) -> str | None:
 
 def _event(card: Card, kind: str, sprint: str, at: str) -> dict[str, Any]:
     body: dict[str, Any] = {"created": card.created.date().isoformat() if card.created else ""}
+    if card.created:
+        # The time as well as the day: sprint-metrics 1.3.0's minutes need it (crew#683).
+        body["created_at"] = card.created.isoformat()
     if card.points is not None:
         body["points"] = int(card.points)
     return {
