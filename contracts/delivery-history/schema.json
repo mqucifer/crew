@@ -580,7 +580,7 @@
       "properties": {
         "answers": {
           "additionalProperties": {
-            "$comment": "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v1.3.0/schemas/sprint-range.json",
+            "$comment": "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v1.3.1/schemas/sprint-range.json",
             "properties": {
               "blocked_aging_days": {
                 "type": [

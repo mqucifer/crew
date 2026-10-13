@@ -74,7 +74,7 @@ def test_an_answer_is_carried_with_only_what_the_schema_names():
 def test_an_answer_from_an_older_release_is_refused_and_says_which_it_needs():
     found = body()
     del found["sprints"][SIX]["cycle_time_minutes"]  # 1.2.0 doesn't answer it
-    with pytest.raises(sma.Unanswered, match=r"Is the service running 1\.3\.0\?"):
+    with pytest.raises(sma.Unanswered, match=rf"Is the service running {re.escape(sma.RELEASE)}\?"):
         sma.checked(found, [FIVE, SIX])
 
 
