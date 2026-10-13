@@ -208,6 +208,23 @@
           "description": "When its status was last set, by anyone.",
           "title": "Status Set"
         },
+        "superseded_because": {
+          "anyOf": [
+            {
+              "enum": [
+                "sponsor",
+                "story_problem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why a story closed as not planned was superseded: its epic was split again at the Sponsor's request, or after a story problem. None when no re-split recorded it.",
+          "title": "Superseded Because"
+        },
         "technical": {
           "description": "Technical work the crew found itself, from a design or a failing main. It skips the Sponsor's gate (crew#192, crew#335).",
           "title": "Technical",
@@ -260,7 +277,8 @@
         "created",
         "closed",
         "technical",
-        "closed_as"
+        "closed_as",
+        "superseded_because"
       ],
       "title": "Card",
       "type": "object"
