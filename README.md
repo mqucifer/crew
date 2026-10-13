@@ -69,9 +69,10 @@ substitute for using that gate.
 
 The crew publishes data about how it works as **packages**, like reports
 (ADR 0021). `delivery-history` is the first: the board's sprints and cards, and
-every move, attempt, model call and merge, up to its date, and the crew's own
-analysis of them: what changed each sprint, what needed attention at its end,
-and each story's pattern. The crew's code writes that analysis from fixed
+every move, attempt, model call and merge, up to its date, sprint-metrics'
+answers for each sprint, as it computed them, and the crew's own analysis of
+them: what changed each sprint, what needed attention at its end, and each
+story's pattern. The crew's code writes that analysis from fixed
 sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
@@ -79,7 +80,10 @@ is ADR 0022.
   `schema.json` for the package's index, `events.schema.json` for an events
   file and `manifest.schema.json` for its manifest.
   Both are generated from the code that builds it (`crew package schema`), and
-  `versions.json` lists every schema version.
+  `versions.json` lists every schema version. `schema.json` embeds
+  sprint-metrics' own schema for its answers, from the release the crew runs:
+  `RELEASE` in `src/crew_org/packages/sprint_metrics_answers.py`, the tag
+  `deploy/sprint-metrics` pins.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first
@@ -99,8 +103,9 @@ is ADR 0022.
   MAJOR changes when a consumer could break, MINOR when fields are only added.
   A consumer checks that the MAJOR is one it can display, validates the package
   against the schema in the archive, and keeps no copy of its own.
-- **Nothing is released yet.** The first release follows once sprint-metrics'
-  answers join the package (crew#521). `crew package build` builds one locally,
+- **Nothing is released yet.** A package is released only with sprint-metrics'
+  answer for every sprint it covers, so the first follows once the service the
+  crew runs is on that release (crew#521). `crew package build` builds one locally,
   under `var/packages/`, and `crew package release` releases it.
 
 ## The two gates

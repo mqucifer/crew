@@ -36,8 +36,6 @@ TAG_FILE = "delivery-history.tag"
 CONSUMERS = ("crew-presentation",)
 # Releases whose archives are kept, newest first, beside the first of each month.
 KEEP_DAILY = 7
-# The index's part holding sprint-metrics' answers: crew#521's second criterion.
-SPRINT_METRICS_PART = "sprint_metrics"
 # A consumer pull request's branch: one per release, so a later one supersedes it.
 BRANCH_PREFIX = "chore/delivery-history-"
 
@@ -63,12 +61,20 @@ def write(
 
 
 def refusal(history: dh.DeliveryHistory) -> str | None:
-    """Why this package can't be released, or None."""
-    if not getattr(history, SPRINT_METRICS_PART, None):
+    """Why this package can't be released, or None.
+
+    It goes only with sprint-metrics' answer for every sprint it covers (crew#521).
+    """
+    part = history.sprint_metrics
+    if part is None:
         return (
-            "sprint-metrics' answers aren't in the package yet, and nothing is released "
-            "until they are (the Sponsor, 2026-10-08; crew#521's second criterion)"
+            "sprint-metrics' answers aren't in the package, and nothing is released "
+            "without them (the Sponsor, 2026-10-08; crew#521's second criterion)"
         )
+    missing = [s.name for s in history.sprints if s.start <= history.date]
+    missing = [name for name in missing if name not in part.answers]
+    if missing:
+        return f"sprint-metrics has no answer for {', '.join(missing)}"
     return None
 
 

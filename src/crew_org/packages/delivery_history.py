@@ -37,7 +37,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.4.0"
+SCHEMA_VERSION = "1.5.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -245,6 +245,9 @@ Measure = Literal[
     "escalation_count",
     "blocked_aging_days",
     "wip_violations",
+    "cycle_time_minutes",
+    "lead_time_minutes",
+    "superseded_count",
     "crew_fixes_merged",
 ]
 
@@ -354,6 +357,21 @@ class Analysis(_Part):
     stories: list[StoryPattern] = Field(description="Every story and bug with events.")
 
 
+class SprintMetrics(_Part):
+    """sprint-metrics' answers for every sprint the package covers, as it gave them (ADR 0022).
+
+    sprint-metrics keeps and computes; the crew carries its answers unchanged,
+    cut to what its published schema names. Each answer follows that schema at
+    `release`, which this one embeds.
+    """
+
+    release: str = Field(description="The sprint-metrics release that answered, e.g. 1.3.0.")
+    answers: dict[str, dict[str, Any]] = Field(
+        description="Each sprint's answer by its name: an entry of sprint-metrics' GET /range, "
+        "with the sprint before it as `prior`."
+    )
+
+
 class DeliveryHistory(_Part):
     """The package's index: everything up to its date, so a consumer needs only the latest.
 
@@ -372,6 +390,11 @@ class DeliveryHistory(_Part):
     cards: list[Card]
     periods: list[Period] = Field(description="Every period with events, oldest first.")
     analysis: Analysis
+    sprint_metrics: SprintMetrics | None = Field(
+        default=None,
+        description="sprint-metrics' part. None only in a build without the service: "
+        "a release always carries it.",
+    )
 
 
 class PeriodEvents(_Part):
@@ -416,9 +439,8 @@ class Inputs:
     timezone: str
     date: date
     generated: datetime
-    # sprint-metrics' single-sprint answer for each sprint, by name. Empty until
-    # its answers join the package (crew#521's second criterion).
-    answers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # sprint-metrics' answers for the sprints it covers, or None without the service.
+    sprint_metrics: SprintMetrics | None = None
 
 
 # The labels that mark the crew's own design decisions (crew#192): on a technical
@@ -857,11 +879,12 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
             events,
             cards,
             sprints,
-            answers=inputs.answers,
+            answers=inputs.sprint_metrics.answers if inputs.sprint_metrics else {},
             crew_repository=inputs.crew_repository,
             zone=ZoneInfo(inputs.timezone),
             day=inputs.date,
         ),
+        sprint_metrics=inputs.sprint_metrics,
     )
     manifest = Manifest(
         date=inputs.date,

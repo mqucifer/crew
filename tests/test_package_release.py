@@ -63,7 +63,7 @@ def test_only_the_packages_tags_are_read_as_its_releases():
 
 def test_nothing_is_released_until_sprint_metrics_answers_are_in_it():
     history, _, _ = package()
-    assert "sprint-metrics' answers aren't in the package yet" in (release.refusal(history) or "")
+    assert "sprint-metrics' answers aren't in the package" in (release.refusal(history) or "")
 
 
 def test_the_archive_holds_the_package_its_manifest_and_its_schemas(tmp_path: Path):
