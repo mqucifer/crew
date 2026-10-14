@@ -207,9 +207,9 @@ Each step is a commit, grouped into pull requests merged one at a time. Each cha
 | mqucifer/crew#693 | B: the design step (Part 4); C: the readiness check (Part 3) | The lockfile field, shown in the design pull request; setup refused with shell operators; no changes from today before level 2. The two levels, `crew ready <repo>`, the standup's sections, other Goals held at level 1 |
 | mqucifer/crew#694, mqucifer/crew#695, landed on `main` together | D: the skeleton Goal (Parts 1 and 2); the design-fault path (Part 2, option B) | The standard text; `crew onboard` adds `board.yml` to the record's pull request and files the Goal on the Sponsor's yes; marked placeholders excused by the removal guard. A skeleton story blocked on the design sends it back to the Architect, the Sponsor merges the revision, and the story goes back to Ready, once. Split from D because putting a blocked story back to work was a move the crew had never made |
 | mqucifer/crew#700 | The skeleton Goal is one epic | Found in the proof: held to two epics, the Product Owner padded the skeleton with the site's pages |
-| | F: the template (7a) | `mqucifer/project-template`'s files, by pull request there; `crew onboard` proposes missing template files; `board.yml` comes from the template; `scripts/new-project.sh` |
-| | G: the lockfile and the exclude (7b, 7d) | The design check refuses a lockfile no setup tool writes; every worktree's exclude |
-| | H: usage notes (7c) | The record's `uses:` field, asked by `crew onboard`, fetched and shown to the four roles |
+| mqucifer/project-template#1, mqucifer/crew#702 | F: the template (7a) | `mqucifer/project-template`'s files, by pull request there; `crew onboard` proposes missing template files; `board.yml` comes from the template; `scripts/new-project.sh` |
+| mqucifer/crew#702 | G: the lockfile and the exclude (7b, 7d) | The design check refuses a lockfile no setup tool writes; every worktree's exclude |
+| mqucifer/crew#702 | H: usage notes (7c) | The record's `uses:` field, asked by `crew onboard`, fetched and shown to the four roles |
 | | E: the proof (Part 6, restarted by 7f) | crew-presentation, by the operator and the Sponsor |
 
 ## Waiting
