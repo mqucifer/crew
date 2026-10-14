@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
+from crew_org.tools.sandbox import HOW_IT_RUNS
 
 
 class Choice(BaseModel):
@@ -237,6 +238,7 @@ def propose_design(
             calls.Part(
                 "task",
                 f"{project}\n\n## The project's code\n\n{repository or '(the repository is empty)'}"
+                f"\n\n## How the crew's sandbox runs a project's commands\n\n{HOW_IT_RUNS}"
                 f"\n\n{revising}{refused}"
                 "Propose this project's design: language, dependencies, what the sandbox must "
                 "provide, the commands that enforce its definition of done, how a release "
