@@ -230,6 +230,7 @@ def tick(
         sponsor=env.get("GITHUB_SPONSOR") or None,
         not_ready=skipped,
         skeleton_only=skeleton_only,
+        crew_login=identity.removesuffix("[bot]"),
         crew_repo=env.get("CREW_REPO", "crew"),
     )
 
@@ -1346,6 +1347,19 @@ def onboard(
         with log.open("a", encoding="utf-8") as fh:
             fh.write(f"\n{PROPOSED_MARKER} {url}\n")
         console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
+        # A new project's first Goal is its walking skeleton, filed on the same
+        # yes that opened the record (crew#690, ADR 0030).
+        from crew_org.flows import readiness, skeleton  # noqa: PLC0415
+        from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
+
+        if readiness.check(issues, ws, repo).level < 2:
+            board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+            goal = skeleton.file_goal(issues, board, repo)
+            if goal is not None:
+                console.print(
+                    f"[green]Skeleton Goal filed[/] — {owner}/{repo}#{goal}, in Inbox (Goals). "
+                    "It waits for the design."
+                )
         finish("proposed", "The record is proposed as a pull request:", url)
         return
 

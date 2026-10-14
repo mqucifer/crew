@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 
 from crew_org.flows.record_pr import RecordChange, propose
+from crew_org.flows.skeleton import BOARD_PATH, board_workflow
 from crew_org.project import (
     FORMAT_VERSION,
     RECORD_PATH,
@@ -537,7 +538,8 @@ def open_record_pr(
         return (
             f"Closes #{number}\n\n"
             f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
-            "with the Sponsor through `crew onboard`.\n\n"
+            "with the Sponsor through `crew onboard`, and the crew's board automation, "
+            f"`{BOARD_PATH}`, the same in every project (ADR 0030).\n\n"
             f"- **Purpose:** {intent.scope.purpose}\n"
             f"- **Release:** {release_line(record)}\n"
             f"- **Done:** {intent.done.bar}\n\n"
@@ -547,7 +549,15 @@ def open_record_pr(
         )
 
     return propose(
-        ws, issues, repo, record, ONBOARDING, base=base, body=body, update_note=conversation
+        ws,
+        issues,
+        repo,
+        record,
+        ONBOARDING,
+        base=base,
+        body=body,
+        update_note=conversation,
+        files={BOARD_PATH: board_workflow()},
     )
 
 

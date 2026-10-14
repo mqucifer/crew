@@ -841,7 +841,21 @@ def lacking_notes(issues: IssueClient, repo: str, number: int) -> str:
     )
 
 
-def lacking_goals(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
+def set_by_the_sponsor(card: Card, sponsor: str | None, crew_login: str | None) -> bool:
+    """Whether a Goal is the Sponsor's to have set.
+
+    Written by the Sponsor, or the skeleton Goal `crew onboard` filed on their
+    yes (crew#690, ADR 0030): the crew's own identity, with the `skeleton` label,
+    which only someone with triage on the repository can add.
+    """
+    if sponsor is None or card.author == sponsor:
+        return True
+    return bool(crew_login) and card.author == crew_login and SKELETON_LABEL in card.labels
+
+
+def lacking_goals(
+    cards: list[Card], *, sponsor: str | None = None, crew_login: str | None = None
+) -> list[Card]:
     """Goals the Sponsor asked for a missing epic, wherever on the board they are."""
     return [
         c
@@ -850,7 +864,7 @@ def lacking_goals(cards: list[Card], *, sponsor: str | None = None) -> list[Card
         and c.state != "CLOSED"
         and NEEDS_EPIC in c.labels
         and NEEDS_REWORK not in c.labels
-        and (sponsor is None or c.author == sponsor)
+        and set_by_the_sponsor(c, sponsor, crew_login)
     ]
 
 
@@ -915,7 +929,9 @@ def stamp_goal_work_type(board: ProjectClient, sink: EventSink, cards: list[Card
     ]
 
 
-def goal_cards(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
+def goal_cards(
+    cards: list[Card], *, sponsor: str | None = None, crew_login: str | None = None
+) -> list[Card]:
     """Cards awaiting an epic proposal.
 
     Filtered by Work Type, not just by column: the epics the crew creates land
@@ -934,11 +950,13 @@ def goal_cards(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
         if c.status == INBOX
         and c.state != "CLOSED"
         and c.work_type == GOAL_TYPE
-        and (sponsor is None or c.author == sponsor)
+        and set_by_the_sponsor(c, sponsor, crew_login)
     ]
 
 
-def unauthored_goals(cards: list[Card], *, sponsor: str | None = None) -> list[Card]:
+def unauthored_goals(
+    cards: list[Card], *, sponsor: str | None = None, crew_login: str | None = None
+) -> list[Card]:
     """Goals nobody with the authority to set one wrote.
 
     Reported rather than silently skipped: a card that could be acted on and is
@@ -953,7 +971,7 @@ def unauthored_goals(cards: list[Card], *, sponsor: str | None = None) -> list[C
         if c.status == INBOX
         and c.state != "CLOSED"
         and c.work_type == GOAL_TYPE
-        and c.author != sponsor
+        and not set_by_the_sponsor(c, sponsor, crew_login)
     ]
 
 
@@ -2018,6 +2036,7 @@ def tick(
     holds: dict[str, str] | None = None,
     crew_repo: str | None = None,
     skeleton_only: dict[str, str] | None = None,
+    crew_login: str | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
 
@@ -2063,7 +2082,7 @@ def tick(
         board, issues, sink, rules, result, cards=cards, default_repo=default_repo
     )
 
-    for card in unauthored_goals(cards, sponsor=sponsor):
+    for card in unauthored_goals(cards, sponsor=sponsor, crew_login=crew_login):
         number = card.number or 0
         result.skipped.append((number, f"a Goal written by {card.author}, not the Sponsor"))
         sink.emit(
@@ -2075,12 +2094,16 @@ def tick(
         )
 
     # A Goal under way that lacks an epic is asked wherever it sits (crew#429).
-    lacking = lacking_goals(cards, sponsor=sponsor)
+    lacking = lacking_goals(cards, sponsor=sponsor, crew_login=crew_login)
     lacking_keys = {c.key for c in lacking}
     labelled: set[str] = set()
     for card in [
         *lacking,
-        *(c for c in goal_cards(cards, sponsor=sponsor) if c.key not in lacking_keys),
+        *(
+            c
+            for c in goal_cards(cards, sponsor=sponsor, crew_login=crew_login)
+            if c.key not in lacking_keys
+        ),
     ]:
         result.considered += 1
         repo = card.repo or default_repo
