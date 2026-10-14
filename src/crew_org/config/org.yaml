@@ -127,8 +127,9 @@ delivery:
     # Discussion 260; onboarded 2026-10-07). Paused from 2026-10-07 until
     # delivery-history's first release (crew#523), since it depends only on that
     # package (ADR 0021, crew#521). Back on 2026-10-13: the release is
-    # delivery-history-2026-10-13, pinned in its delivery-history.tag, and the
-    # Architect proposed its design again against it.
+    # delivery-history-2026-10-13, pinned in its delivery-history.tag; its record
+    # was rewritten to the package (mqucifer/crew-presentation#24) and the
+    # Architect's design proposed again against it (mqucifer/crew-presentation#29).
     - crew-presentation
 
 sandbox:
