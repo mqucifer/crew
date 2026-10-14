@@ -467,6 +467,10 @@ def brief(record: ProjectRecord) -> str:
             "**This project's guidelines**, on top of the crew-wide ones:",
             *bullets(intent.guidelines),
         ]
+    if record.design and record.design.sandbox_image:
+        from crew_org.tools.sandbox import HOW_IT_RUNS  # noqa: PLC0415
+
+        lines += ["", f"**How the crew's sandbox runs this project's commands:** {HOW_IT_RUNS}"]
     if record.design:
         design = record.design.model_dump(exclude_none=True, exclude_defaults=True)
         lines += ["", "**The Architect's design:**"]

@@ -33,6 +33,23 @@ CACHE_DIR = Path("var/uv-cache")
 # nothing in it is ever committed.
 HOME_DIR = ".crew-home"
 
+# How a project's commands run, for the roles that write them: the Architect
+# choosing setup and checks, and the Developer making them pass. Told none of it,
+# crew-presentation's design called the image's own `python` while its setup
+# installed into a uv environment, and its Developer saw only "No module named
+# pytest" (crew#690). Facts about this sandbox, kept beside the code they describe.
+HOW_IT_RUNS = (
+    "Each command, the setup and then each check, runs in its own container from "
+    "the sandbox image. The image's filesystem is read-only: only the repository's "
+    "checkout and an empty `/tmp` are writable, and only the checkout carries over from "
+    f"one command to the next. HOME is `{HOME_DIR}` inside the checkout, so what setup installs "
+    "under HOME (a user install, `pip install --user`, or a tool's own files) is "
+    "still there for the checks, and `$HOME/.local/bin` comes first on PATH. Only "
+    "the setup has a network. A check runs exactly its command: a bare `python` is "
+    "the image's own, which doesn't see a virtual environment the setup made unless "
+    "the command runs through it, as `uv run` does. CI runs each command the same way."
+)
+
 DEFAULT_TIMEOUT = 300
 PROBE_TIMEOUT = 15
 MEMORY = "2g"

@@ -153,3 +153,34 @@ def test_the_home_is_never_committed(tmp_path):
         check=True,
     ).stdout
     assert status == ""
+
+
+def test_the_roles_that_write_commands_are_told_how_they_run():
+    """crew-presentation's design called the image's own `python` while its setup
+    installed into a uv environment, and the Developer saw only "No module named
+    pytest": neither was told how the sandbox runs commands (crew#690)."""
+    from crew_org.project import brief, parse
+    from crew_org.tools.sandbox import HOME_DIR, HOW_IT_RUNS
+
+    assert (
+        f"HOME is `{HOME_DIR}`" in HOW_IT_RUNS and "only the checkout carries over" in HOW_IT_RUNS
+    )
+    intent = (
+        "version: 2\nintent:\n  scope:\n    purpose: A site.\n  release:\n    deploys: false\n"
+        "  done:\n    bar: CI is green.\n"
+    )
+    own = parse(intent + "design:\n  sandbox_image: x@sha256:abc\n  checks: [python -m pytest]\n")
+    default = parse(intent + "design:\n  checks: [uv run pytest -q]\n")
+    assert HOW_IT_RUNS in brief(own)
+    assert HOW_IT_RUNS not in brief(default), "the default image's commands are the crew's own"
+
+
+def test_the_architect_is_told_how_commands_run(monkeypatch):
+    from crew_org.crews.design_crew import propose_design
+    from crew_org.tools.sandbox import HOW_IT_RUNS
+    from tests.asked import Stop, capture
+
+    seen = capture(monkeypatch)
+    with pytest.raises(Stop):
+        propose_design(project="A site.", repository="")
+    assert HOW_IT_RUNS in seen["description"]
