@@ -986,6 +986,27 @@ def without_retired(
     return {key: value for key, value in broken.items() if key not in retired}
 
 
+def without_placeholders(
+    worktree: Path, broken: dict[str, tuple[str, str]], merged: Merged | None
+) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    """`broken`, less what lived in a merged placeholder file (crew#690, ADR 0030).
+
+    A new project's walking skeleton marks each placeholder `crew:placeholder`,
+    and the first real stories replace them: sprint-metrics' `test_scaffold.py`
+    was replaced by its first story. Declaring each as a contract change would
+    make every early story carry the skeleton's bookkeeping. Also returns what
+    it excused, for the pull request.
+    """
+    from crew_org.flows.skeleton import PLACEHOLDER  # noqa: PLC0415
+
+    excused = sorted(
+        key
+        for key in broken
+        if PLACEHOLDER in (_before(worktree, key.partition("::")[0], merged) or "")
+    )
+    return {k: v for k, v in broken.items() if k not in excused}, excused
+
+
 def _declares(declared: set[str], key: str) -> bool:
     """Whether a story's declared contract change names this test, or its file."""
     path, _, target = key.partition("::")
