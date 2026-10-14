@@ -38,8 +38,9 @@ HOME_DIR = ".crew-home"
 # crew-presentation's design called the image's own `python` while its setup
 # installed into a uv environment, and its Developer saw only "No module named
 # pytest" (crew#690). Its lock then took playwright 1.64.0 against the image's
-# v1.52 browsers, which can't launch them. Facts about this sandbox, kept beside
-# the code they describe.
+# v1.52 browsers, which can't launch them, and the story pinning it couldn't
+# regenerate the lock: its setup only exported it. Facts about this sandbox, kept
+# beside the code they describe.
 HOW_IT_RUNS = (
     "Each command, the setup and then each check, runs in its own container from "
     "the sandbox image. The image's filesystem is read-only: only the repository's "
@@ -52,7 +53,11 @@ HOW_IT_RUNS = (
     "the command runs through it, as `uv run` does. A package that drives a program "
     "the image ships, such as Playwright and its browsers, must be the image's version "
     "of it: another version looks for builds the image doesn't have, and the checks "
-    "have no network to fetch them. CI runs each command the same way."
+    "have no network to fetch them. The lockfile changes only when the setup's "
+    "package manager writes it, as `uv lock` or `npm install` does: no other step "
+    "can run it, so a setup that installs from the lock re-locks first, and what setup "
+    "writes in the checkout is committed with the story. CI runs each command the "
+    "same way."
 )
 
 DEFAULT_TIMEOUT = 300
