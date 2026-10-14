@@ -202,10 +202,13 @@ def tick(
     # Refinement reads the code it is deciding about, and delivery opens its
     # worktrees off the same clone.
     ws = Workspace(owner, default_repo, token, _bot_identity(current(token), identity))
-    # A repository without a usable record isn't worked (#132).
-    skipped = loop.not_onboarded(ws, allowed)
+    # A repository not ready isn't worked, and one ready for its skeleton works
+    # only that Goal (#132, crew#690, ADR 0030).
+    skipped, skeleton_only = loop.readiness_of(IssueClient(token, owner), ws, allowed)
     for skipped_repo, why in skipped.items():
         console.print(f"[yellow]{escape(skipped_repo)} not worked:[/] {escape(why)}")
+    for held_repo, why in skeleton_only.items():
+        console.print(f"[yellow]{escape(held_repo)} works its skeleton Goal only:[/] {escape(why)}")
     allowed = allowed - set(skipped)
 
     crew = loop.Crew(
@@ -225,7 +228,8 @@ def tick(
         reviewer=IssueClient(review_token, owner),
         reviewer_login=review_identity,
         sponsor=env.get("GITHUB_SPONSOR") or None,
-        not_onboarded=skipped,
+        not_ready=skipped,
+        skeleton_only=skeleton_only,
         crew_repo=env.get("CREW_REPO", "crew"),
     )
 
@@ -336,7 +340,8 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             waiting=waiting_on_a_person(cards),
             aging=aging_blocked(cards, crew.rules, VAR / "events", now),
             awaiting=awaiting_approval(cards),
-            not_onboarded=crew.not_onboarded,
+            not_ready=crew.not_ready,
+            skeleton_only=crew.skeleton_only,
             stack=stack_problems(),
         )
         number, commented = record_standup(
@@ -1386,6 +1391,41 @@ def onboard(
 
 
 @app.command()
+def ready(
+    repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
+) -> None:
+    """How far a project is ready for the crew to work, and what is missing (crew#690).
+
+    Level 1 is ready for its walking skeleton, level 2 for any Goal (ADR 0030).
+    Each missing item says who fixes it. Reads GitHub only; changes nothing.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.flows import readiness
+    from crew_org.git_ops import Workspace
+    from crew_org.tools.github_issues import IssueClient
+
+    env = load_env()
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    issues = IssueClient(token, owner)
+    ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+    found = readiness.check(issues, ws, repo)
+    meaning = {
+        0: "not worked",
+        1: "ready for its skeleton Goal only",
+        2: "ready for any Goal",
+    }[found.level]
+    console.print(f"{owner}/{repo}: level {found.level}, {meaning}")
+    for item in found.missing:
+        console.print(f"  [yellow]missing[/] {escape(item.what)} [dim]({item.who})[/]")
+    for unread in found.unchecked:
+        console.print(f"  [dim]not checked: {escape(unread)}[/]")
+    if found.level < 2:
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def design(
     repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
     reason: str = typer.Option(
@@ -1447,6 +1487,13 @@ def design(
         raise typer.Exit(code=1)
 
     repository = describe(path, branch=branch, protection=issues.branch_protection(repo, branch))
+    # Before its skeleton a project does nothing today: no changes are declared,
+    # and the skeleton Goal carries the work (crew#690, ADR 0030).
+    from crew_org.flows import readiness  # noqa: PLC0415
+
+    new = readiness.check(issues, ws, repo).level < 2
+    if new:
+        console.print("[dim]Its skeleton hasn't landed: the design declares no changes.[/]")
     with console.status("[dim]The Architect is designing, and the Code Reviewer checking…[/]"):
         designed = run_design(
             record,
@@ -1455,6 +1502,7 @@ def design(
             propose_design=propose_design,
             review_design=review_design,
             reason=reason,
+            new=new,
         )
 
     if designed.record is None:

@@ -878,3 +878,38 @@ def test_asking_past_the_limit_is_a_failed_split_not_an_empty_one(monkeypatch, t
     )
     assert result.failed and "past the limit" in result.failed[0][1]
     assert issues.created == [], "no stories written from an answer that only asked"
+
+
+# --- a project ready only for its skeleton (crew#690, ADR 0030) ------------
+
+
+def test_a_goal_waits_while_its_project_is_ready_only_for_its_skeleton(monkeypatch):
+    """crew-presentation's first stories all failed checks that had nothing to run."""
+    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda goal, **kw: PROPOSAL)
+    issues = FakeIssues()
+    result = tick(
+        FakeBoard([card(1)]),
+        issues,
+        EventSink(None),
+        default_repo="sprint-metrics",
+        sponsor="mquarters",
+        skeleton_only={"sprint-metrics": "CI hasn't run green on `main`"},
+    )
+    assert result.proposed == []
+    assert result.held_for_design == [
+        (1, "sprint-metrics's skeleton Goal lands first: CI hasn't run green on `main`")
+    ]
+
+
+def test_the_skeleton_goal_itself_is_decomposed(monkeypatch):
+    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda goal, **kw: PROPOSAL)
+    skeleton = card(1, labels=frozenset({"goal", "skeleton"}))
+    result = tick(
+        FakeBoard([skeleton]),
+        FakeIssues(),
+        EventSink(None),
+        default_repo="sprint-metrics",
+        sponsor="mquarters",
+        skeleton_only={"sprint-metrics": "CI hasn't run green on `main`"},
+    )
+    assert result.proposed == [1]

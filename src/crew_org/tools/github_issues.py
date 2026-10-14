@@ -493,6 +493,28 @@ class IssueClient:
             latest.setdefault(run.get("path") or run.get("name") or "", run)
         return latest
 
+    def green_runs(self, repo: str, branch: str) -> list[dict[str, Any]]:
+        """Runs on `branch` that succeeded, newest first: what has ever passed there.
+
+        Readiness asks whether CI has run green once, not whether it is green now:
+        a red default branch is the main watch's, not a reason to stop work.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/runs",
+            params={"branch": branch, "status": "success", "per_page": 50},
+        )
+        response.raise_for_status()
+        return response.json().get("workflow_runs") or []
+
+    def pages(self, repo: str) -> dict[str, Any] | None:
+        """The repository's GitHub Pages site, or None if it has none."""
+        response = self._client.get(f"{API}/repos/{self.owner}/{repo}/pages")
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        site: dict[str, Any] = response.json()
+        return site
+
     def head_sha(self, repo: str, branch: str) -> str:
         """The commit `branch` points at."""
         response = self._client.get(f"{API}/repos/{self.owner}/{repo}/commits/{branch}")

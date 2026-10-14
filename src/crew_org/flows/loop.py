@@ -82,9 +82,12 @@ class Crew:
     # The one person who may set a Goal. None means unconfigured, and the old
     # behaviour: anything typed Goal is decomposed.
     sponsor: str | None = None
-    # Repositories in delivery.repos this tick leaves alone, and why: a
-    # project without a usable record isn't worked (#132).
-    not_onboarded: dict[str, str] = field(default_factory=dict)
+    # Repositories in delivery.repos this tick leaves alone, and why: a project
+    # below readiness level 1 isn't worked (#132, crew#690).
+    not_ready: dict[str, str] = field(default_factory=dict)
+    # Projects ready for their skeleton Goal only, and what keeps them from any
+    # Goal (crew#690, ADR 0030). Their other Goals wait.
+    skeleton_only: dict[str, str] = field(default_factory=dict)
     # Projects whose approved epics wait while the Architect revisits their
     # design, and why (#192). Set by the revisit phase each pass.
     design_holds: dict[str, str] = field(default_factory=dict)
@@ -92,29 +95,27 @@ class Crew:
     crew_repo: str | None = None
 
 
-def not_onboarded(ws: Workspace, repos: set[str]) -> dict[str, str]:
-    """Each repository without a usable record, and what's missing (#132).
+def readiness_of(
+    issues: Any, ws: Workspace, repos: set[str]
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Each repository not ready to work, and each ready for its skeleton only (crew#690).
 
-    A precondition, not a gate (decided on #111): adding a repository to
-    `delivery.repos` is already the Sponsor's decision, and working it on
-    answers nobody gave would be the crew deciding instead. The standup says
-    which, and why, until the project is onboarded.
+    Replaces the usable-record precondition (#132), and stays a precondition, not
+    a gate: adding a repository to `delivery.repos` is already the Sponsor's
+    decision. Level 0 isn't worked; level 1 works only the skeleton Goal (ADR
+    0030). The standup says which, with what is missing and who fixes it.
     """
-    from crew_org.project import RECORD_PATH, ProjectRecordError, read_record  # noqa: PLC0415
+    from crew_org.flows import readiness  # noqa: PLC0415
 
-    gaps: dict[str, str] = {}
+    not_ready: dict[str, str] = {}
+    skeleton_only: dict[str, str] = {}
     for repo in sorted(repos):
-        try:
-            record = read_record(ws.for_repo(repo).current())
-        except ProjectRecordError as exc:
-            gaps[repo] = f"its record is unusable: {exc}. Finish it with `crew onboard {repo}`"
-            continue
-        except Exception as exc:  # noqa: BLE001
-            gaps[repo] = f"its record couldn't be checked: {exc}"
-            continue
-        if record is None:
-            gaps[repo] = f"it has no `{RECORD_PATH}`. Onboard it with `crew onboard {repo}`"
-    return gaps
+        found = readiness.check(issues, ws, repo)
+        if found.level == 0:
+            not_ready[repo] = found.why()
+        elif found.level == 1:
+            skeleton_only[repo] = found.why()
+    return not_ready, skeleton_only
 
 
 @dataclass
@@ -293,7 +294,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
 
     # A workflow red on a default branch becomes a technical epic first, so the
     # holds below see it and this pass refines it (#335).
-    repos = crew.repos - set(crew.not_onboarded)
+    repos = crew.repos - set(crew.not_ready)
     red = watch_default_branches(crew.issues, crew.board, crew.sink, repos=repos)
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
@@ -383,6 +384,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
         sponsor=crew.sponsor,
         repos=crew.repos,
         holds=crew.design_holds,
+        skeleton_only=crew.skeleton_only,
         crew_repo=crew.crew_repo,
     )
     # Parking an epic is movement: the card left Needs Refinement, and a pass

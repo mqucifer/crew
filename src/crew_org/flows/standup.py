@@ -113,7 +113,8 @@ def write_standup(
     waiting: list[str],
     aging: list[tuple[str, int]],
     awaiting: list[str] = (),
-    not_onboarded: dict[str, str] | None = None,
+    not_ready: dict[str, str] | None = None,
+    skeleton_only: dict[str, str] | None = None,
     stack: list[str] = (),
 ) -> Standup:
     """The Scrum Master's standup for one tick, from the tick's own result."""
@@ -158,8 +159,12 @@ def write_standup(
         ),
         ("Over a WIP limit", breaches),
         (
-            "Not worked: not onboarded",
-            [f"- {repo}: {why}" for repo, why in sorted((not_onboarded or {}).items())],
+            "Not worked: not ready",
+            [f"- {repo}: {why}" for repo, why in sorted((not_ready or {}).items())],
+        ),
+        (
+            "Only the skeleton Goal: not ready for others",
+            [f"- {repo}: {why}" for repo, why in sorted((skeleton_only or {}).items())],
         ),
         # What the crew runs on, when something isn't healthy (#335).
         ("Stack health", list(stack)),
