@@ -13,8 +13,8 @@ definition that holds it, so the map answers "which tests execute
 `schema.py::single_sprint_schema`", not only "which execute schema.py". A line
 outside any definition runs at import, under no test, and maps to the file.
 
-Python only, through pytest-cov: a project with its own sandbox image (crew#376's
-profiles) has no map until its toolchain gets one (the plan's Q4).
+Python only, through pytest-cov, for every Python part: in the crew's image with
+uv, or in the project's own image with its own Python (crew#690, ADR 0030).
 """
 
 from __future__ import annotations
@@ -25,14 +25,14 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from crew_org.tools import workspace
 from crew_org.tools.ast_edit import _definitions, definitions
 from crew_org.tools.regression import _modules, _resolve
-from crew_org.tools.sandbox import Sandbox
+from crew_org.tools.sandbox import HOME_DIR, Sandbox
 
 COVERAGE_DIR = Path("var/coverage")
 # Inside the clone while the tests run, removed after: the sandbox writes only to
@@ -41,10 +41,14 @@ WORK = ".crew-coverage"
 # Installed beside the project's own dev dependencies, with the network the setup
 # step already has. The project's lockfile is not changed.
 INSTALL = ["uv", "pip", "install", "--quiet", "pytest-cov"]
+# A project with its own image: its own Python, with pytest-cov installed into
+# the worktree's home beside what its setup installed (crew#690, ADR 0030).
+OWN_INSTALL = ["python", "-m", "pip", "install", "--quiet", "pytest-cov"]
 RC = f"""\
 [run]
 omit =
     .venv/*
+    {HOME_DIR}/*
     tests/*
     {WORK}/*
 relative_files = True
@@ -66,6 +70,7 @@ MEASURE = [
     f"--cov-config={WORK}/rc",
     f"--cov-report=json:{WORK}/coverage.json",
 ]
+OWN_MEASURE = ["python", "-m", "pytest", *MEASURE[4:]]
 # The whole suite under coverage, which is slower than a plain run.
 TIMEOUT = 900
 
@@ -378,23 +383,27 @@ def build(
     if path.exists():
         return with_static(CoverageMap.from_json(path.read_text()), clone)
     tools = workspace.toolchain(clone)
-    if tools.image:
-        raise CoverageUnavailable(f"{repo} has its own sandbox image; the map is Python only")
+    if not tools.python:
+        raise CoverageUnavailable(f"{repo} has no Python part; the map is Python only")
     if tools.problem:
         raise CoverageUnavailable(tools.problem)
     sandbox = sandbox or Sandbox()
+    install, measure = INSTALL, MEASURE
+    if tools.image:
+        sandbox = replace(sandbox, image=tools.image)
+        install, measure = OWN_INSTALL, OWN_MEASURE
     work = clone / WORK
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
     (work / "rc").write_text(RC)
     try:
-        for command in [c for c in (tools.setup, INSTALL) if c]:
+        for command in [c for c in (tools.setup, install) if c]:
             done = run(clone, command, sandbox=sandbox, network=True)
             if not done.ok:
                 raise CoverageUnavailable(f"`{done.command}` failed: {done.output[-300:]}")
         # The tests' own verdict doesn't matter here: a failing test still ran
         # its code, and the base branch is what it is.
-        done = run(clone, MEASURE, sandbox=sandbox, network=False, timeout=TIMEOUT)
+        done = run(clone, measure, sandbox=sandbox, network=False, timeout=TIMEOUT)
         report = work / "coverage.json"
         if not report.exists():
             raise CoverageUnavailable(f"no coverage report: {done.output[-300:]}")

@@ -431,7 +431,7 @@ step applied later.
 |---|---|
 | No network during lint and tests | Generated code cannot reach anything while it runs. Only dependency resolution is given a network. |
 | Non-root user | The container runs as the invoking user, so nothing inside it is privileged. |
-| Read-only root filesystem | Only the worktree and a `tmpfs` are writable. |
+| Read-only root filesystem | Only the worktree and a `tmpfs` are writable. Each command is its own container, so only the worktree carries over: its home is `.crew-home` inside the worktree, ignored by git and removed with it, so what setup installs is there for the checks in any language (crew#690, ADR 0030). |
 | All capabilities dropped, `no-new-privileges` | Nothing can escalate. |
 | Memory, CPU and PID limits | A runaway process is killed rather than taking the machine with it. |
 | Only the worktree and a cache are mounted | The host filesystem is not visible. |
@@ -453,6 +453,11 @@ names its own image runs only what it names. Every protection in the table holds
 whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
+
+A Python part gets the coverage map in any image: pytest-cov is installed into the
+worktree's home, and the suite measured with the project's own `python` (crew#690,
+ADR 0030). Verified in the Playwright Python image: setup's `pip install`, then
+pytest and ruff in the next containers, and a map of the fixture's test.
 
 **A project in more than one language, or not in Python, declares its parts**
 (crew#404). Each part has a path, a language and its test files. Every file is

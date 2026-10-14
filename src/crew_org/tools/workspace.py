@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from crew_org.crews.delivery_crew import FileWrite, TextEdit
-from crew_org.tools.sandbox import Mode, Sandbox
+from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
 
 # A runaway test must not hang the tick.
 DEFAULT_TIMEOUT = 300
@@ -375,7 +375,8 @@ def run(
         blocked = sandbox.unavailable_reason()
         if blocked:
             return CommandResult(command=printable, code=126, output=blocked)
-        argv = sandbox.command(worktree, command, network=network)
+        prepare_home(worktree)
+        argv = sandbox.command(worktree, command, network=network, path=sandbox.search_path())
         cwd = None
     else:
         argv = command
@@ -423,6 +424,9 @@ class Toolchain:
     autofix: tuple[list[str], ...]
     verify: tuple[list[str], ...]
     problem: str | None = None
+    # Whether any part is Python's: the coverage map follows the language, not
+    # the image (crew#690, ADR 0030). No parts named means the whole project is.
+    python: bool = True
 
 
 def toolchain(worktree: Path) -> Toolchain:
@@ -462,7 +466,11 @@ def toolchain(worktree: Path) -> Toolchain:
         problem = f"the design's sandbox image `{image}` isn't pinned by digest (name@sha256:...)"
     elif own and not verify:
         problem = "the design names its own sandbox image but no checks to run in it"
-    return Toolchain(image=image, setup=setup, autofix=autofix, verify=verify, problem=problem)
+    parts = design.parts if design is not None else []
+    python = not parts or any(p.language.strip().lower() == "python" for p in parts)
+    return Toolchain(
+        image=image, setup=setup, autofix=autofix, verify=verify, problem=problem, python=python
+    )
 
 
 def check(

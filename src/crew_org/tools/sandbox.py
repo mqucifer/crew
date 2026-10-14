@@ -11,6 +11,7 @@ looks protected while running arbitrary code against the user's own account.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -24,6 +25,13 @@ IMAGE = "ghcr.io/astral-sh/uv:python3.12-bookworm-slim"
 # root-owned, and the container runs as the invoking user, so uv cannot write
 # its cache into one. This directory is created by us and therefore ours.
 CACHE_DIR = Path("var/uv-cache")
+
+# Each command is its own container, and only the worktree carries over. A home
+# inside it keeps what the dependency step installs for the checks after it, in
+# any language: under /tmp, pip's user installs were gone before the checks ran
+# (crew#690, ADR 0030). It goes when the worktree does, and ignores itself, so
+# nothing in it is ever committed.
+HOME_DIR = ".crew-home"
 
 DEFAULT_TIMEOUT = 300
 PROBE_TIMEOUT = 15
@@ -90,8 +98,20 @@ class Sandbox:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def command(self, worktree: Path, inner: list[str], *, network: bool) -> list[str]:
-        """Build the container invocation for one command."""
+    def search_path(self) -> str | None:
+        """The image's own PATH, or None until the image has been pulled."""
+        return _image_path(self.engine, self.image)
+
+    def command(
+        self, worktree: Path, inner: list[str], *, network: bool, path: str | None = None
+    ) -> list[str]:
+        """Build the container invocation for one command.
+
+        `path` is the image's own PATH. Given it, what setup installed under the
+        home (`.local/bin`, as pip's user installs put it) is found first.
+        """
+        home = f"/work/{HOME_DIR}"
+        found = ["-e", f"PATH={home}/.local/bin:{path}"] if path else []
         return [
             self.engine,
             "run",
@@ -128,9 +148,47 @@ class Sandbox:
             "-e",
             "UV_CACHE_DIR=/cache",
             "-e",
-            "HOME=/tmp",
+            f"HOME={home}",
             "-e",
             "XDG_CACHE_HOME=/cache",
+            *found,
             self.image,
             *inner,
         ]
+
+
+def prepare_home(worktree: Path) -> None:
+    """The worktree's own home, made before a command runs in it."""
+    home = worktree / HOME_DIR
+    home.mkdir(exist_ok=True)
+    ignore = home / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("*\n")
+
+
+# Only an answer is kept: an image not yet pulled has none, and is asked again.
+_PATHS: dict[tuple[str, str], str] = {}
+
+
+def _image_path(engine: str, image: str) -> str | None:
+    if (engine, image) in _PATHS:
+        return _PATHS[(engine, image)]
+    try:
+        done = subprocess.run(
+            [engine, "image", "inspect", "--format", "{{json .Config.Env}}", image],
+            capture_output=True,
+            text=True,
+            timeout=PROBE_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    try:
+        env = json.loads(done.stdout) or []
+    except ValueError:
+        return None
+    path = next((e.split("=", 1)[1] for e in env if e.startswith("PATH=")), None)
+    if path:
+        _PATHS[(engine, image)] = path
+    return path
