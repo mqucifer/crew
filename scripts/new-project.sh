@@ -48,6 +48,16 @@ if [[ -z "$name" ]]; then
 fi
 repo="$OWNER/$name"
 
+# Every step needs admin, so it runs as the Sponsor. A GH_TOKEN in the
+# environment wins over `gh auth login`: run from Claude's session, it was
+# quarters-claude's, and protection failed with a bare 403.
+me=$(gh api user -q .login 2>/dev/null || echo "unknown")
+if [[ "$me" != "$(gh api "orgs/$OWNER/memberships/$me" -q 'select(.role == "admin") | .user.login' 2>/dev/null)" ]]; then
+  echo "gh is running as $me, who isn't an admin of $OWNER." >&2
+  echo "Run it as the Sponsor: unset GH_TOKEN (env -u GH_TOKEN $0 $*) or use your own terminal." >&2
+  [[ "$dry" == true ]] || exit 1
+fi
+
 run() {
   echo "+ $*"
   if [[ "$dry" == false ]]; then "$@"; fi
