@@ -37,6 +37,10 @@ ATTEMPTS = 2
 # that need work into the right place once it merges, whoever merged it (#192, crew#439).
 CHANGES_MARKER = "<!-- crew:design-changes {} -->"
 _CHANGES = re.compile(r"<!-- crew:design-changes (.*?) -->", re.DOTALL)
+# On a design pull request that answers a design fault: the stories it unblocks
+# once it merges (crew#690, ADR 0030).
+FAULTS_MARKER = "<!-- crew:design-faults {} -->"
+_FAULTS = re.compile(r"<!-- crew:design-faults (\[[\d, ]*\]) -->")
 # On the issue a revisit's pull request closes, and on a revisit that changed
 # nothing: when the Architect last looked, so evidence already weighed isn't
 # counted again.
@@ -388,6 +392,12 @@ def changes_block(proposal: Any) -> str:
     return CHANGES_MARKER.format(json.dumps(changes).replace(">", "\\u003e"))
 
 
+def answered_faults(body: str) -> list[int]:
+    """The stories a merged design pull request unblocks, from its marker (crew#690)."""
+    match = _FAULTS.search(body or "")
+    return [int(n) for n in json.loads(match.group(1))] if match else []
+
+
 def declared_changes(body: str) -> list[dict[str, Any]]:
     """The changes a design pull request declared, or [] for one that has none."""
     match = _CHANGES.search(body or "")
@@ -409,11 +419,13 @@ def open_design_pr(
     base: str,
     reason: str = "",
     revisit: bool = False,
+    faults: list[int] | None = None,
 ) -> str:
     """Propose the accepted design to the project as a pull request. Returns its URL.
 
     A revisit (#192) is merged by the crew once CI passes; a design run by hand
-    with `crew design` is the Sponsor's to merge.
+    with `crew design` is the Sponsor's to merge, and so is one answering a
+    design fault (`faults`, the blocked stories it puts back to work, crew#690).
     """
     proposal = designed.proposal
     assert designed.record is not None, "only an accepted design is proposed"
@@ -472,8 +484,16 @@ def open_design_pr(
                 if revisit
                 else ""
             )
+            + (
+                "\n- It answers a design fault the skeleton's stories were blocked on: "
+                + ", ".join(f"#{n}" for n in faults)
+                + ". When it merges, the crew puts them back in Ready."
+                if faults
+                else ""
+            )
             + f"\n\n{changes_block(proposal)}"
             + (f"\n{REVISIT_MARKER}" if revisit else "")
+            + (f"\n{FAULTS_MARKER.format(json.dumps(sorted(faults)))}" if faults else "")
         )
 
     return propose(
