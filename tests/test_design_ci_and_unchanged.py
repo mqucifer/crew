@@ -54,7 +54,7 @@ def test_a_ci_proof_is_recorded_apart_from_the_commands_the_sandbox_runs():
 def test_it_survives_the_record_round_trip():
     record = parse(
         "version: 2\nintent:\n  scope:\n    purpose: metrics\n  release:\n    deploys: false\n"
-        f"  done:\n    bar: CI passes\ndesign:\n  checks: [uv run pytest -q]\n"
+        f"  done:\n    bar: CI passes\ndesign:\n  checks: [uv run pytest -q]\n  lockfile: uv.lock\n"
         f'  ci_checks: ["{SMOKE}"]\n'
     )
     assert parse(render(record)).design.ci_checks == [SMOKE]
