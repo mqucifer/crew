@@ -277,6 +277,17 @@ def _land(crew: Crew) -> PhaseOutcome:
     )
 
 
+def watched(repos: set[str], skeleton_only: dict[str, str]) -> set[str]:
+    """The repositories whose red default branch is work to file (#335).
+
+    Not one waiting for its walking skeleton: its `main` is red until the skeleton
+    lands, and the skeleton Goal is that work. crew-presentation's red `checks`
+    became a second epic for it, which refinement would have split beside the
+    skeleton's own (crew#690).
+    """
+    return repos - set(skeleton_only)
+
+
 def _revisit(crew: Crew) -> PhaseOutcome:
     """The Architect revisits a design delivery shows is under strain (#192).
 
@@ -298,7 +309,9 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     # A workflow red on a default branch becomes a technical epic first, so the
     # holds below see it and this pass refines it (#335).
     repos = crew.repos - set(crew.not_ready)
-    red = watch_default_branches(crew.issues, crew.board, crew.sink, repos=repos)
+    red = watch_default_branches(
+        crew.issues, crew.board, crew.sink, repos=watched(repos, crew.skeleton_only)
+    )
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
     result = revisit_designs(
