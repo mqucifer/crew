@@ -56,6 +56,7 @@ from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
+from crew_org.flows.readiness import SKELETON_LABEL
 from crew_org.flows.refine_panel import panel_step
 from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
@@ -2016,8 +2017,12 @@ def tick(
     repos: set[str] | None = None,
     holds: dict[str, str] | None = None,
     crew_repo: str | None = None,
+    skeleton_only: dict[str, str] | None = None,
 ) -> TickResult:
     """The refinement phase: goals become epics, approved epics become stories.
+
+    `skeleton_only` names the projects ready for their walking skeleton and no
+    more, and why (crew#690, ADR 0030). Their other Goals wait for it to land.
 
     Two passes, in dependency order. It stops at Ready because that is where
     refinement ends, not because a Sponsor is waiting: section 1 of the
@@ -2081,6 +2086,13 @@ def tick(
         repo = card.repo or default_repo
         number = card.number
         assert number is not None
+        if repo in (skeleton_only or {}) and SKELETON_LABEL not in card.labels:
+            # Every story would fail checks that have nothing to run yet, as
+            # crew-presentation's did (crew#690).
+            result.held_for_design.append(
+                (number, f"{repo}'s skeleton Goal lands first: {(skeleton_only or {})[repo]}")
+            )
+            continue
         if repo not in labelled:
             # The Sponsor's label has to exist before it can be put on a Goal.
             labelled.add(repo)

@@ -175,6 +175,16 @@ class Design(Section):
         default_factory=list,
         description="Formatters run before the checks, e.g. `npx prettier --write .`",
     )
+    # Named, whatever the language, so a machine checks it rather than a review
+    # (§19.3, §19.7; crew#690, ADR 0030). Unset with the crew's default image,
+    # it's uv's.
+    lockfile: str | None = Field(
+        default=None,
+        description=(
+            "The file that locks the project's dependencies, e.g. `uv.lock`, "
+            "`package-lock.json`, `Cargo.lock`, or a requirements file with hashes"
+        ),
+    )
     # The project's parts by path, each in its own language (#404). None: every
     # file is Python's, as it always was.
     parts: list[Part] = Field(

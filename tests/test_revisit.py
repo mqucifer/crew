@@ -50,6 +50,7 @@ intent:
 design:
   language: Python 3.12
   checks: [uv run pytest -q]
+  lockfile: uv.lock
 """
 )
 
@@ -178,6 +179,7 @@ def proposal(*, changes=(), structure="One module per concern") -> DesignProposa
         language=Choice(value="Python 3.12", basis=".python-version"),
         checks=[Choice(value="uv run pytest -q", basis="tests.yml")],
         structure=Choice(value=structure, basis="the rebuilds") if structure else None,
+        lockfile=Choice(value="uv.lock", basis="uv locks the dependencies"),
         changes=list(changes),
         summary="Split crew_performance.py by concern.",
     )

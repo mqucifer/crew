@@ -19,6 +19,7 @@ from crew_org.crews.design_crew import (
     DesignProposal,
     DesignReview,
     PartChoice,
+    Undeclared,
 )
 from crew_org.flows.design import (
     design,
@@ -60,6 +61,7 @@ def proposal(*checks: str, changes=(), sandbox="uv with Python 3.12") -> DesignP
         sandbox=Choice(value=sandbox, basis="tests.yml uses setup-uv"),
         checks=[Choice(value=c, basis="tests.yml") for c in checks],
         release_how=Choice(value="Tag vX.Y.Z on main", basis="the record: a version tag"),
+        lockfile=Choice(value="uv.lock", basis="uv locks the dependencies"),
         changes=list(changes),
         summary="Python 3.12 under uv; ruff and pytest enforce done.",
     )
@@ -83,7 +85,7 @@ class Reviewer:
         return self.reviews.pop(0) if self.reviews else DesignReview()
 
 
-def run(architect, reviewer=None, *, ci=CI, record=RECORD, reason=""):
+def run(architect, reviewer=None, *, ci=CI, record=RECORD, reason="", new=False):
     return design(
         record,
         repository="code",
@@ -91,6 +93,7 @@ def run(architect, reviewer=None, *, ci=CI, record=RECORD, reason=""):
         propose_design=architect,
         review_design=reviewer or Reviewer(),
         reason=reason,
+        new=new,
     )
 
 
@@ -339,3 +342,64 @@ def test_the_docs_choice_carries_the_parallel_stories_goal():
     description = DesignProposal.model_fields["docs"].description
     assert "the way `structure` divides the code" in description
     assert "parallel stories land in different files" in description
+
+
+# --- what a machine checks, not the review (crew#690, ADR 0030) ------------------------------
+
+
+def test_a_design_that_names_no_lockfile_is_refused_then_accepted_with_one():
+    """crew-presentation's design installed from a plain requirements file it
+    called the lockfile, and the review passed it."""
+    unlocked = proposal("uv run pytest -q").model_copy(update={"lockfile": None})
+    architect = Architect(unlocked, proposal("uv run pytest -q"))
+
+    ended = run(architect)
+
+    assert "names no lockfile" in architect.calls[1]["feedback"]
+    assert ended.record.design.lockfile == "uv.lock"
+
+
+def test_the_lockfile_is_its_path_without_commentary():
+    named = proposal("uv run pytest -q").model_copy(
+        update={"lockfile": Choice(value="`package-lock.json`, written by npm ci", basis="npm")}
+    )
+    assert run(Architect(named)).record.design.lockfile == "package-lock.json"
+
+
+def test_a_setup_that_needs_a_shell_is_refused():
+    """crew-presentation's setup reached pip with `&&` as a package name."""
+    shelled = proposal("python -m pytest").model_copy(
+        update={
+            "setup": Choice(
+                value="pip install -r requirements.txt && python tools/fetch_package.py",
+                basis="the package is fetched with the network",
+            )
+        }
+    )
+    ended = run(Architect(shelled, shelled), new=True)
+
+    assert ended.record is None
+    shell = "uses `&&`, but the crew runs each command without a shell"
+    assert any(shell in r for r in ended.refused)
+
+
+def test_a_new_project_declares_no_changes_and_none_are_asked_for():
+    """Before its skeleton there is nothing it does today: crew-presentation's
+    changes against files that didn't exist became stories to remove them."""
+    against_nothing = proposal("uv run pytest -q", "uv run mypy src", changes=[MYPY])
+    reviewer = Reviewer(
+        DesignReview(undeclared=[Undeclared(choice="mypy", today="nothing: no code yet")])
+    )
+
+    ended = run(Architect(against_nothing), reviewer, new=True)
+
+    assert ended.record is not None and ended.attempts == 1
+    assert ended.proposal.changes == []
+
+
+def test_the_pull_request_shows_the_lockfile(tmp_path: Path):
+    """A field the Sponsor merges is a field the Sponsor sees (crew#690)."""
+    ended = run(Architect(proposal("uv run pytest -q")))
+    issues = FakeIssues()
+    open_design_pr(FakeWorkspace(tmp_path), issues, "sprint-metrics", ended, base="main")
+    assert "- **Lockfile:** uv.lock" in issues.pulls[0]["body"]

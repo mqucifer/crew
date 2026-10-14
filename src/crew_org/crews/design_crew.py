@@ -114,6 +114,14 @@ class DesignProposal(BaseModel):
         default_factory=list,
         description="With `sandbox_image` only: formatters run before the checks",
     )
+    lockfile: Choice | None = Field(
+        None,
+        description=(
+            "The file that locks the project's dependencies, its path from the "
+            "repository's root, e.g. `uv.lock`, `package-lock.json`, `Cargo.lock`, or a "
+            "requirements file with hashes. Every project has one (§19.3)"
+        ),
+    )
     # A project's parts, each read by its own language's tools (#404). Empty: the
     # whole project is Python's, as sprint-metrics is.
     parts: list[PartChoice] = Field(

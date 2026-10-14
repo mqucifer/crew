@@ -14,9 +14,13 @@ import subprocess
 import textwrap
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from crew_org.crews.delivery_crew import FileWrite, TextEdit
 from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
+
+if TYPE_CHECKING:
+    from crew_org.project import Design
 
 # A runaway test must not hang the tick.
 DEFAULT_TIMEOUT = 300
@@ -415,6 +419,26 @@ VERIFY = (
 SETUP = ["uv", "sync", "--extra", "dev", "--quiet"]
 
 
+def shell_operators(command: str) -> list[str]:
+    """The shell operators in a design's command, which the crew never runs in a shell.
+
+    Each command is run as its words, so `pip install -r requirements.txt && python
+    x.py` reached pip with `&&` as a package name (crew#690). A shell would need
+    `shell=True`, which §19.4 rules out. Quoted text is an argument, not an operator.
+    """
+    import shlex  # noqa: PLC0415
+
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        words = list(lexer)
+    except ValueError:
+        return []
+    found = [w for w in words if w and set(w) <= set("();<>|&")]
+    found += [w for w in words if "$(" in w or "`" in w]
+    return list(dict.fromkeys(found))
+
+
 @dataclass(frozen=True)
 class Toolchain:
     """What `check` runs for one project, from its design (#403)."""
@@ -466,11 +490,26 @@ def toolchain(worktree: Path) -> Toolchain:
         problem = f"the design's sandbox image `{image}` isn't pinned by digest (name@sha256:...)"
     elif own and not verify:
         problem = "the design names its own sandbox image but no checks to run in it"
+    elif design is not None and (shelled := _shelled(design)):
+        problem = shelled
     parts = design.parts if design is not None else []
     python = not parts or any(p.language.strip().lower() == "python" for p in parts)
     return Toolchain(
         image=image, setup=setup, autofix=autofix, verify=verify, problem=problem, python=python
     )
+
+
+def _shelled(design: Design) -> str | None:
+    """Why a design's commands can't run as written, or None (crew#690)."""
+    commands = [design.setup or "", *design.checks, *design.autofix]
+    for command in commands:
+        if found := shell_operators(command):
+            return (
+                f"the design's command `{command}` uses {', '.join(f'`{o}`' for o in found)}, "
+                "but the crew runs each command without a shell (§19.4). The Architect "
+                "names one command, a script if it needs several steps"
+            )
+    return None
 
 
 def check(

@@ -29,6 +29,7 @@ from crew_org.flows.board_moves import BOARD_WORKFLOW
 from crew_org.flows.record_pr import RecordChange, propose
 from crew_org.project import RECORD_PATH, Design, Part, ProjectRecord, brief
 from crew_org.tools import ci_guard
+from crew_org.tools.workspace import shell_operators
 
 ATTEMPTS = 2
 
@@ -99,6 +100,7 @@ def to_design(proposal: Any) -> Design:
         sandbox_image=value(getattr(proposal, "sandbox_image", None)),
         setup=value(getattr(proposal, "setup", None)),
         autofix=[c.value for c in getattr(proposal, "autofix", None) or []],
+        lockfile=lockfile_path(getattr(proposal, "lockfile", None)),
         parts=[
             Part(path=p.path, language=p.language, tests=list(p.tests))
             for p in getattr(proposal, "parts", None) or []
@@ -108,6 +110,49 @@ def to_design(proposal: Any) -> Design:
         structure=value(getattr(proposal, "structure", None)),
         docs=doc_paths(getattr(proposal, "docs", None)),
     )
+
+
+def lockfile_path(choice: Any) -> str | None:
+    """The lockfile's path: the choice's first word, as `pin_image` takes the image's."""
+    words = (getattr(choice, "value", "") or "").split() if choice is not None else []
+    return words[0].strip("`,;:.") if words else None
+
+
+def unlocked(proposal: Any) -> list[str]:
+    """Why a design that names no lockfile is refused (§19.3, §19.7; crew#690).
+
+    crew-presentation's design installed from a plain requirements file it called
+    "the lockfile", and the review passed it. Named in its own field, it is a fact
+    a machine checks: here, and once the skeleton lands, that the file exists.
+    """
+    if lockfile_path(getattr(proposal, "lockfile", None)):
+        return []
+    return [
+        "the design names no lockfile. Name the file that locks the project's "
+        "dependencies in `lockfile`, its path from the repository's root, e.g. "
+        "`uv.lock`, `package-lock.json`, `Cargo.lock`, or a requirements file with hashes"
+    ]
+
+
+def shelled(proposal: Any) -> list[str]:
+    """Why a design whose commands need a shell is refused (§19.4; crew#690).
+
+    The crew runs each command as its words. crew-presentation's setup, `pip install
+    -r requirements.txt && python tools/fetch_package.py`, reached pip with `&&` as a
+    package name.
+    """
+    commands = [
+        getattr(proposal, "setup", None),
+        *proposal.checks,
+        *(getattr(proposal, "autofix", None) or []),
+    ]
+    return [
+        f"`{c.value}` uses {', '.join(f'`{o}`' for o in found)}, but the crew runs each "
+        "command without a shell. Name one command; where it needs several steps, a "
+        "script in the repository that the skeleton's first story writes"
+        for c in commands
+        if c is not None and (found := shell_operators(c.value))
+    ]
 
 
 def doc_paths(choice: Any) -> list[str]:
@@ -203,8 +248,15 @@ def design(
     propose_design: Callable[..., Any],
     review_design: Callable[..., Any],
     reason: str = "",
+    new: bool = False,
 ) -> Designed:
-    """The Architect's design for `record`'s project, or why it was refused."""
+    """The Architect's design for `record`'s project, or why it was refused.
+
+    `new` is a project its skeleton hasn't reached yet (readiness below level 2,
+    ADR 0030): there is nothing it does today, so the design declares no changes,
+    and the skeleton Goal carries the work. crew-presentation's changes against
+    files that didn't exist became stories to remove them (crew#690).
+    """
     project = brief(record.model_copy(update={"design": None}))
     current = (
         yaml.safe_dump(
@@ -229,10 +281,18 @@ def design(
             feedback=feedback,
         )
         ended.proposal = proposal
-        reasons = undeclared(
-            proposal, ci, record.design.ci_checks if record.design is not None else []
+        if new:
+            proposal.changes = []
+        reasons = (
+            []
+            if new
+            else undeclared(
+                proposal, ci, record.design.ci_checks if record.design is not None else []
+            )
         )
         reasons += needs_an_image(proposal)
+        reasons += unlocked(proposal)
+        reasons += shelled(proposal)
         # The sandbox image is real and pinned: a guessed digest runs nothing (#403, #365).
         # The Architect names a tag, and the digest is read from the registry.
         pinned, unpinnable = pin_image(getattr(proposal, "sandbox_image", None))
@@ -255,7 +315,7 @@ def design(
             reasons += [
                 f"{u.choice} is a new practice (the project does this today: {u.today}). "
                 "List it in `changes`: what, what the project does now, and why."
-                for u in getattr(review, "undeclared", [])
+                for u in ([] if new else getattr(review, "undeclared", []))
             ]
             if not reasons:
                 ended.record = record.model_copy(update={"design": candidate})
@@ -367,6 +427,7 @@ def open_design_pr(
         line("Sandbox", proposal.sandbox),
         line("Sandbox image", getattr(proposal, "sandbox_image", None)),
         line("Setup", getattr(proposal, "setup", None)),
+        line("Lockfile", getattr(proposal, "lockfile", None)),
         *[line("Autofix", c) for c in getattr(proposal, "autofix", None) or []],
         *[
             f"- **Part:** `{p.path or '(the whole project)'}` in {p.language}, tests "

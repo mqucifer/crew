@@ -211,3 +211,35 @@ def test_a_python_part_in_its_own_image_is_python(tmp_path):
 
 def test_no_parts_named_means_the_whole_project_is_python(tmp_path):
     assert toolchain(tmp_path).python is True
+
+
+# --- commands run as their words, never through a shell (crew#690) --------
+
+
+def test_shell_operators_are_found_spaced_or_not():
+    from crew_org.tools.workspace import shell_operators
+
+    assert shell_operators("pip install -r requirements.txt && python x.py") == ["&&"]
+    assert shell_operators("pip install -r r.txt&&python x.py") == ["&&"]
+    assert shell_operators("ruff check . | tee out") == ["|"]
+    assert shell_operators("python build.py; true") == [";"]
+
+
+def test_quoted_text_is_an_argument_not_an_operator():
+    from crew_org.tools.workspace import shell_operators
+
+    assert shell_operators('python -m pytest -k "a or b"') == []
+    assert shell_operators('python -c "print(1 > 0)"') == []
+    assert shell_operators("uv sync --extra dev --quiet") == []
+
+
+def test_a_merged_design_whose_setup_needs_a_shell_is_a_problem(tmp_path):
+    """Refused before anything runs, and the card says why: crew-presentation's
+    merged setup could never have run."""
+    design = (
+        f"  sandbox_image: {PLAYWRIGHT}\n"
+        "  setup: pip install -r requirements.txt && python tools/fetch_package.py\n"
+        "  checks:\n  - python -m pytest\n"
+    )
+    problem = toolchain(project(tmp_path, design)).problem
+    assert "uses `&&`" in problem and "without a shell" in problem
