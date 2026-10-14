@@ -94,19 +94,21 @@ is ADR 0022.
   project as a pull request that changes one line: `delivery-history.tag` at the
   project's root, which names the release it shows. Old releases keep their
   tags, but only the latest seven and each month's first keep their archives.
-  The archive holds `manifest.json`, the index `delivery-history.json` (sprints,
-  cards, periods and the analysis), one events file per
-  sprint under `events/` (days between sprints get their own), and the schemas
-  it follows. It carries everything up to its date, so a consumer needs only
+  The archive holds one directory, named for the tag
+  (`delivery-history-<date>/`), and in it `manifest.json`, the index
+  `delivery-history.json` (sprints, cards, periods and the analysis), one events
+  file per sprint under `events/` (days between sprints get their own), and the
+  schemas it follows: `schema.json`, `manifest.schema.json` and
+  `events.schema.json`. It carries everything up to its date, so a consumer needs only
   the latest, and loads only the events files for what it shows.
 - **The manifest's `schema_version`** says which schema the package follows.
   MAJOR changes when a consumer could break, MINOR when fields are only added.
   A consumer checks that the MAJOR is one it can display, validates the package
   against the schema in the archive, and keeps no copy of its own.
-- **Nothing is released yet.** A package is released only with sprint-metrics'
-  answer for every sprint it covers, so the first follows once the service the
-  crew runs is on that release (crew#521). `crew package build` builds one locally,
-  under `var/packages/`, and `crew package release` releases it.
+- **The first release is `delivery-history-2026-10-13`.** A package is released
+  only with sprint-metrics' answer for every sprint it covers (crew#521).
+  `crew package build` builds one locally, under `var/packages/`, and
+  `crew package release` releases it.
 
 ## The two gates
 

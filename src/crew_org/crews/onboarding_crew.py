@@ -19,10 +19,23 @@ from crew_org import calls
 # because the model left it out of this one.
 
 
+class UseAnswer(BaseModel):
+    repo: str = Field(description="The producer, as owner/name, e.g. mqucifer/crew")
+    file: str = Field("README.md", description="The file its usage notes are in")
+    section: str = Field(description="The heading of the section that says how to use it")
+
+
 class ScopeAnswers(BaseModel):
     purpose: str | None = Field(None, description="What the project is for, and for whom")
     in_scope: list[str] | None = Field(None, description="What it does")
     out_of_scope: list[str] | None = Field(None, description="What it deliberately doesn't")
+    uses: list[UseAnswer] | None = Field(
+        None,
+        description=(
+            "Other projects' outputs it uses (data, a stylesheet), each with the file and "
+            "section where that project says how to use it. Ask when the Sponsor names one"
+        ),
+    )
 
 
 class ReleaseAnswers(BaseModel):
