@@ -30,6 +30,8 @@ Five of the eight fail at once when the design's setup and checks are run for re
 
 ## Part 1: the steps, in order (agreed 2026-10-13)
 
+*Changed 2026-10-14 by Part 7a: the repository is created from a template by a script the Sponsor runs, `board.yml` comes from the template, and branch protection is set at creation.*
+
 The Sponsor creates the repository; the crew checks it (Sponsor, 2026-10-13). Creating repositories and changing branch protection need admin, which the crew's App doesn't hold, by the Sponsor's decision (crew#566). Every crew-built project shares the one board (organization project 1), so a new project needs no board of its own.
 
 | # | Step | Who | Needs | How the crew checks it |
@@ -95,6 +97,8 @@ Other Goals wait at level 1, as product epics already wait for technical ones. A
 
 ## Part 4: the design step (agreed 2026-10-13)
 
+*Changed 2026-10-14 by Part 7b: the lockfile is one the setup tool writes.*
+
 The Code Reviewer's judgement passed crew-presentation's design without a lockfile, without CI on pull requests, and with a setup that can't run. Each rule a machine can check gets a mechanical check, in the step where it can fail:
 
 | Gap | Handled by |
@@ -126,6 +130,72 @@ The Code Reviewer's judgement passed crew-presentation's design without a lockfi
 
 **The proof on a project that isn't Python waits for the first real one (Sponsor, 2026-10-13),** most likely the print prototype on the roadmap's ladder: it is that milestone's entry check, not M4's. Waiting is a small risk: the skeleton Goal's text names no language, the home inside each worktree works for any tool, and nothing built here assumes Python.
 
+## Part 7: what the first proof run found (2026-10-14)
+
+The skeleton Goal mqucifer/crew-presentation#44 became one epic, mqucifer/crew-presentation#47, after the one-epic fix (mqucifer/crew#700). It was split into mqucifer/crew-presentation#49 to mqucifer/crew-presentation#52, and mqucifer/crew-presentation#49 was built as mqucifer/crew-presentation#53. The operator stopped the tick once its outcome was known. Four gaps, all with one cause: the plan was checked against sprint-metrics, whose hand-made scaffold quietly supplied what an empty repository lacks.
+
+| Gap | What happened | What sprint-metrics had |
+|---|---|---|
+| 1. No CI on pull requests | No story writes a CI workflow. The design names only `deploy.yml`, and the skeleton's D3 refuses anything the structure doesn't name. CI never goes green, so level 2 can't be reached | A workflow written by hand |
+| 2. The producer's contract unseen | The Architect's design note guessed the package's layout: a top-level `"major"` in `./.package/schema.json`. The real `delivery-history-2026-10-13` names its version in `manifest.json` (`schema_version: "1.5.1"`), carries three schemas, and nests them in a directory. mqucifer/crew-presentation#52's third criterion would fail every real package | It consumes nothing |
+| 3. A lockfile no tool writes | The Architect chose pip and `requirements.txt` with hashes. The Developer can't run a resolver, so the hashes were invented (`a1b2c3d4…`). Its repair had setup strip them and install by version, so the lock checks nothing | `uv sync` writes `uv.lock` during setup, and the crew commits it |
+| 4. No `.gitignore` | mqucifer/crew-presentation#53 commits `.DS_Store` and `__pycache__/*.pyc`. The crew commits whatever is in the worktree | A `.gitignore` |
+
+None reverses a decision. Part 4's "no changes to the design step for a new project" was wrong in one respect: the lockfile (7b).
+
+### 7a. A template repository (Sponsor, 2026-10-14: "These are pointing to be needing to use a template repo. Not one offs")
+
+What is the same in every project comes from `mqucifer/project-template`, a GitHub template repository. What comes from the design stays in the skeleton Goal. The earlier objection to a template was a Python-shaped skeleton (Part 2's "Not a Python template"), and the template holds nothing that depends on the language.
+
+| From the template | From the skeleton Goal |
+|---|---|
+| `.github/workflows/checks.yml`: reads the sandbox image, setup and checks from `.crew/project.yaml`, and runs them on every pull request. It passes when the design names no checks yet, so the record and design pull requests aren't blocked. CI always matches the design, and no story writes it | The files the design's structure names, as marked placeholders |
+| `.github/workflows/board.yml`, moved out of the `crew onboard` pull request | Setup, and the lockfile its tool writes (7b) |
+| `.gitignore`: OS files, common caches, `.crew-home/`, `.package/` | |
+
+**How a project gets it (Sponsor, 2026-10-14: option A).** A new repository is created from the template. `crew onboard` also proposes any template file a repository is missing, so crew-presentation gets them now, and an older project catches up when the template changes; GitHub copies a template once.
+
+**One script the Sponsor runs,** `scripts/new-project.sh <name>`, does Part 1's manual steps. It runs as the Sponsor because they need admin, which `quarters-claude` and the crew's Apps don't hold (crew#566). A template copies files and branches only, not settings.
+
+| Part 1 step | In the script |
+|---|---|
+| 1. Create the repository | `gh repo create` from the template, public |
+| Required settings | Issues, squash merging, delete branch on merge, Actions |
+| 2. Access | Invites `quarters-claude` with Write (accepted with its own token); adds the repository to the Apps' installation unless they have every repository; checks that `BOARD_APP_PRIVATE_KEY` reaches it |
+| 7. Deploy target | Pages with GitHub Actions as its source, when asked for |
+| 6. Branch protection | At creation: pull requests, the approver's review, and the template's `checks` job required. A required check may be named before it has run |
+
+What stays outside: `crew onboard` and `crew design`, which the Sponsor answers and merges, and `delivery.repos`, by pull request. Step 6 no longer waits for the skeleton, so level 2 needs nothing more from the Sponsor.
+
+### 7b. The lockfile is written by a tool (Sponsor, 2026-10-14: option A)
+
+A Python project uses the crew's existing path: `pyproject.toml` and `uv.lock`, with setup running `uv sync` (installing uv first where the image lacks it, inside the setup script). The crew commits what setup writes, as it does in sprint-metrics. Every language follows the same rule with its own tool: `npm` writes `package-lock.json`, `cargo` writes `Cargo.lock`. The design check refuses a lockfile that no setup tool writes, such as a requirements file, so a model is never asked to write hashes. Part 4's lockfile row changes to this.
+
+### 7c. The producer's usage notes are shown to the roles (Sponsor, 2026-10-14: option A)
+
+ADR 0021 says records and Goals point to the source's usage notes and keep no copy, and crew-presentation's record does: "used as the crew's README says". The crew's README section "Data packages: how projects use them" answers mqucifer/crew-presentation#52 exactly: a consumer checks the MAJOR of the manifest's `schema_version`. Nothing follows the pointer.
+
+- **A (agreed):** the record gets a `uses:` list (`repo`, `file`, `section`). The crew fetches each section from the producer's default branch and shows it to the Architect, the Business Analyst, the Developer and QA, as "How this project uses <repo>". The design system's pointer uses the same field. `crew onboard` asks for it.
+- **B (not chosen):** the producer's tag pull request commits its notes and schemas into the consumer. Against ADR 0021: copies go stale.
+- **C (not chosen):** the Developer reads `./.package/` after setup. Too late: the Architect and the Business Analyst decide before setup runs.
+
+### 7d. The crew never commits OS or cache files
+
+Every worktree gets an exclude (`.git/info/exclude`) for `.DS_Store`, `__pycache__/`, `*.pyc` and `.crew-home/`, in every project, whatever its `.gitignore` says.
+
+### 7e. Two role behaviours, as evidence (parked, not planned here)
+
+- The Architect's design note made setup a stub, against the skeleton Goal's outcome ("setup installs everything those checks use").
+- The Developer's repair weakened the lock to pass its checks.
+
+### 7f. The proof restarts
+
+1. mqucifer/crew-presentation#53 and mqucifer/crew-presentation#49 to mqucifer/crew-presentation#52 are closed.
+2. `crew onboard crew-presentation` proposes the template's files and the `uses:` pointers; the Sponsor merges.
+3. `crew design crew-presentation --reason` names the lockfile rule; the Sponsor merges the design with `uv.lock`.
+4. The Sponsor runs the script's settings part on crew-presentation, for branch protection.
+5. The Sponsor labels mqucifer/crew-presentation#47 `needs:rework`, and the Business Analyst splits it again (the existing path, accounting for the closed stories). Then Part 6 continues from step 4.
+
 ## Build order
 
 Each step is a commit, grouped into pull requests merged one at a time. Each change at a boundary ran once for real before its pull request.
@@ -136,9 +206,14 @@ Each step is a commit, grouped into pull requests merged one at a time. Each cha
 | mqucifer/crew#692 | A: the sandbox (Part 5) | A home inside each worktree, removed with it; the coverage map for every Python part, through the project's own setup and Python |
 | mqucifer/crew#693 | B: the design step (Part 4); C: the readiness check (Part 3) | The lockfile field, shown in the design pull request; setup refused with shell operators; no changes from today before level 2. The two levels, `crew ready <repo>`, the standup's sections, other Goals held at level 1 |
 | mqucifer/crew#694, mqucifer/crew#695, landed on `main` together | D: the skeleton Goal (Parts 1 and 2); the design-fault path (Part 2, option B) | The standard text; `crew onboard` adds `board.yml` to the record's pull request and files the Goal on the Sponsor's yes; marked placeholders excused by the removal guard. A skeleton story blocked on the design sends it back to the Architect, the Sponsor merges the revision, and the story goes back to Ready, once. Split from D because putting a blocked story back to work was a move the crew had never made |
-| | E: the proof (Part 6) | crew-presentation, by the operator and the Sponsor |
+| mqucifer/crew#700 | The skeleton Goal is one epic | Found in the proof: held to two epics, the Product Owner padded the skeleton with the site's pages |
+| | F: the template (7a) | `mqucifer/project-template`'s files, by pull request there; `crew onboard` proposes missing template files; `board.yml` comes from the template; `scripts/new-project.sh` |
+| | G: the lockfile and the exclude (7b, 7d) | The design check refuses a lockfile no setup tool writes; every worktree's exclude |
+| | H: usage notes (7c) | The record's `uses:` field, asked by `crew onboard`, fetched and shown to the four roles |
+| | E: the proof (Part 6, restarted by 7f) | crew-presentation, by the operator and the Sponsor |
 
 ## Waiting
 
 - crew-presentation is ticked no further until this lands; ticks run with `--repo sprint-metrics`.
+- crew-presentation is ticked no further until F, G and H land (2026-10-14); mqucifer/crew-presentation#53 stays open as evidence until 7f.
 - mqucifer/crew-presentation#30 to mqucifer/crew-presentation#43, the technical epics and stories the first tick filed, are closed when the proof starts (Part 6).
