@@ -366,6 +366,29 @@ def test_the_lockfile_is_its_path_without_commentary():
     assert run(Architect(named)).record.design.lockfile == "package-lock.json"
 
 
+def test_a_lockfile_no_package_manager_writes_is_refused():
+    """crew-presentation's second design named a requirements file with hashes, and
+    the Developer, who can't run a resolver, invented them (crew#690)."""
+    hand_written = proposal("uv run pytest -q").model_copy(
+        update={"lockfile": Choice(value="requirements.txt", basis="pip with hashes")}
+    )
+    architect = Architect(hand_written, proposal("uv run pytest -q"))
+
+    ended = run(architect)
+
+    feedback = architect.calls[1]["feedback"]
+    assert "`requirements.txt` isn't a lockfile a package manager writes" in feedback
+    assert "`uv.lock` (uv)" in feedback
+    assert ended.record.design.lockfile == "uv.lock"
+
+
+def test_a_lockfile_in_a_part_s_directory_counts_by_its_name():
+    nested = proposal("uv run pytest -q").model_copy(
+        update={"lockfile": Choice(value="site/package-lock.json", basis="npm")}
+    )
+    assert run(Architect(nested)).record.design.lockfile == "site/package-lock.json"
+
+
 def test_a_setup_that_needs_a_shell_is_refused():
     """crew-presentation's setup reached pip with `&&` as a package name."""
     shelled = proposal("python -m pytest").model_copy(

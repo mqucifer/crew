@@ -118,8 +118,9 @@ class DesignProposal(BaseModel):
         None,
         description=(
             "The file that locks the project's dependencies, its path from the "
-            "repository's root, e.g. `uv.lock`, `package-lock.json`, `Cargo.lock`, or a "
-            "requirements file with hashes. Every project has one (§19.3)"
+            "repository's root, written by the package manager the setup runs, e.g. "
+            "`uv.lock` (`uv sync`), `package-lock.json` (`npm install`), `Cargo.lock`. "
+            "Every project has one (§19.3), and no one writes it by hand"
         ),
     )
     # A project's parts, each read by its own language's tools (#404). Empty: the
