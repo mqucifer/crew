@@ -189,3 +189,25 @@ def test_a_pinned_image_keeps_its_digest_and_loses_the_commentary(monkeypatch):
     monkeypatch.setattr(base_images, "lookup", lambda *a: pytest.fail("no lookup to pin"))
     pinned, problems = design_flow.pin_image(Choice(value=f"{REAL} (pinned)", basis="x"))
     assert problems == [] and pinned.value == REAL
+
+
+def test_a_project_whose_parts_name_no_python_has_no_python(tmp_path):
+    design = (
+        f"  sandbox_image: {PLAYWRIGHT}\n  checks:\n  - npx playwright test\n"
+        "  parts:\n  - path: ''\n    language: javascript\n"
+    )
+    assert toolchain(project(tmp_path, design)).python is False
+
+
+def test_a_python_part_in_its_own_image_is_python(tmp_path):
+    """The coverage map follows the language, not the image (crew#690, ADR 0030)."""
+    design = (
+        f"  sandbox_image: {PLAYWRIGHT}\n  checks:\n  - python -m pytest\n"
+        "  parts:\n  - path: ''\n    language: python\n"
+        "  - path: site/js/\n    language: javascript\n"
+    )
+    assert toolchain(project(tmp_path, design)).python is True
+
+
+def test_no_parts_named_means_the_whole_project_is_python(tmp_path):
+    assert toolchain(tmp_path).python is True

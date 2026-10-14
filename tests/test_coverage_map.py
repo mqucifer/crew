@@ -150,9 +150,10 @@ class Runs:
 
     def __call__(self, worktree, command, *, sandbox, network, timeout=0):
         self.commands.append((command, network))
+        self.images = [*getattr(self, "images", []), sandbox.image]
         if self.fail and self.fail in command:
             return CommandResult(" ".join(command), 1, "no network")
-        if command == cm.MEASURE and self.report is not None:
+        if command in (cm.MEASURE, cm.OWN_MEASURE) and self.report is not None:
             (worktree / cm.WORK / "coverage.json").write_text(json.dumps(self.report))
         return CommandResult(" ".join(command), 0, "")
 
@@ -193,15 +194,35 @@ def test_no_report_says_why(repo, tmp_path_factory):
         cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=Runs(report=None))
 
 
-def test_a_project_with_its_own_image_has_no_map_yet(repo, tmp_path_factory):
+def test_a_project_with_no_python_part_has_no_map(repo, tmp_path_factory):
     class Own:
         image = "node@sha256:abc"
         problem = None
+        python = False
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(cm.workspace, "toolchain", lambda _: Own())
-        with pytest.raises(cm.CoverageUnavailable, match="Python only"):
+        with pytest.raises(cm.CoverageUnavailable, match="no Python part"):
             cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=Runs())
+
+
+def test_a_python_part_in_its_own_image_is_measured_with_its_own_python(repo, tmp_path_factory):
+    """crew-presentation is Python in the Playwright image; the map follows the
+    language, not the image (crew#690, ADR 0030)."""
+
+    class Own:
+        image = "mcr.microsoft.com/playwright/python@sha256:abc"
+        setup = ["pip", "install", "-r", "requirements.txt"]
+        problem = None
+        python = True
+
+    runs = Runs()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(cm.workspace, "toolchain", lambda _: Own())
+        found = cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=runs)
+    assert [c for c, _ in runs.commands] == [Own.setup, cm.OWN_INSTALL, cm.OWN_MEASURE]
+    assert set(runs.images) == {Own.image}
+    assert found.tests
 
 
 def test_a_constant_built_from_another_reads_it_too(repo):

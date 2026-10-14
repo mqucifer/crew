@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from crew_org.config import load_org
-from crew_org.tools.sandbox import Mode, Sandbox
+from crew_org.tools.sandbox import HOME_DIR, Mode, Sandbox, prepare_home
 
 
 @pytest.fixture
@@ -118,3 +118,38 @@ def test_mode_off_is_explicit_and_does_not_block():
 
 def test_the_shipped_config_requires_a_sandbox():
     assert Sandbox.from_config(load_org()).mode is Mode.REQUIRED
+
+
+# --- what carries from one command to the next (crew#690, ADR 0030) -----
+
+
+def test_home_is_inside_the_worktree(box):
+    """Each command is its own container: a home under /tmp lost what setup
+    installed before the checks ran."""
+    a = argv(box)
+    assert "HOME=/work/.crew-home" in a
+    assert "HOME=/tmp" not in a
+
+
+def test_what_setup_installed_under_the_home_is_found_first(box):
+    a = box.command(Path("/tmp/wt"), ["ruff"], network=False, path="/usr/local/bin:/usr/bin")
+    assert "PATH=/work/.crew-home/.local/bin:/usr/local/bin:/usr/bin" in a
+    assert a.index("PATH=/work/.crew-home/.local/bin:/usr/local/bin:/usr/bin") < a.index(box.image)
+
+
+def test_without_the_image_s_path_none_is_set(box):
+    assert not [x for x in argv(box) if x.startswith("PATH=")]
+
+
+def test_the_home_is_never_committed(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    prepare_home(tmp_path)
+    (tmp_path / HOME_DIR / "lib.py").write_text("x = 1\n")
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert status == ""
