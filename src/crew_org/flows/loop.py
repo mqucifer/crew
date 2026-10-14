@@ -314,6 +314,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         review_design=review_design,
         threshold=int((crew.org.get("design") or {}).get("revisit_conflicts", REVISIT_CONFLICTS)),
         place_changes=place_changes,
+        skeleton_only=set(crew.skeleton_only),
     )
     crew.design_holds = dict(result.holds)
     # The Product Owner's project-wide decisions reach the project's log (crew#468).

@@ -33,7 +33,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from crew_org.columns import NEEDS_REFINEMENT
+from crew_org.columns import BLOCKED, NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows import record as record_flow
@@ -42,6 +42,7 @@ from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
     REVISIT_MARKER,
+    answered_faults,
     declared_changes,
     design,
     open_design_pr,
@@ -106,6 +107,7 @@ def revisit_designs(
     review_design: Callable[..., Any],
     threshold: int = REVISIT_CONFLICTS,
     place_changes: Callable[..., Any] | None = None,
+    skeleton_only: set[str] | None = None,
 ) -> Revisits:
     result = Revisits()
     rebuilds = read_rebuilds(events_dir)
@@ -126,6 +128,7 @@ def revisit_designs(
                 threshold=threshold,
                 result=result,
                 place_changes=place_changes,
+                skeleton=repo in (skeleton_only or set()),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -151,9 +154,11 @@ def _revisit(
     threshold,
     result,
     place_changes=None,
+    skeleton=False,
 ) -> None:
     for pull in issues.closed_pulls(repo):
         if pull.get("merged_at"):
+            back_to_work(issues, board, sink, cards, repo=repo, pull=pull)
             file_technical_epics(
                 issues,
                 board,
@@ -203,6 +208,21 @@ def _revisit(
         result.holds[repo] = f"the Architect's design, PR #{proposed['number']}, lands first"
         return
 
+    # Building the skeleton is where a design meets the sandbox first. A fault
+    # there is the Architect's, and the revision the Sponsor's to merge (Part 2,
+    # option B; crew#690, ADR 0030).
+    if skeleton and _answer_design_faults(
+        issues,
+        sink,
+        ws,
+        cards,
+        repo=repo,
+        propose_design=propose_design,
+        review_design=review_design,
+        result=result,
+    ):
+        return
+
     # Filed this pass as well as on the board: `cards` was read before them,
     # and refinement runs next in this same pass.
     technical = sorted(
@@ -239,6 +259,191 @@ def _revisit(
         result=result,
         place_changes=place_changes,
     )
+
+
+# On a story the design-fault path has answered, so it is answered once (crew#690).
+FAULT_SENT = "<!-- crew:design-fault-sent -->"
+# On a story put back in Ready by a merged design: once, so a later block of the
+# same story for another reason isn't lifted by the same pull request.
+BACK_TO_WORK = "<!-- crew:design-fault-answered {} -->"
+# How the Developer's block begins (`flows/delivery.py`).
+BLOCKED_NOTE = "**Blocked.**"
+# A check's tool that isn't there: the shell's own exit codes, and how Python and
+# the container runtime say so.
+_MISSING = ("(exit 127)", "(exit 126)", "command not found", "executable file not found")
+
+
+def design_fault(block: str, record_design: Any) -> bool:
+    """Whether a story's block is the design's to fix, not the code's (crew#690).
+
+    The design's own toolchain refused to run, its setup failed, or a check's own
+    tool isn't in the sandbox. The Architect judges whether the design changes:
+    a setup that failed for want of a file the story writes changes nothing.
+    """
+    if "$ design\n(exit 2)" in block:
+        return True
+    setup = (getattr(record_design, "setup", None) or "").strip()
+    if setup and f"$ {setup}\n(exit " in block and f"$ {setup}\n(exit 0)" not in block:
+        return True
+    if any(sign in block for sign in _MISSING):
+        return True
+    tools = set()
+    for check in getattr(record_design, "checks", None) or []:
+        words = check.split()
+        if len(words) > 2 and words[1] == "-m":
+            tools.add(words[2])
+    return any(f"No module named {tool}" in block for tool in tools)
+
+
+def _blocks(issues: Any, repo: str, number: int) -> str | None:
+    """The story's latest block, or None if it was answered already or isn't one."""
+    comments = issues.comments(repo, number)
+    if any(FAULT_SENT in (c.get("body") or "") for c in comments):
+        return None
+    blocks = [c.get("body") or "" for c in comments if BLOCKED_NOTE in (c.get("body") or "")]
+    return blocks[-1] if blocks else None
+
+
+def _answer_design_faults(
+    issues: Any,
+    sink: EventSink,
+    ws: Any,
+    cards: list[Card],
+    *,
+    repo: str,
+    propose_design: Callable[..., Any],
+    review_design: Callable[..., Any],
+    result: Revisits,
+) -> bool:
+    """Send the skeleton's design faults back to the Architect. True if it proposed."""
+    from crew_org.flows.onboard import describe  # noqa: PLC0415
+
+    blocked = [
+        c
+        for c in cards
+        if (c.repo or repo) == repo
+        and c.status == BLOCKED
+        and c.state != "CLOSED"
+        and c.work_type != EPIC_TYPE
+        and c.number
+    ]
+    if not blocked:
+        return False
+    clone = ws.for_repo(repo).current()
+    try:
+        record = read_record(clone)
+    except ProjectRecordError:
+        return False
+    if record is None or record.design is None:
+        return False
+    faults: dict[int, str] = {}
+    for card in blocked:
+        assert card.number is not None
+        block = _blocks(issues, repo, card.number)
+        if block is not None and design_fault(block, record.design):
+            faults[card.number] = block
+    if not faults:
+        return False
+
+    reason = (
+        "The project's walking skeleton is blocked on its design: the toolchain the "
+        "design names didn't run in the crew's sandbox. Each command runs in its own "
+        "container with no network, as its words and never through a shell; only "
+        "setup has a network, and only the worktree carries from one command to the "
+        "next. What the Developer's attempts ended on:\n\n"
+        + "\n\n".join(f"#{n}:\n{_indent(block[:1500])}" for n, block in sorted(faults.items()))
+    )
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.AGENT_STARTED,
+            role=BY,
+            summary=f"{repo}: design fault on {', '.join(f'#{n}' for n in sorted(faults))}",
+            detail={"repo": repo, "stories": sorted(faults)},
+        )
+    )
+    branch = issues.repository(repo)["default_branch"]
+    designed = design(
+        record,
+        repository=describe(clone, branch=branch, protection=None),
+        ci=workflows(clone),
+        propose_design=propose_design,
+        review_design=review_design,
+        reason=reason,
+        new=True,
+    )
+    if designed.record is None or designed.record.design == record.design:
+        why = (
+            "the Code Reviewer refused both proposals: " + "; ".join(designed.refused)
+            if designed.record is None
+            else "it found nothing in the design to change"
+        )
+        for number in faults:
+            artifacts.comment(
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                body=f"The Architect looked at the design for this block, and {why}. "
+                f"It stays blocked for a person.\n\n{FAULT_SENT}",
+                by=BY,
+            )
+        return False
+
+    url = open_design_pr(
+        ws, issues, repo, designed, base=branch, reason=reason, faults=sorted(faults)
+    )
+    result.proposed.append((repo, url))
+    result.holds[repo] = f"the Architect's design lands first: {url}"
+    for number in faults:
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=f"Blocked on the design, not the code: the Architect revised it, {url}. "
+            f"When the Sponsor merges it, this story goes back to Ready.\n\n{FAULT_SENT}",
+            by=BY,
+        )
+    return True
+
+
+def back_to_work(
+    issues: Any,
+    board: Any,
+    sink: EventSink,
+    cards: list[Card],
+    *,
+    repo: str,
+    pull: dict[str, Any],
+) -> None:
+    """Put back in Ready the stories a merged design answered, once (crew#690)."""
+    for number in answered_faults(pull.get("body") or ""):
+        card = next((c for c in cards if (c.repo or repo) == repo and c.number == number), None)
+        if card is None or card.status != BLOCKED or card.state == "CLOSED":
+            continue
+        answered = BACK_TO_WORK.format(pull.get("number"))
+        if any(answered in (c.get("body") or "") for c in issues.comments(repo, number)):
+            continue
+        artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=["blocked"])
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=READY,
+            by=None,
+            card=number,
+            frm=BLOCKED,
+            summary=f"its design is revised: PR #{pull.get('number')}",
+        )
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=f"The design this was blocked on is revised (PR #{pull.get('number')}, "
+            f"merged). Back in Ready, to be delivered against it.\n\n{answered}",
+            by=None,
+        )
 
 
 def last_revisit(issues: Any, repo: str) -> str:
