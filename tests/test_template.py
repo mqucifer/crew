@@ -36,6 +36,7 @@ def test_the_crew_s_files_catch_up_and_the_project_s_own_are_kept(tmp_path: Path
     for path, text in {
         ".gitignore": ".DS_Store\nsite/build/\n",
         ".github/workflows/checks.yml": "name: checks (old)\n",
+        ".github/workflows/board.yml": "name: board\n",
     }.items():
         (merged / path).parent.mkdir(parents=True, exist_ok=True)
         (merged / path).write_text(text)
@@ -45,6 +46,7 @@ def test_the_crew_s_files_catch_up_and_the_project_s_own_are_kept(tmp_path: Path
     assert ".gitignore" not in proposed
     assert proposed[".github/workflows/checks.yml"] == "name: checks\n"
     assert ".github/crew/run_checks.py" in proposed
+    assert ".github/workflows/board.yml" not in proposed, "already the template's"
 
 
 def test_no_story_changes_the_crew_s_files():
