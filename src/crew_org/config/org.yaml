@@ -124,11 +124,13 @@ delivery:
     # Where the crew and its projects run, and why; private (crew#335, §20).
     - infra
     # crew-presentation, the public site that shows how the crew works (crew
-    # Discussion 260; onboarded 2026-10-07), is paused (crew#523). It depends only
-    # on the crew's delivery-history package (ADR 0021, crew#521), and can't do
-    # useful work before that package's shape exists. It comes back by pull
-    # request at delivery-history's first release, when the Architect proposes its
-    # design again against the real package.
+    # Discussion 260; onboarded 2026-10-07). Paused from 2026-10-07 until
+    # delivery-history's first release (crew#523), since it depends only on that
+    # package (ADR 0021, crew#521). Back on 2026-10-13: the release is
+    # delivery-history-2026-10-13, pinned in its delivery-history.tag; its record
+    # was rewritten to the package (mqucifer/crew-presentation#24) and the
+    # Architect's design proposed again against it (mqucifer/crew-presentation#29).
+    - crew-presentation
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in
