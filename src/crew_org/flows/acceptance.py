@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 
 from crew_org import log, profiles
@@ -39,10 +40,10 @@ from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import (
-    IGNORED_DIRS,
     READ_MIN_CHARS,
     READING_CHAR_CEILING,
     WHOLE_FILE_CHARS,
+    project_files,
 )
 from crew_org.tools.repo_read import Reader
 from crew_org.tools.sandbox import Sandbox
@@ -148,11 +149,10 @@ def collect_tests(worktree: Path) -> str:
     """
     parts: list[str] = []
     total = 0
-    for path in sorted(worktree.rglob("test_*.py")):
-        # The same exclusions the Developer's context uses. A worktree has no
-        # `var/`, but nothing should depend on that to avoid collecting the
-        # tests of a repository that happens to be checked out inside this one.
-        if IGNORED_DIRS & set(path.parts):
+    # The same files the Developer's context lists: what setup installed into the
+    # checkout (`.crew-home`) holds other projects' tests (crew#690).
+    for path in project_files(worktree):
+        if not fnmatch(path.name, "test_*.py"):
             continue
         rel = path.relative_to(worktree)
         body = path.read_text(encoding="utf-8", errors="ignore")
@@ -218,7 +218,7 @@ def qa_tests(worktree: Path, *, about: str = "", extra: Sequence[str] = ()) -> Q
     `extra` holds what QA asked for: a path is shown whole, and `path::name`
     adds that test to its file's part.
     """
-    files = [p for p in sorted(worktree.rglob("test_*.py")) if not (IGNORED_DIRS & set(p.parts))]
+    files = [p for p in project_files(worktree) if fnmatch(p.name, "test_*.py")]
     bodies = {
         str(p.relative_to(worktree)): p.read_text(encoding="utf-8", errors="ignore") for p in files
     }
