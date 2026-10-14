@@ -1344,9 +1344,15 @@ def onboard(
             transcript=[sessions_since_proposed(log.read_text(encoding="utf-8"))],
             open_questions=ended.open,
         )
-        with log.open("a", encoding="utf-8") as fh:
-            fh.write(f"\n{PROPOSED_MARKER} {url}\n")
-        console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
+        if url:
+            with log.open("a", encoding="utf-8") as fh:
+                fh.write(f"\n{PROPOSED_MARKER} {url}\n")
+            console.print(f"\n[green]Record proposed[/] — {url}\n[dim]transcript: {log}[/]")
+        else:
+            console.print(
+                f"\n[green]The record and board workflow on {project.default_branch} are "
+                f"already what you confirmed[/]: nothing to propose.\n[dim]transcript: {log}[/]"
+            )
         # A new project's first Goal is its walking skeleton, filed on the same
         # yes that opened the record (crew#690, ADR 0030).
         from crew_org.flows import readiness, skeleton  # noqa: PLC0415
@@ -1360,7 +1366,11 @@ def onboard(
                     f"[green]Skeleton Goal filed[/] — {owner}/{repo}#{goal}, in Inbox (Goals). "
                     "It waits for the design."
                 )
-        finish("proposed", "The record is proposed as a pull request:", url)
+        finish(
+            "proposed",
+            "The record is proposed as a pull request:" if url else "The record is already merged.",
+            url,
+        )
         return
 
     kept.parent.mkdir(parents=True, exist_ok=True)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from crew_org.flows.artifacts import signed
@@ -54,8 +55,18 @@ def propose(
     `body` writes the pull request's description, given the issue it closes.
     `update_note` is what's new, commented on a pull request that already exists.
     `files` are written beside it, by path: onboarding's `board.yml` (crew#690).
+
+    Returns "" when the default branch already holds all of it: there is nothing
+    to propose, and GitHub refuses a pull request with no commits. Onboarding
+    crew-presentation again, with its record already merged, would have opened an
+    issue and then failed before filing the skeleton Goal (crew#690).
     """
     from crew_org.git_ops import branch_name  # noqa: PLC0415
+
+    wanted = {RECORD_PATH: render(record), **(files or {})}
+    merged = ws.for_repo(repo).current()
+    if all(_text(merged / path) == text for path, text in wanted.items()):
+        return ""
 
     found = next((i for i in issues.open_issues(repo) if i["title"] == change.issue_title), None)
     number = (
@@ -95,3 +106,7 @@ def propose(
         repo, title=change.pr_title, head=branch, base=base, body=signed(body(number), change.by)
     )
     return pull["html_url"]
+
+
+def _text(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8") if path.is_file() else None
