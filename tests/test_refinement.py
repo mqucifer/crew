@@ -14,9 +14,12 @@ from crew_org.crews.refinement_crew import (
     AcceptanceCriterion,
     Epic,
     EpicProposal,
+    SkeletonEpic,
     Story,
     StoryProposal,
+    propose_epics,
 )
+from tests.asked import Stop, capture
 
 
 def criteria(n: int) -> list[AcceptanceCriterion]:
@@ -104,6 +107,27 @@ def test_one_epic_is_not_a_decomposition():
     on the next. The judgement is encoded rather than left to the Sponsor."""
     with pytest.raises(ValidationError, match="not a decomposition"):
         EpicProposal(epics=[epic()], ordering_rationale="only one")
+
+
+def test_a_walking_skeleton_is_exactly_one_epic():
+    """crew#690: the skeleton has one outcome; a second epic is product work."""
+    SkeletonEpic(epics=[epic()], ordering_rationale="one outcome")
+    with pytest.raises(ValidationError, match="walking skeleton is one epic"):
+        SkeletonEpic(epics=[epic(), epic("Render the pages")], ordering_rationale="two")
+
+
+def test_only_a_skeleton_goal_is_asked_for_one_epic(monkeypatch):
+    seen = capture(monkeypatch)
+    with pytest.raises(Stop):
+        propose_epics("Goal: a walking skeleton", skeleton=True)
+    assert seen["form"] is SkeletonEpic
+    assert "exactly one epic" in seen["description"]
+    assert "has not been decomposed" not in seen["description"]
+
+    with pytest.raises(Stop):
+        propose_epics("Goal: a site")
+    assert seen["form"] is EpicProposal
+    assert f"between {MIN_EPICS} and {MAX_EPICS} epics" in seen["description"]
 
 
 def test_too_many_epics_is_also_rejected():

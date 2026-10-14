@@ -238,6 +238,25 @@ class MissingEpics(EpicProposal):
         return value
 
 
+class SkeletonEpic(EpicProposal):
+    """A walking skeleton's one epic (ADR 0030).
+
+    The skeleton has one outcome, every check running and passing, so a second
+    epic can only be product work the project's own Goals hold. Held to two,
+    the Product Owner padded one with the site's pages (crew#690).
+    """
+
+    @field_validator("epics")
+    @classmethod
+    def _decomposed(cls, value: list[Epic]) -> list[Epic]:
+        if len(value) != 1:
+            raise ValueError(
+                f"a walking skeleton is one epic, got {len(value)}. Its pages, features "
+                "and behaviour belong to the project's own Goals: leave them out."
+            )
+        return value
+
+
 class AlreadyDelivered(BaseModel):
     """A story this epic would need that the project has already delivered (#220)."""
 
@@ -538,16 +557,38 @@ REWORK = (
 
 
 def propose_epics(
-    goal: str, *, repository: str = "", feedback: str = "", delivered: str = ""
+    goal: str,
+    *,
+    repository: str = "",
+    feedback: str = "",
+    delivered: str = "",
+    skeleton: bool = False,
 ) -> EpicProposal:
     """Product Owner only: a goal becomes a set of epics.
 
     `repository` is the code the goal is about. A role deciding what should
     exist works better for knowing what already does — and the alternative is
-    a decomposition of a product the model is imagining.
+    a decomposition of a product the model is imagining. A `skeleton` Goal is
+    one epic (ADR 0030): it has one outcome, so there is nothing to decompose.
     """
     repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
     sent_back = REWORK.format(feedback=feedback) if feedback else ""
+    if skeleton:
+        ask = (
+            "This goal is the project's walking skeleton. It has one outcome, so propose "
+            "exactly one epic that delivers it, and nothing the goal's outcome doesn't "
+            "need: the project's pages, features and behaviour belong to its own Goals.\n\n"
+            "State what a developer could do once that epic alone has landed."
+        )
+    else:
+        ask = (
+            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
+            "Decompose by outcome, never by architectural layer. "
+            "Order them so the most valuable is deliverable first.\n\n"
+            "For each epic, state what a user could do with that epic alone, without "
+            "the others. If you cannot say, it is not a separate epic — merge it. "
+            "A goal that comes back as a single epic has not been decomposed."
+        )
     return calls.ask(
         "product_owner",
         [
@@ -557,15 +598,10 @@ def propose_epics(
                 + _delivered_block(delivered, "an epic whose outcome these already deliver")
                 + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
                 + sent_back
-                + f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
-                "Decompose by outcome, never by architectural layer. "
-                "Order them so the most valuable is deliverable first.\n\n"
-                "For each epic, state what a user could do with that epic alone, without "
-                "the others. If you cannot say, it is not a separate epic — merge it. "
-                "A goal that comes back as a single epic has not been decomposed.",
+                + ask,
             )
         ],
-        EpicProposal,
+        SkeletonEpic if skeleton else EpicProposal,
         expected="A set of epics, each with a title, outcome and rationale.",
     )
 

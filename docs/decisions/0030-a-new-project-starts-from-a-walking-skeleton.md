@@ -32,6 +32,7 @@ The Sponsor, 2026-10-13: the crew onboards projects often enough to plan this fo
 - **A project's first Goal is a walking skeleton** (Cockburn; Freeman and Pryce). The Goal's text is the same for every project, kept in the crew repository. `crew onboard` files it on the Sponsor's yes, which is their authorship.
   - **Its outcome:** every check the design names runs and passes, in the sandbox and in CI on every pull request. It doesn't deploy.
   - **Who builds it:** the normal pipeline, with the Developer building what the Architect's design names.
+  - **One epic:** the skeleton has one outcome, so the Product Owner proposes exactly one epic for it, where every other Goal gets 2 to 5. The project's pages, features and behaviour belong to its own Goals.
   - **Its split:** one story first and alone, making every check run and pass.
   - **Placeholders:** each is marked, and replacing a marked one needs no declared contract change.
   - **A design fault in it** (setup failing, or a check's own tool missing) sends the design back to the Architect with the output, and the Sponsor merges the revision.
@@ -60,3 +61,4 @@ The Sponsor, 2026-10-13: the crew onboards projects often enough to plan this fo
 ## Changelog
 
 - 2026-10-13: Accepted. The Sponsor decided each part in chat while planning crew#690.
+- 2026-10-14: The skeleton Goal is one epic. Held to the usual minimum of two, the Product Owner padded the first one with the site's pages (Sponsor, in chat, after the crew-presentation proof).
