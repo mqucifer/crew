@@ -38,9 +38,17 @@ def files(issues: Any) -> dict[str, str]:
 
 
 def wanted(template: dict[str, str], merged: Path) -> dict[str, str]:
-    """What onboarding proposes from `template` to a project checked out at `merged`."""
+    """What onboarding proposes from `template` to a project checked out at `merged`.
+
+    Only what would change: the pull request names each file it proposes, and
+    crew-presentation's named `board.yml`, which was already the template's.
+    """
     return {
         path: text
         for path, text in template.items()
-        if is_protected(path, list(CREW_FILES)) or not (merged / path).exists()
+        if not (merged / path).exists()
+        or (
+            is_protected(path, list(CREW_FILES))
+            and (merged / path).read_text(encoding="utf-8") != text
+        )
     }
