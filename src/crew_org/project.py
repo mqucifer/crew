@@ -48,6 +48,14 @@ class Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Use(Section):
+    """Another project's output this one uses, and where its producer says how (ADR 0021)."""
+
+    repo: str = Field(description="The producer, as owner/name, e.g. mqucifer/crew")
+    file: str = Field(default="README.md", description="The file its usage notes are in")
+    section: str = Field(description="The heading of the section that says how to use it")
+
+
 class Scope(Section):
     """What the project is for, and where its edges are."""
 
@@ -55,6 +63,13 @@ class Scope(Section):
     in_scope: list[str] = Field(default_factory=list, description="What it does")
     out_of_scope: list[str] = Field(
         default_factory=list, description="What it deliberately doesn't"
+    )
+    # Pointers, never copies (ADR 0021): the roles are shown each section, read
+    # from the producer. Unfollowed, the Architect guessed a package's layout and
+    # a story's gate would have refused every real package (crew#690).
+    uses: list[Use] = Field(
+        default_factory=list,
+        description="Other projects' outputs it uses, each with where its producer says how",
     )
 
 
@@ -435,6 +450,7 @@ def brief(record: ProjectRecord) -> str:
         "**Out of scope:**",
         *bullets(intent.scope.out_of_scope),
         "",
+        *_uses(intent.scope.uses),
         f"**A release here is:** {release}",
         "",
         f"**Done means:** {intent.done.bar}",
@@ -460,3 +476,20 @@ def brief(record: ProjectRecord) -> str:
             for name, value in design.items()
         ]
     return "\n".join(lines)
+
+
+def _uses(uses: list[Use]) -> list[str]:
+    """Each producer's usage notes, as it says them today (ADR 0021)."""
+    from crew_org.usage import notes  # noqa: PLC0415
+
+    lines: list[str] = []
+    for use in uses:
+        lines += [
+            f"**How this project uses {use.repo}**, from its `{use.file}`, "
+            f'"{use.section}". The producer\'s own words, read now: follow them over '
+            "anything you'd guess.",
+            "",
+            notes(use),
+            "",
+        ]
+    return lines
