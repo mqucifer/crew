@@ -167,6 +167,8 @@ def test_the_roles_that_write_commands_are_told_how_they_run():
     )
     # crew-presentation's lock took playwright 1.64.0; the image's browsers are v1.52.
     assert "must be the image's version" in HOW_IT_RUNS
+    # crew-presentation#66 pinned playwright and couldn't regenerate uv.lock (crew#690).
+    assert "a setup that installs from the lock re-locks first" in HOW_IT_RUNS
     intent = (
         "version: 2\nintent:\n  scope:\n    purpose: A site.\n  release:\n    deploys: false\n"
         "  done:\n    bar: CI is green.\n"
