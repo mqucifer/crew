@@ -14,6 +14,10 @@ a given for all projects honestly."
 - Code a model has just written, and nobody has vetted, runs in a container:
   no network during tests, capabilities dropped, a non-root user, a read-only
   root filesystem, and memory and PID limits (`tools/sandbox.py`).
+- **Each command is its own container,** and only the worktree carries over. Each
+  worktree has its own home directory inside it, ignored by git and removed with the
+  worktree, so what the dependency step installs is there for the checks in any
+  language. Downloads are shared through one cache mount (ADR 0030).
 - **Fail loudly:** no container engine means the check fails. There is never a
   silent fallback to the host.
 - **Refined 2026-09-26:** released, reviewed software the crew built (such as
@@ -24,3 +28,9 @@ a given for all projects honestly."
 
 - Dependency resolution is the only sandboxed step with network access.
 - Host execution would need an explicit, named opt-in. None exists today.
+
+## Changelog
+
+- 2026-10-13: each worktree has its own home inside it. What setup installed under the
+  container's home was gone before the checks ran, so a project with its own image
+  couldn't keep its dependencies (crew#690, ADR 0030; Sponsor).
