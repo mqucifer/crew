@@ -37,7 +37,9 @@ HOME_DIR = ".crew-home"
 # choosing setup and checks, and the Developer making them pass. Told none of it,
 # crew-presentation's design called the image's own `python` while its setup
 # installed into a uv environment, and its Developer saw only "No module named
-# pytest" (crew#690). Facts about this sandbox, kept beside the code they describe.
+# pytest" (crew#690). Its lock then took playwright 1.64.0 against the image's
+# v1.52 browsers, which can't launch them. Facts about this sandbox, kept beside
+# the code they describe.
 HOW_IT_RUNS = (
     "Each command, the setup and then each check, runs in its own container from "
     "the sandbox image. The image's filesystem is read-only: only the repository's "
@@ -47,7 +49,10 @@ HOW_IT_RUNS = (
     "still there for the checks, and `$HOME/.local/bin` comes first on PATH. Only "
     "the setup has a network. A check runs exactly its command: a bare `python` is "
     "the image's own, which doesn't see a virtual environment the setup made unless "
-    "the command runs through it, as `uv run` does. CI runs each command the same way."
+    "the command runs through it, as `uv run` does. A package that drives a program "
+    "the image ships, such as Playwright and its browsers, must be the image's version "
+    "of it: another version looks for builds the image doesn't have, and the checks "
+    "have no network to fetch them. CI runs each command the same way."
 )
 
 DEFAULT_TIMEOUT = 300
