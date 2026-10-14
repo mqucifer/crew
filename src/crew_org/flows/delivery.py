@@ -1187,6 +1187,7 @@ def deliver_story(
                 )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
+            _keep_refused(sink, repo, number, getattr(exc, "answers", ()))
             # The model could not produce a valid implementation at all.
             failure = LocalFailure(
                 card=number,
@@ -1967,6 +1968,34 @@ def _keep_proposal(sink: EventSink, repo: str, number: int, implementation) -> N
         target = folder / f"{stamp}.json"
         target.write_text(json.dumps(implementation.model_dump(mode="json"), indent=1))
         sink.note(EventKind.NOTE, f"#{number} proposal kept", card=number, path=str(target))
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _keep_refused(sink: EventSink, repo: str, number: int, answers: tuple[str, ...]) -> None:
+    """Save each answer the form refused, beside the kept proposals.
+
+    A proposal is kept once it parses, so one the form refused was lost:
+    crew-presentation#59's third attempt blocked the story, and what it sent could
+    only be guessed at (crew#690). Local files, as the proposals are: answers
+    never go in the log (ADR 0014). Best effort, as `_keep_proposal` is.
+    """
+    if sink.path is None or not answers:
+        return
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    try:
+        folder = sink.path.parent.parent / "proposals" / repo / str(number)
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        for i, answer in enumerate(answers, start=1):
+            (folder / f"{stamp}.refused-{i}.txt").write_text(answer)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} {len(answers)} refused answers kept",
+            card=number,
+            path=str(folder),
+        )
     except Exception:  # noqa: BLE001
         return
 

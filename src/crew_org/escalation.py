@@ -231,7 +231,8 @@ class EscalationPolicy:
                 disposition=Disposition.FILE_PROMPT_DEFECT,
                 rule=Rule.SCHEMA_PERSISTED,
                 reason="SCHEMA failure persisted past local repair. This is a prompt "
-                "or schema defect and is filed as one, not escalated.",
+                "or schema defect, not escalated: the refused answers are kept under "
+                "var/proposals/ for the operator.",
             )
 
         # --- A CAPABILITY claim without justification is not a capability claim ---

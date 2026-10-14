@@ -36,3 +36,23 @@ def test_a_refusal_says_nothing_was_applied():
 
     assert "Nothing from this attempt was applied" in NOT_APPLIED
     assert "Send the whole change again" in NOT_APPLIED
+
+
+def test_answers_the_form_refused_are_kept_too(tmp_path: Path):
+    """crew-presentation#59's third attempt blocked the story, and what it sent was
+    lost: a proposal is kept only once it parses (crew#690)."""
+    from crew_org.calls import Refused
+    from crew_org.flows.delivery import _keep_refused
+
+    sink = EventSink(tmp_path / "events" / "tick.jsonl")
+    refused = Refused("why", 2, answers=("Refused: one\n\n{}", "Refused: two\n\n{...}"))
+    _keep_refused(sink, "crew-presentation", 59, refused.answers)
+
+    saved = sorted(p.name for p in (tmp_path / "proposals" / "crew-presentation" / "59").iterdir())
+    assert [name.rsplit(".", 2)[1:] for name in saved] == [
+        ["refused-1", "txt"],
+        ["refused-2", "txt"],
+    ]
+    assert any("2 refused answers kept" in e.summary for e in sink.replay())
+    _keep_refused(sink, "crew-presentation", 60, ())
+    assert not (tmp_path / "proposals" / "crew-presentation" / "60").exists()
