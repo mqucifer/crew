@@ -63,10 +63,11 @@ What changes from how crew-presentation was set up:
 
 **Its outcome:** every check the design names runs and passes, in the crew's sandbox and in CI on every pull request. It doesn't deploy (Sponsor, 2026-10-13): the readiness check covers the deploy target (Part 1, step 7), and the first real epic makes the first deploy.
 
-**Four rules that would block it today, and what changes:**
+**Five rules that would block it today, and what changes:**
 
 | Rule | What it does to a skeleton | Change |
 |---|---|---|
+| A Goal decomposes into 2 to 5 epics | The Product Owner must invent a second epic, and the only other outcome is the product's: on mqucifer/crew-presentation#44 it proposed the site's pages (mqucifer/crew-presentation#48) | A Goal labelled `skeleton` is exactly one epic, and its text sets scope, not a count: only what makes the design's checks run and pass. Found in the proof (crew#690) |
 | Every story passes every check | Only a story that makes all of them run can land first | The split puts one skeleton story first and alone: the smallest files that make every check run and pass. The rest wait, as stories in one epic already do |
 | `board.yml` is never-touch in every record | No story may write it | It moves into the `crew onboard` pull request, the crew's own onboarding change |
 | The removal guard refuses removing a merged test unless a contract change declares it (crew#316) | The stories that replace the placeholders are refused | Skeleton placeholders carry a marker, and replacing a marked placeholder needs no declaration |

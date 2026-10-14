@@ -2166,6 +2166,7 @@ def tick(
                         repository=context.for_repo(repo),
                         feedback=notes,
                         delivered=known.for_repo(repo).render(),
+                        skeleton=SKELETON_LABEL in card.labels,
                     )
                 )
             except Exception as exc:  # noqa: BLE001

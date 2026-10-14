@@ -237,6 +237,20 @@ def test_a_fresh_goal_gets_a_proposal(monkeypatch):
     assert EPIC_PROPOSAL_MARKER in issues.posted[0][1]
 
 
+def test_a_skeleton_goal_is_proposed_as_one_epic(monkeypatch):
+    """crew#690: held to two epics, the Product Owner padded the skeleton with
+    the site's pages. Only the Goal labelled `skeleton` is asked for one."""
+    asked = {}
+
+    def proposer(goal, **kw):
+        asked[goal.split("\n")[0]] = kw["skeleton"]
+        return PROPOSAL
+
+    skeleton = card(1, labels=frozenset({"goal", "skeleton"}))
+    run(FakeBoard([skeleton, card(2)]), FakeIssues(), monkeypatch, proposer=proposer)
+    assert asked == {"Goal 1": True, "Goal 2": False}
+
+
 def test_an_epic_that_changes_what_readers_see_is_labelled_for_the_ux_designer(monkeypatch):
     """#377: the Product Owner marks it, and the UX Designer writes its note."""
     issues = FakeIssues()
