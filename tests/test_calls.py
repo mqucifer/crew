@@ -159,6 +159,10 @@ def test_every_attempt_refused_ends_with_the_last_reason():
     with pytest.raises(calls.Refused, match="refused 3 times; the last time: why") as refused:
         ask(Proxy(short, short, short))
     assert not refused.value.empty
+    # Each refused answer, with why, for the caller to keep (crew#690).
+    assert len(refused.value.answers) == 3
+    assert refused.value.answers[0].startswith("Refused: why")
+    assert refused.value.answers[0].endswith(short)
 
 
 def test_two_empty_answers_in_a_row_end_the_call_early():

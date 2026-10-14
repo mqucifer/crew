@@ -274,11 +274,16 @@ class Refused(ValueError):
     asking the same way again doesn't fix.
     """
 
-    def __init__(self, reason: str, attempts: int, *, empty: bool = False) -> None:
+    def __init__(
+        self, reason: str, attempts: int, *, empty: bool = False, answers: tuple[str, ...] = ()
+    ) -> None:
         super().__init__(f"refused {attempts} times; the last time: {reason}")
         self.reason = reason
         self.attempts = attempts
         self.empty = empty
+        # Each refused answer as the model wrote it, with why. Only for the caller to
+        # keep locally: answers never go in the log (ADR 0014).
+        self.answers = answers
 
 
 class ServiceUnavailableError(RuntimeError):
@@ -585,6 +590,7 @@ def ask[Answer: BaseModel](
         messages = _use_tools(spec, messages, tools, rounds=rounds, send=reader, sizes=sizes)
     reason = ""
     empties = 0
+    refused: list[str] = []
     for attempt in range(1, attempts + 1):
         body = {
             "model": spec.get("llm", "crew-local"),
@@ -654,9 +660,10 @@ def ask[Answer: BaseModel](
                 empty=not text.strip(),
                 **detail,
             )
+            refused.append(f"Refused: {reason}\n\n{text}")
             empties = 0 if text.strip() else empties + 1
             if empties >= EMPTY_LIMIT:
-                raise Refused(reason, attempt, empty=True) from exc
+                raise Refused(reason, attempt, empty=True, answers=tuple(refused)) from exc
             if text.strip():
                 messages.append({"role": "assistant", "content": text[:ECHO_CHARS]})
             messages.append(
@@ -666,7 +673,7 @@ def ask[Answer: BaseModel](
                     "Answer again, in full and in the same form, with that fixed.",
                 }
             )
-    raise Refused(reason, attempts)
+    raise Refused(reason, attempts, answers=tuple(refused))
 
 
 def _use_tools(
