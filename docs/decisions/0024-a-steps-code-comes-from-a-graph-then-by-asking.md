@@ -51,8 +51,9 @@ analysis; tool use, also called function calling; two-stage retrieval.
 - Text matching leaves `tools/pinning.py`. The ways-of-working rule "the Developer sees
   the files its work names, and asks for the rest" gains the graph before the ask.
 - The coverage map is per project and per base commit, under `var/coverage/`, built
-  where the sandbox runs the tests. Python first; other toolchains when crew#376's
-  profiles reach them.
+  where the sandbox runs the tests. It runs for every Python part, in the crew's image
+  or the project's own, through the project's own setup and Python (ADR 0030). Other
+  languages when a project needs them.
 - The replay of epic 468's Developer calls with the new selection, counting asks per
   story and prompt size, decides whether the scout is needed.
 - crew#584 is built as the split's declaration from the map, with the delivery pass of
@@ -77,3 +78,5 @@ analysis; tool use, also called function calling; two-stage retrieval.
   (lean-prompts plan, L1). Test names were 80% of the map on
   mqucifer/sprint-metrics#567. The code shown before reading drops to 50,000 characters,
   the same code in 33k less.
+- **2026-10-13:** the coverage map follows the language, not the image: a Python part in
+  a project with its own sandbox image gets a map too (crew#690, ADR 0030; Sponsor).
