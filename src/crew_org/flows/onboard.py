@@ -18,8 +18,8 @@ from typing import Any
 
 import yaml
 
+from crew_org.flows import template
 from crew_org.flows.record_pr import RecordChange, propose
-from crew_org.flows.skeleton import BOARD_PATH, board_workflow
 from crew_org.project import (
     FORMAT_VERSION,
     RECORD_PATH,
@@ -533,13 +533,21 @@ def open_record_pr(
     """
     conversation = still_open_section(open_questions or []) + interview_record(transcript or [])
     intent = record.intent
+    files = template.wanted(template.files(issues), ws.for_repo(repo).current())
+    from_template = (
+        ", and from mqucifer/project-template the files every crew project has, which "
+        "this one lacks or which changed there: "
+        + ", ".join(f"`{path}`" for path in sorted(files))
+        + " (ADR 0030)"
+        if files
+        else ""
+    )
 
     def body(number: int) -> str:
         return (
             f"Closes #{number}\n\n"
             f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
-            "with the Sponsor through `crew onboard`, and the crew's board automation, "
-            f"`{BOARD_PATH}`, the same in every project (ADR 0030).\n\n"
+            f"with the Sponsor through `crew onboard`{from_template}.\n\n"
             f"- **Purpose:** {intent.scope.purpose}\n"
             f"- **Release:** {release_line(record)}\n"
             f"- **Done:** {intent.done.bar}\n\n"
@@ -557,7 +565,7 @@ def open_record_pr(
         base=base,
         body=body,
         update_note=conversation,
-        files={BOARD_PATH: board_workflow()},
+        files=files,
     )
 
 

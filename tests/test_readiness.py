@@ -68,12 +68,15 @@ class GitHub:
         self,
         *,
         settings: dict | None = None,
-        files: set[str] = frozenset({".github/workflows/board.yml", "uv.lock"}),
+        files: set[str] = frozenset(
+            {".github/workflows/board.yml", ".github/workflows/tests.yml", "uv.lock"}
+        ),
         green: list | None = None,
         protection: dict | None = None,
         pages: dict | None = None,
         readable: bool = True,
         commits: bool = True,
+        records: dict[str, str] | None = None,
     ) -> None:
         self.settings = {
             "default_branch": "main",
@@ -84,6 +87,7 @@ class GitHub:
         }
         self.files, self.green, self.protection = files, green or [], protection
         self.page, self.readable, self.commits = pages, readable, commits
+        self.records = records or {}
 
     def repository(self, repo):
         if not self.readable:
@@ -94,7 +98,12 @@ class GitHub:
         return [{"name": "main"}] if self.commits else []
 
     def file_at(self, repo, path, ref):
+        if path == RECORD_PATH and ref in self.records:
+            return self.records[ref]
         return "x" if path in self.files else None
+
+    def list_dir(self, repo, path, ref):
+        return [f.rsplit("/", 1)[1] for f in self.files if f.startswith(path + "/")]
 
     def green_runs(self, repo, branch):
         return self.green
@@ -166,6 +175,15 @@ def test_the_board_workflow_is_the_crew_s_to_add(tmp_path):
     )
 
 
+def test_a_project_with_no_ci_gets_the_template_s(tmp_path):
+    """crew-presentation had none: no story wrote it, so CI never ran (crew#690)."""
+    found = check(tmp_path, GitHub(files={".github/workflows/board.yml", "uv.lock"}))
+    assert (
+        "no CI on pull requests; `crew onboard site` adds the template's `checks.yml` (the crew)"
+        in whats(found)
+    )
+
+
 def test_a_pages_release_needs_pages_from_github_actions(tmp_path):
     """crew-presentation's Pages was never enabled; the first deploy would have failed."""
     deploys = record(deploys="true", where="GitHub Pages at https://o.github.io/site/")
@@ -190,8 +208,9 @@ def test_before_its_skeleton_a_project_works_that_goal_only(tmp_path):
     found = check(tmp_path, GitHub(green=[{"path": ".github/workflows/board.yml"}]), record(OWN))
     assert found.level == 1
     assert "CI hasn't run green on `main`" in whats(found), "board.yml's runs don't count"
-    assert "requires no check; require the CI checks the skeleton added (the Sponsor)" in whats(
-        found
+    assert (
+        "requires no check; once CI is green, `scripts/new-project.sh site --protect` (the Sponsor)"
+        in whats(found)
     )
     assert "the design names no lockfile" in whats(found)
 
@@ -209,6 +228,27 @@ def test_a_project_with_ci_green_once_protection_and_its_lockfile_is_ready(tmp_p
     """sprint-metrics as it stands: uv's lockfile, with no lockfile named."""
     found = check(tmp_path, GitHub(green=GREEN, protection=PROTECTED))
     assert found.level == 2 and found.missing == []
+
+
+TEMPLATE_CI = {".github/workflows/board.yml", ".github/workflows/checks.yml", "uv.lock"}
+
+
+def test_the_template_s_green_before_the_design_proves_nothing(tmp_path):
+    """Its `checks.yml` passes with nothing to check until the design is merged."""
+    runs = [{"path": ".github/workflows/checks.yml", "head_sha": "early"}]
+    early = GitHub(
+        files=TEMPLATE_CI, green=runs, protection=PROTECTED, records={"early": record("")}
+    )
+    found = check(tmp_path, early)
+    assert found.level == 1 and "CI hasn't run green" in whats(found)
+
+    later = GitHub(
+        files=TEMPLATE_CI,
+        green=[{"path": ".github/workflows/checks.yml", "head_sha": "later"}, *runs],
+        protection=PROTECTED,
+        records={"later": record(), "early": record("")},
+    )
+    assert check(tmp_path, later).level == 2
 
 
 def test_what_the_app_cannot_read_is_said_not_guessed(tmp_path):

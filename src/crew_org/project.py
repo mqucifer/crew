@@ -387,15 +387,21 @@ def read_record(root: Path) -> ProjectRecord | None:
     return parse(path.read_text(encoding="utf-8"))
 
 
+# The crew's own files from mqucifer/project-template, the same in every project
+# (ADR 0030). CI runs what the design names; a story that rewrote it would change
+# how its own work is checked.
+CREW_FILES = (".github/workflows/board.yml", ".github/workflows/checks.yml", ".github/crew/")
+
+
 def protected(record: ProjectRecord | None) -> list[str]:
-    """What agents must not change: the record's never-touch list, and the record itself.
+    """What agents must not change: the record's never-touch list, the record, the crew's files.
 
     The record is the Sponsor's, the Architect's and the crew's, each by their own
     pull request. A story's Developer rewriting it would change the rules the story
     is judged by.
     """
     listed = record.intent.done.never_touch if record else []
-    return [*listed, RECORD_PATH]
+    return list(dict.fromkeys([*listed, RECORD_PATH, *CREW_FILES]))
 
 
 def is_protected(path: str, rules: list[str]) -> str | None:

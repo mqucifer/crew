@@ -30,7 +30,7 @@ Five of the eight fail at once when the design's setup and checks are run for re
 
 ## Part 1: the steps, in order (agreed 2026-10-13)
 
-*Changed 2026-10-14 by Part 7a: the repository is created from a template by a script the Sponsor runs, `board.yml` comes from the template, and branch protection is set at creation.*
+*Changed 2026-10-14 by Part 7a: the repository is created from a template by a script the Sponsor runs, `board.yml` comes from the template, and the same script sets branch protection once the skeleton is green.*
 
 The Sponsor creates the repository; the crew checks it (Sponsor, 2026-10-13). Creating repositories and changing branch protection need admin, which the crew's App doesn't hold, by the Sponsor's decision (crew#566). Every crew-built project shares the one board (organization project 1), so a new project needs no board of its own.
 
@@ -163,9 +163,9 @@ What is the same in every project comes from `mqucifer/project-template`, a GitH
 | Required settings | Issues, squash merging, delete branch on merge, Actions |
 | 2. Access | Invites `quarters-claude` with Write (accepted with its own token); adds the repository to the Apps' installation unless they have every repository; checks that `BOARD_APP_PRIVATE_KEY` reaches it |
 | 7. Deploy target | Pages with GitHub Actions as its source, when asked for |
-| 6. Branch protection | At creation: pull requests, the approver's review, and the template's `checks` job required. A required check may be named before it has run |
+| 6. Branch protection | `--protect`, once the skeleton has made CI green: pull requests, the approver's review, and the template's `checks` job required. Not at creation: the design's pull request names checks nothing can pass until the skeleton lands, and judging pull requests by the base branch's design instead would block a design revision (Part 2, option B). Corrected while building F |
 
-What stays outside: `crew onboard` and `crew design`, which the Sponsor answers and merges, and `delivery.repos`, by pull request. Step 6 no longer waits for the skeleton, so level 2 needs nothing more from the Sponsor.
+What stays outside: `crew onboard` and `crew design`, which the Sponsor answers and merges, and `delivery.repos`, by pull request. The readiness check names `--protect` when level 2 waits for it.
 
 ### 7b. The lockfile is written by a tool (Sponsor, 2026-10-14: option A)
 

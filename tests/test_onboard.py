@@ -220,13 +220,34 @@ class FakeWorkspace:
         self.pushed = True
 
 
+# mqucifer/project-template as onboarding reads it.
+TEMPLATE = {
+    "README.md": "# project-template\n",
+    ".github/workflows/board.yml": "name: board\n",
+    ".github/workflows/checks.yml": "name: checks\n",
+    ".github/crew/run_checks.py": "print('checks')\n",
+    ".gitignore": ".DS_Store\n",
+}
+
+
 class FakeIssues:
-    def __init__(self, *, open_issues=(), open_pulls=()) -> None:
+    def __init__(self, *, open_issues=(), open_pulls=(), template=None) -> None:
         self._issues = list(open_issues)
         self._pulls = list(open_pulls)
+        self._template = dict(TEMPLATE if template is None else template)
         self.created: list[str] = []
         self.pulls: list[dict] = []
         self.comments: list[tuple[int, str]] = []
+
+    def repository(self, repo):
+        assert repo == "project-template"
+        return {"default_branch": "main"}
+
+    def tree(self, repo, ref):
+        return list(self._template)
+
+    def file_at(self, repo, path, ref):
+        return self._template.get(path)
 
     def comment(self, repo, number, body):
         self.comments.append((number, body))
@@ -793,22 +814,21 @@ def test_a_proposal_for_something_already_answered_is_dropped():
 
 
 def test_a_record_already_merged_opens_nothing(tmp_path: Path):
-    """crew-presentation onboarded again with its record and board.yml merged:
-    GitHub refuses a pull request with no commits (crew#690)."""
-    from crew_org.flows.skeleton import BOARD_PATH, board_workflow
-
+    """crew-presentation onboarded again with its record and the template's files
+    merged: GitHub refuses a pull request with no commits (crew#690)."""
     ws, issues = FakeWorkspace(tmp_path), FakeIssues()
     merged = ws.current()
     (merged / RECORD_PATH).parent.mkdir(parents=True)
     (merged / RECORD_PATH).write_text(render(validate(COMPLETE)))
-    (merged / BOARD_PATH).parent.mkdir(parents=True)
-    (merged / BOARD_PATH).write_text(board_workflow())
+    for path, text in TEMPLATE.items():
+        (merged / path).parent.mkdir(parents=True, exist_ok=True)
+        (merged / path).write_text(text)
 
     assert open_record_pr(ws, issues, "site", validate(COMPLETE), base="main") == ""
     assert issues.created == [] and issues.pulls == [] and not ws.pushed
 
 
-def test_a_merged_record_without_the_board_workflow_still_gets_it(tmp_path: Path):
+def test_a_merged_record_without_the_template_s_files_still_gets_them(tmp_path: Path):
     ws, issues = FakeWorkspace(tmp_path), FakeIssues()
     merged = ws.current()
     (merged / RECORD_PATH).parent.mkdir(parents=True)

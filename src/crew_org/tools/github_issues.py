@@ -632,6 +632,14 @@ class IssueClient:
             [e["name"] for e in found if e.get("type") == "file"] if isinstance(found, list) else []
         )
 
+    def tree(self, repo: str, ref: str) -> list[str]:
+        """Every file's path at `ref`, recursively."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/git/trees/{ref}", params={"recursive": "1"}
+        )
+        response.raise_for_status()
+        return [e["path"] for e in response.json().get("tree") or [] if e.get("type") == "blob"]
+
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         """A file's text at `ref`, or None if there is no such file."""
         response = self._client.get(
