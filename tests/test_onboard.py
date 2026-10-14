@@ -264,7 +264,12 @@ class FakeIssues:
 
     def create_pull(self, repo, **kwargs):
         self.pulls.append(kwargs)
-        return {"html_url": "https://github.com/o/r/pull/8"}
+        return {"html_url": "https://github.com/o/r/pull/8", "number": 8}
+
+    assigned: list = []
+
+    def assign(self, repo, number, logins):
+        self.assigned = [*self.assigned, (number, logins)]
 
     edited: list = []
 
@@ -284,6 +289,7 @@ def test_the_record_arrives_as_a_pull_request(tmp_path: Path):
     assert pull["base"] == "main" and pull["head"] == "chore/7-project-record"
     assert "Closes #7" in pull["body"]
     assert issues.created == [ISSUE_TITLE]
+    assert issues.assigned == [(8, ["mquarters"])], "the Sponsor merges it"
 
 
 def test_running_again_updates_the_same_pull_request(tmp_path: Path):
@@ -298,6 +304,16 @@ def test_running_again_updates_the_same_pull_request(tmp_path: Path):
     assert open_record_pr(ws, issues, "r", validate(COMPLETE), base="main") == "u/pull/8"
     assert issues.created == [] and issues.pulls == []
     assert ws.pushed
+    assert issues.assigned == [(8, ["mquarters"])], "one opened before assigning catches up"
+
+
+def test_a_pull_request_stands_if_the_sponsor_can_t_be_assigned(tmp_path: Path):
+    class Refusing(FakeIssues):
+        def assign(self, repo, number, logins):
+            raise RuntimeError("POST .../assignees -> 403")
+
+    url = open_record_pr(FakeWorkspace(tmp_path), Refusing(), "r", validate(COMPLETE), base="main")
+    assert url.endswith("/pull/8")
 
 
 def test_running_again_rewrites_the_description_too(tmp_path: Path):

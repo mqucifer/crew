@@ -315,6 +315,12 @@ class IssueClient:
             "POST", f"/repos/{self.owner}/{repo}/issues/{number}/comments", body=body
         )
 
+    def assign(self, repo: str, number: int, logins: list[str]) -> None:
+        """Add assignees to an issue or pull request. Those already assigned stay."""
+        self._request(
+            "POST", f"/repos/{self.owner}/{repo}/issues/{number}/assignees", assignees=logins
+        )
+
     def edit_comment(self, repo: str, comment_id: int, body: str) -> dict[str, Any]:
         """Rewrite one of the crew's comments in place: a view kept current, not a new post."""
         return self._request(
