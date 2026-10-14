@@ -61,7 +61,9 @@ going to inherently contain sprint metrics data)."
 - **A dependency that isn't data,** such as a stylesheet, is pinned once, in the
   consumer's code, and bumped by pull request.
 - **Records and Goals point to the source's usage notes.** They never restate a
-  URL, a version or a shape.
+  URL, a version or a shape. The record's `uses:` field names each one (repository, file,
+  section), and the crew shows that section to the roles that design, split,
+  build and verify the consumer's work, fetched from the producer each time.
 
 ## Consequences
 
@@ -87,3 +89,6 @@ going to inherently contain sprint metrics data)."
 - 2026-10-13: Old releases keep their tags and lose their archives beyond the
   latest seven and each month's first; the consumer's line is a file named for the
   package. The Sponsor agreed the plan for crew#521's release in chat.
+- 2026-10-14: The record's pointer to a producer's usage notes is a field the
+  crew follows and shows to the roles; unfollowed, the Architect guessed the
+  package's layout (crew#690, plan Part 7c). The Sponsor chose it in chat.
