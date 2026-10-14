@@ -395,3 +395,11 @@ def test_a_new_project_declares_no_changes_and_none_are_asked_for():
 
     assert ended.record is not None and ended.attempts == 1
     assert ended.proposal.changes == []
+
+
+def test_the_pull_request_shows_the_lockfile(tmp_path: Path):
+    """A field the Sponsor merges is a field the Sponsor sees (crew#690)."""
+    ended = run(Architect(proposal("uv run pytest -q")))
+    issues = FakeIssues()
+    open_design_pr(FakeWorkspace(tmp_path), issues, "sprint-metrics", ended, base="main")
+    assert "- **Lockfile:** uv.lock" in issues.pulls[0]["body"]

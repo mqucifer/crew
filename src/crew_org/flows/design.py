@@ -427,6 +427,7 @@ def open_design_pr(
         line("Sandbox", proposal.sandbox),
         line("Sandbox image", getattr(proposal, "sandbox_image", None)),
         line("Setup", getattr(proposal, "setup", None)),
+        line("Lockfile", getattr(proposal, "lockfile", None)),
         *[line("Autofix", c) for c in getattr(proposal, "autofix", None) or []],
         *[
             f"- **Part:** `{p.path or '(the whole project)'}` in {p.language}, tests "
