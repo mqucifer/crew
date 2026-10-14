@@ -164,3 +164,12 @@ def test_the_latest_run_of_each_workflow_is_what_the_branch_is_now():
     latest = client.latest_runs("sprint-metrics", "main")
     assert latest[RELEASE]["id"] == 3
     assert latest[".github/workflows/tests.yml"]["id"] == 2
+
+
+def test_a_project_waiting_for_its_skeleton_isn_t_watched():
+    """Its `main` is red until the skeleton lands, and the skeleton Goal is that work:
+    crew-presentation's red `checks` became a second epic for it (crew#690)."""
+    from crew_org.flows.loop import watched
+
+    waiting = {"crew-presentation": "CI hasn't run green on `main`"}
+    assert watched({"crew-presentation", "sprint-metrics"}, waiting) == {"sprint-metrics"}
