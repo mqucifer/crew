@@ -47,11 +47,13 @@ def propose(
     base: str,
     body: Callable[[int], str],
     update_note: str = "",
+    files: dict[str, str] | None = None,
 ) -> str:
     """Propose `record` as the project's record. Returns the pull request's URL.
 
     `body` writes the pull request's description, given the issue it closes.
     `update_note` is what's new, commented on a pull request that already exists.
+    `files` are written beside it, by path: onboarding's `board.yml` (crew#690).
     """
     from crew_org.git_ops import branch_name  # noqa: PLC0415
 
@@ -68,6 +70,10 @@ def propose(
         target = path / RECORD_PATH
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(render(record))
+        for relative, text in (files or {}).items():
+            extra = path / relative
+            extra.parent.mkdir(parents=True, exist_ok=True)
+            extra.write_text(text)
         ws.commit(f"{change.commit_message}\n\nRefs #{number}")
         ws.push(force=True)
 
