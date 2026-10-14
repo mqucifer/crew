@@ -192,6 +192,12 @@ class FakeWorkspace:
     def for_repo(self, repo):
         return self
 
+    def current(self):
+        """The default branch: empty unless a test puts the merged record there."""
+        merged = self.root / ".merged"
+        merged.mkdir(exist_ok=True)
+        return merged
+
     def __enter__(self):
         return self
 
@@ -784,3 +790,28 @@ def test_a_proposal_for_something_already_answered_is_dropped():
     raw = {"intent": {"done": {"bar": "Mine."}}}
     proposed = {"intent": {"done": {"bar": "Theirs.", "also": ["docs"]}, "priority": 1}}
     assert unanswered(proposed, raw) == {"intent": {"done": {"also": ["docs"]}, "priority": 1}}
+
+
+def test_a_record_already_merged_opens_nothing(tmp_path: Path):
+    """crew-presentation onboarded again with its record and board.yml merged:
+    GitHub refuses a pull request with no commits (crew#690)."""
+    from crew_org.flows.skeleton import BOARD_PATH, board_workflow
+
+    ws, issues = FakeWorkspace(tmp_path), FakeIssues()
+    merged = ws.current()
+    (merged / RECORD_PATH).parent.mkdir(parents=True)
+    (merged / RECORD_PATH).write_text(render(validate(COMPLETE)))
+    (merged / BOARD_PATH).parent.mkdir(parents=True)
+    (merged / BOARD_PATH).write_text(board_workflow())
+
+    assert open_record_pr(ws, issues, "site", validate(COMPLETE), base="main") == ""
+    assert issues.created == [] and issues.pulls == [] and not ws.pushed
+
+
+def test_a_merged_record_without_the_board_workflow_still_gets_it(tmp_path: Path):
+    ws, issues = FakeWorkspace(tmp_path), FakeIssues()
+    merged = ws.current()
+    (merged / RECORD_PATH).parent.mkdir(parents=True)
+    (merged / RECORD_PATH).write_text(render(validate(COMPLETE)))
+
+    assert open_record_pr(ws, issues, "site", validate(COMPLETE), base="main").endswith("/pull/8")
