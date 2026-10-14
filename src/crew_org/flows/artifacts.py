@@ -16,11 +16,13 @@ log. Both are recorded; only one is visible on GitHub.
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Iterable
+from typing import Any
 
 from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.tools.github_issues import IssueClient
+from crew_org.tools.github_issues import IssueClient, load_trust
 
 BY_MARKER = "<!-- crew:by "
 
@@ -153,3 +155,14 @@ def label(
                 detail={"artifact": "label", "added": add, "removed": remove, "repo": repo},
             )
         )
+
+
+def for_the_sponsor(issues: Any, repo: str, number: int) -> None:
+    """Assign a pull request the Sponsor merges to them, so one view lists every one.
+
+    The Sponsor asked for it (2026-10-14): record, design and release pull requests
+    were spread over every repository. Only a convenience, so a refusal leaves the
+    pull request as it is.
+    """
+    with contextlib.suppress(Exception):
+        issues.assign(repo, number, [load_trust().sponsor])

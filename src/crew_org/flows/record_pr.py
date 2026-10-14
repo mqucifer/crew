@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from crew_org.flows.artifacts import signed
+from crew_org.flows.artifacts import for_the_sponsor, signed
 from crew_org.project import RECORD_PATH, ProjectRecord, render
 
 
@@ -101,10 +101,12 @@ def propose(
                 existing["number"],
                 signed(f"Updated by {change.updated_by}.{update_note}", change.by),
             )
+        for_the_sponsor(issues, repo, existing["number"])
         return existing["html_url"]
     pull = issues.create_pull(
         repo, title=change.pr_title, head=branch, base=base, body=signed(body(number), change.by)
     )
+    for_the_sponsor(issues, repo, pull["number"])
     return pull["html_url"]
 
 

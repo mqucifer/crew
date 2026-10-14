@@ -27,6 +27,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from crew_org.flows.artifacts import for_the_sponsor
 from crew_org.packages import contract
 from crew_org.packages import delivery_history as dh
 
@@ -193,6 +194,7 @@ def propose(ws: Any, issues: Any, *, consumer: str, tag: str, url: str) -> str:
     pull = issues.create_pull(
         consumer, title=f"chore: delivery-history is {tag}", head=branch, base=base, body=body
     )
+    for_the_sponsor(issues, consumer, pull["number"])
     for older in open_pulls:
         if _BRANCH.match(older["head"]["ref"]):
             issues.comment(

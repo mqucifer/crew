@@ -147,7 +147,10 @@ class Issues:
 
     def create_pull(self, repo, **kw):
         self.calls.append(("create_pull", repo, kw))
-        return {"html_url": f"https://github.com/mqucifer/{repo}/pull/40"}
+        return {"html_url": f"https://github.com/mqucifer/{repo}/pull/40", "number": 40}
+
+    def assign(self, repo, number, logins):
+        self.calls.append(("assign", repo, number, logins))
 
     def comment(self, repo, number, body):
         self.calls.append(("comment", repo, number, body))
@@ -238,6 +241,7 @@ def test_a_consumer_gets_a_pull_request_changing_only_the_line_naming_the_tag(tm
     pull = next(c for c in issues.calls if c[0] == "create_pull")
     assert pull[2]["base"] == "main"
     assert pull[2]["head"] == "chore/10-delivery-history-2026-10-17"
+    assert ("assign", "crew-presentation", 40, ["mquarters"]) in issues.calls, "the Sponsor merges"
     # The older release's pull request is superseded; anyone else's is left alone.
     assert ("close_pull", "crew-presentation", 31) in issues.calls
     assert not any(c[0] == "close_pull" and c[2] == 32 for c in issues.calls)

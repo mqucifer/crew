@@ -272,7 +272,10 @@ class Issues:
 
     def create_pull(self, repo, **kwargs):
         self.pulls.append(kwargs)
-        return {"html_url": f"https://github.com/o/{repo}/pull/9"}
+        return {"html_url": f"https://github.com/o/{repo}/pull/9", "number": 9}
+
+    def assign(self, repo, number, logins):
+        self.assigned = [*getattr(self, "assigned", []), (number, logins)]
 
     def pull(self, repo, number):
         found = next(p for p in self._open_pulls + self._closed_pulls if p["number"] == number)
