@@ -181,8 +181,8 @@ class Design(Section):
     lockfile: str | None = Field(
         default=None,
         description=(
-            "The file that locks the project's dependencies, e.g. `uv.lock`, "
-            "`package-lock.json`, `Cargo.lock`, or a requirements file with hashes"
+            "The file the setup's package manager writes to lock the project's "
+            "dependencies, e.g. `uv.lock`, `package-lock.json`, `Cargo.lock`"
         ),
     )
     # The project's parts by path, each in its own language (#404). None: every

@@ -123,19 +123,48 @@ def lockfile_path(choice: Any) -> str | None:
     return words[0].strip("`,;:.") if words else None
 
 
+# Lockfiles a package manager writes when it resolves the dependencies, by name.
+# A model can't resolve them: asked for a requirements file with hashes, the
+# Developer invented the hashes (crew#690, ADR 0030).
+TOOL_LOCKFILES = {
+    "uv.lock": "uv",
+    "poetry.lock": "Poetry",
+    "pdm.lock": "PDM",
+    "Pipfile.lock": "Pipenv",
+    "package-lock.json": "npm",
+    "pnpm-lock.yaml": "pnpm",
+    "yarn.lock": "Yarn",
+    "bun.lock": "Bun",
+    "Cargo.lock": "Cargo",
+    "go.sum": "Go",
+    "Gemfile.lock": "Bundler",
+    "composer.lock": "Composer",
+}
+
+
 def unlocked(proposal: Any) -> list[str]:
-    """Why a design that names no lockfile is refused (§19.3, §19.7; crew#690).
+    """Why a design whose lockfile isn't one a tool writes is refused (§19.3, §19.7; crew#690).
 
     crew-presentation's design installed from a plain requirements file it called
-    "the lockfile", and the review passed it. Named in its own field, it is a fact
-    a machine checks: here, and once the skeleton lands, that the file exists.
+    "the lockfile", and the review passed it. Its next named a requirements file
+    with hashes, which only a resolver can write, and the Developer invented them.
+    Named in its own field, the lockfile is a fact a machine checks: here, and once
+    the skeleton lands, that the file exists.
     """
-    if lockfile_path(getattr(proposal, "lockfile", None)):
+    path = lockfile_path(getattr(proposal, "lockfile", None))
+    if path and path.rsplit("/", 1)[-1] in TOOL_LOCKFILES:
         return []
+    known = ", ".join(f"`{name}` ({tool})" for name, tool in TOOL_LOCKFILES.items())
+    if path:
+        return [
+            f"`{path}` isn't a lockfile a package manager writes, so a story would have to "
+            "write its pins and hashes by hand, and can't resolve them. Name one the setup's "
+            f"tool writes when it installs: {known}. For Python, `pyproject.toml` with "
+            "`uv.lock`, setup running `uv sync`"
+        ]
     return [
-        "the design names no lockfile. Name the file that locks the project's "
-        "dependencies in `lockfile`, its path from the repository's root, e.g. "
-        "`uv.lock`, `package-lock.json`, `Cargo.lock`, or a requirements file with hashes"
+        "the design names no lockfile. Name the file the setup's package manager writes, "
+        f"its path from the repository's root: {known}"
     ]
 
 

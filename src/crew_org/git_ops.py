@@ -180,6 +180,27 @@ def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) 
     return result.stdout.strip()
 
 
+# What the crew never commits in any project, whatever its `.gitignore` says:
+# crew-presentation's first story committed `.DS_Store` and `.pyc` files, with no
+# `.gitignore` yet (crew#690, ADR 0030). A clone's `info/exclude` holds for every
+# worktree made from it.
+MACHINE_FILES = (".DS_Store", "__pycache__/", "*.pyc", ".crew-home/")
+_EXCLUDE_MARKER = "# crew: never committed (ADR 0030)"
+
+
+def exclude_machine_files(clone: Path) -> None:
+    """Add `MACHINE_FILES` to the clone's `info/exclude`, once."""
+    path = clone / ".git" / "info" / "exclude"
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    if _EXCLUDE_MARKER in current:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = "\n".join([_EXCLUDE_MARKER, *MACHINE_FILES])
+    path.write_text(
+        current + ("\n" if current and not current.endswith("\n") else "") + lines + "\n"
+    )
+
+
 class Workspace:
     """An isolated worktree for one card.
 
@@ -221,9 +242,10 @@ class Workspace:
     def _ensure_clone(self) -> None:
         if (self.clone / ".git").exists():
             _run(["fetch", "origin", "--prune"], cwd=self.clone, token=self.token)
-            return
-        self.clone.parent.mkdir(parents=True, exist_ok=True)
-        _run(["clone", self.url, str(self.clone)], token=self.token)
+        else:
+            self.clone.parent.mkdir(parents=True, exist_ok=True)
+            _run(["clone", self.url, str(self.clone)], token=self.token)
+        exclude_machine_files(self.clone)
 
     def _default_branch(self) -> str:
         """The repo's default branch, asked rather than assumed."""

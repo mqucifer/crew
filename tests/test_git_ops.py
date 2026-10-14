@@ -216,3 +216,34 @@ def test_what_landed_is_empty_when_it_cannot_be_read(tmp_path):
     from crew_org.git_ops import last_landed
 
     assert last_landed(tmp_path, ["a.txt"]) == ""
+
+
+def test_machine_files_are_never_committed_from_any_worktree(tmp_path):
+    """crew-presentation's first story committed `.DS_Store` and `.pyc` files (crew#690)."""
+    import subprocess
+
+    from crew_org.git_ops import exclude_machine_files
+
+    clone = tmp_path / "clone"
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git, "init", "-q", str(clone)], check=True)
+    (clone / "README.md").write_text("x\n")
+    subprocess.run([*git, "-C", str(clone), "add", "."], check=True)
+    subprocess.run([*git, "-C", str(clone), "commit", "-qm", "first"], check=True)
+    exclude_machine_files(clone)
+    exclude_machine_files(clone)
+    tree = tmp_path / "tree"
+    subprocess.run([*git, "-C", str(clone), "worktree", "add", "-q", str(tree)], check=True)
+    for path in (".DS_Store", "tests/__pycache__/x.cpython-312.pyc", ".crew-home/x", "kept.py"):
+        (tree / path).parent.mkdir(parents=True, exist_ok=True)
+        (tree / path).write_text("x")
+
+    status = subprocess.run(
+        ["git", "-C", str(tree), "status", "--porcelain", "--untracked-files=all"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert status.splitlines() == ["?? kept.py"]
+    exclude = (clone / ".git/info/exclude").read_text()
+    assert exclude.count("never committed") == 1
