@@ -74,7 +74,7 @@ CONTEXT_CHAR_CEILING = 600_000
 # file listing is capped, so eleven cache entries are eleven real files the
 # model never gets shown.
 IGNORED_DIRS = frozenset(
-    {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache"}
+    {".git", ".venv", "__pycache__", ".pytest_cache", ".ruff_cache", ".crew-home", ".package"}
     # A JavaScript part's installed packages and Playwright's reports (#404).
     | {"node_modules", "test-results", "playwright-report"}
 )
@@ -134,9 +134,7 @@ def repository_context(
 
     near_set = set(near) if near is not None else None
 
-    paths = sorted(
-        p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
-    )
+    paths = project_files(worktree)
 
     lines = ["### Files and what they define", ""]
     for path in paths:
@@ -316,10 +314,38 @@ class Focus:
     chars: int = 0
 
 
-def _files(worktree: Path) -> list[Path]:
+def project_files(worktree: Path) -> list[Path]:
+    """The checkout's files a commit could hold: tracked or new, and not ignored.
+
+    Walked on disk, a checkout also held what setup installs and fetches: the
+    `.crew-home` it installs into and the `.package/` it fetches into, both
+    ignored. crew-presentation's grew to 213 MB, and its design's view of the
+    repository to a million characters, past the model's context (crew#690). Git
+    knows what the project ignores; without git, the known folders are skipped.
+    """
+    import subprocess  # noqa: PLC0415
+
+    try:
+        listed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=worktree,
+            capture_output=True,
+            check=True,
+        ).stdout.decode()
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(
+            p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
+        )
     return sorted(
-        p for p in worktree.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))
+        path
+        for rel in dict.fromkeys(listed.split("\0"))
+        if rel and not (IGNORED_DIRS & set(Path(rel).parts))
+        for path in [worktree / rel]
+        if path.is_file()
     )
+
+
+_files = project_files
 
 
 def _module_of(rel: Path) -> str:

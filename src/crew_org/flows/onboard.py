@@ -439,9 +439,9 @@ def describe(path: Path, *, branch: str, protection: dict[str, Any] | None) -> s
     Empty when the repository holds no files at all, which is what tells the
     Product Owner to ask rather than propose.
     """
-    from crew_org.tools.repo_context import IGNORED_DIRS, repository_context  # noqa: PLC0415
+    from crew_org.tools.repo_context import project_files, repository_context  # noqa: PLC0415
 
-    files = [p for p in path.rglob("*") if p.is_file() and not (IGNORED_DIRS & set(p.parts))]
+    files = project_files(path)
     if not files:
         return ""
     lines = [repository_context(path, editing=False)]
