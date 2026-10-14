@@ -88,6 +88,9 @@ class Crew:
     # Projects ready for their skeleton Goal only, and what keeps them from any
     # Goal (crew#690, ADR 0030). Their other Goals wait.
     skeleton_only: dict[str, str] = field(default_factory=dict)
+    # The crew's own login on the board, without `[bot]`: the author of the
+    # skeleton Goal `crew onboard` files on the Sponsor's yes (crew#690).
+    crew_login: str | None = None
     # Projects whose approved epics wait while the Architect revisits their
     # design, and why (#192). Set by the revisit phase each pass.
     design_holds: dict[str, str] = field(default_factory=dict)
@@ -311,6 +314,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         review_design=review_design,
         threshold=int((crew.org.get("design") or {}).get("revisit_conflicts", REVISIT_CONFLICTS)),
         place_changes=place_changes,
+        skeleton_only=set(crew.skeleton_only),
     )
     crew.design_holds = dict(result.holds)
     # The Product Owner's project-wide decisions reach the project's log (crew#468).
@@ -385,6 +389,7 @@ def _refine(crew: Crew) -> PhaseOutcome:
         repos=crew.repos,
         holds=crew.design_holds,
         skeleton_only=crew.skeleton_only,
+        crew_login=crew.crew_login,
         crew_repo=crew.crew_repo,
     )
     # Parking an epic is movement: the card left Needs Refinement, and a pass

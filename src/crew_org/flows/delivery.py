@@ -105,6 +105,9 @@ class DeliveryOutcome:
     # Merged tests the story's declared contract change let go (#316), for the
     # Code Reviewer: the story said so, and the pull request says which.
     contract_changed: list[str] = field(default_factory=list)
+    # Merged tests in a walking skeleton's placeholder files that the story
+    # replaces (crew#690), for the Code Reviewer the same way.
+    placeholders: list[str] = field(default_factory=list)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -802,6 +805,8 @@ def declared_contract(body: str) -> set[str]:
 # The pull request's sections naming merged tests it lets go, read back on a rework.
 RETIRED_HEADING = "## Tests retired"
 DECLARED_HEADING = "## Tests the story declares it changes"
+# The skeleton's placeholders it replaced, marked `crew:placeholder` (crew#690).
+PLACEHOLDERS_HEADING = "## Skeleton placeholders it replaces"
 _LISTED_TEST = re.compile(r"^- `([^`\s]+\.py::[\w.]+)`", re.MULTILINE)
 
 
@@ -1398,6 +1403,8 @@ def deliver_story(
         # And one the story itself declares it changes (#316): named there, it's
         # the story's job, not an accident.
         broken, outcome.contract_changed = regression.without_declared(broken, declared)
+        # And a walking skeleton's placeholders, which the first stories replace (crew#690).
+        broken, outcome.placeholders = regression.without_placeholders(worktree, broken, merged)
         if broken:
             failure = LocalFailure(
                 card=number,
@@ -1981,6 +1988,9 @@ def _let_go(implementation: Implementation, outcome: DeliveryOutcome) -> list[st
     if outcome.contract_changed:
         lines += ["", DECLARED_HEADING, ""]
         lines += [f"- `{key}`" for key in outcome.contract_changed]
+    if outcome.placeholders:
+        lines += ["", PLACEHOLDERS_HEADING, ""]
+        lines += [f"- `{key}`" for key in outcome.placeholders]
     return lines
 
 

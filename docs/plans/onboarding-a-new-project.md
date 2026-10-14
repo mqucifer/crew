@@ -2,7 +2,7 @@
 
 **Bottom line:** a project the Sponsor creates empty reaches its first landed story through the crew's own steps. Its first Goal is a walking skeleton, the same for every project: the crew builds what the design names until every check runs and passes, through its normal pipeline, and a fault in the design sends the design back to the Architect. A readiness check, run by the crew, says what is missing before a repository is worked. Success means crew-presentation is onboarded again through these steps and its first story lands, and a project that isn't Python is onboarded the same way.
 
-**Status:** 2026-10-13. Every part agreed in chat; ADR 0030 records the decisions. Nothing built. The issue is mqucifer/crew#690, in M4 on the Crew roadmap (Sponsor, 2026-10-13: it blocks crew-presentation starting, so it belongs in M4, not a new milestone). Each decision is asked in chat and becomes an ADR by pull request before its part is built.
+**Status:** 2026-10-13. Every part agreed in chat; ADR 0030 records the decisions. Built: steps A to D and the design-fault path. The proof on crew-presentation is next. The issue is mqucifer/crew#690, in M4 on the Crew roadmap (Sponsor, 2026-10-13: it blocks crew-presentation starting, so it belongs in M4, not a new milestone). Each decision is asked in chat and becomes an ADR by pull request before its part is built.
 
 **The condition on all of it (Sponsor, 2026-10-13):** the crew onboards projects often enough to plan this for success, and a new repository's skeleton is never its final state.
 
@@ -127,14 +127,14 @@ The Code Reviewer's judgement passed crew-presentation's design without a lockfi
 
 ## Build order
 
-Each step is a commit; steps are grouped into pull requests, merged one at a time in this order, each body saying where it sits. Each change at a boundary runs once for real before its pull request: the sandbox in crew-presentation's image and in the default one.
+Each step is a commit, grouped into pull requests merged one at a time. Each change at a boundary ran once for real before its pull request.
 
-| PR | Steps | What lands |
+| PR | Steps | What landed |
 |---|---|---|
-| 1 | The plan and ADR 0030 | This file; ADR 0030; ADR 0006 and ADR 0024 edited to match |
-| 2 | A: the sandbox (Part 5) | A home inside each worktree, removed with it; the coverage map for every Python part, through the project's own setup and Python |
-| 3 | B: the design step (Part 4); C: the readiness check (Part 3) | The lockfile field; setup refused with shell operators; no changes from today before level 2. The two levels, `crew ready <repo>`, the standup's section, other Goals held at level 1 |
-| 4 | D: the skeleton Goal (Parts 1 and 2) | The standard text; `crew onboard` adds `board.yml` to the record's pull request and files the Goal on the Sponsor's yes; marked placeholders excused by the removal guard; the skeleton story split first and alone; a design fault on the skeleton story sends the design back with its output |
+| mqucifer/crew#691 | The plan and ADR 0030 | This file; ADR 0030; ADR 0006 and ADR 0024 edited to match |
+| mqucifer/crew#692 | A: the sandbox (Part 5) | A home inside each worktree, removed with it; the coverage map for every Python part, through the project's own setup and Python |
+| mqucifer/crew#693 | B: the design step (Part 4); C: the readiness check (Part 3) | The lockfile field, shown in the design pull request; setup refused with shell operators; no changes from today before level 2. The two levels, `crew ready <repo>`, the standup's sections, other Goals held at level 1 |
+| mqucifer/crew#694, mqucifer/crew#695, landed on `main` together | D: the skeleton Goal (Parts 1 and 2); the design-fault path (Part 2, option B) | The standard text; `crew onboard` adds `board.yml` to the record's pull request and files the Goal on the Sponsor's yes; marked placeholders excused by the removal guard. A skeleton story blocked on the design sends it back to the Architect, the Sponsor merges the revision, and the story goes back to Ready, once. Split from D because putting a blocked story back to work was a move the crew had never made |
 | | E: the proof (Part 6) | crew-presentation, by the operator and the Sponsor |
 
 ## Waiting
