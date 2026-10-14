@@ -6,9 +6,8 @@ only thing the Sponsor writes, and this one they agreed once, for every project.
 Refinement takes it from the crew's own identity only when it carries the
 `skeleton` label, which only someone with triage on the repository can add.
 
-`board.yml` travels with the record's pull request for the same reason: it is
-the crew's own automation, identical in every project, and the record protects
-it from stories.
+What is the same in every project, such as CI and `board.yml`, isn't the
+skeleton's: it comes from the template (`flows/template.py`).
 """
 
 from __future__ import annotations
@@ -17,12 +16,9 @@ from typing import Any
 
 from crew_org.columns import INBOX
 from crew_org.config import CONFIG_DIR
-from crew_org.flows.board_moves import BOARD_WORKFLOW
 from crew_org.flows.readiness import SKELETON_LABEL
 
 GOAL_TEXT = CONFIG_DIR / "skeleton_goal.md"
-BOARD_TEXT = CONFIG_DIR / BOARD_WORKFLOW
-BOARD_PATH = f".github/workflows/{BOARD_WORKFLOW}"
 
 # What a placeholder says, in a comment in any language (D2). The removal guard
 # lets the story that replaces it go without a declared contract change.
@@ -38,10 +34,6 @@ def goal() -> tuple[str, str]:
     """The skeleton Goal's title and body."""
     title, _, body = GOAL_TEXT.read_text(encoding="utf-8").partition("\n---\n")
     return title.strip(), body.strip() + "\n"
-
-
-def board_workflow() -> str:
-    return BOARD_TEXT.read_text(encoding="utf-8")
 
 
 def file_goal(issues: Any, board: Any, repo: str) -> int | None:

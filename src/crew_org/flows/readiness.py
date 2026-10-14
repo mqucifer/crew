@@ -6,7 +6,8 @@ exists: CI can't be green with no code, and branch protection can't require a
 check that has never run.
 
 - **Level 1, ready for the skeleton:** the repository and the crew's access, the
-  settings the crew's code relies on, `board.yml`, a complete record, a merged
+  settings the crew's code relies on, `board.yml` and CI on pull requests (the
+  template's `checks.yml`, or the project's own), a complete record, a merged
   design, and the deploy target when a release is a deployment. Only the
   skeleton Goal is worked.
 - **Level 2, ready for any Goal:** CI has run green on the default branch, branch
@@ -23,7 +24,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.flows.board_moves import BOARD_WORKFLOW
-from crew_org.project import RECORD_PATH, ProjectRecord, ProjectRecordError, read_record
+from crew_org.flows.template import CHECKS_WORKFLOW
+from crew_org.project import (
+    RECORD_PATH,
+    ProjectRecord,
+    ProjectRecordError,
+    parse,
+    read_record,
+)
 
 # On the skeleton Goal: the one Goal worked below level 2 (ADR 0030).
 SKELETON_LABEL = "skeleton"
@@ -91,6 +99,15 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
         level_one.append(
             Missing(f"no `.github/workflows/{BOARD_WORKFLOW}`; `crew onboard {repo}` adds it", CREW)
         )
+    ci = [n for n in issues.list_dir(repo, ".github/workflows", branch) if n != BOARD_WORKFLOW]
+    if not ci:
+        level_one.append(
+            Missing(
+                f"no CI on pull requests; `crew onboard {repo}` adds the template's "
+                f"`{CHECKS_WORKFLOW}`",
+                CREW,
+            )
+        )
 
     record: ProjectRecord | None = None
     try:
@@ -122,12 +139,12 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
 
     assert record is not None and record.design is not None
     level_two: list[Missing] = []
-    green = [
+    green = (
         run
         for run in issues.green_runs(repo, branch)
         if not (run.get("path") or "").endswith(f"/{BOARD_WORKFLOW}")
-    ]
-    if not green:
+    )
+    if not any(_ran_checks(issues, repo, run) for run in green):
         level_two.append(
             Missing(
                 f"CI hasn't run green on `{branch}`: the skeleton Goal lands every check, "
@@ -140,8 +157,8 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
     if not required:
         level_two.append(
             Missing(
-                f"branch protection on `{branch}` requires no check; require the CI checks "
-                "the skeleton added",
+                f"branch protection on `{branch}` requires no check; once CI is green, "
+                f"`scripts/new-project.sh {repo} --protect`",
                 SPONSOR,
             )
         )
@@ -178,3 +195,19 @@ def _deploy_target(issues: Any, repo: str, record: ProjectRecord) -> list[Missin
             Missing("GitHub Pages builds from a branch; set its source to GitHub Actions", SPONSOR)
         ]
     return []
+
+
+def _ran_checks(issues: Any, repo: str, run: dict[str, Any]) -> bool:
+    """Whether a green run ran the design's checks.
+
+    The template's `checks.yml` passes with nothing to check before the design is
+    merged, so its green on an empty repository proves nothing (ADR 0030).
+    """
+    if not (run.get("path") or "").endswith(f"/{CHECKS_WORKFLOW}"):
+        return True
+    text = issues.file_at(repo, RECORD_PATH, run.get("head_sha") or "")
+    try:
+        record = parse(text) if text else None
+    except ProjectRecordError:
+        return False
+    return bool(record and record.design and record.design.checks)

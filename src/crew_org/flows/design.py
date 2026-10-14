@@ -27,6 +27,7 @@ import yaml
 
 from crew_org.flows.board_moves import BOARD_WORKFLOW
 from crew_org.flows.record_pr import RecordChange, propose
+from crew_org.flows.template import CHECKS_WORKFLOW
 from crew_org.project import RECORD_PATH, Design, Part, ProjectRecord, brief
 from crew_org.tools import ci_guard
 from crew_org.tools.workspace import shell_operators
@@ -172,9 +173,12 @@ def workflows(root: Path) -> dict[str, str]:
     Not `board.yml`, the board automation onboarding installs. It runs no
     checks, and counted as CI it made crew-presentation, a repository with no
     code, keep a toolchain it didn't have: two designs refused (crew#516).
+
+    None at all with the template's `checks.yml`, which runs whatever the design
+    names (ADR 0030): there is no CI of the project's own to keep.
     """
     folder = root / ci_guard.WORKFLOWS
-    if not folder.exists():
+    if not folder.exists() or (folder / CHECKS_WORKFLOW).exists():
         return {}
     return {
         str(path.relative_to(root)): path.read_text(encoding="utf-8")

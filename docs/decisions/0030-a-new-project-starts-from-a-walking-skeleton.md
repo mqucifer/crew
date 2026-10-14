@@ -28,7 +28,7 @@ The Sponsor, 2026-10-13: the crew onboards projects often enough to plan this fo
   7. the Sponsor sets up the deploy target, when a release is a deployment;
   8. the repository is added to `delivery.repos`.
   
-  The Sponsor keeps creating repositories and their rules, because the crew's App has no admin (crew#566). Every crew-built project shares the one board. Steps 1, 2, 6 and 7 and the required settings are one script the Sponsor runs, `scripts/new-project.sh`, at creation: a template copies files, not settings.
+  The Sponsor keeps creating repositories and their rules, because the crew's App has no admin (crew#566). Every crew-built project shares the one board. Steps 1, 2 and 7 and the required settings are one script the Sponsor runs, `scripts/new-project.sh`, at creation, and step 6 is the same script's `--protect` once the skeleton is green: a template copies files, not settings.
 - **What is the same in every project comes from a template repository,** `mqucifer/project-template`: the CI workflow that runs the design's setup and checks on every pull request, read from the record, `board.yml`, and a `.gitignore`. It holds nothing that depends on the language. `crew onboard` proposes any template file a repository is missing.
 - **A project's first Goal is a walking skeleton** (Cockburn; Freeman and Pryce). The Goal's text is the same for every project, kept in the crew repository. `crew onboard` files it on the Sponsor's yes, which is their authorship.
   - **Its outcome:** every check the design names runs and passes, in the sandbox and in CI on every pull request. It doesn't deploy.

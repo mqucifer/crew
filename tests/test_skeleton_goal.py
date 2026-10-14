@@ -11,10 +11,8 @@ from pathlib import Path
 from crew_org.columns import INBOX
 from crew_org.flows import skeleton
 from crew_org.flows.board_flow import goal_cards, set_by_the_sponsor, unauthored_goals
-from crew_org.flows.onboard import open_record_pr, validate
 from crew_org.tools import regression
 from crew_org.tools.github_project import Card
-from tests.test_onboard import COMPLETE, FakeIssues, FakeWorkspace
 
 # --- the standard text -------------------------------------------------------------------
 
@@ -35,14 +33,7 @@ def test_the_goal_names_no_language_or_tool():
         assert f" {word} " not in f" {body.lower()} "
 
 
-def test_the_board_workflow_is_the_same_for_every_project():
-    """sprint-metrics' and crew-presentation's were identical, copied by hand."""
-    text = skeleton.board_workflow()
-    assert "name: board" in text and "BOARD_APP_PRIVATE_KEY" in text
-    assert "sprint-metrics" not in text and "crew-presentation" not in text
-
-
-# --- crew onboard files it and adds board.yml ------------------------------------------
+# --- crew onboard files it ------------------------------------------
 
 
 class Board:
@@ -98,14 +89,6 @@ def test_an_open_skeleton_goal_is_not_filed_twice():
 def test_a_closed_one_doesn_t_stop_a_new_one():
     issues = Issues(labelled=[{"number": 1, "state": "closed"}])
     assert skeleton.file_goal(issues, Board(), "site") == 1
-
-
-def test_the_record_s_pull_request_carries_the_board_workflow(tmp_path: Path):
-    ws, issues = FakeWorkspace(tmp_path), FakeIssues()
-    open_record_pr(ws, issues, "site", validate(COMPLETE), base="main")
-    written = (tmp_path / ".github/workflows/board.yml").read_text()
-    assert written == skeleton.board_workflow()
-    assert "`.github/workflows/board.yml`" in issues.pulls[0]["body"]
 
 
 # --- refinement takes it from the crew, with its label --------------------------------
