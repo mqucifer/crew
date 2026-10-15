@@ -47,7 +47,8 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
 - **The merged tests an epic changes are rows too,** declared by the split from the
   coverage map (ADR 0024) or by a story problem. During delivery, on the first failure
   of a merged test a story didn't declare, one focused Business Analyst pass amends the
-  story's declaration or returns it, as a recorded change.
+  story's declaration or returns it, as a recorded change, or rules that the code broke
+  the test and has it repaired, with no change to the record.
 - **Every step's context is built in one place.** Each step has a manifest of its parts
   in `docs/reference/context.md`, a test checks the code against it, and each call's
   event records the parts and their sizes.
@@ -97,3 +98,7 @@ its docs against its code.
 - **2026-10-10:** a Goal's epics share what they decide, and dependent epics are refined
   in order, after mqucifer/sprint-metrics#551 and mqucifer/sprint-metrics#552 settled the same schema
   differently (crew#611; Sponsor).
+- **2026-10-15:** the Business Analyst's ruling can also have the change repaired, when the
+  story doesn't change what a broken merged test pins. Its only "no" was a return, which
+  sent epic mqucifer/crew-presentation#69 to be split again after one attempt
+  (crew#720; Sponsor, in chat).

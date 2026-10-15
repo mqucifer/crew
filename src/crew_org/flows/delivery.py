@@ -97,6 +97,8 @@ class DeliveryOutcome:
     # Whether the Business Analyst has ruled on merged tests this story broke and
     # didn't declare: once per delivery (crew#584, step A5).
     contract_ruled: bool = False
+    # Its ruling was that the change broke them, not the story: repaired, not returned.
+    contract_repair: str = ""
     # A first attempt that answered the story is already done (#221): each
     # criterion with the code that meets it and the test that proves it.
     already_done: list = field(default_factory=list)
@@ -1551,6 +1553,13 @@ def deliver_story(
                 rows=decided,
                 failures=undeclared,
             )
+            if ruling is not None and ruling.decision == "repair":
+                outcome.contract_repair = (
+                    "The Business Analyst ruled that this story doesn't change "
+                    f"{', '.join(f'`{t}`' for t in sorted(undeclared))}: {ruling.why} Your "
+                    "change broke them. Fix it so they pass as they are, without changing "
+                    "them.\n\n"
+                )
             if ruling is not None and ruling.decision == "amend":
                 declared |= set(ruling.tests)
                 story_text += f"\n\n{amended_line(ruling)}"
@@ -1559,7 +1568,8 @@ def deliver_story(
                     f"{', '.join(f'`{t}`' for t in ruling.tests)}. After your change they must "
                     f"assert: {ruling.asserts}. Update them in this story.\n\n"
                 )
-        if undeclared and not amended:
+        # Repaired like any failing test, through the usual repairs and escalation.
+        if undeclared and not amended and not outcome.contract_repair:
             failure = LocalFailure(
                 card=number,
                 role="Developer",
@@ -1629,7 +1639,10 @@ def deliver_story(
         if decision.disposition is Disposition.RETRY_LOCAL:
             # Each cause once, every failing test named (crew#591): the whole report
             # is for the escalation, which reads it with tools of its own.
-            feedback = f"{amended}Lint or tests failed:\n\n{repair_report(check.failure_report)}"
+            repair = outcome.contract_repair if undeclared else ""
+            feedback = (
+                f"{amended}{repair}Lint or tests failed:\n\n{repair_report(check.failure_report)}"
+            )
             continue
 
         if decision.disposition is Disposition.ESCALATE:
