@@ -81,3 +81,75 @@ def test_the_pointer_survives_the_record_s_round_trip():
     record = parse(RECORD)
     assert parse(render(record)).intent.scope.uses == record.intent.scope.uses
     assert record.intent.scope.uses[0].file == "README.md"
+
+
+SCHEMA = {
+    "properties": {
+        "sprints": {"type": "array", "items": {"$ref": "#/$defs/Sprint"}},
+        "sprint_metrics": {
+            "properties": {"answers": {"additionalProperties": {"$ref": "#/$defs/Answer"}}}
+        },
+    },
+    "$defs": {
+        "Sprint": {"properties": {"name": {"type": "string"}}},
+        "Answer": {"properties": {"throughput": {"type": "integer"}}},
+    },
+}
+
+
+def test_a_schema_is_shown_as_its_fields():
+    assert usage.schema_fields(SCHEMA) == [
+        "sprints",
+        "sprints[].name",
+        "sprint_metrics",
+        "sprint_metrics.answers",
+        "sprint_metrics.answers.<key>.throughput",
+    ]
+
+
+def test_a_stylesheet_is_shown_as_its_tokens_and_classes():
+    css = (
+        ":root { --color-bg: #fff; } /* .not-a-class */ "
+        ".card, .card--big > p { color: var(--color-bg); }"
+    )
+    assert usage.css_names(css) == (["--color-bg"], ["card", "card--big"])
+
+
+def test_what_is_provided_is_read_at_the_pinned_release(monkeypatch, tmp_path):
+    """crew-presentation#68 promised two numbers its package doesn't carry (crew#690)."""
+    import json
+
+    from crew_org.project import Use
+
+    asked = []
+
+    def fetched(repo, file, ref="HEAD"):
+        asked.append((repo, file, ref))
+        return json.dumps(SCHEMA)
+
+    monkeypatch.setattr(usage, "_file", fetched)
+    (tmp_path / "delivery-history.tag").write_text("delivery-history-2026-10-13\n")
+    use = Use(
+        repo="mqucifer/crew",
+        section="Data packages",
+        pin="delivery-history.tag",
+        contract=["contracts/delivery-history/schema.json"],
+    )
+
+    shown = usage.contract(use, tmp_path)
+    assert "at `delivery-history-2026-10-13`" in shown and "`sprints[].name`" in shown
+    assert asked == [
+        ("mqucifer/crew", "contracts/delivery-history/schema.json", "delivery-history-2026-10-13")
+    ]
+    provided = usage.provided_fields([use], tmp_path)
+    assert {"throughput", "sprints[].name", "name"} <= provided
+    assert "crew_issues_fixed" not in provided
+
+
+def test_without_a_pinned_release_nothing_is_guessed(tmp_path):
+    from crew_org.project import Use
+
+    use = Use(repo="o/r", section="s", pin="x.tag", contract=["schema.json"])
+    assert "names no release in `x.tag`" in usage.contract(use, tmp_path)
+    assert usage.provided_fields([use], tmp_path) == frozenset()
+    assert usage.contract(Use(repo="o/r", section="s"), tmp_path) == ""

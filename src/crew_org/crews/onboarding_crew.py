@@ -23,6 +23,12 @@ class UseAnswer(BaseModel):
     repo: str = Field(description="The producer, as owner/name, e.g. mqucifer/crew")
     file: str = Field("README.md", description="The file its usage notes are in")
     section: str = Field(description="The heading of the section that says how to use it")
+    pin: str | None = Field(
+        None, description="The file in this project naming the release it uses, if one does"
+    )
+    contract: list[str] | None = Field(
+        None, description="The producer's files at that release that say what it provides"
+    )
 
 
 class ScopeAnswers(BaseModel):

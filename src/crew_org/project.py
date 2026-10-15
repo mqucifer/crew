@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, model_validator
 
 RECORD_PATH = ".crew/project.yaml"
 DEFAULT_DOCS = "README.md"
@@ -54,6 +54,23 @@ class Use(Section):
     repo: str = Field(description="The producer, as owner/name, e.g. mqucifer/crew")
     file: str = Field(default="README.md", description="The file its usage notes are in")
     section: str = Field(description="The heading of the section that says how to use it")
+    # The release this project uses, and what the producer promises at it: the
+    # roles are shown that, not the producer's latest (crew#690). crew-presentation's
+    # roles saw only the notes, and an epic promised two numbers the package
+    # doesn't carry.
+    pin: str | None = Field(
+        default=None,
+        description=(
+            "The file in this project naming the release it uses, e.g. delivery-history.tag"
+        ),
+    )
+    contract: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The producer's files at that release that say what it provides, e.g. "
+            "contracts/delivery-history/schema.json, or styles.css"
+        ),
+    )
 
 
 class Scope(Section):
@@ -244,6 +261,8 @@ class ProjectRecord(Section):
     intent: Intent
     design: Design | None = None
     learned: list[Learned] = Field(default_factory=list)
+    # The checkout it was read from, where each `uses` pin is read. Not part of the record.
+    _root: Path | None = PrivateAttr(default=None)
 
     @property
     def release_is(self) -> str:
@@ -399,7 +418,9 @@ def read_record(root: Path) -> ProjectRecord | None:
     path = root / RECORD_PATH
     if not path.exists():
         return None
-    return parse(path.read_text(encoding="utf-8"))
+    record = parse(path.read_text(encoding="utf-8"))
+    record._root = root
+    return record
 
 
 # The crew's own files from mqucifer/project-template, the same in every project
@@ -450,7 +471,7 @@ def brief(record: ProjectRecord) -> str:
         "**Out of scope:**",
         *bullets(intent.scope.out_of_scope),
         "",
-        *_uses(intent.scope.uses),
+        *_uses(intent.scope.uses, record._root),
         f"**A release here is:** {release}",
         "",
         f"**Done means:** {intent.done.bar}",
@@ -482,9 +503,9 @@ def brief(record: ProjectRecord) -> str:
     return "\n".join(lines)
 
 
-def _uses(uses: list[Use]) -> list[str]:
-    """Each producer's usage notes, as it says them today (ADR 0021)."""
-    from crew_org.usage import notes  # noqa: PLC0415
+def _uses(uses: list[Use], root: Path | None) -> list[str]:
+    """Each producer's usage notes, and what it provides at the release this project pins."""
+    from crew_org.usage import contract, notes  # noqa: PLC0415
 
     lines: list[str] = []
     for use in uses:
@@ -496,4 +517,7 @@ def _uses(uses: list[Use]) -> list[str]:
             notes(use),
             "",
         ]
+        provided = contract(use, root)
+        if provided:
+            lines += [provided, ""]
     return lines

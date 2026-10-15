@@ -6,22 +6,31 @@ Architect guessed the package's layout, and a story's gate would have refused
 every real package. Each section is read from the producer's default branch, once
 per run, so the roles see what it says today.
 
+A `uses` entry that names its `pin` and `contract` also shows what the producer
+provides at the release this project pins: a JSON schema's fields, a
+stylesheet's tokens and classes, a document as written. Read at the pinned tag,
+not the producer's latest, since a producer's schema moves on between releases.
+crew-presentation's roles saw only the notes, and an epic promised two numbers
+its package doesn't carry.
+
 Read without a token: every producer the crew uses is public. A private one
 would need the crew's token here.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 if TYPE_CHECKING:
     from crew_org.project import Use
 
-RAW = "https://raw.githubusercontent.com/{repo}/HEAD/{file}"
+RAW = "https://raw.githubusercontent.com/{repo}/{ref}/{file}"
 TIMEOUT = 15
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
@@ -29,8 +38,10 @@ _FENCE = re.compile(r"^\s*(```|~~~)")
 
 
 @lru_cache(maxsize=32)
-def _file(repo: str, file: str) -> str:
-    response = httpx.get(RAW.format(repo=repo, file=file), timeout=TIMEOUT, follow_redirects=True)
+def _file(repo: str, file: str, ref: str = "HEAD") -> str:
+    response = httpx.get(
+        RAW.format(repo=repo, ref=ref, file=file), timeout=TIMEOUT, follow_redirects=True
+    )
     response.raise_for_status()
     return response.text
 
@@ -66,3 +77,128 @@ def notes(use: Use) -> str:
     if found is None:
         return f'({use.repo}\'s `{use.file}` has no section "{use.section}".)'
     return found
+
+
+# A schema reaches deep: sprint-metrics' answers sit inside the package's index.
+DEPTH = 8
+_TOKEN = re.compile(r"(--[A-Za-z0-9_-]+)\s*:")
+_CLASS = re.compile(r"(?<![\w-])\.([A-Za-z_][A-Za-z0-9_-]*)")
+
+
+def pinned(use: Use, root: Path | None) -> str | None:
+    """The release this project names in `use.pin`, or None."""
+    if root is None or not use.pin:
+        return None
+    path = root / use.pin
+    if not path.is_file():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            return line.strip()
+    return None
+
+
+def schema_fields(schema: dict[str, Any]) -> list[str]:
+    """Every field a JSON schema defines, as a path: `sprints[].name`."""
+    defs = schema.get("$defs") or schema.get("definitions") or {}
+    found: list[str] = []
+
+    def walk(node: Any, path: str, depth: int, seen: frozenset[str]) -> None:
+        if not isinstance(node, dict) or depth > DEPTH:
+            return
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/"):
+            name = ref.rsplit("/", 1)[-1]
+            if name in seen:
+                return
+            walk(defs.get(name), path, depth, seen | {name})
+            return
+        for key in ("anyOf", "oneOf", "allOf"):
+            for option in node.get(key) or []:
+                walk(option, path, depth, seen)
+        if isinstance(node.get("items"), dict):
+            walk(node["items"], f"{path}[]", depth, seen)
+        extra = node.get("additionalProperties")
+        if isinstance(extra, dict):
+            walk(extra, f"{path}.<key>" if path else "<key>", depth, seen)
+        for name, sub in (node.get("properties") or {}).items():
+            child = f"{path}.{name}" if path else name
+            found.append(child)
+            walk(sub, child, depth + 1, seen)
+
+    walk(schema, "", 0, frozenset())
+    return list(dict.fromkeys(found))
+
+
+def css_names(text: str) -> tuple[list[str], list[str]]:
+    """A stylesheet's custom properties (tokens) and class names."""
+    without_comments = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    tokens = sorted(set(_TOKEN.findall(without_comments)))
+    selectors = re.sub(r"\{[^{}]*\}", "{}", without_comments)
+    classes = sorted(set(_CLASS.findall(selectors)))
+    return tokens, classes
+
+
+def _provided(path: str, text: str) -> str:
+    """What one contract file says the producer provides, briefly."""
+    if path.endswith(".json"):
+        try:
+            schema = json.loads(text)
+        except ValueError:
+            return text
+        fields = schema_fields(schema) if isinstance(schema, dict) else []
+        return "Fields: " + ", ".join(f"`{f}`" for f in fields) if fields else text
+    if path.endswith(".css"):
+        tokens, classes = css_names(text)
+        return (
+            "Tokens: "
+            + ", ".join(f"`{t}`" for t in tokens)
+            + "\n\nClasses: "
+            + ", ".join(f"`.{c}`" for c in classes)
+        )
+    return text
+
+
+def contract(use: Use, root: Path | None) -> str:
+    """What the producer provides at the release this project pins, or "" if none."""
+    if not use.contract:
+        return ""
+    release = pinned(use, root)
+    if release is None:
+        return (
+            f"(What {use.repo} provides couldn't be shown: this project names no release "
+            f"in `{use.pin}`.)"
+        )
+    lines = [
+        f"**What {use.repo} provides at `{release}`**, the release this project pins in "
+        f"`{use.pin}`. Use only what is listed. Something it doesn't provide isn't "
+        "there to use: name it as missing rather than guess or compute it."
+    ]
+    for path in use.contract:
+        try:
+            text = _file(use.repo, path, release)
+        except httpx.HTTPError as exc:
+            lines += ["", f"`{path}`: couldn't be read at `{release}`: {exc}."]
+            continue
+        lines += ["", f"`{path}`:", "", _provided(path, text)]
+    return "\n".join(lines)
+
+
+def provided_fields(uses: list[Use], root: Path | None) -> frozenset[str]:
+    """Every field the pinned releases' JSON schemas define, by path and by name."""
+    names: set[str] = set()
+    for use in uses:
+        release = pinned(use, root)
+        if release is None:
+            continue
+        for path in use.contract:
+            if not path.endswith(".json"):
+                continue
+            try:
+                schema = json.loads(_file(use.repo, path, release))
+            except (httpx.HTTPError, ValueError):
+                continue
+            for field in schema_fields(schema) if isinstance(schema, dict) else []:
+                names.add(field)
+                names.add(field.rsplit(".", 1)[-1].removesuffix("[]"))
+    return frozenset(names)
