@@ -330,7 +330,10 @@ class Implementation(BaseModel):
     )
     new_files: list[FileWrite] = Field(
         default_factory=list,
-        description="Files that do not exist yet, in full. Never an existing file.",
+        description=(
+            "Files that do not exist yet, in full, and placeholders marked "
+            "`crew:placeholder` replaced whole. Never another existing file."
+        ),
     )
     edits: list[FileEdit] = Field(
         default_factory=list,
@@ -728,6 +731,9 @@ STANDING_INSTRUCTIONS = (
     "run isn't a test to name. A workflow may change together with the code or tests "
     "it runs, when changing one breaks the other.\n"
     "For a file that does not exist yet, return it in `new_files`, in full.\n"
+    "A file marked `crew:placeholder` is the project's walking skeleton holding its "
+    "place: replace it whole in `new_files`, without the marker once it does the "
+    "real job.\n"
     "For a file that already exists, return `edits` — one per definition, addressed "
     "by name. You never reproduce code you are not changing, and anything you do not "
     "name is left exactly as it is.\n\n"

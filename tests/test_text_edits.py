@@ -222,6 +222,24 @@ def test_a_python_file_returned_whole_is_still_an_overwrite(repo):
     assert regression.overwrites_existing(repo, [rewrite]) == ["metrics.py"]
 
 
+def test_a_skeleton_placeholder_may_be_replaced_whole(repo):
+    # crew-presentation's build.py and tests/test_tokens.py: each story reached for a
+    # whole rewrite of its placeholder first (crew#690).
+    (repo / "build.py").write_text('"""Build the site."""\n# crew:placeholder\nimport sys\n')
+    real = FileWrite(path="build.py", content='"""Build the site."""\n\nimport json\n')
+    assert regression.overwrites_existing(repo, [real]) == []
+    # Kept marked, the real file could be rewritten whole by every later story.
+    still = FileWrite(path="build.py", content="# crew:placeholder\nimport json\n")
+    assert regression.overwrites_existing(repo, [still]) == ["build.py"]
+
+
+def test_the_developer_is_told_placeholders_are_replaced_whole():
+    from crew_org.crews.delivery_crew import STANDING_INSTRUCTIONS
+
+    text = " ".join(STANDING_INSTRUCTIONS.split())
+    assert "marked `crew:placeholder`" in text and "replace it whole in `new_files`" in text
+
+
 # --- 3: nothing outside the quote changes, or nothing changes at all ------------------
 
 

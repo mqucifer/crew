@@ -24,6 +24,7 @@ from crew_org.crews.delivery_crew import (
     FileWrite,
     Implementation,
 )
+from crew_org.tools import regression
 
 # A plan is for splitting one answer that's too big; past this, the story is.
 MAX_FILES = 8
@@ -97,7 +98,8 @@ def check_plan(plan: Plan, worktree: Path) -> list[str]:
     problems: list[str] = []
     for step in plan.files:
         exists = (worktree / step.path).is_file()
-        if step.kind == "new" and exists:
+        # A placeholder is replaced whole, so either kind is right for it (crew#690).
+        if step.kind == "new" and exists and not regression.is_placeholder(worktree / step.path):
             problems.append(f"{step.path} already exists: plan it as an edit")
         if step.kind in ("edit", "delete") and not exists:
             problems.append(f"{step.path} doesn't exist: plan it as new, or name the right file")
