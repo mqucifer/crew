@@ -105,6 +105,16 @@ class Story(BaseModel):
             "steps are shown only these rows, so name every one it relies on"
         ),
     )
+    # Each value a story shows from a package, by the field it comes from, so a
+    # value the package doesn't carry is caught here, not guessed at in code
+    # (crew#690: an epic promised two numbers its package doesn't have).
+    package_fields: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The package fields the values this story shows come from, by name as "
+            "the package's contract lists them. Empty when it shows none"
+        ),
+    )
     pinned_behaviour: str = Field(
         default="",
         description=(
@@ -282,6 +292,13 @@ class Accounted(BaseModel):
     )
 
 
+class NotInPackage(BaseModel):
+    """A value the epic wants shown that the pinned package doesn't carry (crew#690)."""
+
+    value: str = Field(description="The value, as the epic or its design reference names it")
+    why: str = Field(description="What the epic wants it for, and the nearest field, if any")
+
+
 class RowNotForStories(BaseModel):
     """A row of the epic's conclusion that no story follows, and why (crew#440)."""
 
@@ -339,6 +356,13 @@ class StoryProposal(BaseModel):
             "Merged tests the epic's record lists as changed (C rows) that no story of this "
             "split changes, each with why. Every other one is named in the Existing tests "
             "line of the story that changes it"
+        ),
+    )
+    not_in_package: list[NotInPackage] = Field(
+        default_factory=list,
+        description=(
+            "Values the epic wants shown that the package doesn't carry. They go to the "
+            "Sponsor, and no story shows them: shown, they'd have to be computed or guessed"
         ),
     )
     need_files: list[FileAsk] = Field(
@@ -734,6 +758,7 @@ def split_epic(
     project_log: str = "",
     siblings: str = "",
     reader: Reader | None = None,
+    provided: frozenset[str] = frozenset(),
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories.
 
@@ -828,6 +853,7 @@ def split_epic(
     def check(proposal: StoryProposal) -> None:
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
         check_accounted(proposal, superseded or [])
+        check_provided(proposal, provided)
 
     room = max(READING_CHAR_CEILING - len(shown.text), 0)
     if reader is not None:
@@ -842,6 +868,32 @@ def split_epic(
         check=check,
         tools=[reader.tool()] if reader is not None else None,
     )
+
+
+def check_provided(proposal: StoryProposal, provided: frozenset[str]) -> None:
+    """Refuse a story that shows a package field its pinned release doesn't define.
+
+    Nothing to check when the project uses no package, as sprint-metrics doesn't.
+    """
+    if not provided:
+        return
+    unknown = sorted(
+        {
+            field
+            for story in proposal.stories
+            for field in story.package_fields
+            if field not in provided
+            and field.removesuffix("[]").rsplit(".", 1)[-1].removesuffix("[]") not in provided
+        }
+    )
+    if unknown:
+        raise ValueError(
+            "these aren't fields of the package this project pins: "
+            + ", ".join(f"`{f}`" for f in unknown)
+            + ". Name the field each value comes from as the package's contract lists it. "
+            "A value the package doesn't carry goes in `not_in_package`, for the Sponsor, "
+            "and no story shows it."
+        )
 
 
 class RepairedStory(BaseModel):

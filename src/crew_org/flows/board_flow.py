@@ -1350,6 +1350,19 @@ class RepoContext:
         except Exception:  # noqa: BLE001
             return ""
 
+    def provided_for(self, repo: str) -> frozenset[str]:
+        """The fields the project's pinned packages define, for the split's check (crew#690)."""
+        if self._ws is None:
+            return frozenset()
+        from crew_org.usage import provided_fields  # noqa: PLC0415
+
+        try:
+            clone = self._ws.for_repo(repo).current()
+            record = read_record(clone)
+        except Exception:  # noqa: BLE001 - checked without it, as before
+            return frozenset()
+        return provided_fields(record.intent.scope.uses, clone) if record else frozenset()
+
     def _record(self, repo: str, clone) -> str:
         """The project's record, first (#131): what the work is for, before the code.
 
@@ -1727,6 +1740,7 @@ def refine_epics(
                         project_log=project_log,
                         siblings=siblings,
                         reader=context.reader_for(repo, focus),
+                        provided=context.provided_for(repo),
                     )
                     proposal = attributed(split_epic, card=number, repo=repo)(
                         epic_card.title, body, **asked_for
@@ -1888,6 +1902,18 @@ def refine_epics(
                 )
                 result.skipped.append((number, "its criteria can't all pass: to the Product Owner"))
                 continue
+
+            if proposal.not_in_package:
+                # The Sponsor's to decide: shown, they'd be computed or guessed (crew#690).
+                artifacts.comment(
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    body=not_in_package_note(proposal.not_in_package),
+                    by="Business Analyst",
+                )
+                artifacts.for_the_sponsor(issues, repo, number)
 
             # The epic may have closed while the model worked: stories created under a
             # closed epic had to be closed by hand (sprint-metrics#233-#235, #321).
@@ -2278,3 +2304,14 @@ def _goal_body(issues: IssueClient, repo: str, number: int) -> str:
         return (issues.get(repo, number).get("body") or "").strip()
     except Exception:  # noqa: BLE001
         return ""
+
+
+def not_in_package_note(missing: list[Any]) -> str:
+    """For the Sponsor: values the epic wants that the pinned package doesn't carry."""
+    return (
+        "**For the Sponsor: values the package doesn't carry.** This epic wants them "
+        "shown, and the release this project pins doesn't provide them, so no story "
+        "shows them:\n\n"
+        + "\n".join(f"- **{m.value}**: {m.why}" for m in missing)
+        + "\n\nLeave them out, or ask the producer to carry them in a later release."
+    )

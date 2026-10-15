@@ -170,3 +170,42 @@ def test_a_real_standalone_argument_is_accepted():
     assert epic(
         separately_deliverable="The Sponsor can read every metric in the terminal alone."
     ).separately_deliverable
+
+
+def test_a_story_shows_only_fields_its_package_provides():
+    """crew-presentation#68 promised "crew issues fixed", which its package doesn't
+    carry: shown, it would have been computed or guessed (crew#690)."""
+    from crew_org.crews.refinement_crew import NotInPackage, check_provided
+
+    shows = story().model_copy(
+        update={"package_fields": ["sprint_metrics.answers.<key>.throughput"]}
+    )
+    proposal = StoryProposal(epic_title="E", stories=[shows])
+    check_provided(proposal, frozenset({"sprint_metrics.answers.<key>.throughput", "throughput"}))
+    check_provided(
+        StoryProposal(
+            epic_title="E", stories=[story().model_copy(update={"package_fields": ["throughput"]})]
+        ),
+        frozenset({"throughput"}),
+    )
+
+    guessed = story().model_copy(update={"package_fields": ["crew_issues_fixed"]})
+    with pytest.raises(ValueError, match="`crew_issues_fixed`.*`not_in_package`"):
+        check_provided(StoryProposal(epic_title="E", stories=[guessed]), frozenset({"throughput"}))
+    check_provided(
+        StoryProposal(epic_title="E", stories=[guessed]), frozenset()
+    )  # no package: no check
+    asked = StoryProposal(
+        epic_title="E",
+        stories=[story()],
+        not_in_package=[NotInPackage(value="crew issues fixed", why="a big number on the mock")],
+    )
+    assert asked.not_in_package[0].value == "crew issues fixed"
+
+
+def test_the_sponsor_is_told_what_the_package_does_not_carry():
+    from crew_org.crews.refinement_crew import NotInPackage
+    from crew_org.flows.board_flow import not_in_package_note
+
+    note = not_in_package_note([NotInPackage(value="crew issues fixed", why="a big number")])
+    assert "For the Sponsor" in note and "- **crew issues fixed**: a big number" in note
