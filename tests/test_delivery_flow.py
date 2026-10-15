@@ -1208,6 +1208,31 @@ def test_an_amended_contract_is_told_to_the_developer_who_repairs_it(harness, mo
     assert "the default table has the new points column" in calls["feedback"][1]
 
 
+def test_a_change_that_broke_merged_tests_the_story_doesnt_change_is_repaired(harness, monkeypatch):
+    """crew-presentation#78: the page build crashed and failed six of another story's
+    tests. The ruling said the code broke them, and the only answer it had sent the whole
+    epic back to be split again after one attempt."""
+    from crew_org.crews.contract_crew import ContractRuling
+
+    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
+    asked = ruled(
+        monkeypatch,
+        ContractRuling(decision="repair", why="No criterion touches the default rows."),
+    )
+    child = story()
+    child.parent = 54
+    result, _, issues, _, calls, seen = harness(
+        checks=[red(PINNED), red(PINNED), green()], cards=[child]
+    )
+    assert len(asked) == 1, "ruled once; the same tests breaking again is still a repair"
+    assert calls["implement"] == 3 and result.returned == [] and result.delivered
+    assert "doesn't change `tests/test_table.py::test_default_table_rows`" in calls["feedback"][1]
+    assert "Fix it so they pass as they are" in calls["feedback"][2]
+    assert (54, "needs:rework") not in issues.labels
+    classes = [e.detail["failure_class"] for e in seen if e.kind is EventKind.ESCALATION_DECIDED]
+    assert FailureClass.SCOPE not in classes
+
+
 def test_without_a_ruling_the_story_goes_back(harness, monkeypatch):
     monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
     ruled(monkeypatch, None)

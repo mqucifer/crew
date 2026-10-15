@@ -26,6 +26,7 @@ def test_an_amendment_names_its_tests_and_what_they_assert_after():
     with pytest.raises(ValidationError, match="path::test"):
         ContractRuling(decision="amend", tests=["the schema test"], asserts="x" * 12, why="y" * 12)
     assert ContractRuling(decision="return", why="No criterion changes it.").tests == []
+    assert ContractRuling(decision="repair", why="No criterion changes it.").tests == []
 
 
 class Issues:

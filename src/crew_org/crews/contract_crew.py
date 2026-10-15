@@ -9,9 +9,16 @@ the split couldn't have named them (crew#584).
 On the first such failure, the Business Analyst, who writes stories' contracts,
 decides for this story alone: the failing tests pin behaviour the story's
 criteria and the epic's rows require changing, so the story's Existing tests
-line is amended to declare them; or the story shouldn't change that behaviour,
-or it can't tell, and the story goes back to refinement. Either way the tests
-become rows of the epic's record (ADR 0023).
+line is amended to declare them; or the story doesn't change that behaviour and
+the Developer's change broke it, so it repairs its change; or the story shouldn't
+change it but can't be done without, or it can't tell, and the story goes back to
+refinement. An amendment or a return makes the tests rows of the epic's record
+(ADR 0023).
+
+Repair was missing at first, so "the story doesn't change this" could only be a
+return: crew-presentation#78 crashed the page build, which failed six of another
+story's merged tests, and its whole epic went back to be split again after one
+attempt, while the ruling itself said the code had broken them.
 """
 
 from __future__ import annotations
@@ -27,10 +34,12 @@ _TEST_ID = re.compile(r"^[\w/.-]+\.py::\w+$")
 
 
 class ContractRuling(BaseModel):
-    decision: Literal["amend", "return"] = Field(
+    decision: Literal["amend", "repair", "return"] = Field(
         description=(
             "`amend` when the story's criteria or the rows it follows require the change "
-            "these tests pin; `return` when the story shouldn't change it, or you can't tell"
+            "these tests pin; `repair` when the story doesn't change it and the "
+            "Developer's change broke it; `return` when the story can't be done without "
+            "changing it but shouldn't, or you can't tell"
         )
     )
     tests: list[str] = Field(
@@ -77,12 +86,16 @@ def rule_on_contract(*, story: str, rows: str, failures: dict[str, str]) -> Cont
                 "declare. Decide for this story alone. If its criteria, or the rows it follows, "
                 "require changing what these tests pin, amend its contract: name the tests it "
                 "now declares and say what they must assert after; the Developer updates them in "
-                "this story. If the story shouldn't change that behaviour, or you can't tell "
-                "from what's written, return it to refinement and say why. Quote the criterion "
+                "this story. If the story doesn't change that behaviour, and the change broke "
+                "it on the way (the tests fail because the code crashes or lost something, "
+                "not because they assert what the story changes), say repair: the Developer "
+                "fixes its change so they pass as they are. If the story can't be done "
+                "without changing that behaviour and shouldn't, or you can't tell from "
+                "what's written, return it to refinement and say why. Quote the criterion "
                 "or row that decides it.",
             )
         ],
         ContractRuling,
-        expected="Amend the story's contract, or return it, with why.",
+        expected="Amend the story's contract, have the change repaired, or return it, with why.",
     )
     return ruling
