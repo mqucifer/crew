@@ -12,6 +12,7 @@ skeleton's: it comes from the template (`flows/template.py`).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crew_org.columns import INBOX
@@ -21,13 +22,27 @@ from crew_org.flows.readiness import SKELETON_LABEL
 GOAL_TEXT = CONFIG_DIR / "skeleton_goal.md"
 
 # What a placeholder says, in a comment in any language (D2). The removal guard
-# lets the story that replaces it go without a declared contract change.
+# lets the story that replaces it go without a declared contract change, and the
+# Developer may rewrite it whole.
 PLACEHOLDER = "crew:placeholder"
+
+# The marker starting a line, after any comment sign. Only mentioning it isn't
+# carrying it: crew-presentation's skeleton tests assert that the placeholders
+# carry it, and quoting it there made a real test file look like a placeholder.
+_MARKED = re.compile(
+    r"^\s*(?:#|//|/\*|<!--|\{#|--|;|\"\"\"|\'\'\')?\s*" + re.escape(PLACEHOLDER) + r"\b",
+    re.MULTILINE,
+)
 
 LABELS = {
     "goal": ("0e8a16", "A Goal: the Sponsor's outcome for the crew to decompose"),
     SKELETON_LABEL: ("c5def5", "A project's first Goal: its walking skeleton (ADR 0030)"),
 }
+
+
+def marked(text: str) -> bool:
+    """Whether a file's text carries the placeholder marker (D2)."""
+    return bool(_MARKED.search(text))
 
 
 def goal() -> tuple[str, str]:

@@ -105,9 +105,31 @@ def overwrites_existing(worktree: Path, new_files: list) -> list[str]:
 
     Writing an existing path as a "new file" is a whole-file rewrite by another
     name — the exact thing editing by name exists to prevent — so it is refused
-    rather than merged.
+    rather than merged. Except a walking skeleton's placeholder, which exists to
+    be replaced. crew-presentation's stories reached for a whole rewrite of one
+    twice: `build.py` (story 73) and `tests/test_tokens.py` (story 84), whose
+    rewrite through a text edit was refused after a 30-minute answer (crew#690,
+    ADR 0030). Its replacement drops the marker, or the real file it
+    becomes could be rewritten whole by every story after it.
     """
-    return [f.path for f in new_files if (worktree / f.path).exists()]
+    from crew_org.flows.skeleton import marked  # noqa: PLC0415
+
+    return [
+        f.path
+        for f in new_files
+        if (worktree / f.path).exists()
+        and (not is_placeholder(worktree / f.path) or marked(f.content))
+    ]
+
+
+def is_placeholder(path: Path) -> bool:
+    """Whether a file is a walking skeleton's placeholder, marked `crew:placeholder`."""
+    from crew_org.flows.skeleton import marked  # noqa: PLC0415
+
+    try:
+        return marked(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 # --- what a replacement may not change -----------------------------------
@@ -997,12 +1019,10 @@ def without_placeholders(
     make every early story carry the skeleton's bookkeeping. Also returns what
     it excused, for the pull request.
     """
-    from crew_org.flows.skeleton import PLACEHOLDER  # noqa: PLC0415
+    from crew_org.flows.skeleton import marked  # noqa: PLC0415
 
     excused = sorted(
-        key
-        for key in broken
-        if PLACEHOLDER in (_before(worktree, key.partition("::")[0], merged) or "")
+        key for key in broken if marked(_before(worktree, key.partition("::")[0], merged) or "")
     )
     return {k: v for k, v in broken.items() if k not in excused}, excused
 

@@ -89,6 +89,12 @@ def test_the_plan_is_checked_against_the_repository(tmp_path: Path):
     assert check_plan(plan(README), tmp_path) == []
 
 
+def test_a_placeholder_may_be_planned_as_new(tmp_path: Path):
+    (tmp_path / "build.py").write_text("# crew:placeholder\n")
+    replaced = plan(PlannedFile(path="build.py", kind="new", intent="Write the real build."))
+    assert check_plan(replaced, tmp_path) == []
+
+
 def test_the_plan_reads_as_the_steps_will_see_it():
     text = render_plan(
         plan(

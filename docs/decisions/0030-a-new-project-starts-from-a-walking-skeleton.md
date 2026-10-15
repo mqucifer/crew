@@ -35,7 +35,7 @@ The Sponsor, 2026-10-13: the crew onboards projects often enough to plan this fo
   - **Who builds it:** the normal pipeline, with the Developer building what the Architect's design names.
   - **One epic:** the skeleton has one outcome, so the Product Owner proposes exactly one epic for it, where every other Goal gets 2 to 5. The project's pages, features and behaviour belong to its own Goals.
   - **Its split:** one story first and alone, making every check run and pass.
-  - **Placeholders:** each is marked, and replacing a marked one needs no declared contract change.
+  - **Placeholders:** each is marked, starting a line in a comment. The story that replaces one rewrites it whole and drops the marker, and needs no declared contract change. The marker is bookkeeping, so no test checks for it.
   - **A design fault in it** (setup failing, or a check's own tool missing) sends the design back to the Architect with the output, and the Sponsor merges the revision.
 - **`board.yml` comes from the template.** Records protect it from stories.
 - **A readiness check replaces the usable-record precondition** (crew#132). It runs at every tick and as `crew ready <repo>`, and names what's missing and who fixes it. It has two levels:
@@ -65,3 +65,4 @@ The Sponsor, 2026-10-13: the crew onboards projects often enough to plan this fo
 - 2026-10-13: Accepted. The Sponsor decided each part in chat while planning crew#690.
 - 2026-10-14: The skeleton Goal is one epic. Held to the usual minimum of two, the Product Owner padded the first one with the site's pages (Sponsor, in chat, after the crew-presentation proof).
 - 2026-10-14: Template repository, setup script, tool-written lockfile and worktree exclude, from the first proof run's four gaps (plan Part 7). The Sponsor chose each in chat.
+- 2026-10-15: A placeholder is rewritten whole, and its replacement drops the marker. Held to editing by name, crew-presentation's stories reached for a whole rewrite twice, `build.py` (story 73) and `tests/test_tokens.py` (story 84), and the second was refused. A test quoting the marker made a real file look like a placeholder (Sponsor, in chat, after the second).

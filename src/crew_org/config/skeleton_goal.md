@@ -11,7 +11,7 @@ The skeleton holds only what the design's structure names, as placeholders. It d
 | ID | Decision | Consequences |
 |---|---|---|
 | D1 | Only what makes the design's checks run and pass. Its first story does that alone, before any other story | Until it lands, every other story would fail checks that have nothing to run. The project's pages, features and behaviour belong to its own Goals |
-| D2 | Each placeholder file carries the marker `crew:placeholder` in a comment | The story that replaces a placeholder needs no declared contract change for it |
+| D2 | Each placeholder file carries the marker `crew:placeholder` at the start of a line, in a comment | The story that replaces a placeholder rewrites it whole, drops the marker, and needs no declared contract change for it. The marker is bookkeeping: no test checks for it |
 | D3 | Nothing the design's structure doesn't name | The skeleton isn't the architecture; the first stories are |
 | D4 | CI runs the design's setup and every check on each pull request | The Sponsor then requires those checks on the default branch, and the project is ready for any Goal |
 | D5 | No deploy | The first real epic makes the first release |
