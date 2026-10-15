@@ -100,6 +100,19 @@ def test_a_small_repository_is_shown_whole(repo: Path):
     assert text == repository_context(repo)
 
 
+def test_a_small_repository_shows_its_code_wherever_it_sits(repo: Path):
+    # crew-presentation's code is build.py and tools/setup.py, outside src/: its
+    # first story never saw the placeholder it replaced (crew#690).
+    (repo / "build.py").write_text('"""Build the site."""\n# crew:placeholder\n')
+    (repo / "tools").mkdir()
+    (repo / "tools" / "setup.py").write_text("def design_system_css(version):\n    return 1\n")
+    text = repository_context(repo)
+    source = text.split("### Current source", 1)[1]
+    assert "`build.py`" in source and "# crew:placeholder" in source
+    assert "`tools/setup.py`" in source and "return 1" in source
+    assert source.index("`tools/setup.py`") < source.index("`tests/"), "code before tests"
+
+
 def test_a_large_one_shows_the_map_and_the_named_files(repo: Path):
     text, focus = focused_context(repo, about="Round `calculate_cycle_time`.", above=10)
     assert focus.focused
