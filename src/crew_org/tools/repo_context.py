@@ -198,9 +198,12 @@ def repository_context(
 
     lines += ["", "### Current source", ""]
     tests_named_only = False
-    for target in sorted(worktree.glob("src/**/*.py")) + sorted(worktree.glob("tests/**/*.py")):
-        if IGNORED_DIRS & set(target.parts):
-            continue
+    # Every Python file the project holds, code before tests, wherever it sits. Only
+    # src/ and tests/ were read, sprint-metrics' layout: crew-presentation's code is
+    # build.py and tools/setup.py, so its first story never saw the file it replaced,
+    # and its six asks for it went unanswered (crew#690).
+    python = [p for p in paths if p.suffix == ".py"]
+    for target in sorted(python, key=lambda p: _is_test(p.relative_to(worktree))):
         rel = target.relative_to(worktree)
         # A role deciding what to build needs the code, and the tests only by
         # name, which the index above lists. On the Architect's design note for
