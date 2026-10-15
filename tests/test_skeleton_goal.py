@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from crew_org.columns import INBOX
 from crew_org.flows import skeleton
 from crew_org.flows.board_flow import goal_cards, set_by_the_sponsor, unauthored_goals
@@ -145,3 +147,32 @@ def test_a_merged_placeholder_test_may_be_replaced_without_a_declaration(tmp_pat
     left, excused = regression.without_placeholders(tmp_path, broken, None)
     assert excused == ["tests/test_scaffold.py::test_scaffold"]
     assert set(left) == {"tests/test_real.py::test_real"}
+
+
+def test_a_file_only_mentioning_the_marker_is_not_a_placeholder(tmp_path: Path):
+    # crew-presentation's tests/test_contracts.py asserts the placeholders carry the
+    # marker; that made it look like one, so its tests were excused too.
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_contracts.py").write_text(
+        "def test_placeholders_marked():\n"
+        '    """build.py contains crew:placeholder."""\n'
+        '    assert "crew:placeholder" in text\n'
+    )
+    broken = {"tests/test_contracts.py::test_placeholders_marked": ("passes", "fails")}
+    left, excused = regression.without_placeholders(tmp_path, broken, None)
+    assert excused == [] and set(left) == set(broken)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "# crew:placeholder\n",
+        "<!-- crew:placeholder -->\n",
+        "/* crew:placeholder */\n",
+        "// crew:placeholder\n",
+        '"""Browser checks.\n\ncrew:placeholder\n"""\n',
+    ],
+)
+def test_the_marker_is_read_in_any_comment(text: str):
+    assert skeleton.marked(text)

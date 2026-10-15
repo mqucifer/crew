@@ -1321,7 +1321,9 @@ def deliver_story(
                 feedback = (
                     f"These already exist: {', '.join(overwrites)}. Change them with "
                     "`edits`, addressed by name, rather than rewriting them as new "
-                    "files. Only a file that does not exist yet belongs in new_files." + NOT_APPLIED
+                    "files. Only a file that does not exist yet belongs in new_files, or a "
+                    "placeholder marked `crew:placeholder` replaced whole, without the "
+                    "marker." + NOT_APPLIED
                 )
                 continue
             outcome.blocked_rule = Rule.GUARD_OVERWRITE
