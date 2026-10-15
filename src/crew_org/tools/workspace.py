@@ -279,6 +279,20 @@ def _outside_definitions(item, text: str) -> None:
         for node in ast.walk(added)
     ):
         raise EditError(f"this text edit brings in a definition. {how}")
+    # An empty `find` appends, so imports would land after the code that uses them:
+    # crew-presentation#73 did it three times and failed each on a NameError at
+    # line 10, with the imports at the end of the file (crew#690).
+    if (
+        not item.find
+        and added is not None
+        and any(isinstance(node, ast.Import | ast.ImportFrom) for node in added.body)
+    ):
+        raise EditError(
+            f"this text edit appends imports to the end of {item.path!r}, after the code "
+            "that uses them. Add each import with `edits`, operation `add_import`, which "
+            "puts it with the file's imports, or replace the file's import lines with a "
+            "text edit whose `find` is those lines."
+        )
     if not item.find or item.find not in text:
         return  # an append, or a quote the caller reports as not in the file
     try:
