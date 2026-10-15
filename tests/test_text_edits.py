@@ -185,6 +185,19 @@ def test_a_definition_cannot_be_brought_in_by_quoting(repo):
         plan(python(repo, "metrics.py", MODULE), edit)
 
 
+def test_imports_appended_after_the_code_that_uses_them_are_refused(repo):
+    """crew-presentation#73 appended its imports three times, and failed each on a
+    NameError at line 10 (crew#690)."""
+    edit = TextEdit(path="metrics.py", find="", replace="import json\nfrom pathlib import Path\n")
+    with pytest.raises(EditError, match="appends imports to the end.*`add_import`"):
+        plan(python(repo, "metrics.py", MODULE), edit)
+
+
+def test_an_entry_block_may_still_be_appended(repo):
+    edit = TextEdit(path="metrics.py", find="", replace='if __name__ == "__main__":\n    main()\n')
+    assert plan(python(repo, "metrics.py", MODULE), edit)["metrics.py"].endswith("    main()\n")
+
+
 def test_a_misquoted_python_edit_says_it_is_not_in_the_file(repo):
     edit = TextEdit(path="__main__.py", find="import os", replace="import sys")
     with pytest.raises(EditError, match="is not in the file"):
