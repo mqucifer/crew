@@ -111,7 +111,8 @@ is ADR 0022.
   `crew package release` releases it.
 - **Each sprint's close releases one** (crew#724), whether a tick closes it or
   `crew sprint close` does, and its retro says which, or why not. A sprint left
-  without one gets it at the next tick.
+  without one gets it at the next tick. A package carries the sprints up to the
+  one that ended last, never one under way (crew#738).
 
 ## The two gates
 

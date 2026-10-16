@@ -38,6 +38,12 @@ def ended_on(sprints: list[dict[str, Any]], sprint: str | None) -> date | None:
     return _last_day(found[0]) if found else None
 
 
+def last_end(sprints: list[dict[str, Any]], today: date) -> date | None:
+    """The last day of the sprint that ended most recently before `today`, or None."""
+    past = [_last_day(it) for it in sprints if _last_day(it) < today]
+    return max(past) if past else None
+
+
 def last_ended(sprints: list[dict[str, Any]], today: date) -> str | None:
     """The sprint that ended most recently before `today`, from all the board's sprints.
 
