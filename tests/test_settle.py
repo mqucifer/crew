@@ -18,6 +18,7 @@ from crew_org.crews.settle_crew import (
     DECISION_CHARS,
     GOAL_QUOTE_CHARS,
     INFRA_CHARS,
+    QUESTION_CHARS,
     Conclusion,
     Dismissal,
     ForInfra,
@@ -25,6 +26,7 @@ from crew_org.crews.settle_crew import (
     Row,
     Settlement,
     Unsettled,
+    aim,
     check_covers,
     check_grounded,
     check_not_cut,
@@ -625,6 +627,72 @@ def test_an_own_call_on_a_design_question_is_asked_for_again_as_an_open_question
     assert result.outcome is flow.Outcome.WRITTEN
     assert "marked for the Architect" in calls[1]["feedback"]
     assert "| Q1 | Which response shape?" in gh.body
+
+
+def test_a_retry_is_shown_every_refusal_so_far_not_only_the_last(monkeypatch):
+    # crew-presentation 118: an own call refused as the Architect's became an open
+    # question, cut off at its length, then an own call again (crew#742).
+    gh = Github()
+    design = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
+    cut = Settlement(
+        conclusion=Conclusion(
+            rows=[own("GOAL", settles=[1])],
+            open=[
+                OpenQuestion(
+                    question="x" * QUESTION_CHARS,
+                    impact="The API",
+                    settled_by="architect",
+                    settles=[2],
+                )
+            ],
+        )
+    )
+    fixed = Settlement(
+        conclusion=Conclusion(
+            rows=[own("GOAL", settles=[1])],
+            open=[
+                OpenQuestion(
+                    question="Which shape?", impact="The API", settled_by="architect", settles=[2]
+                )
+            ],
+        )
+    )
+    two = PanelResult(
+        {
+            "qa_engineer": PanelAnswer(
+                nothing_to_add=False,
+                notes=[note("a product choice", "product_owner"), note("a shape", "architect")],
+            )
+        },
+        {},
+    )
+    result, calls, events = run(gh, monkeypatch, design, cut, fixed, notes=two)
+    assert result.outcome is flow.Outcome.WRITTEN
+    assert calls[2]["feedback"].startswith("These cells reached their length limit")
+    assert "marked for the Architect" in calls[2]["feedback"]
+    # The log keeps each attempt's own reason.
+    reasons = [e.detail["reason"] for e in events if "conclusion refused" in e.summary]
+    assert "marked for the Architect" not in reasons[1]
+
+
+def test_the_same_refusal_twice_is_shown_once():
+    assert flow.every_refusal(["a", "a"]) == "a"
+    assert flow.every_refusal(["a", "b", "a"]).count("- ") == 1
+
+
+def test_every_limited_cell_tells_the_model_its_limit():
+    # The server cuts a cell at its limit; the open questions, the only cells
+    # that didn't say theirs, were 13 of 14 cut in one tick (crew#742).
+    schema = Settlement.model_json_schema()
+    silent = [
+        f"{model}.{name}"
+        for model, spec in schema.get("$defs", {}).items()
+        for name, field in spec.get("properties", {}).items()
+        if "maxLength" in field
+        and f"under {aim(field['maxLength'])} characters"
+        not in (field.get("description") or "").casefold()
+    ]
+    assert silent == []
 
 
 def test_a_conclusion_refused_every_time_fails_and_writes_nothing(monkeypatch):

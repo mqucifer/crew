@@ -123,11 +123,19 @@ def _plain(text: str) -> str:
 
 
 class OpenQuestion(BaseModel):
-    question: str = Field(min_length=2, max_length=QUESTION_CHARS)
+    # Both say their limit, as every other cell does: without it these were the
+    # cells cut off, 13 of 14 in one tick (crew#742).
+    question: str = Field(
+        min_length=2,
+        max_length=QUESTION_CHARS,
+        description=f"The question, under {aim(QUESTION_CHARS)} characters",
+    )
     impact: str = Field(
         min_length=2,
         max_length=IMPACT_CHARS,
-        description="Who or what it changes if it goes one way",
+        description=(
+            f"Who or what it changes if it goes one way, under {aim(IMPACT_CHARS)} characters"
+        ),
     )
     # Who settles it is part of the record (crew#583, ADR 0023): a question the
     # stories' criteria depend on is the Architect's; one any reasonable choice
