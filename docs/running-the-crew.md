@@ -313,16 +313,23 @@ Section 18 *allows* the pilot to become a tool the crew calls. It does not requi
 ## The board's own automations
 
 Card movements **no role performs** — a person closing an issue, a pull request
-merged by hand, an item arriving on the board — are handled by
+merged by hand, an issue a person opens arriving on the board — are handled by
 `.github/workflows/board.yml` in each delivery repository, not by the board's
 built-in workflows. The crew repository has none: its issues are not on the
 board.
 
 | Trigger | Sets Status to |
 | --- | --- |
-| an issue opened (and auto-added) | `Needs Refinement` |
+| an issue a person opens, put on the board if it isn't | `Needs Refinement`; one labelled `goal` goes to `Inbox (Goals)` |
 | an issue or pull request closed | `Done` |
 | run by hand (`workflow_dispatch`) | sweeps every closed card that is not in `Done` |
+
+**Who puts a card on the board.** The crew adds the issues it opens, and keeps
+its onboarding and design records off the board. `board.yml` adds an issue a
+person opens, such as a Goal or a bug (mqucifer/project-template#3). Before it,
+the board's built-in "Auto-add to project" did that for sprint-metrics only, and
+crew-presentation's bug and Goals sat off the board, unseen. That built-in can
+be turned off once every project has the new `board.yml`.
 
 **Why a file and not the board's own settings.** The GraphQL API exposes
 `enabled` on a `ProjectV2Workflow` and nothing else — no trigger, no target,
