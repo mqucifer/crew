@@ -27,6 +27,7 @@ from crew_org.tui import LiveView, attach
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import date
 
     from crew_org.crews.panel_crew import PanelContext
     from crew_org.tools.github_issues import IssueClient
@@ -320,7 +321,7 @@ def _roll_over(
             and release.due([str(r["tag_name"]) for r in issues.releases(crew_repo)], ended)
         ):
             console.print(f"\n[bold]Releasing the package for {escape(sprint or '')}.[/]")
-            _release_after_close(issues, sprint=sprint or "", crew_repo=crew_repo)
+            _release_after_close(issues, sprint=sprint or "", crew_repo=crew_repo, through=ended)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]Package not released:[/] {escape(str(exc))}")
 
@@ -2212,7 +2213,11 @@ def sprint_close(
         crew_repo=crew_repo,
         merge=not no_merge,
     )
-    _release_after_close(issues, sprint=sprint, crew_repo=crew_repo)
+    from crew_org.flows.rollover import ended_on  # noqa: PLC0415
+
+    _release_after_close(
+        issues, sprint=sprint, crew_repo=crew_repo, through=ended_on(board.sprints(), sprint)
+    )
 
 
 def _close_and_report(
@@ -2422,17 +2427,26 @@ def package_release(
     consumer gets a pull request changing the one line that names the tag
     (ADR 0021). Old releases keep their tags; archives beyond the retention are
     pruned. Refused unless sprint-metrics answered for every sprint it covers (crew#521).
-    A sprint's close releases one by itself (crew#724).
+    A sprint's close releases one by itself (crew#724). It carries the sprints up to
+    the one that ended last, never one under way (crew#738).
     """
     _, refused, _ = _release_package(dry_run=dry_run)
     if refused:
         raise typer.Exit(code=1)
 
 
-def _release_package(*, dry_run: bool) -> tuple[str, str | None, str | None]:
-    """Release delivery-history as `crew package release` does: (tag, refusal, release url)."""
+def _release_package(
+    *, dry_run: bool, through: date | None = None
+) -> tuple[str, str | None, str | None]:
+    """Release delivery-history as `crew package release` does: (tag, refusal, release url).
+
+    It stops at a sprint's end: `through`, a closed sprint's last day, or else the
+    last day of the sprint that ended most recently. Sprint 26's package carried
+    Sprint 27, minutes old, and the site opened on it (crew#738).
+    """
     from crew_org.auth import resolve_credentials  # noqa: PLC0415
     from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.flows.rollover import last_end  # noqa: PLC0415
     from crew_org.git_ops import Workspace  # noqa: PLC0415
     from crew_org.packages import release  # noqa: PLC0415
     from crew_org.packages.gather import history_now  # noqa: PLC0415
@@ -2445,13 +2459,17 @@ def _release_package(*, dry_run: bool) -> tuple[str, str | None, str | None]:
     crew_repo = env.get("CREW_REPO", "crew")
     issues = IssueClient(token, owner)
     org = load_org()
+    board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
+    if through is None:
+        through = last_end(board.sprints(), sprint_today(org))
     history, files, manifest = history_now(
-        ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"])),
+        board,
         issues,
         org=org,
         crew_repo=crew_repo,
         events_dir=VAR / "events",
         answers=_sprint_metrics(org),
+        through=through,
     )
     refused = release.refusal(history)
     releases = issues.releases(crew_repo)
@@ -2485,18 +2503,20 @@ def _release_package(*, dry_run: bool) -> tuple[str, str | None, str | None]:
     return tag, None, str(published["html_url"])
 
 
-def _release_after_close(issues: Any, *, sprint: str, crew_repo: str) -> None:
+def _release_after_close(issues: Any, *, sprint: str, crew_repo: str, through: date | None) -> None:
     """Release a package after a sprint's close, and say so on its retro (crew#724).
 
     The site changes when its data does (Goal mqucifer/crew-presentation#10), and
     nothing released one: the first package stayed the only one for two sprints.
+    It carries the sprints through the closed one, `through` its last day, and
+    none after (crew#738).
     Never fails what called it: a release that can't happen is said, and the
     next tick tries again (`release.due`).
     """
     from crew_org.flows.retro import existing_retro  # noqa: PLC0415
 
     try:
-        tag, refused, url = _release_package(dry_run=False)
+        tag, refused, url = _release_package(dry_run=False, through=through)
     except Exception as exc:  # noqa: BLE001
         tag, refused, url = "", f"{type(exc).__name__}: {exc}", None
         console.print(f"[yellow]Package not released:[/] {escape(refused)}")
