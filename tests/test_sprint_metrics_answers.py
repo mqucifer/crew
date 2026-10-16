@@ -188,7 +188,7 @@ def test_without_answers_history_now_builds_as_before(monkeypatch, tmp_path):
         dh.Inputs(
             events=[],
             cards=inputs.cards,
-            sprints=dh.sprints_from(mock.SPRINTS),
+            sprints=[s for s in dh.sprints_from(mock.SPRINTS) if s.start <= date(2026, 9, 25)],
             pulls={"crew": inputs.pulls.get("crew", [])}
             | {r: inputs.pulls.get(r, []) for r in history.repositories},
             crew_repository="crew",
@@ -213,3 +213,22 @@ def test_answers_are_asked_for_the_sprints_started_by_today(monkeypatch, tmp_pat
     history, _, _ = gathered(monkeypatch, tmp_path, answers=answers)
     assert asked == [[FIVE, SIX]]
     assert history.sprint_metrics == part
+
+
+class PlannedAhead(Board):
+    def sprints(self):
+        return [*mock.SPRINTS, {"title": "Sprint 7", "startDate": "2026-09-26", "duration": 1}]
+
+
+def test_a_sprint_the_board_plans_ahead_is_left_out(monkeypatch, tmp_path):
+    """delivery-history-2026-10-13 carried Sprints 25 to 28 on 10-13; crew-presentation
+    built pages and links for them, and its front page redirected to Sprint 28's."""
+    import crew_org.packages.gather as gather
+
+    monkeypatch.setattr(gather, "sprint_today", lambda org: date(2026, 9, 25))
+    monkeypatch.setattr(gather, "datetime", _Frozen)
+    history, _, _ = history_now(
+        PlannedAhead(), Issues(), org=ORG, crew_repo="crew", events_dir=tmp_path
+    )
+    assert [s.name for s in history.sprints] == [FIVE, SIX]
+    assert all(s.start <= date(2026, 9, 25) for s in history.sprints)

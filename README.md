@@ -68,7 +68,7 @@ substitute for using that gate.
 ## Data packages: how projects use them
 
 The crew publishes data about how it works as **packages**, like reports
-(ADR 0021). `delivery-history` is the first: the board's sprints and cards, and
+(ADR 0021). `delivery-history` is the first: the board's sprints that have started, its cards, and
 every move, attempt, model call and merge, up to its date, sprint-metrics'
 answers for each sprint, as it computed them, and the crew's own analysis of
 them: what changed each sprint, what needed attention at its end, and each
