@@ -561,11 +561,14 @@ class FirstAttempt(Implementation):
         ),
     )
 
+    def _paths(self) -> list[str]:
+        paths = [f.path for f in self.new_files] + [t.path for t in self.text_edits]
+        return paths + list(self.deleted_files)
+
     def _touched_only(self, kind) -> bool:
         if self.edits or self.moves:
             return False
-        paths = [f.path for f in self.new_files] + [t.path for t in self.text_edits]
-        paths += list(self.deleted_files)
+        paths = self._paths()
         return bool(paths) and all(kind(p) for p in paths)
 
     @property
@@ -579,9 +582,13 @@ class FirstAttempt(Implementation):
 
         sprint-metrics#260 was refused both ways: with a test for mixing, and
         without one for having none (crew#331). Mixing is allowed now (crew#335);
-        a change of workflows alone still needs no test.
+        a change of workflows alone still needs no test, and nor does one that
+        also documents them: crew-presentation#74's deploy workflow and its README
+        note were neither docs only nor CI only, and were refused for no test.
         """
-        return self._touched_only(is_workflow)
+        return self._touched_only(lambda p: is_workflow(p) or is_doc(p)) and any(
+            is_workflow(p) for p in self._paths()
+        )
 
     @model_validator(mode="after")
     def _has_a_test(self) -> FirstAttempt:

@@ -129,6 +129,12 @@ class Release(Section):
         return self
 
     @property
+    def to_pages(self) -> bool:
+        """Whether a release is a deployment to GitHub Pages, as its target says."""
+        where = (self.where or "").lower()
+        return self.deploys and any(p in where for p in ("github.io", "github pages"))
+
+    @property
     def release_is(self) -> str:
         """What counts as a release. Neither deploying nor publishing, it's the merge."""
         if self.publishes:

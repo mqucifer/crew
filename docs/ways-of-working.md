@@ -917,7 +917,9 @@ the wording here.
    checked not to be admin (`crew auth`). A CI workflow the crew writes is
    refused, before anything is written, if it runs on `pull_request_target`,
    asks to write anything beyond `contents`, `packages`, `id-token` or
-   `attestations`, or reads a secret other than `GITHUB_TOKEN` and those the
+   `attestations` (and `pages`, where the project's record says a release is a
+   deployment to GitHub Pages; Sponsor, 2026-10-15), or reads a secret other than
+   `GITHUB_TOKEN` and those the
    project's record names in `design.secrets` (crew#279). `crew auth` says
    whether the crew's own token can change workflow files at all.
 

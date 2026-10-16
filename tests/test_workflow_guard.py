@@ -151,3 +151,36 @@ def test_each_app_keeps_its_own_permissions(monkeypatch):
     )
     assert auth.app_permissions()["workflows"] == "write"
     assert "workflows" not in auth.app_permissions(auth.REVIEW_APP_PREFIX)
+
+
+PAGES_DEPLOY = """name: deploy
+on:
+  push:
+    branches: [main]
+    paths: [delivery-history.tag]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/deploy-pages@v4
+"""
+
+
+def test_pages_may_be_written_only_where_the_record_deploys_to_pages():
+    """crew-presentation#74: its deploy to GitHub Pages needs `pages: write`."""
+    path = ".github/workflows/deploy.yml"
+    assert "write pages" in " ".join(ci_guard.unsafe(path, PAGES_DEPLOY, set()))
+    writes = ci_guard.RELEASE_WRITES | ci_guard.PAGES_WRITES
+    assert ci_guard.unsafe(path, PAGES_DEPLOY, set(), writes) == []
+
+
+def test_a_record_deploying_to_pages_says_so():
+    from crew_org.project import Release
+
+    assert Release(deploys=True, where="https://mqucifer.github.io/crew-presentation/").to_pages
+    assert not Release(deploys=True, where="a server on the Spark").to_pages
+    assert not Release(deploys=False, publishes=True, where="ghcr.io").to_pages

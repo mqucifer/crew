@@ -49,9 +49,6 @@ SETTINGS = (
     ),
 )
 
-# A release is a deployment to GitHub Pages when its target says so.
-_PAGES = ("github.io", "github pages")
-
 
 @dataclass(frozen=True)
 class Missing:
@@ -179,9 +176,7 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
 
 def _deploy_target(issues: Any, repo: str, record: ProjectRecord) -> list[Missing]:
     """The deploy target, where the crew can read it: GitHub Pages today."""
-    release = record.intent.release
-    where = (release.where or "").lower()
-    if not release.deploys or not any(p in where for p in _PAGES):
+    if not record.intent.release.to_pages:
         return []
     pages = issues.pages(repo)
     if pages is None:

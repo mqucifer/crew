@@ -43,9 +43,12 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
         # shouldn't have (#279): secrets on untrusted code, broad writes, or
         # secrets the design doesn't name.
         allowed = set(record.design.secrets) if record and record.design else set()
+        writes = ci_guard.RELEASE_WRITES
+        if record is not None and record.intent.release.to_pages:
+            writes = writes | ci_guard.PAGES_WRITES
         for path in workflows:
             if path in after and after[path] != before.get(path):
-                reasons += ci_guard.unsafe(path, after[path], allowed)
+                reasons += ci_guard.unsafe(path, after[path], allowed, writes)
         # A workflow may change with the code it runs (Sponsor, 2026-09-29,
         # crew#335). "A CI change travels alone" was so a review saw it for what
         # it was; the deploy review now judges every pull request touching one.

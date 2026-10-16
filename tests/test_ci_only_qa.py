@@ -104,8 +104,22 @@ def test_a_branch_changing_only_workflows_is_ci_only(repo: Path):
     assert ci_only(repo)
 
 
-def test_a_workflow_with_anything_else_is_not(repo: Path):
+def test_a_workflow_with_its_doc_is_ci_only(repo: Path):
+    # crew-presentation#74: a deploy workflow and the README note on how it deploys.
     (repo / ".github/workflows/release.yml").write_text("name: release\n")
+    (repo / "README.md").write_text("# x\nrelease notes\n")
+    commit(repo)
+    assert ci_only(repo)
+
+
+def test_a_workflow_with_code_is_not(repo: Path):
+    (repo / ".github/workflows/release.yml").write_text("name: release\n")
+    (repo / "build.py").write_text("print('x')\n")
+    commit(repo)
+    assert not ci_only(repo)
+
+
+def test_a_doc_alone_is_not(repo: Path):
     (repo / "README.md").write_text("# x\nrelease notes\n")
     commit(repo)
     assert not ci_only(repo)

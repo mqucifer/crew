@@ -75,6 +75,10 @@ def weakened(checks: list[str], before: dict[str, str], after: dict[str, str]) -
 # (packages), trusted publishing (id-token), provenance (attestations). Any
 # other write, or write-all, is refused.
 RELEASE_WRITES = frozenset({"contents", "packages", "id-token", "attestations"})
+# And a deployment to GitHub Pages, where the project's record says its release is
+# one: actions/deploy-pages needs `pages: write`, so crew-presentation's deploy,
+# the one its design asks for, couldn't be written at all (crew-presentation#74).
+PAGES_WRITES = frozenset({"pages"})
 _SECRET = re.compile(r"\$\{\{\s*secrets\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 
 
@@ -98,8 +102,14 @@ def _write_scopes(permissions: Any) -> list[str]:
     return []
 
 
-def unsafe(path: str, text: str, allowed_secrets: set[str]) -> list[str]:
-    """Why this workflow may not be written by the crew, one line per reason."""
+def unsafe(
+    path: str, text: str, allowed_secrets: set[str], writes: frozenset[str] = RELEASE_WRITES
+) -> list[str]:
+    """Why this workflow may not be written by the crew, one line per reason.
+
+    `writes` is what a workflow may write: RELEASE_WRITES, and PAGES_WRITES too for
+    a project whose record says its release is a deployment to GitHub Pages.
+    """
     try:
         doc: Any = yaml.safe_load(text)
     except yaml.YAMLError:
@@ -119,11 +129,11 @@ def unsafe(path: str, text: str, allowed_secrets: set[str]) -> list[str]:
         if isinstance(job, dict)
     ]
     for where, permissions in scopes:
-        broad = [w for w in _write_scopes(permissions) if w not in RELEASE_WRITES]
+        broad = [w for w in _write_scopes(permissions) if w not in writes]
         if broad:
             reasons.append(
                 f"`{path}`: {where} asks to write {', '.join(broad)}. A crew workflow may "
-                f"write only {', '.join(sorted(RELEASE_WRITES))}, and only where it needs to."
+                f"write only {', '.join(sorted(writes))}, and only where it needs to."
             )
     allowed = allowed_secrets | {"GITHUB_TOKEN"}
     unnamed = sorted({s for s in _SECRET.findall(text) if s not in allowed})
