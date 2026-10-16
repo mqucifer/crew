@@ -31,7 +31,11 @@ def history_now(
 ) -> tuple[dh.DeliveryHistory, dict[str, dh.PeriodEvents], dh.Manifest]:
     """delivery-history up to today, by the sprint clock.
 
-    `answers`, given the sprints started by today, returns sprint-metrics' part.
+    Only the sprints started by today: the board plans sprints ahead, and a
+    package that carried them showed pages and links for sprints that hadn't
+    happened, and crew-presentation's front page redirected to one (Sprint 28
+    in delivery-history-2026-10-13). `answers`, given those sprints, returns
+    sprint-metrics' part.
     """
     events: list[tuple[str, dict[str, Any]]] = []
     for path in sorted(events_dir.glob("*.jsonl")):
@@ -52,7 +56,7 @@ def history_now(
         dh.Inputs(
             events=events,
             cards=cards,
-            sprints=sprints,
+            sprints=started,
             pulls=pulls,
             crew_repository=crew_repo,
             repositories=repositories,
