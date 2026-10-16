@@ -109,6 +109,9 @@ is ADR 0022.
   only with sprint-metrics' answer for every sprint it covers (crew#521).
   `crew package build` builds one locally, under `var/packages/`, and
   `crew package release` releases it.
+- **Each sprint's close releases one** (crew#724), whether a tick closes it or
+  `crew sprint close` does, and its retro says which, or why not. A sprint left
+  without one gets it at the next tick.
 
 ## The two gates
 

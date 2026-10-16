@@ -32,6 +32,12 @@ def _last_day(it: dict[str, Any]) -> date:
     return date.fromisoformat(it["startDate"]) + timedelta(days=days - 1)
 
 
+def ended_on(sprints: list[dict[str, Any]], sprint: str | None) -> date | None:
+    """The last day of `sprint`, from all the board's sprints, or None."""
+    found = [it for it in sprints if str(it["title"]) == sprint]
+    return _last_day(found[0]) if found else None
+
+
 def last_ended(sprints: list[dict[str, Any]], today: date) -> str | None:
     """The sprint that ended most recently before `today`, from all the board's sprints.
 

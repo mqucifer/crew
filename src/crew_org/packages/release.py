@@ -88,6 +88,16 @@ def tag_day(tag: str) -> tuple[date, int] | None:
     return date.fromisoformat(found.group(1)), int(found.group(2) or 1)
 
 
+def due(tags: Iterable[str], ended: date) -> bool:
+    """Whether no package has been released since a sprint that ended on `ended` (crew#724).
+
+    A sprint's close releases one. A release that was refused, or a close that
+    stopped before it, leaves the sprint without one, and the next tick releases it.
+    """
+    days = [found[0] for found in (tag_day(t) for t in tags) if found is not None]
+    return not days or max(days) <= ended
+
+
 def next_tag(day: date, existing: Iterable[str]) -> str:
     """The tag for a release on `day`: `-2` and on for a second on one day."""
     taken = set(existing)

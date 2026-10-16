@@ -282,29 +282,47 @@ def _roll_over(
     """Close `sprint` if its time is up and nothing has closed it (ADR 0028).
 
     Never fails a tick: a close that can't finish is said, and the next tick's
-    start tries again, since the sprint still has no retro.
+    start tries again, since the sprint still has no retro. Once it's closed, a
+    package is released for it, and each tick tries until one is (crew#724).
     """
     from crew_org.flows.rollover import due  # noqa: PLC0415
 
     crew_repo = env.get("CREW_REPO", "crew")
     try:
-        if not due(board, issues, sprint=sprint, today=sprint_today(org), crew_repo=crew_repo):
-            return
-        console.print(f"\n[bold]{escape(sprint or '')} is over: closing it.[/]")
-        _close_and_report(
-            board,
-            issues,
-            org=org,
-            sprint=sprint or "",
-            owner=owner,
-            repo=env.get("PILOT_REPO", "crew"),
-            crew_repo=crew_repo,
-        )
+        if due(board, issues, sprint=sprint, today=sprint_today(org), crew_repo=crew_repo):
+            console.print(f"\n[bold]{escape(sprint or '')} is over: closing it.[/]")
+            _close_and_report(
+                board,
+                issues,
+                org=org,
+                sprint=sprint or "",
+                owner=owner,
+                repo=env.get("PILOT_REPO", "crew"),
+                crew_repo=crew_repo,
+            )
     except Exception as exc:  # noqa: BLE001
         console.print(
             f"[yellow]{escape(sprint or '')} not closed:[/] {escape(str(exc))}. "
             "The next tick tries again."
         )
+        return
+    # A package for every sprint once it has closed (crew#724): released here, and
+    # again at each tick's start until one is out after the sprint's last day.
+    try:
+        from crew_org.flows.retro import existing_retro  # noqa: PLC0415
+        from crew_org.flows.rollover import ended_on  # noqa: PLC0415
+        from crew_org.packages import release  # noqa: PLC0415
+
+        ended = ended_on(board.sprints(), sprint)
+        if (
+            ended is not None
+            and existing_retro(issues, crew_repo, sprint or "") is not None
+            and release.due([str(r["tag_name"]) for r in issues.releases(crew_repo)], ended)
+        ):
+            console.print(f"\n[bold]Releasing the package for {escape(sprint or '')}.[/]")
+            _release_after_close(issues, sprint=sprint or "", crew_repo=crew_repo)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]Package not released:[/] {escape(str(exc))}")
 
 
 def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
@@ -2183,9 +2201,10 @@ def sprint_close(
         )
         raise typer.Exit(code=2)
 
+    issues = IssueClient(token, owner)
     _close_and_report(
         board,
-        IssueClient(token, owner),
+        issues,
         org=org,
         sprint=sprint,
         owner=owner,
@@ -2193,6 +2212,7 @@ def sprint_close(
         crew_repo=crew_repo,
         merge=not no_merge,
     )
+    _release_after_close(issues, sprint=sprint, crew_repo=crew_repo)
 
 
 def _close_and_report(
@@ -2402,7 +2422,15 @@ def package_release(
     consumer gets a pull request changing the one line that names the tag
     (ADR 0021). Old releases keep their tags; archives beyond the retention are
     pruned. Refused unless sprint-metrics answered for every sprint it covers (crew#521).
+    A sprint's close releases one by itself (crew#724).
     """
+    _, refused, _ = _release_package(dry_run=dry_run)
+    if refused:
+        raise typer.Exit(code=1)
+
+
+def _release_package(*, dry_run: bool) -> tuple[str, str | None, str | None]:
+    """Release delivery-history as `crew package release` does: (tag, refusal, release url)."""
     from crew_org.auth import resolve_credentials  # noqa: PLC0415
     from crew_org.config import load_env  # noqa: PLC0415
     from crew_org.git_ops import Workspace  # noqa: PLC0415
@@ -2443,9 +2471,7 @@ def package_release(
         console.print(f"[dim]would prune the archives of: {', '.join(prunable) or 'none'}[/]")
         for consumer in release.CONSUMERS:
             console.print(f"[dim]would propose {tag} to {consumer} ({release.TAG_FILE})[/]")
-        if refused:
-            raise typer.Exit(code=1)
-        return
+        return tag, refused, None
     published = release.publish(issues, repo=crew_repo, tag=tag, archive=archive, manifest=manifest)
     console.print(f"[green]released[/] {published['html_url']}")
     for pruned in release.prune(issues, crew_repo):
@@ -2456,6 +2482,37 @@ def package_release(
             ws, issues, consumer=consumer, tag=tag, url=str(published["html_url"])
         )
         console.print(f"{consumer}: {escape(outcome)}")
+    return tag, None, str(published["html_url"])
+
+
+def _release_after_close(issues: Any, *, sprint: str, crew_repo: str) -> None:
+    """Release a package after a sprint's close, and say so on its retro (crew#724).
+
+    The site changes when its data does (Goal mqucifer/crew-presentation#10), and
+    nothing released one: the first package stayed the only one for two sprints.
+    Never fails what called it: a release that can't happen is said, and the
+    next tick tries again (`release.due`).
+    """
+    from crew_org.flows.retro import existing_retro  # noqa: PLC0415
+
+    try:
+        tag, refused, url = _release_package(dry_run=False)
+    except Exception as exc:  # noqa: BLE001
+        tag, refused, url = "", f"{type(exc).__name__}: {exc}", None
+        console.print(f"[yellow]Package not released:[/] {escape(refused)}")
+    body = (
+        f"**The package for this sprint:** `{tag}` is released ({url}), and proposed to "
+        "its consumers as a pull request changing their tag file (crew#724)."
+        if url
+        else f"**No package released at this close:** {refused}. The next tick tries again "
+        "(crew#724)."
+    )
+    try:
+        number = existing_retro(issues, crew_repo, sprint)
+        if number is not None:
+            issues.comment(crew_repo, number, body)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]Retro not told of the release:[/] {escape(str(exc))}")
 
 
 @package_app.command("push")
