@@ -205,6 +205,7 @@ def propose(
     """
     count = len(numbered(panel))
     feedback = ""
+    refusals: list[str] = []
     for attempt in range(ATTEMPTS):
         try:
             settlement: Settlement = attributed(settle, card=card, repo=repo, attempt=attempt + 1)(
@@ -217,17 +218,37 @@ def propose(
             return settlement
         except (ValidationError, Unsettled, ValueError) as exc:
             reraise_if_down(exc)
-            feedback = str(exc)[:600]
+            reason = str(exc)[:600]
+            refusals.append(reason)
+            feedback = every_refusal(refusals)
             if sink is not None:
                 sink.note(
                     EventKind.NOTE,
                     f"#{card} conclusion refused, attempt {attempt + 1} of {ATTEMPTS}: "
-                    f"{feedback[:160]}",
+                    f"{reason[:160]}",
                     card=card,
                     attempt=attempt + 1,
-                    reason=feedback,
+                    reason=reason,
                 )
-    raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {feedback}")
+    raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {refusals[-1]}")
+
+
+def every_refusal(refusals: list[str]) -> str:
+    """The latest refusal, then the earlier ones, each once.
+
+    Shown only the latest, a retry fixed it by undoing the one before: an own call
+    refused as the Architect's became an open question, cut off at its length, then
+    an own call again, until the attempts ran out (crew#742).
+    """
+    latest, *earlier = dict.fromkeys(reversed(refusals))
+    if not earlier:
+        return latest
+    return (
+        latest
+        + "\n\nRefused earlier in this answer too. Each still applies, so fix this "
+        + "without bringing one back:\n"
+        + "\n".join(f"- {r}" for r in earlier)
+    )
 
 
 def _write(
@@ -370,8 +391,9 @@ def propose_design(
     repo: str,
     sink: EventSink | None = None,
 ) -> DesignSettlement:
-    """The Architect's answers, asked for again with the reason when refused."""
+    """The Architect's answers, asked for again with every reason when refused."""
     feedback = ""
+    refusals: list[str] = []
     for attempt in range(ATTEMPTS):
         try:
             answer: DesignSettlement = attributed(
@@ -382,17 +404,19 @@ def propose_design(
             return answer
         except (ValidationError, Unsettled, ValueError) as exc:
             reraise_if_down(exc)
-            feedback = str(exc)[:600]
+            reason = str(exc)[:600]
+            refusals.append(reason)
+            feedback = every_refusal(refusals)
             if sink is not None:
                 sink.note(
                     EventKind.NOTE,
                     f"#{card} design questions refused, attempt {attempt + 1} of {ATTEMPTS}: "
-                    f"{feedback[:160]}",
+                    f"{reason[:160]}",
                     card=card,
                     attempt=attempt + 1,
-                    reason=feedback,
+                    reason=reason,
                 )
-    raise SettleFailed(f"the Architect's answers were refused {ATTEMPTS} times: {feedback}")
+    raise SettleFailed(f"the Architect's answers were refused {ATTEMPTS} times: {refusals[-1]}")
 
 
 def settle_design_questions(
