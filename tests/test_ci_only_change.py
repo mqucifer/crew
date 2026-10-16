@@ -61,3 +61,19 @@ def test_the_developer_is_told_how_a_workflow_change_is_proven():
     assert "judged by review, and proven when it runs" in STANDING_INSTRUCTIONS
     # sprint-metrics#261 named "CI run of release.yml …" as an existing test.
     assert "Leave `criteria_tests` and `proven_by_existing` empty" in STANDING_INSTRUCTIONS
+
+
+DEPLOY_NOTE = TextEdit(path="README.md", find="## How it works\n", replace="## How it deploys\n")
+
+
+@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone])
+def test_a_workflow_with_its_doc_needs_no_test(answer):
+    # crew-presentation#74: deploy.yml and a README note on how the site deploys were
+    # neither docs only nor CI only, and were refused for having no test.
+    assert answer(
+        criteria_tests=[], summary="Deploy", new_files=[RELEASE], text_edits=[DEPLOY_NOTE]
+    ).ci_only
+
+
+def test_a_doc_alone_is_docs_not_ci():
+    assert not FirstAttempt(criteria_tests=[], summary="Docs", text_edits=[DEPLOY_NOTE]).ci_only

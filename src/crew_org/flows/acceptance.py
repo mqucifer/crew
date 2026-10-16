@@ -523,11 +523,20 @@ def _with_unguarded(checks: str, worktree: Path) -> str:
 
 
 def ci_only(worktree: Path) -> bool:
-    """The branch changes CI workflows and nothing else (crew#333)."""
+    """The branch changes CI workflows, and at most the docs that describe them (crew#333).
+
+    A deploy workflow comes with a README note on how the site deploys
+    (crew-presentation#74); the Code Reviewer reads both.
+    """
+    from crew_org.crews.delivery_crew import is_doc  # noqa: PLC0415
     from crew_org.tools.ci_guard import is_workflow  # noqa: PLC0415
 
     changed = changed_paths(worktree)
-    return bool(changed) and all(is_workflow(p) for p in changed)
+    return (
+        bool(changed)
+        and all(is_workflow(p) or is_doc(p) for p in changed)
+        and any(is_workflow(p) for p in changed)
+    )
 
 
 def collect_docs(worktree: Path) -> str:
@@ -667,7 +676,8 @@ def run_qa(
                     number=number,
                     body=f"{QA_MARKER}\n{qa_marker(revision)}\n"
                     "## QA — not applicable: a CI-only change\n\n"
-                    "This pull request changes CI workflows and nothing else. What a workflow "
+                    "This pull request changes CI workflows, and at most the docs that "
+                    "describe them, which the Code Reviewer read. What a workflow "
                     "does can only be observed when it runs, mostly on `main`, so it is judged "
                     "by the Code Reviewer and proven by its own run (constitution §7.1). "
                     "A check that fails on the pull request or in the merge queue still sends "
