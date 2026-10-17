@@ -14,7 +14,7 @@ import subprocess
 import textwrap
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from crew_org.crews.delivery_crew import FileWrite, TextEdit
 from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
@@ -93,17 +93,27 @@ class CheckResult:
         return report
 
 
-def apply_implementation(worktree: Path, implementation) -> list[str]:
+def apply_implementation(
+    worktree: Path, implementation, *, loose: list[dict[str, Any]] | None = None
+) -> list[str]:
     """Write new files and apply edits to existing ones.
 
     New files and edits are separate on purpose. A new file is written whole;
     an existing file is only ever changed by name, so nothing the model did not
-    name can be touched.
+    name can be touched. A quote matched only loosely is added to `loose`.
     """
     from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits  # noqa: PLC0415
 
     root = worktree.resolve()
     written = apply(worktree, implementation.new_files)
+    # A quote is of the file as the Developer was shown it, so changes by quoting
+    # come before anything else changes it. crew-presentation#73 quoted its whole
+    # placeholder and added definitions by name, and the adds, landing before its
+    # `__main__` block, split the quote (crew#734). Quoted deletions come last,
+    # where one a named edit already made is done.
+    changes = [t for t in implementation.text_edits if t.replace]
+    deletions = [t for t in implementation.text_edits if not t.replace]
+    written += apply_text_edits(worktree, changes, loose=loose)
     # Moves before edits: an edit to the new module can then address what moved in.
     moves = getattr(implementation, "moves", [])
     if moves:
@@ -127,7 +137,7 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
     # named delete already removed is already done (sprint-metrics#125).
     before = {
         t.path: (root / t.path).read_text(encoding="utf-8")
-        for t in implementation.text_edits
+        for t in deletions
         if (root / t.path).is_file()
     }
     for path, edits in by_path.items():
@@ -142,7 +152,7 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
 
-    written += apply_text_edits(worktree, implementation.text_edits, before=before)
+    written += apply_text_edits(worktree, deletions, before=before, loose=loose)
     # Retiring a test removes it: sprint-metrics#132 named three tests as
     # retired and sent no delete for them, twice, and the one still importing
     # the deleted module was one of them. What's retired is gone.
@@ -180,7 +190,11 @@ def _defines(path: Path, name: str) -> bool:
 
 
 def apply_text_edits(
-    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+    worktree: Path,
+    text_edits: list,
+    *,
+    before: dict[str, str] | None = None,
+    loose: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """Apply quoted replacements to existing non-Python files (#140).
 
@@ -189,7 +203,7 @@ def apply_text_edits(
     occur exactly once: zero means it was not copied from the file, and more
     than one means the edit doesn't say which it meant.
     """
-    changed = plan_text_edits(worktree, text_edits, before=before)
+    changed = plan_text_edits(worktree, text_edits, before=before, loose=loose)
     root = worktree.resolve()
     for path, text in changed.items():
         (root / path).write_text(text, encoding="utf-8")
@@ -197,13 +211,19 @@ def apply_text_edits(
 
 
 def plan_text_edits(
-    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+    worktree: Path,
+    text_edits: list,
+    *,
+    before: dict[str, str] | None = None,
+    loose: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
     """What each file quoted by `text_edits` would hold afterwards. Writes nothing.
 
     Raises `EditError` for a quote that isn't in the file, or occurs twice.
     `before` is each file as it was before the named edits: a deletion quoting
     text that was there and that they already removed is skipped, not failed.
+    A quote matched only loosely (`_loose_match`) is added to `loose`, for the
+    attempt's record.
     """
     before = before or {}
     from crew_org.flows.skeleton import marked  # noqa: PLC0415
@@ -227,6 +247,16 @@ def plan_text_edits(
             if marked(changed[item.path]):
                 placeholders.add(item.path)
         text = changed[item.path]
+        found = text.count(item.find) if item.find else 0
+        removed = not item.replace and item.find in before.get(item.path, "")
+        if item.find and found == 0 and not removed:
+            matched = _loose_match(text, item)
+            if matched is not None:
+                item, how = matched
+                found = 1
+                line = text.count("\n", 0, text.index(item.find)) + 1
+                if loose is not None:
+                    loose.append({"fallback": how, "path": item.path, "line": line})
         if item.path.endswith(".py"):
             try:
                 _outside_definitions(item, text)
@@ -242,7 +272,6 @@ def plan_text_edits(
             joiner = "" if not text or text.endswith("\n") else "\n"
             changed[item.path] = text + joiner + item.replace
             continue
-        found = text.count(item.find)
         if found == 0 and not item.replace and item.find in before.get(item.path, ""):
             continue  # removing what a named edit already removed
         if found == 0:
@@ -273,6 +302,80 @@ def plan_text_edits(
                     f"on line {exc.lineno}"
                 ) from None
     return changed
+
+
+def _loose_match(text: str, item: TextEdit) -> tuple[TextEdit, str] | None:
+    """The quote as the file has it, when only a known slip keeps it from matching.
+
+    Each fallback is taken only when it finds exactly one place, and the caller
+    records which one matched, so a looser match is never silent (crew#734):
+
+    - **quote.final_newline:** a block always ends with a newline (ADR 0026), so a quote
+      of part of a line came back with one the file doesn't have there.
+      crew-presentation stories 79 and 120 and sprint-metrics stories 589 and 657
+      were refused for it.
+    - **quote.indent:** the quote's lines, all at one other indent, in spaces.
+      sprint-metrics#604 quoted a schema's lines eight spaces deeper than they
+      are. The replacement moves by the same amount, its own indentation kept.
+    """
+    if item.find.endswith("\n") and text.count(item.find[:-1]) == 1:
+        replace = item.replace[:-1] if item.replace.endswith("\n") else item.replace
+        trimmed = item.model_copy(update={"find": item.find[:-1], "replace": replace})
+        return trimmed, "quote.final_newline"
+    shifted = _shifted(text, item.find, item.replace)
+    if shifted is not None:
+        find, replace = shifted
+        return item.model_copy(update={"find": find, "replace": replace}), "quote.indent"
+    return None
+
+
+def _shifted(text: str, find: str, replace: str) -> tuple[str, str] | None:
+    """`find` and `replace` moved to the one indent where the file has `find`'s lines."""
+    if "\t" in find or "\t" in replace:
+        return None
+    trailing = find.endswith("\n")
+    wanted = find[:-1].split("\n") if trailing else find.split("\n")
+    if not any(line.strip() for line in wanted):
+        return None
+    lines = text.split("\n")
+    found: list[tuple[int, int]] = []
+    for start in range(len(lines) - len(wanted) + 1):
+        shift = _one_shift(lines[start : start + len(wanted)], wanted)
+        if shift:
+            found.append((start, shift))
+    if len(found) != 1:
+        return None
+    start, shift = found[0]
+    moved = []
+    for line in replace.split("\n"):
+        if not line.strip():
+            moved.append(line)
+        elif shift > 0:
+            moved.append(" " * shift + line)
+        elif line.startswith(" " * -shift):
+            moved.append(line[-shift:])
+        else:
+            return None  # its own indentation can't be kept
+    window = "\n".join(lines[start : start + len(wanted)]) + ("\n" if trailing else "")
+    return window, "\n".join(moved)
+
+
+def _one_shift(lines: list[str], wanted: list[str]) -> int:
+    """How many spaces `lines` sit deeper than `wanted`, if every line agrees. 0 if not."""
+    shift: int | None = None
+    for line, want in zip(lines, wanted, strict=True):
+        if not want.strip():
+            if line.strip():
+                return 0
+            continue
+        if "\t" in line or line.lstrip(" ") != want.lstrip(" "):
+            return 0
+        this = (len(line) - len(line.lstrip(" "))) - (len(want) - len(want.lstrip(" ")))
+        if shift is None:
+            shift = this
+        elif this != shift:
+            return 0
+    return shift or 0
 
 
 def _outside_definitions(item, text: str) -> None:

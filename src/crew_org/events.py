@@ -86,6 +86,9 @@ class EventKind(StrEnum):
     # were notes with no role or card, matched to their run by time (discussion 553).
     FILES_SHOWN = "files.shown"
     FILES_ASKED = "files.asked"
+    # A quote or a block name matched by a fallback the strict rule would refuse
+    # (crew#734): which one, and where, so each is counted and reviewed.
+    EDIT_LOOSE_MATCH = "edit.loose_match"
 
     # A crew issue and the cards it's about (crew#449, discussion 552): the link
     # from a run's trouble to the issue it led to, as a field, whoever filed it.

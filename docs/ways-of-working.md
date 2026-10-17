@@ -589,7 +589,12 @@ definitions to name. It is changed by quoting: the Developer copies the exact
 text to change, which must occur in the file once, and gives what replaces it
 (crew#140). The same property holds as for named edits: nothing unquoted is
 reproduced, so nothing unquoted can be lost. A quote that doesn't match, or
-matches twice, is refused and no file is changed. In a Python file, only the
+matches twice, is refused and no file is changed. Two slips are matched anyway,
+when that leaves exactly one place: a quote of part of a line with a block's final
+newline, and a quote's lines all at one other indent, in spaces, whose replacement
+moves by the same amount. Each is recorded as an `edit.loose_match` event, so review
+sees it (crew#734). Changes by quoting are applied before named edits, since a quote
+is of the file as shown; quoted deletions come after them. In a Python file, only the
 lines outside any function or class can be changed this way: its imports, an
 `if __name__` block, its docstring (crew#204). They have no name to address,
 and a refactor has to repoint and tidy them. A quote reaching into a

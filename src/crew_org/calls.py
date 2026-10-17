@@ -119,10 +119,17 @@ def split_blocks(text: str) -> tuple[str, dict[str, str]]:
     return head, blocks
 
 
-def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> Any:
+def join_blocks(
+    data: Any,
+    blocks: dict[str, str],
+    fields: frozenset[str],
+    loose: list[dict[str, Any]] | None = None,
+) -> Any:
     """The answer with each block named in a code field put in its place (ADR 0026).
 
     A name no block answers, or a block no field names, is refused with that reason.
+    A field holding exactly the name of a block written under a name other than
+    b1, b2 and so on takes that block, and is added to `loose` (crew#734).
     """
     used: set[str] = set()
 
@@ -131,6 +138,13 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
             out = {}
             for key, item in value.items():
                 named = _block_named(item) if key in fields else None
+                bare = str(item).strip().strip("@`'\" ").strip() if key in fields else ""
+                if named is None and bare in blocks:
+                    # sprint-metrics#626 wrote blocks f1 to f8, and crew-presentation#73
+                    # b_url_for: each name went in as the code, and was refused.
+                    named = bare
+                    if loose is not None:
+                        loose.append({"fallback": "block.name", "field": key, "name": bare})
                 if named is not None and named in blocks:
                     used.add(named)
                     out[key] = blocks[named]
@@ -592,6 +606,7 @@ def ask[Answer: BaseModel](
     empties = 0
     refused: list[str] = []
     for attempt in range(1, attempts + 1):
+        loose: list[dict[str, Any]] = []
         body = {
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
@@ -641,7 +656,7 @@ def ask[Answer: BaseModel](
                     data = json.loads(head)
                 except json.JSONDecodeError as exc:
                     raise ValueError(f"the JSON before the blocks isn't valid JSON: {exc}") from exc
-                found = answer.model_validate(join_blocks(data, written, blocks))
+                found = answer.model_validate(join_blocks(data, written, blocks, loose))
             else:
                 found = answer.model_validate_json(text)
             # Before the step's own rules: a value cut at a double quote reads as
@@ -649,6 +664,14 @@ def ask[Answer: BaseModel](
             check_not_cut_at_a_quote(found)
             if check is not None:
                 check(found)
+            for match in loose:
+                record(
+                    EventKind.EDIT_LOOSE_MATCH,
+                    f"{spec['role']}: block {match['name']!r} named in `{match['field']}`",
+                    role=spec["role"],
+                    **match,
+                    **detail,
+                )
             return found
         except (ValidationError, ValueError) as exc:
             reason = _reason(exc)
