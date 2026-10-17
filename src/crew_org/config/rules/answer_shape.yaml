@@ -9,6 +9,7 @@ call.join_blocks:
   - ADR 0025
   - ADR 0026
   - crew#583
+  - crew#734
   - sprint-metrics#529
 call.schema:
   origin:

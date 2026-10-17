@@ -30,6 +30,32 @@ form.TextEdit.changes_something:
   owner: Developer
 guard.overwrite.overwrites_existing:
   owner: Developer
+repair.fallback.block.name:
+repair.fallback.quote.final_newline:
+  origin:
+  - ADR 0026
+  - crew#204
+  - crew#734
+  - sprint-metrics#133
+  - sprint-metrics#604
+repair.fallback.quote.indent:
+  origin:
+  - ADR 0026
+  - crew#204
+  - crew#734
+  - sprint-metrics#133
+  - sprint-metrics#604
+repair.unsafe_fix.B905:
+  origin:
+  - crew#758
+  - sprint-metrics#453
+repair.unsafe_fix.SIM102:
+  origin:
+  - crew#758
+  - sprint-metrics#563
+repair.workspace.autofix:
+  origin:
+  - crew#758
 told.delivery_crew.configuration_may_change_when_the_story:
   guidance: true
   owner: Developer

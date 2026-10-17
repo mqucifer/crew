@@ -454,6 +454,17 @@ whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
 
+**Before the checks, the project's own fixers run, and the attempt answers for
+what they change** (crew#758). The design's `autofix` commands run as named; a
+design that names none gets ruff's safe fixes (`--fix-only --no-unsafe-fixes`)
+and its formatter. A change they make to a file the attempt didn't touch is
+undone, and its finding left for the checks to report. The unsafe fixes listed
+in `workspace.UNSAFE_FIXES`, each with why it's allowed, are applied too, but only
+for findings the project's own lint reports in files the attempt touched. Every
+other unsafe fix stays the Developer's (the Sponsor, on crew#758). What changed
+is an `autofix.applied` event on the attempt, and the pull request lists the files
+and each unsafe fix, so review and QA check them with the rest of the diff.
+
 A Python part gets the coverage map in any image: pytest-cov is installed into the
 worktree's home, and the suite measured with the project's own `python` (crew#690,
 ADR 0030). Verified in the Playwright Python image: setup's `pip install`, then
@@ -575,7 +586,11 @@ source, and the applier splices it in. Nothing it does not name is reproduced,
 so nothing it does not name can be damaged.
 
 Operations are `replace`, `add`, `add_method`, `add_import` and `delete`.
-Deleting is something to choose, not something that happens by omission.
+Deleting is something to choose, not something that happens by omission. An
+`add` of a name already there is refused, unless what's there is exactly what it
+sends, which is already done. A criterion's test is the exception: one the file
+defines by the time it's added, whether it was merged or an earlier edit in the
+answer wrote it, is replaced (crew#735).
 
 **A first attempt starts with its tests** (crew#172). Before any code, it lists
 each acceptance criterion with the test that proves it, written in full, and the
@@ -589,13 +604,20 @@ definitions to name. It is changed by quoting: the Developer copies the exact
 text to change, which must occur in the file once, and gives what replaces it
 (crew#140). The same property holds as for named edits: nothing unquoted is
 reproduced, so nothing unquoted can be lost. A quote that doesn't match, or
-matches twice, is refused and no file is changed. In a Python file, only the
+matches twice, is refused and no file is changed. Two slips are matched anyway,
+when that leaves exactly one place: a quote of part of a line with a block's final
+newline, and a quote's lines all at one other indent, in spaces, whose replacement
+moves by the same amount. Each is recorded as an `edit.loose_match` event, so review
+sees it (crew#734). Changes by quoting are applied before named edits, since a quote
+is of the file as shown; quoted deletions come after them. In a Python file, only the
 lines outside any function or class can be changed this way: its imports, an
 `if __name__` block, its docstring (crew#204). They have no name to address,
 and a refactor has to repoint and tidy them. A quote reaching into a
 definition, or a replacement that brings one in, is refused, because the rules
 above read definitions by name. So is a change that leaves the file invalid
-Python.
+Python. A walking skeleton's placeholder is the exception to the first rule: the
+story replacing it rewrites it (ADR 0030), so its quotes may bring in or reach
+into definitions, as long as the `crew:placeholder` marker goes (crew#731).
 
 This replaced whole-file rewriting, which failed for a reason worth recording.
 Returning a whole file makes every story a transcription exercise: regenerate

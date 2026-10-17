@@ -61,6 +61,7 @@ GROUPS = {
     "check": "A flow's own check sends the answer back",
     "guard": "A guard on a change sends it back",
     "edit": "An edit can't be applied, and why is sent back",
+    "repair": "The crew changes the work itself, and records it",
     "told": "Told, and not checked by anything above",
 }
 
@@ -1218,6 +1219,110 @@ def _changed_answers() -> list[Entry]:
     return out
 
 
+def _repairs() -> list[Entry]:
+    """What the crew changes in the work by itself, by the names the code gives it.
+
+    Each is on the attempt's record, and none is refused or sent back:
+    - a project's fixers, `AUTOFIX`, with what they change outside the attempt's
+      files undone (crew#758);
+    - each allowed unsafe fix, a key of a `*_FIXES` dict, with why it may run;
+    - each looser match an edit or a block name is taken by, recorded as its
+      `fallback` (crew#734).
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        parents = _parents(source.tree)
+        for node in source.tree.body:
+            if not (isinstance(node, ast.Assign | ast.AnnAssign)):
+                continue
+            target = node.targets[0] if isinstance(node, ast.Assign) else node.target
+            if not isinstance(target, ast.Name) or node.value is None:
+                continue
+            comments = _comments_above(source.lines, node.lineno)
+            where = f"{source.path}:{target.id}"
+            if target.id == "AUTOFIX":
+                rule_id = f"repair.{_short(source)}.autofix"
+                out[rule_id] = Entry(
+                    rule_id,
+                    "repair",
+                    where,
+                    _first_sentence(comments) or "the project's fixers run before the checks",
+                    checked={where},
+                    origin=refs(comments + " " + _comments_in(source.lines, node)),
+                    repairs=True,
+                    text=comments,
+                )
+            elif target.id.endswith("_FIXES") and isinstance(node.value, ast.Dict):
+                for key, value in zip(node.value.keys, node.value.values, strict=False):
+                    if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                        continue
+                    why = _template(value, source.tree)
+                    above = _comments_above(source.lines, key.lineno)
+                    rule_id = f"repair.unsafe_fix.{key.value}"
+                    out[rule_id] = Entry(
+                        rule_id,
+                        "repair",
+                        where,
+                        f"{key.value}: {_first_sentence(why)}",
+                        checked={where},
+                        origin=refs(comments + " " + above),
+                        repairs=True,
+                        text=why + " " + comments,
+                    )
+        for found in ast.walk(source.tree):
+            if not isinstance(found, ast.Dict):
+                continue
+            for key, value in zip(found.keys, found.values, strict=False):
+                if not (isinstance(key, ast.Constant) and key.value == "fallback"):
+                    continue
+                fn = _enclosing(found, parents, ast.FunctionDef)
+                for name in _fallback_names(value, fn, source):
+                    rule_id = f"repair.fallback.{name}"
+                    where = f"{source.path}:{fn.name if fn else '<module>'}"
+                    doc = ""
+                    if fn is not None:
+                        called = [f for c in _calls_in(fn) if (f := _helper(c, source.tree))]
+                        doc = " ".join(ast.get_docstring(f[0]) or "" for f in called)
+                    out.setdefault(
+                        rule_id,
+                        Entry(
+                            rule_id,
+                            "repair",
+                            where,
+                            f"an edit or a block taken by the looser match `{name}`",
+                            checked={where},
+                            origin=refs(
+                                _comments_above(source.lines, found.lineno)
+                                + " "
+                                + (ast.get_docstring(fn) or "" if fn else "")
+                                + " "
+                                + doc
+                            ),
+                            repairs=True,
+                            text=name,
+                        ),
+                    )
+    return list(out.values())
+
+
+def _fallback_names(value: ast.expr, fn: Any, source: Source) -> list[str]:
+    """The names a `fallback` is recorded as: given there, or returned by what it calls."""
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return [value.value]
+    if fn is None:
+        return []
+    names = []
+    for call in _calls_in(fn):
+        helper = _helper(call, source.tree)
+        if helper is None:
+            continue
+        for ret in (n for n in ast.walk(helper[0]) if isinstance(n, ast.Return)):
+            last = ret.value.elts[-1] if isinstance(ret.value, ast.Tuple) else None
+            if isinstance(last, ast.Constant) and isinstance(last.value, str):
+                names.append(last.value)
+    return names
+
+
 def _guard_rules() -> list[Entry]:
     """Each place delivery records a failure class for a change and sends a reason back.
 
@@ -1606,6 +1711,7 @@ def entries() -> tuple[Entry, ...]:
         + _call_rules()
         + _fed_back_rules()
         + _changed_answers()
+        + _repairs()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
@@ -1793,8 +1899,9 @@ PLACEMENT: list[tuple[str, str, Any]] = [
     ("answer_shape", "the call layer's refusals, for every form", lambda e: e.group == "call"),
     (
         "edits",
-        "an edit that can't be applied, or rewrites a file whole",
-        lambda e: e.group == "edit" or e.failure_class in ("EDIT", "OVERWRITE"),
+        "an edit that can't be applied, or rewrites a file whole; what the crew changes "
+        "in the work by itself",
+        lambda e: e.group in ("edit", "repair") or e.failure_class in ("EDIT", "OVERWRITE"),
     ),
     ("guards", "a path outside the repository or inside .git", lambda e: "repository" in _name(e)),
     (

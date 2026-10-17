@@ -159,7 +159,7 @@ def test_a_rule_that_repairs_silently_is_marked_in_the_snapshot():
     assert "form.Settlement.stripped" in repairs
     assert "form.TextEdit.changes_something" not in repairs
     assert "check.acceptance.held_to_what_it_read" in repairs, "a flow changing the answer"
-    assert all(rows[r]["group"] in ("form", "check") for r in repairs)
+    assert all(rows[r]["group"] in ("form", "check", "repair") for r in repairs)
 
 
 def test_each_category_is_summarised_and_the_unplaced_are_listed():

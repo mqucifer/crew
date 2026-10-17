@@ -143,7 +143,8 @@ def test_a_repository_without_a_record_is_onboarded_first(tmp_path):
     found = check(tmp_path, GitHub(), None)
     assert found.level == 0
     assert "has no `.crew/project.yaml`" in whats(found)
-    assert "crew onboard site" in whats(found)
+    assert "`crew onboard site --skeleton`" in whats(found)
+    assert "an alpha's builder writes the intent agreed with the Sponsor" in whats(found)
 
 
 def test_a_record_missing_a_required_answer_names_it(tmp_path):
@@ -170,8 +171,9 @@ def test_each_setting_the_crew_relies_on_is_named_with_why(tmp_path):
 
 def test_the_board_workflow_is_the_crew_s_to_add(tmp_path):
     found = check(tmp_path, GitHub(files={"uv.lock"}))
-    assert "no `.github/workflows/board.yml`; `crew onboard site` adds it (the crew)" in whats(
-        found
+    assert (
+        "no `.github/workflows/board.yml`; copy it from `mqucifer/project-template` (the crew)"
+        in whats(found)
     )
 
 
@@ -179,8 +181,8 @@ def test_a_project_with_no_ci_gets_the_template_s(tmp_path):
     """crew-presentation had none: no story wrote it, so CI never ran (crew#690)."""
     found = check(tmp_path, GitHub(files={".github/workflows/board.yml", "uv.lock"}))
     assert (
-        "no CI on pull requests; `crew onboard site` adds the template's `checks.yml` (the crew)"
-        in whats(found)
+        "no CI on pull requests; copy the template's `checks.yml` from "
+        "`mqucifer/project-template` (the crew)" in whats(found)
     )
 
 

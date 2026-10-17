@@ -17,6 +17,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 31 |
 | A guard on a change sends it back | 5 |
 | An edit can't be applied, and why is sent back | 7 |
+| The crew changes the work itself, and records it | 6 |
 | Told, and not checked by anything above | 222 |
 
 ## Categories
@@ -29,7 +30,7 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 35 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:developer`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `delivery_crew:implement_story`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:propose_epics`, `refinement_crew:propose_missing_epics`, `refinement_crew:_delivered_block`, `refinement_crew:split_epic`, `settle_crew` | 69 |
-| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 24 |
+| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 30 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 66 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 46 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `refinement_crew:BacklogOrder`, `refinement_crew:Hold`, `refinement_crew:order_backlog`, `review_crew` | 65 |
@@ -152,7 +153,7 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `call.check_not_cut_at_a_quote`<br>Refuse an answer with a field cut short, saying which and why. | answer_shape | `src/crew_org/cut_text.py:check_not_cut_at_a_quote` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | — | src/crew_org/cut_text.py:check_not_cut_at_a_quote | crew#618<br>sprint-metrics#555 |
-| `call.join_blocks`<br>The answer with each block named in a code field put in its place (ADR 0026). | answer_shape | `src/crew_org/calls.py:join_blocks` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | §16.1 (both cite crew#583; given to no role) | src/crew_org/calls.py:join_blocks | ADR 0024<br>ADR 0025<br>ADR 0026<br>crew#583<br>sprint-metrics#529 |
+| `call.join_blocks`<br>The answer with each block named in a code field put in its place (ADR 0026). | answer_shape | `src/crew_org/calls.py:join_blocks` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | §15 a_file_that_is_not_python (both cite crew#734; given to no role)<br>§16.1 (both cite crew#583; given to no role) | src/crew_org/calls.py:join_blocks | ADR 0024<br>ADR 0025<br>ADR 0026<br>crew#583<br>crew#734<br>sprint-metrics#529 |
 | `call.schema`<br>The answer is valid JSON with every field of its form, each of its type. | answer_shape | `pydantic, from the form's JSON schema` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | — | calls.ask: `answer.model_validate` | ADR 0025 |
 | `call.split_blocks`<br>An answer in two parts: its JSON, and its blocks by name (ADR 0026). | answer_shape | `src/crew_org/calls.py:split_blocks` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | §16.1 (both cite crew#583; given to no role) | src/crew_org/calls.py:split_blocks | ADR 0024<br>ADR 0025<br>ADR 0026<br>crew#583<br>sprint-metrics#529 |
 | `call.the_answer_ran_on_as`<br>the answer ran on as whitespace after this, so a string closed early or a list or object was left open: ...… Check that each string ends exactly where you mean it to, with every double quote inside i… | answer_shape | `src/crew_org/calls.py:ask` | Architect<br>Business Analyst<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner<br>QA Engineer<br>Scrum Master<br>Senior Engineer<br>UX Designer | — | src/crew_org/calls.py:ask | — |
@@ -216,6 +217,17 @@ section; one no line holds for is unplaced, never guessed.
 | `edit.workspace.apply_implementation`<br>Write new files and apply edits to existing ones. | edits | `src/crew_org/tools/workspace.py:apply_implementation` | Developer | — | src/crew_org/tools/workspace.py:apply_implementation | — |
 | `edit.workspace.outside_definitions`<br>A text edit to Python may change module-level lines only (#204). | edits | `src/crew_org/tools/workspace.py:_outside_definitions` | Developer | §15 a_file_that_is_not_python (both cite crew#204; given to no role) | src/crew_org/tools/workspace.py:_outside_definitions | crew#204<br>sprint-metrics#133 |
 | `edit.workspace.plan_text_edits`<br>What each file quoted by `text_edits` would hold afterwards. | edits | `src/crew_org/tools/workspace.py:plan_text_edits` | Developer | — | src/crew_org/tools/workspace.py:plan_text_edits | — |
+
+## The crew changes the work itself, and records it
+
+| Rule | Category | Where | Roles | Told | Checked by | From |
+|---|---|---|---|---|---|---|
+| `repair.fallback.block.name`<br>an edit or a block taken by the looser match `block.name` | edits | `src/crew_org/calls.py:walk` | — | — | src/crew_org/calls.py:walk | — |
+| `repair.fallback.quote.final_newline`<br>an edit or a block taken by the looser match `quote.final_newline` | edits | `src/crew_org/tools/workspace.py:plan_text_edits` | — | §15 a_file_that_is_not_python (both cite crew#204; given to no role) | src/crew_org/tools/workspace.py:plan_text_edits | ADR 0026<br>crew#204<br>crew#734<br>sprint-metrics#133<br>sprint-metrics#604 |
+| `repair.fallback.quote.indent`<br>an edit or a block taken by the looser match `quote.indent` | edits | `src/crew_org/tools/workspace.py:plan_text_edits` | — | §15 a_file_that_is_not_python (both cite crew#204; given to no role) | src/crew_org/tools/workspace.py:plan_text_edits | ADR 0026<br>crew#204<br>crew#734<br>sprint-metrics#133<br>sprint-metrics#604 |
+| `repair.unsafe_fix.B905`<br>B905: `strict=False` is what `zip()` does without it, so behaviour is unchanged. | edits | `src/crew_org/tools/workspace.py:UNSAFE_FIXES` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:UNSAFE_FIXES | crew#758<br>sprint-metrics#453 |
+| `repair.unsafe_fix.SIM102`<br>SIM102: Joining nested `if`s with `and` runs the same code in the same order. | edits | `src/crew_org/tools/workspace.py:UNSAFE_FIXES` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:UNSAFE_FIXES | crew#758<br>sprint-metrics#563 |
+| `repair.workspace.autofix`<br>What a developer's editor does on save. | edits | `src/crew_org/tools/workspace.py:AUTOFIX` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:AUTOFIX | crew#758 |
 
 ## Told, and not checked by anything above
 

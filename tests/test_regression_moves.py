@@ -218,7 +218,9 @@ def test_a_quoted_change_to_text_that_is_gone_is_still_refused(repo: Path):
     implementation.text_edits = [
         TextEdit(path=OLD, find="@dataclass(frozen=True)\n", replace="@dataclass\n")
     ]
-    with pytest.raises(EditError, match="not in the file"):
+    # A change by quoting is matched against the file as shown, before the move
+    # (crew#734), where the quote is `Card`'s own decorator, changed by name.
+    with pytest.raises(EditError, match="reaches into `Card`"):
         apply_implementation(repo, implementation)
 
 
