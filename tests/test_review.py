@@ -444,3 +444,68 @@ def test_without_a_clone_base_files_come_from_github():
     issues = FakeIssues([])
     issues.files = {"src/a.py": "x = 1\n"}
     assert review_flow._base_reader(issues, "sprint-metrics", "main", None)("src/a.py") == "x = 1\n"
+
+
+# --- CI before the Code Reviewer (crew#756) ---------------------------------
+
+
+class CIIssues(FakeIssues):
+    """A pull request's checks, its comments, and the job logs CI's report reads."""
+
+    def __init__(self, pulls, runs):
+        super().__init__(pulls)
+        self.runs = runs
+        self.comments_made: list[tuple[int, str]] = []
+
+    def comments(self, repo, number):
+        return [{"body": body} for n, body in self.comments_made if n == number]
+
+    def comment(self, repo, number, body):
+        self.comments_made.append((number, body))
+
+    def job_log(self, repo, job_id):
+        return "FAILED tests/test_report.py::test_definitions - AssertionError"
+
+
+def ci_pull():
+    p = crew_pull()
+    p["head"] = {"ref": "feat/6-show-metric-6", "sha": HEAD}
+    return p
+
+
+def test_a_head_ci_failed_goes_back_to_the_developer_with_ci_s_log(monkeypatch):
+    """sprint-metrics#585's pull request was reviewed four times on a head CI had
+    failed, while the sandbox passed: the review found the failing test by hand."""
+    failed = {"name": "tests", "status": "completed", "conclusion": "failure", "id": 7}
+    issues = CIIssues([ci_pull()], [failed])
+    result, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+
+    assert board.moves == [("S6", "In Progress")]
+    assert not issues.submitted, "not reviewed"
+    assert result.skipped[0].skipped == "CI failed on its head"
+    body = issues.comments_made[0][1]
+    assert "before review" in body and "test_definitions" in body
+
+
+def test_review_waits_while_ci_runs_on_the_head(monkeypatch):
+    running = {"name": "tests", "status": "in_progress", "conclusion": None}
+    issues = CIIssues([ci_pull()], [running])
+    result, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+
+    assert board.moves == [] and not issues.submitted
+    assert result.skipped[0].skipped == "CI still running"
+
+
+def test_a_green_head_or_one_without_ci_is_reviewed(monkeypatch):
+    green = {"name": "tests", "status": "completed", "conclusion": "success"}
+    for runs in ([green], []):
+        issues = CIIssues([ci_pull()], runs)
+        _, board = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+        assert board.moves == [("S6", "QAing")]
+
+
+def test_a_pull_request_without_a_card_is_reviewed_whatever_ci_says(monkeypatch):
+    failed = {"name": "tests", "status": "completed", "conclusion": "failure"}
+    issues = CIIssues([pull(author=HUMAN)], [failed])
+    result, _ = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
+    assert result.reviewed

@@ -20,6 +20,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
+from crew_org.flows.ci import return_for_ci
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
@@ -29,7 +30,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.rules import Rule
 from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
-from crew_org.tools.github_issues import IssueClient
+from crew_org.tools.github_issues import FAILED_CONCLUSIONS, IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import (
     checks_section,
@@ -220,6 +221,41 @@ def review_open_pulls(
                     )
                 )
                 continue
+
+            # CI before the Code Reviewer (crew#756): of 17 reviews that requested
+            # changes, 4 were on a head CI had failed, where the sandbox had passed.
+            # A crew card goes back to the Developer with CI's own log instead, and
+            # waits while CI runs. A pull request without a card is reviewed as before.
+            if story is not None and board is not None:
+                runs = issues.check_runs(repo, head)
+                failed = [
+                    r
+                    for r in runs
+                    if r.get("status") == "completed" and r.get("conclusion") in FAILED_CONCLUSIONS
+                ]
+                if failed:
+                    return_for_ci(
+                        board,
+                        issues,
+                        sink,
+                        story,
+                        repo=repo,
+                        pull=pull,
+                        failed=failed,
+                        where="before review",
+                        frm=REVIEWING,
+                        rule=Rule.CI_BEFORE_REVIEW,
+                    )
+                    result.skipped.append(
+                        ReviewOutcome(pr=number, approved=False, skipped="CI failed on its head")
+                    )
+                    continue
+                if any(r.get("status") != "completed" for r in runs):
+                    held(Rule.CI_BEFORE_REVIEW, repo=repo, card=story.number)
+                    result.skipped.append(
+                        ReviewOutcome(pr=number, approved=False, skipped="CI still running")
+                    )
+                    continue
 
             sink.emit(
                 CrewEvent(
