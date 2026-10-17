@@ -140,6 +140,41 @@ def test_a_sprints_stories_carry_their_attempts_and_first_try(tmp_path):
     assert cause["cards"] == [73, 75] and cause["count"] == 2 and cause["recurring"]
 
 
+def test_only_the_sprints_own_attempts_count_on_a_number_reused_elsewhere(tmp_path):
+    # The Sprint 27 retro filed three findings from sprint-metrics' attempts of
+    # 2026-09-26, on crew-presentation cards with the same numbers (crew#752).
+    def on(repo: str, event: dict) -> dict:
+        return {**event, "ctx": {"repo": repo}}
+
+    events = write_events(
+        tmp_path,
+        [
+            retry(129, "VERIFY", "2026-09-26T02:06"),  # before the field, another sprint
+            on("sprint-metrics", retry(129, "VERIFY", "2026-10-16T10:00")),
+            on("crew-presentation", retry(127, "EDIT", "2026-10-16T11:00")),
+        ],
+    )
+    cards = [
+        Card(
+            item_id=f"S{n}",
+            number=n,
+            title=f"Story {n}",
+            status="Done",
+            state="CLOSED",
+            work_type="Story",
+            repo="crew-presentation",
+            sprint="Sprint 27",
+        )
+        for n in (127, 129)
+    ]
+    attempts = read_attempts(events, "2026-10-16T05:00:00", "2026-10-17T05:00:00")
+    report = sprint_report("Sprint 27", cards, attempts, escalations=0)
+
+    by_number = {s["number"]: s for s in report["stories"]}
+    assert by_number[129]["first_try"] and by_number[129]["attempts"] == []
+    assert [a["class"] for a in by_number[127]["attempts"]] == ["EDIT"]
+
+
 def test_the_retro_is_told_the_first_try_rate_and_the_causes():
     attempts = [
         Attempt(73, "Developer", "SCHEMA", "no test", "no test"),

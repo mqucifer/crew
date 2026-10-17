@@ -411,6 +411,7 @@ def close_sprint(
     # Sprint field on the way, so only the event log still says it was here.
     chains = []
     resplits = []
+    window: tuple[str, str] | None = None
     dates = _sprint_dates(board, sprint)
     if events_dir is not None and dates is not None:
         window = sprint_window(*dates, tz)
@@ -428,7 +429,7 @@ def close_sprint(
     report = sprint_report(
         sprint,
         [c for c in ours if c.sprint == sprint] + went_back,
-        read_attempts(events_dir) if events_dir is not None else [],
+        read_attempts(events_dir, *(window or (None, None))) if events_dir is not None else [],
         ledger.spent(sprint),
     )
     try:

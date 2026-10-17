@@ -1949,7 +1949,7 @@ def export(
     report = sprint_report(
         sprint,
         stories,
-        read_attempts(VAR / "events"),
+        read_attempts(VAR / "events", *(window or (None, None))),
         EscalationLedger(VAR / "ledger" / "escalations.jsonl").spent(sprint),
     )
     from crew_org.flows.model_calls import read_model_calls
