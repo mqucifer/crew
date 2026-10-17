@@ -1,0 +1,1575 @@
+"""Every rule a role meets, listed from the code (crew#756).
+
+The rules were added one incident at a time: a form's refusal, a guard on a
+change, a gate, a line in a prompt. Nobody could list the ones a role meets, and
+some were told and never checked, or checked and never told. This module reads
+them out of the code, so the list can't drift from it: `crew rules` writes
+`docs/reference/rules.md`, and a test regenerates it and compares, as it does for
+`docs/reference/records.md`.
+
+A rule is one of seven kinds:
+
+- **decides:** a `rules.Rule` the crew's own code records when it retries,
+  returns, blocks or holds;
+- **form:** a validator on an answer's form, which refuses the answer (or, in a
+  few, repairs it without saying);
+- **call:** the call layer's refusals, for every form (empty, runaway, blocks);
+- **check:** a step's own check, or a flow's, whose finding is sent back to the
+  role as the reason it's asked again;
+- **guard:** a check on a change in delivery, whose failure class is recorded
+  and whose reason is sent back;
+- **edit:** an edit that can't be applied, and why, sent back to the Developer;
+- **told:** a line a role is told (the constitution, its entry in `agents.yaml`,
+  its step's prompt, a field's description in its form) that nothing above checks.
+
+Where a rule is told, and what checks a line that's told, are linked by name
+where the code allows it: a field's description to that field's validator, a
+constitution rule to code that cites it as §N.M or by the incident it came from,
+and a rule's *Enforced:* line to the code it names. A link found only by shared
+wording is marked "maybe": it's for a person to confirm, not a fact.
+"""
+
+from __future__ import annotations
+
+import ast
+import importlib
+import inspect
+import re
+import textwrap
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from functools import cache
+from pathlib import Path
+from types import ModuleType
+from typing import Any, get_args
+
+from pydantic import BaseModel
+
+from crew_org.permissions import load_agents
+from crew_org.rules import Rule, meanings
+
+PACKAGE = Path(__file__).resolve().parent
+ROOT = PACKAGE.parents[1]
+PAGE = ROOT / "docs" / "reference" / "rules.md"
+CONSTITUTION = ROOT / "docs" / "ways-of-working.md"
+
+GROUPS = {
+    "decides": "The crew's own decisions (`rules.Rule`)",
+    "form": "An answer's form refuses it",
+    "call": "The call layer refuses any answer",
+    "check": "A flow's own check sends the answer back",
+    "guard": "A guard on a change sends it back",
+    "edit": "An edit can't be applied, and why is sent back",
+    "told": "Told, and not checked by anything above",
+}
+
+# An incident or decision a rule cites. A bare #n in the crew's code is the crew's
+# own issue: the habit before references were made explicit.
+_REF = re.compile(
+    r"(?:mqucifer/)?\b(crew|sprint-metrics|crew-presentation)#(\d+)"
+    r"|(?<![\w/#-])#(\d{2,4})\b"
+    r"|\bADR (\d{4})\b"
+)
+# A section of the constitution, as code and prose cite it.
+_SECTION = re.compile(r"§(\d+)(?:\.(\d+))?")
+# The words that make a sentence a rule rather than a description.
+_RULE_WORDS = re.compile(
+    r"\b(must|never|only|always|exactly|at least|at most|no more than|don't|do not|"
+    r"cannot|can't|is refused|are refused|refuse[sd]?|may not|not allowed)\b",
+    re.IGNORECASE,
+)
+_STOP = frozenset(
+    re.findall(
+        r"\S+",
+        "a an the and or of to in on is are be it its it's this that for with as by at from "
+        "not no never only must each every any one if when then than so but do does don't "
+        "which what who where how your you can may into out up has have was were their them "
+        "they there here also more most less such these those other same all some",
+    )
+)
+
+
+@dataclass
+class Entry:
+    """One rule a role meets: where it lives, who's told it, what checks it, and why."""
+
+    id: str
+    group: str
+    where: str
+    says: str
+    roles: set[str] = field(default_factory=set)
+    told: set[str] = field(default_factory=set)
+    checked: set[str] = field(default_factory=set)
+    origin: set[str] = field(default_factory=set)
+    # The messages it refuses with, as patterns, for reading the event log.
+    messages: list[str] = field(default_factory=list)
+    # For a form's rule: the form and the fields it checks, matched by name.
+    form: str = ""
+    fields: set[str] = field(default_factory=set)
+    # For a form's rule: "field" or "model", the validator's kind.
+    mode: str = ""
+    # For a guard: the failure class its events record.
+    failure_class: str = ""
+    # For a told line: the constitution sections it is, for linking by citation.
+    sections: set[str] = field(default_factory=set)
+    # The text it was linked by, for wording.
+    text: str = ""
+
+
+# --- reading the source -----------------------------------------------------------------
+
+
+# Compared by identity: each module is read once.
+@dataclass(frozen=True, eq=False)
+class Source:
+    path: str  # relative to the repository root
+    module: str
+    tree: ast.Module
+    lines: tuple[str, ...]
+
+
+@cache
+def sources() -> tuple[Source, ...]:
+    found = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        module = ".".join(path.relative_to(PACKAGE.parent).with_suffix("").parts)
+        text = path.read_text(encoding="utf-8")
+        found.append(Source(rel, module, ast.parse(text), tuple(text.splitlines())))
+    return tuple(found)
+
+
+def refs(text: str) -> set[str]:
+    """The incidents and decisions a text cites, written one way."""
+    out = set()
+    for repo, number, bare, adr in _REF.findall(text):
+        if adr:
+            out.add(f"ADR {adr}")
+        else:
+            out.add(f"{repo or 'crew'}#{number or bare}")
+    return out
+
+
+def _comments_above(lines: tuple[str, ...], lineno: int) -> str:
+    """The comment lines directly above a line (1-based), joined."""
+    out: list[str] = []
+    i = lineno - 2
+    while i >= 0 and lines[i].strip().startswith(("#", "@")):
+        if lines[i].strip().startswith("#"):
+            out.insert(0, lines[i].strip().lstrip("#").strip())
+        i -= 1
+    return " ".join(out)
+
+
+def _comments_in(lines: tuple[str, ...], node: ast.AST) -> str:
+    start = getattr(node, "lineno", 1)
+    end = getattr(node, "end_lineno", start) or start
+    found = [line.split("#", 1)[1].strip() for line in lines[start - 1 : end] if "#" in line]
+    return " ".join(found)
+
+
+def _first_sentence(text: str) -> str:
+    text = " ".join(text.split())
+    head = re.split(r"(?<=\.)\s+(?=[A-Z`'\"(])", text, maxsplit=1)[0]
+    return head if len(head) <= 200 else head[:199] + "…"
+
+
+@cache
+def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    return {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+
+def _enclosing(node: ast.AST, parents: dict[ast.AST, ast.AST], kind: Any) -> Any:
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, kind):
+            return node
+    return None
+
+
+def _qualname(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    names: list[str] = []
+    while node in parents:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.insert(0, node.name)
+        node = parents[node]
+    if isinstance(node, ast.FunctionDef | ast.ClassDef):
+        names.insert(0, node.name)
+    return ".".join(names) or "<module>"
+
+
+@cache
+def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:
+    return {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+
+@cache
+def _constants(tree: ast.Module) -> dict[str, ast.expr]:
+    out: dict[str, ast.expr] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if isinstance(target, ast.Name):
+                out[target.id] = node.value
+    return out
+
+
+def _template(node: ast.expr | None, tree: ast.Module, depth: int = 0) -> str:
+    """A message's text, its computed parts as {}: what a refusal reads like."""
+    if node is None or depth > 3:
+        return "{}"
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(str(v.value) if isinstance(v, ast.Constant) else "{}" for v in node.values)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _template(node.left, tree, depth + 1) + _template(node.right, tree, depth + 1)
+    if isinstance(node, ast.IfExp):
+        return "{}"
+    if isinstance(node, ast.Name):
+        value = _constants(tree).get(node.id)
+        return _template(value, tree, depth + 1) if value is not None else "{}"
+    if isinstance(node, ast.Call):
+        func = node.func
+        # "...".format(...) and NAME.format(...): the named parts are computed.
+        if isinstance(func, ast.Attribute) and func.attr == "format":
+            return re.sub(r"\{[^{}]*\}", "{}", _template(func.value, tree, depth + 1))
+        # A same-module function that builds the message: what it returns.
+        if isinstance(func, ast.Name) and func.id in _functions(tree):
+            returns = [
+                r.value
+                for r in ast.walk(_functions(tree)[func.id])
+                if isinstance(r, ast.Return) and r.value is not None
+            ]
+            return _template(returns[0], tree, depth + 1) if returns else "{}"
+    return "{}"
+
+
+@cache
+def refusals() -> frozenset[str]:
+    """What a refusal is raised as: `ValueError`, and what a flow catches to send back.
+
+    Each counts with the crew's own kinds of it, such as the edit tools' `EditError`.
+    """
+    names = {"ValueError"}
+    for source in sources():
+        for handler in (n for n in ast.walk(source.tree) if isinstance(n, ast.ExceptHandler)):
+            if handler.type is not None and any(
+                _is_feedback(n) is not None for n in ast.walk(handler)
+            ):
+                names |= {
+                    n.id
+                    for n in ast.walk(handler.type)
+                    if isinstance(n, ast.Name) and n.id[0].isupper() and n.id != "Exception"
+                }
+    while True:
+        more = (
+            {
+                node.name
+                for source in sources()
+                for node in ast.walk(source.tree)
+                if isinstance(node, ast.ClassDef)
+                and any(isinstance(b, ast.Name) and b.id in names for b in node.bases)
+            }
+            - names
+            - {"Refused"}
+        )
+        if not more:
+            return frozenset(names)
+        names |= more
+
+
+def _refusal(node: ast.AST) -> ast.Call | None:
+    """The refusal a `raise` statement raises, if it raises one with a message."""
+    if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
+        exc = node.exc.func
+        if isinstance(exc, ast.Name) and exc.id in refusals() and node.exc.args:
+            return node.exc
+    return None
+
+
+def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
+    """The messages a function refuses with, its same-module helpers' included."""
+    found: list[str] = []
+    helpers = _functions(tree)
+    for sub in ast.walk(node):
+        raised = _refusal(sub)
+        if raised is not None:
+            found.append(_template(raised.args[0], tree))
+        elif (
+            depth < 2
+            and isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id in helpers
+            and helpers[sub.func.id] is not node
+        ):
+            found += _raises(helpers[sub.func.id], tree, depth + 1)
+    return list(dict.fromkeys(found))
+
+
+@dataclass(frozen=True)
+class Pattern:
+    """A message template's fixed parts, found in order in a refusal's text.
+
+    A regex of `.*?` between the parts backtracks without end on a long refusal;
+    finding each part after the last is the same test, in one pass.
+    """
+
+    parts: tuple[str, ...]
+
+    @property
+    def fixed(self) -> int:
+        return sum(len(p) for p in self.parts)
+
+    def search(self, text: str) -> tuple[bool, int]:
+        """Whether the text reads as this message, whole, and how much fixed text it has.
+
+        A text can hold only the start of the message: the log keeps a refusal to a few
+        hundred characters, and older events have older wording. The parts it does have
+        must be in order.
+        """
+        at, matched = 0, 0
+        for part in self.parts:
+            found = text.find(part, at)
+            if found < 0:
+                return False, matched
+            at, matched = found + len(part), matched + len(part.strip())
+        return True, matched
+
+
+def pattern(template: str) -> Pattern | None:
+    """A message template as a pattern, or None when too little of it is fixed text."""
+    parts = tuple(p for p in template.split("{}") if p)
+    if sum(len(p.strip()) for p in parts) < 12:
+        return None
+    return Pattern(parts)
+
+
+# --- who answers which form -------------------------------------------------------------
+
+
+@cache
+def _module(name: str) -> ModuleType:
+    return importlib.import_module(name)
+
+
+@cache
+def role_names() -> dict[str, str]:
+    """Each role's key in agents.yaml, as its name."""
+    return {key: spec["role"] for key, spec in load_agents().items() if isinstance(spec, dict)}
+
+
+@dataclass(frozen=True)
+class Ask:
+    role: str
+    source: Source
+    function: str
+    forms: frozenset[type[BaseModel]]
+    check: str | None
+
+
+def _is_ask(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "ask"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "calls"
+    )
+
+
+@cache
+def asks() -> tuple[Ask, ...]:
+    """Every step's call to `calls.ask`: the role, and the forms it may answer in.
+
+    A form is passed as a name, or through a variable or a parameter, so every form
+    named in the asking function, or in a function of the same module that calls it,
+    is counted as one that role answers.
+    """
+    roles = role_names()
+    found: list[Ask] = []
+    for source in sources():
+        if "calls.ask(" not in "\n".join(source.lines):
+            continue
+        module = _module(source.module)
+        parents = _parents(source.tree)
+        callers: dict[str, set[str]] = {}
+        for node in ast.walk(source.tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                outer = _enclosing(node, parents, ast.FunctionDef)
+                if outer is not None:
+                    callers.setdefault(node.func.id, set()).add(outer.name)
+        for node in ast.walk(source.tree):
+            if not _is_ask(node):
+                continue
+            assert isinstance(node, ast.Call)
+            first = node.args[0] if node.args else None
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                keys = [first.value]
+            else:
+                # A role passed in: every role the module names, as the panel's members.
+                keys = sorted(
+                    {
+                        n.value
+                        for n in ast.walk(source.tree)
+                        if isinstance(n, ast.Constant) and n.value in roles
+                    }
+                )
+            outer = _enclosing(node, parents, ast.FunctionDef)
+            scope = [outer] if outer is not None else []
+            seen = {outer.name} if outer is not None else set()
+            while scope:
+                here = scope.pop()
+                for name in callers.get(here.name, ()):
+                    fn = _functions(source.tree).get(name)
+                    if fn is not None and name not in seen:
+                        seen.add(name)
+                        scope.append(fn)
+            forms = set()
+            for name in seen:
+                fn = _functions(source.tree).get(name) or outer
+                for sub in ast.walk(fn):
+                    if isinstance(sub, ast.Name):
+                        value = getattr(module, sub.id, None)
+                        if (
+                            isinstance(value, type)
+                            and issubclass(value, BaseModel)
+                            and value is not BaseModel
+                        ):
+                            forms.add(value)
+            check = next((k.value for k in node.keywords if k.arg == "check"), None)
+            found += [
+                Ask(
+                    roles.get(key, key),
+                    source,
+                    outer.name if outer is not None else "<module>",
+                    frozenset(forms),
+                    ast.unparse(check) if check is not None else None,
+                )
+                for key in keys
+            ]
+    return tuple(found)
+
+
+def _nested(form: type[BaseModel]) -> Iterator[type[BaseModel]]:
+    def walk(annotation: Any) -> Iterator[type[BaseModel]]:
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            yield annotation
+        for arg in get_args(annotation):
+            yield from walk(arg)
+
+    for info in form.model_fields.values():
+        yield from walk(info.annotation)
+
+
+@cache
+def answered() -> dict[type[BaseModel], frozenset[str]]:
+    """Every form a role's answer is held to, nested forms included, with its roles."""
+    out: dict[type[BaseModel], set[str]] = {}
+    for ask in asks():
+        todo = list(ask.forms)
+        while todo:
+            form = todo.pop()
+            if ask.role in out.setdefault(form, set()):
+                continue
+            out[form].add(ask.role)
+            todo += list(_nested(form))
+    return {form: frozenset(roles) for form, roles in out.items()}
+
+
+def _where(obj: Any) -> str:
+    path = Path(inspect.getsourcefile(obj) or "").resolve()
+    return f"{path.relative_to(ROOT).as_posix()}:{obj.__qualname__}"
+
+
+def _owner(form: type[BaseModel], name: str) -> type[BaseModel]:
+    """The form that declares a field, of those that inherit it."""
+    for cls in reversed(form.__mro__):
+        if (
+            isinstance(cls, type)
+            and issubclass(cls, BaseModel)
+            and cls is not BaseModel
+            and name in cls.model_fields
+        ):
+            return cls
+    return form
+
+
+# --- the rows ---------------------------------------------------------------------------
+
+
+def _form_rules() -> list[Entry]:
+    out: dict[str, Entry] = {}
+    for form, roles in answered().items():
+        decorators = form.__pydantic_decorators__
+        for kind, items in (
+            ("field", decorators.field_validators),
+            ("model", decorators.model_validators),
+        ):
+            for dec in items.values():
+                func = getattr(dec.func, "__func__", dec.func)
+                where = _where(func)
+                owner, _, name = func.__qualname__.rpartition(".")
+                rule_id = f"form.{owner}.{name.lstrip('_')}"
+                entry = out.get(rule_id)
+                if entry is None:
+                    source = next(s for s in sources() if where.startswith(s.path + ":"))
+                    text = textwrap.dedent(inspect.getsource(func))
+                    tree = ast.parse(text)
+                    lines = source.lines
+                    start = inspect.getsourcelines(func)[1]
+                    doc = ast.get_docstring(tree.body[0]) or ""  # type: ignore[arg-type]
+                    comments = (
+                        _comments_above(lines, start)
+                        + " "
+                        + _comments_in(lines, _shift(tree.body[0], start - 1))
+                    )
+                    messages = _raises(tree.body[0], source.tree)
+                    fields = (
+                        set(getattr(dec.info, "fields", ()))
+                        if kind == "field"
+                        else _reads(tree, form)
+                    )
+                    entry = Entry(
+                        rule_id,
+                        "form",
+                        where,
+                        _first_sentence(doc) or _says(messages, name),
+                        origin=refs(doc + " " + comments),
+                        messages=messages,
+                        form=owner,
+                        fields=fields,
+                        mode=kind,
+                        text=doc + " " + " ".join(messages) + " " + " ".join(fields),
+                        sections=_cited_sections(doc + " " + comments + " " + text),
+                    )
+                    entry.checked.add(where)
+                    if not messages:
+                        entry.says += " (repairs the answer, never refuses it)"
+                    out[rule_id] = entry
+                entry.roles |= roles
+    return list(out.values())
+
+
+def _shift(node: ast.AST, by: int) -> ast.AST:
+    for sub in ast.walk(node):
+        if hasattr(sub, "lineno"):
+            setattr(sub, "lineno", getattr(sub, "lineno", 0) + by)  # noqa: B010
+            if getattr(sub, "end_lineno", None) is not None:
+                setattr(sub, "end_lineno", getattr(sub, "end_lineno", 0) + by)  # noqa: B010
+    return node
+
+
+def _reads(tree: ast.AST, form: type[BaseModel]) -> set[str]:
+    """The fields a model validator reads: `self.x`, or `data.get("x")` before parsing."""
+    names = set(form.model_fields)
+    found = set()
+    for sub in ast.walk(tree):
+        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
+            if sub.value.id == "self" and sub.attr in names:
+                found.add(sub.attr)
+        elif isinstance(sub, ast.Constant) and sub.value in names:
+            found.add(sub.value)
+    return found
+
+
+def _says(messages: list[str], name: str) -> str:
+    if messages:
+        return _first_sentence(messages[0].replace("{}", "…"))
+    return name.lstrip("_").replace("_", " ")
+
+
+def _cited_sections(text: str) -> set[str]:
+    return {f"§{a}.{b}" if b else f"§{a}" for a, b in _SECTION.findall(text)}
+
+
+def _slug(text: str, words: int = 6) -> str:
+    found = re.findall(r"[A-Za-z0-9']+", re.sub(r"[*`]", "", text).lower())
+    return "-".join(found[:words])
+
+
+def _inline(source: Source, within: ast.AST, group: str, prefix: str) -> list[Entry]:
+    """Each refusal raised inline in a long function, as its own rule, named by its words."""
+    parents = _parents(source.tree)
+    fn: Any = within
+    if not isinstance(within, ast.FunctionDef):
+        fn = _enclosing(within, parents, ast.FunctionDef)
+    where = f"{source.path}:{fn.name if fn is not None else '<module>'}"
+    out: list[Entry] = []
+    for sub in ast.walk(within):
+        raised = _refusal(sub)
+        if raised is None:
+            continue
+        message = _template(raised.args[0], source.tree)
+        comments = _comments_above(source.lines, getattr(sub, "lineno", 1))
+        statement = _enclosing(sub, parents, ast.If)
+        if statement is not None:
+            comments = _comments_above(source.lines, statement.lineno) + " " + comments
+        out.append(
+            Entry(
+                f"{prefix}.{_slug(message.replace('{}', ' '), 5) or 'refused'}",
+                group,
+                where,
+                _first_sentence(message.replace("{}", "…")),
+                checked={where},
+                origin=refs(comments),
+                messages=[message],
+                text=message + " " + comments,
+                sections=_cited_sections(comments),
+            )
+        )
+    return out
+
+
+def _check_rules() -> list[Entry]:
+    out: dict[str, Entry] = {}
+    for ask in asks():
+        if ask.check is None:
+            continue
+        name = ask.check.rsplit(".", 1)[-1]
+        # A check is a module's function, or a closure in the asking function.
+        outer = _functions(ask.source.tree).get(ask.function)
+        nested = (
+            [n for n in ast.walk(outer) if isinstance(n, ast.FunctionDef) and n.name == name]
+            if outer is not None
+            else []
+        )
+        fn = nested[0] if nested else _functions(ask.source.tree).get(name)
+        short = ask.source.module.rsplit(".", 1)[-1]
+        rule_id = f"check.{short}.{name.lstrip('_')}"
+        if rule_id not in out:
+            if fn is None:
+                out[rule_id] = Entry(rule_id, "check", f"{ask.source.path}:{ask.check}", name)
+            else:
+                doc = ast.get_docstring(fn) or ""
+                comments = (
+                    _comments_above(ask.source.lines, fn.lineno)
+                    + " "
+                    + _comments_in(ask.source.lines, fn)
+                )
+                messages = _raises(fn, ask.source.tree)
+                where = f"{ask.source.path}:{fn.name}"
+                out[rule_id] = Entry(
+                    rule_id,
+                    "check",
+                    where,
+                    _first_sentence(doc) or _says(messages, name),
+                    checked={where},
+                    origin=refs(doc + " " + comments),
+                    messages=messages,
+                    text=doc + " " + " ".join(messages),
+                    sections=_cited_sections(doc + " " + comments),
+                )
+        out[rule_id].roles.add(ask.role)
+    return list(out.values())
+
+
+# The call layer's own refusals: what every answer is held to before its step's rules.
+_CALL_LAYER = (
+    ("crew_org.calls", "ask"),
+    ("crew_org.calls", "split_blocks"),
+    ("crew_org.calls", "join_blocks"),
+    ("crew_org.cut_text", "check_not_cut_at_a_quote"),
+)
+
+
+def _call_rules() -> list[Entry]:
+    everyone = {ask.role for ask in asks()}
+    out = [
+        Entry(
+            "call.schema",
+            "call",
+            "pydantic, from the form's JSON schema",
+            "The answer is valid JSON with every field of its form, each of its type.",
+            roles=set(everyone),
+            checked={"calls.ask: `answer.model_validate`"},
+            origin={"ADR 0025"},
+        )
+    ]
+    for module, name in _CALL_LAYER:
+        source = next(s for s in sources() if s.module == module)
+        fn = _functions(source.tree)[name]
+        where = f"{source.path}:{name}"
+        doc = ast.get_docstring(fn) or ""
+        if name == "ask":
+            # One function, several rules: each refusal it raises itself is its own.
+            for entry in _inline(source, fn, "call", "call"):
+                entry.roles |= everyone
+                out.append(entry)
+            continue
+        comments = _comments_above(source.lines, fn.lineno)
+        messages = _raises(fn, source.tree)
+        out.append(
+            Entry(
+                f"call.{name.lstrip('_')}",
+                "call",
+                where,
+                _first_sentence(doc) or _says(messages, name),
+                roles=set(everyone),
+                checked={where},
+                origin=refs(doc + " " + comments + " " + "\n".join(source.lines[:20])),
+                messages=messages,
+                text=doc + " " + " ".join(messages),
+            )
+        )
+    return out
+
+
+# Modules whose refusals are listed as their own kinds: a form's validators, the call layer.
+_LISTED_ELSEWHERE = ("crew_org.calls", "crew_org.cut_text")
+_FEEDBACK = "feedback"
+
+
+@cache
+def _by_module() -> dict[str, Source]:
+    return {s.module: s for s in sources()}
+
+
+@cache
+def _imports(source: Source) -> dict[str, tuple[str, str]]:
+    """Each name a module imports from the crew: (module, function), or (module, "")."""
+    modules = _by_module()
+    out: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(source.tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("crew_org"):
+            for alias in node.names:
+                full = f"{node.module}.{alias.name}"
+                local = alias.asname or alias.name
+                out[local] = (full, "") if full in modules else (node.module, alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in modules and alias.asname:
+                    out[alias.asname] = (alias.name, "")
+    return out
+
+
+def _resolve(call: ast.Call, source: Source) -> tuple[Source, ast.FunctionDef] | None:
+    """The crew function a call reaches, outside the modules listed by their own kinds."""
+    module, name = source.module, ""
+    func = call.func
+    if isinstance(func, ast.Name):
+        if func.id in _functions(source.tree):
+            name = func.id
+        elif func.id in _imports(source) and _imports(source)[func.id][1]:
+            module, name = _imports(source)[func.id]
+    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        target = _imports(source).get(func.value.id)
+        if target is not None and not target[1]:
+            module, name = target[0], func.attr
+    if not name or module.startswith(_LISTED_ELSEWHERE):
+        return None
+    found = _by_module().get(module)
+    fn = _functions(found.tree).get(name) if found is not None else None
+    return (found, fn) if found is not None and fn is not None else None
+
+
+def _calls_in(node: ast.AST) -> Iterator[ast.Call]:
+    """The calls a block makes itself, not those of functions defined inside it."""
+    todo = list(ast.iter_child_nodes(node))
+    while todo:
+        here = todo.pop()
+        if isinstance(here, ast.FunctionDef | ast.Lambda | ast.ClassDef):
+            continue
+        if isinstance(here, ast.Call):
+            yield here
+        todo += list(ast.iter_child_nodes(here))
+
+
+def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source, ast.FunctionDef]]:
+    """Every crew function a block reaches by its calls, a few calls deep.
+
+    A function passed to another counts as called: `attributed(stepped.implement_file,
+    ...)(...)` runs it.
+    """
+    out: dict[tuple[str, str], tuple[Source, ast.FunctionDef]] = {}
+    todo = [(source, node, 0)]
+    while todo:
+        here, block, level = todo.pop()
+        called = [
+            ast.Call(func=f, args=[], keywords=[])
+            for call in _calls_in(block)
+            for f in (call.func, *call.args)
+            if isinstance(f, ast.Name | ast.Attribute)
+        ]
+        for call in called:
+            found = _resolve(call, here)
+            if found is None or (found[0].module, found[1].name) in out:
+                continue
+            out[(found[0].module, found[1].name)] = found
+            if level + 1 < depth:
+                todo.append((found[0], found[1], level + 1))
+    return list(out.values())
+
+
+def _own_raises(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
+    return list(
+        dict.fromkeys(_template(r.args[0], tree) for r in (_refusal(n) for n in ast.walk(fn)) if r)
+    )
+
+
+def _findings(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
+    """What a check function finds, as text: what it raises, appends, returns or yields."""
+    found = _own_raises(fn, tree)
+    for node in ast.walk(fn):
+        value: ast.expr | None = None
+        if isinstance(node, ast.Return | ast.Yield | ast.Assign | ast.AugAssign):
+            value = node.value
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and node.args
+        ):
+            value = node.args[0]
+        found += _texts(value, tree)
+    return list(dict.fromkeys(found))
+
+
+def _texts(value: ast.AST | None, tree: ast.Module) -> list[str]:
+    """The messages an expression writes, inside a list or a comprehension too."""
+    if value is None:
+        return []
+    if isinstance(value, ast.Constant | ast.JoinedStr | ast.BinOp | ast.Name | ast.Call):
+        text = _template(value, tree)
+        if pattern(text) is not None:
+            return [text]
+    if isinstance(value, ast.Constant | ast.JoinedStr):
+        return []
+    return [t for child in ast.iter_child_nodes(value) for t in _texts(child, tree)]
+
+
+def _is_feedback(node: ast.AST) -> ast.expr | None:
+    """The value a statement sends back to a role as `feedback`, if it does."""
+    if isinstance(node, ast.Assign):
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == _FEEDBACK:
+                return node.value
+            if (
+                isinstance(target, ast.Subscript)
+                and isinstance(target.slice, ast.Constant)
+                and target.slice.value == _FEEDBACK
+            ):
+                return node.value
+    if (
+        isinstance(node, ast.keyword)
+        and node.arg == _FEEDBACK
+        and not (isinstance(node.value, ast.Name) and node.value.id == _FEEDBACK)
+    ):
+        return node.value
+    return None
+
+
+def _failure_class(node: ast.AST) -> str | None:
+    """The failure class a block records, from its event's `failure_class`."""
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Dict):
+            for key, value in zip(sub.keys, sub.values, strict=False):
+                if isinstance(key, ast.Constant) and key.value == "failure_class":
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        return value.value
+                    if isinstance(value, ast.Attribute):
+                        return value.attr
+    return None
+
+
+def _tested_calls(
+    source: Source, fn: ast.FunctionDef, branch: ast.If
+) -> list[tuple[Source, ast.FunctionDef]]:
+    """The crew functions whose results a branch tests: `found = f(...)`, `if found:`."""
+    tested = {n.id for n in ast.walk(branch.test) if isinstance(n, ast.Name)}
+    tested |= {
+        n.value.id
+        for n in ast.walk(branch.test)
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+    }
+    out: list[tuple[Source, ast.FunctionDef]] = []
+    for sub in ast.walk(fn):
+        if (
+            isinstance(sub, ast.Assign | ast.AugAssign | ast.AnnAssign)
+            and sub.lineno < branch.lineno
+            and sub.value is not None
+        ):
+            targets = sub.targets if isinstance(sub, ast.Assign) else [sub.target]
+            names = {n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)}
+            if names & tested:
+                out += [f for c in _calls_in(sub) if (f := _resolve(c, source)) is not None]
+    return list({(s.module, f.name): (s, f) for s, f in out}.values())
+
+
+def _short(source: Source) -> str:
+    return source.module.rsplit(".", 1)[-1]
+
+
+def _roles_near(source: Source, scope: ast.AST) -> set[str]:
+    """The roles asked in a block: a crew step it calls, or the role its events name."""
+    steps: dict[tuple[str, str], set[str]] = {}
+    for ask in asks():
+        steps.setdefault((ask.source.module, ask.function), set()).add(ask.role)
+    # A step passed in as a parameter keeps its name: `propose_design=propose_design`.
+    named: dict[str, set[tuple[str, str]]] = {}
+    for key in steps:
+        named.setdefault(key[1], set()).add(key)
+    found: set[str] = set()
+    # A step called, or passed to a wrapper: `attributed(split_epic, ...)`.
+    called = [
+        node
+        for call in ast.walk(scope)
+        if isinstance(call, ast.Call)
+        for node in (call.func, *call.args)
+    ]
+    local = {
+        n.id for n in ast.walk(scope) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+    }
+    roles = set(role_names().values())
+    found |= {
+        str(k.value.value)
+        for call in ast.walk(scope)
+        if isinstance(call, ast.Call)
+        for k in call.keywords
+        if k.arg == "role" and isinstance(k.value, ast.Constant) and k.value.value in roles
+    }
+    for node in called:
+        if isinstance(node, ast.Name):
+            if (source.module, node.id) in steps:
+                found |= steps[(source.module, node.id)]
+            elif node.id in _imports(source):
+                found |= steps.get(_imports(source)[node.id], set())
+            elif len(named.get(node.id, ())) == 1 and node.id not in local:
+                found |= steps[next(iter(named[node.id]))]
+        elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            module = _imports(source).get(node.value.id, ("", "x"))
+            if not module[1]:
+                found |= steps.get((module[0], node.attr), set())
+    return found
+
+
+def _guarded(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    """Whether a statement is inside a branch that records a guard's failure class."""
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, ast.If) and any(
+            _failure_class(stmt) for stmt in node.body if not isinstance(stmt, ast.If)
+        ):
+            return True
+    return False
+
+
+def _fed_roles(source: Source, fn: ast.FunctionDef) -> set[str]:
+    """The roles a function sends feedback to: the steps it calls with `feedback=`."""
+    spread = {
+        t.value.id
+        for n in ast.walk(fn)
+        if isinstance(n, ast.Assign)
+        for t in n.targets
+        if isinstance(t, ast.Subscript)
+        and isinstance(t.value, ast.Name)
+        and isinstance(t.slice, ast.Constant)
+        and t.slice.value == _FEEDBACK
+    }
+    steps = [
+        call
+        for call in ast.walk(fn)
+        if isinstance(call, ast.Call)
+        and any(
+            k.arg == _FEEDBACK
+            or (k.arg is None and isinstance(k.value, ast.Name) and k.value.id in spread)
+            for k in call.keywords
+        )
+    ]
+    return set().union(
+        *(
+            _roles_near(source, ast.Expr(value=ast.Call(func=c.func, args=[], keywords=[])))
+            for c in steps
+        )
+    )
+
+
+def _fed_back_rules() -> list[Entry]:
+    """What the flows check in an answer or a change and send back as the reason.
+
+    Two shapes: a refusal raised in a `try` whose handler sends it back or records
+    its failure class; and a finding a flow puts in `feedback` from a function it
+    calls. An edit that can't be applied is its own kind: the Developer's edits.
+    """
+    out: dict[str, Entry] = {}
+
+    def add(entry: Entry) -> None:
+        here = out.setdefault(entry.id, entry)
+        if here is not entry:
+            here.roles |= entry.roles
+            here.checked |= entry.checked
+
+    for source in sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        parents = _parents(source.tree)
+        for fn in (n for n in ast.walk(source.tree) if isinstance(n, ast.FunctionDef)):
+            for attempt in (n for n in ast.walk(fn) if isinstance(n, ast.Try)):
+                if _enclosing(attempt, parents, ast.FunctionDef) is not fn:
+                    continue
+                handlers = [
+                    h
+                    for h in attempt.handlers
+                    if any(_is_feedback(n) is not None for n in ast.walk(h))
+                    or _failure_class(h) is not None
+                ]
+                if not handlers:
+                    continue
+                klass = next((c for h in handlers if (c := _failure_class(h))), "")
+                group = "edit" if klass == "EDIT" else "check"
+                # Whose answer it is: the role its failure names, or the step it asks.
+                roles = set().union(*(_roles_near(source, h) for h in handlers))
+                roles = roles or _fed_roles(source, fn)
+                if not roles:
+                    loop = _enclosing(attempt, parents, ast.For | ast.While)
+                    roles = _roles_near(source, ast.Module(body=attempt.body, type_ignores=[]))
+                    roles = roles or _roles_near(source, loop or fn)
+                body = ast.Module(body=attempt.body, type_ignores=[])
+                for entry in _inline(source, body, group, f"{group}.{_short(source)}"):
+                    branch = next(
+                        (
+                            b
+                            for b in ast.walk(body)
+                            if isinstance(b, ast.If)
+                            and any(_refusal(r) for r in ast.walk(b))
+                            and entry.messages[0]
+                            in [
+                                _template(r.args[0], source.tree)
+                                for r in (_refusal(x) for x in ast.walk(b))
+                                if r
+                            ]
+                        ),
+                        None,
+                    )
+                    if branch is not None:
+                        entry.checked |= {
+                            f"{s.path}:{f.name}" for s, f in _tested_calls(source, fn, branch)
+                        }
+                    entry.where = f"{source.path}:{fn.name}"
+                    entry.roles |= roles
+                    entry.failure_class = klass
+                    add(entry)
+                for reached, callee in _reached(source, body):
+                    messages = _own_raises(callee, reached.tree)
+                    if not messages:
+                        continue
+                    where = f"{reached.path}:{callee.name}"
+                    doc = ast.get_docstring(callee) or ""
+                    comments = _comments_above(reached.lines, callee.lineno)
+                    add(
+                        Entry(
+                            f"{group}.{_short(reached)}.{callee.name.lstrip('_')}",
+                            group,
+                            where,
+                            _first_sentence(doc) or _says(messages, callee.name),
+                            roles=set(roles),
+                            checked={where},
+                            origin=refs(doc + " " + comments),
+                            messages=messages,
+                            failure_class=klass,
+                            text=doc + " " + " ".join(messages),
+                            sections=_cited_sections(doc + " " + comments),
+                        )
+                    )
+            fed = _fed_roles(source, fn) or _roles_near(source, fn)
+            for node in ast.walk(fn):
+                value = _is_feedback(node)
+                if value is None or _enclosing(node, parents, ast.FunctionDef) is not fn:
+                    continue
+                if _enclosing(node, parents, ast.ExceptHandler) is not None:
+                    continue
+                branch = _enclosing(node, parents, ast.If)
+                if _guarded(node, parents):
+                    continue  # a guard: listed with its failure class
+                # What the flow writes itself, such as the limit on asking for files.
+                for message in _texts(value, source.tree):
+                    rule_id = f"check.{_short(source)}.{_slug(message.replace('{}', ' '), 5)}"
+                    comments = _comments_above(source.lines, getattr(node, "lineno", 1))
+                    if branch is not None:
+                        comments = _comments_above(source.lines, branch.lineno) + " " + comments
+                    add(
+                        Entry(
+                            rule_id,
+                            "check",
+                            f"{source.path}:{fn.name}",
+                            _first_sentence(message.replace("{}", "…")),
+                            roles=set(fed),
+                            checked={f"{source.path}:{fn.name}"},
+                            origin=refs(comments),
+                            messages=[message],
+                            text=message + " " + comments,
+                            sections=_cited_sections(comments),
+                        )
+                    )
+                names = {n.id for n in ast.walk(value) if isinstance(n, ast.Name)}
+                callees = [f for c in _calls_in(value) if (f := _resolve(c, source))]
+                for sub in ast.walk(fn):
+                    targets = (
+                        sub.targets
+                        if isinstance(sub, ast.Assign)
+                        else [sub.target]
+                        if isinstance(sub, ast.AugAssign)
+                        else []
+                    )
+                    if any(isinstance(t, ast.Name) and t.id in names for t in targets):
+                        callees += [f for c in _calls_in(sub) if (f := _resolve(c, source))]
+                roles = set(fed)
+                for reached, callee in {(s.module, f.name): (s, f) for s, f in callees}.values():
+                    messages = _findings(callee, reached.tree)
+                    if not messages:
+                        continue
+                    where = f"{reached.path}:{callee.name}"
+                    doc = ast.get_docstring(callee) or ""
+                    comments = _comments_above(reached.lines, callee.lineno)
+                    add(
+                        Entry(
+                            f"check.{_short(reached)}.{callee.name.lstrip('_')}",
+                            "check",
+                            where,
+                            _first_sentence(doc) or _says(messages, callee.name),
+                            roles=set(roles),
+                            checked={where},
+                            origin=refs(doc + " " + comments),
+                            messages=messages,
+                            text=doc + " " + " ".join(messages),
+                            sections=_cited_sections(doc + " " + comments),
+                        )
+                    )
+    return list(out.values())
+
+
+def _guard_rules() -> list[Entry]:
+    """Each place delivery records a failure class for a change and sends a reason back.
+
+    The class is what its events record. What checks it is the functions whose result
+    the branch tests: `overwrites = regression.overwrites_existing(...)`, `if overwrites:`.
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        parents = _parents(source.tree)
+        for branch in (n for n in ast.walk(source.tree) if isinstance(n, ast.If)):
+            klass = None
+            # The branch's own event, not one in a branch nested inside it.
+            for stmt in branch.body:
+                if not isinstance(stmt, ast.If):
+                    klass = klass or _failure_class(stmt)
+            fn = _enclosing(branch, parents, ast.FunctionDef)
+            if klass is None or fn is None:
+                continue
+            checks = _tested_calls(source, fn, branch)
+            first = checks[0][1].name if checks else fn.name
+            rule_id = f"guard.{klass.lower()}.{first.lstrip('_')}"
+            if rule_id in out:
+                continue
+            comments = _comments_above(source.lines, branch.lineno)
+            messages = [
+                _template(value, source.tree)
+                for sub in ast.walk(branch)
+                if (value := _is_feedback(sub)) is not None
+            ]
+            messages = [m for m in messages if pattern(m) is not None]
+            for _, check in checks:
+                messages += [m for m in _findings(check, source.tree) if m not in messages]
+            out[rule_id] = Entry(
+                rule_id,
+                "guard",
+                f"{source.path}:{fn.name}",
+                _first_sentence(comments)
+                or f"{klass}: {', '.join(f.name for _, f in checks) or fn.name}",
+                roles=_roles_near(source, branch),
+                checked={f"{s.path}:{f.name}" for s, f in checks} or {f"{source.path}:{fn.name}"},
+                origin=refs(comments + " " + _comments_in(source.lines, branch)),
+                messages=messages,
+                failure_class=klass,
+                text=comments + " " + " ".join(messages),
+                sections=_cited_sections(comments),
+            )
+    return list(out.values())
+
+
+def _decided_rules() -> list[Entry]:
+    told = meanings(Rule)
+    out = {
+        rule.value: Entry(rule.value, "decides", "src/crew_org/rules.py:Rule", told[rule.name])
+        for rule in Rule
+    }
+    for entry in out.values():
+        entry.origin = refs(entry.says)
+    for source in sources():
+        parents = _parents(source.tree)
+        for node in ast.walk(source.tree):
+            if source.module == "crew_org.rules" and _enclosing(node, parents, ast.ClassDef):
+                continue
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "Rule"
+                and node.attr in Rule.__members__
+            ):
+                entry = out[Rule[node.attr].value]
+                entry.checked.add(f"{source.path}:{_qualname(node, parents)}")
+                statement: ast.AST = node
+                while statement in parents and not isinstance(statement, ast.stmt):
+                    statement = parents[statement]
+                comments = _comments_above(source.lines, getattr(statement, "lineno", 1))
+                entry.origin |= refs(comments)
+                entry.sections |= _cited_sections(comments)
+                entry.text += " " + comments
+    for entry in out.values():
+        entry.text += " " + entry.says
+    return list(out.values())
+
+
+# --- what a role is told ----------------------------------------------------------------
+
+
+def _section_roles() -> dict[int, set[str]]:
+    """Which roles are given each section of the constitution, by agents.yaml."""
+    out: dict[int, set[str]] = {}
+    for spec in load_agents().values():
+        for number in spec.get("constitution", []):
+            out.setdefault(number, set()).add(spec["role"])
+        for step, sub in spec.items():
+            if isinstance(sub, dict) and "constitution" in sub:
+                for number in sub["constitution"]:
+                    out.setdefault(number, set()).add(f"{spec['role']} ({step})")
+    return out
+
+
+_ITEM = re.compile(r"^(?:(\d+)\.\s+|-\s+)?\*\*(.+?)\*\*")
+
+
+def _told_constitution() -> list[Entry]:
+    """Each rule of the constitution's sections a role is given: a numbered item, or a
+    paragraph or item that opens in bold."""
+    given = _section_roles()
+    text = CONSTITUTION.read_text(encoding="utf-8")
+    out: list[Entry] = []
+    for chunk in re.split(r"(?m)^(?=## \d+\. )", text):
+        heading = re.match(r"## (\d+)\. (.+)", chunk)
+        if not heading:
+            continue
+        number = int(heading.group(1))
+        roles = given.get(number, set())
+        # Paragraphs and top-level list items, each with its continuation lines.
+        items: list[list[str]] = []
+        fenced = False
+        for line in chunk.splitlines()[1:]:
+            if line.startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+            starts = (
+                not line.strip() or re.match(r"^(\d+\.\s|-\s|\*\*)", line) or line.startswith("#")
+            )
+            if starts or not items:
+                items.append([])
+            if line.strip():
+                items[-1].append(line.strip())
+        for item in items:
+            if not item:
+                continue
+            body = " ".join(item)
+            numbered = re.match(r"^(\d+)\.\s+(.*)", body)
+            bold = _ITEM.match(body)
+            if numbered:
+                rule_id = f"§{number}.{numbered.group(1)}"
+            elif bold:
+                rule_id = f"§{number} {_slug(bold.group(2))}"
+            elif body.startswith("- ") and _RULE_WORDS.search(body):
+                rule_id = f"§{number} {_slug(body[2:])}"
+            else:
+                continue
+            enforced = body.partition("*Enforced:*")[2]
+            out.append(
+                Entry(
+                    rule_id,
+                    "told",
+                    f"docs/ways-of-working.md:§{number}",
+                    _first_sentence(re.sub(r"[*`]", "", re.sub(r"^\d+\.\s+|^-\s+", "", body))),
+                    roles=set(roles),
+                    told={f"§{number}"} if roles else set(),
+                    checked={f"named in the text: {_first_sentence(enforced)}"}
+                    if enforced
+                    else set(),
+                    origin=refs(body),
+                    sections={rule_id.split(" ")[0]} if numbered else set(),
+                    text=body,
+                )
+            )
+    return out
+
+
+def _sentences(text: str) -> list[str]:
+    """A text's sentences, its headings, code fences and placeholders left out."""
+    kept = [
+        line
+        for line in text.splitlines()
+        if not line.lstrip().startswith(("#", "```")) and line.strip(" …")
+    ]
+    paragraphs = re.split(r"\n\s*\n", "\n".join(kept))
+    return [
+        s.strip(" …")
+        for p in paragraphs
+        for s in re.split(r"(?<=[.!?])\s+", " ".join(p.split()))
+        if s.strip(" …")
+    ]
+
+
+def _told_agents() -> list[Entry]:
+    """Each sentence of a role's goal and backstory that states a rule."""
+    out: list[Entry] = []
+    for key, spec in load_agents().items():
+        parts = [(spec["role"], key, spec)]
+        parts += [
+            (f"{spec['role']} ({step})", f"{key}.{step}", sub)
+            for step, sub in spec.items()
+            if isinstance(sub, dict) and ("goal" in sub or "backstory" in sub)
+        ]
+        for role, where, body in parts:
+            for part in ("goal", "backstory"):
+                for sentence in _sentences(str(body.get(part, ""))):
+                    if not _RULE_WORDS.search(sentence):
+                        continue
+                    out.append(
+                        Entry(
+                            f"told.{where}.{_slug(sentence)}",
+                            "told",
+                            f"src/crew_org/config/agents.yaml:{where}.{part}",
+                            sentence,
+                            roles={role},
+                            told={f"agents.yaml {where}.{part}"},
+                            origin=refs(sentence),
+                            text=sentence,
+                        )
+                    )
+    return out
+
+
+def _prompt_texts(source: Source) -> Iterator[tuple[ast.AST, str]]:
+    """Each text a crew module writes into a prompt, with where it is.
+
+    A text is a whole string expression: a literal, an f-string, or a sum of them.
+    Docstrings, refusals and field descriptions are left out: each is listed as its
+    own kind.
+    """
+    parents = _parents(source.tree)
+    skip: set[int] = set()
+    for node in ast.walk(source.tree):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr):
+            skip.add(id(body[0].value))
+        raised = _refusal(node)
+        if raised is not None:
+            skip |= {id(n) for n in ast.walk(raised)}
+        if isinstance(node, ast.keyword) and node.arg == "description":
+            skip |= {id(n) for n in ast.walk(node.value)}
+    for node in ast.walk(source.tree):
+        if id(node) in skip or not isinstance(node, ast.Constant | ast.JoinedStr | ast.BinOp):
+            continue
+        parent = parents.get(node)
+        if isinstance(parent, ast.BinOp | ast.JoinedStr | ast.FormattedValue):
+            continue
+        text = _template(node, source.tree).replace("{}", "…")
+        if (
+            len(text) >= 40
+            and isinstance(node, ast.Constant | ast.JoinedStr)
+            or (isinstance(node, ast.BinOp) and len(text) >= 40)
+        ):
+            yield node, text
+
+
+def _told_prompts() -> list[Entry]:
+    """Each sentence of a crew step's prompt that states a rule."""
+    out: dict[str, Entry] = {}
+    for source in sources():
+        if not source.module.startswith("crew_org.crews."):
+            continue
+        parents = _parents(source.tree)
+        mine = [a for a in asks() if a.source is source]
+        everyone = {a.role for a in mine}
+        for node, text in _prompt_texts(source):
+            fn = _enclosing(node, parents, ast.FunctionDef)
+            name = fn.name if fn is not None else _assigned_to(node, parents)
+            asked = {a.role for a in mine if fn is not None and a.function == fn.name}
+            for sentence in _sentences(text):
+                if not _RULE_WORDS.search(sentence) or len(sentence) < 25:
+                    continue
+                rule_id = f"told.{_short(source)}.{_slug(sentence.replace('…', ' '))}"
+                entry = out.setdefault(
+                    rule_id,
+                    Entry(
+                        rule_id,
+                        "told",
+                        f"{source.path}:{name}",
+                        sentence,
+                        told={f"the prompt, {source.path}:{name}"},
+                        origin=refs(sentence),
+                        sections=_cited_sections(sentence),
+                        text=sentence,
+                    ),
+                )
+                entry.roles |= asked or everyone
+    return list(out.values())
+
+
+def _assigned_to(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    while node in parents and not isinstance(node, ast.Assign):
+        node = parents[node]
+    if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+        return node.targets[0].id
+    return "<module>"
+
+
+def _told_fields(checks: list[Entry]) -> list[Entry]:
+    """Each field description in a form that states a rule: told, where the form is shown.
+
+    A field a validator checks is told in that validator's row; one none checks is its
+    own row.
+    """
+    by_field: dict[tuple[str, str], list[Entry]] = {}
+    for entry in checks:
+        for name in entry.fields:
+            by_field.setdefault((entry.form, name), []).append(entry)
+    out: dict[str, Entry] = {}
+    for form, roles in answered().items():
+        for name, info in form.model_fields.items():
+            owner = _owner(form, name)
+            text = " ".join((info.description or "").split())
+            if not text or not _RULE_WORDS.search(text):
+                continue
+            told = f"`{owner.__name__}.{name}`'s description"
+            linked = by_field.get((owner.__name__, name)) or by_field.get((form.__name__, name))
+            if linked:
+                for entry in linked:
+                    entry.told.add(told)
+                continue
+            rule_id = f"told.form.{owner.__name__}.{name}"
+            entry = out.setdefault(
+                rule_id,
+                Entry(
+                    rule_id,
+                    "told",
+                    f"{_where(owner).rpartition(':')[0]}:{owner.__name__}.{name}",
+                    _first_sentence(text),
+                    told={told},
+                    origin=refs(text),
+                    text=text,
+                ),
+            )
+            entry.roles |= roles
+    return list(out.values())
+
+
+def _words(text: str) -> set[str]:
+    return {
+        w.rstrip("s")
+        for w in re.findall(r"[a-z][a-z_']+", text.lower())
+        if w not in _STOP and len(w) > 2
+    }
+
+
+def _link(checks: list[Entry], told: list[Entry]) -> list[Entry]:
+    """Join what's told to what checks it; what's told and linked by name leaves the list.
+
+    By name: a check citing the told rule's section (§N.M), or both citing the same
+    incident. By wording only, it's a "maybe" on the told rule's row.
+    """
+    unlinked: list[Entry] = []
+    words = {c.id: _words(c.text) for c in checks}
+    for line in told:
+        cited = []
+        for check in checks:
+            sections = line.sections & check.sections
+            incidents = {r for r in line.origin & check.origin if not r.startswith("ADR")}
+            if sections or incidents:
+                cited.append(check)
+                how = f"both cite {min(sections or incidents)}"
+                given = "in " + ", ".join(sorted(line.told)) if line.roles else "given to no role"
+                check.told.add(f"{line.id} ({how}; {given})")
+                line.checked.add(check.id)
+        if cited:
+            continue
+        mine = _words(line.text)
+        best = max(
+            checks,
+            key=lambda c: (len(mine & words[c.id]) / (len(mine | words[c.id]) or 1), c.id),
+            default=None,
+        )
+        if best is not None:
+            shared = mine & words[best.id]
+            if len(shared) >= 4 and len(shared) / (len(mine | words[best.id]) or 1) >= 0.12:
+                line.checked.add(f"maybe {best.id}")
+        unlinked.append(line)
+    return unlinked
+
+
+@cache
+def entries() -> tuple[Entry, ...]:
+    """Every rule a role meets, in the order the page lists them."""
+    checks = (
+        _decided_rules()
+        + _form_rules()
+        + _check_rules()
+        + _call_rules()
+        + _fed_back_rules()
+        + _guard_rules()
+    )
+    told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
+    told = _link(checks, told)
+    order = list(GROUPS)
+    return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
+
+
+# --- the page ---------------------------------------------------------------------------
+
+
+def _cell(values: set[str] | str) -> str:
+    if isinstance(values, str):
+        return values.replace("|", "\\|")
+    return "<br>".join(sorted(v.replace("|", "\\|") for v in values)) or "—"
+
+
+def render() -> str:
+    """The rules list, as committed."""
+    rows = entries()
+    lines = [
+        "# Every rule a role meets",
+        "",
+        "Generated by `crew rules` from the code (crew#756). Don't edit it by hand: a test",
+        "regenerates it and fails when it differs, so a rule added anywhere shows up here.",
+        "",
+        "Each rule says where it lives, which roles meet it, where they're told it, what",
+        "checks it, and the incidents it cites. A **Told** cell that's empty is a rule",
+        "checked and never told; a **Checked by** cell that's empty is one told and never",
+        'checked. "maybe" is a link found only by shared wording, for a person to confirm.',
+        "How often each fired, and the model time it cost, is `crew rules --events`.",
+        "",
+        "| Kind | Rules |",
+        "|---|---|",
+        *(f"| {GROUPS[g]} | {sum(1 for r in rows if r.group == g)} |" for g in GROUPS),
+        "",
+    ]
+    for group, title in GROUPS.items():
+        lines += [
+            f"## {title}",
+            "",
+            "| Rule | Where | Roles | Told | Checked by | From |",
+            "|---|---|---|---|---|---|",
+        ]
+        for r in (r for r in rows if r.group == group):
+            lines.append(
+                f"| `{_cell(r.id)}`<br>{_cell(r.says)} | `{_cell(r.where)}` | {_cell(r.roles)} "
+                f"| {_cell(r.told)} | {_cell(r.checked)} | {_cell(r.origin)} |"
+            )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def write(path: Path = PAGE) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render(), encoding="utf-8")
+    return path
