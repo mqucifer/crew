@@ -727,12 +727,21 @@ def _deliver(crew: Crew) -> PhaseOutcome:
     )
 
 
-# Drain-first, in dependency order. The Architect revisits a strained design
+# Nearest to done first (crew#759). Work that's built but not merged produces
+# nothing, and finished pull requests waited behind 18 to 33 minutes of
+# refinement a pass (ticks d57c8482, c594cefb). So review and QA run first, and
+# land queues what QA accepted before anything is refined. Refinement isn't
+# skipped while work downstream moves: that moved in every pass of both ticks,
+# so they would have refined nothing. The Architect revisits a strained design
 # before refinement splits epics against it. Refinement produces stories,
-# admission puts them in a sprint, and the three that follow push started work
-# forward before delivery claims more.
+# admission puts them in a sprint, and delivery comes last: it records what the
+# queue landed meanwhile, and builds what was admitted in the same pass. Before
+# refinement, each new story would wait a pass.
 PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
-    # First, so every hold below is judged against the board as it now stands.
+    ("review", _review),
+    ("qa", _qa),
+    # Before every phase that judges a hold, so each sees the board as it now
+    # stands (#388). Review and QA judge none.
     ("land", _land),
     ("revisit", _revisit),
     # Before refinement, so new holds and the order apply to this pass (#358).
@@ -740,8 +749,6 @@ PHASES: tuple[tuple[str, Callable[..., PhaseOutcome]], ...] = (
     ("refine", _refine),
     ("design", _design),
     ("admit", _admit),
-    ("review", _review),
-    ("qa", _qa),
     ("deliver", _deliver),
 )
 

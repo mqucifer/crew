@@ -445,9 +445,69 @@ def test_nothing_queued_ends_the_tick_at_once(crew, monkeypatch):
 # --- #388: bookkeeping first, so holds see the board as it stands ------------------------------
 
 
-def test_landing_comes_first_and_delivering_last():
+# The phases that judge a hold: "technical work lands first", "builds on #304",
+# a design under revision, the backlog's order, the sprint's capacity.
+JUDGE_HOLDS = ("revisit", "order", "refine", "design", "admit", "deliver")
+
+
+def test_landing_comes_before_every_phase_that_judges_a_hold():
     names = [n for n, _ in loop.PHASES]
-    assert names[0] == "land" and names[-1] == "deliver"
+    assert all(names.index("land") < names.index(phase) for phase in JUDGE_HOLDS)
+    assert names[-1] == "deliver"
+
+
+# --- crew#759: nearest to done first -------------------------------------------------
+
+
+def test_a_pass_moves_the_work_nearest_to_done_first():
+    names = [n for n, _ in loop.PHASES]
+    assert names == [
+        "review",
+        "qa",
+        "land",
+        "revisit",
+        "order",
+        "refine",
+        "design",
+        "admit",
+        "deliver",
+    ]
+
+
+def test_a_pull_request_ready_for_review_is_reviewed_before_any_epic_is_refined(crew, monkeypatch):
+    """Finished PRs waited behind 18 to 33 minutes of refinement a pass (crew#759)."""
+    ran: list[str] = []
+
+    def phase(name):
+        def run(_crew):
+            ran.append(name)
+            return loop.PhaseOutcome(name)
+
+        return run
+
+    monkeypatch.setattr(loop, "PHASES", tuple((n, phase(n)) for n, _ in loop.PHASES))
+    loop.run(crew)
+    assert ran.index("review") < ran.index("qa") < ran.index("land") < ran.index("refine")
+
+
+def test_refinement_runs_in_a_pass_where_work_downstream_moved(crew, monkeypatch):
+    """Not a gate: downstream moved in every pass of ticks d57c8482 and c594cefb."""
+    ran: list[str] = []
+    passes = {"n": 0}
+
+    def phase(name):
+        def run(_crew):
+            if name == "review":
+                passes["n"] += 1
+            ran.append(name)
+            return loop.PhaseOutcome(name, moved=name == "review" and passes["n"] == 1)
+
+        return run
+
+    monkeypatch.setattr(loop, "PHASES", tuple((n, phase(n)) for n, _ in loop.PHASES))
+    loop.run(crew)
+    assert ran.count("refine") == 2, "refined in the pass whose review moved, and the next"
+    assert ran.index("refine") < ran.index("admit") < ran.index("deliver")
 
 
 def test_a_hold_released_by_a_merge_is_seen_in_the_same_pass(crew, monkeypatch):
