@@ -124,6 +124,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `files.shown`
 - `files.asked`
 - `edit.loose_match`
+- `autofix.applied`
 - `issue.cites`
 - `reference.unresolved`
 - `comment.ignored`

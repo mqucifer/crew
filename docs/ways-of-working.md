@@ -454,6 +454,17 @@ whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
 
+**Before the checks, the project's own fixers run, and the attempt answers for
+what they change** (crew#758). The design's `autofix` commands run as named; a
+design that names none gets ruff's safe fixes (`--fix-only --no-unsafe-fixes`)
+and its formatter. A change they make to a file the attempt didn't touch is
+undone, and its finding left for the checks to report. The unsafe fixes listed
+in `workspace.UNSAFE_FIXES`, each with why it's allowed, are applied too, but only
+for findings the project's own lint reports in files the attempt touched. Every
+other unsafe fix stays the Developer's (the Sponsor, on crew#758). What changed
+is an `autofix.applied` event on the attempt, and the pull request lists the files
+and each unsafe fix, so review and QA check them with the rest of the diff.
+
 A Python part gets the coverage map in any image: pytest-cov is installed into the
 worktree's home, and the suite measured with the project's own `python` (crew#690,
 ADR 0030). Verified in the Playwright Python image: setup's `pip install`, then

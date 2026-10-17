@@ -12,7 +12,7 @@ import ast
 import os
 import subprocess
 import textwrap
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -64,6 +64,13 @@ class CheckResult:
     """The verdict on an implementation, and the evidence for it."""
 
     results: list[CommandResult]
+    # What the project's own fixers changed before the checks ran, for the
+    # attempt's record (crew#758): the files the attempt touched that they fixed,
+    # and the files outside it whose changes were undone.
+    fixed: list[str] = field(default_factory=list)
+    reverted: list[str] = field(default_factory=list)
+    # Each allowed unsafe fix applied (`UNSAFE_FIXES`), as `CODE path:line`.
+    unsafe: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -547,9 +554,26 @@ def run(
 # What a developer's editor does on save. Deterministic, so there is no reason
 # to spend a model round-trip on any of it.
 AUTOFIX = (
-    ["uv", "run", "ruff", "check", "--fix-only", "."],
+    # Safe fixes only, whatever the project's config says: an unsafe one may not
+    # keep what the code meant, and that is the Developer's call (crew#758).
+    ["uv", "run", "ruff", "check", "--fix-only", "--no-unsafe-fixes", "."],
     ["uv", "run", "ruff", "format", "."],
 )
+
+# The unsafe fixes the default autofix also applies, each with why it may (the
+# Sponsor's decision on crew#758, 2026-10-17). An unsafe fix is one ruff says may
+# not keep what the code meant; any not named here stays the Developer's. Each
+# was chosen from the event log, for a VERIFY failure it alone caused and a
+# repair call it cost. Only a finding the project's own config reports, in a file
+# the attempt touched, is fixed, and each is on the attempt's record.
+UNSAFE_FIXES: dict[str, str] = {
+    # sprint-metrics#563, 2026-10-11: its only finding, and one repair call.
+    "SIM102": "Joining nested `if`s with `and` runs the same code in the same order. "
+    "Ruff calls it unsafe for the comments it can drop, which review sees in the diff.",
+    # sprint-metrics#453, 2026-10-07, beside an F841.
+    "B905": "`strict=False` is what `zip()` does without it, so behaviour is unchanged. "
+    "Ruff calls it unsafe because `strict=True` may have been meant: the tests decide.",
+}
 
 VERIFY = (
     ["uv", "run", "ruff", "check", "."],
@@ -685,11 +709,118 @@ def check(
     results = []
     if tools.setup:
         results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, timeout=timeout))
+    fixed: list[str] = []
+    reverted: list[str] = []
+    unsafe: list[str] = []
     if all(r.ok for r in results):
+        touched = _changed(worktree)
+        kept = {p: _read(worktree / p) for p in touched or ()}
+        if touched is not None and tools.autofix == AUTOFIX:
+            # Before the formatter, which then formats what the fix wrote.
+            unsafe = _unsafe_fixes(worktree, touched, sandbox=sandbox, timeout=timeout)
         for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
             run(worktree, command, sandbox=sandbox, network=False, timeout=timeout)
+        if touched is not None:
+            fixed = [p for p, text in kept.items() if _read(worktree / p) != text]
+            # A fixer runs over the whole project, but the attempt answers for what
+            # it changed: a fix elsewhere would land unreviewed in its pull request.
+            # Undone, its finding is reported by the checks like any other.
+            reverted = sorted((_changed(worktree) or set()) - touched)
+            if reverted:
+                _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
             results.append(run(worktree, command, sandbox=sandbox, network=False, timeout=timeout))
-    return CheckResult(results=results)
+    return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
+
+
+def _unsafe_fixes(
+    worktree: Path, touched: set[str], *, sandbox: Sandbox, timeout: int
+) -> list[str]:
+    """Apply the allowed unsafe fixes (`UNSAFE_FIXES`) the project's lint reports.
+
+    Only in the files the attempt touched, and only for findings the project's
+    own ruff config reports: `--select` names those codes alone, so nothing it
+    doesn't enable is fixed. Returns each applied as `CODE path:line`.
+    """
+    import json  # noqa: PLC0415
+
+    files = sorted(p for p in touched if p.endswith(".py") and (worktree / p).is_file())
+    if not files:
+        return []
+    found = run(
+        worktree,
+        ["uv", "run", "ruff", "check", "--output-format", "json", *files],
+        sandbox=sandbox,
+        network=False,
+        timeout=timeout,
+    )
+    listed = found.output[found.output.find("[") : found.output.rfind("]") + 1]
+    try:
+        findings = json.loads(listed) if listed else []
+    except json.JSONDecodeError:
+        return []
+    applied: list[str] = []
+    for finding in findings:
+        fix = finding.get("fix") or {}
+        if finding.get("code") not in UNSAFE_FIXES or fix.get("applicability") != "unsafe":
+            continue
+        # Reported where the check ran, which may be a container's path.
+        name = str(finding.get("filename", ""))
+        path = next((f for f in files if name == f or name.endswith("/" + f)), None)
+        if path is not None:
+            line = (finding.get("location") or {}).get("row")
+            applied.append(f"{finding['code']} {path}:{line}")
+    if not applied:
+        return []
+    codes = sorted({a.split()[0] for a in applied})
+    paths = sorted({a.split()[1].rsplit(":", 1)[0] for a in applied})
+    was = {p: _read(worktree / p) for p in paths}
+    run(
+        worktree,
+        ["uv", "run", "ruff", "check", "--fix-only", "--unsafe-fixes"]
+        + ["--select", ",".join(codes), *paths],
+        sandbox=sandbox,
+        network=False,
+        timeout=timeout,
+    )
+    # On the record only where the file did change: a fix that didn't run isn't one.
+    changed = {p for p in paths if _read(worktree / p) != was[p]}
+    return [a for a in applied if a.split()[1].rsplit(":", 1)[0] in changed]
+
+
+def _changed(worktree: Path) -> set[str] | None:
+    """The files changed or new in the worktree, as git sees it. None outside git."""
+    listed = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    if listed is None:
+        return None
+    paths: set[str] = set()
+    entries = iter(listed.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
+            continue
+        paths.add(entry[3:])
+        if entry[0] in "RC":
+            next(entries, None)  # a rename's old path follows it
+    return paths
+
+
+def _read(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def _git(worktree: Path, *args: str) -> str | None:
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(worktree), *args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None
