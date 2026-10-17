@@ -341,6 +341,18 @@ def test_a_number_two_repositories_had_then_is_left_out_and_counted():
     assert manifest.left_out == {"card_moved: card's repository unknown": 1}
 
 
+def test_a_move_that_names_its_repository_is_placed_there_whoever_else_has_the_number():
+    """crew#756: what a move names is read, never guessed over; a technical epic's move
+    now names its repository, so it is placed even when two repositories had the number."""
+    named = ("tick", {**MOVE[1], "detail": {"from": "Reviewing", "to": "QAing", "repo": "crew"}})
+    cards = [board_card("sprint-metrics", 455), board_card("crew", 455)]
+
+    data, manifest = built([named], cards=cards)
+
+    assert data["events"][0]["card"] == {"repo": "crew", "number": 455}
+    assert manifest.left_out == {}
+
+
 def test_an_event_after_the_packages_date_is_left_for_the_next():
     """Chicago's 2026-10-07 ends at 05:00 UTC on the 8th."""
     late = ("tick", {**MOVE[1], "at": "2026-10-08T05:30:00Z"})
