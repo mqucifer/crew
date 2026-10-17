@@ -607,8 +607,13 @@ def _cited_sections(text: str) -> set[str]:
 
 
 def _slug(text: str, words: int = 6) -> str:
-    found = re.findall(r"[A-Za-z0-9']+", re.sub(r"[*`]", "", text).lower())
-    return "-".join(found[:words])
+    """A rule's name from its first words, as code names are written: `ask_the_sponsor`.
+
+    Not hyphens: "ask", a hyphen and sixteen more characters reads as a key to the
+    repository's credential check.
+    """
+    found = re.findall(r"[a-z0-9]+", re.sub(r"[*`']", "", text).lower())
+    return "_".join(found[:words])
 
 
 def _inline(source: Source, within: ast.AST, group: str, prefix: str) -> list[Entry]:

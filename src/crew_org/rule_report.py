@@ -235,7 +235,7 @@ class Matcher:
         return found
 
     def _empty(self) -> str | None:
-        return next((i for i in self.entries if i.startswith("call.the-answer-was-empty")), None)
+        return next((i for i in self.entries if i.startswith("call.the_answer_was_empty")), None)
 
 
 def _flat(annotation: Any) -> Iterator[Any]:
