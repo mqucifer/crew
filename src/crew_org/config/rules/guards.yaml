@@ -1,28 +1,68 @@
 # Safety guards. Declared once each (crew#756, ADR 0031): change a rule here.
 check.delivery.workflows_not_permitted:
+  description: 'A `.github/workflows` change is blocked while the GitHub App lacks `workflows: write`.'
+  messages:
+    default: 'this change edits {files}, and the crew''s GitHub App has no `workflows: write` permission,
+      so GitHub would refuse the push. The Sponsor grants it on the app and accepts it on the installation
+      (crew#279)'
   origin:
   - crew#279
   owner: Developer
+  told_in: FirstAttempt, FirstOrDone, Implementation, Rework
 check.design.image_problems:
+  description: Refused unless it's pinned by a digest its registry has.
+  messages:
+    missing: 'the sandbox image `{image}` doesn''t exist: no such digest in {host}'
+    unpinned: the sandbox image `{image}` isn't pinned by digest (name@sha256:...)
+    unverified: 'the sandbox image `{image}` can''t be verified: {why}'
   origin:
   - crew#403
   owner: Architect
+  told_in: DesignProposal.sandbox_image
 check.design.needs_an_image:
+  description: Refused if empty when a check or a part needs more than Python and uv.
+  messages:
+    check: the check `{check}`
+    default: '{needs} needs more than the crew''s default sandbox, which has only Python and uv. Name
+      the image they run in, with every tool the checks need, in `sandbox_image` (registry/name:tag),
+      and its install command in `setup`.'
+    part: the {language} part `{path}`
   origin:
   - crew#516
   owner: Architect
+  told_in: DesignProposal.sandbox_image
 check.design.shelled:
+  description: Refused if a setup, check or autofix command needs a shell.
+  messages:
+    default: '`{command}` uses {operators}, but the crew runs each command without a shell. Name one command;
+      where it needs several steps, a script in the repository that the skeleton''s first story writes'
   origin:
   - crew#690
   owner: Architect
+  told_in: DesignProposal
 check.design.undeclared:
+  description: Refused if a check CI doesn't run today, or a new CI proof, has no change that says so.
+  messages:
+    new_proof: '`{proof}` is a new CI proof, and no change says the work that makes CI prove it. List
+      it in `changes` with `needs_work` and the work.'
+    not_in_ci: '`{check}` isn''t a check CI runs today. If it should be, list it in `changes` (what, what
+      the project does now, and why); if CI already runs it under another command, name that command instead.'
   origin:
   - crew#335
   owner: Architect
+  told_in: DesignProposal.changes
 check.design.unlocked:
+  description: Refused unless it names a lockfile a package manager writes.
+  messages:
+    none: 'the design names no lockfile. Name the file the setup''s package manager writes, its path from
+      the repository''s root: {known}'
+    not_a_lockfile: '`{path}` isn''t a lockfile a package manager writes, so a story would have to write
+      its pins and hashes by hand, and can''t resolve them. Name one the setup''s tool writes when it
+      installs: {known}. For Python, `pyproject.toml` with `uv.lock`, setup running `uv sync`'
   origin:
   - crew#690
   owner: Architect
+  told_in: DesignProposal.lockfile
 config.agents.architect.can:
   owner: Architect
 config.agents.business_analyst.can:
@@ -53,24 +93,79 @@ config.org.trust.crew:
 config.org.trust.sponsor:
 config.org.trust.tools:
 form.CriterionTest.stays_in_the_repository:
+  description: Refused if empty, outside the repo, or in .git.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
   owner: Developer
+  told_in: CriterionTest.path
 form.FileEdit.stays_in_the_repository:
+  description: Refused if empty, outside the repo, in .git, or not Python.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
+    not_python: '{path} isn''t a Python file, so it has no definitions to edit by name; change it with
+      a text edit, quoting the text it replaces'
   origin:
   - crew#744
   owner: Developer
+  told_in: FileEdit.path
 form.FileWrite.stays_in_the_repository:
+  description: Refused if empty, outside the repo, or in .git.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
   owner: Developer
+  told_in: FileWrite.path
 form.Implementation.deleted_stay_in_the_repository:
+  description: Refused if one is empty, outside the repo, or in .git.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
   owner: Developer
+  told_in: Implementation.deleted_files
 form.Move.stays_in_the_repository:
+  description: Refused if a path is empty, outside the repo, in .git, or not Python.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
+    not_python: '{path} isn''t a Python file; only Python definitions move'
   owner: Developer
+  told_in: Move
 form.PlannedFile.in_the_repository:
+  description: Refused if empty, outside the repo, or in .git.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
   owner: Developer
+  told_in: PlannedFile.path
 form.TextEdit.stays_in_the_repository:
+  description: Refused if empty, outside the repo, or in .git.
+  messages:
+    empty: path is empty
+    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
+    git: refusing to write inside .git
   origin:
   - crew#204
   owner: Developer
+  told_in: TextEdit.path
 guard.bounds.out_of_bounds:
+  messages:
+    default: 'This change goes outside what the project allows:
+
+
+      {reasons}{not_applied}'
+    protected: '`{path}` is protected by the project''s record (`{protected_by}`{why} in {record}). Leave
+      it unchanged.'
+    weakened: 'CI would no longer enforce `{check}`, a check the project''s design requires ({record}).
+      Workflows may change, but every design check must still run there and still be able to fail: no
+      `|| true`, no `continue-on-error`.'
   owner: Developer
 told.delivery_crew.the_repository_below_may_show_some:
   guidance: true

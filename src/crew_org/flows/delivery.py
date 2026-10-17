@@ -1344,10 +1344,10 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = (
-                    "This change goes outside what the project allows:\n\n"
-                    + "\n".join(f"- {reason}" for reason in outside)
-                    + NOT_APPLIED
+                feedback = says(
+                    "guard.bounds.out_of_bounds",
+                    reasons="\n".join(f"- {reason}" for reason in outside),
+                    not_applied=NOT_APPLIED,
                 )
                 continue
             outcome.failure_detail = "\n".join(outside)
@@ -1830,11 +1830,7 @@ def workflows_not_permitted(implementation, permissions: dict[str, str] | None =
     changed = [p for p in bounds.touched(implementation) if ci_guard.is_workflow(p)]
     if not changed or not held or held.get("workflows") == "write":
         return ""
-    return (
-        f"this change edits {', '.join(changed)}, and the crew's GitHub App has no "
-        "`workflows: write` permission, so GitHub would refuse the push. The Sponsor grants "
-        "it on the app and accepts it on the installation (crew#279)"
-    )
+    return says("check.delivery.workflows_not_permitted", files=", ".join(changed))
 
 
 def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:
