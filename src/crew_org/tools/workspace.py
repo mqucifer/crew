@@ -206,10 +206,13 @@ def plan_text_edits(
     text that was there and that they already removed is skipped, not failed.
     """
     before = before or {}
+    from crew_org.flows.skeleton import marked  # noqa: PLC0415
     from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
 
     root = worktree.resolve()
     changed: dict[str, str] = {}
+    placeholders: set[str] = set()
+    rewritten: set[str] = set()
     for item in text_edits:
         target = (root / item.path).resolve()
         if not target.is_relative_to(root):
@@ -221,9 +224,20 @@ def plan_text_edits(
                     "in new_files, written in full."
                 )
             changed[item.path] = target.read_text(encoding="utf-8")
+            if marked(changed[item.path]):
+                placeholders.add(item.path)
         text = changed[item.path]
         if item.path.endswith(".py"):
-            _outside_definitions(item, text)
+            try:
+                _outside_definitions(item, text)
+            except EditError:
+                # A walking skeleton's placeholder has no definitions anyone relies
+                # on: the story replacing it rewrites it (ADR 0030). crew-presentation
+                # stories 73 and 84 rewrote theirs by quoting, and were refused seven
+                # times for bringing in definitions (crew#731).
+                if item.path not in placeholders:
+                    raise
+                rewritten.add(item.path)
         if not item.find:
             joiner = "" if not text or text.endswith("\n") else "\n"
             changed[item.path] = text + joiner + item.replace
@@ -242,6 +256,13 @@ def plan_text_edits(
                 f"the surrounding text so it names one place:\n{item.find[:300]}"
             )
         changed[item.path] = text.replace(item.find, item.replace, 1)
+    for path in sorted(rewritten):
+        # Still marked, the real file it became could be rewritten by every later story.
+        if marked(changed[path]):
+            raise EditError(
+                f"{path!r} is a walking skeleton's placeholder. Replace it whole in "
+                "`new_files`, without the `crew:placeholder` marker."
+            )
     for path, text in changed.items():
         if path.endswith(".py"):
             try:

@@ -245,6 +245,62 @@ def test_a_skeleton_placeholder_may_be_replaced_whole(repo):
     assert regression.overwrites_existing(repo, [still]) == ["build.py"]
 
 
+PLACEHOLDER_BUILD = (
+    '"""Build the site."""\n# crew:placeholder\n\nimport sys\n\n'
+    'if __name__ == "__main__":\n    print("build: placeholder (no-op)")\n    sys.exit(0)\n'
+)
+
+
+def test_a_placeholder_rewritten_by_quoting_may_bring_in_definitions(repo):
+    """crew-presentation#73 rewrote its placeholder `build.py` by quoting, six times (crew#731)."""
+    edit = TextEdit(
+        path="build.py",
+        find=PLACEHOLDER_BUILD,
+        replace='"""Build the site."""\n\nimport sys\n\n\ndef main():\n    return 0\n\n\n'
+        'if __name__ == "__main__":\n    sys.exit(main())\n',
+    )
+    after = plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)["build.py"]
+    assert "def main():" in after and "crew:placeholder" not in after
+
+
+def test_a_placeholder_test_file_may_take_helpers_with_its_imports(repo):
+    """crew-presentation#84 replaced the placeholder's skip with its imports and two helpers."""
+    text = (
+        '"""Token checks.\n\ncrew:placeholder\n"""\n\nimport pytest\n\n'
+        'pytestmark = pytest.mark.skip(reason="later")\n\n\ndef test_placeholder_passes():\n'
+        "    pass\n"
+    )
+    edits = [
+        TextEdit(path="tests/test_tokens.py", find="crew:placeholder\n", replace="Real ones.\n"),
+        TextEdit(
+            path="tests/test_tokens.py",
+            find='import pytest\n\npytestmark = pytest.mark.skip(reason="later")\n',
+            replace="from pathlib import Path\n\n\ndef _css():\n    return Path('a.css')\n",
+        ),
+    ]
+    (repo / "tests").mkdir()
+    after = plan(python(repo, "tests/test_tokens.py", text), *edits)["tests/test_tokens.py"]
+    assert "def _css():" in after and "pytestmark" not in after
+
+
+def test_a_placeholder_left_marked_is_sent_to_new_files(repo):
+    # Quoting only its print line keeps the marker, so the real file it becomes
+    # could be rewritten whole by every later story (crew#725).
+    edit = TextEdit(
+        path="build.py",
+        find='    print("build: placeholder (no-op)")\n',
+        replace="    def run():\n        return 0\n",
+    )
+    with pytest.raises(EditError, match="placeholder. Replace it whole in `new_files`"):
+        plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)
+
+
+def test_appending_to_a_placeholder_is_sent_to_new_files(repo):
+    edit = TextEdit(path="build.py", find="", replace="import json\n\n\ndef main():\n    pass\n")
+    with pytest.raises(EditError, match="placeholder. Replace it whole in `new_files`"):
+        plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)
+
+
 def test_the_developer_is_told_placeholders_are_replaced_whole():
     from crew_org.crews.delivery_crew import STANDING_INSTRUCTIONS
 
