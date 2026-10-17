@@ -1,6 +1,91 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
 capability.unjustified:
 check.review.with_deploy:
+decision.acceptance.awaiting_qa:
+decision.acceptance.close_finished_parents:
+  origin:
+  - crew#174
+  - crew#185
+  - crew#187
+  - sprint-metrics#184
+decision.backlog_order.what_is_ordered:
+decision.board_flow.admit_held_stories:
+  origin:
+  - crew#33
+  - crew#34
+decision.board_flow.approved_epics:
+decision.board_flow.goal_cards:
+decision.board_flow.goals_missing_work_type:
+decision.board_flow.lacking_goals:
+decision.board_flow.started:
+  origin:
+  - crew#189
+  - sprint-metrics#97
+decision.bugs.bugs_to_triage:
+decision.bugs.carry_out:
+decision.bugs.collaborators_only:
+decision.close.carry_over:
+  origin:
+  - crew#389
+decision.close.close_sprint:
+  origin:
+  - crew#314
+  - crew#389
+decision.delivery.interrupted:
+decision.delivery.reconcile_orphans:
+decision.delivery.rework:
+  origin:
+  - sprint-metrics#31
+decision.delivery.sprint_stories:
+decision.delivery.waits_on_files:
+  origin:
+  - crew#436
+  - sprint-metrics#384
+decision.design_notes.write_notes:
+decision.diagnose.diagnose_blocked:
+  origin:
+  - sprint-metrics#200
+decision.main_watch.red_main:
+decision.merge.conflict:
+  origin:
+  - crew#100
+  - crew#158
+  - crew#95
+decision.merge.done_but_open:
+decision.merge.land:
+  origin:
+  - crew#116
+  - crew#302
+decision.merge.merge_approved:
+  origin:
+  - crew#436
+decision.merge.merged_elsewhere:
+decision.presentation_notes.write_notes:
+decision.refine_panel.no_goal_no_panel:
+decision.release_check.waits_for_the_run:
+decision.revert.land:
+decision.revert.refused:
+decision.revert.return_card:
+decision.review.what_is_reviewed:
+decision.revisit.back_to_work:
+  origin:
+  - crew#690
+decision.revisit.design_faults:
+decision.revisit.file_work:
+decision.sprint.capacity:
+decision.sprint.left_over:
+  origin:
+  - crew#353
+  - sprint-metrics#284
+decision.sprint.parked:
+decision.sprint.plan_sprint:
+decision.sprint.start_sprint:
+decision.sprint.waits_on_work_outside:
+decision.story_problem.return_to_refinement:
+  origin:
+  - crew#189
+  - crew#242
+decision.strain.strained:
 delivery.conflict_with_main:
 delivery.open_pull_request:
 delivery.push_failed:

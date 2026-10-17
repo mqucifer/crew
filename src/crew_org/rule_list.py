@@ -44,6 +44,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, get_args
 
+import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 from crew_org import rulebook
@@ -64,6 +65,7 @@ GROUPS = {
     "edit": "An edit can't be applied, and why is sent back",
     "repair": "The crew changes the work itself, and records it",
     "skip": "The crew holds work back, said only in words",
+    "decision": "The tick decides a card's handling, found by the decision-point audit",
     "told": "Told, and not checked by anything above",
 }
 
@@ -1431,6 +1433,43 @@ def _skips() -> list[Entry]:
     return list(out.values())
 
 
+def _decisions() -> list[Entry]:
+    """The rules the decision-point audit found that no other shape does (crew#756).
+
+    Read from the reviewed table, `config/rules/decision_points.yaml`: a `decision.*`
+    rule is checked where its points are, and says what its first function does.
+    """
+    path = rulebook.CATALOG / "decision_points.yaml"
+    if not path.exists():
+        return []
+    table = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    sites: dict[str, set[str]] = {}
+    for entry in table.values():
+        rule = (entry or {}).get("rule", "")
+        if rule.startswith("decision."):
+            sites.setdefault(rule, set()).add(str(entry["at"]))
+    out = []
+    for rule, ats in sorted(sites.items()):
+        first = sorted(ats)[0]
+        module_path, _, name = first.partition(":")
+        source = next(s for s in sources() if s.path == f"src/crew_org/{module_path}")
+        fn = _functions(source.tree).get(name)
+        doc = (ast.get_docstring(fn) or "") if fn is not None else ""
+        comments = _comments_above(source.lines, fn.lineno) if fn is not None else ""
+        out.append(
+            Entry(
+                rule,
+                "decision",
+                f"src/crew_org/{first}",
+                _first_sentence(doc) or name.replace("_", " "),
+                checked={f"src/crew_org/{at}" for at in ats},
+                origin=refs(doc + " " + comments),
+                text=doc,
+            )
+        )
+    return out
+
+
 def _guard_rules() -> list[Entry]:
     """Each place delivery records a failure class for a change and sends a reason back.
 
@@ -1786,7 +1825,13 @@ def _link(checks: list[Entry], told: list[Entry]) -> list[Entry]:
         cited = []
         for check in checks:
             sections = line.sections & check.sections
-            incidents = {r for r in line.origin & check.origin if not r.startswith("ADR")}
+            # Not the audit's decisions: their origins come from long docstrings, and a
+            # shared incident there is a coincidence more often than a link.
+            incidents = (
+                set()
+                if check.group == "decision"
+                else {r for r in line.origin & check.origin if not r.startswith("ADR")}
+            )
             if sections or incidents:
                 cited.append(check)
                 how = f"both cite {min(sections or incidents)}"
@@ -1821,6 +1866,7 @@ def entries() -> tuple[Entry, ...]:
         + _changed_answers()
         + _repairs()
         + _skips()
+        + _decisions()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
@@ -2004,7 +2050,7 @@ PLACEMENT: list[tuple[str, str, Any]] = [
         "flow",
         "the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the "
         "holds said only in words",
-        lambda e: e.group in ("decides", "skip"),
+        lambda e: e.group in ("decides", "skip", "decision"),
     ),
     ("answer_shape", "the call layer's refusals, for every form", lambda e: e.group == "call"),
     (
@@ -2231,7 +2277,7 @@ def write_declarations() -> list[Path]:
     kept = {rule for rules in declared.values() for rule in rules}
     dropped.extend(sorted(set(rulebook.catalog()) - kept))
     for path in rulebook.CATALOG.glob("*.yaml"):
-        if path != rulebook.BUDGET:
+        if path.stem in {*CATEGORIES, rulebook.UNPLACED}:
             path.unlink()
     return rulebook.write(declared)
 

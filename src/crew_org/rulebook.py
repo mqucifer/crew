@@ -129,7 +129,8 @@ def catalog(directory: Path | None = None) -> dict[str, RuleSpec]:
     """Every declared rule, by id, from the category files."""
     found: dict[str, RuleSpec] = {}
     for path in sorted((directory or CATALOG).glob("*.yaml")):
-        if path.name == BUDGET.name:
+        # Only the category files: the budget and the decision-point table live beside them.
+        if path.stem not in {*CATEGORIES, UNPLACED}:
             continue
         for rule, spec in _read(path).items():
             if rule in found:
