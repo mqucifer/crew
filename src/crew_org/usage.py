@@ -100,8 +100,20 @@ def pinned(use: Use, root: Path | None) -> str | None:
 
 def schema_fields(schema: dict[str, Any]) -> list[str]:
     """Every field a JSON schema defines, as a path: `sprints[].name`."""
+    return list(described_fields(schema))
+
+
+def described_fields(schema: dict[str, Any]) -> dict[str, str]:
+    """Every field a JSON schema defines, by path, with what the schema says of it.
+
+    Its description, and that it's deprecated when it is: the facts that say which
+    of two fields to use. Shown only the names, the UX Designer was offered
+    `cycle_time_days` beside `cycle_time_minutes` and picked days, and the site
+    showed "0 days" for one-day sprints (crew#761). Empty for a field the schema
+    says nothing about.
+    """
     defs = schema.get("$defs") or schema.get("definitions") or {}
-    found: list[str] = []
+    found: dict[str, str] = {}
 
     def walk(node: Any, path: str, depth: int, seen: frozenset[str]) -> None:
         if not isinstance(node, dict) or depth > DEPTH:
@@ -123,11 +135,21 @@ def schema_fields(schema: dict[str, Any]) -> list[str]:
             walk(extra, f"{path}.<key>" if path else "<key>", depth, seen)
         for name, sub in (node.get("properties") or {}).items():
             child = f"{path}.{name}" if path else name
-            found.append(child)
+            if child not in found:
+                found[child] = _said(sub)
             walk(sub, child, depth + 1, seen)
 
     walk(schema, "", 0, frozenset())
-    return list(dict.fromkeys(found))
+    return found
+
+
+def _said(field: Any) -> str:
+    if not isinstance(field, dict):
+        return ""
+    said = " ".join(str(field.get("description") or "").split())
+    if field.get("deprecated") is True:
+        said = f"deprecated. {said}".strip()
+    return said
 
 
 def css_names(text: str) -> tuple[list[str], list[str]]:
@@ -146,8 +168,12 @@ def _provided(path: str, text: str) -> str:
             schema = json.loads(text)
         except ValueError:
             return text
-        fields = schema_fields(schema) if isinstance(schema, dict) else []
-        return "Fields: " + ", ".join(f"`{f}`" for f in fields) if fields else text
+        fields = described_fields(schema) if isinstance(schema, dict) else {}
+        if not fields:
+            return text
+        return "Fields:\n" + "\n".join(
+            f"- `{f}`: {said}" if said else f"- `{f}`" for f, said in fields.items()
+        )
     if path.endswith(".css"):
         tokens, classes = css_names(text)
         return (
@@ -182,6 +208,38 @@ def contract(use: Use, root: Path | None) -> str:
             continue
         lines += ["", f"`{path}`:", "", _provided(path, text)]
     return "\n".join(lines)
+
+
+def unreadable(use: Use, root: Path | None) -> list[str]:
+    """Why the roles couldn't be shown what `use` points to, one line per gap.
+
+    `notes` and `contract` say so inside the prompt, where only a role reads it.
+    The handover check names the same gaps before the crew takes a project over
+    (crew#757).
+    """
+    gaps = []
+    try:
+        found = section(_file(use.repo, use.file), use.section)
+    except httpx.HTTPError as exc:
+        gaps.append(f"`{use.file}` can't be read from {use.repo}: {exc}")
+    else:
+        if found is None:
+            gaps.append(f'{use.repo}\'s `{use.file}` has no section "{use.section}"')
+    if not use.pin or not use.contract:
+        gaps.append(
+            f"it names no {'`pin`' if not use.pin else '`contract`'}, so the roles aren't "
+            f"shown what {use.repo} provides at the release this project uses"
+        )
+        return gaps
+    release = pinned(use, root)
+    if release is None:
+        return [*gaps, f"`{use.pin}` names no release"]
+    for path in use.contract:
+        try:
+            _file(use.repo, path, release)
+        except httpx.HTTPError as exc:
+            gaps.append(f"`{path}` can't be read at `{release}`: {exc}")
+    return gaps
 
 
 def provided_fields(uses: list[Use], root: Path | None) -> frozenset[str]:

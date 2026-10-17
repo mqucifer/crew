@@ -188,6 +188,22 @@ def test_a_labelled_goal_is_typed():
     assert [c.number for c in goals_missing_work_type(cards)] == [1]
 
 
+def test_typing_a_goal_names_its_repository():
+    """crew#756: the note named a card and no repository (crew#752's class)."""
+
+    class Board:
+        def set_select(self, item, name, value):
+            pass
+
+    sink = EventSink(None)
+    seen: list = []
+    sink.subscribe(seen.append)
+    goal = card(1, work_type=None, labels=frozenset({"goal"}))
+    board_flow.stamp_goal_work_type(Board(), sink, [goal])
+    (typed,) = [e for e in seen if e.kind == EventKind.NOTE]
+    assert (typed.card, typed.detail["repo"]) == (1, "sprint-metrics")
+
+
 def test_an_untyped_card_without_the_label_is_not_a_goal():
     assert goals_missing_work_type([card(1, work_type=None)]) == []
 

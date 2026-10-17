@@ -85,6 +85,31 @@ def test_citing_a_test_it_wasnt_shown_is_not_proof(repo):
     assert not held.accepted and "wasn't shown" in held.criteria[0].evidence
 
 
+def test_a_name_the_criterion_quotes_is_its_data_not_a_citation(repo):
+    # crew#768: a failure code that reads like a test name, quoted from the Given.
+    tests = qa_tests(repo)
+    c = CriterionVerdict(
+        criterion='Given top_failure_causes contains {"reason": "test_assertion_failed"}',
+        proven=True,
+        evidence="tests/test_metrics.py::test_cycle_time builds it with test_assertion_failed",
+    )
+    v = QAVerdict(summary="judged", accepted=True, criteria=[c])
+    assert held_to_what_it_read(v, tests) == v
+
+
+def test_a_missing_test_is_still_refused_beside_quoted_data(repo):
+    tests = qa_tests(repo)
+    c = CriterionVerdict(
+        criterion='Given {"reason": "test_assertion_failed"}',
+        proven=True,
+        evidence="test_nowhere proves it, with test_assertion_failed",
+    )
+    held = held_to_what_it_read(QAVerdict(summary="judged", accepted=True, criteria=[c]), tests)
+    assert not held.accepted
+    assert "`test_nowhere`" in held.criteria[0].evidence
+    assert "`test_assertion_failed`" not in held.criteria[0].evidence
+
+
 def test_a_file_name_isnt_taken_for_a_test(repo):
     tests = qa_tests(repo)
     v = verdict("tests/test_metrics.py::test_cycle_time, in test_metrics.py")

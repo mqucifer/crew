@@ -30,11 +30,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from crew_org import rulebook
 from crew_org.constitution import excerpt
 from crew_org.cut_text import check_not_cut_at_a_quote
 from crew_org.events import EventKind, record
@@ -100,29 +101,33 @@ def split_blocks(text: str) -> tuple[str, dict[str, str]]:
             if started:
                 name, body = started.group(1), []
             elif line.strip():
-                raise ValueError(
-                    f"text after the JSON outside any block: {line.strip()[:80]!r}. Write each "
-                    "block between its @@@ name @@@ line and @@@ end @@@"
-                )
+                rulebook.refuse("call.split_blocks", "outside", line=repr(line.strip()[:80]))
             continue
         if line.strip() == _BLOCK_END:
             if body and _FENCE.match(body[0]) and len(body) > 1 and body[-1].strip() == "```":
                 body = body[1:-1]
             if name in blocks:
-                raise ValueError(f"block {name!r} is written twice: write each block once")
+                rulebook.refuse("call.split_blocks", "twice", name=repr(name))
             blocks[name] = "\n".join(body) + ("\n" if body else "")
             name = None
             continue
         body.append(line)
     if name is not None:
-        raise ValueError(f"block {name!r} has no @@@ end @@@ line: close every block")
+        rulebook.refuse("call.split_blocks", "unclosed", name=repr(name))
     return head, blocks
 
 
-def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> Any:
+def join_blocks(
+    data: Any,
+    blocks: dict[str, str],
+    fields: frozenset[str],
+    loose: list[dict[str, Any]] | None = None,
+) -> Any:
     """The answer with each block named in a code field put in its place (ADR 0026).
 
     A name no block answers, or a block no field names, is refused with that reason.
+    A field holding exactly the name of a block written under a name other than
+    b1, b2 and so on takes that block, and is added to `loose` (crew#734).
     """
     used: set[str] = set()
 
@@ -131,20 +136,28 @@ def join_blocks(data: Any, blocks: dict[str, str], fields: frozenset[str]) -> An
             out = {}
             for key, item in value.items():
                 named = _block_named(item) if key in fields else None
+                bare = str(item).strip().strip("@`'\" ").strip() if key in fields else ""
+                if named is None and bare in blocks:
+                    # sprint-metrics#626 wrote blocks f1 to f8, and crew-presentation#73
+                    # b_url_for: each name went in as the code, and was refused.
+                    named = bare
+                    if loose is not None:
+                        loose.append({"fallback": "block.name", "field": key, "name": bare})
                 if named is not None and named in blocks:
                     used.add(named)
                     out[key] = blocks[named]
                 elif named is not None:
-                    raise ValueError(
-                        f"`{key}` names block {named!r}, which isn't written after the "
-                        f"JSON: write it between @@@ {named} @@@ and @@@ end @@@"
+                    rulebook.refuse(
+                        "call.join_blocks", "unwritten", key=key, name=repr(named), bare=named
                     )
                 elif key in fields and _NOT_A_BLOCK_NAME.match(str(item)):
                     written = ", ".join(blocks) or "none"
-                    raise ValueError(
-                        f"`{key}` holds {str(item).strip()!r}, which isn't a block's name: "
-                        f"blocks are named b1, b2 and so on, and the blocks written are "
-                        f"{written}. Put the name of the block holding its code in `{key}`"
+                    rulebook.refuse(
+                        "call.join_blocks",
+                        "not_a_name",
+                        key=key,
+                        value=repr(str(item).strip()),
+                        written=written,
                     )
                 else:
                     out[key] = walk(item)
@@ -363,16 +376,34 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
             return f"list of {kind(field.get('items') or {})}"
         return str(field.get("type", "any"))
 
-    def fields(model: dict[str, Any]) -> list[str]:
+    def said(*parts: str) -> str:
+        """Sentences joined: a description that doesn't end one is ended first."""
+        found = [" ".join(p.split()) for p in parts if p and p.strip()]
+        return " ".join(
+            p if i == len(found) - 1 or p.endswith((".", ":", "!", "?")) else p + "."
+            for i, p in enumerate(found)
+        )
+
+    def fields(model: dict[str, Any], told: dict[str, list[str]]) -> list[str]:
+        # A field's description, then each rule that checks it, from the rule's own
+        # declaration (ADR 0031): a check is told in the form it checks.
         return [
             f"- `{name}` ({'code, as a block' if name in blocks else kind(field)})"
             + (
-                f": {' '.join(str(field['description']).split())}"
-                if field.get("description")
+                f": {text}"
+                if (text := said(str(field.get("description") or ""), *told.get(name, [])))
                 else ""
             )
             for name, field in (model.get("properties") or {}).items()
         ]
+
+    def heading(name: str, model: dict[str, Any]) -> str:
+        told = rulebook.told(name).get("", [])
+        # Unchanged where nothing is told: the prompt's prefix stays the same.
+        text = (
+            said(str(model.get("description") or ""), *told) if told else model.get("description")
+        )
+        return f"**{name}**" + (f": {text}" if text else "")
 
     lines = [
         BLOCKS_FORMAT
@@ -380,17 +411,14 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
         else "Write your answer as JSON in this form, every field present, each as its "
         "description says.",
         "",
-        f"**{schema.get('title', 'Answer')}**",
-        *fields(schema),
+        heading(str(schema.get("title", "Answer")), {}),
+        *fields(schema, rulebook.told(str(schema.get("title", "")))),
     ]
     for name, model in defs.items():
         if "properties" not in model:
             continue
-        lines += [
-            "",
-            f"**{name}**" + (f": {model['description']}" if model.get("description") else ""),
-        ]
-        lines += fields(model)
+        lines += ["", heading(name, model)]
+        lines += fields(model, rulebook.told(name))
     return "\n".join(lines)
 
 
@@ -522,15 +550,9 @@ def stream(
     }
 
 
-def _runaway(text: str) -> str:
-    """The reason an answer that ran on as whitespace is refused, with where it went wrong."""
-    tail = text.rstrip()[-RUNAWAY_TAIL:]
-    return (
-        "the answer ran on as whitespace after this, so a string closed early or a list "
-        f"or object was left open: ...{tail}\n\nCheck that each string ends exactly where "
-        "you mean it to, with every double quote inside it escaped, and close each list "
-        "and object you open"
-    )
+def _runaway(text: str) -> NoReturn:
+    """Refuse an answer that ran on as whitespace, saying where it went wrong."""
+    rulebook.refuse("call.the_answer_ran_on_as", tail=text.rstrip()[-RUNAWAY_TAIL:])
 
 
 def ask[Answer: BaseModel](
@@ -592,6 +614,7 @@ def ask[Answer: BaseModel](
     empties = 0
     refused: list[str] = []
     for attempt in range(1, attempts + 1):
+        loose: list[dict[str, Any]] = []
         body = {
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
@@ -629,19 +652,16 @@ def ask[Answer: BaseModel](
         _trace(began, detail, spec["role"])
         try:
             if choice.get("finish_reason") == "runaway":
-                raise ValueError(_runaway(text))
+                _runaway(text)
             if not text.strip():
-                raise ValueError(
-                    "the answer was empty: you stopped before writing it. Think less and "
-                    "write the whole answer"
-                )
+                rulebook.refuse("call.the_answer_was_empty_you")
             if blocks:
                 head, written = split_blocks(text)
                 try:
                     data = json.loads(head)
                 except json.JSONDecodeError as exc:
-                    raise ValueError(f"the JSON before the blocks isn't valid JSON: {exc}") from exc
-                found = answer.model_validate(join_blocks(data, written, blocks))
+                    rulebook.refuse("call.the_json_before_the_blocks", error=exc)
+                found = answer.model_validate(join_blocks(data, written, blocks, loose))
             else:
                 found = answer.model_validate_json(text)
             # Before the step's own rules: a value cut at a double quote reads as
@@ -649,6 +669,14 @@ def ask[Answer: BaseModel](
             check_not_cut_at_a_quote(found)
             if check is not None:
                 check(found)
+            for match in loose:
+                record(
+                    EventKind.EDIT_LOOSE_MATCH,
+                    f"{spec['role']}: block {match['name']!r} named in `{match['field']}`",
+                    role=spec["role"],
+                    **match,
+                    **detail,
+                )
             return found
         except (ValidationError, ValueError) as exc:
             reason = _reason(exc)
@@ -658,6 +686,7 @@ def ask[Answer: BaseModel](
                 role=spec["role"],
                 reason=reason[:600],
                 empty=not text.strip(),
+                **({"rules": rules} if (rules := _rules(exc)) else {}),
                 **detail,
             )
             refused.append(f"Refused: {reason}\n\n{text}")
@@ -747,6 +776,21 @@ def _use_tools(
             )
             messages.append({"role": "tool", "tool_call_id": made.get("id", ""), "content": said})
     return [*messages, {"role": "user", "content": ANSWER_NOW}]
+
+
+def _rules(exc: Exception) -> list[str]:
+    """The declared rules a refusal names (ADR 0031): pydantic keeps each validator's
+    own error in the context of the error it reports."""
+    if isinstance(exc, rulebook.Refusal):
+        return [exc.rule]
+    if not isinstance(exc, ValidationError):
+        return []
+    found = [
+        error.rule
+        for e in exc.errors()
+        if isinstance(error := (e.get("ctx") or {}).get("error"), rulebook.Refusal)
+    ]
+    return list(dict.fromkeys(found))
 
 
 def _reason(exc: Exception) -> str:

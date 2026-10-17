@@ -46,11 +46,13 @@ def panel_step(
     project: str,
     search: list[str],
     code: Callable[[str], str] = lambda _about: "",
+    unapproved: frozenset[int] = frozenset(),
 ) -> bool:
     """True when the epic's record is settled and it may be split now.
 
     `code` is the repository as the split sees it, focused on what it is given:
-    the Architect reads it for the files its questions name.
+    the Architect reads it for the files its questions name. `unapproved` is the
+    sibling epics still waiting for the Sponsor's approval, which it never waits on.
     """
     number = epic.number or 0
     if not epic.parent:
@@ -92,7 +94,7 @@ def panel_step(
         _, text = record_flow.split(body)
         asked = record_flow.parse(text).for_architect()
         if asked:
-            first = builds_on_unsplit(issues, repo, epic.parent, number, body)
+            first = builds_on_unsplit(issues, repo, epic.parent, number, body, unapproved)
             if first is not None:
                 result.skipped.append((number, f"waits for #{first} to be split: it builds on it"))
                 return False
@@ -126,7 +128,12 @@ def panel_step(
 
 
 def builds_on_unsplit(
-    issues: IssueClient, repo: str, goal: int, epic: int, body: str
+    issues: IssueClient,
+    repo: str,
+    goal: int,
+    epic: int,
+    body: str,
+    unapproved: frozenset[int] = frozenset(),
 ) -> int | None:
     """An open sibling this epic names and that isn't split yet, or None (crew#611).
 
@@ -136,6 +143,11 @@ def builds_on_unsplit(
     in the same pass and chose a different schema. Two epics that name each other
     go in issue order. A sibling that never gets split holds this one too, and the
     tick says so each pass.
+
+    A sibling still waiting for the Sponsor's approval holds nothing: it has settled
+    nothing to build on, and its split is the Sponsor's choice, not work in flight.
+    mqucifer/crew-presentation#138 named the three epics in Inbox that build on it,
+    and waited on them for ever (crew#773).
     """
     from crew_org.flows.board_flow import STORY_SPLIT_MARKER  # noqa: PLC0415
 
@@ -144,7 +156,7 @@ def builds_on_unsplit(
         return None
     for child in issues.sub_issues(repo, goal):
         other = child["number"]
-        if other not in named or child.get("state") != "open":
+        if other not in named or child.get("state") != "open" or other in unapproved:
             continue
         if epic in _named(child.get("body") or "", issues.owner, repo) and other > epic:
             continue

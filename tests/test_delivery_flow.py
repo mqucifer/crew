@@ -266,8 +266,11 @@ def harness(tmp_path, monkeypatch):
                 story_text, context=kw.get("header", ""), feedback=kw.get("why", "")
             ),
         )
+        applying = apply or (lambda w, impl: [])
         monkeypatch.setattr(
-            delivery.workspace, "apply_implementation", apply or (lambda w, impl: [])
+            delivery.workspace,
+            "apply_implementation",
+            lambda w, impl, **_: applying(w, impl),
         )
         monkeypatch.setattr(delivery.workspace, "check", lambda w: sequence.pop(0))
         monkeypatch.setattr(delivery.claude_code, "escalate", fake_escalate)
@@ -776,6 +779,19 @@ def test_a_story_waits_for_its_earlier_sibling(harness):
     assert [n for n, _ in result.waiting_on_a_sibling] == [7]
     assert result.waiting_on_a_sibling[0][1] == 6, "and it says which story it waits for"
     assert ("S7", "In Progress") not in board.moves
+
+
+def test_a_hold_names_the_cards_repository(harness, monkeypatch):
+    """crew#756: every hold note named a card and no repository, so a count by card
+    couldn't tell sprint-metrics#7 from crew-presentation#7 (crew#752's class)."""
+    result, _, _, _, _, seen = harness(checks=[green()], cards=[sibling(6), sibling(7)])
+    (held,) = [e for e in seen if e.detail.get("rule") == "hold.sibling"]
+    assert (held.detail["card"], held.detail["repo"]) == (7, "sprint-metrics")
+
+    monkeypatch.setattr(delivery, "held_by_what_it_builds_on", lambda cards, card, body: story(5))
+    result, _, _, _, _, seen = harness(checks=[green()], cards=[story(8)])
+    (held,) = [e for e in seen if e.detail.get("rule") == "hold.builds_on"]
+    assert (held.detail["card"], held.detail["repo"]) == (8, "sprint-metrics")
 
 
 def test_a_landed_sibling_does_not_hold_anything(harness):

@@ -356,8 +356,16 @@ def held_to_what_it_read(verdict: QAVerdict, tests: QATests) -> QAVerdict:
         return verdict
     criteria = []
     for c in verdict.criteria:
+        # A name the criterion itself quotes is its data, not a test QA cites: the
+        # failure code `test_assertion_failed` held a proven criterion unproven (crew#768).
         missing = (
-            [n for n in profile_for().test_names_in(c.evidence) if n in unseen] if c.proven else []
+            [
+                n
+                for n in profile_for().test_names_in(c.evidence)
+                if n in unseen and not (unseen[n] is None and n in c.criterion)
+            ]
+            if c.proven
+            else []
         )
         if not missing:
             criteria.append(c)

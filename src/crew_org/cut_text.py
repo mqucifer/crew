@@ -21,6 +21,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from crew_org.rulebook import refuse
+
 # (form, field) pairs whose value is a file's text, copied or written exactly.
 VERBATIM = frozenset(
     {
@@ -31,12 +33,6 @@ VERBATIM = frozenset(
         ("TextEdit", "replace"),
         ("CriterionTest", "source"),
     }
-)
-
-REASON = (
-    "These fields stop mid-sentence: {fields}. A double quote inside a value ends the "
-    "field and the rest is lost. Write values in single quotes ('sponsor'), never "
-    "double quotes, and finish each field."
 )
 
 
@@ -69,4 +65,4 @@ def check_not_cut_at_a_quote(answer: BaseModel) -> None:
     """Refuse an answer with a field cut short, saying which and why."""
     found = cut_fields(answer)
     if found:
-        raise ValueError(REASON.format(fields=", ".join(found)))
+        refuse("call.check_not_cut_at_a_quote", fields=", ".join(found))

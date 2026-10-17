@@ -1,0 +1,196 @@
+# Tests prove the criteria. Declared once each (crew#756, ADR 0031): change a rule here.
+check.acceptance.held_to_what_it_read:
+  origin:
+  - crew#221
+  - crew#768
+  owner: QA Engineer
+check.attempts.repair_report:
+  owner: Developer
+check.criteria_check.feedback:
+  owner: Business Analyst
+check.criteria_check.with_repairs:
+  origin:
+  - crew#612
+  owner: Business Analyst
+check.delivery.lint_or_tests_failed:
+  owner: Developer
+check.delivery.these_named_tests_dont_exist:
+  origin:
+  - crew#217
+  - crew#221
+  owner: Developer
+check.delivery.this_ci_evidence_doesnt_hold:
+  owner: Developer
+check.presentation_notes.coverage:
+check.review.with_docs_finding:
+  origin:
+  - crew#191
+form.AcceptanceCriterion.names_what_to_check:
+  origin:
+  - crew#281
+  owner: Business Analyst
+form.CriterionMet.one_proof:
+  owner: Developer
+form.CriterionTest.a_name_not_its_code:
+  origin:
+  - crew#583
+  owner: Developer
+form.CriterionTest.is_that_test:
+  origin:
+  - crew#196
+  - crew#404
+  - crew#448
+  - sprint-metrics#381
+  - sprint-metrics#386
+  owner: Developer
+form.CriterionVerdict.is_specific:
+  owner: QA Engineer
+form.FileWrite.tests_declare_their_fixtures:
+  origin:
+  - crew#196
+  owner: Developer
+form.FirstAttempt.has_a_test:
+  origin:
+  - crew#591
+  owner: Developer
+form.FirstOrDone.has_a_test:
+  owner: Developer
+form.Implementation.drops_doc_criteria_with_no_test:
+  origin:
+  - sprint-metrics#529
+  owner: Developer
+form.Implementation.drops_tests_it_only_names:
+  origin:
+  - crew#450
+  - crew#489
+  - crew#511
+  - sprint-metrics#453
+  owner: Developer
+form.QAVerdict.a_verdict_or_an_ask:
+  owner: QA Engineer
+form.QAVerdict.acceptance_requires_every_criterion:
+  owner: QA Engineer
+form.ReaderCriterion.observable:
+  owner: UX Designer
+form.ReaderCriterion.stated:
+  owner: UX Designer
+form.RepairedStory.enough_criteria:
+  owner: Business Analyst
+form.Story.enough_criteria:
+  owner: Business Analyst
+form.StoryCriteria.at_least_two:
+  owner: UX Designer
+form.Triage.fits_its_outcome:
+  owner: Business Analyst
+guard.reproduce.check:
+  origin:
+  - crew#407
+  owner: Developer
+told.business_analyst.a_criterion_naming_a_table_a:
+  guidance: true
+  owner: Business Analyst
+told.business_analyst.bug_triage.a_request_for_something_the_project:
+  guidance: true
+  owner: Business Analyst (bug_triage)
+told.business_analyst.every_story_gets_at_least_two:
+  guidance: true
+  owner: Business Analyst
+told.business_analyst.if_you_cannot_estimate_it_it:
+  guidance: true
+  owner: Business Analyst
+told.business_analyst.you_cannot_create_or_re_scope:
+  guidance: true
+  owner: Business Analyst
+told.business_analyst.you_describe_behaviour_never_implementation:
+  guidance: true
+  owner: Business Analyst
+told.business_analyst.you_split_by_workflow_step_by:
+  guidance: true
+  owner: Business Analyst
+told.contract_crew.if_its_criteria_or_the_rows:
+  guidance: true
+  owner: Business Analyst
+told.criteria_crew.every_criterion_that_cant_be_met:
+  guidance: true
+  owner: QA Engineer
+told.criteria_crew.report_every_criterion_of_the_proposed:
+  guidance: true
+  owner: QA Engineer
+told.design_note_crew.the_stories_acceptance_criteria_are_the:
+  guidance: true
+  owner: Architect
+told.form.CriteriaCheck.conflicts:
+  guidance: true
+  owner: QA Engineer
+told.form.CriteriaConflict.story:
+  guidance: true
+  owner: QA Engineer
+told.form.PresentationNote.beyond_reach:
+  guidance: true
+  owner: UX Designer
+told.form.Rework.already_satisfied:
+  guidance: true
+  owner: Developer
+told.presentation_note_crew.add_to_the_stories_criteria_never:
+  guidance: true
+  owner: UX Designer
+told.product_owner.you_do_not_write_acceptance_criteria:
+  guidance: true
+  owner: Product Owner
+told.qa_crew.a_check_proves_only_what_its:
+  guidance: true
+  owner: QA Engineer
+told.qa_crew.a_criterion_is_proven_only_by:
+  guidance: true
+  owner: QA Engineer
+told.qa_crew.a_criterion_only_ci_can_run:
+  guidance: true
+  owner: QA Engineer
+told.qa_crew.dont_cite_a_test_you_havent:
+  guidance: true
+  owner: QA Engineer
+told.qa_crew.some_test_files_are_shown_in:
+  guidance: true
+  owner: QA Engineer
+told.qa_crew.test_files_listed_by_name_only:
+  guidance: true
+  owner: QA Engineer
+told.qa_engineer.criteria_check.two_criteria_that_expect_different_outcomes:
+  guidance: true
+  owner: QA Engineer (criteria_check)
+told.qa_engineer.criteria_check.you_dont_judge_style_size_or:
+  guidance: true
+  owner: QA Engineer (criteria_check)
+told.qa_engineer.you_do_not_fix_the_code:
+  guidance: true
+  owner: QA Engineer
+told.qa_engineer.you_run_the_suite_and_report:
+  guidance: true
+  owner: QA Engineer
+told.refinement_crew.change_only_what_the_conflicts_need:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.check_each_criterions_expected_values_against:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.return_each_story_to_repair_once:
+  guidance: true
+  owner: Business Analyst
+§3 criteria_are_written_before_estimation_never:
+  guidance: true
+§3 minimum_2_criteria_per_story_at:
+  guidance: true
+§7 documentation_is_the_exception:
+  guidance: true
+  origin:
+  - crew#324
+§7 done_means_merged_and_green:
+  guidance: true
+§7.2:
+  guidance: true
+§7.3:
+  guidance: true
+§7.4:
+  guidance: true
+§7.6:
+  guidance: true

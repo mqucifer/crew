@@ -245,6 +245,62 @@ def test_a_skeleton_placeholder_may_be_replaced_whole(repo):
     assert regression.overwrites_existing(repo, [still]) == ["build.py"]
 
 
+PLACEHOLDER_BUILD = (
+    '"""Build the site."""\n# crew:placeholder\n\nimport sys\n\n'
+    'if __name__ == "__main__":\n    print("build: placeholder (no-op)")\n    sys.exit(0)\n'
+)
+
+
+def test_a_placeholder_rewritten_by_quoting_may_bring_in_definitions(repo):
+    """crew-presentation#73 rewrote its placeholder `build.py` by quoting, six times (crew#731)."""
+    edit = TextEdit(
+        path="build.py",
+        find=PLACEHOLDER_BUILD,
+        replace='"""Build the site."""\n\nimport sys\n\n\ndef main():\n    return 0\n\n\n'
+        'if __name__ == "__main__":\n    sys.exit(main())\n',
+    )
+    after = plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)["build.py"]
+    assert "def main():" in after and "crew:placeholder" not in after
+
+
+def test_a_placeholder_test_file_may_take_helpers_with_its_imports(repo):
+    """crew-presentation#84 replaced the placeholder's skip with its imports and two helpers."""
+    text = (
+        '"""Token checks.\n\ncrew:placeholder\n"""\n\nimport pytest\n\n'
+        'pytestmark = pytest.mark.skip(reason="later")\n\n\ndef test_placeholder_passes():\n'
+        "    pass\n"
+    )
+    edits = [
+        TextEdit(path="tests/test_tokens.py", find="crew:placeholder\n", replace="Real ones.\n"),
+        TextEdit(
+            path="tests/test_tokens.py",
+            find='import pytest\n\npytestmark = pytest.mark.skip(reason="later")\n',
+            replace="from pathlib import Path\n\n\ndef _css():\n    return Path('a.css')\n",
+        ),
+    ]
+    (repo / "tests").mkdir()
+    after = plan(python(repo, "tests/test_tokens.py", text), *edits)["tests/test_tokens.py"]
+    assert "def _css():" in after and "pytestmark" not in after
+
+
+def test_a_placeholder_left_marked_is_sent_to_new_files(repo):
+    # Quoting only its print line keeps the marker, so the real file it becomes
+    # could be rewritten whole by every later story (crew#725).
+    edit = TextEdit(
+        path="build.py",
+        find='    print("build: placeholder (no-op)")\n',
+        replace="    def run():\n        return 0\n",
+    )
+    with pytest.raises(EditError, match="placeholder. Replace it whole in `new_files`"):
+        plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)
+
+
+def test_appending_to_a_placeholder_is_sent_to_new_files(repo):
+    edit = TextEdit(path="build.py", find="", replace="import json\n\n\ndef main():\n    pass\n")
+    with pytest.raises(EditError, match="placeholder. Replace it whole in `new_files`"):
+        plan(python(repo, "build.py", PLACEHOLDER_BUILD), edit)
+
+
 def test_the_developer_is_told_placeholders_are_replaced_whole():
     from crew_org.crews.delivery_crew import STANDING_INSTRUCTIONS
 
@@ -348,3 +404,182 @@ def test_a_quote_inside_a_method_comes_back_as_that_method(repo):
     said = str(refused.value)
     assert "Here is `Report.rows` with your change made" in said
     assert "    def rows(self):\n        return [1]" in said and "def total" not in said
+
+
+# --- 4: a quote off by a known slip is matched where it can only mean one place (crew#734) ---
+
+
+TEMPLATE = '<div class="values">{{ entry.measure }}: <span>{{ entry.now }}</span></div>\n'
+
+SCHEMA = """{
+  "sprints": {
+    "items": {
+      "required": [
+        "cycle_time_days",
+        "throughput"
+      ]
+    }
+  }
+}
+"""
+
+
+def test_part_of_a_line_quoted_with_a_blocks_newline_is_matched(repo):
+    """crew-presentation#120 quoted `{{ entry.measure }}:` from a block, which ends in a newline."""
+    (repo / "page.html").write_text(TEMPLATE)
+    loose: list[dict] = []
+    edit = TextEdit(path="page.html", find="{{ entry.measure }}:\n", replace="{{ entry.label }}:\n")
+    after = workspace.plan_text_edits(repo, [edit], loose=loose)["page.html"]
+    assert after == TEMPLATE.replace("{{ entry.measure }}:", "{{ entry.label }}:")
+    assert loose == [{"fallback": "quote.final_newline", "path": "page.html", "line": 1}]
+
+
+def test_a_quote_without_its_newline_in_two_places_is_still_refused(repo):
+    (repo / "page.html").write_text(TEMPLATE + TEMPLATE)
+    edit = TextEdit(path="page.html", find="{{ entry.measure }}:\n", replace="{{ entry.label }}:\n")
+    with pytest.raises(EditError, match="is not in the file"):
+        plan(repo, edit)
+
+
+def test_lines_quoted_at_another_indent_are_matched_and_moved_with_it(repo):
+    """sprint-metrics#604 quoted a schema's lines eight spaces deeper than the file has them."""
+    (repo / "schema.json").write_text(SCHEMA)
+    loose: list[dict] = []
+    edit = TextEdit(
+        path="schema.json",
+        find='            "cycle_time_days",\n            "throughput"\n',
+        replace='            "cycle_time_days",\n            "cycle_time_minutes",\n'
+        '            "throughput"\n',
+    )
+    after = workspace.plan_text_edits(repo, [edit], loose=loose)["schema.json"]
+    assert (
+        '        "cycle_time_days",\n        "cycle_time_minutes",\n        "throughput"\n' in after
+    )
+    assert loose == [{"fallback": "quote.indent", "path": "schema.json", "line": 5}]
+
+
+def test_a_replacement_keeps_its_own_indentation_when_moved(repo):
+    (repo / "schema.json").write_text(SCHEMA)
+    edit = TextEdit(
+        path="schema.json",
+        find='          "throughput"\n',
+        replace='          "throughput",\n          {\n            "nested": true\n          }\n',
+    )
+    after = plan(repo, edit)["schema.json"]
+    assert '        "throughput",\n        {\n          "nested": true\n        }\n' in after
+
+
+@pytest.mark.parametrize(
+    "text, find",
+    [
+        # Two places the quote could mean, at two different indents.
+        ("a:\n  x: 1\nb:\n    x: 1\n", "      x: 1\n"),
+        # Its lines at different shifts: not one indent.
+        ("a:\n  x: 1\n  y: 2\n", "    x: 1\n      y: 2\n"),
+        # Tabs are never shifted.
+        ("a:\n\tx: 1\n", "  x: 1\n"),
+    ],
+)
+def test_a_shift_that_could_mean_another_place_or_isnt_one_indent_is_refused(repo, text, find):
+    (repo / "c.yml").write_text(text)
+    with pytest.raises(EditError, match="is not in the file"):
+        plan(repo, TextEdit(path="c.yml", find=find, replace=find.replace("1", "3")))
+
+
+def test_a_replacement_that_cant_keep_its_indentation_is_refused(repo):
+    (repo / "c.yml").write_text("a:\n  x: 1\n")
+    edit = TextEdit(path="c.yml", find="      x: 1\n", replace="      x: 3\n  y: 2\n")
+    with pytest.raises(EditError, match="is not in the file"):
+        plan(repo, edit)
+
+
+def test_an_exact_quote_records_no_fallback(repo):
+    loose: list[dict] = []
+    edit = TextEdit(path="README.md", find="Reports metrics.", replace="Reports more.")
+    workspace.plan_text_edits(repo, [edit], loose=loose)
+    assert loose == []
+
+
+# --- 5: quotes are of the file as shown, before named edits change it (crew#734) -----------
+
+
+def test_a_quoted_rewrite_and_named_adds_to_one_file_both_apply(repo):
+    """crew-presentation#73 quoted its whole placeholder and added each definition by name;
+    the adds, landing before its `__main__` block, split the quote."""
+    python(repo, "build.py", PLACEHOLDER_BUILD)
+    header = (
+        '"""Build the site."""\n\nimport sys\n\n\n'
+        'if __name__ == "__main__":\n    sys.exit(main())\n'
+    )
+    loose: list[dict] = []
+    workspace.apply_implementation(
+        repo,
+        Implementation(
+            summary="s",
+            text_edits=[TextEdit(path="build.py", find=PLACEHOLDER_BUILD, replace=header)],
+            edits=[
+                FileEdit(
+                    path="build.py",
+                    operation="add",
+                    target="_load",
+                    source="def _load():\n    return {}\n",
+                ),
+                FileEdit(
+                    path="build.py",
+                    operation="add",
+                    target="main",
+                    source="def main():\n    return 0\n",
+                ),
+            ],
+        ),
+        loose=loose,
+    )
+    after = (repo / "build.py").read_text()
+    assert after.index("def _load") < after.index("def main") < after.index("if __name__")
+    assert "crew:placeholder" not in after and loose == []
+
+
+def test_a_repointed_import_and_a_named_replace_in_one_file_both_apply(repo):
+    python(repo, "metrics.py", "from a import x\n\n\ndef throughput(cards):\n    return x\n")
+    workspace.apply_implementation(
+        repo,
+        Implementation(
+            summary="s",
+            text_edits=[
+                TextEdit(path="metrics.py", find="from a import x", replace="from b import x")
+            ],
+            edits=[
+                FileEdit(
+                    path="metrics.py",
+                    operation="replace",
+                    target="throughput",
+                    source="def throughput(cards):\n    return x + len(cards)\n",
+                )
+            ],
+        ),
+    )
+    assert (repo / "metrics.py").read_text() == (
+        "from b import x\n\n\ndef throughput(cards):\n    return x + len(cards)\n"
+    )
+
+
+def test_an_answer_with_no_text_edits_applies_as_its_named_edits_alone(repo):
+    from crew_org.tools.ast_edit import Edit, Operation, apply_edits
+
+    python(repo, "metrics.py", MODULE)
+    named = [
+        FileEdit(path="metrics.py", operation="add_import", target="json", source="import json"),
+        FileEdit(
+            path="metrics.py",
+            operation="replace",
+            target="throughput",
+            source="def throughput(cards):\n    return len(cards)\n",
+        ),
+        FileEdit(path="metrics.py", operation="delete", target="Card"),
+    ]
+    workspace.apply_implementation(repo, Implementation(summary="s", edits=named))
+    expected = apply_edits(
+        MODULE,
+        [Edit(operation=Operation(e.operation), target=e.target, source=e.source) for e in named],
+    )
+    assert (repo / "metrics.py").read_text() == expected

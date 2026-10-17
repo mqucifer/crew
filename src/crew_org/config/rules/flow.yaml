@@ -1,0 +1,139 @@
+# When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
+capability.unjustified:
+check.review.with_deploy:
+delivery.conflict_with_main:
+delivery.open_pull_request:
+delivery.push_failed:
+  origin:
+  - crew#10
+delivery.record_unreadable:
+edit.local_repair:
+edit.not_applied:
+escalation.allowed:
+escalation.budget:
+escalation.unresolved:
+escalation.usage_limit:
+gate.criteria_cannot_all_pass:
+gate.qa_unproven:
+gate.review_changes_requested:
+gate.reviewer_and_developer_disagree:
+guard.local_repair:
+guard.no_change:
+guard.not_reproduced:
+guard.overwrite:
+guard.protected:
+guard.workflow_permission:
+hold.builds_on:
+hold.sibling:
+hold.wip_limit:
+regression.local_repair:
+regression.persisted:
+schema.local_repair:
+schema.persisted:
+scope.return:
+skip.acceptance.already_judged_at:
+skip.board_flow.a_goal_written_by_not_the:
+skip.board_flow.already_answered:
+skip.board_flow.its_criteria_cant_all_pass_to:
+  origin:
+  - crew#583
+  - crew#612
+  - sprint-metrics#551
+skip.board_flow.not_ready_still_open_for_the:
+skip.board_flow.rework_refused:
+skip.board_flow.waits_for_planned:
+skip.board_flow.waits_for_the_sponsors_answer_on:
+skip.refine_panel.waits_for_a_person_to_settle:
+  origin:
+  - ADR 0018
+skip.refine_panel.waits_for_the_sponsors_answer_on:
+skip.refine_panel.waits_for_to_be_split_it:
+  origin:
+  - crew#611
+  - crew#773
+  - crew-presentation#138
+  - sprint-metrics#551
+  - sprint-metrics#552
+skip.review.already_reviewed_at_this_head:
+skip.review.draft:
+story.gate_round_trips:
+story.pinned_tests:
+story.review_conflicts_with_criterion:
+told.form.BacklogOrder.holds:
+  guidance: true
+  owner: Product Owner
+told.form.BacklogOrder.order:
+  guidance: true
+  owner: Product Owner
+told.form.Finding.blocking:
+  guidance: true
+told.form.Hold.builds_on:
+  guidance: true
+  owner: Product Owner
+told.form.Hold.story:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.then_only_where_the_new_work:
+  guidance: true
+  owner: Product Owner
+told.review_crew.do_not_ask_whether_it_works:
+  guidance: true
+  owner: Code Reviewer
+told.review_crew.do_not_re_litigate_a_point:
+  guidance: true
+  owner: Code Reviewer
+verify.local_repair:
+§1 a_defect_is_filed_where_it:
+  guidance: true
+§1 card_movement_and_wip_limits_are:
+  guidance: true
+§1 no_agent_may_move_a_card:
+  guidance: true
+§1 what_holds_them_is_the_output:
+  guidance: true
+§11 stopping_starting_and_starting_finishing_is:
+  guidance: true
+  owner: Scrum Master
+§17 column_names_live_in_crew_org:
+  guidance: true
+§17 columns_are_queues:
+  guidance: true
+§17 every_phase_drains_its_own_column:
+  guidance: true
+§17 the_names_describe_the_wait_not:
+  guidance: true
+§17 this_is_a_choice_and_the:
+  guidance: true
+§18 a_finding_goes_to_the_repository:
+  guidance: true
+§18 sprint_metrics_is_a_pilot_not:
+  guidance: true
+§18 the_board_is_the_crews_workplace:
+  guidance: true
+§5.1:
+  guidance: true
+  owner: Business Analyst
+§5.2:
+  guidance: true
+  owner: Business Analyst
+§5.3:
+  guidance: true
+  owner: Business Analyst
+§5.4:
+  guidance: true
+  owner: Business Analyst
+§5.5:
+  guidance: true
+  owner: Business Analyst
+§5.6:
+  guidance: true
+  owner: Business Analyst
+§5.7:
+  guidance: true
+  owner: Business Analyst
+§9 a_short_plan_first:
+  guidance: true
+§9 the_pieces_are_merged_into_one:
+  guidance: true
+§9 then_one_small_answer_per_file:
+  guidance: true

@@ -574,3 +574,34 @@ def test_each_pass_pushes_to_sprint_metrics_and_a_failure_never_stops_the_tick(c
 
     assert len(pushes) == 2, "once after each pass"
     assert result.passes == 2 and result.settled
+
+
+def test_an_epic_waiting_on_a_sibling_is_held_not_silent(monkeypatch):
+    # crew#773: the wait went to `skipped`, and the summary showed only refusals.
+    from types import SimpleNamespace
+
+    from crew_org.flows import board_flow
+
+    result = board_flow.TickResult()
+    result.skipped += [
+        (138, "waits for #116 to be split: it builds on it"),
+        (101, "already answered"),
+    ]
+    monkeypatch.setattr(board_flow, "tick", lambda *a, **k: result)
+    crew = SimpleNamespace(
+        board=None,
+        issues=None,
+        sink=EventSink(None),
+        repo="r",
+        org={},
+        ws=None,
+        sponsor=None,
+        repos=[],
+        design_holds={},
+        skeleton_only={},
+        crew_login="",
+        crew_repo="crew",
+    )
+    outcome = loop._refine(crew)
+    assert "#138 — waits for #116 to be split: it builds on it" in outcome.held
+    assert not any("already answered" in h for h in outcome.held)

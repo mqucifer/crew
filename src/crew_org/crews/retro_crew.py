@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from crew_org import calls
+from crew_org.rulebook import refuse
 
 # A defect's issue title, and how many bullets "how it went" gets (#176).
 MAX_TITLE = 80
@@ -54,10 +55,7 @@ class ProcessDefect(BaseModel):
     @classmethod
     def _short(cls, value: str) -> str:
         if len(value) > MAX_TITLE:
-            raise ValueError(
-                f"a title is a short statement of the problem, under {MAX_TITLE} "
-                f"characters; this one is {len(value)}"
-            )
+            refuse("form.ProcessDefect.short", limit=MAX_TITLE, length=len(value))
         return value
 
     @property
@@ -79,10 +77,7 @@ class ProcessDefect(BaseModel):
         if "budget" in lowered and (
             "increase" in lowered or "raise" in lowered or "more" in lowered
         ):
-            raise ValueError(
-                "a larger escalation budget is not a process improvement. Escalation "
-                "rate is a symptom of task design; name the design change instead."
-            )
+            refuse("form.ProcessDefect.is_a_change")
         return value
 
 
@@ -109,7 +104,7 @@ class Retro(BaseModel):
     @classmethod
     def _few(cls, value: list[str]) -> list[str]:
         if len(value) > MAX_WENT:
-            raise ValueError(f"at most {MAX_WENT} bullets: the notable events, not a replay")
+            refuse("form.Retro.few", limit=MAX_WENT)
         return value
 
     defects: list[ProcessDefect] = Field(

@@ -110,6 +110,10 @@ class DeliveryOutcome:
     # Merged tests in a walking skeleton's placeholder files that the story
     # replaces (crew#690), for the Code Reviewer the same way.
     placeholders: list[str] = field(default_factory=list)
+    # The files the project's own fixers changed before VERIFY, and each allowed
+    # unsafe fix (crew#758): in the diff, and named for review and QA.
+    autofixed: list[str] = field(default_factory=list)
+    unsafe_fixes: list[str] = field(default_factory=list)
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -1446,7 +1450,19 @@ def deliver_story(
         try:
             applied = True
             last_applied = implementation
-            workspace.apply_implementation(worktree, implementation)
+            loose: list[dict[str, Any]] = []
+            workspace.apply_implementation(worktree, implementation, loose=loose)
+            for match in loose:
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.EDIT_LOOSE_MATCH,
+                        role="Developer",
+                        card=number,
+                        summary=f"#{number} quote matched by {match['fallback']}: "
+                        f"{match['path']}:{match['line']}",
+                        detail=match,
+                    )
+                )
             # Tests in a part that isn't Python are written as files: each one the
             # answer names must be in them, by its title (#404).
             unwritten = [
@@ -1495,6 +1511,7 @@ def deliver_story(
             return outcome
 
         check = workspace.check(worktree)
+        _record_autofix(check, outcome, sink, number)
         if check.ok:
             # A bug's tests have to fail without the fix (crew#407, B3): a test that
             # passes there, or is skipped, doesn't reproduce the bug.
@@ -1680,6 +1697,7 @@ def deliver_story(
                 outcome.blocked_reason = result.detail
                 return outcome
             check = workspace.check(worktree)
+            _record_autofix(check, outcome, sink, number)
             if check.ok:
                 ledger.resolve(number, sprint, "resolved — lint and tests pass")
                 break
@@ -2015,6 +2033,35 @@ def _keep_refused(sink: EventSink, repo: str, number: int, answers: tuple[str, .
         return
 
 
+def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, number: int) -> None:
+    """What the project's fixers changed before VERIFY, on the attempt's record (crew#758)."""
+    fixed = getattr(check, "fixed", [])
+    reverted = getattr(check, "reverted", [])
+    unsafe = getattr(check, "unsafe", [])
+    if not (fixed or reverted or unsafe):
+        return
+    outcome.autofixed = sorted({*outcome.autofixed, *fixed})
+    outcome.unsafe_fixes = [
+        *outcome.unsafe_fixes,
+        *(u for u in unsafe if u not in outcome.unsafe_fixes),
+    ]
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.AUTOFIX_APPLIED,
+            role="Developer",
+            card=number,
+            summary=f"#{number} autofix: {len(fixed)} fixed, {len(reverted)} undone, "
+            f"{len(unsafe)} unsafe",
+            detail={
+                "fixed": fixed,
+                "reverted": reverted,
+                "unsafe": unsafe,
+                "rules": sorted({u.split()[0] for u in unsafe}),
+            },
+        )
+    )
+
+
 def _touched_count(implementation: Implementation) -> int:
     return (
         len(implementation.new_files)
@@ -2062,6 +2109,14 @@ def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcom
         lines.append(f"- `{move.name}` moved from `{move.from_path}` to `{move.to_path}`")
     for path in implementation.deleted_files:
         lines.append(f"- `{path}` (deleted)")
+    if outcome.autofixed:
+        lines += ["", "## Fixed by the project's own tools before the checks", ""]
+        lines += [f"- `{path}`" for path in outcome.autofixed]
+        lines += [
+            f"- unsafe fix `{u.split()[0]}` at `{u.split()[1]}`, allowed by "
+            "`workspace.UNSAFE_FIXES`"
+            for u in outcome.unsafe_fixes
+        ]
     proven = getattr(implementation, "proven_by_existing", None) or []
     if proven:
         lines += ["", "## Criteria the existing tests prove", ""]
@@ -2465,6 +2520,8 @@ def deliver(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{blocker.number} in the same epic",
                 card=card.number,
+                # A card number alone names no repository (crew#752).
+                repo=card.repo or repo,
                 waits_for=blocker.number,
                 rule=Rule.HOLD_SIBLING,
             )
@@ -2480,6 +2537,7 @@ def deliver(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
                 card=card.number,
+                repo=card.repo or repo,
                 waits_for=needed.number,
                 rule=Rule.HOLD_BUILDS_ON,
             )

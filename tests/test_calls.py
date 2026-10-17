@@ -488,3 +488,30 @@ def test_code_that_merely_mentions_at_signs_is_still_code():
     head = '{"summary": "s", "writes": [{"path": "p", "source": "@decorator"}]}'
     joined = calls.join_blocks(json.loads(head), {}, frozenset({"source"}))
     assert joined["writes"][0]["source"] == "@decorator"
+
+
+@pytest.mark.parametrize("named", ["f1", "b_url_for", "@@f1@@"])
+def test_a_block_written_under_another_name_is_found_and_recorded(named):
+    """sprint-metrics#626 wrote blocks f1 to f8; each name went in as the quote (crew#734)."""
+    bare = named.strip("@")
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ {bare} @@@\nx = 1\n@@@ end @@@\n")
+    loose: list[dict] = []
+    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
+    assert joined["writes"][0]["source"] == "x = 1\n"
+    assert loose == [{"fallback": "block.name", "field": "source", "name": bare}]
+
+
+def test_a_block_named_b1_records_no_fallback():
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": "b1"}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
+    loose: list[dict] = []
+    calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
+    assert loose == []
+
+
+def test_a_refusal_by_a_declared_rule_is_recorded_with_its_name(seen):
+    """The event names the rule (ADR 0031), so a count needn't match its text."""
+    ask(Proxy("", GOOD))
+    (refused,) = [e for e in seen if e.kind == EventKind.LLM_CALL_REFUSED]
+    assert refused.detail["rules"] == ["call.the_answer_was_empty_you"]
