@@ -60,34 +60,34 @@ Two human gates and no more: an epic awaiting approval in Inbox (Goals), and the
 
 ## A tick
 
-`crew tick` runs nine phases in dependency order until a pass moves nothing. One command takes the board as far as it can go. Each pass starts by landing approved work and closing finished stories and epics, so every hold after it is judged against the board as it now stands (crew#388). When an open epic has no Rank, the `order` phase has the Product Owner order the repository's open epics and name any story that must now wait for the new work (crew#358).
+`crew tick` runs nine phases until a pass moves nothing. One command takes the board as far as it can go. **Each pass moves the work nearest to done first** (crew#759): it reviews open pull requests and QAs what was approved, then lands what is approved and closes finished stories and epics, all before it refines anything. Landing still comes before every phase that judges a hold, so each hold is judged against the board as it now stands (crew#388). Refinement isn't skipped while work further along moves. In two ticks that hit the pass cap, something downstream moved in every pass, so they would have refined nothing. Delivery comes last, so it builds the stories admitted in the same pass rather than a pass later. When an open epic has no Rank, the `order` phase has the Product Owner order the repository's open epics and name any story that must now wait for the new work (crew#358).
 
 ```mermaid
 flowchart TD
-  S([pass starts]) --> L[land]
+  S([pass starts]) --> V[review]
+  V --> Q[qa]
+  Q --> L[land]
   L --> RV[revisit]
   RV --> O[order]
   O --> R[refine]
   R --> DN[design]
   DN --> A[admit]
-  A --> V[review]
-  V --> Q[qa]
-  Q --> D[deliver]
+  A --> D[deliver]
   D --> M{anything<br/>move?}
   M -- yes --> S
   M -- no --> E([stable])
 ```
 
-**Drain-first.** Work already started is pushed forward before new work is claimed, so a story never branches from a default branch missing its predecessors.
+**Drain-first.** Work already started is pushed forward before new work is refined or claimed: review, QA and landing come first, and delivery merges what is approved before it claims the next story, so a story never branches from a default branch missing its predecessors.
 
 | Phase | Reads | Does | Writes |
 | --- | --- | --- | --- |
+| review | open pull requests | Code Reviewer judges each diff | a GitHub review; cards to QAing or back to In Progress |
+| qa | QAing | Verifies behaviour against each acceptance criterion | a verdict comment; cards to Merging or back to In Progress |
 | revisit | the event log's rebuilds, design pull requests, epics labelled `decision:to-log` | Architect revisits a project's design when one sprint's stories keep colliding in the same file; the crew merges its revision; each declared change that needs work is placed first: an open epic that delivers it gets it in its own text, a correction to the design's wording files nothing, and only a prerequisite no epic delivers becomes a technical epic (crew#192, crew#439); the Product Owner's decisions for every epic are written into the project's decision log by a pull request the crew merges (crew#468) | a design pull request, merged; technical epics to Needs Refinement; a decision log pull request, merged |
 | refine | Inbox (Goals), Needs Refinement | Product Owner proposes epics; Business Analyst splits approved epics into stories. A project whose design is being revisited has its epics wait, except technical ones. With `refinement.panel` on in `org.yaml` (crew#440; turn it off and epics are split as before), an approved epic under a Goal is first read by the refinement panel and settled into a conclusion in its body (`crew panel`, `crew settle`); the split then reads that conclusion | new issues, cards to Inbox and Ready |
 | design | epics labelled `needs:design` | Architect writes the epic's design note; Code Reviewer checks it (crew#155) | a comment on the epic |
 | admit | Ready | Fills the sprint from approved epics in priority order until capacity | cards to Sprint Backlog |
-| review | open pull requests | Code Reviewer judges each diff | a GitHub review; cards to QAing or back to In Progress |
-| qa | QAing | Verifies behaviour against each acceptance criterion | a verdict comment; cards to Merging or back to In Progress |
 | deliver | Merging, then Sprint Backlog | Merges what is approved, then claims and implements the next story | merges, branches, pull requests |
 
 **A failing phase does not end the pass.** Later phases act on the cards they can, and the failure is reported beside what did happen — a tick that aborts on the first error leaves the board partway through a state nobody chose.
