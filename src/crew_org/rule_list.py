@@ -108,6 +108,8 @@ class Entry:
     fields: set[str] = field(default_factory=set)
     # For a form's rule: "field" or "model", the validator's kind.
     mode: str = ""
+    # A form's rule that changes the answer and never refuses it.
+    repairs: bool = False
     # For a guard: the failure class its events record.
     failure_class: str = ""
     # For a told line: the constitution sections it is, for linking by citation.
@@ -569,6 +571,7 @@ def _form_rules() -> list[Entry]:
                     entry.checked.add(where)
                     if not messages:
                         entry.says += " (repairs the answer, never refuses it)"
+                        entry.repairs = True
                     out[rule_id] = entry
                 entry.roles |= roles
     return list(out.values())

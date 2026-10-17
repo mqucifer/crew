@@ -319,6 +319,7 @@ def snapshot(report: Report, entries: Iterable[Entry] | None = None) -> dict[str
             "group": e.group,
             "where": e.where,
             "says": e.says,
+            "repairs": e.repairs,
             "roles": sorted(e.roles),
             "told": sorted(e.told),
             "checked": sorted(e.checked),
