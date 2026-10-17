@@ -575,7 +575,11 @@ source, and the applier splices it in. Nothing it does not name is reproduced,
 so nothing it does not name can be damaged.
 
 Operations are `replace`, `add`, `add_method`, `add_import` and `delete`.
-Deleting is something to choose, not something that happens by omission.
+Deleting is something to choose, not something that happens by omission. An
+`add` of a name already there is refused, unless what's there is exactly what it
+sends, which is already done. A criterion's test is the exception: one the file
+defines by the time it's added, whether it was merged or an earlier edit in the
+answer wrote it, is replaced (crew#735).
 
 **A first attempt starts with its tests** (crew#172). Before any code, it lists
 each acceptance criterion with the test that proves it, written in full, and the

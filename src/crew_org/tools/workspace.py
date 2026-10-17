@@ -124,13 +124,17 @@ def apply_implementation(
     by_path: dict[str, list[Edit]] = {}
     tests = getattr(implementation, "criteria_edits", set())
     for item in implementation.all_edits:
-        operation = item.operation
-        if (item.path, item.target) in tests and _defines(root / item.path, item.target):
-            # A criterion's test the file already has is replaced, not added twice:
-            # sprint-metrics#93's repair sent its first attempt's tests again (#183).
-            operation = Operation.REPLACE
+        # A criterion's test the file already has is replaced, not added twice:
+        # sprint-metrics#93's repair sent its first attempt's tests again (#183).
+        # Judged as it's added: crew-presentation#79 wrote its test by renaming a
+        # placeholder's, and #119 named one test for four criteria (crew#735).
         by_path.setdefault(item.path, []).append(
-            Edit(operation=operation, target=item.target, source=item.source)
+            Edit(
+                operation=item.operation,
+                target=item.target,
+                source=item.source,
+                replaces_existing=(item.path, item.target) in tests,
+            )
         )
 
     # As each file read before its named edits: a quoted deletion of text a
