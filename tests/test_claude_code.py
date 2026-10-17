@@ -100,6 +100,27 @@ def test_escalation_cannot_push():
     assert "git" not in claude_code.ALLOWED_TOOLS.lower()
 
 
+def test_escalation_runs_nothing_on_the_host():
+    """Generated code runs only in the sandbox; the session only reads and edits (crew#780)."""
+    assert "bash" not in claude_code.ALLOWED_TOOLS.lower()
+    assert set(claude_code.ALLOWED_TOOLS.split(",")) == {"Read", "Write", "Edit", "Glob", "Grep"}
+
+
+def test_the_session_is_given_only_those_tools(monkeypatch, tmp_path):
+    """Limited by `--tools`, not only approved by `--allowedTools` (crew#780)."""
+    seen = {}
+
+    def run(args, **kwargs):
+        seen["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout='{"result": "ok"}', stderr="")
+
+    monkeypatch.setattr(claude_code.shutil, "which", lambda _c: "/bin/claude")
+    monkeypatch.setattr(claude_code.subprocess, "run", run)
+    escalate(tmp_path, "fix it")
+    args = seen["args"]
+    assert args[args.index("--tools") + 1] == claude_code.ALLOWED_TOOLS
+
+
 def test_credentials_are_stripped_from_the_subprocess(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_TOKEN", "ghs_secret")
     monkeypatch.setenv("GH_TOKEN", "github_pat_secret")
