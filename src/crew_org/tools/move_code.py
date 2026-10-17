@@ -14,6 +14,7 @@ import ast
 import re
 from pathlib import Path
 
+from crew_org.rulebook import refuse
 from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits
 
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -106,27 +107,47 @@ def apply_moves(root: Path, moves: list) -> list[str]:
 def _move_one(root: Path, move, together: set[str]) -> list[str]:
     source_file, target_file = root / move.from_path, root / move.to_path
     if not source_file.is_file():
-        raise EditError(f"can't move `{move.name}`: {move.from_path!r} doesn't exist")
+        refuse(
+            "edit.move_code.move_one",
+            "no_file",
+            kind=EditError,
+            name=move.name,
+            path=repr(move.from_path),
+        )
     text = source_file.read_text(encoding="utf-8")
     tree = ast.parse(text)
     node = _top(tree, move.name)
     if node is None:
-        raise EditError(
-            f"can't move `{move.name}`: {move.from_path!r} has no top-level definition by that name"
+        refuse(
+            "edit.move_code.move_one",
+            "no_definition",
+            kind=EditError,
+            name=move.name,
+            path=repr(move.from_path),
         )
     target_text = target_file.read_text(encoding="utf-8") if target_file.is_file() else ""
     if target_text and _top(ast.parse(target_text), move.name) is not None:
-        raise EditError(f"can't move `{move.name}`: {move.to_path!r} already defines it")
+        refuse(
+            "edit.move_code.move_one",
+            "defined",
+            kind=EditError,
+            name=move.name,
+            path=repr(move.to_path),
+        )
 
     used = _used(node)
     # A definition that leans on others still in the old module would have the
     # two modules import each other, which fails at import time. They move too.
     left_behind = sorted((used & _defined(tree)) - together - {move.name})
     if left_behind:
-        raise EditError(
-            f"can't move `{move.name}` alone: it uses "
-            + ", ".join(f"`{n}`" for n in left_behind)
-            + f" from {move.from_path!r}. Move those to {move.to_path!r} in the same change."
+        refuse(
+            "edit.move_code.move_one",
+            "left_behind",
+            kind=EditError,
+            name=move.name,
+            uses=", ".join(f"`{n}`" for n in left_behind),
+            source=repr(move.from_path),
+            target=repr(move.to_path),
         )
 
     lines = text.splitlines()

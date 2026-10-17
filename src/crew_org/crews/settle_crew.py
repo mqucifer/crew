@@ -279,7 +279,7 @@ def check_not_cut(settlement: Settlement) -> None:
             f"dismissal of N{d.note}" for d in conclusion.dismissed if len(d.why) >= REASON_CHARS
         ]
     if cut:
-        refuse("check.settle_crew.check_not_cut", kind=Unsettled, cells=", ".join(cut))
+        refuse("check.settle_crew.cut", kind=Unsettled, cells=", ".join(cut))
     _not_cut_at_a_quote(settlement)
 
 
@@ -488,7 +488,7 @@ def check_design_cut(settlement: DesignSettlement) -> None:
         if len(getattr(a, name)) >= limit
     ]
     if cut:
-        refuse("check.settle_crew.check_design_cut", kind=Unsettled, cells=", ".join(cut))
+        refuse("check.settle_crew.cut", kind=Unsettled, cells=", ".join(cut))
     _not_cut_at_a_quote(settlement)
 
 

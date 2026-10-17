@@ -345,12 +345,15 @@ def test_a_runaway_answer_is_refused_saying_where_it_went_wrong(seen):
 
 
 def test_the_form_is_written_plainly_each_field_with_its_type_and_meaning():
-    """Lean prompts, L3: the Developer's form was 13.5k characters of JSON Schema."""
+    """Lean prompts, L3: the Developer's form was 13.5k characters of JSON Schema.
+
+    Raised from 60% to 65% of the schema by the Sponsor's decision on crew#756: each rule
+    the form checks is told in it, once, and that took the form to 64.4%."""
     from crew_org.crews.delivery_crew import FirstOrDone  # noqa: PLC0415
 
     schema = FirstOrDone.model_json_schema()
     text = calls.form_text(schema)
-    assert len(text) < len(json.dumps(schema, indent=2)) * 0.6
+    assert len(text) < len(json.dumps(schema, indent=2)) * 0.65
     assert "- `edits` (list of FileEdit): Changes to Python files that already exist" in text
     assert "- `operation` (one of `replace`, `add`, `add_method`, `add_import`, `delete`)" in text
     assert "**FileEdit**: One change to an existing file" in text
@@ -564,3 +567,15 @@ def test_a_lookup_that_fails_leaves_the_call_unmarked_not_unmade(seen, monkeypat
     assert ask(Proxy(GOOD)).approved
     started = [e.detail for e in seen if e.kind is EventKind.LLM_CALL_STARTED]
     assert "given" not in started[0]
+
+
+def test_a_rule_is_told_once_in_a_form_however_many_fields_it_checks():
+    """The Sponsor, 2026-10-17 (crew#756): the path rule was told three times on the
+    Developer's first-answer form, the named-test rule twice."""
+    from crew_org import rulebook  # noqa: PLC0415
+    from crew_org.crews.delivery_crew import FirstOrDone  # noqa: PLC0415
+
+    text = " ".join(calls.form_text(FirstOrDone.model_json_schema()).split())
+    path = rulebook.catalog()["form.path.stays_in_the_repository"].description
+    named = rulebook.catalog()["check.delivery.these_named_tests_dont_exist"].description
+    assert text.count(path) == 1 and text.count(named) == 1

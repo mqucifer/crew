@@ -388,6 +388,16 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
             for i, p in enumerate(found)
         )
 
+    # Each rule is told once in a form, at its first place, however many fields it
+    # checks (the Sponsor, 2026-10-17, crew#756): on the Developer's first-answer
+    # form, the path rule was told three times.
+    said_already: set[str] = set()
+
+    def once(told: list[str]) -> list[str]:
+        fresh = [t for t in told if t not in said_already]
+        said_already.update(fresh)
+        return fresh
+
     def fields(model: dict[str, Any], told: dict[str, list[str]]) -> list[str]:
         # A field's description, then each rule that checks it, from the rule's own
         # declaration (ADR 0031): a check is told in the form it checks.
@@ -395,14 +405,14 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
             f"- `{name}` ({'code, as a block' if name in blocks else kind(field)})"
             + (
                 f": {text}"
-                if (text := said(str(field.get("description") or ""), *told.get(name, [])))
+                if (text := said(str(field.get("description") or ""), *once(told.get(name, []))))
                 else ""
             )
             for name, field in (model.get("properties") or {}).items()
         ]
 
     def heading(name: str, model: dict[str, Any]) -> str:
-        told = rulebook.told(name).get("", [])
+        told = once(rulebook.told(name).get("", []))
         # Unchanged where nothing is told: the prompt's prefix stays the same.
         text = (
             said(str(model.get("description") or ""), *told) if told else model.get("description")

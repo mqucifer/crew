@@ -1293,12 +1293,10 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = (
-                    f"These already exist: {', '.join(overwrites)}. Change them with "
-                    "`edits`, addressed by name, rather than rewriting them as new "
-                    "files. Only a file that does not exist yet belongs in new_files, or a "
-                    "placeholder marked `crew:placeholder` replaced whole, without the "
-                    "marker." + NOT_APPLIED
+                feedback = says(
+                    "guard.overwrite.overwrites_existing",
+                    files=", ".join(overwrites),
+                    not_applied=NOT_APPLIED,
                 )
                 continue
             outcome.blocked_rule = Rule.GUARD_OVERWRITE
@@ -1441,11 +1439,7 @@ def deliver_story(
                 and not names_a_test(worktree, f"{c.path}::{c.test}")
             ]
             if unwritten:
-                raise ValueError(
-                    "these tests aren't in their files: "
-                    + ", ".join(unwritten)
-                    + ". Write each one in new_files or text_edits, titled as named here."
-                )
+                refuse("edit.delivery.these_tests_arent_in_their", tests=", ".join(unwritten))
         except Exception as exc:  # noqa: BLE001
             failure = LocalFailure(
                 card=number,

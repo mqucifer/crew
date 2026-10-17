@@ -201,22 +201,6 @@ form.ReaderCriterion.stated:
     default: every part of a criterion says something
   owner: UX Designer
   told_in: ReaderCriterion
-form.RepairedStory.enough_criteria:
-  description: Refused if there are fewer.
-  messages:
-    default: a story needs at least {count} acceptance criteria, at least one of them a failure or edge
-      case
-  owner: Business Analyst
-  told_in: RepairedStory.acceptance_criteria
-form.Story.enough_criteria:
-  cases:
-  - §5.3
-  description: Refused if there are fewer.
-  messages:
-    default: a story needs at least {count} acceptance criteria, at least one of them a failure or edge
-      case
-  owner: Business Analyst
-  told_in: Story.acceptance_criteria
 form.StoryCriteria.at_least_two:
   description: Refused with fewer than two.
   messages:
@@ -234,6 +218,17 @@ form.Triage.fits_its_outcome:
     size: an accepted bug is sized one of {sizes}
   owner: Business Analyst
   told_in: Triage
+form.story.enough_criteria:
+  cases:
+  - form.RepairedStory.enough_criteria
+  - form.Story.enough_criteria
+  - §5.3
+  description: Refused if there are fewer.
+  messages:
+    default: a story needs at least {count} acceptance criteria, at least one of them a failure or edge
+      case
+  owner: Business Analyst
+  told_in: Story.acceptance_criteria, RepairedStory.acceptance_criteria
 guard.reproduce.check:
   messages:
     default: The fix passes the checks, but {why}. Change them so at least one fails against the code

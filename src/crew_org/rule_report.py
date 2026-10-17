@@ -172,8 +172,11 @@ class Matcher:
             e
             for e in self.entries.values()
             if e.group == "form"
-            and e.form in bases
-            and (e.mode == "field" and name in e.fields if name else e.mode == "model")
+            and any(
+                form in bases and (mode == "field" and name in fields if name else mode == "model")
+                # A merged rule reads its refusals at each of its cases' places (crew#756).
+                for form, mode, fields in [(e.form, e.mode, e.fields), *e.places]
+            )
         ]
         if len(candidates) == 1:
             return candidates[0].id, BY_NAME

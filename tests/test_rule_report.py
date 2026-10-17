@@ -74,7 +74,7 @@ def test_crewais_validation_errors_are_read_by_form_and_field():
     report = rule_report.count(
         [event("escalation.decided", {"failure_class": "SCHEMA", "error": error})]
     )
-    assert report.fired["form.TextEdit.stays_in_the_repository"].matched == {rule_report.BY_NAME: 1}
+    assert report.fired["form.path.stays_in_the_repository"].matched == {rule_report.BY_NAME: 1}
 
 
 def test_a_rule_and_a_guard_are_matched_by_the_names_the_event_records():

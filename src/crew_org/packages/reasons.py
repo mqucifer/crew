@@ -48,18 +48,32 @@ def first_clause(text: str) -> str:
 def _clause_pattern(node: ast.expr) -> str | None:
     """The first clause of a string or f-string in the source, as a pattern."""
     values = node.values if isinstance(node, ast.JoinedStr) else [node]
-    pieces: list[str | None] = []  # literal text, or None for a filled-in value
+    parts: list[str | None] = []  # literal text, or None for a filled-in value
     for value in values:
         if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            text = value.value
-            if _CLAUSE_END in text:
-                pieces.append(text.split(_CLAUSE_END, 1)[0])
-                break
-            pieces.append(text)
+            parts.append(value.value)
         elif isinstance(value, ast.FormattedValue):
-            pieces.append(None)
+            parts.append(None)
         else:
             return None
+    return _pattern(parts)
+
+
+def _declared_pattern(message: str) -> str | None:
+    """The first clause of a declared rule's message, as a pattern: its `{value}`s are
+    what's filled in (ADR 0031). Since crew#756 a check's fixed message lives in the
+    catalog, not in a string in the code."""
+    parts = [p for p in re.split(r"(\{[^{}]*\})", message) if p]
+    return _pattern([None if p.startswith("{") else p for p in parts])
+
+
+def _pattern(parts: list[str | None]) -> str | None:
+    pieces: list[str | None] = []
+    for part in parts:
+        if part is not None and _CLAUSE_END in part:
+            pieces.append(part.split(_CLAUSE_END, 1)[0])
+            break
+        pieces.append(part)
     if pieces and pieces[-1] is not None:
         pieces[-1] = pieces[-1].rstrip(".")
     if sum(len(p.strip()) for p in pieces if p is not None) < FIXED_TEXT:
@@ -69,7 +83,8 @@ def _clause_pattern(node: ast.expr) -> str | None:
 
 @cache
 def templates() -> tuple[re.Pattern[str], ...]:
-    """The first clause of every string and f-string in the crew's source.
+    """The first clause of every string and f-string in the crew's source, and of every
+    message its rulebook declares.
 
     The first clause, because that's what's published, and because it outlasts
     rewording: crew#511 rewrote what follows "has no source", not that.
@@ -87,6 +102,12 @@ def templates() -> tuple[re.Pattern[str], ...]:
                 pattern = _clause_pattern(node)
                 if pattern:
                     found.add(pattern)
+    from crew_org import rulebook  # noqa: PLC0415
+
+    for spec in rulebook.catalog().values():
+        for _, message in spec.messages:
+            if pattern := _declared_pattern(message):
+                found.add(pattern)
     return tuple(re.compile(p, re.DOTALL) for p in sorted(found))
 
 

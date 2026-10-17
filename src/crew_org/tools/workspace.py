@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from crew_org.crews.delivery_crew import FileWrite, TextEdit
+from crew_org.rulebook import refuse
 from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
 
 if TYPE_CHECKING:
@@ -154,11 +155,10 @@ def apply_implementation(
     for path, edits in by_path.items():
         target = (root / path).resolve()
         if not target.is_relative_to(root):
-            raise ValueError(f"{path!r} resolves outside the worktree")
+            refuse("edit.workspace.apply_implementation", "outside", path=repr(path))
         if not target.exists():
-            raise EditError(
-                f"{path!r} does not exist. A file that does not exist yet belongs in "
-                "new_files, written in full."
+            refuse(
+                "edit.workspace.apply_implementation", "missing", kind=EditError, path=repr(path)
             )
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
@@ -182,9 +182,11 @@ def apply_implementation(
     for path in getattr(implementation, "deleted_files", []):
         target = (root / path).resolve()
         if not target.is_relative_to(root):
-            raise ValueError(f"{path!r} resolves outside the worktree")
+            refuse("edit.workspace.apply_implementation", "outside", path=repr(path))
         if not target.is_file():
-            raise EditError(f"{path!r} can't be deleted: it isn't a file in the repository")
+            refuse(
+                "edit.workspace.apply_implementation", "not_a_file", kind=EditError, path=repr(path)
+            )
         target.unlink()
         written.append(path)
     return written
@@ -247,12 +249,14 @@ def plan_text_edits(
     for item in text_edits:
         target = (root / item.path).resolve()
         if not target.is_relative_to(root):
-            raise ValueError(f"{item.path!r} resolves outside the worktree")
+            refuse("edit.workspace.plan_text_edits", "outside", path=repr(item.path))
         if item.path not in changed:
             if not target.exists():
-                raise EditError(
-                    f"{item.path!r} does not exist. A file that does not exist yet belongs "
-                    "in new_files, written in full."
+                refuse(
+                    "edit.workspace.plan_text_edits",
+                    "missing",
+                    kind=EditError,
+                    path=repr(item.path),
                 )
             changed[item.path] = target.read_text(encoding="utf-8")
             if marked(changed[item.path]):
@@ -286,32 +290,40 @@ def plan_text_edits(
         if found == 0 and not item.replace and item.find in before.get(item.path, ""):
             continue  # removing what a named edit already removed
         if found == 0:
-            raise EditError(
-                f"the text to replace in {item.path!r} is not in the file. Quote it exactly "
-                f"as the file has it, including indentation:\n{item.find[:300]}"
+            refuse(
+                "edit.workspace.plan_text_edits",
+                "not_found",
+                kind=EditError,
+                path=repr(item.path),
+                quote=item.find[:300],
             )
         if found > 1:
-            raise EditError(
-                f"the text to replace occurs {found} times in {item.path!r}. Quote more of "
-                f"the surrounding text so it names one place:\n{item.find[:300]}"
+            refuse(
+                "edit.workspace.plan_text_edits",
+                "ambiguous",
+                kind=EditError,
+                count=found,
+                path=repr(item.path),
+                quote=item.find[:300],
             )
         changed[item.path] = text.replace(item.find, item.replace, 1)
     for path in sorted(rewritten):
         # Still marked, the real file it became could be rewritten by every later story.
         if marked(changed[path]):
-            raise EditError(
-                f"{path!r} is a walking skeleton's placeholder. Replace it whole in "
-                "`new_files`, without the `crew:placeholder` marker."
-            )
+            refuse("edit.workspace.plan_text_edits", "placeholder", kind=EditError, path=repr(path))
     for path, text in changed.items():
         if path.endswith(".py"):
             try:
                 ast.parse(text)
             except SyntaxError as exc:
-                raise EditError(
-                    f"after the text edits, {path!r} is no longer valid Python: {exc.msg} "
-                    f"on line {exc.lineno}"
-                ) from None
+                refuse(
+                    "edit.workspace.plan_text_edits",
+                    "invalid",
+                    kind=EditError,
+                    path=repr(path),
+                    error=exc.msg,
+                    line=exc.lineno,
+                )
     return changed
 
 
@@ -413,7 +425,7 @@ def _outside_definitions(item, text: str) -> None:
         isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
         for node in ast.walk(added)
     ):
-        raise EditError(f"this text edit brings in a definition. {how}")
+        refuse("edit.workspace.outside_definitions", "brings_in", kind=EditError, how=how)
     # An empty `find` appends, so imports would land after the code that uses them:
     # crew-presentation#73 did it three times and failed each on a NameError at
     # line 10, with the imports at the end of the file (crew#690).
@@ -422,11 +434,11 @@ def _outside_definitions(item, text: str) -> None:
         and added is not None
         and any(isinstance(node, ast.Import | ast.ImportFrom) for node in added.body)
     ):
-        raise EditError(
-            f"this text edit appends imports to the end of {item.path!r}, after the code "
-            "that uses them. Add each import with `edits`, operation `add_import`, which "
-            "puts it with the file's imports, or replace the file's import lines with a "
-            "text edit whose `find` is those lines."
+        refuse(
+            "edit.workspace.outside_definitions",
+            "appends_imports",
+            kind=EditError,
+            path=repr(item.path),
         )
     if not item.find or item.find not in text:
         return  # an append, or a quote the caller reports as not in the file
@@ -444,9 +456,13 @@ def _outside_definitions(item, text: str) -> None:
             continue
         top = min([node.lineno, *(d.lineno for d in node.decorator_list)])
         if first <= (node.end_lineno or node.lineno) and top <= last:
-            raise EditError(
-                f"this text edit reaches into `{node.name}`. {how}"
-                + _as_a_replace(text, node, item, first, last)
+            refuse(
+                "edit.workspace.outside_definitions",
+                "reaches_into",
+                kind=EditError,
+                name=node.name,
+                how=how,
+                replace=_as_a_replace(text, node, item, first, last),
             )
 
 
@@ -499,7 +515,7 @@ def apply(worktree: Path, files: list[FileWrite]) -> list[str]:
     for item in files:
         target = (root / item.path).resolve()
         if not target.is_relative_to(root):
-            raise ValueError(f"{item.path!r} resolves outside the worktree")
+            refuse("edit.workspace.apply", path=repr(item.path))
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(item.content, encoding="utf-8")
         written.append(item.path)

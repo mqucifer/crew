@@ -44,11 +44,11 @@ class PlannedFile(BaseModel):
     def _in_the_repository(cls, value: str) -> str:
         cleaned, outside = in_the_repository(value)
         if outside == "empty":
-            refuse("form.PlannedFile.in_the_repository", "empty")
+            refuse("form.path.stays_in_the_repository", "empty")
         if outside == "escapes":
-            refuse("form.PlannedFile.in_the_repository", "escapes", path=repr(value))
+            refuse("form.path.stays_in_the_repository", "escapes", path=repr(value))
         if outside == "git":
-            refuse("form.PlannedFile.in_the_repository", "git")
+            refuse("form.path.stays_in_the_repository", "git")
         return cleaned
 
     @field_validator("intent")
