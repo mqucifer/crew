@@ -1,5 +1,6 @@
 # Each role's guidance budget: the lines it's told that nothing checks (crew#756,
-# ADR 0031). Set at the count on 2026-10-17, so it can only go down.
+# ADR 0031). Set at the count on 2026-10-17, so it can only go down. Those lines are
+# guidance because nothing checks them yet, not by decision: each category's cleanup decides.
 Architect: 34
 Architect (design_placement): 3
 Business Analyst: 32
