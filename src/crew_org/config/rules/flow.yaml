@@ -1,40 +1,46 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
 check.review.with_deploy:
-config.const.backlog_order.ATTEMPTS:
+config.ask_limits:
+  cases:
+  - config.const.board_flow.ANALYST_ASK_LIMIT
+  - config.const.delivery.ASKED_FILES_LIMIT
+  description: 'How much a role may ask for: the Business Analyst''s questions, and the files a delivery
+    adds by asking.'
+  origin:
+  - crew#231
+  - sprint-metrics#529
+config.attempts:
+  cases:
+  - config.org.execution.local_repair_attempts
+  - config.const.backlog_order.ATTEMPTS
+  - config.const.settle.ATTEMPTS
+  - config.const.board_flow.ANSWER_ATTEMPTS
+  - config.const.merge.MAX_REBUILDS
+  - config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING
+  - config.const.board_flow.IDENTICAL_FAILURES_BEFORE_PARKING
+  - config.const.story_problem.MAX_ROUND_TRIPS
+  description: How many times each step tries, or tolerates a repeat, before it gives up or hands the
+    card on. Each value stays where its step reads it.
+  origin:
+  - crew#242
+  - sprint-metrics#49
 config.const.backlog_order.MAX_STORIES:
   origin:
   - crew#358
-config.const.board_flow.ANALYST_ASK_LIMIT:
-  origin:
-  - crew#231
-config.const.board_flow.ANSWER_ATTEMPTS:
-config.const.board_flow.IDENTICAL_FAILURES_BEFORE_PARKING:
-  origin:
-  - sprint-metrics#49
 config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS:
   origin:
   - crew#231
   - crew#62
 config.const.claude_code.DEFAULT_TIMEOUT:
-config.const.delivery.ASKED_FILES_LIMIT:
-  origin:
-  - crew#231
-  - sprint-metrics#529
-config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING:
 config.const.loop.MAX_PASSES:
 config.const.loop.QUEUE_POLL:
 config.const.loop.QUEUE_WAIT:
   origin:
   - crew#314
-config.const.merge.MAX_REBUILDS:
 config.const.merge.SETTLE_TRIES:
   origin:
   - crew#302
 config.const.merge.SETTLE_WAIT:
-config.const.settle.ATTEMPTS:
-config.const.story_problem.MAX_ROUND_TRIPS:
-  origin:
-  - crew#242
 config.const.story_problem.SHOWN:
 config.const.strain.REVISIT_CONFLICTS:
 config.org.board.blocked_column:
@@ -43,7 +49,6 @@ config.org.board.human_gates:
 config.org.delivery.repos:
 config.org.escalation.may_escalate:
 config.org.escalation.never_escalate:
-config.org.execution.local_repair_attempts:
 config.org.refinement.panel:
 config.org.sprint.blocked_aging_days:
 config.org.sprint.capacity_points:
