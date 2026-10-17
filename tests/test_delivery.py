@@ -344,6 +344,40 @@ def test_a_test_in_both_edits_and_criteria_is_applied_once(tmp_path):
     assert (tmp_path / "tests" / "test_sprint_range.py").read_text().count("def test_range") == 1
 
 
+def test_a_test_an_earlier_edit_renamed_into_is_replaced_by_its_criterion(tmp_path):
+    """crew-presentation#79 renamed a placeholder's test into its criterion's (crew#735)."""
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sprint_range.py").write_text("def test_marker():\n    pass\n")
+    impl = FirstAttempt(
+        summary="s",
+        criteria_tests=[criterion_test(source="def test_range():\n    assert 2\n")],
+        edits=[
+            FileEdit(
+                path="tests/test_sprint_range.py",
+                operation="replace",
+                target="test_marker",
+                source="def test_range():\n    assert 1\n",
+            )
+        ],
+    )
+    workspace.apply_implementation(tmp_path, impl)
+    text = (tmp_path / "tests" / "test_sprint_range.py").read_text()
+    assert text.count("def test_range") == 1 and "assert 2" in text
+
+
+def test_one_test_named_for_several_criteria_is_added_once(tmp_path):
+    """crew-presentation#119 named one test for four criteria (crew#735)."""
+    from crew_org.tools import workspace
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_sprint_range.py").write_text("def test_there():\n    pass\n")
+    impl = FirstAttempt(summary="s", criteria_tests=[criterion_test(), criterion_test()])
+    workspace.apply_implementation(tmp_path, impl)
+    assert (tmp_path / "tests" / "test_sprint_range.py").read_text().count("def test_range") == 1
+
+
 def test_a_new_criterion_test_is_still_added(tmp_path):
     from crew_org.tools import workspace
 
