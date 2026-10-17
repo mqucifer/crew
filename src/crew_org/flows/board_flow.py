@@ -915,6 +915,7 @@ def stamp_goal_work_type(board: ProjectClient, sink: EventSink, cards: list[Card
                     kind=EventKind.NOTE,
                     card=c.number or 0,
                     summary=f"could not set Work Type: {type(exc).__name__}: {exc}"[:100],
+                    detail={"repo": c.repo} if c.repo else {},
                 )
             )
             continue
@@ -924,6 +925,8 @@ def stamp_goal_work_type(board: ProjectClient, sink: EventSink, cards: list[Card
                 kind=EventKind.NOTE,
                 card=c.number or 0,
                 summary=f"typed {GOAL_TYPE} from the `{GOAL_LABEL}` label",
+                # A card number alone names no repository (crew#752).
+                detail={"repo": c.repo} if c.repo else {},
             )
         )
 
@@ -1625,6 +1628,11 @@ def refine_epics(
                 project=context.record_for(repo),
                 search=panel_search,
                 code=partial(_focused_text, context, repo),
+                unapproved=frozenset(
+                    c.number
+                    for c in cards
+                    if c.number and c.status == INBOX and (c.repo or repo) == repo
+                ),
             ):
                 continue
 

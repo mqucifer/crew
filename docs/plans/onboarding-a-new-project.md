@@ -32,6 +32,8 @@ Five of the eight fail at once when the design's setup and checks are run for re
 
 *Changed 2026-10-14 by Part 7a: the repository is created from a template by a script the Sponsor runs, `board.yml` comes from the template, and the same script sets branch protection once the skeleton is green.*
 
+*Changed 2026-10-17 (crew#757, ADR 0030): this is now the path for a project the crew starts itself, run as `crew onboard <repo> --skeleton`. A new project starts from an alpha Claude builds, with its record's intent agreed with the Sponsor while building; `crew onboard` comes last, as the takeover, once the handover check (`crew ready`) reaches level 2 with nothing missing, and refuses a repository below level 2. ADR 0030 holds the alpha's eight steps.*
+
 The Sponsor creates the repository; the crew checks it (Sponsor, 2026-10-13). Creating repositories and changing branch protection need admin, which the crew's App doesn't hold, by the Sponsor's decision (crew#566). Every crew-built project shares the one board (organization project 1), so a new project needs no board of its own.
 
 | # | Step | Who | Needs | How the crew checks it |

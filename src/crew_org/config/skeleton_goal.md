@@ -18,4 +18,4 @@ The skeleton holds only what the design's structure names, as placeholders. It d
 
 ---
 
-_The standard first Goal for a new project, filed by `crew onboard` on the Sponsor's yes (ADR 0030)._
+_The standard first Goal for a new project, filed by `crew onboard --skeleton` on the Sponsor's yes (ADR 0030)._

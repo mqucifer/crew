@@ -89,6 +89,18 @@ def test_adding_a_name_that_exists_is_refused():
         apply_edit(SOURCE, Edit(Operation.ADD, "existing", "def existing():\n    pass"))
 
 
+def test_adding_a_definition_already_there_as_sent_changes_nothing():
+    """The same `add` sent twice in one answer is done once (crew#735)."""
+    once = apply_edit(SOURCE, Edit(Operation.ADD, "fresh", "def fresh():\n    pass"))
+    assert apply_edit(once, Edit(Operation.ADD, "fresh", "def fresh():\n    pass\n")) == once
+
+
+def test_a_criterion_test_that_exists_by_the_time_it_is_added_replaces_it():
+    edit = Edit(Operation.ADD, "existing", "def existing():\n    return 2", replaces_existing=True)
+    after = apply_edit(SOURCE, edit)
+    assert after.count("def existing") == 1 and "return 2" in after
+
+
 def test_adding_a_method_to_a_missing_class_is_refused():
     with pytest.raises(EditError, match="no class named"):
         apply_edit(SOURCE, Edit(Operation.ADD_METHOD, "Absent.thing", "def thing(self):\n    pass"))

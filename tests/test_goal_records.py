@@ -201,6 +201,17 @@ def test_two_epics_that_name_each_other_go_in_issue_order():
     )
 
 
+def test_a_sibling_still_waiting_for_approval_holds_nothing():
+    # crew#773: mqucifer/crew-presentation#138 named the Inbox epics that build on it.
+    board = Board({551: "THE STORE", 552: "builds on #551"})
+    assert (
+        refine_panel.builds_on_unsplit(
+            board, "sprint-metrics", 528, 552, board.bodies[552], frozenset({551})
+        )
+        is None
+    )
+
+
 def test_another_repositorys_issue_is_not_a_sibling():
     board = Board({551: "THE STORE", 552: "see crew#551 and mqucifer/crew#551"})
     assert (

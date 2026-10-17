@@ -89,7 +89,7 @@ class Crew:
     # Goal (crew#690, ADR 0030). Their other Goals wait.
     skeleton_only: dict[str, str] = field(default_factory=dict)
     # The crew's own login on the board, without `[bot]`: the author of the
-    # skeleton Goal `crew onboard` files on the Sponsor's yes (crew#690).
+    # skeleton Goal `crew onboard --skeleton` files on the Sponsor's yes (crew#690).
     crew_login: str | None = None
     # Projects whose approved epics wait while the Architect revisits their
     # design, and why (#192). Set by the revisit phase each pass.
@@ -423,7 +423,12 @@ def _refine(crew: Crew) -> PhaseOutcome:
             "already answered": sum(1 for _n, why in result.skipped if why == "already answered"),
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
-        + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why]
+        # A wait is held work too: it said nothing, so an epic waited unseen (crew#773).
+        + [
+            f"#{n} — {why}"
+            for n, why in result.skipped
+            if "refused" in why or why.startswith("waits")
+        ]
         + [f"#{n} — waiting for room: {why}" for n, why in result.waiting]
         + [f"#{n} — waits: {why}" for n, why in result.held_for_design],
         blocked=[
