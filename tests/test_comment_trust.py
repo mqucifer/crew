@@ -108,6 +108,20 @@ def test_rework_notes_are_the_sponsor_s_words_only():
     assert notes == "Split the summary from the anomalies."
 
 
+def test_a_crew_comment_after_the_ask_does_not_hide_it():
+    # crew-presentation#102: the goal index, posted after the Sponsor's
+    # needs:epic ask, left the Product Owner "(nothing)" (crew#746).
+    issues = Issues(
+        [
+            said("mqucifer-crew[bot]", "<!-- crew:epic-proposal -->"),
+            said("mquarters", "Step: one event at a time."),
+            said("mqucifer-crew[bot]", "<!-- crew:goal-index --> What the epics decided"),
+        ]
+    )
+    notes = board_flow.sponsor_notes(issues, "crew-presentation", 102)
+    assert notes == "Step: one event at a time."
+
+
 def test_only_the_sponsor_answers_the_product_owner_s_question(monkeypatch):
     """Only the Sponsor's reply becomes a row of the epic's record (ADR 0023)."""
     from crew_org.crews.refinement_crew import SponsorRow

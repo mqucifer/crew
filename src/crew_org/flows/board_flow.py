@@ -271,22 +271,25 @@ def render_proposal(
 def sponsor_notes(issues: IssueClient, repo: str, number: int) -> str:
     """What a person has said on this card since the crew last answered it.
 
-    Only comments after the crew's own last marked comment, so a rework reads
+    Only comments after the crew's last proposal or split, so a rework reads
     the objection to the proposal it is replacing rather than the whole history
     of the card. Comments carrying a crew marker are the crew's own and are
     skipped: a role reading its own last output back as instruction is noise.
+    Only an answer is a cut: a goal index posted after the Sponsor's ask hid it,
+    and the Product Owner proposed from the mock instead (crew#746).
     """
     try:
         comments = issues.comments(repo, number)
     except Exception:  # noqa: BLE001
         return ""
 
-    markers = (EPIC_PROPOSAL_MARKER, STORY_SPLIT_MARKER, "<!-- crew:")
-    last_crew = -1
+    answers = (EPIC_PROPOSAL_MARKER, STORY_SPLIT_MARKER)
+    markers = (*answers, "<!-- crew:")
+    last_answer = -1
     for i, c in enumerate(comments):
-        if any(m in (c.get("body") or "") for m in markers):
-            last_crew = i
-    since = comments[last_crew + 1 :]
+        if any(m in (c.get("body") or "") for m in answers):
+            last_answer = i
+    since = comments[last_answer + 1 :]
     # The Sponsor's words only (crew#399): anyone can comment on a public repo.
     return "\n\n".join(
         (c.get("body") or "").strip()
