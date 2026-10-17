@@ -59,10 +59,7 @@ class Change(BaseModel):
     @model_validator(mode="after")
     def _work_is_said(self) -> Change:
         if self.needs_work and not (self.work or "").strip():
-            raise ValueError(
-                f"'{self.what}' needs work on the project: say what that work is in "
-                "`work`, as distinct from the edit to the design record"
-            )
+            refuse("form.Change.work_is_said", what=self.what)
         return self
 
 
@@ -341,7 +338,7 @@ class Placement(BaseModel):
     @model_validator(mode="after")
     def _epic_is_named(self) -> Placement:
         if self.kind == EPIC and self.epic is None:
-            raise ValueError(f"change {self.change} belongs to an epic: name it in `epic`")
+            refuse("form.Placement.epic_is_named", change=self.change)
         return self
 
 

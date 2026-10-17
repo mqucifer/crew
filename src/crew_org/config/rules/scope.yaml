@@ -6,29 +6,99 @@ check.backlog_order.check:
   - told.form.Hold.builds_on
   - told.form.Hold.story
   - told.refinement_crew.then_only_where_the_new_work
+  description: Refused unless every open epic is ranked once and only those, and each hold is on an unstarted
+    story listed, waiting for open work listed.
+  messages:
+    not_held: '#{n} isn''t an unstarted story, so it can''t be held'
+    not_listed: '#{story} can''t wait for #{n}: it isn''t open work listed'
+    not_open: '#{n} isn''t one of the open epics'
+    twice: '#{n} is ranked twice'
+    unranked: '#{n} isn''t ranked'
+  told_in: BacklogOrder
 check.conclusion.feedback:
+  exempt: writes check.conclusion.problems' findings, which are told in StoryProposal; refuses nothing
+    of its own
+  messages:
+    default: '## Your split doesn''t fit the epic''s conclusion
+
+
+      {found}
+
+
+      The conclusion''s rows are settled: a story follows them, never contradicts them.'
   owner: Business Analyst
 check.conclusion.problems:
+  description: Sent back unless every row of the conclusion is followed by a story or listed in `not_for_stories`,
+    stories follow only rows, and each merged test the record changes is carried by a story or dropped
+    with why.
+  messages:
+    silent: No story changes {tests}, which the record says this epic changes. Name each in the Existing
+      tests line of the story that changes it, or list it in `tests_dropped` with why.
+    unknown: Story '{title}' follows {rows}, not rows of the epic.
+    unknown_left: not_for_stories names {rows}, not rows of the epic.
+    unused: No story follows {rows}. Name the story that does in its `follows`, or list the row in `not_for_stories`
+      with why it is not for stories.
   origin:
   - crew#248
   - crew#583
   owner: Business Analyst
+  told_in: StoryProposal
 check.delivery.deliver_in_steps:
+  description: Refused if a new file already exists, or a file to edit or delete doesn't.
+  messages:
+    default: 'the plan doesn''t fit the repository: {problems}'
+    exists: '{path} already exists: plan it as an edit'
+    missing: '{path} doesn''t exist: plan it as new, or name the right file'
   origin:
   - crew#276
   owner: Developer
+  told_in: PlannedFile.kind
 check.delivery.do_the_work_now_with:
+  description: Past the limit on files added by asking, you're told to do the work with what you can see.
+  messages:
+    default: '{missing}{limited}{shown}Do the work now with the files you can see, and leave `need_files`
+      empty.'
+    limited: 'Not shown: {files}. A delivery may have {limit} files added by asking, and this one has. '
+    missing: 'These aren''t files in the repository: {files}. '
+    shown: 'Everything else you named is already shown above. '
   owner: Developer
+  told_in: FirstAttempt.need_files, FirstOrDone.need_files, Implementation.need_files, Rework.need_files
 check.refinement_crew.check:
+  description: Refused if `already_delivered` names a story neither delivered nor planned, if a story
+    it replaces isn't accounted for, or if a story names a package field the pinned package doesn't define.
+  messages:
+    not_delivered: already_delivered names {stories}, which the project has neither delivered nor planned.
+      Name a delivered or planned story, or write the story.
+    not_in_package: 'these aren''t fields of the package this project pins: {fields}. Name the field each
+      value comes from as the package''s contract lists it. A value the package doesn''t carry goes in
+      `not_in_package`, for the Sponsor, and no story shows it.'
+    unaccounted: 'the split doesn''t say what became of {stories}. Account for each: rewritten here, already
+      delivered, or dropped and why.'
   owner: Business Analyst
+  told_in: StoryProposal
 check.settle_crew.check_grounded:
+  description: Refused if the wording isn't in the Goal.
+  messages:
+    default: '{rows}: your own call quotes wording that isn''t in the Goal. Quote the Goal''s own words
+      exactly, or if the Goal doesn''t say which way it points, ask the Sponsor one question instead.'
   owner: Product Owner
+  told_in: Row.goal_wording
 check.settle_crew.check_product_calls:
+  description: Refused if your own call settles a note a member marked for the Architect.
+  messages:
+    default: '{rows} are your own call on a note a member marked for the Architect. That is a design question:
+      list it as an open question for the design note, or give a source that settles it. Your own calls
+      are for what the product does.'
   origin:
   - ADR 0018
   owner: Product Owner
+  told_in: Row.own_call
 check.stepped.implement_file:
+  description: Refused if it changes a file other than this step's.
+  messages:
+    default: step {step} is `{path}`, and its answer also changes {others}
   owner: Developer
+  told_in: StepAnswer
 config.const.delivered.MAX_THEN:
 config.const.delivered.MAX_WHEN:
 config.const.design.ATTEMPTS:
@@ -52,29 +122,89 @@ config.org.estimation.scale:
   origin:
   - crew#756
 form.Change.work_is_said:
+  description: Refused if empty when `needs_work` is true.
+  messages:
+    default: '''{what}'' needs work on the project: say what that work is in `work`, as distinct from
+      the edit to the design record'
   owner: Architect
+  told_in: Change.work
 form.Epic.is_an_argument:
+  description: Refused if too short to say what a user could do with this epic alone.
+  messages:
+    default: state specifically what a user could do with this epic alone. If nothing, it is not a separate
+      epic — fold it into another.
   owner: Product Owner
+  told_in: Epic.separately_deliverable
 form.Epic.not_a_restatement:
+  description: Refused if it repeats the outcome.
+  messages:
+    default: separately_deliverable repeats the outcome. It must argue why this slice stands alone, which
+      is a different question.
   owner: Product Owner
+  told_in: Epic.separately_deliverable
 form.EpicProposal.decomposed:
+  description: Refused with fewer or more epics than its limits, or two with one title.
+  messages:
+    same_title: two epics share a title; each must be a distinct slice
+    too_few: 'a goal must decompose into at least {least} epics, got {got}. One epic is not a decomposition:
+      there is nothing to sequence and nothing deliverable early. Split by workflow step, by business
+      rule, or by happy-path-then-edge-cases — never by architectural layer.'
+    too_many: '{got} epics is too many for one goal (limit {limit}). Group the smaller slices into coherent
+      outcomes.'
   owner: Product Owner
+  told_in: EpicProposal.epics
 form.MissingEpics.decomposed:
+  description: Refused if empty, over its limit, or if two share a title.
+  messages:
+    none: 'name the epic the goal still lacks: at least one'
+    same_title: two epics share a title; each must be a distinct slice
+    too_many: '{got} epics is more than a goal lacks (limit {limit})'
   owner: Product Owner
+  told_in: MissingEpics.epics
 form.Placement.epic_is_named:
+  description: Refused if empty for a change that belongs to an epic.
+  messages:
+    default: 'change {change} belongs to an epic: name it in `epic`'
   owner: Architect
+  told_in: Placement.epic
 form.Plan.one_step_per_file:
+  description: Refused with no files or more than its limit, a file planned twice, or a criterion's test
+    in a file not planned.
+  messages:
+    no_files: a plan names at least one file
+    too_many: at most {limit} files; more than that is more than one story
+    twice: 'each file appears once: say everything that changes in it together'
+    unplanned_test: '{test} proves a criterion, but {path} isn''t among the planned files'
   owner: Developer
+  told_in: Plan
 form.Row.a_call_stays_within_the_goal:
+  description: Refused if empty for your own call.
+  messages:
+    default: your own call quotes the Goal's wording that it stays within
   owner: Product Owner
+  told_in: Row.goal_wording
 form.SkeletonEpic.decomposed:
+  description: Refused unless it's exactly one.
+  messages:
+    default: 'a walking skeleton is one epic, got {got}. Its pages, features and behaviour belong to the
+      project''s own Goals: leave them out.'
   owner: Product Owner
+  told_in: SkeletonEpic.epics
 form.Story.on_the_scale:
   cases:
   - §5.5
+  description: Refused if it isn't on the scale.
+  messages:
+    default: '{points} is not on the estimation scale {scale}. Anything larger than {most} must be split,
+      not admitted.'
   owner: Business Analyst
+  told_in: Story.points
 form.StoryProposal.not_empty:
+  description: Refused with no stories, unless everything is already delivered or it asks for files.
+  messages:
+    default: an epic must decompose into at least one story
   owner: Business Analyst
+  told_in: StoryProposal
 told.architect.design_placement.say_for_each_change_a_merged:
   guidance: true
   owner: Architect (design_placement)

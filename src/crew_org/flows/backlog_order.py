@@ -25,6 +25,7 @@ from crew_org.columns import DONE, READY, SPRINT_BACKLOG
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows.board_flow import BUILDS_ON, EPIC_TYPE, STORY_TYPE, builds_on
 from crew_org.llm import reraise_if_down
+from crew_org.rulebook import says
 from crew_org.tools.github_project import Card
 
 ATTEMPTS = 2
@@ -215,13 +216,20 @@ def _order_one(*, order, new, backlog, epics, stories, known):
 def check(answer: Any, *, epics: set, stories: set, known: set) -> list[str]:
     """Every open epic exactly once; holds only on listed stories, naming listed work."""
     given = list(answer.order)
-    problems = [f"#{n} isn't ranked" for n in sorted(epics - set(given))]
-    problems += [f"#{n} isn't one of the open epics" for n in sorted(set(given) - epics)]
-    problems += [f"#{n} is ranked twice" for n in sorted({n for n in given if given.count(n) > 1})]
+    twice = sorted({n for n in given if given.count(n) > 1})
+    problems = [
+        says("check.backlog_order.check", "unranked", n=n) for n in sorted(epics - set(given))
+    ]
+    problems += [
+        says("check.backlog_order.check", "not_open", n=n) for n in sorted(set(given) - epics)
+    ]
+    problems += [says("check.backlog_order.check", "twice", n=n) for n in twice]
     for hold in answer.holds:
         if hold.story not in stories:
-            problems.append(f"#{hold.story} isn't an unstarted story, so it can't be held")
+            problems.append(says("check.backlog_order.check", "not_held", n=hold.story))
         for n in hold.builds_on:
             if n not in known or n == hold.story:
-                problems.append(f"#{hold.story} can't wait for #{n}: it isn't open work listed")
+                problems.append(
+                    says("check.backlog_order.check", "not_listed", story=hold.story, n=n)
+                )
     return problems

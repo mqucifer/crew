@@ -151,10 +151,7 @@ class Story(BaseModel):
     @classmethod
     def _on_the_scale(cls, value: int) -> int:
         if value not in POINT_SCALE or value > MAX_POINTS:
-            raise ValueError(
-                f"{value} is not on the estimation scale {POINT_SCALE}. "
-                f"Anything larger than {MAX_POINTS} must be split, not admitted."
-            )
+            refuse("form.Story.on_the_scale", points=value, scale=POINT_SCALE, most=MAX_POINTS)
         return value
 
     @field_validator("acceptance_criteria")
@@ -187,19 +184,13 @@ class Epic(BaseModel):
     @classmethod
     def _is_an_argument(cls, value: str) -> str:
         if len(value.strip()) < MIN_JUSTIFICATION:
-            raise ValueError(
-                "state specifically what a user could do with this epic alone. "
-                "If nothing, it is not a separate epic — fold it into another."
-            )
+            refuse("form.Epic.is_an_argument")
         return value
 
     @model_validator(mode="after")
     def _not_a_restatement(self) -> Epic:
         if self.separately_deliverable.strip().lower() == self.outcome.strip().lower():
-            raise ValueError(
-                "separately_deliverable repeats the outcome. It must argue why this "
-                "slice stands alone, which is a different question."
-            )
+            refuse("form.Epic.not_a_restatement")
         return self
 
 
@@ -213,20 +204,12 @@ class EpicProposal(BaseModel):
     @classmethod
     def _decomposed(cls, value: list[Epic]) -> list[Epic]:
         if len(value) < MIN_EPICS:
-            raise ValueError(
-                f"a goal must decompose into at least {MIN_EPICS} epics, got {len(value)}. "
-                "One epic is not a decomposition: there is nothing to sequence and "
-                "nothing deliverable early. Split by workflow step, by business rule, "
-                "or by happy-path-then-edge-cases — never by architectural layer."
-            )
+            refuse("form.EpicProposal.decomposed", "too_few", least=MIN_EPICS, got=len(value))
         if len(value) > MAX_EPICS:
-            raise ValueError(
-                f"{len(value)} epics is too many for one goal (limit {MAX_EPICS}). "
-                "Group the smaller slices into coherent outcomes."
-            )
+            refuse("form.EpicProposal.decomposed", "too_many", got=len(value), limit=MAX_EPICS)
         titles = [e.title.strip().lower() for e in value]
         if len(set(titles)) != len(titles):
-            raise ValueError("two epics share a title; each must be a distinct slice")
+            refuse("form.EpicProposal.decomposed", "same_title")
         return value
 
 
@@ -237,12 +220,12 @@ class MissingEpics(EpicProposal):
     @classmethod
     def _decomposed(cls, value: list[Epic]) -> list[Epic]:
         if not value:
-            raise ValueError("name the epic the goal still lacks: at least one")
+            refuse("form.MissingEpics.decomposed", "none")
         if len(value) > MAX_EPICS:
-            raise ValueError(f"{len(value)} epics is more than a goal lacks (limit {MAX_EPICS})")
+            refuse("form.MissingEpics.decomposed", "too_many", got=len(value), limit=MAX_EPICS)
         titles = [e.title.strip().lower() for e in value]
         if len(set(titles)) != len(titles):
-            raise ValueError("two epics share a title; each must be a distinct slice")
+            refuse("form.MissingEpics.decomposed", "same_title")
         return value
 
 
@@ -258,10 +241,7 @@ class SkeletonEpic(EpicProposal):
     @classmethod
     def _decomposed(cls, value: list[Epic]) -> list[Epic]:
         if len(value) != 1:
-            raise ValueError(
-                f"a walking skeleton is one epic, got {len(value)}. Its pages, features "
-                "and behaviour belong to the project's own Goals: leave them out."
-            )
+            refuse("form.SkeletonEpic.decomposed", got=len(value))
         return value
 
 
@@ -381,7 +361,7 @@ class StoryProposal(BaseModel):
     @model_validator(mode="after")
     def _not_empty(self) -> StoryProposal:
         if not self.stories and not self.already_delivered and not self.need_files:
-            raise ValueError("an epic must decompose into at least one story")
+            refuse("form.StoryProposal.not_empty")
         return self
 
 
@@ -725,11 +705,10 @@ def check_delivered(
         return
     unknown = sorted({d.by for d in proposal.already_delivered} - numbers - set(planned))
     if unknown:
-        raise ValueError(
-            "already_delivered names "
-            + ", ".join(f"#{n}" for n in unknown)
-            + ", which the project has neither delivered nor planned. Name a delivered or "
-            "planned story, or write the story."
+        refuse(
+            "check.refinement_crew.check",
+            "not_delivered",
+            stories=", ".join(f"#{n}" for n in unknown),
         )
 
 
@@ -888,12 +867,10 @@ def check_provided(proposal: StoryProposal, provided: frozenset[str]) -> None:
         }
     )
     if unknown:
-        raise ValueError(
-            "these aren't fields of the package this project pins: "
-            + ", ".join(f"`{f}`" for f in unknown)
-            + ". Name the field each value comes from as the package's contract lists it. "
-            "A value the package doesn't carry goes in `not_in_package`, for the Sponsor, "
-            "and no story shows it."
+        refuse(
+            "check.refinement_crew.check",
+            "not_in_package",
+            fields=", ".join(f"`{f}`" for f in unknown),
         )
 
 
@@ -991,8 +968,8 @@ def check_accounted(proposal: StoryProposal, superseded: list[tuple[int, str]]) 
     """
     missing = sorted({n for n, _ in superseded} - {a.number for a in proposal.accounted})
     if missing:
-        raise ValueError(
-            "the split doesn't say what became of "
-            + ", ".join(f"#{n}" for n in missing)
-            + ". Account for each: rewritten here, already delivered, or dropped and why."
+        refuse(
+            "check.refinement_crew.check",
+            "unaccounted",
+            stories=", ".join(f"#{n}" for n in missing),
         )

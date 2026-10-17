@@ -48,7 +48,7 @@ CATEGORIES = {
 
 # The categories whose checks refuse through `refuse()`, their message and their
 # form's description from the declaration. The others move in their own cleanups.
-MIGRATED: frozenset[str] = frozenset({"answer_shape", "evidence"})
+MIGRATED: frozenset[str] = frozenset({"answer_shape", "evidence", "scope"})
 
 
 @dataclass(frozen=True)

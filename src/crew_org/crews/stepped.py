@@ -24,7 +24,7 @@ from crew_org.crews.delivery_crew import (
     FileWrite,
     Implementation,
 )
-from crew_org.rulebook import refuse
+from crew_org.rulebook import refuse, says
 from crew_org.tools import regression
 
 # A plan is for splitting one answer that's too big; past this, the story is.
@@ -78,19 +78,17 @@ class Plan(BaseModel):
     @model_validator(mode="after")
     def _one_step_per_file(self) -> Plan:
         if not self.files:
-            raise ValueError("a plan names at least one file")
+            refuse("form.Plan.one_step_per_file", "no_files")
         if len(self.files) > MAX_FILES:
-            raise ValueError(f"at most {MAX_FILES} files; more than that is more than one story")
+            refuse("form.Plan.one_step_per_file", "too_many", limit=MAX_FILES)
         paths = [f.path for f in self.files]
         if len(set(paths)) != len(paths):
-            raise ValueError("each file appears once: say everything that changes in it together")
+            refuse("form.Plan.one_step_per_file", "twice")
         planned = set(paths)
         for c in self.criteria:
             path = c.test.split("::", 1)[0]
             if path not in planned:
-                raise ValueError(
-                    f"{c.test} proves a criterion, but {path} isn't among the planned files"
-                )
+                refuse("form.Plan.one_step_per_file", "unplanned_test", test=c.test, path=path)
         return self
 
 
@@ -101,9 +99,9 @@ def check_plan(plan: Plan, worktree: Path) -> list[str]:
         exists = (worktree / step.path).is_file()
         # A placeholder is replaced whole, so either kind is right for it (crew#690).
         if step.kind == "new" and exists and not regression.is_placeholder(worktree / step.path):
-            problems.append(f"{step.path} already exists: plan it as an edit")
+            problems.append(says("check.delivery.deliver_in_steps", "exists", path=step.path))
         if step.kind in ("edit", "delete") and not exists:
-            problems.append(f"{step.path} doesn't exist: plan it as new, or name the right file")
+            problems.append(says("check.delivery.deliver_in_steps", "missing", path=step.path))
     return problems
 
 
@@ -209,9 +207,11 @@ def implement_file(
     ]
     stray = answer.touched() - {target.path}
     if stray:
-        raise ValueError(
-            f"step {step + 1} is `{target.path}`, and its answer also changes "
-            + ", ".join(f"`{p}`" for p in sorted(stray))
+        refuse(
+            "check.stepped.implement_file",
+            step=step + 1,
+            path=target.path,
+            others=", ".join(f"`{p}`" for p in sorted(stray)),
         )
     return answer
 
