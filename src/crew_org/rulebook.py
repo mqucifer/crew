@@ -25,7 +25,7 @@ import string
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import yaml  # type: ignore[import-untyped]
 
@@ -48,7 +48,7 @@ CATEGORIES = {
 
 # The categories whose checks refuse through `refuse()`, their message and their
 # form's description from the declaration. The others move in their own cleanups.
-MIGRATED: frozenset[str] = frozenset()
+MIGRATED: frozenset[str] = frozenset({"answer_shape"})
 
 
 @dataclass(frozen=True)
@@ -64,18 +64,45 @@ class RuleSpec:
     origin: tuple[str, ...] = ()
     # Told and deliberately not checked: counted against the role's budget.
     guidance: bool = False
-    # What a refusal says, with `{name}` for each value `refuse()` is given.
-    message: str = ""
+    # What a refusal says, by name, as ESLint's `meta.messages`: `{value}` for each
+    # value `refuse()` is given. A rule that refuses one way has one, `default`.
+    messages: tuple[tuple[str, str], ...] = ()
     # What the form tells the role it fills, and where: `Form` or `Form.field`.
     description: str = ""
     told_in: str = ""
 
-    def says(self, **values: Any) -> str:
-        return self.message.format(**values)
+    def says(self, which: str = "default", **values: Any) -> str:
+        return dict(self.messages)[which].format(**values)
 
-    def fields(self) -> set[str]:
-        """The values the message needs."""
-        return {name for _, name, _, _ in string.Formatter().parse(self.message) if name}
+    def fields(self, which: str = "default") -> set[str]:
+        """The values a message needs."""
+        text = dict(self.messages)[which]
+        return {name for _, name, _, _ in string.Formatter().parse(text) if name}
+
+
+class Refusal(ValueError):
+    """An answer refused by a declared rule, which the refusal names.
+
+    A ValueError, so a validator raising it is read by pydantic as any refusal is,
+    and pydantic keeps it in the error's context for the call layer to name. A
+    step's own kind of refusal, such as the settle step's `Unsettled`, is one too.
+    """
+
+    def __init__(self, message: str, rule: str = "") -> None:
+        super().__init__(message)
+        self.rule = rule
+
+
+def says(rule: str, which: str = "default", **values: Any) -> str:
+    """A declared rule's message `which`, with its values: for a refusal said in parts."""
+    return catalog()[rule].says(which, **values)
+
+
+def refuse(
+    rule: str, which: str = "default", *, kind: type[Refusal] = Refusal, **values: Any
+) -> NoReturn:
+    """Refuse an answer by the declared rule, with its message `which`, as declared."""
+    raise kind(says(rule, which, **values), rule=rule)
 
 
 def _read(path: Path) -> dict[str, RuleSpec]:
@@ -90,7 +117,7 @@ def _read(path: Path) -> dict[str, RuleSpec]:
             owner=str(fields.get("owner") or ""),
             origin=tuple(fields.get("origin") or ()),
             guidance=bool(fields.get("guidance")),
-            message=str(fields.get("message") or ""),
+            messages=tuple((str(k), str(v)) for k, v in (fields.get("messages") or {}).items()),
             description=str(fields.get("description") or ""),
             told_in=str(fields.get("told_in") or ""),
         )
@@ -98,10 +125,10 @@ def _read(path: Path) -> dict[str, RuleSpec]:
 
 
 @cache
-def catalog(directory: Path = CATALOG) -> dict[str, RuleSpec]:
+def catalog(directory: Path | None = None) -> dict[str, RuleSpec]:
     """Every declared rule, by id, from the category files."""
     found: dict[str, RuleSpec] = {}
-    for path in sorted(directory.glob("*.yaml")):
+    for path in sorted((directory or CATALOG).glob("*.yaml")):
         if path.name == BUDGET.name:
             continue
         for rule, spec in _read(path).items():
@@ -112,8 +139,9 @@ def catalog(directory: Path = CATALOG) -> dict[str, RuleSpec]:
 
 
 @cache
-def budget(path: Path = BUDGET) -> dict[str, int]:
+def budget(path: Path | None = None) -> dict[str, int]:
     """Each role's guidance budget: how many lines it may be told and not checked."""
+    path = path or BUDGET
     if not path.exists():
         return {}
     return {str(k): int(v) for k, v in (yaml.safe_load(path.read_text("utf-8")) or {}).items()}
@@ -129,8 +157,11 @@ def told(form: str) -> dict[str, list[str]]:
     return out
 
 
-def write(declared: dict[str, dict[str, dict[str, Any]]], directory: Path = CATALOG) -> list[Path]:
+def write(
+    declared: dict[str, dict[str, dict[str, Any]]], directory: Path | None = None
+) -> list[Path]:
     """The catalog's files, one per category, each rule's decided fields in order."""
+    directory = directory or CATALOG
     directory.mkdir(parents=True, exist_ok=True)
     written = []
     for category, rules in declared.items():

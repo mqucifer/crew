@@ -21,6 +21,7 @@ import re
 from pydantic import BaseModel, Field, field_validator
 
 from crew_org import calls
+from crew_org.rulebook import refuse
 
 # Words that ask a reader to judge rather than a test to observe. Whole words,
 # so "clearly" is caught and "nuclear" isn't.
@@ -125,7 +126,7 @@ class PresentationNote(BaseModel):
     @classmethod
     def _has_a_sample(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("the note carries a sample of the finished output")
+            refuse("form.PresentationNote.has_a_sample")
         return value
 
 

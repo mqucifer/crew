@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
 from crew_org.crews.panel_crew import PanelContext, PanelResult
-from crew_org.cut_text import REASON as CUT_REASON
 from crew_org.cut_text import cut_fields
+from crew_org.rulebook import Refusal, refuse, says
 
 # Cell limits. Asking a model to be brief doesn't hold (crew#440); a schema does.
 CONTEXT_CHARS = 60
@@ -191,7 +191,7 @@ class Conclusion(BaseModel):
     @model_validator(mode="after")
     def _says_something(self) -> Conclusion:
         if not (self.rows or self.open or self.for_infra or self.dismissed):
-            raise ValueError("a conclusion answers the notes: give rows, questions or dismissals")
+            refuse("form.Conclusion.says_something")
         return self
 
     def answered(self) -> set[int]:
@@ -225,11 +225,11 @@ class Settlement(BaseModel):
     @model_validator(mode="after")
     def _one_or_the_other(self) -> Settlement:
         if (self.conclusion is None) == (not self.sponsor_question):
-            raise ValueError("give a conclusion, or one question for the Sponsor; not both")
+            refuse("form.Settlement.one_or_the_other")
         return self
 
 
-class Unsettled(ValueError):
+class Unsettled(Refusal):
     """The settlement leaves panel notes unanswered, or answers ones that don't exist."""
 
 
@@ -279,17 +279,14 @@ def check_not_cut(settlement: Settlement) -> None:
             f"dismissal of N{d.note}" for d in conclusion.dismissed if len(d.why) >= REASON_CHARS
         ]
     if cut:
-        raise Unsettled(
-            f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
-            "Say each in fewer words, well under the limit, and finish the thought."
-        )
+        refuse("check.settle_crew.check_not_cut", kind=Unsettled, cells=", ".join(cut))
     _not_cut_at_a_quote(settlement)
 
 
 def _not_cut_at_a_quote(answer: BaseModel) -> None:
     """A cell cut where the model wrote a double quote reads as finished (crew#618)."""
     if found := cut_fields(answer):
-        raise Unsettled(CUT_REASON.format(fields=", ".join(found)))
+        refuse("check.settle_crew.not_cut_at_a_quote", kind=Unsettled, fields=", ".join(found))
 
 
 def check_grounded(settlement: Settlement, goal: str) -> None:
@@ -360,12 +357,25 @@ def check_covers(settlement: Settlement, count: int) -> None:
     if missing or unknown:
         raise Unsettled(
             (
-                f"No row, question or dismissal for N{', N'.join(map(str, missing))}. "
+                says(
+                    "check.settle_crew.check_covers",
+                    "missing",
+                    notes="N" + ", N".join(map(str, missing)),
+                )
                 if missing
                 else ""
             )
-            + (f"N{', N'.join(map(str, unknown))} are not notes. " if unknown else "")
-            + f"There are {count} notes, N1 to N{count}."
+            + (
+                says(
+                    "check.settle_crew.check_covers",
+                    "unknown",
+                    notes="N" + ", N".join(map(str, unknown)),
+                )
+                if unknown
+                else ""
+            )
+            + says("check.settle_crew.check_covers", "count", count=count),
+            rule="check.settle_crew.check_covers",
         )
 
 
@@ -463,7 +473,7 @@ class DesignAnswer(BaseModel):
     def _an_id(cls, value: str) -> str:
         found = value.strip().upper()
         if not re.fullmatch(r"Q\d+", found):
-            raise ValueError("name the question by its ID, like Q1")
+            refuse("form.DesignAnswer.an_id")
         return found
 
 
@@ -486,10 +496,7 @@ def check_design_cut(settlement: DesignSettlement) -> None:
         if len(getattr(a, name)) >= limit
     ]
     if cut:
-        raise Unsettled(
-            f"These cells reached their length limit and were cut off: {', '.join(cut)}. "
-            "Say each in fewer words, well under the limit, and finish the thought."
-        )
+        refuse("check.settle_crew.check_design_cut", kind=Unsettled, cells=", ".join(cut))
     _not_cut_at_a_quote(settlement)
 
 
@@ -501,10 +508,27 @@ def check_design_covers(settlement: DesignSettlement, asked: list[str]) -> None:
     twice = sorted({q for q in answered if answered.count(q) > 1})
     if missing or unknown or twice:
         raise Unsettled(
-            (f"You didn't settle {', '.join(missing)}. " if missing else "")
-            + (f"{', '.join(unknown)} aren't questions left for you. " if unknown else "")
-            + (f"{', '.join(twice)} answered more than once. " if twice else "")
-            + f"The questions are {', '.join(asked)}: answer each once, by its ID."
+            (
+                says(
+                    "check.settle_crew.check_design_covers", "missing", questions=", ".join(missing)
+                )
+                if missing
+                else ""
+            )
+            + (
+                says(
+                    "check.settle_crew.check_design_covers", "unknown", questions=", ".join(unknown)
+                )
+                if unknown
+                else ""
+            )
+            + (
+                says("check.settle_crew.check_design_covers", "twice", questions=", ".join(twice))
+                if twice
+                else ""
+            )
+            + says("check.settle_crew.check_design_covers", "asked", questions=", ".join(asked)),
+            rule="check.settle_crew.check_design_covers",
         )
 
 

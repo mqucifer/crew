@@ -61,12 +61,14 @@ def test_each_role_keeps_within_its_guidance_budget():
 
 def test_a_migrated_categorys_checks_are_told_in_their_form():
     """The second policy, for each category moved to `refuse()`. The call layer's
-    checks are exempt: the model doesn't choose an empty answer or a cut field."""
+    checks are exempt: the model doesn't choose an empty answer or a cut field. So is
+    a repair that never refuses: there's no refusal for its telling to come from."""
     untold = [
         e.id
         for e in rule_list.entries()
         if e.category in rulebook.MIGRATED
         and e.group in ("form", "check")
+        and not e.repairs
         and not (e.declared.description and e.declared.told_in)
     ]
     assert not untold, untold
@@ -81,3 +83,63 @@ def test_a_form_is_told_its_migrated_rules_by_field(monkeypatch):
     monkeypatch.setattr(rulebook, "catalog", lambda: {s.id: s for s in specs})
     monkeypatch.setattr(rulebook, "MIGRATED", frozenset({"answer_shape"}))
     assert rulebook.told("Row") == {"id": ["Named by its ID."], "": ["One or the other."]}
+
+
+def test_declaring_again_keeps_every_decision(tmp_path, monkeypatch):
+    """`crew rules --declare` once rewrote the catalog from the code alone, and lost the
+    messages declared that day: what's declared is read before anything is rewritten."""
+    for path in rulebook.CATALOG.glob("*.yaml"):
+        (tmp_path / path.name).write_text(path.read_text("utf-8"), encoding="utf-8")
+    monkeypatch.setattr(rulebook, "CATALOG", tmp_path)
+    monkeypatch.setattr(rulebook, "BUDGET", tmp_path / "budget.yaml")
+    rulebook.catalog.cache_clear()
+    before = rulebook.catalog(tmp_path)
+    rule_list.write_declarations()
+    rulebook.catalog.cache_clear()
+    assert rulebook.catalog(tmp_path) == before
+    rulebook.catalog.cache_clear()
+
+
+def test_a_migrated_rule_refuses_by_its_own_declaration():
+    """A migrated check's code names its rule, so its message is the declared one."""
+    loose = [
+        e.id
+        for e in rule_list.entries()
+        if e.category in rulebook.MIGRATED
+        and e.group in ("form", "check", "call")
+        and not e.repairs
+        and e.id != "call.schema"
+        and e.id not in e.named
+    ]
+    assert not loose, loose
+
+
+def test_every_refusal_names_a_declared_message():
+    import ast
+
+    wrong = []
+    for source in rule_list.sources():
+        for node in ast.walk(source.tree):
+            rule = rule_list._refused_by(node)
+            if rule is None:
+                continue
+            assert isinstance(node, ast.Call)
+            which = node.args[1] if len(node.args) > 1 else None
+            name = which.value if isinstance(which, ast.Constant) else "default"
+            spec = declared().get(rule)
+            if spec is None or name not in dict(spec.messages):
+                wrong.append(f"{source.path}:{node.lineno} {rule} {name}")
+    assert not wrong, wrong
+
+
+def test_a_form_tells_the_rules_that_check_it():
+    """The second policy, as the role reads it: the form shows each rule's description."""
+    from crew_org import calls
+    from crew_org.crews.refinement_crew import ProductAnswer
+
+    shown = calls.form_text(ProductAnswer.model_json_schema())
+    product = declared()["form.ProductAnswer.one_or_the_other"]
+    row_id = declared()["form.AnswerRow.an_id"]
+    assert f"**ProductAnswer**: {product.description}" in shown
+    replaces = next(line for line in shown.splitlines() if line.startswith("- `replaces`"))
+    assert replaces.endswith(row_id.description)

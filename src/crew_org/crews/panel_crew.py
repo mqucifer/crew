@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, model_validator
 from crew_org import calls
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
+from crew_org.rulebook import refuse
 
 # What each member reads the epic for: the area it owns, and nothing about what
 # to find. The last two carry the checks for the blind spots the test found.
@@ -105,9 +106,9 @@ class PanelAnswer(BaseModel):
     @model_validator(mode="after")
     def _one_or_the_other(self) -> PanelAnswer:
         if self.nothing_to_add and self.notes:
-            raise ValueError("nothing_to_add with notes: give notes, or nothing to add")
+            refuse("form.PanelAnswer.one_or_the_other", "with_notes")
         if not self.nothing_to_add and not self.notes:
-            raise ValueError("no notes: give at least one, or say nothing to add")
+            refuse("form.PanelAnswer.one_or_the_other", "no_notes")
         return self
 
 

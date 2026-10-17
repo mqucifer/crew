@@ -1,9 +1,18 @@
 # The answer parses and is complete. Declared once each (crew#756, ADR 0031): change a rule here.
 call.check_not_cut_at_a_quote:
+  messages:
+    default: 'These fields stop mid-sentence: {fields}. A double quote inside a value ends the field and
+      the rest is lost. Write values in single quotes (''sponsor''), never double quotes, and finish each
+      field.'
   origin:
   - crew#618
   - sprint-metrics#555
 call.join_blocks:
+  messages:
+    not_a_name: '`{key}` holds {value}, which isn''t a block''s name: blocks are named b1, b2 and so on,
+      and the blocks written are {written}. Put the name of the block holding its code in `{key}`'
+    unwritten: '`{key}` names block {name}, which isn''t written after the JSON: write it between @@@
+      {bare} @@@ and @@@ end @@@'
   origin:
   - ADR 0024
   - ADR 0025
@@ -15,6 +24,11 @@ call.schema:
   origin:
   - ADR 0025
 call.split_blocks:
+  messages:
+    outside: 'text after the JSON outside any block: {line}. Write each block between its @@@ name @@@
+      line and @@@ end @@@'
+    twice: 'block {name} is written twice: write each block once'
+    unclosed: 'block {name} has no @@@ end @@@ line: close every block'
   origin:
   - ADR 0024
   - ADR 0025
@@ -22,58 +36,179 @@ call.split_blocks:
   - crew#583
   - sprint-metrics#529
 call.the_answer_ran_on_as:
+  messages:
+    default: 'the answer ran on as whitespace after this, so a string closed early or a list or object
+      was left open: ...{tail}
+
+
+      Check that each string ends exactly where you mean it to, with every double quote inside it escaped,
+      and close each list and object you open'
 call.the_answer_was_empty_you:
+  messages:
+    default: 'the answer was empty: you stopped before writing it. Think less and write the whole answer'
 call.the_json_before_the_blocks:
+  messages:
+    default: 'the JSON before the blocks isn''t valid JSON: {error}'
 check.settle_crew.check_covers:
+  description: Refused unless every note, N1 to the last, is answered, and nothing answers a note that
+    isn't there.
+  messages:
+    count: There are {count} notes, N1 to N{count}.
+    missing: 'No row, question or dismissal for {notes}. '
+    unknown: '{notes} are not notes. '
   owner: Product Owner
+  told_in: Settlement
 check.settle_crew.check_design_covers:
+  description: Refused unless it answers each question left for you once, by its ID, and only those.
+  messages:
+    asked: 'The questions are {questions}: answer each once, by its ID.'
+    missing: 'You didn''t settle {questions}. '
+    twice: '{questions} answered more than once. '
+    unknown: '{questions} aren''t questions left for you. '
   owner: Architect
+  told_in: DesignSettlement
 check.settle_crew.check_design_cut:
+  description: 'Refused if a cell reaches its length limit: one at the limit was cut off.'
+  messages:
+    default: 'These cells reached their length limit and were cut off: {cells}. Say each in fewer words,
+      well under the limit, and finish the thought.'
   owner: Architect
+  told_in: DesignSettlement
 check.settle_crew.check_not_cut:
+  description: 'Refused if a cell reaches its length limit: one at the limit was cut off.'
+  messages:
+    default: 'These cells reached their length limit and were cut off: {cells}. Say each in fewer words,
+      well under the limit, and finish the thought.'
   owner: Product Owner
+  told_in: Settlement
 check.settle_crew.not_cut_at_a_quote:
+  description: Refused if a cell stops where a double-quoted value would begin.
+  messages:
+    default: 'These fields stop mid-sentence: {fields}. A double quote inside a value ends the field and
+      the rest is lost. Write values in single quotes (''sponsor''), never double quotes, and finish each
+      field.'
   origin:
   - crew#618
+  told_in: Settlement
 form.AnswerRow.an_id:
+  description: Refused if it isn't an ID, like R3 or Q1.
+  messages:
+    default: name a row or question of the epic's record by its ID, like R3 or Q1
   owner: Product Owner
+  told_in: AnswerRow.replaces
 form.Conclusion.says_something:
+  description: Refused if it has no rows, open questions, items for infra or dismissals.
+  messages:
+    default: 'a conclusion answers the notes: give rows, questions or dismissals'
   owner: Product Owner
+  told_in: Conclusion
 form.DesignAnswer.an_id:
+  description: Refused if it isn't a question's ID, like Q1.
+  messages:
+    default: name the question by its ID, like Q1
   owner: Architect
+  told_in: DesignAnswer.question
 form.DesignNote.covers_the_stories:
+  description: Refused if empty.
+  messages:
+    default: a design note gives each story its direction
   owner: Architect
+  told_in: DesignNote.stories
 form.DesignProposal.enforces_something:
+  description: 'Refused if empty: at least one check enforces the definition of done.'
+  messages:
+    default: 'a design names at least one check: without one, nothing enforces the definition of done'
   owner: Architect
+  told_in: DesignProposal.checks
 form.FileAsk.a_bare_path:
 form.Finding.is_actionable:
+  description: Refused if it doesn't say specifically what to change.
+  messages:
+    default: say specifically what to change. A finding an author cannot act on is not a finding.
+  told_in: Finding.action
 form.PanelAnswer.one_or_the_other:
+  description: Refused unless it gives notes or says nothing to add, not both.
+  messages:
+    no_notes: 'no notes: give at least one, or say nothing to add'
+    with_notes: 'nothing_to_add with notes: give notes, or nothing to add'
+  told_in: PanelAnswer
 form.PlannedFile.says_what:
+  description: Refused if it doesn't say what changes.
+  messages:
+    default: say what changes in this file
   owner: Developer
+  told_in: PlannedFile.intent
 form.PresentationNote.has_a_sample:
+  description: Refused if empty.
+  messages:
+    default: the note carries a sample of the finished output
   owner: UX Designer
+  told_in: PresentationNote.sample
 form.ProcessDefect.is_a_change:
+  description: Refused if it asks for a larger escalation budget.
+  messages:
+    default: a larger escalation budget is not a process improvement. Escalation rate is a symptom of
+      task design; name the design change instead.
   owner: Scrum Master
+  told_in: ProcessDefect.change
 form.ProcessDefect.short:
+  description: Refused if it runs over its length limit.
+  messages:
+    default: a title is a short statement of the problem, under {limit} characters; this one is {length}
   owner: Scrum Master
+  told_in: ProcessDefect.title
 form.ProductAnswer.one_or_the_other:
+  description: Refused unless it gives an answer or one question, not both; an answer names what it follows,
+    as rows.
+  messages:
+    based_on: 'an answer names what it follows: the Goal, the record, or a story'
+    not_both: give an answer grounded in the project, or one question; not both
+    rows: 'an answer is written as rows of the epic''s record: give at least one'
   owner: Product Owner
+  told_in: ProductAnswer
 form.Retro.few:
+  description: Refused if it has more bullets than its limit.
+  messages:
+    default: 'at most {limit} bullets: the notable events, not a replay'
   owner: Scrum Master
+  told_in: Retro.went
 form.ReviewVerdict.a_rejection_must_say_why:
+  description: Refused if it requests changes with no blocking finding, or approves with one.
+  messages:
+    approved_blocking: 'an approval can''t carry a finding that blocks. Request changes, or mark it `blocking:
+      false` if it''s a note that doesn''t hold the merge up.'
+    no_blocking: requesting changes with no finding that blocks is not a review. Name what must change
+      and what to do, or approve.
   origin:
   - crew#139
   - crew#214
+  told_in: ReviewVerdict
 form.RowNotForStories.row_id:
+  description: Refused if it isn't a row's ID, like R3.
+  messages:
+    default: name the row by its ID, like R3
   owner: Business Analyst
+  told_in: RowNotForStories.row
 form.Settlement.one_or_the_other:
+  description: Refused unless it gives a conclusion or one question for the Sponsor, not both.
+  messages:
+    default: give a conclusion, or one question for the Sponsor; not both
   owner: Product Owner
+  told_in: Settlement
 form.Settlement.stripped:
   owner: Product Owner
 form.SponsorRow.an_id:
+  description: Refused if it isn't an ID, like R3 or Q1.
+  messages:
+    default: name a row or question of the epic's record by its ID, like R3 or Q1
   owner: Product Owner
+  told_in: SponsorRow.replaces
 form.Story.row_ids:
+  description: Refused unless each is a row's ID, like R1.
+  messages:
+    default: '{ids}: name rows of the conclusion by ID, like R1'
   owner: Business Analyst
+  told_in: Story.follows
 told.form.AnswerRow.decision:
   guidance: true
   owner: Product Owner

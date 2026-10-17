@@ -24,6 +24,7 @@ from crew_org.crews.delivery_crew import (
     FileWrite,
     Implementation,
 )
+from crew_org.rulebook import refuse
 from crew_org.tools import regression
 
 # A plan is for splitting one answer that's too big; past this, the story is.
@@ -47,7 +48,7 @@ class PlannedFile(BaseModel):
     @classmethod
     def _says_what(cls, value: str) -> str:
         if len(value.strip()) < 10:
-            raise ValueError("say what changes in this file")
+            refuse("form.PlannedFile.says_what")
         return value.strip()
 
 

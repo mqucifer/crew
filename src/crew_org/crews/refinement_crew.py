@@ -22,6 +22,7 @@ from crew_org.crews.settle_crew import (
     DECISION_CHARS,
     aim,
 )
+from crew_org.rulebook import refuse
 from crew_org.tools.repo_context import READ_MIN_CHARS, READING_CHAR_CEILING
 from crew_org.tools.repo_read import Reader
 
@@ -131,7 +132,7 @@ class Story(BaseModel):
         ids = [v.strip().upper() for v in value]
         bad = [v for v in ids if not re.fullmatch(r"[RQI]\d+", v)]
         if bad:
-            raise ValueError(f"{', '.join(bad)}: name rows of the conclusion by ID, like R1")
+            refuse("form.Story.row_ids", ids=", ".join(bad))
         # An open question (Q) or an item for infra (I) isn't something a story follows.
         # Dropped rather than refused: a refusal costs a whole model call, and nothing is lost.
         return list(dict.fromkeys(v for v in ids if v.startswith("R")))
@@ -314,7 +315,7 @@ class RowNotForStories(BaseModel):
         # listed them here, and refusing that cost four model calls of seven minutes each.
         found = value.strip().upper()
         if not re.fullmatch(r"[RQI]\d+", found):
-            raise ValueError("name the row by its ID, like R3")
+            refuse("form.RowNotForStories.row_id")
         return found
 
 
@@ -387,11 +388,8 @@ class StoryProposal(BaseModel):
         return self
 
 
-def _record_id(value: str) -> str:
-    found = value.strip().upper()
-    if found and not re.fullmatch(r"[RQ]\d+", found):
-        raise ValueError("name a row or question of the epic's record by its ID, like R3 or Q1")
-    return found
+def _is_record_id(found: str) -> bool:
+    return re.fullmatch(r"[RQ]\d+", found) is not None
 
 
 class AnswerRow(BaseModel):
@@ -428,7 +426,10 @@ class AnswerRow(BaseModel):
     @field_validator("replaces")
     @classmethod
     def _an_id(cls, value: str) -> str:
-        return _record_id(value)
+        found = value.strip().upper()
+        if found and not _is_record_id(found):
+            refuse("form.AnswerRow.an_id")
+        return found
 
 
 class ProductAnswer(BaseModel):
@@ -468,11 +469,11 @@ class ProductAnswer(BaseModel):
     @model_validator(mode="after")
     def _one_or_the_other(self) -> ProductAnswer:
         if bool(self.answer.strip()) == bool(self.question.strip()):
-            raise ValueError("give an answer grounded in the project, or one question; not both")
+            refuse("form.ProductAnswer.one_or_the_other", "not_both")
         if self.answer.strip() and not self.based_on:
-            raise ValueError("an answer names what it follows: the Goal, the record, or a story")
+            refuse("form.ProductAnswer.one_or_the_other", "based_on")
         if self.answer.strip() and not self.rows:
-            raise ValueError("an answer is written as rows of the epic's record: give at least one")
+            refuse("form.ProductAnswer.one_or_the_other", "rows")
         return self
 
 
@@ -502,7 +503,10 @@ class SponsorRow(BaseModel):
     @field_validator("replaces")
     @classmethod
     def _an_id(cls, value: str) -> str:
-        return _record_id(value)
+        found = value.strip().upper()
+        if found and not _is_record_id(found):
+            refuse("form.SponsorRow.an_id")
+        return found
 
 
 def answer_story_problem(

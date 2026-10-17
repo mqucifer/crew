@@ -19,6 +19,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 
 from crew_org import calls
+from crew_org.rulebook import refuse
 
 
 class StoryDirection(BaseModel):
@@ -52,7 +53,7 @@ class DesignNote(BaseModel):
     @classmethod
     def _covers_the_stories(cls, value: list[StoryDirection]) -> list[StoryDirection]:
         if not value:
-            raise ValueError("a design note gives each story its direction")
+            refuse("form.DesignNote.covers_the_stories")
         return value
 
 

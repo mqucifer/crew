@@ -189,3 +189,10 @@ def test_a_rule_quiet_for_ten_sprints_is_a_candidate_and_the_loudest_is_a_missin
     assert "fewer than the 10" in "\n".join(
         rule_report.retirement(rule_report.count(events[:3]), rule_list.entries())
     )
+
+
+def test_a_refusal_that_names_its_rule_is_counted_by_that_name_alone():
+    named = {"output_schema": "Settlement:x", "reason": "anything", "rules": ["call.schema"]}
+    report = rule_report.count([event("llm.refused", named)])
+    assert report.fired["call.schema"].matched == {rule_report.BY_NAME: 1}
+    assert sum(report.unmatched.values()) == 0

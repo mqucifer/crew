@@ -213,7 +213,12 @@ class Matcher:
         rule = detail.get("rule")
         if rule and rule in self.entries:
             found.append((rule, BY_NAME))
-        if kind == "llm.refused":
+        if kind == "llm.refused" and detail.get("rules"):
+            # Named by the refusal itself, since the rulebook (ADR 0031).
+            found += [
+                (r, BY_NAME) if r in self.entries else (None, BY_NAME) for r in detail["rules"]
+            ]
+        elif kind == "llm.refused":
             form = str(detail.get("output_schema") or "").partition(":")[0]
             reason = str(detail.get("reason") or "")
             if detail.get("empty"):

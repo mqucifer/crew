@@ -508,3 +508,10 @@ def test_a_block_named_b1_records_no_fallback():
     loose: list[dict] = []
     calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
     assert loose == []
+
+
+def test_a_refusal_by_a_declared_rule_is_recorded_with_its_name(seen):
+    """The event names the rule (ADR 0031), so a count needn't match its text."""
+    ask(Proxy("", GOOD))
+    (refused,) = [e for e in seen if e.kind == EventKind.LLM_CALL_REFUSED]
+    assert refused.detail["rules"] == ["call.the_answer_was_empty_you"]

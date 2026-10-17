@@ -1873,6 +1873,8 @@ def rules_command(
     if declare:
         for path in rule_list.write_declarations():
             console.print(f"wrote {path.relative_to(rule_list.ROOT)}")
+        for rule in rule_list.dropped:
+            console.print(f"[yellow]dropped[/] {rule}: the code no longer has it")
         rule_list.entries.cache_clear()
     console.print(f"wrote {rule_list.write().relative_to(rule_list.ROOT)}")
     if not events:

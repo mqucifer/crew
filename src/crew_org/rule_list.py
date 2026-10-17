@@ -36,6 +36,7 @@ import importlib
 import inspect
 import re
 import textwrap
+from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import cache
@@ -112,6 +113,8 @@ class Entry:
     mode: str = ""
     # A form's rule that changes the answer and never refuses it.
     repairs: bool = False
+    # The declared rules its code refuses by, through `rulebook.refuse()`.
+    named: set[str] = field(default_factory=set)
     # What it protects, one of CATEGORIES: as declared, or as PLACEMENT proposes for a
     # rule not yet declared. "" where neither places it.
     category: str = ""
@@ -297,6 +300,33 @@ def _refusal(node: ast.AST) -> ast.Call | None:
     return None
 
 
+def _refused_by(node: ast.AST) -> str | None:
+    """The declared rule a `refuse("<id>", ...)` or `says("<id>", ...)` call names (ADR 0031)."""
+    if not (isinstance(node, ast.Call) and node.args):
+        return None
+    func = node.func
+    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+    first = node.args[0]
+    if (
+        name in ("refuse", "says")
+        and isinstance(first, ast.Constant)
+        and isinstance(first.value, str)
+    ):
+        return first.value
+    return None
+
+
+def _declared(rule: str) -> list[str]:
+    """A declared rule's messages, each as a template: its values as {}."""
+    spec = rulebook.catalog().get(rule)
+    return [re.sub(r"\{[^{}]*\}", "{}", text) for _, text in spec.messages] if spec else []
+
+
+def _named(node: ast.AST) -> set[str]:
+    """The declared rules a function refuses by, itself."""
+    return {rule for sub in ast.walk(node) if (rule := _refused_by(sub))}
+
+
 def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
     """The messages a function refuses with, its helpers' included.
 
@@ -309,6 +339,8 @@ def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
         raised = _refusal(sub)
         if raised is not None:
             found.append(_template(raised.args[0], tree))
+        elif (rule := _refused_by(sub)) is not None:
+            found += _declared(rule)
         elif depth < 2 and isinstance(sub, ast.Call):
             helper = _helper(sub, tree)
             if helper is not None and helper[0] is not node:
@@ -576,6 +608,7 @@ def _form_rules() -> list[Entry]:
                         sections=_cited_sections(doc + " " + comments + " " + text),
                     )
                     entry.checked.add(where)
+                    entry.named = _named(tree.body[0])
                     if not messages:
                         entry.says += " (repairs the answer, never refuses it)"
                         entry.repairs = True
@@ -636,24 +669,27 @@ def _inline(source: Source, within: ast.AST, group: str, prefix: str) -> list[En
     out: list[Entry] = []
     for sub in ast.walk(within):
         raised = _refusal(sub)
-        if raised is None:
+        rule = _refused_by(sub)
+        if raised is None and rule is None:
             continue
-        message = _template(raised.args[0], source.tree)
+        message = _template(raised.args[0], source.tree) if raised is not None else ""
         comments = _comments_above(source.lines, getattr(sub, "lineno", 1))
         statement = _enclosing(sub, parents, ast.If)
         if statement is not None:
             comments = _comments_above(source.lines, statement.lineno) + " " + comments
+        messages = _declared(rule) if rule is not None else [message]
         out.append(
             Entry(
-                f"{prefix}.{_slug(message.replace('{}', ' '), 5) or 'refused'}",
+                rule or f"{prefix}.{_slug(message.replace('{}', ' '), 5) or 'refused'}",
                 group,
                 where,
-                _first_sentence(message.replace("{}", "…")),
+                _first_sentence(messages[0].replace("{}", "…")) if messages else rule or "",
                 checked={where},
                 origin=refs(comments),
-                messages=[message],
-                text=message + " " + comments,
+                messages=messages,
+                text=" ".join(messages) + " " + comments,
                 sections=_cited_sections(comments),
+                named={rule} if rule else set(),
             )
         )
     return out
@@ -695,6 +731,7 @@ def _check_rules() -> list[Entry]:
                     checked={where},
                     origin=refs(doc + " " + comments),
                     messages=messages,
+                    named=_named(fn),
                     text=doc + " " + " ".join(messages),
                     sections=_cited_sections(doc + " " + comments),
                 )
@@ -705,6 +742,7 @@ def _check_rules() -> list[Entry]:
 # The call layer's own refusals: what every answer is held to before its step's rules.
 _CALL_LAYER = (
     ("crew_org.calls", "ask"),
+    ("crew_org.calls", "_runaway"),
     ("crew_org.calls", "split_blocks"),
     ("crew_org.calls", "join_blocks"),
     ("crew_org.cut_text", "check_not_cut_at_a_quote"),
@@ -737,9 +775,11 @@ def _call_rules() -> list[Entry]:
             continue
         comments = _comments_above(source.lines, fn.lineno)
         messages = _raises(fn, source.tree)
+        # A function that refuses by one declared rule is that rule.
+        named = _named(fn)
         out.append(
             Entry(
-                f"call.{name.lstrip('_')}",
+                next(iter(named)) if len(named) == 1 else f"call.{name.lstrip('_')}",
                 "call",
                 where,
                 _first_sentence(doc) or _says(messages, name),
@@ -747,14 +787,16 @@ def _call_rules() -> list[Entry]:
                 checked={where},
                 origin=refs(doc + " " + comments + " " + "\n".join(source.lines[:20])),
                 messages=messages,
+                named=named,
                 text=doc + " " + " ".join(messages),
             )
         )
     return out
 
 
-# Modules whose refusals are listed as their own kinds: a form's validators, the call layer.
-_LISTED_ELSEWHERE = ("crew_org.calls", "crew_org.cut_text")
+# Modules whose refusals are listed as their own kinds (a form's validators, the call
+# layer), or aren't a role's at all: the rulebook's own errors.
+_LISTED_ELSEWHERE = ("crew_org.calls", "crew_org.cut_text", "crew_org.rulebook")
 _FEEDBACK = "feedback"
 
 
@@ -820,9 +862,11 @@ def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source
     ...)(...)` runs it.
     """
     out: dict[tuple[str, str], tuple[Source, ast.FunctionDef]] = {}
-    todo = [(source, node, 0)]
+    # Breadth first, so each function is reached by its shortest path and its own
+    # calls are followed as deep as that allows, whatever order the code is in.
+    todo = deque([(source, node, 0)])
     while todo:
-        here, block, level = todo.pop()
+        here, block, level = todo.popleft()
         called = [
             ast.Call(func=f, args=[], keywords=[])
             for call in _calls_in(block)
@@ -840,9 +884,12 @@ def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source
 
 
 def _own_raises(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
-    return list(
-        dict.fromkeys(_template(r.args[0], tree) for r in (_refusal(n) for n in ast.walk(fn)) if r)
-    )
+    raised = [_template(r.args[0], tree) for r in (_refusal(n) for n in ast.walk(fn)) if r]
+    declared = [m for rule in sorted(_named(fn)) for m in _declared(rule)]
+    if declared:
+        # A refusal said in its declared parts has no text of its own.
+        raised = [t for t in raised if re.search(r"[A-Za-z]", t)]
+    return list(dict.fromkeys(raised + declared))
 
 
 def _findings(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
@@ -1104,6 +1151,7 @@ def _fed_back_rules() -> list[Entry]:
                             checked={where},
                             origin=refs(doc + " " + comments),
                             messages=messages,
+                            named=_named(callee),
                             failure_class=klass,
                             text=doc + " " + " ".join(messages),
                             sections=_cited_sections(doc + " " + comments),
@@ -1169,6 +1217,7 @@ def _fed_back_rules() -> list[Entry]:
                             checked={where},
                             origin=refs(doc + " " + comments),
                             messages=messages,
+                            named=_named(callee),
                             text=doc + " " + " ".join(messages),
                             sections=_cited_sections(doc + " " + comments),
                         )
@@ -2092,7 +2141,7 @@ def declarations() -> dict[str, dict[str, dict[str, Any]]]:
                 "owner": spec.owner,
                 "origin": list(spec.origin),
                 "guidance": spec.guidance,
-                "message": spec.message,
+                "messages": dict(spec.messages),
                 "description": spec.description,
                 "told_in": spec.told_in,
             }
@@ -2107,12 +2156,23 @@ def declarations() -> dict[str, dict[str, dict[str, Any]]]:
     return {c: rules for c, rules in out.items() if rules}
 
 
+# The declarations the last `write_declarations` dropped: said, never silently lost.
+dropped: list[str] = []
+
+
 def write_declarations() -> list[Path]:
-    """Declare every rule that has no declaration yet, and drop those the code lost."""
+    """Declare every rule that has no declaration yet, and drop those the code lost.
+
+    What's declared is read before any file is rewritten: a decision is never lost
+    to the rewrite.
+    """
+    declared = declarations()
+    kept = {rule for rules in declared.values() for rule in rules}
+    dropped.extend(sorted(set(rulebook.catalog()) - kept))
     for path in rulebook.CATALOG.glob("*.yaml"):
         if path != rulebook.BUDGET:
             path.unlink()
-    return rulebook.write(declarations())
+    return rulebook.write(declared)
 
 
 def guidance_counts() -> dict[str, int]:

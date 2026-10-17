@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
 from crew_org.crews import epic_rows
+from crew_org.rulebook import refuse
 
 # The whole diff, or no approval. A head slice of 30,000 characters meant the
 # Reviewer approved files it had never seen — and its approval now merges, so
@@ -47,10 +48,7 @@ class Finding(BaseModel):
     @classmethod
     def _is_actionable(cls, value: str) -> str:
         if len(value.strip()) < MIN_ACTION_CHARS:
-            raise ValueError(
-                "say specifically what to change. A finding an author cannot act on "
-                "is not a finding."
-            )
+            refuse("form.Finding.is_actionable")
         return value
 
 
@@ -65,18 +63,12 @@ class ReviewVerdict(BaseModel):
     def _a_rejection_must_say_why(self) -> ReviewVerdict:
         blocking = [f for f in self.findings if f.blocking]
         if not self.approve and not blocking:
-            raise ValueError(
-                "requesting changes with no finding that blocks is not a review. Name "
-                "what must change and what to do, or approve."
-            )
+            refuse("form.ReviewVerdict.a_rejection_must_say_why", "no_blocking")
         # sprint-metrics PR #139 was approved with five findings saying "remove
         # these imports", and nothing acted on them: an approval's findings were
         # dropped. Here they were wrong; next time they'd be right (#214).
         if self.approve and blocking:
-            raise ValueError(
-                "an approval can't carry a finding that blocks. Request changes, or mark "
-                "it `blocking: false` if it's a note that doesn't hold the merge up."
-            )
+            refuse("form.ReviewVerdict.a_rejection_must_say_why", "approved_blocking")
         return self
 
     @property
