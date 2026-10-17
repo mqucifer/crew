@@ -423,7 +423,12 @@ def _refine(crew: Crew) -> PhaseOutcome:
             "already answered": sum(1 for _n, why in result.skipped if why == "already answered"),
         },
         held=[f"#{n} — {why}" for n, why in result.failed]
-        + [f"#{n} — {why}" for n, why in result.skipped if "refused" in why]
+        # A wait is held work too: it said nothing, so an epic waited unseen (crew#773).
+        + [
+            f"#{n} — {why}"
+            for n, why in result.skipped
+            if "refused" in why or why.startswith("waits")
+        ]
         + [f"#{n} — waiting for room: {why}" for n, why in result.waiting]
         + [f"#{n} — waits: {why}" for n, why in result.held_for_design],
         blocked=[

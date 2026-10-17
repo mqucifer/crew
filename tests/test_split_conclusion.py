@@ -386,7 +386,7 @@ def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repos
 ):
     seen = {}
 
-    def panel_step(issues, sink, result, epic, repo, *, project, search, code):
+    def panel_step(issues, sink, result, epic, repo, *, project, search, code, unapproved):
         seen.update(repo=repo, search=search, code=code)
         return True
 

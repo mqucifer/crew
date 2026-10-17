@@ -1628,6 +1628,11 @@ def refine_epics(
                 project=context.record_for(repo),
                 search=panel_search,
                 code=partial(_focused_text, context, repo),
+                unapproved=frozenset(
+                    c.number
+                    for c in cards
+                    if c.number and c.status == INBOX and (c.repo or repo) == repo
+                ),
             ):
                 continue
 
