@@ -21,8 +21,8 @@ from crew_org import calls
 from crew_org.crews.delivery_crew import (
     CODE_FIELDS,
     STANDING_INSTRUCTIONS,
-    FileWrite,
     Implementation,
+    in_the_repository,
 )
 from crew_org.rulebook import refuse, says
 from crew_org.tools import regression
@@ -42,7 +42,14 @@ class PlannedFile(BaseModel):
     @field_validator("path")
     @classmethod
     def _in_the_repository(cls, value: str) -> str:
-        return FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.PlannedFile.in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.PlannedFile.in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.PlannedFile.in_the_repository", "git")
+        return cleaned
 
     @field_validator("intent")
     @classmethod

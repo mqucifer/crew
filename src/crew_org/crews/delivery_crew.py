@@ -31,6 +31,24 @@ MAX_FILE_BYTES = 120_000
 CODE_FIELDS = frozenset({"content", "source", "find", "replace"})
 
 
+def in_the_repository(value: str) -> tuple[str, str]:
+    """The path as written in the repository, and which way it leaves it, if it does: each
+    form that takes a path refuses that by its own rule (ADR 0031)."""
+    cleaned = value.strip().replace("\\", "/")
+    # NOT lstrip("./") — that strips any run of '.' and '/', turning
+    # "../../etc/passwd" into "etc/passwd" and defeating the check below.
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    if not cleaned:
+        return cleaned, "empty"
+    pure = PurePosixPath(cleaned)
+    if pure.is_absolute() or ".." in pure.parts:
+        return cleaned, "escapes"
+    if pure.parts[0] == ".git":
+        return cleaned, "git"
+    return str(pure), ""
+
+
 class FileWrite(BaseModel):
     """One file to create or replace, relative to the repository root."""
 
@@ -40,22 +58,14 @@ class FileWrite(BaseModel):
     @field_validator("path")
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
-        cleaned = value.strip().replace("\\", "/")
-        # NOT lstrip("./") — that strips any run of '.' and '/', turning
-        # "../../etc/passwd" into "etc/passwd" and defeating the check below.
-        while cleaned.startswith("./"):
-            cleaned = cleaned[2:]
-        if not cleaned:
-            raise ValueError("path is empty")
-        pure = PurePosixPath(cleaned)
-        if pure.is_absolute() or ".." in pure.parts:
-            raise ValueError(
-                f"{value!r} escapes the repository. Paths must be relative and must not "
-                "contain '..'."
-            )
-        if pure.parts[0] == ".git":
-            raise ValueError("refusing to write inside .git")
-        return str(pure)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.FileWrite.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.FileWrite.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.FileWrite.stays_in_the_repository", "git")
+        return cleaned
 
     @field_validator("content")
     @classmethod
@@ -105,14 +115,17 @@ class FileEdit(BaseModel):
     @field_validator("path")
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
-        cleaned = FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.FileEdit.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.FileEdit.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.FileEdit.stays_in_the_repository", "git")
         # A named edit reads the file as Python. On a template it failed as the
         # template's own en dash not parsing, which named the wrong fault (crew#744).
         if PurePosixPath(cleaned).suffix != ".py":
-            raise ValueError(
-                f"{cleaned!r} isn't a Python file, so it has no definitions to edit by "
-                "name; change it with a text edit, quoting the text it replaces"
-            )
+            refuse("form.FileEdit.stays_in_the_repository", "not_python", path=repr(cleaned))
         return cleaned
 
     @model_validator(mode="after")
@@ -138,9 +151,15 @@ class Move(BaseModel):
     @field_validator("from_path", "to_path")
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
-        cleaned = FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.Move.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.Move.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.Move.stays_in_the_repository", "git")
         if PurePosixPath(cleaned).suffix != ".py":
-            raise ValueError(f"{cleaned!r} isn't a Python file; only Python definitions move")
+            refuse("form.Move.stays_in_the_repository", "not_python", path=repr(cleaned))
         return cleaned
 
     @model_validator(mode="after")
@@ -191,7 +210,14 @@ class TextEdit(BaseModel):
     def _stays_in_the_repository(cls, value: str) -> str:
         # Python is allowed for its module-level lines only; that needs the
         # file's text to judge, so it's checked where the edit is applied (#204).
-        return FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.TextEdit.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.TextEdit.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.TextEdit.stays_in_the_repository", "git")
+        return cleaned
 
     @model_validator(mode="after")
     def _changes_something(self) -> TextEdit:
@@ -243,7 +269,14 @@ class CriterionTest(BaseModel):
     @field_validator("path")
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
-        return FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.CriterionTest.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.CriterionTest.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.CriterionTest.stays_in_the_repository", "git")
+        return cleaned
 
     @field_validator("test")
     @classmethod
@@ -387,7 +420,19 @@ class Implementation(BaseModel):
     @field_validator("deleted_files")
     @classmethod
     def _deleted_stay_in_the_repository(cls, value: list[str]) -> list[str]:
-        return [FileWrite._stays_in_the_repository(v) for v in value]
+        kept = []
+        for v in value:
+            cleaned, outside = in_the_repository(v)
+            if outside == "empty":
+                refuse("form.Implementation.deleted_stay_in_the_repository", "empty")
+            if outside == "escapes":
+                refuse(
+                    "form.Implementation.deleted_stay_in_the_repository", "escapes", path=repr(v)
+                )
+            if outside == "git":
+                refuse("form.Implementation.deleted_stay_in_the_repository", "git")
+            kept.append(cleaned)
+        return kept
 
     @model_validator(mode="before")
     @classmethod

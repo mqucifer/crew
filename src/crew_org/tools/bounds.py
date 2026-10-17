@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from crew_org.project import RECORD_PATH, ProjectRecord, is_protected, protected
+from crew_org.rulebook import says
 from crew_org.tools import ci_guard
 
 
@@ -28,9 +29,14 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
     """Why this implementation may not be applied, one line per reason. Empty if it may."""
     rules = protected(record)
     reasons = [
-        f"`{path}` is protected by the project's record (`{rule}`"
-        + (" is the record itself" if rule == RECORD_PATH else " is under never_touch")
-        + f" in {RECORD_PATH}). Leave it unchanged."
+        says(
+            "guard.bounds.out_of_bounds",
+            "protected",
+            path=path,
+            protected_by=rule,
+            why=" is the record itself" if rule == RECORD_PATH else " is under never_touch",
+            record=RECORD_PATH,
+        )
         for path in touched(implementation)
         if (rule := is_protected(path, rules))
     ]
@@ -67,9 +73,7 @@ def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) 
     if checks and workflows:
         before, after = _workflows(worktree, implementation)
         reasons += [
-            f"CI would no longer enforce `{check}`, a check the project's design requires "
-            f"({RECORD_PATH}). Workflows may change, but every design check must still run "
-            "there and still be able to fail: no `|| true`, no `continue-on-error`."
+            says("guard.bounds.out_of_bounds", "weakened", check=check, record=RECORD_PATH)
             for check in ci_guard.weakened(checks, before, after)
         ]
     return reasons

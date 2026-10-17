@@ -29,6 +29,7 @@ from crew_org.flows.board_moves import BOARD_WORKFLOW
 from crew_org.flows.record_pr import RecordChange, propose
 from crew_org.flows.template import CHECKS_WORKFLOW
 from crew_org.project import RECORD_PATH, Design, Part, ProjectRecord, brief
+from crew_org.rulebook import says
 from crew_org.tools import ci_guard
 from crew_org.tools.workspace import shell_operators
 
@@ -156,16 +157,8 @@ def unlocked(proposal: Any) -> list[str]:
         return []
     known = ", ".join(f"`{name}` ({tool})" for name, tool in TOOL_LOCKFILES.items())
     if path:
-        return [
-            f"`{path}` isn't a lockfile a package manager writes, so a story would have to "
-            "write its pins and hashes by hand, and can't resolve them. Name one the setup's "
-            f"tool writes when it installs: {known}. For Python, `pyproject.toml` with "
-            "`uv.lock`, setup running `uv sync`"
-        ]
-    return [
-        "the design names no lockfile. Name the file the setup's package manager writes, "
-        f"its path from the repository's root: {known}"
-    ]
+        return [says("check.design.unlocked", "not_a_lockfile", path=path, known=known)]
+    return [says("check.design.unlocked", "none", known=known)]
 
 
 def shelled(proposal: Any) -> list[str]:
@@ -181,9 +174,11 @@ def shelled(proposal: Any) -> list[str]:
         *(getattr(proposal, "autofix", None) or []),
     ]
     return [
-        f"`{c.value}` uses {', '.join(f'`{o}`' for o in found)}, but the crew runs each "
-        "command without a shell. Name one command; where it needs several steps, a "
-        "script in the repository that the skeleton's first story writes"
+        says(
+            "check.design.shelled",
+            command=c.value,
+            operators=", ".join(f"`{o}`" for o in found),
+        )
         for c in commands
         if c is not None and (found := shell_operators(c.value))
     ]
@@ -230,21 +225,22 @@ def needs_an_image(proposal: Any) -> list[str]:
     if getattr(proposal, "sandbox_image", None) is not None:
         return []
     needs = [
-        f"the check `{c.value}`"
+        says("check.design.needs_an_image", "check", check=c.value)
         for c in proposal.checks
         if c.value.split() and c.value.split()[0] in NODE_TOOLS
     ] + [
-        f"the {p.language} part `{p.path or '(the whole project)'}`"
+        says(
+            "check.design.needs_an_image",
+            "part",
+            language=p.language,
+            path=p.path or "(the whole project)",
+        )
         for p in getattr(proposal, "parts", None) or []
         if p.language.strip().lower() != "python"
     ]
     if not needs:
         return []
-    return [
-        f"{', '.join(needs)} needs more than the crew's default sandbox, which has only "
-        "Python and uv. Name the image they run in, with every tool the checks need, in "
-        "`sandbox_image` (registry/name:tag), and its install command in `setup`."
-    ]
+    return [says("check.design.needs_an_image", needs=", ".join(needs))]
 
 
 def undeclared(proposal: Any, ci: dict[str, str], ci_checks_now: list[str] = ()) -> list[str]:
@@ -260,17 +256,11 @@ def undeclared(proposal: Any, ci: dict[str, str], ci_checks_now: list[str] = ())
         c.value for c in getattr(proposal, "ci_checks", None) or [] if c.value not in ci_checks_now
     ]
     if new_proofs and not any(change.needs_work for change in proposal.changes):
-        reasons += [
-            f"`{proof}` is a new CI proof, and no change says the work that makes CI "
-            "prove it. List it in `changes` with `needs_work` and the work."
-            for proof in new_proofs
-        ]
+        reasons += [says("check.design.undeclared", "new_proof", proof=p) for p in new_proofs]
     if not ci:
         return reasons
     return reasons + [
-        f"`{check.value}` isn't a check CI runs today. If it should be, list it in "
-        "`changes` (what, what the project does now, and why); if CI already runs it "
-        "under another command, name that command instead."
+        says("check.design.undeclared", "not_in_ci", check=check.value)
         for check in proposal.checks
         if not ci_guard.enforced(check.value, ci)
         and not any(check.value in change.what for change in proposal.changes)
@@ -399,13 +389,13 @@ def image_problems(choice: Any) -> list[str]:
         return []
     ref = base_images.parse(choice.value.strip())
     if ref is None or not ref.digest:
-        return [f"the sandbox image `{choice.value}` isn't pinned by digest (name@sha256:...)"]
+        return [says("check.design.image_problems", "unpinned", image=choice.value)]
     try:
         found = base_images.lookup(ref.host, ref.name, ref.digest)
     except base_images.Unreadable as exc:
-        return [f"the sandbox image `{choice.value}` can't be verified: {exc}"]
+        return [says("check.design.image_problems", "unverified", image=choice.value, why=exc)]
     if found is None:
-        return [f"the sandbox image `{choice.value}` doesn't exist: no such digest in {ref.host}"]
+        return [says("check.design.image_problems", "missing", image=choice.value, host=ref.host)]
     return []
 
 
