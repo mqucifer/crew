@@ -62,7 +62,7 @@ def test_a_missing_field_is_the_schema_and_an_empty_answer_the_call_layers():
         ]
     )
     assert report.fired["call.schema"].events == 1
-    assert report.fired["call.the-answer-was-empty-you"].events == 1
+    assert report.fired["call.the_answer_was_empty_you"].events == 1
 
 
 def test_crewais_validation_errors_are_read_by_form_and_field():
