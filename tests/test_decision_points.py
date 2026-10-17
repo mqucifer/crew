@@ -48,3 +48,8 @@ def test_a_card_filter_is_a_decision_point():
         p for p in decision_points.points() if p.kind == "filter" and p.function == "approved_epics"
     ]
     assert filters
+
+
+def test_every_flow_decision_is_counted_by_its_rule():
+    """crew#756: a flow decision names its rule on its event, or as a hold for the tick's end."""
+    assert decision_points.unnamed("flow") == []

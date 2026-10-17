@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from crew_org.crews.panel_crew import PanelContext, run_panel
-from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
@@ -71,6 +71,7 @@ def panel_step(
                         role="Refinement panel",
                         card=number,
                         summary=f"panel on {epic.title[:50]}",
+                        detail={"rule": "skip.refine_panel.waits_for_the_sponsors_answer_on"},
                     )
                 )
                 notes = attributed(run_panel, card=number, repo=repo)(context)
@@ -87,6 +88,7 @@ def panel_step(
                 known=set(where),
             )
             if settled.outcome is settle_flow.Outcome.WAITING:
+                held("skip.refine_panel.waits_for_the_sponsors_answer_on", repo=repo, card=number)
                 result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
                 return False
         # The design questions, before the split (ADR 0018).
@@ -96,6 +98,7 @@ def panel_step(
         if asked:
             first = builds_on_unsplit(issues, repo, epic.parent, number, body, unapproved)
             if first is not None:
+                held("skip.refine_panel.waits_for_to_be_split_it", repo=repo, card=number)
                 result.skipped.append((number, f"waits for #{first} to be split: it builds on it"))
                 return False
             context = context or _gather(issues, sink, repo, number, project=project, search=where)
@@ -108,6 +111,7 @@ def panel_step(
                 code=code("\n".join(q.question for q in asked)),
             )
             if designed.outcome is settle_flow.Outcome.WAITING:
+                held("skip.refine_panel.waits_for_a_person_to_settle", repo=repo, card=number)
                 result.skipped.append((number, "waits for a person to settle its design questions"))
                 return False
     except panel_flow.NotUnderAGoal:

@@ -47,7 +47,7 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.design import DesignPolicy, EpicShape
-from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts, bugs, criteria_check
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import panel as panel_flow
@@ -554,12 +554,14 @@ def product_step(
     asked = [i for i, b in enumerate(after) if PRODUCT_QUESTION_MARKER in b]
     if asked:
         # Answered only by the Sponsor (crew#399), not by any comment at all.
+        held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
         base = problems[-1] + asked[-1] + 1
         replied = any(
             "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
             for c in authored[base:]
         )
         if not replied:
+            held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied
 
@@ -603,6 +605,7 @@ def product_step(
                     "based_on": reply.based_on,
                     # The story whose return this answers, if one went back (A6).
                     **({"story": about} if about is not None else {}),
+                    "rule": "decision.board_flow.product_step",
                 },
             )
         )
@@ -678,6 +681,7 @@ def settle_wait(
             EventKind.NOTE,
             f"#{number} closed: delivered by " + ", ".join(f"#{n}" for n in sorted(waited)),
             card=number,
+            rule="skip.board_flow.waits_for_planned",
         )
         return "closed"
     by_key = {c.key: c for c in cards}
@@ -691,13 +695,22 @@ def settle_wait(
         if state == "CLOSED":
             gone.append(n)
     if gone:
-        artifacts.label(issues, sink, repo=repo, number=number, by=None, add=[NEEDS_REWORK])
+        artifacts.label(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            by=None,
+            add=[NEEDS_REWORK],
+            rule="skip.board_flow.waits_for_planned",
+        )
         sink.note(
             EventKind.NOTE,
             f"#{number} split again: "
             + ", ".join(f"#{n}" for n in gone)
             + " closed without being delivered",
             card=number,
+            rule="skip.board_flow.waits_for_planned",
         )
         return RESPLIT
     result.skipped.append(
@@ -760,6 +773,7 @@ def rework_gate(
         # already answered every time it runs, and emitting one note per card
         # filled the log with eight lines a pass saying nothing happened. The
         # count goes in the tick's summary instead.
+        held("skip.board_flow.already_answered", repo=card.repo or repo, card=number)
         result.skipped.append((number, "already answered"))
         return False, ""
     if not wants_rework:
@@ -774,6 +788,7 @@ def rework_gate(
                 kind=EventKind.NOTE,
                 card=number,
                 summary=f"rework refused — {why}"[:100],
+                detail={"rule": "skip.board_flow.rework_refused"},
             )
         )
         return False, ""
@@ -1502,6 +1517,7 @@ def admit_held_stories(
         number = card.number or 0
         verdict = rules.may_move(frm=REFINEMENT, to=READY, counts=counts)
         if not verdict.allowed:
+            held("hold.wip_limit", repo=card.repo, card=number)
             result.waiting.append((number, verdict.reason))
             continue
 
@@ -1583,6 +1599,7 @@ def refine_epics(
             number = epic_card.number
             assert number is not None
             if repo in holds and TECHNICAL not in epic_card.labels:
+                held("decision.board_flow.technical_work_first", repo=repo, card=number)
                 result.held_for_design.append((number, holds[repo]))
                 continue
 
@@ -1591,8 +1608,10 @@ def refine_epics(
                 waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
             )
             if waited:
+                held("skip.board_flow.waits_for_planned", repo=repo, card=number)
                 settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
                 if settled != RESPLIT:
+                    held("decision.board_flow.rework_gate", repo=repo, card=number)
                     continue
                 # Something it waited for was superseded: split again, now.
                 epic_card = epic_card.model_copy(
@@ -1608,12 +1627,14 @@ def refine_epics(
                 project=context.record_for(repo),
                 delivered=done.render(),
             ):
+                held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
                 continue
 
             proceed, notes = rework_gate(
                 issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
             )
             if not proceed:
+                held("decision.board_flow.product_step", repo=repo, card=number)
                 continue
 
             # Four roles read it, the Product Owner settles what they raised into its
@@ -1634,11 +1655,13 @@ def refine_epics(
                     if c.number and c.status == INBOX and (c.repo or repo) == repo
                 ),
             ):
+                held("decision.refine_panel.panel_step", repo=repo, card=number)
                 continue
 
             # The Sponsor's replies on the epic, entered in its record before the split
             # reads it (ADR 0023).
             if not record_sponsor_words(issues, sink, result, epic_card, repo):
+                held("decision.board_flow.sponsor_words", repo=repo, card=number)
                 continue
 
             # Ready only with no design question open (ADR 0018, Scrum's Definition of
@@ -1647,6 +1670,7 @@ def refine_epics(
                 record_flow.split(issues.get(repo, number).get("body") or "")[1]
             ).for_architect()
             if waiting:
+                held("skip.board_flow.not_ready_still_open_for_the", repo=repo, card=number)
                 open_ids = ", ".join(q.id for q in waiting)
                 result.skipped.append(
                     (number, f"not ready: {open_ids} still open for the Architect")
@@ -1874,6 +1898,7 @@ def refine_epics(
                 )
                 fingerprint = failure_fingerprint(exc)
                 if seen_failures.count(fingerprint) + 1 >= IDENTICAL_FAILURES_BEFORE_PARKING:
+                    held("decision.board_flow.parked", repo=repo, card=number)
                     park_epic(
                         board,
                         issues,
@@ -1902,6 +1927,7 @@ def refine_epics(
                 continue
 
             if checked is not None and checked.conflicts:
+                held("skip.board_flow.its_criteria_cant_all_pass_to", repo=repo, card=number)
                 criteria_check.to_product_owner(
                     issues,
                     sink,
@@ -1995,7 +2021,13 @@ def refine_epics(
             )
             if decision.required:
                 artifacts.label(
-                    issues, sink, repo=repo, number=number, by="Architect", add=[NEEDS_DESIGN]
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    by="Architect",
+                    add=[NEEDS_DESIGN],
+                    rule="decision.board_flow.design_required",
                 )
                 result.design_required.append(number)
 
@@ -2048,6 +2080,7 @@ def refine_epics(
                     f"#{number} closed: already delivered by "
                     + ", ".join(f"#{d.by}" for d in proposal.already_delivered),
                     card=number,
+                    rule="decision.board_flow.already_delivered",
                 )
             sink.emit(
                 CrewEvent(
@@ -2149,6 +2182,7 @@ def tick(
         if repo in (skeleton_only or {}) and SKELETON_LABEL not in card.labels:
             # Every story would fail checks that have nothing to run yet, as
             # crew-presentation's did (crew#690).
+            held("decision.board_flow.skeleton_only", repo=card.repo or repo, card=number)
             result.held_for_design.append(
                 (number, f"{repo}'s skeleton Goal lands first: {(skeleton_only or {})[repo]}")
             )
@@ -2168,6 +2202,7 @@ def tick(
                 issues, sink, result, cards, card, repo, EPIC_PROPOSAL_MARKER
             )
         if not proceed:
+            held("decision.board_flow.rework_gate", repo=card.repo or repo, card=number)
             continue
 
         # One Product Owner run per Goal (crew#449).
@@ -2243,7 +2278,13 @@ def tick(
             if extend:
                 # The Sponsor's label, spent: no more epics until it's asked again.
                 artifacts.label(
-                    issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_EPIC]
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    by=None,
+                    remove=[NEEDS_EPIC],
+                    rule="decision.board_flow.lacking_goals",
                 )
 
             result.proposed.append(number)

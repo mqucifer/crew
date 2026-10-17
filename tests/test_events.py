@@ -57,3 +57,32 @@ def test_a_notes_card_is_the_events_card():
     sink.note(EventKind.NOTE, "no card here")
     assert (seen[0].card, seen[0].detail["card"]) == (7, 7)
     assert seen[1].card is None
+
+
+def test_a_tick_names_the_holds_no_event_names_once_each():
+    """crew#756: a hold or skip that writes no event is listed on the tick's end."""
+    from crew_org.events import held, held_so_far, holding
+
+    held("hold.sibling", repo="sm", card=7)  # outside a tick: nowhere to go, and no error
+    token = holding()
+    held("hold.sibling", repo="sm", card=7)
+    held("hold.sibling", repo="sm", card=7)
+    held("decision.merge.merge_approved", repo="sm", card=9)
+    assert held_so_far(token) == [
+        {"rule": "hold.sibling", "repo": "sm", "card": 7},
+        {"rule": "decision.merge.merge_approved", "repo": "sm", "card": 9},
+    ]
+
+
+def test_a_hold_is_noted_once_per_card_per_sprint(tmp_path):
+    """crew#756: hold.sibling was noted on every pass, 333 notes on 55 cards in a month."""
+    from crew_org.events import EventSink, first_hold
+
+    sink = EventSink(tmp_path / "tick.jsonl")
+    once = dict(rule="hold.sibling", repo="sm", card=7)
+    assert first_hold(sink, sprint="Sprint 30", **once)
+    assert not first_hold(sink, sprint="Sprint 30", **once)
+    assert first_hold(sink, sprint="Sprint 30", **{**once, "card": 8})
+    assert first_hold(sink, sprint="Sprint 31", **once)
+    assert first_hold(EventSink(None), sprint="Sprint 30", **once)
+    assert first_hold(EventSink(None), sprint="Sprint 30", **once)

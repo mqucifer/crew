@@ -52,7 +52,7 @@ section; one no line holds for is unplaced, never guessed.
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
 | `edit.local_repair`<br>Its edits couldn't be applied, retried with why shown, up to the local limit. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
 | `edit.not_applied`<br>Its edits couldn't be applied, past the local limit. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
-| `escalation.allowed`<br>Escalated to Claude, within the sprint's budget. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/escalation.py:EscalationPolicy.decide | — |
+| `escalation.allowed`<br>Escalated to Claude, within the sprint's budget. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/escalation.py:EscalationPolicy.decide<br>src/crew_org/flows/delivery.py:deliver_story | — |
 | `escalation.budget`<br>Eligible for escalation, with the sprint's budget spent: blocked. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/escalation.py:EscalationPolicy.decide | — |
 | `escalation.unresolved`<br>Escalated, and still failing afterwards: blocked. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
 | `escalation.usage_limit`<br>The escalation hit the subscription's usage limit: parked, not failed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |

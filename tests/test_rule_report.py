@@ -203,3 +203,17 @@ def test_a_steps_own_refusal_note_is_counted_by_the_rule_it_names():
     named = {"reason": "There are 3 notes, N1 to N3.", "rules": ["check.settle_crew.check_covers"]}
     report = rule_report.count([event("note", named, role="Product Owner")])
     assert report.fired["check.settle_crew.check_covers"].matched == {rule_report.BY_NAME: 1}
+
+
+def test_the_holds_a_tick_lists_on_its_end_are_counted_by_rule_and_card():
+    """crew#756: a hold that writes no event of its own is named on `tick.finished`."""
+    held = [
+        {"rule": "hold.sibling", "repo": "sprint-metrics", "card": 7},
+        {"rule": "decision.merge.merge_approved", "repo": "sprint-metrics", "card": 9},
+        {"rule": "no.such.rule", "repo": "sprint-metrics", "card": 9},
+    ]
+    report = rule_report.count([event("tick.finished", {"held": held, "sprint": "Sprint 30"})])
+    assert report.fired["hold.sibling"].cards == {"sprint-metrics#7"}
+    assert report.fired["hold.sibling"].sprints == {"Sprint 30"}
+    assert report.fired["decision.merge.merge_approved"].events == 1
+    assert not report.unmatched

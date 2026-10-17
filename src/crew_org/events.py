@@ -13,7 +13,7 @@ import json
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -364,6 +364,58 @@ def bridged_sinks() -> list[EventSink]:
 def reset_bridge() -> None:
     """Forget every target. For tests."""
     _TARGETS.clear()
+
+
+# The holds and skips a tick decides that write no event of their own, named for its
+# `tick.finished` as {rule, repo, card} (crew#756): a count by rule finds them, and the
+# selection filters, which decide nothing worth counting, stay out.
+_HELD: ContextVar[list[dict[str, Any]] | None] = ContextVar("crew_held", default=None)  # noqa: B039
+
+
+HOLDS_SEEN = "holds-seen.json"
+
+
+def first_hold(sink: EventSink, *, sprint: str, rule: str, repo: str, card: int | None) -> bool:
+    """Whether this hold on this card is new in this sprint, which is then remembered.
+
+    A hold was noted on every pass while it lasted: `hold.sibling` wrote 333 notes
+    on 55 cards in a month (crew#756). Noted once, it still counts on every tick's
+    `tick.finished`. A sink with no log has nowhere to remember, so each hold is new.
+    """
+    if sink.path is None:
+        return True
+    path = sink.path.parent / HOLDS_SEEN
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    seen = state.get("seen") if isinstance(state, dict) and state.get("sprint") == sprint else None
+    seen = seen if isinstance(seen, list) else []
+    key = f"{rule} {repo}#{card}"
+    if key in seen:
+        return False
+    with contextlib.suppress(OSError):
+        path.write_text(json.dumps({"sprint": sprint, "seen": [*seen, key]}), encoding="utf-8")
+    return True
+
+
+def held(rule: str, *, repo: str | None = None, card: int | None = None) -> None:
+    """Name a hold or a skip for the tick's end, once per card and rule."""
+    found = _HELD.get()
+    entry = {"rule": rule, "repo": repo, "card": card}
+    if found is not None and entry not in found:
+        found.append(entry)
+
+
+def holding() -> Token[list[dict[str, Any]] | None]:
+    """Start collecting the tick's holds; `held_so_far` ends it."""
+    return _HELD.set([])
+
+
+def held_so_far(token: Token[list[dict[str, Any]] | None]) -> list[dict[str, Any]]:
+    found = _HELD.get() or []
+    _HELD.reset(token)
+    return found
 
 
 def record(kind: EventKind, summary: str, *, role: str | None = None, **detail: Any) -> None:

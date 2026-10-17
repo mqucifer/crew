@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org.events import EventKind, EventSink
+from crew_org.events import EventKind, EventSink, held
 from crew_org.flows.main_watch import file_technical_epic
 from crew_org.flows.revisit import TECHNICAL
 from crew_org.project import RECORD_PATH, ProjectRecordError, parse
@@ -178,6 +178,7 @@ def check_releases(
             if run.get("head_sha") != issues.head_sha(repo, branch):
                 # The release run for the newest push hasn't finished: judging
                 # now would report a release still being built.
+                held("decision.release_check.check_releases", repo=repo, card=None)
                 result.waiting.append((repo, version))
                 continue
             if _already_checked(issues, repo, version):
@@ -198,13 +199,16 @@ def check_releases(
                 EventKind.NOTE,
                 f"{repo} v{version}: release verified"
                 + ("; its image is private by choice, so not read" if skipped else ""),
+                rule="decision.release_check.check_releases",
             )
             continue
         if not missing:
             # Nothing for the crew: no epic, and it's read again next tick.
             result.sponsor.append((repo, version))
             sink.note(
-                EventKind.NOTE, f"{repo} v{version}: waiting on the Sponsor: {sponsor[0]}"[:160]
+                EventKind.NOTE,
+                f"{repo} v{version}: waiting on the Sponsor: {sponsor[0]}"[:160],
+                rule="decision.release_check.check_releases",
             )
             continue
         number = file_technical_epic(

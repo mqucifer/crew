@@ -351,3 +351,53 @@ def stale() -> list[str]:
         elif "rule" in entry and entry["rule"] not in declared:
             out.append(f"{point}: rule {entry['rule']} isn't declared")
     return out
+
+
+# What a card's handling became that holds it; a result like `delivered` moves it on.
+_HOLDING = frozenset(
+    {
+        "skipped", "held_for_design", "parked", "waiting", "waiting_on_files", "awaiting_approval",
+        "unapprovable", "unmergeable", "conflicted", "checking", "queued", "updating", "failed",
+        "ci_failed", "still_open", "carried", "refused", "unchanged", "returned", "in_queue",
+        "blocked", "design_required", "interrupted",
+    }
+)  # fmt: skip
+_WRITES = frozenset({"note", "emit", "move_card", "label"})
+
+
+def unnamed(category: str = "flow") -> list[str]:
+    """A category's decisions the event log can't count by rule (crew#756).
+
+    A decision that writes an event names its rule on it; a hold that writes none
+    names it for the tick's end with `events.held`. Either way a count by rule
+    finds it, and a rule that never fires can be retired on the evidence.
+    """
+    declared = rulebook.catalog()
+    entries = table()
+    by_path = {s.path: s for s in sources()}
+    out = []
+    for point in points():
+        rules = set(point.evidence) | (
+            {entries[point.id]["rule"]} if "rule" in entries.get(point.id, {}) else set()
+        )
+        if point.kind == "filter" or not any(
+            declared[r].category == category for r in rules if r in declared
+        ):
+            continue
+        tree = by_path[point.path].tree
+        branch = next(n for n in ast.walk(tree) if isinstance(n, ast.If) and n.lineno == point.line)
+        body = _walk_shallow(branch.body)
+        names = {
+            n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+            for n in body
+            if isinstance(n, ast.Call)
+        }
+        named = "held" in names or any(
+            (isinstance(n, ast.keyword) and n.arg == "rule")
+            or (isinstance(n, ast.Constant) and n.value == "rule")
+            for n in body
+        )
+        holds = point.kind.removeprefix("result:") in _HOLDING
+        if not named and (names & _WRITES or holds):
+            out.append(point.id)
+    return out

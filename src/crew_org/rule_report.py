@@ -313,6 +313,19 @@ def count(events: Iterable[dict[str, Any]], entries: Iterable[Entry] | None = No
             if event.get("kind") == "llm.refused":
                 f.seconds += float(detail.get("duration_s") or 0)
                 f.tokens += int(detail.get("completion_tokens") or 0)
+        # The holds a tick decided without an event of their own, on its end (crew#756).
+        for hold in detail.get("held") or () if event.get("kind") == "tick.finished" else ():
+            if not isinstance(hold, dict) or hold.get("rule") not in matcher.entries:
+                continue
+            f = fired[hold["rule"]]
+            f.events += 1
+            if sprint:
+                f.sprints.add(sprint)
+            held_repo = str(hold.get("repo") or repo)
+            if hold.get("card"):
+                f.cards.add(f"{held_repo}#{hold['card']}")
+            f.repos[held_repo] += 1
+            f.matched[BY_NAME] += 1
     return report
 
 

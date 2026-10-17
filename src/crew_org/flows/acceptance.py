@@ -25,7 +25,7 @@ from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews import asks as file_asks
 from crew_org.crews.qa_crew import QAVerdict, verify_story
-from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.conclusion import story_rows
@@ -669,6 +669,7 @@ def run_qa(
                 continue
 
             if issues.has_comment_marked(card_repo, number, qa_marker(revision)):
+                held("skip.acceptance.already_judged_at", repo=card.repo or repo, card=number)
                 result.skipped.append((number, f"already judged at {revision[:7]}"))
                 continue
 
@@ -701,6 +702,7 @@ def run_qa(
                     card=number,
                     frm=QAING,
                     summary="CI-only change: judged by review, proven by its run",
+                    rule="decision.acceptance.ci_only",
                 )
                 result.verified.append(QAOutcome(card=number, accepted=True))
                 continue
@@ -791,6 +793,7 @@ def run_qa(
                     card=number,
                     frm=QAING,
                     summary="already done — every criterion proven, no pull request",
+                    rule="gate.qa_unproven",
                 )
                 issues.close(card_repo, number)
                 result.verified.append(QAOutcome(card=number, accepted=True))
@@ -804,6 +807,7 @@ def run_qa(
                     card=number,
                     frm=QAING,
                     summary="every criterion proven",
+                    rule="gate.qa_unproven",
                 )
                 result.verified.append(QAOutcome(card=number, accepted=True))
             else:
@@ -934,6 +938,7 @@ def close_finished_parents(
                     by=None,
                     card=card.number,
                     summary=f"all {len(statuses)} children done — closing {parent_type.lower()}",
+                    rule="decision.acceptance.close_finished_parents",
                 )
             issues.close(parent_repo, card.number or 0)
             closed.append(card.number or 0)
