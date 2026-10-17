@@ -1,18 +1,63 @@
 # What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
 check.record.check_change:
+  description: 'Refused if it changes or deletes a row in place, or settles a question it may not: a later
+    row replaces a row, and only its author or the Sponsor may.'
+  messages:
+    bad_settler: '{question} names {settler} to settle it, not the Architect or the implementer'
+    default: '{problems}'
+    deleted: '{row} was deleted; a row is only ever replaced'
+    in_place: '{row} was changed in place; a later row replaces it instead'
+    no_author: '{row} is set by {by}, who sets no rows'
+    no_question: '{row} replaces {replaces}, which is no open question'
+    not_an_id: '{row} is not a decision''s ID'
+    not_author: '{row}, set by the {by}, replaces {target}, set by the {target_by}: only its author or
+      the Sponsor may'
+    not_binding: '{row} is new and so binding, not {status}'
+    not_binding_row: '{row} replaces {replaces}, which is no binding row'
+    not_marked: '{target} isn''t marked as replaced by {row}'
+    not_settler: '{row}, set by the {by}, settles {question}, which is the {settler}''s to settle'
+    question_removed: '{question} was removed; a question is settled by a row that replaces it'
+    shared_id: two rows share an ID
+    still_open: '{question} is still open after {row} settled it'
+    test_deleted: '{row} was deleted; a test row is only ever dropped, with why'
+    test_renamed: '{row} names another test now; add a row instead'
+    unidentified: '{row} has no {missing}'
   owner: Product Owner
+  told_in: Row, AnswerRow, SponsorRow, DesignAnswer
 form.ContractRuling.an_amendment_says_what:
+  description: Refused if an amendment doesn't name the tests and what they must assert.
+  messages:
+    default: an amendment names the tests and what they must assert after
   owner: Business Analyst
+  told_in: ContractRuling
 form.ContractRuling.test_ids:
+  description: Refused unless each is `path::test`.
+  messages:
+    default: name each test as `path::test`, not {tests}
   owner: Business Analyst
-form.RepairedStory.opt_in_or_contract:
-  owner: Business Analyst
+  told_in: ContractRuling.tests
 form.RetiredTest.a_test_file:
+  description: Refused unless it's a test file.
+  messages:
+    default: '{path} isn''t a test file: only tests can be retired. Code that still has callers moves,
+      it isn''t retired'
   owner: Developer
+  told_in: RetiredTest.path
 form.RetiredTest.says_why:
+  description: Refused if too short.
+  messages:
+    default: say what this story ends that the test pinned
   owner: Developer
-form.Story.opt_in_or_contract:
+  told_in: RetiredTest.why
+form.story.opt_in_or_contract:
+  cases:
+  - form.Story.opt_in_or_contract
+  - form.RepairedStory.opt_in_or_contract
+  description: Refused unless it starts 'opt-in' or 'contract change'.
+  messages:
+    default: 'say ''opt-in'' or ''contract change: <the tests it updates>'' (#189)'
   owner: Business Analyst
+  told_in: Story.pinned_behaviour, RepairedStory.pinned_behaviour
 guard.regression.broken_contracts:
   owner: Developer
 guard.scope.without_declared:
