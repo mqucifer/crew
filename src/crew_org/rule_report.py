@@ -320,6 +320,7 @@ def snapshot(report: Report, entries: Iterable[Entry] | None = None) -> dict[str
             "where": e.where,
             "says": e.says,
             "repairs": e.repairs,
+            "category": e.category,
             "roles": sorted(e.roles),
             "told": sorted(e.told),
             "checked": sorted(e.checked),
@@ -403,6 +404,7 @@ def render(report: Report, *, source: str = "", built_from: str = "") -> str:
                 f"| {role or '(no role)'} | {repo} | {t.calls:,} | {_hours(t.seconds)} "
                 f"| {_hours(t.refused_seconds)} |"
             )
+    lines += categories(report, entries)
     for group, title in rule_list.GROUPS.items():
         rows = [e for e in entries if e.group == group]
         if group == "told":
@@ -439,7 +441,78 @@ def render(report: Report, *, source: str = "", built_from: str = "") -> str:
     return "\n".join(lines)
 
 
-_COMPARED = ("group", "where", "says", "roles", "told", "checked", "origin", "messages")
+def _untold(entry: Entry) -> bool:
+    """Checked and never told, against the second policy (crew#756): a check is told in
+    the form it checks. Exempt are the call layer's, since the model doesn't choose an
+    empty answer or a cut field, and the crew's own decisions, which check no form."""
+    return entry.group not in ("told", "call", "decides") and not entry.told
+
+
+def _unchecked(entry: Entry) -> bool:
+    """Told and never checked by anything the list links by name."""
+    return entry.group == "told" and not any(not c.startswith("maybe ") for c in entry.checked)
+
+
+def categories(report: Report, entries: Iterable[Entry]) -> list[str]:
+    """Each category's summary, for the Sponsor's review by category, and what's unplaced."""
+    entries = list(entries)
+    lines = [
+        "",
+        "## By category",
+        "",
+        "What each category holds, and its two gaps: rules checked and never told (the",
+        "call layer's and the crew's own decisions are exempt: they check no form a role",
+        "fills), and lines told and never checked. Fired and refused hours are from the",
+        "log above.",
+        "",
+        "| Category | Rules | By kind | Checked, never told | Told, never checked "
+        "| Fired | Cards | Hours refused | Roles |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for category, title in [*rule_list.CATEGORIES.items(), ("", "Unplaced")]:
+        rows = [e for e in entries if e.category == category]
+        fired = [report.fired[e.id] for e in rows if e.id in report.fired]
+        kinds = Counter(e.group for e in rows)
+        roles = Counter(role for e in rows for role in e.roles)
+        lines.append(
+            f"| {title}" + (f" (`{category}`)" if category else "") + f" | {len(rows)} "
+            f"| {', '.join(f'{k} {n}' for k, n in kinds.most_common())} "
+            f"| {sum(1 for e in rows if _untold(e))} "
+            f"| {sum(1 for e in rows if _unchecked(e))} "
+            f"| {sum(f.events for f in fired):,} "
+            f"| {len(set().union(*(f.cards for f in fired))) if fired else 0:,} "
+            f"| {_hours(sum(f.seconds for f in fired))} "
+            f"| {', '.join(f'{r} {n}' for r, n in roles.most_common(4)) or '—'} |"
+        )
+    unplaced = [e for e in entries if not e.category]
+    lines += [
+        "",
+        "### Unplaced",
+        "",
+        f"{len(unplaced)} rules no line of the placement table holds for. Each is listed, not",
+        "guessed: placing one is a change to the table in `rule_list.PLACEMENT`.",
+        "",
+        "| Rule | Says | Where |",
+        "|---|---|---|",
+        *(
+            f"| `{e.id}` | {_show(e.says)} | `{e.where}` |"
+            for e in sorted(unplaced, key=lambda e: e.where)
+        ),
+    ]
+    return lines
+
+
+_COMPARED = (
+    "group",
+    "category",
+    "where",
+    "says",
+    "roles",
+    "told",
+    "checked",
+    "origin",
+    "messages",
+)
 
 
 def changes(before: dict[str, Any], after: dict[str, Any]) -> str:
