@@ -289,22 +289,45 @@ def _refusal(node: ast.AST) -> ast.Call | None:
 
 
 def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
-    """The messages a function refuses with, its same-module helpers' included."""
+    """The messages a function refuses with, its helpers' included.
+
+    A helper is a module function, or a method called on a class, this module's or
+    one it imports: `PlannedFile` checks its path with
+    `FileWrite._stays_in_the_repository(value)`.
+    """
     found: list[str] = []
-    helpers = _functions(tree)
     for sub in ast.walk(node):
         raised = _refusal(sub)
         if raised is not None:
             found.append(_template(raised.args[0], tree))
-        elif (
-            depth < 2
-            and isinstance(sub, ast.Call)
-            and isinstance(sub.func, ast.Name)
-            and sub.func.id in helpers
-            and helpers[sub.func.id] is not node
-        ):
-            found += _raises(helpers[sub.func.id], tree, depth + 1)
+        elif depth < 2 and isinstance(sub, ast.Call):
+            helper = _helper(sub, tree)
+            if helper is not None and helper[0] is not node:
+                found += _raises(helper[0], helper[1], depth + 1)
     return list(dict.fromkeys(found))
+
+
+def _helper(call: ast.Call, tree: ast.Module) -> tuple[ast.FunctionDef, ast.Module] | None:
+    """The function a call runs, with its module's tree, if the crew defines it."""
+    func = call.func
+    if isinstance(func, ast.Name):
+        found = _functions(tree).get(func.id)
+        return (found, tree) if found is not None else None
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)):
+        return None
+    here = tree
+    source = next((s for s in sources() if s.tree is tree), None)
+    imported = _imports(source).get(func.value.id) if source is not None else None
+    if imported is not None and imported[1] and imported[0] in _by_module():
+        here = _by_module()[imported[0]].tree
+    for cls in here.body:
+        if isinstance(cls, ast.ClassDef) and cls.name == func.value.id:
+            method = next(
+                (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == func.attr),
+                None,
+            )
+            return (method, here) if method is not None else None
+    return None
 
 
 @dataclass(frozen=True)
