@@ -110,6 +110,8 @@ class Entry:
     mode: str = ""
     # A form's rule that changes the answer and never refuses it.
     repairs: bool = False
+    # What it protects, one of CATEGORIES, or "" where PLACEMENT finds none.
+    category: str = ""
     # For a guard: the failure class its events record.
     failure_class: str = ""
     # For a told line: the constitution sections it is, for linking by citation.
@@ -1489,6 +1491,8 @@ def _told_fields(checks: list[Entry]) -> list[Entry]:
                     told={told},
                     origin=refs(text),
                     text=text,
+                    form=owner.__name__,
+                    fields={name},
                 ),
             )
             entry.roles |= roles
@@ -1551,8 +1555,207 @@ def entries() -> tuple[Entry, ...]:
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
+    for entry in checks + told:
+        entry.category = place(entry)
     order = list(GROUPS)
     return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
+
+
+# --- what each rule protects ------------------------------------------------------------
+
+# The categories the rules are managed by, as a linter's are (the Sponsor, 2026-10-17,
+# on crew#756): by what a rule protects, not where it lives.
+CATEGORIES = {
+    "answer_shape": "The answer parses and is complete",
+    "scope": "The work stays in the story",
+    "edits": "A change applies cleanly",
+    "evidence": "Tests prove the criteria",
+    "guards": "Safety guards",
+    "flow": "When a card moves",
+    "contracts": "What other work relies on, and declared changes to it",
+    "guidance": "Writing guidance",
+}
+
+# The forms whose rules are about the proof a criterion has.
+_EVIDENCE_FORMS = frozenset(
+    [
+        "AcceptanceCriterion",
+        "CriterionMet",
+        "CriterionTest",
+        "CriterionVerdict",
+        "ExistingProof",
+        "FirstAttempt",
+        "FirstOrDone",
+        "QAVerdict",
+        "ReaderCriterion",
+        "StoryCriteria",
+        "Triage",
+    ]
+)
+# The forms that carry a change to the files.
+_EDIT_FORMS = frozenset(["FileEdit", "FileWrite", "Implementation", "Move", "TextEdit"])
+# The forms that decide what work there is, and where it belongs.
+_SCOPE_FORMS = frozenset(
+    [
+        "Change",
+        "Epic",
+        "EpicProposal",
+        "MissingEpics",
+        "Placement",
+        "Plan",
+        "PlannedFile",
+        "SkeletonEpic",
+        "StoryProposal",
+    ]
+)
+# Fields that hold a story's criteria or their proof.
+_EVIDENCE_FIELDS = frozenset(
+    [
+        "acceptance_criteria",
+        "already_done",
+        "ci_step",
+        "criteria",
+        "criteria_tests",
+        "proven_by_existing",
+        "then",
+    ]
+)
+# Words in a rule's name that say the answer must name, say or finish something.
+_SHAPE_WORDS = re.compile(
+    r"(^|_)(an_id|row_ids?|test_ids|one_or_the_other|stripped|says_(something|what|why)|"
+    r"is_specific|is_actionable|short|few|a_name_not_its_code|a_bare_path|stated|"
+    r"covers|cut|a_verdict_or_an_ask|must_say_why|amendment_says_what|has_a_sample|"
+    r"enforces_something|is_a_change)($|_)"
+)
+# Constitution sections, by what their rules protect. A section not here is unplaced.
+_SECTIONS = {
+    3: "evidence",
+    4: "scope",
+    5: "flow",
+    6: "scope",
+    7: "evidence",
+    8: "guidance",
+    9: "flow",
+    11: "flow",
+    12: "flow",
+    14: "guards",
+    15: "contracts",
+    17: "flow",
+    19: "guards",
+    20: "guards",
+}
+
+
+def _name(entry: Entry) -> str:
+    return entry.id.rsplit(".", 1)[-1]
+
+
+def _file(entry: Entry) -> str:
+    return entry.where.partition(":")[0]
+
+
+def _section(entry: Entry) -> int | None:
+    found = re.match(r"docs/ways-of-working\.md:§(\d+)", entry.where)
+    return int(found.group(1)) if found else None
+
+
+# How a rule is placed: each line a category, why, and the test. The first that holds
+# places it; a rule none holds for is left unplaced and listed, never guessed. This
+# table is what's reviewed, not the rows it places.
+PLACEMENT: list[tuple[str, str, Any]] = [
+    (
+        "flow",
+        "the crew's own decisions (`rules.Rule`): retry, return, block, hold",
+        lambda e: e.group == "decides",
+    ),
+    ("answer_shape", "the call layer's refusals, for every form", lambda e: e.group == "call"),
+    (
+        "edits",
+        "an edit that can't be applied, or rewrites a file whole",
+        lambda e: e.group == "edit" or e.failure_class in ("EDIT", "OVERWRITE"),
+    ),
+    ("guards", "a path outside the repository or inside .git", lambda e: "repository" in _name(e)),
+    (
+        "guards",
+        "what the project protects, and what the crew may push",
+        lambda e: e.failure_class == "BOUNDS" or _name(e) == "workflows_not_permitted",
+    ),
+    (
+        "guards",
+        "the engineering guidelines a design is held to (§19)",
+        lambda e: _file(e) == "src/crew_org/flows/design.py",
+    ),
+    (
+        "contracts",
+        "merged code and tests other work relies on, and a story's declared changes to them (§15)",
+        lambda e: (
+            e.failure_class in ("REGRESSION", "SCOPE")
+            or e.form in ("ContractRuling", "RetiredTest")
+            or "contract" in _name(e)
+            or _file(e) == "src/crew_org/flows/record.py"
+        ),
+    ),
+    (
+        "evidence",
+        "tests that prove the criteria, and their runs",
+        lambda e: (
+            e.failure_class == "REPRODUCE"
+            or e.form in _EVIDENCE_FORMS
+            or bool(e.fields & _EVIDENCE_FIELDS)
+            and e.form not in _SCOPE_FORMS
+            or re.search(r"tests|evidence|criteria", _name(e)) is not None
+            or _file(e)
+            in (
+                "src/crew_org/flows/attempts.py",
+                "src/crew_org/flows/criteria_check.py",
+                "src/crew_org/flows/presentation_notes.py",
+            )
+        ),
+    ),
+    (
+        "answer_shape",
+        "the answer names what it must, gives one answer, and finishes it",
+        lambda e: (
+            e.group in ("form", "check", "told")
+            and e.form != ""
+            and _SHAPE_WORDS.search(_name(e)) is not None
+            or e.group == "check"
+            and _SHAPE_WORDS.search(_name(e)) is not None
+        ),
+    ),
+    ("edits", "the forms that carry a change", lambda e: e.form in _EDIT_FORMS),
+    (
+        "scope",
+        "what work there is, and where it belongs",
+        lambda e: (
+            e.form in _SCOPE_FORMS
+            or e.form in ("Row", "Story")
+            or _file(e)
+            in (
+                "src/crew_org/flows/conclusion.py",
+                "src/crew_org/flows/backlog_order.py",
+                "src/crew_org/crews/stepped.py",
+            )
+            or _name(e) in ("deliver_in_steps", "check_grounded", "check_product_calls", "check")
+        ),
+    ),
+    (
+        "scope",
+        "a step that asks to see more than it may",
+        lambda e: _name(e).startswith("do_the_work_now"),
+    ),
+]
+
+
+def place(entry: Entry) -> str:
+    """The category a rule protects, by PLACEMENT, or by its constitution section."""
+    section = _section(entry)
+    if section is not None:
+        return _SECTIONS.get(section, "")
+    for category, _, holds in PLACEMENT:
+        if holds(entry):
+            return category
+    return ""
 
 
 # --- the page ---------------------------------------------------------------------------
@@ -1583,17 +1786,39 @@ def render() -> str:
         "|---|---|",
         *(f"| {GROUPS[g]} | {sum(1 for r in rows if r.group == g)} |" for g in GROUPS),
         "",
+        "## Categories",
+        "",
+        "What each rule protects, as a linter's rules are grouped (crew#756). A rule is",
+        "placed by the first line of this table that holds for it, or by its constitution",
+        "section; one no line holds for is unplaced, never guessed.",
+        "",
+        "| Category | Placed by | Rules |",
+        "|---|---|---|",
+        *(
+            f"| {CATEGORIES[c]} (`{c}`) | "
+            + "<br>".join(why for cat, why, _ in PLACEMENT if cat == c)
+            + (
+                f"<br>constitution {', '.join(f'§{n}' for n, s in _SECTIONS.items() if s == c)}"
+                if c in _SECTIONS.values()
+                else ""
+            )
+            + f" | {sum(1 for r in rows if r.category == c)} |"
+            for c in CATEGORIES
+        ),
+        f"| Unplaced | | {sum(1 for r in rows if not r.category)} |",
+        "",
     ]
     for group, title in GROUPS.items():
         lines += [
             f"## {title}",
             "",
-            "| Rule | Where | Roles | Told | Checked by | From |",
-            "|---|---|---|---|---|---|",
+            "| Rule | Category | Where | Roles | Told | Checked by | From |",
+            "|---|---|---|---|---|---|---|",
         ]
         for r in (r for r in rows if r.group == group):
             lines.append(
-                f"| `{_cell(r.id)}`<br>{_cell(r.says)} | `{_cell(r.where)}` | {_cell(r.roles)} "
+                f"| `{_cell(r.id)}`<br>{_cell(r.says)} | {r.category or '—'} "
+                f"| `{_cell(r.where)}` | {_cell(r.roles)} "
                 f"| {_cell(r.told)} | {_cell(r.checked)} | {_cell(r.origin)} |"
             )
         lines.append("")

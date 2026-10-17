@@ -94,3 +94,22 @@ def test_a_link_found_only_by_wording_is_a_maybe():
     told = [e for e in rule_list.entries() if e.group == "told"]
     linked = [c for e in told for c in e.checked if not c.startswith(("maybe ", "named in"))]
     assert not linked, "a told rule linked by name belongs on the check's row"
+
+
+def test_every_rule_that_refuses_or_decides_has_a_category():
+    """Only what a role is told can be unplaced; a check is placed by the table."""
+    unplaced = [e.id for e in rule_list.entries() if not e.category and e.group != "told"]
+    assert not unplaced, unplaced
+    assert {e.category for e in rule_list.entries()} <= {"", *rule_list.CATEGORIES}
+
+
+def test_a_rule_is_placed_by_what_it_protects():
+    placed = {e.id: e.category for e in rule_list.entries()}
+    assert placed["call.schema"] == "answer_shape"
+    assert placed["hold.sibling"] == "flow"
+    assert placed["form.FileWrite.stays_in_the_repository"] == "guards"
+    assert placed["form.CriterionTest.is_that_test"] == "evidence"
+    assert placed["edit.workspace.plan_text_edits"] == "edits"
+    assert placed["guard.regression.broken_contracts"] == "contracts"
+    assert placed["form.Plan.one_step_per_file"] == "scope"
+    assert placed["§19.6"] == "guards", "by its constitution section"

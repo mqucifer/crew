@@ -159,3 +159,16 @@ def test_a_rule_that_repairs_silently_is_marked_in_the_snapshot():
     assert "form.Settlement.stripped" in repairs
     assert "form.TextEdit.changes_something" not in repairs
     assert all(rows[r]["group"] == "form" for r in repairs)
+
+
+def test_each_category_is_summarised_and_the_unplaced_are_listed():
+    entries = rule_list.entries()
+    lines = rule_report.categories(rule_report.count([]), entries)
+    text = "\n".join(lines)
+    for title in rule_list.CATEGORIES.values():
+        assert f"| {title} (`" in text
+    unplaced = [e for e in entries if not e.category]
+    assert f"{len(unplaced)} rules no line" in text
+    assert all(f"`{e.id}`" in text for e in unplaced)
+    row = rule_report.snapshot(rule_report.count([]))["rows"]["call.schema"]
+    assert row["category"] == "answer_shape"
