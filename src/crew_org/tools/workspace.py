@@ -12,9 +12,9 @@ import ast
 import os
 import subprocess
 import textwrap
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from crew_org.crews.delivery_crew import FileWrite, TextEdit
 from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
@@ -64,6 +64,13 @@ class CheckResult:
     """The verdict on an implementation, and the evidence for it."""
 
     results: list[CommandResult]
+    # What the project's own fixers changed before the checks ran, for the
+    # attempt's record (crew#758): the files the attempt touched that they fixed,
+    # and the files outside it whose changes were undone.
+    fixed: list[str] = field(default_factory=list)
+    reverted: list[str] = field(default_factory=list)
+    # Each allowed unsafe fix applied (`UNSAFE_FIXES`), as `CODE path:line`.
+    unsafe: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -93,17 +100,27 @@ class CheckResult:
         return report
 
 
-def apply_implementation(worktree: Path, implementation) -> list[str]:
+def apply_implementation(
+    worktree: Path, implementation, *, loose: list[dict[str, Any]] | None = None
+) -> list[str]:
     """Write new files and apply edits to existing ones.
 
     New files and edits are separate on purpose. A new file is written whole;
     an existing file is only ever changed by name, so nothing the model did not
-    name can be touched.
+    name can be touched. A quote matched only loosely is added to `loose`.
     """
     from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits  # noqa: PLC0415
 
     root = worktree.resolve()
     written = apply(worktree, implementation.new_files)
+    # A quote is of the file as the Developer was shown it, so changes by quoting
+    # come before anything else changes it. crew-presentation#73 quoted its whole
+    # placeholder and added definitions by name, and the adds, landing before its
+    # `__main__` block, split the quote (crew#734). Quoted deletions come last,
+    # where one a named edit already made is done.
+    changes = [t for t in implementation.text_edits if t.replace]
+    deletions = [t for t in implementation.text_edits if not t.replace]
+    written += apply_text_edits(worktree, changes, loose=loose)
     # Moves before edits: an edit to the new module can then address what moved in.
     moves = getattr(implementation, "moves", [])
     if moves:
@@ -114,20 +131,24 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
     by_path: dict[str, list[Edit]] = {}
     tests = getattr(implementation, "criteria_edits", set())
     for item in implementation.all_edits:
-        operation = item.operation
-        if (item.path, item.target) in tests and _defines(root / item.path, item.target):
-            # A criterion's test the file already has is replaced, not added twice:
-            # sprint-metrics#93's repair sent its first attempt's tests again (#183).
-            operation = Operation.REPLACE
+        # A criterion's test the file already has is replaced, not added twice:
+        # sprint-metrics#93's repair sent its first attempt's tests again (#183).
+        # Judged as it's added: crew-presentation#79 wrote its test by renaming a
+        # placeholder's, and #119 named one test for four criteria (crew#735).
         by_path.setdefault(item.path, []).append(
-            Edit(operation=operation, target=item.target, source=item.source)
+            Edit(
+                operation=item.operation,
+                target=item.target,
+                source=item.source,
+                replaces_existing=(item.path, item.target) in tests,
+            )
         )
 
     # As each file read before its named edits: a quoted deletion of text a
     # named delete already removed is already done (sprint-metrics#125).
     before = {
         t.path: (root / t.path).read_text(encoding="utf-8")
-        for t in implementation.text_edits
+        for t in deletions
         if (root / t.path).is_file()
     }
     for path, edits in by_path.items():
@@ -142,7 +163,7 @@ def apply_implementation(worktree: Path, implementation) -> list[str]:
         target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
         written.append(path)
 
-    written += apply_text_edits(worktree, implementation.text_edits, before=before)
+    written += apply_text_edits(worktree, deletions, before=before, loose=loose)
     # Retiring a test removes it: sprint-metrics#132 named three tests as
     # retired and sent no delete for them, twice, and the one still importing
     # the deleted module was one of them. What's retired is gone.
@@ -180,7 +201,11 @@ def _defines(path: Path, name: str) -> bool:
 
 
 def apply_text_edits(
-    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+    worktree: Path,
+    text_edits: list,
+    *,
+    before: dict[str, str] | None = None,
+    loose: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """Apply quoted replacements to existing non-Python files (#140).
 
@@ -189,7 +214,7 @@ def apply_text_edits(
     occur exactly once: zero means it was not copied from the file, and more
     than one means the edit doesn't say which it meant.
     """
-    changed = plan_text_edits(worktree, text_edits, before=before)
+    changed = plan_text_edits(worktree, text_edits, before=before, loose=loose)
     root = worktree.resolve()
     for path, text in changed.items():
         (root / path).write_text(text, encoding="utf-8")
@@ -197,19 +222,28 @@ def apply_text_edits(
 
 
 def plan_text_edits(
-    worktree: Path, text_edits: list, *, before: dict[str, str] | None = None
+    worktree: Path,
+    text_edits: list,
+    *,
+    before: dict[str, str] | None = None,
+    loose: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
     """What each file quoted by `text_edits` would hold afterwards. Writes nothing.
 
     Raises `EditError` for a quote that isn't in the file, or occurs twice.
     `before` is each file as it was before the named edits: a deletion quoting
     text that was there and that they already removed is skipped, not failed.
+    A quote matched only loosely (`_loose_match`) is added to `loose`, for the
+    attempt's record.
     """
     before = before or {}
+    from crew_org.flows.skeleton import marked  # noqa: PLC0415
     from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
 
     root = worktree.resolve()
     changed: dict[str, str] = {}
+    placeholders: set[str] = set()
+    rewritten: set[str] = set()
     for item in text_edits:
         target = (root / item.path).resolve()
         if not target.is_relative_to(root):
@@ -221,14 +255,34 @@ def plan_text_edits(
                     "in new_files, written in full."
                 )
             changed[item.path] = target.read_text(encoding="utf-8")
+            if marked(changed[item.path]):
+                placeholders.add(item.path)
         text = changed[item.path]
+        found = text.count(item.find) if item.find else 0
+        removed = not item.replace and item.find in before.get(item.path, "")
+        if item.find and found == 0 and not removed:
+            matched = _loose_match(text, item)
+            if matched is not None:
+                item, how = matched
+                found = 1
+                line = text.count("\n", 0, text.index(item.find)) + 1
+                if loose is not None:
+                    loose.append({"fallback": how, "path": item.path, "line": line})
         if item.path.endswith(".py"):
-            _outside_definitions(item, text)
+            try:
+                _outside_definitions(item, text)
+            except EditError:
+                # A walking skeleton's placeholder has no definitions anyone relies
+                # on: the story replacing it rewrites it (ADR 0030). crew-presentation
+                # stories 73 and 84 rewrote theirs by quoting, and were refused seven
+                # times for bringing in definitions (crew#731).
+                if item.path not in placeholders:
+                    raise
+                rewritten.add(item.path)
         if not item.find:
             joiner = "" if not text or text.endswith("\n") else "\n"
             changed[item.path] = text + joiner + item.replace
             continue
-        found = text.count(item.find)
         if found == 0 and not item.replace and item.find in before.get(item.path, ""):
             continue  # removing what a named edit already removed
         if found == 0:
@@ -242,6 +296,13 @@ def plan_text_edits(
                 f"the surrounding text so it names one place:\n{item.find[:300]}"
             )
         changed[item.path] = text.replace(item.find, item.replace, 1)
+    for path in sorted(rewritten):
+        # Still marked, the real file it became could be rewritten by every later story.
+        if marked(changed[path]):
+            raise EditError(
+                f"{path!r} is a walking skeleton's placeholder. Replace it whole in "
+                "`new_files`, without the `crew:placeholder` marker."
+            )
     for path, text in changed.items():
         if path.endswith(".py"):
             try:
@@ -252,6 +313,80 @@ def plan_text_edits(
                     f"on line {exc.lineno}"
                 ) from None
     return changed
+
+
+def _loose_match(text: str, item: TextEdit) -> tuple[TextEdit, str] | None:
+    """The quote as the file has it, when only a known slip keeps it from matching.
+
+    Each fallback is taken only when it finds exactly one place, and the caller
+    records which one matched, so a looser match is never silent (crew#734):
+
+    - **quote.final_newline:** a block always ends with a newline (ADR 0026), so a quote
+      of part of a line came back with one the file doesn't have there.
+      crew-presentation stories 79 and 120 and sprint-metrics stories 589 and 657
+      were refused for it.
+    - **quote.indent:** the quote's lines, all at one other indent, in spaces.
+      sprint-metrics#604 quoted a schema's lines eight spaces deeper than they
+      are. The replacement moves by the same amount, its own indentation kept.
+    """
+    if item.find.endswith("\n") and text.count(item.find[:-1]) == 1:
+        replace = item.replace[:-1] if item.replace.endswith("\n") else item.replace
+        trimmed = item.model_copy(update={"find": item.find[:-1], "replace": replace})
+        return trimmed, "quote.final_newline"
+    shifted = _shifted(text, item.find, item.replace)
+    if shifted is not None:
+        find, replace = shifted
+        return item.model_copy(update={"find": find, "replace": replace}), "quote.indent"
+    return None
+
+
+def _shifted(text: str, find: str, replace: str) -> tuple[str, str] | None:
+    """`find` and `replace` moved to the one indent where the file has `find`'s lines."""
+    if "\t" in find or "\t" in replace:
+        return None
+    trailing = find.endswith("\n")
+    wanted = find[:-1].split("\n") if trailing else find.split("\n")
+    if not any(line.strip() for line in wanted):
+        return None
+    lines = text.split("\n")
+    found: list[tuple[int, int]] = []
+    for start in range(len(lines) - len(wanted) + 1):
+        shift = _one_shift(lines[start : start + len(wanted)], wanted)
+        if shift:
+            found.append((start, shift))
+    if len(found) != 1:
+        return None
+    start, shift = found[0]
+    moved = []
+    for line in replace.split("\n"):
+        if not line.strip():
+            moved.append(line)
+        elif shift > 0:
+            moved.append(" " * shift + line)
+        elif line.startswith(" " * -shift):
+            moved.append(line[-shift:])
+        else:
+            return None  # its own indentation can't be kept
+    window = "\n".join(lines[start : start + len(wanted)]) + ("\n" if trailing else "")
+    return window, "\n".join(moved)
+
+
+def _one_shift(lines: list[str], wanted: list[str]) -> int:
+    """How many spaces `lines` sit deeper than `wanted`, if every line agrees. 0 if not."""
+    shift: int | None = None
+    for line, want in zip(lines, wanted, strict=True):
+        if not want.strip():
+            if line.strip():
+                return 0
+            continue
+        if "\t" in line or line.lstrip(" ") != want.lstrip(" "):
+            return 0
+        this = (len(line) - len(line.lstrip(" "))) - (len(want) - len(want.lstrip(" ")))
+        if shift is None:
+            shift = this
+        elif this != shift:
+            return 0
+    return shift or 0
 
 
 def _outside_definitions(item, text: str) -> None:
@@ -419,9 +554,26 @@ def run(
 # What a developer's editor does on save. Deterministic, so there is no reason
 # to spend a model round-trip on any of it.
 AUTOFIX = (
-    ["uv", "run", "ruff", "check", "--fix-only", "."],
+    # Safe fixes only, whatever the project's config says: an unsafe one may not
+    # keep what the code meant, and that is the Developer's call (crew#758).
+    ["uv", "run", "ruff", "check", "--fix-only", "--no-unsafe-fixes", "."],
     ["uv", "run", "ruff", "format", "."],
 )
+
+# The unsafe fixes the default autofix also applies, each with why it may (the
+# Sponsor's decision on crew#758, 2026-10-17). An unsafe fix is one ruff says may
+# not keep what the code meant; any not named here stays the Developer's. Each
+# was chosen from the event log, for a VERIFY failure it alone caused and a
+# repair call it cost. Only a finding the project's own config reports, in a file
+# the attempt touched, is fixed, and each is on the attempt's record.
+UNSAFE_FIXES: dict[str, str] = {
+    # sprint-metrics#563, 2026-10-11: its only finding, and one repair call.
+    "SIM102": "Joining nested `if`s with `and` runs the same code in the same order. "
+    "Ruff calls it unsafe for the comments it can drop, which review sees in the diff.",
+    # sprint-metrics#453, 2026-10-07, beside an F841.
+    "B905": "`strict=False` is what `zip()` does without it, so behaviour is unchanged. "
+    "Ruff calls it unsafe because `strict=True` may have been meant: the tests decide.",
+}
 
 VERIFY = (
     ["uv", "run", "ruff", "check", "."],
@@ -557,11 +709,118 @@ def check(
     results = []
     if tools.setup:
         results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, timeout=timeout))
+    fixed: list[str] = []
+    reverted: list[str] = []
+    unsafe: list[str] = []
     if all(r.ok for r in results):
+        touched = _changed(worktree)
+        kept = {p: _read(worktree / p) for p in touched or ()}
+        if touched is not None and tools.autofix == AUTOFIX:
+            # Before the formatter, which then formats what the fix wrote.
+            unsafe = _unsafe_fixes(worktree, touched, sandbox=sandbox, timeout=timeout)
         for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
             run(worktree, command, sandbox=sandbox, network=False, timeout=timeout)
+        if touched is not None:
+            fixed = [p for p, text in kept.items() if _read(worktree / p) != text]
+            # A fixer runs over the whole project, but the attempt answers for what
+            # it changed: a fix elsewhere would land unreviewed in its pull request.
+            # Undone, its finding is reported by the checks like any other.
+            reverted = sorted((_changed(worktree) or set()) - touched)
+            if reverted:
+                _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
             results.append(run(worktree, command, sandbox=sandbox, network=False, timeout=timeout))
-    return CheckResult(results=results)
+    return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
+
+
+def _unsafe_fixes(
+    worktree: Path, touched: set[str], *, sandbox: Sandbox, timeout: int
+) -> list[str]:
+    """Apply the allowed unsafe fixes (`UNSAFE_FIXES`) the project's lint reports.
+
+    Only in the files the attempt touched, and only for findings the project's
+    own ruff config reports: `--select` names those codes alone, so nothing it
+    doesn't enable is fixed. Returns each applied as `CODE path:line`.
+    """
+    import json  # noqa: PLC0415
+
+    files = sorted(p for p in touched if p.endswith(".py") and (worktree / p).is_file())
+    if not files:
+        return []
+    found = run(
+        worktree,
+        ["uv", "run", "ruff", "check", "--output-format", "json", *files],
+        sandbox=sandbox,
+        network=False,
+        timeout=timeout,
+    )
+    listed = found.output[found.output.find("[") : found.output.rfind("]") + 1]
+    try:
+        findings = json.loads(listed) if listed else []
+    except json.JSONDecodeError:
+        return []
+    applied: list[str] = []
+    for finding in findings:
+        fix = finding.get("fix") or {}
+        if finding.get("code") not in UNSAFE_FIXES or fix.get("applicability") != "unsafe":
+            continue
+        # Reported where the check ran, which may be a container's path.
+        name = str(finding.get("filename", ""))
+        path = next((f for f in files if name == f or name.endswith("/" + f)), None)
+        if path is not None:
+            line = (finding.get("location") or {}).get("row")
+            applied.append(f"{finding['code']} {path}:{line}")
+    if not applied:
+        return []
+    codes = sorted({a.split()[0] for a in applied})
+    paths = sorted({a.split()[1].rsplit(":", 1)[0] for a in applied})
+    was = {p: _read(worktree / p) for p in paths}
+    run(
+        worktree,
+        ["uv", "run", "ruff", "check", "--fix-only", "--unsafe-fixes"]
+        + ["--select", ",".join(codes), *paths],
+        sandbox=sandbox,
+        network=False,
+        timeout=timeout,
+    )
+    # On the record only where the file did change: a fix that didn't run isn't one.
+    changed = {p for p in paths if _read(worktree / p) != was[p]}
+    return [a for a in applied if a.split()[1].rsplit(":", 1)[0] in changed]
+
+
+def _changed(worktree: Path) -> set[str] | None:
+    """The files changed or new in the worktree, as git sees it. None outside git."""
+    listed = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    if listed is None:
+        return None
+    paths: set[str] = set()
+    entries = iter(listed.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
+            continue
+        paths.add(entry[3:])
+        if entry[0] in "RC":
+            next(entries, None)  # a rename's old path follows it
+    return paths
+
+
+def _read(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def _git(worktree: Path, *args: str) -> str | None:
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(worktree), *args],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout if done.returncode == 0 else None

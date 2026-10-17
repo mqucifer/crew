@@ -266,8 +266,11 @@ def harness(tmp_path, monkeypatch):
                 story_text, context=kw.get("header", ""), feedback=kw.get("why", "")
             ),
         )
+        applying = apply or (lambda w, impl: [])
         monkeypatch.setattr(
-            delivery.workspace, "apply_implementation", apply or (lambda w, impl: [])
+            delivery.workspace,
+            "apply_implementation",
+            lambda w, impl, **_: applying(w, impl),
         )
         monkeypatch.setattr(delivery.workspace, "check", lambda w: sequence.pop(0))
         monkeypatch.setattr(delivery.claude_code, "escalate", fake_escalate)

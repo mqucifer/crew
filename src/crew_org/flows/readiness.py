@@ -15,7 +15,10 @@ check that has never run.
 
 Below level 1 the repository isn't worked at all. Each missing item says who
 fixes it: the Sponsor creates repositories and their rules, which the crew's App
-has no admin for (crew#566), and the crew writes the record, design and skeleton.
+has no admin for (crew#566). Claude writes an alpha's record and code, and the
+crew its design; for a project the crew starts itself, `crew onboard --skeleton`
+writes the record and the crew the skeleton. The handover check (`flows/handover.py`)
+runs the rest of the takeover's checklist, from `crew ready` only (crew#757).
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org.flows.board_moves import BOARD_WORKFLOW
-from crew_org.flows.template import CHECKS_WORKFLOW
+from crew_org.flows.template import CHECKS_WORKFLOW, TEMPLATE
 from crew_org.project import (
     RECORD_PATH,
     ProjectRecord,
@@ -38,6 +41,14 @@ SKELETON_LABEL = "skeleton"
 
 SPONSOR = "the Sponsor"
 CREW = "the crew"
+
+TEMPLATE_REPO = f"mqucifer/{TEMPLATE}"
+# Who writes the record below level 2. `crew onboard` is the takeover, after the
+# handover check, so it refuses a repository below level 2 (crew#757, ADR 0030).
+WRITES_THE_RECORD = (
+    "an alpha's builder writes the intent agreed with the Sponsor; for a project the "
+    "crew starts itself, `crew onboard {repo} --skeleton`"
+)
 
 # The settings the crew's code relies on, each with why (ADR 0030).
 SETTINGS = (
@@ -94,14 +105,16 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
     )
     if issues.file_at(repo, f".github/workflows/{BOARD_WORKFLOW}", branch) is None:
         level_one.append(
-            Missing(f"no `.github/workflows/{BOARD_WORKFLOW}`; `crew onboard {repo}` adds it", CREW)
+            Missing(
+                f"no `.github/workflows/{BOARD_WORKFLOW}`; copy it from `{TEMPLATE_REPO}`", CREW
+            )
         )
     ci = [n for n in issues.list_dir(repo, ".github/workflows", branch) if n != BOARD_WORKFLOW]
     if not ci:
         level_one.append(
             Missing(
-                f"no CI on pull requests; `crew onboard {repo}` adds the template's "
-                f"`{CHECKS_WORKFLOW}`",
+                f"no CI on pull requests; copy the template's `{CHECKS_WORKFLOW}` from "
+                f"`{TEMPLATE_REPO}`",
                 CREW,
             )
         )
@@ -111,7 +124,9 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
         record = read_record(ws.for_repo(repo).current())
     except ProjectRecordError as exc:
         level_one.append(
-            Missing(f"its record is unusable: {exc}; finish it with `crew onboard {repo}`", SPONSOR)
+            Missing(
+                f"its record is unusable: {exc}; {WRITES_THE_RECORD.format(repo=repo)}", SPONSOR
+            )
         )
     except Exception as exc:  # noqa: BLE001
         level_one.append(Missing(f"its record couldn't be read: {exc}", CREW))
@@ -119,7 +134,7 @@ def check(issues: Any, ws: Any, repo: str) -> Readiness:
         if record is None:
             level_one.append(
                 Missing(
-                    f"it has no `{RECORD_PATH}`; onboard it with `crew onboard {repo}`", SPONSOR
+                    f"it has no `{RECORD_PATH}`; {WRITES_THE_RECORD.format(repo=repo)}", SPONSOR
                 )
             )
         elif record.design is None or not record.design.checks:

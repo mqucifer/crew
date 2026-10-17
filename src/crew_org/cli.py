@@ -1230,8 +1230,19 @@ def onboard(
     terminal: bool = typer.Option(
         False, "--terminal", help="Interview in the terminal instead of a local page."
     ),
+    skeleton: bool = typer.Option(
+        False,
+        "--skeleton",
+        help="The crew starts this project itself: onboard it below level 2, "
+        "and file its walking skeleton Goal.",
+    ),
 ) -> None:
     """Interview the Sponsor about a project and propose its record (#130).
+
+    The crew's takeover of a project, once Claude's alpha passes the handover
+    check (`crew ready`): a repository below readiness level 2 is refused, with
+    what it lacks (crew#757, ADR 0030). With --skeleton, the crew starts the
+    project itself, and its walking skeleton is filed as its first Goal.
 
     The Product Owner reads the project, if there is anything to read, and
     proposes answers; otherwise it asks. The interview runs in a local page
@@ -1245,11 +1256,13 @@ def onboard(
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
     from crew_org.crews.onboarding_crew import interview_turn
+    from crew_org.flows import readiness
     from crew_org.flows.onboard import (
         PROPOSED_MARKER,
         interview,
         open_record_pr,
         read_project,
+        refused,
         sessions_since_proposed,
         takeaway,
         terminal_ask,
@@ -1262,15 +1275,31 @@ def onboard(
 
     Permissions.from_agents().require("Product Owner", Capability.ONBOARD_PROJECT)
     env = load_env()
-    ok, message = health()
-    if not ok:
-        console.print(f"[red]{message}[/]")
-        raise typer.Exit(code=1)
-
     token, identity = resolve_credentials(env)
     owner = env["GITHUB_OWNER"]
     issues = IssueClient(token, owner)
     ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+
+    # Refused before the interview: it would end in a record for a project the
+    # crew can't take over yet.
+    found = readiness.check(issues, ws, repo)
+    lacking = refused(found, skeleton=skeleton)
+    if lacking:
+        console.print(
+            f"[red]{owner}/{repo} is at readiness level {found.level}:[/] the crew takes over "
+            "a project at level 2, once it passes `crew ready`. It lacks:"
+        )
+        for item in lacking:
+            console.print(f"  [yellow]missing[/] {escape(item.what)} [dim]({item.who})[/]")
+        console.print(
+            f"[dim]For a project the crew starts itself: crew onboard {repo} --skeleton[/]"
+        )
+        raise typer.Exit(code=1)
+
+    ok, message = health()
+    if not ok:
+        console.print(f"[red]{message}[/]")
+        raise typer.Exit(code=1)
 
     source = Path(from_file) if from_file else None
     project = read_project(ws, issues, repo)
@@ -1372,14 +1401,15 @@ def onboard(
                 f"\n[green]The record and board workflow on {project.default_branch} are "
                 f"already what you confirmed[/]: nothing to propose.\n[dim]transcript: {log}[/]"
             )
-        # A new project's first Goal is its walking skeleton, filed on the same
-        # yes that opened the record (crew#690, ADR 0030).
-        from crew_org.flows import readiness, skeleton  # noqa: PLC0415
+        # A project the crew starts itself gets its walking skeleton as its first
+        # Goal, filed on the same yes that opened the record (crew#690). An alpha
+        # Claude built is taken over at level 2 and gets none (crew#757, ADR 0030).
+        from crew_org.flows import skeleton as walking  # noqa: PLC0415
         from crew_org.tools.github_project import ProjectClient  # noqa: PLC0415
 
-        if readiness.check(issues, ws, repo).level < 2:
+        if skeleton and readiness.check(issues, ws, repo).level < 2:
             board = ProjectClient(token, owner, int(env["GITHUB_PROJECT_NUMBER"]))
-            goal = skeleton.file_goal(issues, board, repo)
+            goal = walking.file_goal(issues, board, repo)
             if goal is not None:
                 console.print(
                     f"[green]Skeleton Goal filed[/] — {owner}/{repo}#{goal}, in Inbox (Goals). "
@@ -1436,17 +1466,29 @@ def onboard(
 @app.command()
 def ready(
     repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
+    setup: bool = typer.Option(
+        False,
+        "--setup",
+        help="Also run the design's setup once in the sandbox, on a copy: it re-locks "
+        "and leaves the tree clean.",
+    ),
 ) -> None:
     """How far a project is ready for the crew to work, and what is missing (crew#690).
 
     Level 1 is ready for its walking skeleton, level 2 for any Goal (ADR 0030).
-    Each missing item says who fixes it. Reads GitHub only; changes nothing.
+    Then the handover check, the one Definition of Done for Claude and the crew
+    (crew#757): what keeps the crew from taking over a repository it didn't
+    build. Sizes are reported, never refused. Each missing item says who fixes
+    it. Reads GitHub and a local clone; changes nothing. --setup runs the
+    design's setup in the sandbox, on a copy.
     """
     from crew_org.auth import resolve_credentials
-    from crew_org.config import load_env
-    from crew_org.flows import readiness
+    from crew_org.config import load_env, load_org
+    from crew_org.flows import handover, readiness, template
     from crew_org.git_ops import Workspace
+    from crew_org.project import ProjectRecordError, read_record
     from crew_org.tools.github_issues import IssueClient
+    from crew_org.tools.sandbox import Sandbox
 
     env = load_env()
     token, identity = resolve_credentials(env)
@@ -1464,7 +1506,39 @@ def ready(
         console.print(f"  [yellow]missing[/] {escape(item.what)} [dim]({item.who})[/]")
     for unread in found.unchecked:
         console.print(f"  [dim]not checked: {escape(unread)}[/]")
-    if found.level < 2:
+
+    # The handover needs the record and design to check against.
+    try:
+        root = ws.current()
+        record = read_record(root)
+    except (ProjectRecordError, RuntimeError):
+        record = None
+    if record is None or record.design is None:
+        console.print("handover: not checked until the record and design are merged")
+        raise typer.Exit(code=1)
+    org = load_org()
+    alpha = repo not in (org.get("delivery", {}).get("repos") or [])
+    checked = handover.check(
+        issues,
+        repo,
+        root,
+        record,
+        alpha=alpha,
+        template=template.files(issues),
+        sandbox=Sandbox.from_config(org) if setup else None,
+    )
+    console.print(
+        "handover: "
+        + (f"{len(checked.missing)} missing" if checked.missing else "nothing missing")
+        + (" (an alpha: the crew doesn't work it yet)" if alpha else "")
+    )
+    for item in checked.missing:
+        console.print(f"  [yellow]missing[/] {escape(item.what)} [dim]({item.who})[/]")
+    for size in checked.reported:
+        console.print(f"  [cyan]reported[/] {escape(size)}")
+    for unread in checked.unchecked:
+        console.print(f"  [dim]not checked: {escape(unread)}[/]")
+    if found.level < 2 or checked.missing:
         raise typer.Exit(code=1)
 
 
@@ -1769,6 +1843,40 @@ def reference_command() -> None:
     from crew_org import reference  # noqa: PLC0415
 
     console.print(f"wrote {reference.write().relative_to(reference.ROOT)}")
+
+
+@app.command(name="rules")
+def rules_command(
+    events: str = typer.Option(
+        "", "--events", help="An event log to count each rule in: var/events/tick.jsonl."
+    ),
+    out: str = typer.Option(
+        "var/notes/rules", "--out", help="Where the report and its snapshot go."
+    ),
+    since: str = typer.Option(
+        "", "--since", help="An earlier rules.json: also report what changed since it."
+    ),
+) -> None:
+    """Write every rule a role meets into docs/reference/rules.md (crew#756).
+
+    With --events, also how often each fired, on which cards, and the model's time
+    by role, as a report and a snapshot keyed by rule id.
+    """
+    from crew_org import rule_list, rule_report  # noqa: PLC0415
+    from crew_org.log import code_version  # noqa: PLC0415
+
+    console.print(f"wrote {rule_list.write().relative_to(rule_list.ROOT)}")
+    if not events:
+        return
+    version = code_version()
+    built = version.get("commit", "")[:7]
+    if version.get("dirty"):
+        built += " (with uncommitted changes)"
+    written = rule_report.write(
+        Path(events), Path(out), since=Path(since) if since else None, built_from=built
+    )
+    for path in written:
+        console.print(f"wrote {path}")
 
 
 @app.command(name="runs")
