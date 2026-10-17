@@ -11,7 +11,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 
 | Kind | Rules |
 |---|---|
-| The crew's own decisions (`rules.Rule`) | 19 |
+| The crew's own decisions (`rules.Rule`) | 20 |
 | An answer's form refuses it | 67 |
 | The call layer refuses any answer | 7 |
 | A flow's own check sends the answer back | 31 |
@@ -36,7 +36,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 36 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 80 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 65 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 112 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 113 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 24 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 30 |
 | Unplaced | | 62 |
@@ -50,6 +50,7 @@ section; one no line holds for is unplaced, never guessed.
 | `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | crew#10 |
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
 | `escalation.policy`<br>A failure is escalated to Claude only within the sprint's budget, and its outcome is recorded.<br>Cases: `escalation.allowed` (src/crew_org/rules.py:Rule), `escalation.budget` (src/crew_org/rules.py:Rule), `escalation.unresolved` (src/crew_org/rules.py:Rule), `escalation.usage_limit` (src/crew_org/rules.py:Rule) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/escalation.py:EscalationPolicy.decide<br>src/crew_org/flows/delivery.py:deliver_story | — |
+| `gate.ci_before_review`<br>CI failed on the pull request's head: back to the Developer with its log, unreviewed.<br>Cases: `skip.review.ci_failed_on_its_head` (src/crew_org/flows/review.py:review_open_pulls), `skip.review.ci_still_running` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/review.py:review_open_pulls | crew#756 |
 | `gate.criteria_cannot_all_pass`<br>A split's criteria contradict each other or a merged test. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/criteria_check.py:to_product_owner | — |
 | `gate.qa_unproven`<br>QA found criteria the work doesn't prove. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/acceptance.py:run_qa | — |
 | `gate.review_changes_requested`<br>The Code Reviewer or DevOps Engineer requested changes. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/review.py:review_open_pulls | — |

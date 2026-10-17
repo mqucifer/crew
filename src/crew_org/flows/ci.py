@@ -104,8 +104,10 @@ def return_for_ci(
     pull: dict,
     failed: list[dict[str, Any]],
     where: str,
+    frm: str = MERGING,
+    rule: str = "",
 ) -> None:
-    """Send an approved card back to the Developer with what CI said."""
+    """Send a card back to the Developer with what CI said: approved, or before review."""
     number = card.number or 0
     head = (pull.get("head") or {}).get("sha", "")
     marker = CI_MARKER.format(head=head)
@@ -124,6 +126,7 @@ def return_for_ci(
             "The crew's own checks run lint and tests in a sandbox; this is what only CI "
             f"runs, and its log is below.\n\n{report(issues, repo, failed)}",
         )
+    named: dict[str, Any] = {"rule": rule} if rule else {}
     move_card(
         board,
         sink,
@@ -131,8 +134,9 @@ def return_for_ci(
         to=IN_PROGRESS,
         by=None,
         card=number,
-        frm=MERGING,
+        frm=frm,
         summary=f"PR #{pull['number']}: {names} failed {where}, returned with the log"[:120],
+        **named,
     )
 
 

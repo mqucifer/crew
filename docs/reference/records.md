@@ -72,6 +72,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `guard.no_change` | The implementation produced no change. |
 | `edit.not_applied` | Its edits couldn't be applied, past the local limit. |
 | `gate.reviewer_and_developer_disagree` | Answered without a change and sent back again: for a person to settle. |
+| `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. |
 | `gate.review_changes_requested` | The Code Reviewer or DevOps Engineer requested changes. |
 | `gate.qa_unproven` | QA found criteria the work doesn't prove. |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. |

@@ -99,6 +99,8 @@ class Rule(StrEnum):
     """Answered without a change and sent back again: for a person to settle."""
 
     # --- gates ---
+    CI_BEFORE_REVIEW = "gate.ci_before_review"
+    """CI failed on the pull request's head: back to the Developer with its log, unreviewed."""
     REVIEW_CHANGES_REQUESTED = "gate.review_changes_requested"
     """The Code Reviewer or DevOps Engineer requested changes."""
     QA_UNPROVEN = "gate.qa_unproven"

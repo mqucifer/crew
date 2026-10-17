@@ -205,6 +205,12 @@ escalation.policy:
   - escalation.unresolved
   - escalation.usage_limit
   description: A failure is escalated to Claude only within the sprint's budget, and its outcome is recorded.
+gate.ci_before_review:
+  cases:
+  - skip.review.ci_failed_on_its_head
+  - skip.review.ci_still_running
+  origin:
+  - crew#756
 gate.criteria_cannot_all_pass:
 gate.qa_unproven:
 gate.review_changes_requested:
