@@ -340,19 +340,22 @@ class RetiredTest(BaseModel):
     @field_validator("path")
     @classmethod
     def _a_test_file(cls, value: str) -> str:
-        cleaned = FileWrite._stays_in_the_repository(value)
+        cleaned, outside = in_the_repository(value)
+        if outside == "empty":
+            refuse("form.path.stays_in_the_repository", "empty")
+        if outside == "escapes":
+            refuse("form.path.stays_in_the_repository", "escapes", path=repr(value))
+        if outside == "git":
+            refuse("form.path.stays_in_the_repository", "git")
         if not profile_for(cleaned).is_test_file(cleaned):
-            raise ValueError(
-                f"{cleaned!r} isn't a test file: only tests can be retired. Code that "
-                "still has callers moves, it isn't retired"
-            )
+            refuse("form.RetiredTest.a_test_file", path=repr(cleaned))
         return cleaned
 
     @field_validator("why")
     @classmethod
     def _says_why(cls, value: str) -> str:
         if len(value.strip()) < 10:
-            raise ValueError("say what this story ends that the test pinned")
+            refuse("form.RetiredTest.says_why")
         return value.strip()
 
 

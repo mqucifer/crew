@@ -29,6 +29,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
+from crew_org.rulebook import refuse
 
 _TEST_ID = re.compile(r"^[\w/.-]+\.py::\w+$")
 
@@ -60,13 +61,13 @@ class ContractRuling(BaseModel):
     def _test_ids(cls, value: list[str]) -> list[str]:
         bad = [t for t in value if not _TEST_ID.match(t.strip())]
         if bad:
-            raise ValueError(f"name each test as `path::test`, not {', '.join(bad)}")
+            refuse("form.ContractRuling.test_ids", tests=", ".join(bad))
         return [t.strip() for t in value]
 
     @model_validator(mode="after")
     def _an_amendment_says_what(self) -> ContractRuling:
         if self.decision == "amend" and not (self.tests and len(self.asserts.strip()) >= 10):
-            raise ValueError("an amendment names the tests and what they must assert after")
+            refuse("form.ContractRuling.an_amendment_says_what")
         return self
 
 

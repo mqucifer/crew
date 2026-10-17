@@ -144,7 +144,7 @@ class Story(BaseModel):
         if text and not (
             text.lower().startswith("opt-in") or text.lower().startswith("contract change")
         ):
-            raise ValueError("say 'opt-in' or 'contract change: <the tests it updates>' (#189)")
+            refuse("form.story.opt_in_or_contract")
         return text
 
     @field_validator("points")
@@ -903,7 +903,14 @@ class RepairedStory(BaseModel):
     @field_validator("pinned_behaviour")
     @classmethod
     def _opt_in_or_contract(cls, value: str | None) -> str | None:
-        return None if value is None else Story._opt_in_or_contract(value)
+        if value is None:
+            return None
+        text = value.strip()
+        if text and not (
+            text.lower().startswith("opt-in") or text.lower().startswith("contract change")
+        ):
+            refuse("form.story.opt_in_or_contract")
+        return text
 
 
 class CriteriaRepair(BaseModel):

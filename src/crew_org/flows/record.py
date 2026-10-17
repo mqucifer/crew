@@ -36,6 +36,7 @@ from typing import Any
 
 from crew_org.events import EventSink
 from crew_org.flows import artifacts
+from crew_org.rulebook import Refusal, refuse, says
 
 HEADER = "## Refinement conclusion"
 NOTHING_RAISED = "Ready to split: the panel raised nothing."
@@ -85,7 +86,7 @@ _TESTS = (
 DECLARED = "declared"
 
 
-class RecordRefused(ValueError):
+class RecordRefused(Refusal):
     """An edit that breaks the record's change control. Nothing was written."""
 
 
@@ -417,11 +418,11 @@ def check_change(before: Record, after: Record) -> None:
     problems: list[str] = []
     now = {d.id: d for d in after.decisions}
     if len(now) != len(after.decisions):
-        problems.append("two rows share an ID")
+        problems.append(says("check.record.check_change", "shared_id"))
     for old in before.decisions:
         new = now.get(old.id)
         if new is None:
-            problems.append(f"{old.id} was deleted; a row is only ever replaced")
+            problems.append(says("check.record.check_change", "deleted", row=old.id))
             continue
         if new == old:
             continue
@@ -430,14 +431,14 @@ def check_change(before: Record, after: Record) -> None:
         if not (
             old.binding and new == replace(old, status=new.status) and by and by.replaces == old.id
         ):
-            problems.append(f"{old.id} was changed in place; a later row replaces it instead")
+            problems.append(says("check.record.check_change", "in_place", row=old.id))
     tests_now = {t.id: t for t in after.tests}
     for old_test in before.tests:
         kept = tests_now.get(old_test.id)
         if kept is None:
-            problems.append(f"{old_test.id} was deleted; a test row is only ever dropped, with why")
+            problems.append(says("check.record.check_change", "test_deleted", row=old_test.id))
         elif kept.test != old_test.test:
-            problems.append(f"{old_test.id} names another test now; add a row instead")
+            problems.append(says("check.record.check_change", "test_renamed", row=old_test.id))
     before_ids = {d.id for d in before.decisions}
     asked = {q.id: q for q in before.open}
     still = {q.id for q in after.open}
@@ -449,38 +450,63 @@ def check_change(before: Record, after: Record) -> None:
         if d.replaces.startswith("R"):
             target = before.row(d.replaces)
             if target is None or not target.binding:
-                problems.append(f"{d.id} replaces {d.replaces}, which is no binding row")
+                problems.append(
+                    says(
+                        "check.record.check_change",
+                        "not_binding_row",
+                        row=d.id,
+                        replaces=d.replaces,
+                    )
+                )
             elif d.set_by not in (SPONSOR, target.set_by):
                 problems.append(
-                    f"{d.id}, set by the {d.set_by}, replaces {target.id}, set by the "
-                    f"{target.set_by}: only its author or the Sponsor may"
+                    says(
+                        "check.record.check_change",
+                        "not_author",
+                        row=d.id,
+                        by=d.set_by,
+                        target=target.id,
+                        target_by=target.set_by,
+                    )
                 )
             elif now[target.id].status != f"replaced by {d.id}":
-                problems.append(f"{target.id} isn't marked as replaced by {d.id}")
+                problems.append(
+                    says("check.record.check_change", "not_marked", target=target.id, row=d.id)
+                )
         else:
             question = asked.get(d.replaces)
             if question is None:
-                problems.append(f"{d.id} replaces {d.replaces}, which is no open question")
+                problems.append(
+                    says("check.record.check_change", "no_question", row=d.id, replaces=d.replaces)
+                )
             elif d.set_by not in (SPONSOR, question.settled_by):
                 problems.append(
-                    f"{d.id}, set by the {d.set_by}, settles {question.id}, which is the "
-                    f"{question.settled_by}'s to settle"
+                    says(
+                        "check.record.check_change",
+                        "not_settler",
+                        row=d.id,
+                        by=d.set_by,
+                        question=question.id,
+                        settler=question.settled_by,
+                    )
                 )
             elif question.id in still:
-                problems.append(f"{question.id} is still open after {d.id} settled it")
+                problems.append(
+                    says("check.record.check_change", "still_open", question=question.id, row=d.id)
+                )
     settled = {d.replaces for d in added}
     problems += [
-        f"{q} was removed; a question is settled by a row that replaces it"
+        says("check.record.check_change", "question_removed", question=q)
         for q in asked
         if q not in still and q not in settled
     ]
     problems += [
-        f"{q.id} names {q.settled_by!r} to settle it, not the Architect or the implementer"
+        says("check.record.check_change", "bad_settler", question=q.id, settler=repr(q.settled_by))
         for q in after.open
         if q.id not in asked and q.settled_by not in SETTLERS
     ]
     if problems:
-        raise RecordRefused("; ".join(problems))
+        refuse("check.record.check_change", kind=RecordRefused, problems="; ".join(problems))
 
 
 def _identified(d: Decision) -> list[str]:
@@ -496,13 +522,26 @@ def _identified(d: Decision) -> list[str]:
         )
         if not value.strip()
     ]
-    found = [f"{d.id or 'a new row'} has no {', '.join(missing)}"] if missing else []
+    found = (
+        [
+            says(
+                "check.record.check_change",
+                "unidentified",
+                row=d.id or "a new row",
+                missing=", ".join(missing),
+            )
+        ]
+        if missing
+        else []
+    )
     if not _ID.match(d.id) or not d.id.startswith("R"):
-        found.append(f"{d.id!r} is not a decision's ID")
+        found.append(says("check.record.check_change", "not_an_id", row=repr(d.id)))
     if d.set_by not in AUTHORS:
-        found.append(f"{d.id} is set by {d.set_by!r}, who sets no rows")
+        found.append(says("check.record.check_change", "no_author", row=d.id, by=repr(d.set_by)))
     if d.status != BINDING:
-        found.append(f"{d.id} is new and so binding, not {d.status!r}")
+        found.append(
+            says("check.record.check_change", "not_binding", row=d.id, status=repr(d.status))
+        )
     return found
 
 
