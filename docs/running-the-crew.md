@@ -226,7 +226,7 @@ A failure is classified before anything is decided about it, because a mechanica
 | VERIFY | Lint or tests failed | Retry locally up to the limit, then escalate or block |
 | REGRESSION | The change would break merged callers | Refused before a byte is written |
 | SCOPE | The story was too large or its criteria ambiguous | Returned to refinement, never escalated |
-| CAPABILITY | The model cannot do this | Escalates — but an unjustified claim is treated as SCOPE |
+| CAPABILITY | The model cannot do this | Escalates within the budget; no step produces it yet (crew#756) |
 
 **A dead model backend is never blamed on a card.** Any command, pre-flight or mid-run, that finds the backend unreachable says which side is down in one line and exits, rather than a traceback from inside a model client and a failure charged to whatever card was in flight (crew#168).
 

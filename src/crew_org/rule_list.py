@@ -47,7 +47,7 @@ from typing import Any, get_args
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
-from crew_org import rulebook
+from crew_org import constitution, rulebook
 from crew_org.permissions import load_agents
 from crew_org.rules import Rule, meanings
 
@@ -1676,6 +1676,11 @@ def _section_roles() -> dict[int, set[str]]:
 _ITEM = re.compile(r"^(?:(\d+)\.\s+|-\s+)?\*\*(.+?)\*\*")
 
 
+def _role(name: str) -> str:
+    """A role's name without its step: `Product Owner (onboarding)` is the Product Owner."""
+    return name.split(" (")[0]
+
+
 def _told_constitution() -> list[Entry]:
     """Each rule of the constitution's sections a role is given: a numbered item, or a
     paragraph or item that opens in bold."""
@@ -1688,10 +1693,20 @@ def _told_constitution() -> list[Entry]:
             continue
         number = int(heading.group(1))
         roles = given.get(number, set())
-        # Paragraphs and top-level list items, each with its continuation lines.
-        items: list[list[str]] = []
+        # Paragraphs and top-level list items, each with its continuation lines, and
+        # the roles a marked passage is told to (None: every role given the section).
+        items: list[tuple[list[str], set[str] | None]] = []
         fenced = False
+        only: set[str] | None = None
         for line in chunk.splitlines()[1:]:
+            if marker := re.match(r"<!-- told to: (.+?) -->$", line):
+                only = constitution.told_to(marker.group(1))
+                items.append(([], only))
+                continue
+            if line == "<!-- /told to -->":
+                only = None
+                items.append(([], only))
+                continue
             if line.startswith("```"):
                 fenced = not fenced
                 continue
@@ -1701,11 +1716,15 @@ def _told_constitution() -> list[Entry]:
                 not line.strip() or re.match(r"^(\d+\.\s|-\s|\*\*)", line) or line.startswith("#")
             )
             if starts or not items:
-                items.append([])
+                items.append(([], only))
             if line.strip():
-                items[-1].append(line.strip())
-        for item in items:
+                items[-1][0].append(line.strip())
+        for item, told_only in items:
             if not item:
+                continue
+            here = roles if told_only is None else {r for r in roles if _role(r) in told_only}
+            # Kept in the document for people, and told to no role: not a rule a role meets.
+            if told_only is not None and not here:
                 continue
             body = " ".join(item)
             numbered = re.match(r"^(\d+)\.\s+(.*)", body)
@@ -1725,8 +1744,8 @@ def _told_constitution() -> list[Entry]:
                     "told",
                     f"docs/ways-of-working.md:§{number}",
                     _first_sentence(re.sub(r"[*`]", "", re.sub(r"^\d+\.\s+|^-\s+", "", body))),
-                    roles=set(roles),
-                    told={f"§{number}"} if roles else set(),
+                    roles=set(here),
+                    told={f"§{number}"} if here else set(),
                     checked={f"named in the text: {_first_sentence(enforced)}"}
                     if enforced
                     else set(),
@@ -1979,8 +1998,8 @@ def entries() -> tuple[Entry, ...]:
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
     declared = rulebook.catalog()
-    checks, told = _merged(checks, declared), _merged(told, declared)
-    for entry in checks + told:
+    found = _merged(checks + told, declared)
+    for entry in found:
         entry.declared = declared.get(entry.id)
         if entry.declared is not None:
             entry.category = entry.declared.category
@@ -1988,14 +2007,16 @@ def entries() -> tuple[Entry, ...]:
         else:
             entry.category = place(entry)
     order = list(GROUPS)
-    return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
+    return tuple(sorted(found, key=lambda e: (order.index(e.group), e.id)))
 
 
 def _merged(found: list[Entry], declared: dict[str, rulebook.RuleSpec]) -> list[Entry]:
     """Each merged rule as one entry, its cases folded in (crew#756).
 
     A case keeps the name the code and the event log give it, so nothing that
-    records one changes; it's listed, counted and declared as its rule.
+    records one changes; it's listed, counted and declared as its rule. A line a
+    role is told is a case of the check that enforces it: one rule, told there and
+    checked here.
     """
     case_of = {case: spec.id for spec in declared.values() for case in spec.cases}
     out: list[Entry] = []
@@ -2147,9 +2168,6 @@ _TOLD_SITES = {
     "refinement_crew:AnswerRow": "answer_shape",
     "refinement_crew:RepairedStory": "answer_shape",
     "refinement_crew:RowNotForStories": "answer_shape",
-    "refinement_crew:BacklogOrder": "flow",
-    "refinement_crew:Hold": "flow",
-    "refinement_crew:order_backlog": "flow",
     "refinement_crew:propose_epics": "scope",
     "refinement_crew:propose_missing_epics": "scope",
     "refinement_crew:_delivered_block": "scope",

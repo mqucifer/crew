@@ -8,6 +8,12 @@ itself a defect worth reporting.
 It exists so that the agile process does the orchestration. Agents do not
 negotiate process with each other; they follow what is written here.
 
+Each role is given the sections it needs (`constitution:` in
+`config/agents.yaml`). A passage between `<!-- told to: … -->` and
+`<!-- /told to -->` is kept here for people and told only to the roles it names,
+none for `nobody`: the crew's own mechanics, which a role that can't act on them
+reads as noise (crew#756).
+
 ---
 
 ## 1. Roles and authority
@@ -31,6 +37,7 @@ granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
 small model blurs. A Product Owner *cannot* write acceptance criteria; a
 Business Analyst *cannot* redraw an epic.
 
+<!-- told to: Senior Engineer -->
 **What holds them is the output schema and the call site.** Each crew function
 builds one role and returns one shape: `propose_epics` builds the Product Owner
 and returns an `EpicProposal`, which has no field for acceptance criteria. There
@@ -43,7 +50,9 @@ tracing call sites. `crew_org.permissions` can check them and no flow does,
 which was true and unstated until an audit found it. Changing a `can:` list
 therefore changes documentation; changing what a role may actually do means
 changing a schema or a call site, and the two should be changed together.
+<!-- /told to -->
 
+<!-- told to: Senior Engineer -->
 **A defect is filed where it belongs, by whoever found it.** A retrospective
 finds two kinds of thing, and both are real: how the crew worked, and what the
 crew built. "Stories must name the module a metric belongs in" is a defect in
@@ -59,14 +68,19 @@ role by one verb is a smaller change than blurring three.
 
 What it may still not do is file under another role's name. #19 and #22 exist so
 that attribution is true; faking it to satisfy a boundary would undo them.
+<!-- /told to -->
 
+<!-- told to: Senior Engineer -->
 **Card movement and WIP limits are not a role.** They are deterministic rules in
 `crew_org.process`. A WIP limit an agent can decide to ignore is not a limit.
 The Scrum Master narrates; it has no authority over the board.
+<!-- /told to -->
 
+<!-- told to: Senior Engineer -->
 **No agent may move a card out of a human gate.** There are exactly two gates:
 epics awaiting approval in `Inbox (Goals)` carrying `needs:human`, and the
 sprint review at `crew sprint close`.
+<!-- /told to -->
 
 When a story goes back to refinement because it changes behaviour merged
 tests pin and doesn't say whether it should (crew#189), the Product Owner
@@ -174,7 +188,9 @@ database layer" is not independently valuable.
 
 A card may enter `Ready` only when **all** hold:
 
+<!-- told to: nobody -->
 1. Type, parent, and Priority are set on the board.
+<!-- /told to -->
 2. It is written in the format for its type (§3).
 3. Acceptance criteria exist and satisfy §3.
 4. It satisfies INVEST (§4).
@@ -277,14 +293,14 @@ escalates:
 | `SCHEMA` | Output did not parse into the task's expected structure | **Never** | Retry locally at most twice with the validation error supplied. Persistent failure files a `defect:prompt` issue against the crew repo. |
 | `SCOPE` | The task is too large or ambiguous to act on | **Never** | Return the card to `Needs Refinement` with the specific ambiguity named. |
 | `VERIFY` | Code was produced; tests or lint failed | After 2 local repair attempts — a first attempt plus two repairs, which the ledger records as three attempts | Escalate with the failing output attached. |
-| `CAPABILITY` | The agent judges the task beyond its reach | Yes, within budget | Escalate **with written justification** naming what specifically it could not do. |
-
-An escalation without a justification is rejected and treated as `SCOPE`.
+| `CAPABILITY` | The agent judges the task beyond its reach | Yes, within budget | Escalate, naming what specifically it could not do. No step produces this class yet, so the check that a justification was given was retired (crew#756). |
 
 **A first attempt with no usable answer is retried in steps** (crew#276). When the Developer's first attempt at a story produces nothing usable (an empty answer, or output that doesn't validate), its next attempt doesn't repeat the same one-shot request.
+<!-- told to: Senior Engineer -->
 - **A short plan first:** the files the change touches, in order, with each file's intent; the new names and signatures they share; and which test proves each criterion. The plan is checked against the repository before any code is written.
 - **Then one small answer per file,** each shown the story, the plan, that file in full, and what the earlier steps wrote. A step may only change its own file.
 - **The pieces are merged into one ordinary answer,** which the guards, the checks, review and QA judge as any other.
+<!-- /told to -->
 
 An answer that runs on as whitespace is cut off after 2,000 characters of it, and asked for again saying where it went wrong (2026-10-11): a model that closes a string early can only write whitespace after it, and mqucifer/sprint-metrics#567's did for 40 minutes, to its token limit.
 
@@ -316,8 +332,10 @@ Work in progress is capped per column (configured in `config/org.yaml`).
 A card may not enter a column at its limit — the Scrum Master resolves the
 oldest card in that column first.
 
+<!-- told to: nobody -->
 **Stopping starting and starting finishing is the rule.** When a limit is hit,
 the correct action is to help finish existing work, never to open new work.
+<!-- /told to -->
 
 ---
 
@@ -827,6 +845,7 @@ event summaries and board comments — those are logs, not context.
 
 ## 17. What a column means
 
+<!-- told to: nobody -->
 **Columns are queues.** A column names what a card is *waiting for*, never what
 is being done to it. A card enters one when the previous phase is finished with
 it and leaves when the phase that owns the column is finished in turn — so a
@@ -871,9 +890,11 @@ said which one was the model.
 duplicated as string constants across five flow modules, so renaming two of them
 took a commit touching all five — and left the board's own automations pointing
 at options that no longer existed.
+<!-- /told to -->
 
 ## 18. The pilot, and the ladder each card climbs
 
+<!-- told to: nobody -->
 **`sprint-metrics` is a pilot, not a product.** The crew needs real work to
 exercise a real loop — a story nobody wants produces a delivery nobody can
 judge. The pilot is that work. It may end up useful in its own right, most
@@ -914,6 +935,7 @@ of tagged cards says what someone tagged, not what the crew can do — which
 | Retrospective | The crew learns from a sprint it has finished |
 | Self-diagnosis | The crew finds its own defects without a person reading the code |
 | Audit trail | What happened, who did it, and why — legible without reading the code |
+<!-- /told to -->
 
 ---
 

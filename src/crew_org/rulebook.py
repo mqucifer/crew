@@ -71,7 +71,8 @@ class RuleSpec:
     description: str = ""
     told_in: str = ""
     # The rules merged into this one, by the names the code and the event log still
-    # give them: each is one of its cases, as ESLint's message ids are (crew#756).
+    # give them: each is one of its cases, as ESLint's message ids are (crew#756). A
+    # line a role is told is a case of the check that enforces it.
     cases: tuple[str, ...] = ()
 
     def says(self, which: str = "default", **values: Any) -> str:

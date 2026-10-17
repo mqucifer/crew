@@ -55,8 +55,6 @@ class Rule(StrEnum):
     """Refused past the local limit: a prompt or schema defect, filed, never escalated."""
     SCOPE_RETURN = "scope.return"
     """The story is the problem, not the code: returned to refinement."""
-    CAPABILITY_UNJUSTIFIED = "capability.unjustified"
-    """A claim of being beyond reach with no real justification: treated as scope."""
     VERIFY_LOCAL_REPAIR = "verify.local_repair"
     """Lint or tests failed, repaired locally before any escalation."""
     REGRESSION_LOCAL_REPAIR = "regression.local_repair"

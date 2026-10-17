@@ -32,13 +32,6 @@ wip_limits:
   Merging: 3
 
 sprint:
-  # One day, matching the board's iteration field — the shortest GitHub allows.
-  # A crew that runs unattended drains a fortnight's scope long before the
-  # fortnight ends, and then the sprint review it was building towards has two
-  # weeks of work in it and is too large to be read. Nothing in the code reads
-  # this; it is here so the number the board runs on is written down somewhere
-  # a person looks.
-  length_days: 1
   # The clock that decides which sprint it is (#193). GitHub's iterations are
   # bare dates; this says whose dates. One clock for every sprint decision:
   # the current sprint, admission, and whether a sprint's dates are over.
@@ -145,32 +138,12 @@ sandbox:
   image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 execution:
-  max_iterations_per_card: 12   # hard cap; exceeded -> Blocked
-  max_wallclock_seconds: 900    # per card, per tick
   local_repair_attempts: 2      # SCHEMA / VERIFY retries before giving up
 
 escalation:
   # Failure classes that may NEVER escalate. Enforced in code, not by prompt.
   never_escalate: [SCHEMA, SCOPE, REGRESSION]
   may_escalate: [VERIFY, CAPABILITY]
-  require_justification: [CAPABILITY]
-  concurrency: 1                # protects the subscription rate-limit window
-  # Escalation rate above this fraction of sprint cards produces process-defect
-  # issues in the retro.
-  health_threshold: 0.20
-
-labels:
-  routing:
-    refine: crew:refine
-    dev: crew:dev
-    qa: crew:qa
-    review: crew:review
-  control:
-    needs_human: needs:human
-    blocked: blocked
-  defect:
-    prompt: defect:prompt
-    process: defect:process
 
 # Whose comments the crew reads (crew#399). Everyone else's are ignored and
 # noted: the repositories are public, and a comment is read into prompts as

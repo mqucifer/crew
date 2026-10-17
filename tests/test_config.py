@@ -180,3 +180,16 @@ def test_an_empty_delivery_allow_list_fails_at_startup(tmp_path):
 def test_the_crews_own_repository_is_not_one_it_works_in():
     """An orchestrator editing itself mid-run breaks the thing making the edit."""
     assert "crew" not in load_org()["delivery"]["repos"]
+
+
+def test_the_point_ceiling_must_be_on_the_scale(tmp_path):
+    import yaml
+
+    from crew_org.config import ORG_CONFIG, load_org
+
+    org = yaml.safe_load(ORG_CONFIG.read_text(encoding="utf-8"))
+    org["estimation"]["max_story_points"] = 13
+    path = tmp_path / "org.yaml"
+    path.write_text(yaml.safe_dump(org), encoding="utf-8")
+    with pytest.raises(ValueError, match="max_story_points"):
+        load_org(path)

@@ -18,11 +18,6 @@ from pydantic import BaseModel, Field
 
 from crew_org.rules import Rule
 
-# A justification must actually name what the agent could not do. This floor is
-# a blunt instrument against "too hard" one-liners; the reviewer of the ledger
-# is the real check.
-MIN_JUSTIFICATION_CHARS = 20
-
 
 class FailureClass(StrEnum):
     """How a local attempt failed. Determines whether escalation is even legal."""
@@ -43,7 +38,11 @@ class FailureClass(StrEnum):
     """Code was produced; tests or lint failed. May escalate after local repair."""
 
     CAPABILITY = "CAPABILITY"
-    """The agent judges the task beyond its reach. May escalate with justification."""
+    """The agent judges the task beyond its reach. May escalate, within the budget.
+
+    No step produces one yet: the justification it once had to carry was retired
+    with nothing to check it on (crew#756).
+    """
 
     REGRESSION = "REGRESSION"
     """The implementation would change a contract merged code already depends on.
@@ -172,12 +171,10 @@ class EscalationPolicy:
         self,
         *,
         never_escalate: set[FailureClass],
-        require_justification: set[FailureClass],
         local_repair_attempts: int,
         sprint_budget: int,
     ) -> None:
         self.never_escalate = never_escalate
-        self.require_justification = require_justification
         self.local_repair_attempts = local_repair_attempts
         self.sprint_budget = sprint_budget
 
@@ -186,7 +183,6 @@ class EscalationPolicy:
         esc = org["escalation"]
         return cls(
             never_escalate={FailureClass(c) for c in esc["never_escalate"]},
-            require_justification={FailureClass(c) for c in esc["require_justification"]},
             local_repair_attempts=org["execution"]["local_repair_attempts"],
             sprint_budget=org["sprint"]["escalation_budget"],
         )
@@ -235,15 +231,6 @@ class EscalationPolicy:
                 "var/proposals/ for the operator.",
             )
 
-        # --- A CAPABILITY claim without justification is not a capability claim ---
-        if cls_ in self.require_justification and not _justified(failure.justification):
-            return EscalationDecision(
-                disposition=Disposition.RETURN_TO_REFINEMENT,
-                rule=Rule.CAPABILITY_UNJUSTIFIED,
-                reason="A CAPABILITY claim without a substantive justification is "
-                "rejected and treated as SCOPE.",
-            )
-
         # --- VERIFY must exhaust local repair first ------------------------
         if cls_ is FailureClass.VERIFY and failure.attempts < self.local_repair_attempts:
             return EscalationDecision(
@@ -268,10 +255,6 @@ class EscalationPolicy:
             reason=f"{cls_} failure eligible for escalation "
             f"({spent + 1}/{self.sprint_budget} of sprint budget).",
         )
-
-
-def _justified(text: str | None) -> bool:
-    return bool(text and len(text.strip()) >= MIN_JUSTIFICATION_CHARS)
 
 
 def utcnow() -> datetime:

@@ -25,7 +25,6 @@ GOOD_JUSTIFICATION = "Requires a cross-cutting change to the GraphQL pagination 
 def policy() -> EscalationPolicy:
     return EscalationPolicy(
         never_escalate={FailureClass.SCHEMA, FailureClass.SCOPE},
-        require_justification={FailureClass.CAPABILITY},
         local_repair_attempts=REPAIRS,
         sprint_budget=BUDGET,
     )
@@ -93,14 +92,13 @@ def test_verify_escalates_once_local_repair_is_exhausted(policy):
 # --- CAPABILITY ----------------------------------------------------------
 
 
-def test_capability_without_justification_is_treated_as_scope(policy):
-    d = policy.decide(failure(FailureClass.CAPABILITY), spent=0)
-    assert d.disposition is Disposition.RETURN_TO_REFINEMENT
-
-
-def test_capability_with_a_hand_wave_is_treated_as_scope(policy):
+def test_capability_is_decided_by_the_budget_alone(policy):
+    """crew#756 retired the justification check: no step produces a CAPABILITY failure,
+    so the rule had nothing to check. One that arrives is decided as any other."""
     d = policy.decide(failure(FailureClass.CAPABILITY, justification="too hard"), spent=0)
-    assert d.disposition is Disposition.RETURN_TO_REFINEMENT
+    assert d.disposition is Disposition.ESCALATE
+    d = policy.decide(failure(FailureClass.CAPABILITY), spent=BUDGET)
+    assert d.disposition is Disposition.BLOCK
 
 
 def test_capability_with_justification_escalates_immediately(policy):

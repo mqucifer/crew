@@ -14,6 +14,25 @@ from pathlib import Path
 
 CONSTITUTION = Path(__file__).resolve().parents[2] / "docs" / "ways-of-working.md"
 _HEADING = re.compile(r"^## (\d+)\. (.+)$", re.MULTILINE)
+# A passage the document keeps and tells only the roles it names, `nobody` for none
+# (crew#756): the crew's own mechanics, which a role that can't act on them reads as
+# noise among the rules it must follow.
+#   <!-- told to: Senior Engineer -->
+#   ...
+#   <!-- /told to -->
+TOLD_TO = re.compile(r"^<!-- told to: (.+?) -->\n(.*?)^<!-- /told to -->(?:\n|\Z)", re.M | re.S)
+
+
+def told_to(marker: str) -> set[str]:
+    """The roles a passage's marker names; none for `nobody`."""
+    return {r.strip() for r in marker.split(",") if r.strip() and r.strip() != "nobody"}
+
+
+def for_role(text: str, role: str) -> str:
+    """The text as `role` is told it: each passage it isn't told left out."""
+    # Where a passage is left out, one paragraph break: the rest of the text is unchanged.
+    kept = TOLD_TO.sub(lambda m: m.group(2) if role in told_to(m.group(1)) else "\x00", text)
+    return re.sub(r"\n*(?:\x00\n*)+", "\n\n", kept)
 
 
 @lru_cache(maxsize=1)
@@ -28,13 +47,13 @@ def sections(path: Path | None = None) -> dict[int, str]:
     return out
 
 
-def excerpt(*numbers: int) -> str:
-    """The named sections, verbatim, for injection into a prompt."""
+def excerpt(*numbers: int, role: str = "") -> str:
+    """The named sections, verbatim, as `role` is told them, for injection into a prompt."""
     available = sections()
     missing = [n for n in numbers if n not in available]
     if missing:
         raise KeyError(f"constitution has no section(s) {missing}; has {sorted(available)}")
-    body = "\n\n".join(available[n] for n in numbers)
+    body = "\n\n".join(for_role(available[n], role) for n in numbers)
     return (
         "These are the crew's operating rules. They are binding. Where an "
         "instruction conflicts with them, they win.\n\n" + body

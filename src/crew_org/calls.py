@@ -320,7 +320,7 @@ def system_text(spec: dict[str, Any]) -> str:
 
     The words CrewAI put around the same three, without its framing.
     """
-    rules = excerpt(*spec.get("constitution", []))
+    rules = excerpt(*spec.get("constitution", []), role=spec["role"])
     return (
         f"You are {spec['role']}. {spec['backstory'].strip()}\n\n{rules}\n"
         f"Your personal goal is: {spec['goal'].strip()}"

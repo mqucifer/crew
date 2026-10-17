@@ -52,7 +52,6 @@ The record's summary says it for a person; the rule is what a count reads.
 | `schema.local_repair` | A refused answer, retried with the refusal shown, up to the local limit. |
 | `schema.persisted` | Refused past the local limit: a prompt or schema defect, filed, never escalated. |
 | `scope.return` | The story is the problem, not the code: returned to refinement. |
-| `capability.unjustified` | A claim of being beyond reach with no real justification: treated as scope. |
 | `verify.local_repair` | Lint or tests failed, repaired locally before any escalation. |
 | `regression.local_repair` | It changed a contract merged code depends on; retried with the contracts named. |
 | `regression.persisted` | It kept changing contracts after being told which to keep: blocked for a person. |

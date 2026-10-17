@@ -1,5 +1,4 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
-capability.unjustified:
 check.review.with_deploy:
 config.const.backlog_order.ATTEMPTS:
 config.const.backlog_order.MAX_STORIES:
@@ -22,7 +21,6 @@ config.const.delivery.ASKED_FILES_LIMIT:
   - crew#231
   - sprint-metrics#529
 config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING:
-config.const.escalation.MIN_JUSTIFICATION_CHARS:
 config.const.loop.MAX_PASSES:
 config.const.loop.QUEUE_POLL:
 config.const.loop.QUEUE_WAIT:
@@ -45,7 +43,6 @@ config.org.board.human_gates:
 config.org.delivery.repos:
 config.org.escalation.may_escalate:
 config.org.escalation.never_escalate:
-config.org.escalation.require_justification:
 config.org.execution.local_repair_attempts:
 config.org.refinement.panel:
 config.org.sprint.blocked_aging_days:
@@ -181,6 +178,8 @@ decision.rework_gate:
   - crew#192
   - crew#440
 decision.settle.design_questions:
+  cases:
+  - §5.7
   origin:
   - ADR 0018
 decision.settle.settle_epic:
@@ -282,23 +281,6 @@ story.return_to_refinement:
   origin:
   - crew#189
   - crew#242
-told.form.BacklogOrder.holds:
-  guidance: true
-  owner: Product Owner
-told.form.BacklogOrder.order:
-  guidance: true
-  owner: Product Owner
-told.form.Finding.blocking:
-  guidance: true
-told.form.Hold.builds_on:
-  guidance: true
-  owner: Product Owner
-told.form.Hold.story:
-  guidance: true
-  owner: Product Owner
-told.refinement_crew.then_only_where_the_new_work:
-  guidance: true
-  owner: Product Owner
 told.review_crew.do_not_ask_whether_it_works:
   guidance: true
   owner: Code Reviewer
@@ -307,55 +289,28 @@ told.review_crew.do_not_re_litigate_a_point:
   owner: Code Reviewer
 §1 a_defect_is_filed_where_it:
   guidance: true
+  owner: Senior Engineer
 §1 card_movement_and_wip_limits_are:
   guidance: true
+  owner: Senior Engineer
 §1 no_agent_may_move_a_card:
   guidance: true
+  owner: Senior Engineer
 §1 what_holds_them_is_the_output:
   guidance: true
-§11 stopping_starting_and_starting_finishing_is:
-  guidance: true
-  owner: Scrum Master
-§17 column_names_live_in_crew_org:
-  guidance: true
-§17 columns_are_queues:
-  guidance: true
-§17 every_phase_drains_its_own_column:
-  guidance: true
-§17 the_names_describe_the_wait_not:
-  guidance: true
-§17 this_is_a_choice_and_the:
-  guidance: true
-§18 a_finding_goes_to_the_repository:
-  guidance: true
-§18 sprint_metrics_is_a_pilot_not:
-  guidance: true
-§18 the_board_is_the_crews_workplace:
-  guidance: true
-§5.1:
-  guidance: true
-  owner: Business Analyst
-§5.2:
-  guidance: true
-  owner: Business Analyst
-§5.3:
-  guidance: true
-  owner: Business Analyst
+  owner: Senior Engineer
 §5.4:
-  guidance: true
-  owner: Business Analyst
-§5.5:
   guidance: true
   owner: Business Analyst
 §5.6:
   guidance: true
   owner: Business Analyst
-§5.7:
-  guidance: true
-  owner: Business Analyst
 §9 a_short_plan_first:
   guidance: true
+  owner: Senior Engineer
 §9 the_pieces_are_merged_into_one:
   guidance: true
+  owner: Senior Engineer
 §9 then_one_small_answer_per_file:
   guidance: true
+  owner: Senior Engineer
