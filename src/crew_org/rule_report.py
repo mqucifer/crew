@@ -30,7 +30,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel
 
-from crew_org import rule_list
+from crew_org import rule_list, rulebook
 from crew_org.rule_list import Entry
 
 UNKNOWN = "repo unknown"
@@ -60,6 +60,8 @@ class Fired:
     # The model's time on the answers this rule refused.
     seconds: float = 0.0
     tokens: int = 0
+    # The sprints it fired in.
+    sprints: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -83,6 +85,8 @@ class Report:
     first: str = ""
     last: str = ""
     events: int = 0
+    # Every sprint the log names, in the order each first appears.
+    sprints: list[str] = field(default_factory=list)
 
 
 def read(path: Path) -> Iterator[dict[str, Any]]:
@@ -257,6 +261,13 @@ def count(events: Iterable[dict[str, Any]], entries: Iterable[Entry] | None = No
             report.first = min(report.first or at, at)
             report.last = max(report.last, at)
         repo, card = where(event)
+        sprint = str(
+            (event.get("ctx") or {}).get("sprint")
+            or (event.get("detail") or {}).get("sprint")
+            or ""
+        )
+        if sprint and sprint not in report.sprints:
+            report.sprints.append(sprint)
         role = str(event.get("role") or "")
         detail = event.get("detail") or {}
         if event.get("kind") == "llm.finished":
@@ -283,6 +294,8 @@ def count(events: Iterable[dict[str, Any]], entries: Iterable[Entry] | None = No
                 continue
             f = fired[rule]
             f.events += 1
+            if sprint:
+                f.sprints.add(sprint)
             if card:
                 f.cards.add(card)
             f.repos[repo] += 1
@@ -405,6 +418,8 @@ def render(report: Report, *, source: str = "", built_from: str = "") -> str:
                 f"| {_hours(t.refused_seconds)} |"
             )
     lines += categories(report, entries)
+    lines += retirement(report, entries)
+    lines += guidance()
     for group, title in rule_list.GROUPS.items():
         rows = [e for e in entries if e.group == group]
         if group == "told":
@@ -500,6 +515,80 @@ def categories(report: Report, entries: Iterable[Entry]) -> list[str]:
         ),
     ]
     return lines
+
+
+# Sprints with no fire before a rule is a candidate to retire (crew#756, the operator,
+# 2026-10-17). Flagged at the retro, never retired by itself.
+RETIRE_AFTER = 10
+# How many of the most-firing rules the retro is shown, as "a missing tool?".
+MOST_FIRING = 5
+
+
+def guidance() -> list[str]:
+    """Each role's guidance, the lines it's told and nothing checks, against its budget."""
+    budget = rulebook.budget()
+    return [
+        "",
+        "## Guidance against each role's budget",
+        "",
+        "Lines a role is told and nothing checks, labelled guidance (the first policy).",
+        "A role over its budget fails the tests; the budget only goes down.",
+        "",
+        "| Role | Guidance | Budget |",
+        "|---|---|---|",
+        *(
+            f"| {role} | {n} | {budget.get(role, 0)} |"
+            for role, n in rule_list.guidance_counts().items()
+        ),
+    ]
+
+
+def retirement(report: Report, entries: Iterable[Entry], *, after: int = RETIRE_AFTER) -> list[str]:
+    """Rules that haven't fired in the last `after` sprints, and those that fire most."""
+    recent = report.sprints[-after:]
+    if len(recent) < after:
+        return [
+            "",
+            "## Candidates to retire",
+            "",
+            f"The log names {len(report.sprints)} sprints, fewer than the {after} a rule must",
+            "go without firing before it's a candidate.",
+        ]
+    firing = [e for e in entries if e.group not in ("told",)]
+    quiet = [e for e in firing if not report.fired.get(e.id, Fired()).sprints & set(recent)]
+    loud = sorted(
+        (e for e in firing if e.id in report.fired),
+        key=lambda e: (
+            -sum(1 for _ in report.fired[e.id].sprints & set(recent)),
+            -report.fired[e.id].events,
+            e.id,
+        ),
+    )[:MOST_FIRING]
+    return [
+        "",
+        "## Candidates to retire",
+        "",
+        f"{len(quiet)} rules that can fire didn't, in the last {after} sprints "
+        f"({recent[0]} to {recent[-1]}). Each is for the retro to keep or cut; nothing",
+        "is retired by itself.",
+        "",
+        "| Rule | Category | Fired ever |",
+        "|---|---|---|",
+        *(
+            f"| `{e.id}` | {e.category or '—'} | {report.fired.get(e.id, Fired()).events} |"
+            for e in sorted(quiet, key=lambda e: (e.category, e.id))
+        ),
+        "",
+        "### Firing most: a missing tool?",
+        "",
+        "| Rule | Category | Sprints fired, of the last " + str(after) + " | Fired |",
+        "|---|---|---|---|",
+        *(
+            f"| `{e.id}` | {e.category or '—'} "
+            f"| {len(report.fired[e.id].sprints & set(recent))} | {report.fired[e.id].events} |"
+            for e in loud
+        ),
+    ]
 
 
 _COMPARED = (

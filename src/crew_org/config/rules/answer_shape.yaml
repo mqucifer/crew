@@ -1,0 +1,84 @@
+# The answer parses and is complete. Declared once each (crew#756, ADR 0031): change a rule here.
+call.check_not_cut_at_a_quote:
+  origin:
+  - crew#618
+  - sprint-metrics#555
+call.join_blocks:
+  origin:
+  - ADR 0024
+  - ADR 0025
+  - ADR 0026
+  - crew#583
+  - sprint-metrics#529
+call.schema:
+  origin:
+  - ADR 0025
+call.split_blocks:
+  origin:
+  - ADR 0024
+  - ADR 0025
+  - ADR 0026
+  - crew#583
+  - sprint-metrics#529
+call.the_answer_ran_on_as:
+call.the_answer_was_empty_you:
+call.the_json_before_the_blocks:
+check.settle_crew.check_covers:
+  owner: Product Owner
+check.settle_crew.check_design_covers:
+  owner: Architect
+check.settle_crew.check_design_cut:
+  owner: Architect
+check.settle_crew.check_not_cut:
+  owner: Product Owner
+check.settle_crew.not_cut_at_a_quote:
+  origin:
+  - crew#618
+form.AnswerRow.an_id:
+  owner: Product Owner
+form.Conclusion.says_something:
+  owner: Product Owner
+form.DesignAnswer.an_id:
+  owner: Architect
+form.DesignNote.covers_the_stories:
+  owner: Architect
+form.DesignProposal.enforces_something:
+  owner: Architect
+form.FileAsk.a_bare_path:
+form.Finding.is_actionable:
+form.PanelAnswer.one_or_the_other:
+form.PlannedFile.says_what:
+  owner: Developer
+form.PresentationNote.has_a_sample:
+  owner: UX Designer
+form.ProcessDefect.is_a_change:
+  owner: Scrum Master
+form.ProcessDefect.short:
+  owner: Scrum Master
+form.ProductAnswer.one_or_the_other:
+  owner: Product Owner
+form.Retro.few:
+  owner: Scrum Master
+form.ReviewVerdict.a_rejection_must_say_why:
+  origin:
+  - crew#139
+  - crew#214
+form.RowNotForStories.row_id:
+  owner: Business Analyst
+form.Settlement.one_or_the_other:
+  owner: Product Owner
+form.Settlement.stripped:
+  owner: Product Owner
+form.SponsorRow.an_id:
+  owner: Product Owner
+form.Story.row_ids:
+  owner: Business Analyst
+told.form.AnswerRow.decision:
+  guidance: true
+  owner: Product Owner
+told.form.RepairedStory.title:
+  guidance: true
+  owner: Business Analyst
+told.form.RowNotForStories.why:
+  guidance: true
+  owner: Business Analyst

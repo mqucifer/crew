@@ -1,0 +1,65 @@
+# A change applies cleanly. Declared once each (crew#756, ADR 0031): change a rule here.
+edit.ast_edit.apply_edit:
+  owner: Developer
+edit.delivery.these_tests_arent_in_their:
+  owner: Developer
+edit.move_code.move_one:
+  owner: Developer
+edit.workspace.apply:
+  owner: Developer
+edit.workspace.apply_implementation:
+  owner: Developer
+edit.workspace.outside_definitions:
+  origin:
+  - crew#204
+  - sprint-metrics#133
+  owner: Developer
+edit.workspace.plan_text_edits:
+  owner: Developer
+form.FileEdit.source_matches_the_operation:
+  origin:
+  - crew#196
+  owner: Developer
+form.FileWrite.is_plausible:
+  owner: Developer
+form.Implementation.does_something:
+  owner: Developer
+form.Move.somewhere_else:
+  owner: Developer
+form.TextEdit.changes_something:
+  owner: Developer
+guard.overwrite.overwrites_existing:
+  owner: Developer
+told.delivery_crew.configuration_may_change_when_the_story:
+  guidance: true
+  owner: Developer
+told.delivery_crew.dont_also_delete_it_or_write:
+  guidance: true
+  owner: Developer
+told.delivery_crew.dont_write_a_test_that_matches:
+  guidance: true
+  owner: Developer
+told.delivery_crew.for_an_existing_file_that_is:
+  guidance: true
+  owner: Developer
+told.delivery_crew.functions_and_classes_always_change_with:
+  guidance: true
+  owner: Developer
+told.delivery_crew.implement_only_this_story_work_belonging:
+  guidance: true
+  owner: Developer
+told.delivery_crew.that_is_the_only_way_a:
+  guidance: true
+  owner: Developer
+told.delivery_crew.to_remove_a_file_entirely_list:
+  guidance: true
+  owner: Developer
+told.delivery_crew.you_never_reproduce_code_you_are:
+  guidance: true
+  owner: Developer
+told.form.Implementation.need_files:
+  guidance: true
+  owner: Developer
+told.form.Implementation.new_files:
+  guidance: true
+  owner: Developer

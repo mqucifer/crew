@@ -45,6 +45,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel
 
+from crew_org import rulebook
 from crew_org.permissions import load_agents
 from crew_org.rules import Rule, meanings
 
@@ -110,8 +111,11 @@ class Entry:
     mode: str = ""
     # A form's rule that changes the answer and never refuses it.
     repairs: bool = False
-    # What it protects, one of CATEGORIES, or "" where PLACEMENT finds none.
+    # What it protects, one of CATEGORIES: as declared, or as PLACEMENT proposes for a
+    # rule not yet declared. "" where neither places it.
     category: str = ""
+    # Its declaration in the rulebook, if it has one.
+    declared: rulebook.RuleSpec | None = None
     # For a guard: the failure class its events record.
     failure_class: str = ""
     # For a told line: the constitution sections it is, for linking by citation.
@@ -1606,8 +1610,14 @@ def entries() -> tuple[Entry, ...]:
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
+    declared = rulebook.catalog()
     for entry in checks + told:
-        entry.category = place(entry)
+        entry.declared = declared.get(entry.id)
+        if entry.declared is not None:
+            entry.category = entry.declared.category
+            entry.origin |= set(entry.declared.origin)
+        else:
+            entry.category = place(entry)
     order = list(GROUPS)
     return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
 
@@ -1616,16 +1626,7 @@ def entries() -> tuple[Entry, ...]:
 
 # The categories the rules are managed by, as a linter's are (the Sponsor, 2026-10-17,
 # on crew#756): by what a rule protects, not where it lives.
-CATEGORIES = {
-    "answer_shape": "The answer parses and is complete",
-    "scope": "The work stays in the story",
-    "edits": "A change applies cleanly",
-    "evidence": "Tests prove the criteria",
-    "guards": "Safety guards",
-    "flow": "When a card moves",
-    "contracts": "What other work relies on, and declared changes to it",
-    "guidance": "Writing guidance",
-}
+CATEGORIES = rulebook.CATEGORIES
 
 # The forms whose rules are about the proof a criterion has.
 _EVIDENCE_FORMS = frozenset(
@@ -1893,6 +1894,11 @@ def _cell(values: set[str] | str) -> str:
     return "<br>".join(sorted(v.replace("|", "\\|") for v in values)) or "—"
 
 
+def _guidance(entry: Entry) -> str:
+    """An empty "checked by": guidance, as declared, or a gap the first policy names."""
+    return "guidance" if entry.declared is not None and entry.declared.guidance else "—"
+
+
 def render() -> str:
     """The rules list, as committed."""
     rows = entries()
@@ -1950,7 +1956,8 @@ def render() -> str:
             lines.append(
                 f"| `{_cell(r.id)}`<br>{_cell(r.says)} | {r.category or '—'} "
                 f"| `{_cell(r.where)}` | {_cell(r.roles)} "
-                f"| {_cell(r.told)} | {_cell(r.checked)} | {_cell(r.origin)} |"
+                f"| {_cell(r.told)} "
+                f"| {_cell(r.checked) if r.checked else _guidance(r)} | {_cell(r.origin)} |"
             )
         lines.append("")
     return "\n".join(lines)
@@ -1960,3 +1967,52 @@ def write(path: Path = PAGE) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(), encoding="utf-8")
     return path
+
+
+def declarations() -> dict[str, dict[str, dict[str, Any]]]:
+    """The catalog as it should be: each rule's declaration, kept where it has one.
+
+    A rule with none is proposed one: its category by PLACEMENT, its owner when one
+    role meets it, its origin from what its code cites, and the guidance label when
+    it's told and nothing checks it by name. A declaration the code no longer has
+    is left out, so writing this removes it.
+    """
+    out: dict[str, dict[str, dict[str, Any]]] = {c: {} for c in [*CATEGORIES, ""]}
+    for entry in entries():
+        spec = entry.declared
+        if spec is not None:
+            fields: dict[str, Any] = {
+                "owner": spec.owner,
+                "origin": list(spec.origin),
+                "guidance": spec.guidance,
+                "message": spec.message,
+                "description": spec.description,
+                "told_in": spec.told_in,
+            }
+        else:
+            fields = {
+                "owner": next(iter(entry.roles)) if len(entry.roles) == 1 else "",
+                "origin": sorted(entry.origin),
+                "guidance": entry.group == "told"
+                and not any(not c.startswith("maybe ") for c in entry.checked),
+            }
+        out[entry.category][entry.id] = fields
+    return {c: rules for c, rules in out.items() if rules}
+
+
+def write_declarations() -> list[Path]:
+    """Declare every rule that has no declaration yet, and drop those the code lost."""
+    for path in rulebook.CATALOG.glob("*.yaml"):
+        if path != rulebook.BUDGET:
+            path.unlink()
+    return rulebook.write(declarations())
+
+
+def guidance_counts() -> dict[str, int]:
+    """How many guidance lines each role is told: what its budget is held to."""
+    counts: dict[str, int] = {}
+    for entry in entries():
+        if entry.declared is not None and entry.declared.guidance:
+            for role in entry.roles:
+                counts[role] = counts.get(role, 0) + 1
+    return dict(sorted(counts.items()))

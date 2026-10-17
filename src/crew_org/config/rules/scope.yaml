@@ -1,0 +1,190 @@
+# The work stays in the story. Declared once each (crew#756, ADR 0031): change a rule here.
+check.backlog_order.check:
+check.conclusion.feedback:
+  owner: Business Analyst
+check.conclusion.problems:
+  origin:
+  - crew#248
+  - crew#583
+  owner: Business Analyst
+check.delivery.deliver_in_steps:
+  origin:
+  - crew#276
+  owner: Developer
+check.delivery.do_the_work_now_with:
+  owner: Developer
+check.refinement_crew.check:
+  owner: Business Analyst
+check.settle_crew.check_grounded:
+  owner: Product Owner
+check.settle_crew.check_product_calls:
+  origin:
+  - ADR 0018
+  owner: Product Owner
+check.stepped.implement_file:
+  owner: Developer
+form.Change.work_is_said:
+  owner: Architect
+form.Epic.is_an_argument:
+  owner: Product Owner
+form.Epic.not_a_restatement:
+  owner: Product Owner
+form.EpicProposal.decomposed:
+  owner: Product Owner
+form.MissingEpics.decomposed:
+  owner: Product Owner
+form.Placement.epic_is_named:
+  owner: Architect
+form.Plan.one_step_per_file:
+  owner: Developer
+form.Row.a_call_stays_within_the_goal:
+  owner: Product Owner
+form.SkeletonEpic.decomposed:
+  owner: Product Owner
+form.Story.on_the_scale:
+  owner: Business Analyst
+form.StoryProposal.not_empty:
+  owner: Business Analyst
+told.architect.design_placement.say_for_each_change_a_merged:
+  guidance: true
+  owner: Architect (design_placement)
+told.architect.design_placement.work_an_epic_already_delivers_or:
+  guidance: true
+  owner: Architect (design_placement)
+told.architect.design_placement.work_filed_as_a_technical_epic:
+  guidance: true
+  owner: Architect (design_placement)
+told.architect.when_a_decision_genuinely_exceeds_your:
+  guidance: true
+  owner: Architect
+told.architect.you_are_called_only_for_epics:
+  guidance: true
+  owner: Architect
+told.bug_triage_crew.a_request_for_behaviour_the_project:
+  guidance: true
+  owner: Business Analyst
+told.delivery_crew.do_not_redesign_the_module_layout:
+  guidance: true
+  owner: Developer
+told.delivery_crew.that_changes_what_you_return_return:
+  guidance: true
+  owner: Developer
+told.design_crew.name_an_epic_only_from_the:
+  guidance: true
+  owner: Architect
+told.design_note_crew.the_epics_record_is_settled_build:
+  guidance: true
+  owner: Architect
+told.developer.when_a_card_turns_out_to:
+  guidance: true
+  owner: Developer
+told.developer.you_never_push_to_main_and:
+  guidance: true
+  owner: Developer
+told.form.DesignAnswer.decision:
+  guidance: true
+  owner: Architect
+told.form.DesignNote.beyond_reach:
+  guidance: true
+  owner: Architect
+told.form.PanelNote.settled_by:
+  guidance: true
+told.form.Row.project_wide:
+  guidance: true
+  owner: Product Owner
+told.panel_crew.a_problem_wholly_inside_another_epic:
+  guidance: true
+told.panel_crew.dont_ask_the_epic_to_settle:
+  guidance: true
+told.panel_crew.dont_restate_the_epic_propose_stories:
+  guidance: true
+told.panel_crew.if_the_epic_assumes_something_infra:
+  guidance: true
+told.panel_crew.write_every_issue_or_pull_request:
+  guidance: true
+told.product_owner.you_decompose_by_outcome_never_by:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.a_criterion_about_what_a_doc:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.a_criterion_asking_for_data_the:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.as_few_as_that_takes_one:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.decompose_by_outcome_never_by_architectural:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.each_story_and_the_outcomes_its:
+  guidance: true
+told.refinement_crew.epic_each_story_must_satisfy_invest:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.if_you_cannot_say_it_is:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.it_has_one_outcome_so_propose:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.its_rows_are_decided_a_story:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.split_by_workflow_step_by_business:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.the_product_sponsor_has_set_this:
+  guidance: true
+  owner: Product Owner
+told.refinement_crew.your_order_is_the_order_they:
+  guidance: true
+  owner: Business Analyst
+told.settle_crew.ask_the_sponsor_one_question_with:
+  guidance: true
+told.settle_crew.dont_ask_what_you_can_decide:
+  guidance: true
+told.settle_crew.it_must_not_contradict_the_goal:
+  guidance: true
+told.settle_crew.settle_each_one_now_before_the:
+  guidance: true
+told.stepped.change_only_the_file_named_below:
+  guidance: true
+  owner: Developer
+told.stepped.the_plan_already_says_which_test:
+  guidance: true
+  owner: Developer
+told.stepped.use_exactly_the_names_and_signatures:
+  guidance: true
+  owner: Developer
+told.ux_designer.you_add_to_a_storys_acceptance:
+  guidance: true
+  owner: UX Designer
+told.ux_designer.you_never_choose_a_tool_a:
+  guidance: true
+  owner: UX Designer
+§13 how_a_note_happens:
+  guidance: true
+  origin:
+  - crew#155
+  owner: Architect
+§13 the_tradeoff_is_real_and_is:
+  guidance: true
+  owner: Architect
+§13 what_the_reader_sees:
+  guidance: true
+  origin:
+  - crew#377
+  owner: Architect
+§13 when_the_architect_revisits_a_projects:
+  guidance: true
+  origin:
+  - crew#192
+  - crew#306
+  owner: Architect
+§13 why_ration_it:
+  guidance: true
+  owner: Architect
+§4 e:
+  guidance: true
+  owner: Business Analyst

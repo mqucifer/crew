@@ -1,0 +1,68 @@
+# What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
+check.record.check_change:
+  owner: Product Owner
+form.ContractRuling.an_amendment_says_what:
+  owner: Business Analyst
+form.ContractRuling.test_ids:
+  owner: Business Analyst
+form.RepairedStory.opt_in_or_contract:
+  owner: Business Analyst
+form.RetiredTest.a_test_file:
+  owner: Developer
+form.RetiredTest.says_why:
+  owner: Developer
+form.Story.opt_in_or_contract:
+  owner: Business Analyst
+guard.regression.broken_contracts:
+  owner: Developer
+guard.scope.without_declared:
+  owner: Developer
+told.contract_crew.if_the_story_cant_be_done:
+  guidance: true
+  owner: Business Analyst
+told.form.ContractRuling.why:
+  guidance: true
+  owner: Business Analyst
+§15 18x_the_tokens_and_12x_the:
+  guidance: true
+§15 a_first_attempt_starts_with_its:
+  guidance: true
+  origin:
+  - crew#172
+  - sprint-metrics#75
+§15 a_move_is_one_step_not:
+  guidance: true
+  origin:
+  - crew#241
+§15 a_name_a_module_passes_along:
+  guidance: true
+  origin:
+  - sprint-metrics#129
+§15 a_story_can_declare_it_too:
+  guidance: true
+  origin:
+  - crew#316
+  - sprint-metrics#200
+§15 moving_a_definition_is_not_deleting:
+  guidance: true
+  origin:
+  - crew#202
+§15 retiring_on_purpose:
+  guidance: true
+  origin:
+  - sprint-metrics#132
+§15 tests_retired:
+  guidance: true
+§15 the_code_comes_back_in_blocks:
+  guidance: true
+  origin:
+  - ADR 0026
+  - sprint-metrics#567
+§15 why_this_is_a_check_and:
+  guidance: true
+§15.1:
+  guidance: true
+§15.2:
+  guidance: true
+§15.3:
+  guidance: true

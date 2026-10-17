@@ -173,3 +173,19 @@ def test_each_category_is_summarised_and_the_unplaced_are_listed():
     assert all(f"`{e.id}`" in text for e in unplaced)
     row = rule_report.snapshot(rule_report.count([]))["rows"]["call.schema"]
     assert row["category"] == "answer_shape"
+
+
+def test_a_rule_quiet_for_ten_sprints_is_a_candidate_and_the_loudest_is_a_missing_tool():
+    events = [
+        event("note", {"rule": "hold.sibling", "sprint": f"Sprint {n}"}) for n in range(1, 12)
+    ]
+    events.append(event("note", {"rule": "hold.wip_limit", "sprint": "Sprint 1"}))
+    report = rule_report.count(events)
+    text = "\n".join(rule_report.retirement(report, rule_list.entries()))
+    quiet = text.split("### Firing most")[0]
+    assert "`hold.wip_limit`" in quiet, "fired only before the last ten sprints"
+    assert "`hold.sibling`" not in quiet
+    assert "| `hold.sibling` | flow | 10 | 11 |" in text
+    assert "fewer than the 10" in "\n".join(
+        rule_report.retirement(rule_report.count(events[:3]), rule_list.entries())
+    )
