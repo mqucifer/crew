@@ -229,6 +229,8 @@ def propose(
                     card=card,
                     attempt=attempt + 1,
                     reason=reason,
+                    # The rule that refused it, when a declared one did (ADR 0031).
+                    **({"rules": [rule]} if (rule := getattr(exc, "rule", "")) else {}),
                 )
     raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {refusals[-1]}")
 
@@ -415,6 +417,8 @@ def propose_design(
                     card=card,
                     attempt=attempt + 1,
                     reason=reason,
+                    # The rule that refused it, when a declared one did (ADR 0031).
+                    **({"rules": [rule]} if (rule := getattr(exc, "rule", "")) else {}),
                 )
     raise SettleFailed(f"the Architect's answers were refused {ATTEMPTS} times: {refusals[-1]}")
 

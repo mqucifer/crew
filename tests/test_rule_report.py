@@ -159,7 +159,7 @@ def test_a_rule_that_repairs_silently_is_marked_in_the_snapshot():
     assert "form.Settlement.stripped" in repairs
     assert "form.TextEdit.changes_something" not in repairs
     assert "check.acceptance.held_to_what_it_read" in repairs, "a flow changing the answer"
-    assert all(rows[r]["group"] in ("form", "check") for r in repairs)
+    assert all(rows[r]["group"] in ("form", "check", "repair") for r in repairs)
 
 
 def test_each_category_is_summarised_and_the_unplaced_are_listed():
@@ -173,3 +173,33 @@ def test_each_category_is_summarised_and_the_unplaced_are_listed():
     assert all(f"`{e.id}`" in text for e in unplaced)
     row = rule_report.snapshot(rule_report.count([]))["rows"]["call.schema"]
     assert row["category"] == "answer_shape"
+
+
+def test_a_rule_quiet_for_ten_sprints_is_a_candidate_and_the_loudest_is_a_missing_tool():
+    events = [
+        event("note", {"rule": "hold.sibling", "sprint": f"Sprint {n}"}) for n in range(1, 12)
+    ]
+    events.append(event("note", {"rule": "hold.wip_limit", "sprint": "Sprint 1"}))
+    report = rule_report.count(events)
+    text = "\n".join(rule_report.retirement(report, rule_list.entries()))
+    quiet = text.split("### Firing most")[0]
+    assert "`hold.wip_limit`" in quiet, "fired only before the last ten sprints"
+    assert "`hold.sibling`" not in quiet
+    assert "| `hold.sibling` | flow | 10 | 11 |" in text
+    assert "fewer than the 10" in "\n".join(
+        rule_report.retirement(rule_report.count(events[:3]), rule_list.entries())
+    )
+
+
+def test_a_refusal_that_names_its_rule_is_counted_by_that_name_alone():
+    named = {"output_schema": "Settlement:x", "reason": "anything", "rules": ["call.schema"]}
+    report = rule_report.count([event("llm.refused", named)])
+    assert report.fired["call.schema"].matched == {rule_report.BY_NAME: 1}
+    assert sum(report.unmatched.values()) == 0
+
+
+def test_a_steps_own_refusal_note_is_counted_by_the_rule_it_names():
+    """Settle logs its refusals as notes; since ADR 0031 each names its rule."""
+    named = {"reason": "There are 3 notes, N1 to N3.", "rules": ["check.settle_crew.check_covers"]}
+    report = rule_report.count([event("note", named, role="Product Owner")])
+    assert report.fired["check.settle_crew.check_covers"].matched == {rule_report.BY_NAME: 1}

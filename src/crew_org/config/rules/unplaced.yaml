@@ -1,0 +1,81 @@
+# Rules no category holds yet. Declared once each (crew#756, ADR 0031): change a rule here.
+told.delivery_crew.if_you_need_one_in_full:
+  guidance: true
+  owner: Developer
+told.delivery_crew.if_you_need_one_to_do:
+  guidance: true
+  owner: Developer
+told.delivery_crew.only_if_you_cant_read_it:
+  guidance: true
+  owner: Developer
+told.form.DoneAnswers.bar:
+  guidance: true
+  owner: Product Owner
+told.form.DoneAnswers.never_touch:
+  guidance: true
+  owner: Product Owner
+told.form.Turn.answers:
+  guidance: true
+  owner: Product Owner
+told.form.Turn.conflicts:
+  guidance: true
+  owner: Product Owner
+told.form.Turn.proposals:
+  guidance: true
+  owner: Product Owner
+told.form.Turn.questions:
+  guidance: true
+  owner: Product Owner
+told.onboarding_crew.never_invent_an_answer_the_sponsor:
+  guidance: true
+  owner: Product Owner
+told.product_owner.onboarding.a_project_can_add_to_those:
+  guidance: true
+  owner: Product Owner (onboarding)
+told.product_owner.onboarding.ask_instead_for_the_bar_done:
+  guidance: true
+  owner: Product Owner (onboarding)
+told.product_owner.onboarding.never_ask_the_sponsor_to_pick:
+  guidance: true
+  owner: Product Owner (onboarding)
+told.product_owner.onboarding.the_optional_answers_matter_too_what:
+  guidance: true
+  owner: Product Owner (onboarding)
+told.product_owner.onboarding.the_record_is_read_by_roles:
+  guidance: true
+  owner: Product Owner (onboarding)
+§16 qa_is_shown_the_tests_the:
+  guidance: true
+  origin:
+  - crew#231
+  - crew#312
+  - crew#369
+  - crew#645
+  - sprint-metrics#569
+§16 the_business_analyst_splits_each_epic:
+  guidance: true
+  origin:
+  - crew#231
+  - crew#312
+§16 the_developer_sees_the_files_its:
+  guidance: true
+  origin:
+  - crew#231
+  - sprint-metrics#281
+§16 the_projects_record_comes_first:
+  guidance: true
+  origin:
+  - crew#111
+  - crew#131
+§16 what_it_reads_shares_one_ceiling:
+  guidance: true
+  origin:
+  - sprint-metrics#567
+§16 what_this_does_not_license:
+  guidance: true
+§16 why_this_is_a_rule_and:
+  guidance: true
+§16.2:
+  guidance: true
+§16.3:
+  guidance: true

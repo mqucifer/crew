@@ -36,6 +36,7 @@ import importlib
 import inspect
 import re
 import textwrap
+from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import cache
@@ -45,6 +46,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel
 
+from crew_org import rulebook
 from crew_org.permissions import load_agents
 from crew_org.rules import Rule, meanings
 
@@ -60,6 +62,8 @@ GROUPS = {
     "check": "A flow's own check sends the answer back",
     "guard": "A guard on a change sends it back",
     "edit": "An edit can't be applied, and why is sent back",
+    "repair": "The crew changes the work itself, and records it",
+    "skip": "The crew holds work back, said only in words",
     "told": "Told, and not checked by anything above",
 }
 
@@ -110,8 +114,13 @@ class Entry:
     mode: str = ""
     # A form's rule that changes the answer and never refuses it.
     repairs: bool = False
-    # What it protects, one of CATEGORIES, or "" where PLACEMENT finds none.
+    # The declared rules its code refuses by, through `rulebook.refuse()`.
+    named: set[str] = field(default_factory=set)
+    # What it protects, one of CATEGORIES: as declared, or as PLACEMENT proposes for a
+    # rule not yet declared. "" where neither places it.
     category: str = ""
+    # Its declaration in the rulebook, if it has one.
+    declared: rulebook.RuleSpec | None = None
     # For a guard: the failure class its events record.
     failure_class: str = ""
     # For a told line: the constitution sections it is, for linking by citation.
@@ -292,6 +301,33 @@ def _refusal(node: ast.AST) -> ast.Call | None:
     return None
 
 
+def _refused_by(node: ast.AST) -> str | None:
+    """The declared rule a `refuse("<id>", ...)` or `says("<id>", ...)` call names (ADR 0031)."""
+    if not (isinstance(node, ast.Call) and node.args):
+        return None
+    func = node.func
+    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+    first = node.args[0]
+    if (
+        name in ("refuse", "says")
+        and isinstance(first, ast.Constant)
+        and isinstance(first.value, str)
+    ):
+        return first.value
+    return None
+
+
+def _declared(rule: str) -> list[str]:
+    """A declared rule's messages, each as a template: its values as {}."""
+    spec = rulebook.catalog().get(rule)
+    return [re.sub(r"\{[^{}]*\}", "{}", text) for _, text in spec.messages] if spec else []
+
+
+def _named(node: ast.AST) -> set[str]:
+    """The declared rules a function refuses by, itself."""
+    return {rule for sub in ast.walk(node) if (rule := _refused_by(sub))}
+
+
 def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
     """The messages a function refuses with, its helpers' included.
 
@@ -304,6 +340,8 @@ def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
         raised = _refusal(sub)
         if raised is not None:
             found.append(_template(raised.args[0], tree))
+        elif (rule := _refused_by(sub)) is not None:
+            found += _declared(rule)
         elif depth < 2 and isinstance(sub, ast.Call):
             helper = _helper(sub, tree)
             if helper is not None and helper[0] is not node:
@@ -571,6 +609,7 @@ def _form_rules() -> list[Entry]:
                         sections=_cited_sections(doc + " " + comments + " " + text),
                     )
                     entry.checked.add(where)
+                    entry.named = _named(tree.body[0])
                     if not messages:
                         entry.says += " (repairs the answer, never refuses it)"
                         entry.repairs = True
@@ -631,24 +670,27 @@ def _inline(source: Source, within: ast.AST, group: str, prefix: str) -> list[En
     out: list[Entry] = []
     for sub in ast.walk(within):
         raised = _refusal(sub)
-        if raised is None:
+        rule = _refused_by(sub)
+        if raised is None and rule is None:
             continue
-        message = _template(raised.args[0], source.tree)
+        message = _template(raised.args[0], source.tree) if raised is not None else ""
         comments = _comments_above(source.lines, getattr(sub, "lineno", 1))
         statement = _enclosing(sub, parents, ast.If)
         if statement is not None:
             comments = _comments_above(source.lines, statement.lineno) + " " + comments
+        messages = _declared(rule) if rule is not None else [message]
         out.append(
             Entry(
-                f"{prefix}.{_slug(message.replace('{}', ' '), 5) or 'refused'}",
+                rule or f"{prefix}.{_slug(message.replace('{}', ' '), 5) or 'refused'}",
                 group,
                 where,
-                _first_sentence(message.replace("{}", "…")),
+                _first_sentence(messages[0].replace("{}", "…")) if messages else rule or "",
                 checked={where},
                 origin=refs(comments),
-                messages=[message],
-                text=message + " " + comments,
+                messages=messages,
+                text=" ".join(messages) + " " + comments,
                 sections=_cited_sections(comments),
+                named={rule} if rule else set(),
             )
         )
     return out
@@ -690,6 +732,7 @@ def _check_rules() -> list[Entry]:
                     checked={where},
                     origin=refs(doc + " " + comments),
                     messages=messages,
+                    named=_named(fn),
                     text=doc + " " + " ".join(messages),
                     sections=_cited_sections(doc + " " + comments),
                 )
@@ -700,6 +743,7 @@ def _check_rules() -> list[Entry]:
 # The call layer's own refusals: what every answer is held to before its step's rules.
 _CALL_LAYER = (
     ("crew_org.calls", "ask"),
+    ("crew_org.calls", "_runaway"),
     ("crew_org.calls", "split_blocks"),
     ("crew_org.calls", "join_blocks"),
     ("crew_org.cut_text", "check_not_cut_at_a_quote"),
@@ -732,9 +776,11 @@ def _call_rules() -> list[Entry]:
             continue
         comments = _comments_above(source.lines, fn.lineno)
         messages = _raises(fn, source.tree)
+        # A function that refuses by one declared rule is that rule.
+        named = _named(fn)
         out.append(
             Entry(
-                f"call.{name.lstrip('_')}",
+                next(iter(named)) if len(named) == 1 else f"call.{name.lstrip('_')}",
                 "call",
                 where,
                 _first_sentence(doc) or _says(messages, name),
@@ -742,14 +788,16 @@ def _call_rules() -> list[Entry]:
                 checked={where},
                 origin=refs(doc + " " + comments + " " + "\n".join(source.lines[:20])),
                 messages=messages,
+                named=named,
                 text=doc + " " + " ".join(messages),
             )
         )
     return out
 
 
-# Modules whose refusals are listed as their own kinds: a form's validators, the call layer.
-_LISTED_ELSEWHERE = ("crew_org.calls", "crew_org.cut_text")
+# Modules whose refusals are listed as their own kinds (a form's validators, the call
+# layer), or aren't a role's at all: the rulebook's own errors.
+_LISTED_ELSEWHERE = ("crew_org.calls", "crew_org.cut_text", "crew_org.rulebook")
 _FEEDBACK = "feedback"
 
 
@@ -815,9 +863,11 @@ def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source
     ...)(...)` runs it.
     """
     out: dict[tuple[str, str], tuple[Source, ast.FunctionDef]] = {}
-    todo = [(source, node, 0)]
+    # Breadth first, so each function is reached by its shortest path and its own
+    # calls are followed as deep as that allows, whatever order the code is in.
+    todo = deque([(source, node, 0)])
     while todo:
-        here, block, level = todo.pop()
+        here, block, level = todo.popleft()
         called = [
             ast.Call(func=f, args=[], keywords=[])
             for call in _calls_in(block)
@@ -835,9 +885,12 @@ def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source
 
 
 def _own_raises(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
-    return list(
-        dict.fromkeys(_template(r.args[0], tree) for r in (_refusal(n) for n in ast.walk(fn)) if r)
-    )
+    raised = [_template(r.args[0], tree) for r in (_refusal(n) for n in ast.walk(fn)) if r]
+    declared = [m for rule in sorted(_named(fn)) for m in _declared(rule)]
+    if declared:
+        # A refusal said in its declared parts has no text of its own.
+        raised = [t for t in raised if re.search(r"[A-Za-z]", t)]
+    return list(dict.fromkeys(raised + declared))
 
 
 def _findings(fn: ast.FunctionDef, tree: ast.Module) -> list[str]:
@@ -1099,6 +1152,7 @@ def _fed_back_rules() -> list[Entry]:
                             checked={where},
                             origin=refs(doc + " " + comments),
                             messages=messages,
+                            named=_named(callee),
                             failure_class=klass,
                             text=doc + " " + " ".join(messages),
                             sections=_cited_sections(doc + " " + comments),
@@ -1164,6 +1218,7 @@ def _fed_back_rules() -> list[Entry]:
                             checked={where},
                             origin=refs(doc + " " + comments),
                             messages=messages,
+                            named=_named(callee),
                             text=doc + " " + " ".join(messages),
                             sections=_cited_sections(doc + " " + comments),
                         )
@@ -1212,6 +1267,168 @@ def _changed_answers() -> list[Entry]:
                 )
             )
     return out
+
+
+def _repairs() -> list[Entry]:
+    """What the crew changes in the work by itself, by the names the code gives it.
+
+    Each is on the attempt's record, and none is refused or sent back:
+    - a project's fixers, `AUTOFIX`, with what they change outside the attempt's
+      files undone (crew#758);
+    - each allowed unsafe fix, a key of a `*_FIXES` dict, with why it may run;
+    - each looser match an edit or a block name is taken by, recorded as its
+      `fallback` (crew#734).
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        parents = _parents(source.tree)
+        for node in source.tree.body:
+            if not (isinstance(node, ast.Assign | ast.AnnAssign)):
+                continue
+            target = node.targets[0] if isinstance(node, ast.Assign) else node.target
+            if not isinstance(target, ast.Name) or node.value is None:
+                continue
+            comments = _comments_above(source.lines, node.lineno)
+            where = f"{source.path}:{target.id}"
+            if target.id == "AUTOFIX":
+                rule_id = f"repair.{_short(source)}.autofix"
+                out[rule_id] = Entry(
+                    rule_id,
+                    "repair",
+                    where,
+                    _first_sentence(comments) or "the project's fixers run before the checks",
+                    checked={where},
+                    origin=refs(comments + " " + _comments_in(source.lines, node)),
+                    repairs=True,
+                    text=comments,
+                )
+            elif target.id.endswith("_FIXES") and isinstance(node.value, ast.Dict):
+                for key, value in zip(node.value.keys, node.value.values, strict=False):
+                    if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                        continue
+                    why = _template(value, source.tree)
+                    above = _comments_above(source.lines, key.lineno)
+                    rule_id = f"repair.unsafe_fix.{key.value}"
+                    out[rule_id] = Entry(
+                        rule_id,
+                        "repair",
+                        where,
+                        f"{key.value}: {_first_sentence(why)}",
+                        checked={where},
+                        origin=refs(comments + " " + above),
+                        repairs=True,
+                        text=why + " " + comments,
+                    )
+        for found in ast.walk(source.tree):
+            if not isinstance(found, ast.Dict):
+                continue
+            for key, value in zip(found.keys, found.values, strict=False):
+                if not (isinstance(key, ast.Constant) and key.value == "fallback"):
+                    continue
+                fn = _enclosing(found, parents, ast.FunctionDef)
+                for name in _fallback_names(value, fn, source):
+                    rule_id = f"repair.fallback.{name}"
+                    where = f"{source.path}:{fn.name if fn else '<module>'}"
+                    doc = ""
+                    if fn is not None:
+                        called = [f for c in _calls_in(fn) if (f := _helper(c, source.tree))]
+                        doc = " ".join(ast.get_docstring(f[0]) or "" for f in called)
+                    out.setdefault(
+                        rule_id,
+                        Entry(
+                            rule_id,
+                            "repair",
+                            where,
+                            f"an edit or a block taken by the looser match `{name}`",
+                            checked={where},
+                            origin=refs(
+                                _comments_above(source.lines, found.lineno)
+                                + " "
+                                + (ast.get_docstring(fn) or "" if fn else "")
+                                + " "
+                                + doc
+                            ),
+                            repairs=True,
+                            text=name,
+                        ),
+                    )
+    return list(out.values())
+
+
+def _fallback_names(value: ast.expr, fn: Any, source: Source) -> list[str]:
+    """The names a `fallback` is recorded as: given there, or returned by what it calls."""
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return [value.value]
+    if fn is None:
+        return []
+    names = []
+    for call in _calls_in(fn):
+        helper = _helper(call, source.tree)
+        if helper is None:
+            continue
+        for ret in (n for n in ast.walk(helper[0]) if isinstance(n, ast.Return)):
+            last = ret.value.elts[-1] if isinstance(ret.value, ast.Tuple) else None
+            if isinstance(last, ast.Constant) and isinstance(last.value, str):
+                names.append(last.value)
+    return names
+
+
+def _skips() -> list[Entry]:
+    """Each place a flow holds a card or a pull request back, with only a sentence.
+
+    A decision like a `rules.Rule`, with no name for the event log: `result.skipped`
+    gets the card and why, as `refine_panel.builds_on_unsplit`'s hold does (crew#773).
+    What decides it is the call its branch tests.
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        parents = _parents(source.tree)
+        for call in (n for n in ast.walk(source.tree) if isinstance(n, ast.Call)):
+            func = call.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr == "append"
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "skipped"
+                and call.args
+            ):
+                continue
+            given = call.args[0]
+            why: ast.expr | None = None
+            if isinstance(given, ast.Tuple) and len(given.elts) > 1:
+                why = given.elts[1]
+            elif isinstance(given, ast.Call):
+                why = next((k.value for k in given.keywords if k.arg == "skipped"), None)
+            text = _template(why, source.tree) if why is not None else ""
+            if not re.search(r"[A-Za-z]", text):
+                continue
+            fn = _enclosing(call, parents, ast.FunctionDef)
+            branch = _enclosing(call, parents, ast.If)
+            checks = (
+                _tested_calls(source, fn, branch) if fn is not None and branch is not None else []
+            )
+            comments = _comments_above(source.lines, getattr(call, "lineno", 1))
+            if branch is not None:
+                comments = _comments_above(source.lines, branch.lineno) + " " + comments
+            rule_id = f"skip.{_short(source)}.{_slug(text.replace('{}', ' '), 6)}"
+            where = f"{source.path}:{fn.name if fn is not None else '<module>'}"
+            docs = " ".join(ast.get_docstring(f) or "" for _, f in checks)
+            entry = out.setdefault(
+                rule_id,
+                Entry(
+                    rule_id,
+                    "skip",
+                    where,
+                    _first_sentence(text.replace("{}", "…")),
+                    origin=refs(comments + " " + docs),
+                    text=text + " " + comments,
+                    sections=_cited_sections(comments),
+                ),
+            )
+            entry.checked |= {f"{s.path}:{f.name}" for s, f in checks} or {where}
+    return list(out.values())
 
 
 def _guard_rules() -> list[Entry]:
@@ -1602,12 +1819,20 @@ def entries() -> tuple[Entry, ...]:
         + _call_rules()
         + _fed_back_rules()
         + _changed_answers()
+        + _repairs()
+        + _skips()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
+    declared = rulebook.catalog()
     for entry in checks + told:
-        entry.category = place(entry)
+        entry.declared = declared.get(entry.id)
+        if entry.declared is not None:
+            entry.category = entry.declared.category
+            entry.origin |= set(entry.declared.origin)
+        else:
+            entry.category = place(entry)
     order = list(GROUPS)
     return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
 
@@ -1616,16 +1841,7 @@ def entries() -> tuple[Entry, ...]:
 
 # The categories the rules are managed by, as a linter's are (the Sponsor, 2026-10-17,
 # on crew#756): by what a rule protects, not where it lives.
-CATEGORIES = {
-    "answer_shape": "The answer parses and is complete",
-    "scope": "The work stays in the story",
-    "edits": "A change applies cleanly",
-    "evidence": "Tests prove the criteria",
-    "guards": "Safety guards",
-    "flow": "When a card moves",
-    "contracts": "What other work relies on, and declared changes to it",
-    "guidance": "Writing guidance",
-}
+CATEGORIES = rulebook.CATEGORIES
 
 # The forms whose rules are about the proof a criterion has.
 _EVIDENCE_FORMS = frozenset(
@@ -1786,14 +2002,16 @@ def _section(entry: Entry) -> int | None:
 PLACEMENT: list[tuple[str, str, Any]] = [
     (
         "flow",
-        "the crew's own decisions (`rules.Rule`): retry, return, block, hold",
-        lambda e: e.group == "decides",
+        "the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the "
+        "holds said only in words",
+        lambda e: e.group in ("decides", "skip"),
     ),
     ("answer_shape", "the call layer's refusals, for every form", lambda e: e.group == "call"),
     (
         "edits",
-        "an edit that can't be applied, or rewrites a file whole",
-        lambda e: e.group == "edit" or e.failure_class in ("EDIT", "OVERWRITE"),
+        "an edit that can't be applied, or rewrites a file whole; what the crew changes "
+        "in the work by itself",
+        lambda e: e.group in ("edit", "repair") or e.failure_class in ("EDIT", "OVERWRITE"),
     ),
     ("guards", "a path outside the repository or inside .git", lambda e: "repository" in _name(e)),
     (
@@ -1893,6 +2111,11 @@ def _cell(values: set[str] | str) -> str:
     return "<br>".join(sorted(v.replace("|", "\\|") for v in values)) or "—"
 
 
+def _guidance(entry: Entry) -> str:
+    """An empty "checked by": guidance, as declared, or a gap the first policy names."""
+    return "guidance" if entry.declared is not None and entry.declared.guidance else "—"
+
+
 def render() -> str:
     """The rules list, as committed."""
     rows = entries()
@@ -1950,7 +2173,8 @@ def render() -> str:
             lines.append(
                 f"| `{_cell(r.id)}`<br>{_cell(r.says)} | {r.category or '—'} "
                 f"| `{_cell(r.where)}` | {_cell(r.roles)} "
-                f"| {_cell(r.told)} | {_cell(r.checked)} | {_cell(r.origin)} |"
+                f"| {_cell(r.told)} "
+                f"| {_cell(r.checked) if r.checked else _guidance(r)} | {_cell(r.origin)} |"
             )
         lines.append("")
     return "\n".join(lines)
@@ -1960,3 +2184,63 @@ def write(path: Path = PAGE) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(), encoding="utf-8")
     return path
+
+
+def declarations() -> dict[str, dict[str, dict[str, Any]]]:
+    """The catalog as it should be: each rule's declaration, kept where it has one.
+
+    A rule with none is proposed one: its category by PLACEMENT, its owner when one
+    role meets it, its origin from what its code cites, and the guidance label when
+    it's told and nothing checks it by name. A declaration the code no longer has
+    is left out, so writing this removes it.
+    """
+    out: dict[str, dict[str, dict[str, Any]]] = {c: {} for c in [*CATEGORIES, ""]}
+    for entry in entries():
+        spec = entry.declared
+        if spec is not None:
+            fields: dict[str, Any] = {
+                "owner": spec.owner,
+                "origin": list(spec.origin),
+                "guidance": spec.guidance,
+                "messages": dict(spec.messages),
+                "description": spec.description,
+                "told_in": spec.told_in,
+            }
+        else:
+            fields = {
+                "owner": next(iter(entry.roles)) if len(entry.roles) == 1 else "",
+                "origin": sorted(entry.origin),
+                "guidance": entry.group == "told"
+                and not any(not c.startswith("maybe ") for c in entry.checked),
+            }
+        out[entry.category][entry.id] = fields
+    return {c: rules for c, rules in out.items() if rules}
+
+
+# The declarations the last `write_declarations` dropped: said, never silently lost.
+dropped: list[str] = []
+
+
+def write_declarations() -> list[Path]:
+    """Declare every rule that has no declaration yet, and drop those the code lost.
+
+    What's declared is read before any file is rewritten: a decision is never lost
+    to the rewrite.
+    """
+    declared = declarations()
+    kept = {rule for rules in declared.values() for rule in rules}
+    dropped.extend(sorted(set(rulebook.catalog()) - kept))
+    for path in rulebook.CATALOG.glob("*.yaml"):
+        if path != rulebook.BUDGET:
+            path.unlink()
+    return rulebook.write(declared)
+
+
+def guidance_counts() -> dict[str, int]:
+    """How many guidance lines each role is told: what its budget is held to."""
+    counts: dict[str, int] = {}
+    for entry in entries():
+        if entry.declared is not None and entry.declared.guidance:
+            for role in entry.roles:
+                counts[role] = counts.get(role, 0) + 1
+    return dict(sorted(counts.items()))

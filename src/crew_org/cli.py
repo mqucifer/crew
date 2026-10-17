@@ -1856,6 +1856,11 @@ def rules_command(
     since: str = typer.Option(
         "", "--since", help="An earlier rules.json: also report what changed since it."
     ),
+    declare: bool = typer.Option(
+        False,
+        "--declare",
+        help="Declare each rule the rulebook lacks, and drop declarations the code lost.",
+    ),
 ) -> None:
     """Write every rule a role meets into docs/reference/rules.md (crew#756).
 
@@ -1865,6 +1870,12 @@ def rules_command(
     from crew_org import rule_list, rule_report  # noqa: PLC0415
     from crew_org.log import code_version  # noqa: PLC0415
 
+    if declare:
+        for path in rule_list.write_declarations():
+            console.print(f"wrote {path.relative_to(rule_list.ROOT)}")
+        for rule in rule_list.dropped:
+            console.print(f"[yellow]dropped[/] {rule}: the code no longer has it")
+        rule_list.entries.cache_clear()
     console.print(f"wrote {rule_list.write().relative_to(rule_list.ROOT)}")
     if not events:
         return

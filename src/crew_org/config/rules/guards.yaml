@@ -1,0 +1,145 @@
+# Safety guards. Declared once each (crew#756, ADR 0031): change a rule here.
+check.delivery.workflows_not_permitted:
+  origin:
+  - crew#279
+  owner: Developer
+check.design.image_problems:
+  origin:
+  - crew#403
+  owner: Architect
+check.design.needs_an_image:
+  origin:
+  - crew#516
+  owner: Architect
+check.design.shelled:
+  origin:
+  - crew#690
+  owner: Architect
+check.design.undeclared:
+  origin:
+  - crew#335
+  owner: Architect
+check.design.unlocked:
+  origin:
+  - crew#690
+  owner: Architect
+form.CriterionTest.stays_in_the_repository:
+  owner: Developer
+form.FileEdit.stays_in_the_repository:
+  origin:
+  - crew#744
+  owner: Developer
+form.FileWrite.stays_in_the_repository:
+  owner: Developer
+form.Implementation.deleted_stay_in_the_repository:
+  owner: Developer
+form.Move.stays_in_the_repository:
+  owner: Developer
+form.PlannedFile.in_the_repository:
+  owner: Developer
+form.TextEdit.stays_in_the_repository:
+  origin:
+  - crew#204
+  owner: Developer
+guard.bounds.out_of_bounds:
+  owner: Developer
+told.delivery_crew.the_repository_below_may_show_some:
+  guidance: true
+  owner: Developer
+told.deploy_review_crew.block_the_change_when_what_it:
+  guidance: true
+  owner: DevOps Engineer
+told.deploy_review_crew.dont_raise_a_new_one_late:
+  guidance: true
+  owner: DevOps Engineer
+told.deploy_review_crew.that_holds_even_when_the_line:
+  guidance: true
+  owner: DevOps Engineer
+told.deploy_review_crew.where_a_mechanical_check_would_catch:
+  guidance: true
+  owner: DevOps Engineer
+told.design_crew.also_report_in_undeclared_every_choice:
+  guidance: true
+  owner: Code Reviewer
+told.design_crew.it_is_being_revisited_because_change:
+  guidance: true
+  owner: Architect
+told.design_crew.propose_this_projects_design_language_dependencies:
+  guidance: true
+  owner: Architect
+told.design_crew.the_crews_tools_differ_by_language:
+  guidance: true
+  owner: Architect
+told.devops_engineer.you_never_change_a_real_machine:
+  guidance: true
+  owner: DevOps Engineer
+told.form.DesignProposal.autofix:
+  guidance: true
+  owner: Architect
+told.form.DesignProposal.ci_checks:
+  guidance: true
+  owner: Architect
+told.form.DesignProposal.parts:
+  guidance: true
+  owner: Architect
+told.form.DesignProposal.sandbox:
+  guidance: true
+  owner: Architect
+told.form.DesignProposal.sandbox_image:
+  guidance: true
+  owner: Architect
+told.form.DesignProposal.setup:
+  guidance: true
+  owner: Architect
+§14 when_no_container_engine_is_available:
+  guidance: true
+  owner: DevOps Engineer
+§19 a_digest_cant_be_invented:
+  guidance: true
+  origin:
+  - crew#364
+§19.1:
+§19.5:
+  origin:
+  - crew#140
+§19.6:
+  guidance: true
+§19.8:
+  guidance: true
+  origin:
+  - crew#494
+  - sprint-metrics#433
+§19.9:
+§20 guardrails:
+  guidance: true
+  owner: DevOps Engineer
+§20 it_proposes_the_sponsor_applies:
+  guidance: true
+  owner: DevOps Engineer
+§20 no_secrets_in_infra:
+  guidance: true
+  owner: DevOps Engineer
+§20 nothing_it_reviews_runs_outside_the:
+  guidance: true
+  owner: DevOps Engineer
+§20 post_merge_watcher:
+  guidance: true
+  origin:
+  - crew#336
+  owner: DevOps Engineer
+§20 release_publish_check:
+  guidance: true
+  origin:
+  - crew#340
+  owner: DevOps Engineer
+§20 stack_health:
+  guidance: true
+  origin:
+  - crew#347
+  owner: DevOps Engineer
+§20 what_it_owns:
+  guidance: true
+  owner: DevOps Engineer
+§20 what_runs_today_as_code_each:
+  guidance: true
+  owner: DevOps Engineer

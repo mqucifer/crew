@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
+from crew_org.rulebook import refuse
 from crew_org.tools.sandbox import HOW_IT_RUNS
 
 
@@ -172,10 +173,7 @@ class DesignProposal(BaseModel):
     @classmethod
     def _enforces_something(cls, value: list[Choice]) -> list[Choice]:
         if not value:
-            raise ValueError(
-                "a design names at least one check: without one, nothing enforces the "
-                "definition of done"
-            )
+            refuse("form.DesignProposal.enforces_something")
         return value
 
 

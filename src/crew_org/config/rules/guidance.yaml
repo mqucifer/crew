@@ -1,0 +1,60 @@
+# Writing guidance. Declared once each (crew#756, ADR 0031): change a rule here.
+told.code_reviewer.you_never_ask_does_it_work:
+  guidance: true
+  owner: Code Reviewer
+told.code_reviewer.you_reject_vague_praise_and_vague:
+  guidance: true
+  owner: Code Reviewer
+told.form.Retro.summary:
+  guidance: true
+  owner: Scrum Master
+told.retro_crew.a_cause_seen_on_more_than:
+  guidance: true
+  owner: Scrum Master
+told.retro_crew.a_larger_escalation_budget_is_never:
+  guidance: true
+  owner: Scrum Master
+told.retro_crew.a_problem_one_of_these_fixed:
+  guidance: true
+  origin:
+  - crew#174
+  owner: Scrum Master
+told.retro_crew.give_summary_one_or_two_sentences:
+  guidance: true
+  owner: Scrum Master
+told.retro_crew.the_crew_lays_the_retro_out:
+  guidance: true
+  owner: Scrum Master
+told.scrum_master.never_propose_a_larger_escalation_budget:
+  guidance: true
+  owner: Scrum Master
+told.scrum_master.you_report_you_do_not_decide:
+  guidance: true
+  owner: Scrum Master
+told.scrum_master.you_say_what_happened_including_what:
+  guidance: true
+  owner: Scrum Master
+told.senior_engineer.a_conclusion_reported_as_tested_that:
+  guidance: true
+  owner: Senior Engineer
+told.senior_engineer.a_finding_you_cant_tie_to:
+  guidance: true
+  owner: Senior Engineer
+told.senior_engineer.diagnose_the_crews_own_code_say:
+  guidance: true
+  owner: Senior Engineer
+told.senior_engineer.you_read_the_crews_code_and:
+  guidance: true
+  owner: Senior Engineer
+§8 branches:
+  guidance: true
+  owner: Code Reviewer
+§8 commits:
+  guidance: true
+  owner: Code Reviewer
+§8 nothing_is_ever_pushed_to_main:
+  guidance: true
+  owner: Code Reviewer
+§8 pull_requests:
+  guidance: true
+  owner: Code Reviewer

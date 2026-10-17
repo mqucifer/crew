@@ -73,6 +73,7 @@ def test_each_kind_of_rule_is_found():
     assert "check.design.shelled" in found
     assert "edit.workspace.outside_definitions" in found
     assert "guard.overwrite.overwrites_existing" in found
+    assert "skip.refine_panel.waits_for_to_be_split_it" in found, "a hold said only in words"
     assert any(i.startswith("told.developer.") for i in found)
     assert any(i.startswith("told.delivery_crew.") for i in found)
     assert "§19.4" in found or any("§19.4" in t for e in rule_list.entries() for t in e.told)
@@ -125,3 +126,12 @@ def test_every_site_in_the_told_table_places_a_line():
             assert any(f"agents.yaml:{name}." in s for s in sites if s), site
         else:
             assert any(f"/{module}.py:{name}" in s for s in sites if s), site
+
+
+def test_a_hold_said_only_in_words_is_checked_by_what_its_branch_tests():
+    """crew#773's hold: an epic waits for a sibling it builds on, by builds_on_unsplit."""
+    hold = next(
+        e for e in rule_list.entries() if e.id == "skip.refine_panel.waits_for_to_be_split_it"
+    )
+    assert hold.checked == {"src/crew_org/flows/refine_panel.py:builds_on_unsplit"}
+    assert hold.category == "flow" and "crew#773" in hold.origin
