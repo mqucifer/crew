@@ -132,6 +132,8 @@ class Entry:
     text: str = ""
     # For a merged rule: each case, by the name the code still gives it, and where.
     cases: dict[str, str] = field(default_factory=dict)
+    # For a merged form rule: each case's form, mode and fields, to read refusals by.
+    places: list[tuple[str, str, frozenset[str]]] = field(default_factory=list)
 
 
 # --- reading the source -----------------------------------------------------------------
@@ -2084,6 +2086,8 @@ def _merged(found: list[Entry], declared: dict[str, rulebook.RuleSpec]) -> list[
             )
             out.append(merged)
         merged.cases[entry.id] = entry.where
+        if entry.form:
+            merged.places.append((entry.form, entry.mode, frozenset(entry.fields)))
         for name in ("roles", "told", "checked", "origin", "named", "sections"):
             getattr(merged, name).update(getattr(entry, name))
         merged.messages += [m for m in entry.messages if m not in merged.messages]

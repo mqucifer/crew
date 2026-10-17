@@ -158,7 +158,7 @@ class Story(BaseModel):
     @classmethod
     def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
         if len(value) < MIN_CRITERIA:
-            refuse("form.Story.enough_criteria", count=MIN_CRITERIA)
+            refuse("form.story.enough_criteria", count=MIN_CRITERIA)
         return value
 
 
@@ -405,7 +405,7 @@ class AnswerRow(BaseModel):
     def _an_id(cls, value: str) -> str:
         found = value.strip().upper()
         if found and not _is_record_id(found):
-            refuse("form.AnswerRow.an_id")
+            refuse("form.row.an_id")
         return found
 
 
@@ -482,7 +482,7 @@ class SponsorRow(BaseModel):
     def _an_id(cls, value: str) -> str:
         found = value.strip().upper()
         if found and not _is_record_id(found):
-            refuse("form.SponsorRow.an_id")
+            refuse("form.row.an_id")
         return found
 
 
@@ -897,7 +897,7 @@ class RepairedStory(BaseModel):
     @classmethod
     def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
         if len(value) < MIN_CRITERIA:
-            refuse("form.RepairedStory.enough_criteria", count=MIN_CRITERIA)
+            refuse("form.story.enough_criteria", count=MIN_CRITERIA)
         return value
 
     @field_validator("pinned_behaviour")

@@ -28,8 +28,10 @@ import ast
 from dataclasses import dataclass
 from enum import StrEnum
 
+from crew_org.rulebook import Refusal, refuse
 
-class EditError(ValueError):
+
+class EditError(Refusal):
     """An edit that cannot be applied, described so the model can fix it."""
 
 
@@ -160,7 +162,7 @@ def apply_edit(source: str, edit: Edit) -> str:
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
-        raise EditError(f"the file does not parse: {exc}") from exc
+        refuse("edit.ast_edit.apply_edit", "unparsed", kind=EditError, error=exc)
 
     lines = source.splitlines()
     definitions = _definitions(tree)
@@ -168,7 +170,7 @@ def apply_edit(source: str, edit: Edit) -> str:
     if edit.operation is Operation.ADD_IMPORT:
         statement = edit.source.strip()
         if not statement:
-            raise EditError("add_import needs the import statement as its source")
+            refuse("edit.ast_edit.apply_edit", "no_import", kind=EditError)
         if any(line.strip() == statement for line in lines):
             return source  # already there; adding it twice is not an error
         at = _import_insertion_point(tree, lines)
@@ -181,7 +183,7 @@ def apply_edit(source: str, edit: Edit) -> str:
                 return source  # already there, as sent
             if edit.replaces_existing:
                 return apply_edit(source, Edit(Operation.REPLACE, edit.target, edit.source))
-            raise EditError(f"{edit.target!r} already exists — use replace, or choose another name")
+            refuse("edit.ast_edit.apply_edit", "exists", kind=EditError, target=repr(edit.target))
         body = edit.source.strip("\n")
         # Before the file's `__main__` block, not after it: run as a script, the
         # block calls into the module before anything below it is defined.
@@ -197,7 +199,7 @@ def apply_edit(source: str, edit: Edit) -> str:
         class_name = edit.target.split(".")[0]
         node = definitions.get(class_name)
         if not isinstance(node, ast.ClassDef):
-            raise EditError(f"no class named {class_name!r} to add a method to")
+            refuse("edit.ast_edit.apply_edit", "no_class", kind=EditError, name=repr(class_name))
         _start, end = _span(node)
         indent = _indent_of(lines[node.body[0].lineno - 1]) if node.body else "    "
         body = _reindent(edit.source, indent)
@@ -206,10 +208,12 @@ def apply_edit(source: str, edit: Edit) -> str:
     node = definitions.get(edit.target)
     if node is None:
         known = ", ".join(sorted(definitions)[:12]) or "nothing"
-        raise EditError(
-            f"no definition named {edit.target!r}. This file defines: {known}. A file's "
-            "imports and its `if __name__` block have no name: to change those, quote the "
-            "lines in `text_edits` (#204)."
+        refuse(
+            "edit.ast_edit.apply_edit",
+            "no_definition",
+            kind=EditError,
+            target=repr(edit.target),
+            known=known,
         )
 
     start, end = _span(node)
@@ -220,7 +224,7 @@ def apply_edit(source: str, edit: Edit) -> str:
     indent = _indent_of(lines[start])
     body = _reindent(edit.source, indent)
     if not body.strip():
-        raise EditError(f"replacing {edit.target!r} with nothing — use delete if that is meant")
+        refuse("edit.ast_edit.apply_edit", "empty", kind=EditError, target=repr(edit.target))
     return "\n".join(lines[:start] + body.splitlines() + lines[end:]) + "\n"
 
 

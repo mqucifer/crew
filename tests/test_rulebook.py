@@ -141,7 +141,7 @@ def test_a_form_tells_the_rules_that_check_it():
 
     shown = calls.form_text(ProductAnswer.model_json_schema())
     product = declared()["form.ProductAnswer.one_or_the_other"]
-    row_id = declared()["form.AnswerRow.an_id"]
+    row_id = declared()["form.row.an_id"]
     assert f"**ProductAnswer**: {product.description}" in shown
     replaces = next(line for line in shown.splitlines() if line.startswith("- `replaces`"))
     assert replaces.endswith(row_id.description)

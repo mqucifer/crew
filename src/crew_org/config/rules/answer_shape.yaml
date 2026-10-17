@@ -69,20 +69,12 @@ check.settle_crew.check_design_covers:
     unknown: '{questions} aren''t questions left for you. '
   owner: Architect
   told_in: DesignSettlement
-check.settle_crew.check_design_cut:
+check.settle_crew.cut:
   description: 'Refused if a cell reaches its length limit: one at the limit was cut off.'
   messages:
     default: 'These cells reached their length limit and were cut off: {cells}. Say each in fewer words,
       well under the limit, and finish the thought.'
-  owner: Architect
-  told_in: DesignSettlement
-check.settle_crew.check_not_cut:
-  description: 'Refused if a cell reaches its length limit: one at the limit was cut off.'
-  messages:
-    default: 'These cells reached their length limit and were cut off: {cells}. Say each in fewer words,
-      well under the limit, and finish the thought.'
-  owner: Product Owner
-  told_in: Settlement
+  told_in: Settlement, DesignSettlement
 check.settle_crew.not_cut_at_a_quote:
   description: Refused if a cell stops where a double-quoted value would begin.
   messages:
@@ -165,12 +157,6 @@ config.const.settle_crew.QUESTION_CHARS:
 config.const.settle_crew.REASON_CHARS:
 config.const.settle_crew.SOURCE_CHARS:
 config.const.stepped.MAX_FILES:
-form.AnswerRow.an_id:
-  description: When set, refused unless it's an ID, like R3 or Q1.
-  messages:
-    default: name a row or question of the epic's record by its ID, like R3 or Q1
-  owner: Product Owner
-  told_in: AnswerRow.replaces
 form.Conclusion.says_something:
   description: Refused if it has no rows, open questions, items for infra or dismissals.
   messages:
@@ -274,18 +260,21 @@ form.Settlement.one_or_the_other:
   told_in: Settlement
 form.Settlement.stripped:
   owner: Product Owner
-form.SponsorRow.an_id:
-  description: When set, refused unless it's an ID, like R3 or Q1.
-  messages:
-    default: name a row or question of the epic's record by its ID, like R3 or Q1
-  owner: Product Owner
-  told_in: SponsorRow.replaces
 form.Story.row_ids:
   description: Refused unless each is a row's ID, like R1.
   messages:
     default: '{ids}: name rows of the conclusion by ID, like R1'
   owner: Business Analyst
   told_in: Story.follows
+form.row.an_id:
+  cases:
+  - form.AnswerRow.an_id
+  - form.SponsorRow.an_id
+  description: When set, refused unless it's an ID, like R3 or Q1.
+  messages:
+    default: name a row or question of the epic's record by its ID, like R3 or Q1
+  owner: Product Owner
+  told_in: AnswerRow.replaces, SponsorRow.replaces
 told.form.AnswerRow.decision:
   guidance: true
   owner: Product Owner

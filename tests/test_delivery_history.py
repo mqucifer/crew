@@ -711,3 +711,14 @@ def test_every_pull_is_paged_through_with_the_labels_of_the_issues_it_closes():
         (125, []),
         (126, []),
     ]
+
+
+def test_a_declared_rules_message_is_one_the_crew_may_publish():
+    """crew#756 moved the checks' messages into the rulebook: their first clause is still
+    the crew's own fixed text, with names filled in (ADR 0020)."""
+    from crew_org.packages.reasons import published_reason
+    from crew_org.rulebook import says
+
+    shown = says("form.path.stays_in_the_repository", "escapes", path="'../etc/passwd'")
+    assert published_reason(shown) == "'../etc/passwd' escapes the repository"
+    assert published_reason(says("form.QAVerdict.a_verdict_or_an_ask")) is not None

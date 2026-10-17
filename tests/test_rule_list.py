@@ -44,7 +44,8 @@ def test_every_validator_on_a_form_a_role_answers_is_listed():
         for dec in [*decorators.field_validators.values(), *decorators.model_validators.values()]:
             func = getattr(dec.func, "__func__", dec.func)
             owner, _, name = func.__qualname__.rpartition(".")
-            assert f"form.{owner}.{name.lstrip('_')}" in ids()
+            # A validator merged into another rule is listed as that rule (crew#756).
+            assert rulebook.rule_of(f"form.{owner}.{name.lstrip('_')}") in ids()
 
 
 def test_every_refusal_a_crew_step_raises_is_on_the_list():
@@ -81,7 +82,7 @@ def test_each_kind_of_rule_is_found():
 
 
 def test_a_field_description_tells_the_rule_that_checks_that_field():
-    entry = next(e for e in rule_list.entries() if e.id == "form.Story.enough_criteria")
+    entry = next(e for e in rule_list.entries() if e.id == "form.story.enough_criteria")
     assert "`Story.acceptance_criteria`'s description" in entry.told
     assert entry.roles == {"Business Analyst"}
 
@@ -111,7 +112,7 @@ def test_a_rule_is_placed_by_what_it_protects():
     placed = {e.id: e.category for e in rule_list.entries()}
     assert placed["call.schema"] == "answer_shape"
     assert placed["hold.waits_for_earlier_work"] == "flow"
-    assert placed["form.FileWrite.stays_in_the_repository"] == "guards"
+    assert placed["form.path.stays_in_the_repository"] == "guards"
     assert placed["form.CriterionTest.is_that_test"] == "evidence"
     assert placed["edit.workspace.plan_text_edits"] == "edits"
     assert placed["guard.regression.broken_contracts"] == "contracts"
