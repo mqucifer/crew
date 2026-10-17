@@ -201,7 +201,17 @@ class EventSink:
                 fn(event)
 
     def note(self, kind: EventKind, summary: str, **detail: Any) -> None:
-        self.emit(CrewEvent(kind=kind, summary=summary, detail=detail))
+        # The card is the event's, as `emit` takes it: kept only in the detail, a count
+        # by card missed every note (crew#756). The detail keeps it too, for old readers.
+        card = detail.get("card")
+        self.emit(
+            CrewEvent(
+                kind=kind,
+                card=card if isinstance(card, int) else None,
+                summary=summary,
+                detail=detail,
+            )
+        )
 
     def replay(self) -> list[CrewEvent]:
         """Read back this sink's own log.

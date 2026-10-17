@@ -44,3 +44,16 @@ def test_sink_without_a_path_keeps_no_record(tmp_path):
     sink = EventSink(None)
     sink.note(EventKind.NOTE, "ephemeral")
     assert sink.replay() == []
+
+
+def test_a_notes_card_is_the_events_card():
+    """crew#756: a hold note kept its card only in its detail, so a count by card missed it."""
+    from crew_org.events import EventKind, EventSink
+
+    seen = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    sink.note(EventKind.NOTE, "#7 waits for #6 in the same epic", card=7, repo="sprint-metrics")
+    sink.note(EventKind.NOTE, "no card here")
+    assert (seen[0].card, seen[0].detail["card"]) == (7, 7)
+    assert seen[1].card is None
