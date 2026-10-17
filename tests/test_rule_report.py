@@ -138,3 +138,15 @@ def test_a_second_report_shows_only_rows_that_changed():
     text = rule_report.changes(before, after)
     assert "1 added, 1 removed, 1 changed" in text
     assert f"`{gone}`" in text and "`told.new.rule`" in text and f"`{changed}` | roles" in text
+
+
+def test_a_rule_a_refusal_names_twice_counts_once_with_its_time():
+    reason = (
+        "text_edits.0: Value error, the edit to 'a.md' changes nothing; "
+        "text_edits.1: Value error, the edit to 'b.md' changes nothing"
+    )
+    report = rule_report.count(
+        [event("llm.refused", {"output_schema": "Rework:x", "reason": reason, "duration_s": 60})]
+    )
+    fired = report.fired["form.TextEdit.changes_something"]
+    assert (fired.events, fired.seconds) == (1, 60)

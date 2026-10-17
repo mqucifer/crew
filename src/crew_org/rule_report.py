@@ -272,7 +272,12 @@ def count(events: Iterable[dict[str, Any]], entries: Iterable[Entry] | None = No
             for key in ((role, repo), (role, "")):
                 time[key].refused_calls += 1
                 time[key].refused_seconds += float(detail.get("duration_s") or 0)
+        # A rule once per event: a refusal can name it for several fields, and its
+        # time was spent once.
+        found: dict[str | None, str] = {}
         for rule, how in matcher.match(event):
+            found.setdefault(rule, how)
+        for rule, how in found.items():
             if rule is None:
                 unmatched[_shape(event)] += 1
                 continue
