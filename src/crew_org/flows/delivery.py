@@ -33,7 +33,7 @@ from crew_org.escalation import (
     LocalFailure,
     utcnow,
 )
-from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed, first_hold, held
 from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
@@ -45,6 +45,7 @@ from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved, r
 from crew_org.flows.moves import move_card
 from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
+from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
@@ -55,9 +56,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
 from crew_org.tools.repo_read import Reader
-from crew_org.work_types import BUG, DELIVERED
-
-STORY_TYPE = "Story"
+from crew_org.work_types import BUG, DELIVERED, open_in
 
 # Marks the comment a repair leaves on the pull request it updated, so the
 # thread says why a new commit appeared rather than leaving the reviewer to
@@ -395,6 +394,7 @@ def reconcile_orphans(
                 card=number,
                 frm=IN_PROGRESS,
                 summary=f"already has PR #{open_prs[branch]} — moved to review",
+                rule="decision.delivery.reconcile_orphans",
             )
             continue
 
@@ -422,12 +422,8 @@ def sprint_stories(cards: list[Card], sprint: str, *, repos: set[str] | None = N
     return sorted(
         (
             c
-            for c in cards
-            if c.status == SPRINT_BACKLOG
-            and c.work_type in DELIVERED
-            and c.state != "CLOSED"
-            and (c.sprint == sprint or sprint is None)
-            and (repos is None or c.repo in repos)
+            for c in open_in(cards, SPRINT_BACKLOG, repos=repos)
+            if c.sprint == sprint or sprint is None
         ),
         key=lambda c: c.number or 0,
     )
@@ -557,37 +553,14 @@ def prior_context(
 
 
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
-    """The earlier story in this story's epic that has not landed yet.
+    """The first earlier story in this story's epic that has not landed yet.
 
-    Stories in one epic extend each other. `In Progress` has a WIP limit of 3,
-    so without this the crew claims three siblings at once, each branching from
-    a default branch that does not yet contain the others.
-
-    sprint-metrics #31 created `scrape.py` with an HTTP server on it; #32, whose
-    story was "handle unavailable data **at the scrape endpoint**", was claimed
-    100 seconds later, could not see `scrape.py`, and built a second server in
-    another module. Both passed their own tests.
-
-    Earlier means lower card number, which is the order the Business Analyst
-    proposed the stories: `refine_epics` creates their issues in that order, so
-    the numbers ascend in it. Landed means Done or closed — an open pull request
-    is not in anyone's base.
+    `In Progress` has a WIP limit of 3, so without this the crew claims three
+    siblings at once, each branching from a default branch that does not yet
+    contain the others. Which siblings are earlier is `siblings`' reading, the
+    one sprint planning reads too.
     """
-    if story.parent is None:
-        return None
-    blockers = [
-        c
-        for c in cards
-        # The repository as well as the parent number. Both are plain numbers,
-        # so a story in one repository could be held back by a sibling of an
-        # epic in another whenever the epic numbers happened to line up.
-        if c.repo == story.repo
-        and c.parent == story.parent
-        and c.work_type == STORY_TYPE
-        and (c.number or 0) < (story.number or 0)
-        and c.state != "CLOSED"
-        and c.status != DONE
-    ]
+    blockers = unlanded_earlier_siblings(cards, story)
     return min(blockers, key=lambda c: c.number or 0) if blockers else None
 
 
@@ -962,6 +935,7 @@ def deliver_story(
                 repo=repo,
                 card=number,
                 paths=list(conflict.files),
+                rule="delivery.conflict_with_main",
             )
     # The project's own answers (#131). A record that exists but can't be read
     # stops the card: its rules are unknown, and working on without them would
@@ -1685,6 +1659,7 @@ def deliver_story(
                     card=number,
                     summary="local repair exhausted",
                     failure_class="VERIFY",
+                    detail={"rule": Rule.ESCALATION_ALLOWED},
                 )
             )
             result = claude_code.escalate(
@@ -1794,6 +1769,7 @@ def deliver_story(
                 role="Developer",
                 card=number,
                 summary=f"already done: {len(done)} criteria met by existing code",
+                detail={"rule": "decision.delivery.outcome"},
             )
         )
         return outcome
@@ -1891,7 +1867,10 @@ def not_reproduced(card: Card, worktree: Path, implementation: Any, sink: EventS
     found = reproduction.reproduces(worktree, merged, tests)
     if found.unchecked:
         sink.note(
-            EventKind.NOTE, f"reproduction not checked: {found.unchecked}"[:160], card=card.number
+            EventKind.NOTE,
+            f"reproduction not checked: {found.unchecked}"[:160],
+            card=card.number,
+            rule="guard.not_reproduced",
         )
         return ""
     return found.refusal()
@@ -2281,6 +2260,7 @@ def _deliver_and_move(
             EventKind.NOTE,
             f"#{card.number} interrupted by a service, not the story: tried again next pass",
             card=card.number,
+            rule="decision.delivery.interrupted",
         )
         result.interrupted.append(card.number or 0)
         return
@@ -2296,6 +2276,7 @@ def _deliver_and_move(
             card=card.number,
             frm=IN_PROGRESS,
             summary="already done — every criterion met by existing code",
+            rule="decision.delivery.outcome",
         )
         counts[IN_PROGRESS] -= 1
         counts[QAING] = counts.get(QAING, 0) + 1
@@ -2318,6 +2299,7 @@ def _deliver_and_move(
             card=card.number,
             frm=IN_PROGRESS,
             summary=f"delivered — PR #{outcome.pr}",
+            rule="decision.delivery.outcome",
         )
         counts[IN_PROGRESS] -= 1
         counts[REVIEWING] = counts.get(REVIEWING, 0) + 1
@@ -2341,6 +2323,7 @@ def _deliver_and_move(
         cards=board.cards(),
         comment=outcome.returned,
     ):
+        held("decision.delivery.outcome", repo=card.repo or repo, card=card.number)
         counts[IN_PROGRESS] -= 1
         result.returned.append((card.number or 0, card.parent or 0))
     else:
@@ -2456,6 +2439,7 @@ def deliver(
     returned = needs_rework(issues, cards, repo=repo)
     for card in returned:
         if repos is not None and (card.repo or repo) not in repos:
+            held("decision.delivery.sprint_stories", repo=card.repo or repo, card=card.number)
             continue
         waiting = rebuild_waits_for(issues, cards, card, repo=card.repo or repo)
         if waiting is not None:
@@ -2468,12 +2452,17 @@ def deliver(
                 card=card.number,
                 pull=other,
                 files=paths,
+                rule="decision.delivery.waits_on_files",
             )
             continue
         if card.status == REVIEWING:
             verdict = rules.may_move(frm=REVIEWING, to=IN_PROGRESS, counts=counts)
             if not verdict.allowed:
-                sink.note(EventKind.NOTE, f"#{card.number} needs re-work: {verdict.reason}")
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{card.number} needs re-work: {verdict.reason}",
+                    rule="decision.delivery.rework",
+                )
                 continue
             move_card(
                 board,
@@ -2484,6 +2473,7 @@ def deliver(
                 card=card.number,
                 frm=REVIEWING,
                 summary="changes requested — returned for re-work",
+                rule="decision.delivery.rework",
             )
             counts[REVIEWING] = max(counts.get(REVIEWING, 1) - 1, 0)
             counts[IN_PROGRESS] = counts.get(IN_PROGRESS, 0) + 1
@@ -2511,20 +2501,29 @@ def deliver(
     claimed = 0
     for card in sprint_stories(cards, sprint, repos=repos):
         if limit is not None and claimed >= limit:
+            held("decision.delivery.limit", repo=card.repo or repo, card=card.number)
             break
 
         blocker = held_by_a_sibling(cards, card)
         if blocker is not None:
             result.waiting_on_a_sibling.append((card.number or 0, blocker.number or 0))
-            sink.note(
-                EventKind.NOTE,
-                f"#{card.number} waits for #{blocker.number} in the same epic",
-                card=card.number,
-                # A card number alone names no repository (crew#752).
-                repo=card.repo or repo,
-                waits_for=blocker.number,
+            held(Rule.HOLD_SIBLING, repo=card.repo or repo, card=card.number)
+            if first_hold(
+                sink,
+                sprint=sprint,
                 rule=Rule.HOLD_SIBLING,
-            )
+                repo=card.repo or repo,
+                card=card.number,
+            ):
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{card.number} waits for #{blocker.number} in the same epic",
+                    card=card.number,
+                    # A card number alone names no repository (crew#752).
+                    repo=card.repo or repo,
+                    waits_for=blocker.number,
+                    rule=Rule.HOLD_SIBLING,
+                )
             continue
         try:
             body = issues.get(card.repo or repo, card.number or 0).get("body") or ""
@@ -2533,14 +2532,22 @@ def deliver(
         needed = held_by_what_it_builds_on(cards, card, body)
         if needed is not None:
             result.waiting_on_a_sibling.append((card.number or 0, needed.number or 0))
-            sink.note(
-                EventKind.NOTE,
-                f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
-                card=card.number,
-                repo=card.repo or repo,
-                waits_for=needed.number,
+            held(Rule.HOLD_BUILDS_ON, repo=card.repo or repo, card=card.number)
+            if first_hold(
+                sink,
+                sprint=sprint,
                 rule=Rule.HOLD_BUILDS_ON,
-            )
+                repo=card.repo or repo,
+                card=card.number,
+            ):
+                sink.note(
+                    EventKind.NOTE,
+                    f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
+                    card=card.number,
+                    repo=card.repo or repo,
+                    waits_for=needed.number,
+                    rule=Rule.HOLD_BUILDS_ON,
+                )
             continue
 
         verdict = rules.may_move(frm=SPRINT_BACKLOG, to=IN_PROGRESS, counts=counts)
@@ -2575,6 +2582,7 @@ def deliver(
             default_branch=default_branch,
         )
         if result.rate_limited:
+            held("decision.delivery.rate_limited", repo=card.repo or repo, card=card.number)
             break
     return result
 

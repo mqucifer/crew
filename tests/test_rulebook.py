@@ -143,3 +143,10 @@ def test_a_form_tells_the_rules_that_check_it():
     assert f"**ProductAnswer**: {product.description}" in shown
     replaces = next(line for line in shown.splitlines() if line.startswith("- `replaces`"))
     assert replaces.endswith(row_id.description)
+
+
+def test_each_case_of_a_merged_rule_is_one_the_code_has():
+    """crew#756: a case is a merged rule's name in the code; one the code lost goes."""
+    found = {case for e in rule_list.entries() for case in e.cases}
+    for spec in declared().values():
+        assert not set(spec.cases) - found, (spec.id, sorted(set(spec.cases) - found))

@@ -16,7 +16,7 @@ from crew_org import log
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
-from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
@@ -187,6 +187,9 @@ def review_open_pulls(
             author = (pull.get("user") or {}).get("login", "")
 
             if pull.get("draft"):
+                held(
+                    "skip.review.draft", repo=repo, card=story.number if story is not None else None
+                )
                 result.skipped.append(ReviewOutcome(pr=number, approved=False, skipped="draft"))
                 continue
 
@@ -209,6 +212,7 @@ def review_open_pulls(
                         card=card.number,
                         frm=REVIEWING,
                         summary="its approval stands at this head",
+                        rule="decision.review.verdict",
                     )
                 result.skipped.append(
                     ReviewOutcome(
@@ -306,7 +310,7 @@ def review_open_pulls(
                             role="DevOps Engineer",
                             card=story.number if story is not None else None,
                             summary=str(exc)[:80],
-                            detail={"pr": number},
+                            detail={"pr": number, "rule": "decision.review.deploy_review"},
                         )
                     )
                     continue
@@ -363,6 +367,7 @@ def review_open_pulls(
                         card=card.number,
                         frm=REVIEWING,
                         summary="diff approved",
+                        rule="decision.review.verdict",
                     )
                 elif (
                     event == "REQUEST_CHANGES"
@@ -377,6 +382,11 @@ def review_open_pulls(
                         repo=repo,
                     )
                 ):
+                    held(
+                        "story.review_conflicts_with_criterion",
+                        repo=card.repo or repo,
+                        card=card.number,
+                    )
                     result.returned.append((card.number or 0, card.parent or 0))
                 elif event == "REQUEST_CHANGES":
                     move_card(

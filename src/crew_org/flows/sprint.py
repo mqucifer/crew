@@ -27,17 +27,17 @@ from crew_org.columns import (
     REVIEWING,
     SPRINT_BACKLOG,
 )
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows.board_flow import NEEDS_REWORK, TECHNICAL
 from crew_org.flows.board_flow import builds_on as builds_on_line
 from crew_org.flows.moves import move_card
+from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import DELIVERED, open_in
 
 EPIC_TYPE = "Epic"
-STORY_TYPE = "Story"
 
 NO_EPIC = "Stories with no epic"
 
@@ -197,12 +197,14 @@ def plan_sprint(
         if not stories:
             continue
         if epic.key in (awaiting_design or set()):
+            held("decision.sprint.plan_sprint", repo=epic.repo, card=epic.number)
             plan.waiting_on_design += stories
             continue
         # Sent back to be split again: its stories are about to be superseded.
         # sprint-metrics#59's were re-admitted the tick they went back, and
         # #145 was rebuilt against the design note that had caused its loop.
         if NEEDS_REWORK in epic.labels:
+            held("decision.sprint.plan_sprint", repo=epic.repo, card=epic.number)
             plan.waiting_on_rework += stories
             continue
 
@@ -212,6 +214,7 @@ def plan_sprint(
             # (`held_by_a_sibling`). Admitted without them, it can't finish:
             # sprint-metrics#284 was, when #283 didn't fit (crew#353).
             if _held_by_an_earlier_sibling(cards, story, sprint, piece.admitted):
+                held("hold.sibling", repo=story.repo, card=story.number)
                 piece.deferred.append(story)
                 continue
             # And until what it builds on lands, across epics: sprint-metrics#293
@@ -219,6 +222,7 @@ def plan_sprint(
             wanted = (builds_on or {}).get(story.key, set())
             admitted = [c for p in [*plan.slices, piece] for c in p.admitted]
             if _waits_on_work_outside(cards, parents, story, wanted, admitted):
+                held("decision.sprint.waits_on_work_outside", repo=story.repo, card=story.number)
                 piece.deferred.append(story)
                 continue
             remaining = _fill(piece, story, remaining)
@@ -261,22 +265,12 @@ def _held_by_an_earlier_sibling(
     """An earlier open story in its epic that won't land this sprint: not in the
     sprint's flow, and not admitted by this plan.
 
-    Earlier means a lower number, as delivery reads it: the order the Business
-    Analyst proposed them in.
+    Which siblings are earlier is `siblings`' reading, the one delivery holds by.
     """
-    if story.parent is None:
-        return False
     admitted_keys = {c.key for c in admitted}
     return any(
-        c.repo == story.repo
-        and c.parent == story.parent
-        and c.work_type == STORY_TYPE
-        and (c.number or 0) < (story.number or 0)
-        and c.state != "CLOSED"
-        and c.status != DONE
-        and c.status not in ON_ITS_WAY
-        and c.key not in admitted_keys
-        for c in cards
+        c.status not in ON_ITS_WAY and c.key not in admitted_keys
+        for c in unlanded_earlier_siblings(cards, story)
     )
 
 
@@ -341,14 +335,7 @@ def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) 
     sprint-metrics#284 after Sprint 9 (crew#353).
     """
     return [
-        c
-        for c in cards
-        if c.status == SPRINT_BACKLOG
-        and c.work_type in DELIVERED
-        and c.state != "CLOSED"
-        and c.sprint
-        and c.sprint != sprint
-        and (repos is None or c.repo in repos)
+        c for c in open_in(cards, SPRINT_BACKLOG, repos=repos) if c.sprint and c.sprint != sprint
     ]
 
 
@@ -490,7 +477,14 @@ def start_sprint(
             number = card.number or 0
             verdict = rules.may_move(frm=READY, to=SPRINT_BACKLOG, counts=counts)
             if not verdict.allowed:
-                sink.emit(CrewEvent(kind=EventKind.NOTE, card=number, summary=verdict.reason[:90]))
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.NOTE,
+                        card=number,
+                        summary=verdict.reason[:90],
+                        detail={"rule": "hold.wip_limit"},
+                    )
+                )
                 piece.deferred.append(card)
                 continue
             board.set_iteration(card.item_id, "Sprint", sprint)

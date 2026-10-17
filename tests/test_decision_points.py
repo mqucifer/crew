@@ -27,7 +27,10 @@ def test_each_entry_is_a_rule_or_says_why_it_isnt():
     for point, entry in decision_points.table().items():
         said = {k for k in entry if k in ("rule", "not_a_rule")}
         assert len(said) == 1, point
-        assert entry.get("rule") in rulebook.catalog() or entry.get("not_a_rule", "").strip(), point
+        assert (
+            rulebook.rule_of(entry.get("rule", "")) in rulebook.catalog()
+            or entry.get("not_a_rule", "").strip()
+        ), point
 
 
 def test_crew773s_hold_is_found_as_a_decision_point():
@@ -48,3 +51,34 @@ def test_a_card_filter_is_a_decision_point():
         p for p in decision_points.points() if p.kind == "filter" and p.function == "approved_epics"
     ]
     assert filters
+
+
+def test_every_flow_decision_is_counted_by_its_rule():
+    """crew#756: a flow decision names its rule on its event, or as a hold for the tick's end."""
+    assert decision_points.unnamed("flow") == []
+
+
+def test_every_rule_an_event_names_in_a_flow_is_declared():
+    """crew#756: a name the catalog doesn't have would be counted as nothing."""
+    import ast
+
+    from crew_org import rule_list
+
+    unknown = []
+    for source in rule_list.sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        for node in ast.walk(source.tree):
+            if not isinstance(node, ast.Call):
+                continue
+            named = [k.value for k in node.keywords if k.arg == "rule"]
+            if getattr(node.func, "id", "") == "held" and node.args:
+                named.append(node.args[0])
+            for value in named:
+                if (
+                    isinstance(value, ast.Constant)
+                    and isinstance(value.value, str)
+                    and rulebook.rule_of(value.value) not in rulebook.catalog()
+                ):
+                    unknown.append(f"{source.path}:{node.lineno} {value.value}")
+    assert not unknown, unknown

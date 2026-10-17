@@ -34,10 +34,10 @@ from pathlib import Path
 from typing import Any
 
 from crew_org.columns import BLOCKED, NEEDS_REFINEMENT, READY
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows import record as record_flow
-from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, approved_epics
+from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, epics_to_split
 from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
@@ -482,7 +482,7 @@ def _revise(
         return
     titles = {c.number: c.title for c in cards if (c.repo or repo) == repo and c.number}
     waiting = [
-        c for c in approved_epics(cards) if (c.repo or repo) == repo and TECHNICAL not in c.labels
+        c for c in epics_to_split(cards) if (c.repo or repo) == repo and TECHNICAL not in c.labels
     ]
     reason = (
         "Stories keep colliding in the same files, so work that should run side by "
@@ -515,6 +515,7 @@ def _revise(
     )
 
     if designed.record is None:
+        held("decision.revisit.file_work", repo=repo)
         why = "; ".join(designed.refused)
         _record_look(
             issues,
@@ -530,6 +531,7 @@ def _revise(
         return
 
     if designed.record.design == record.design and not designed.proposal.changes:
+        held("decision.revisit.file_work", repo=repo)
         number = _record_look(
             issues,
             sink,
@@ -544,6 +546,7 @@ def _revise(
     # Work declared against a record already saying it: no pull request can
     # carry it, so it's filed as it would be once one merged (#335).
     if designed.record.design == record.design:
+        held("decision.revisit.file_work", repo=repo)
         filed = file_unchanged_design_work(
             issues,
             board,
@@ -626,7 +629,11 @@ def _merge(issues, reviewer, sink, *, repo: str, pull: dict, result: Revisits) -
     # Queued or brought up to date: a later pass finds it merged.
     if landed.how != Landing.MERGED:
         if landed.reason:
-            sink.note(EventKind.NOTE, f"{repo} PR #{number} not merged yet: {landed.reason}"[:120])
+            sink.note(
+                EventKind.NOTE,
+                f"{repo} PR #{number} not merged yet: {landed.reason}"[:120],
+                rule="decision.revisit.file_work",
+            )
         return False
     result.merged.append((repo, number))
     sink.note(EventKind.NOTE, f"{repo}: merged the Architect's design revision, PR #{number}")

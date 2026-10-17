@@ -120,3 +120,13 @@ def test_a_superseded_story_is_shown_to_the_retro_as_superseded_not_done():
         475, "sprint-metrics", work_type="Story", status="Done", sprint=SPRINT, points=5
     ).model_copy(update={"state": "CLOSED", "state_reason": "NOT_PLANNED"})
     assert board_summary([gone], SPRINT) == "#475 [5pt] Superseded: Card 475"
+
+
+def test_planning_and_delivery_read_one_list_of_earlier_siblings():
+    """crew#756: the two read "earlier sibling" from one function, and decide apart."""
+    import inspect
+
+    from crew_org.flows import delivery, sprint
+
+    for fn in (delivery.held_by_a_sibling, sprint._held_by_an_earlier_sibling):
+        assert "unlanded_earlier_siblings(cards, story)" in inspect.getsource(fn)

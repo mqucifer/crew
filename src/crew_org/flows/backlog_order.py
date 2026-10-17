@@ -145,7 +145,11 @@ def order_backlogs(
             continue
         if isinstance(answer, str):
             result.failed.append((repo, answer))
-            sink.note(EventKind.NOTE, f"{repo} backlog not ordered: {answer}"[:160])
+            sink.note(
+                EventKind.NOTE,
+                f"{repo} backlog not ordered: {answer}"[:160],
+                rule="decision.backlog_order.what_is_ordered",
+            )
             continue
 
         by_number = {e.number: e for e in epics}
@@ -178,7 +182,11 @@ def order_backlogs(
                             + ", ".join(f"#{n}" for n in sorted(hold.builds_on))
                             + f": {hold.why}"
                         )[:120],
-                        detail={"repo": repo, "builds_on": sorted(hold.builds_on)},
+                        detail={
+                            "repo": repo,
+                            "builds_on": sorted(hold.builds_on),
+                            "rule": "decision.backlog_order.what_is_ordered",
+                        },
                     )
                 )
     return result

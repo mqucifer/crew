@@ -1,42 +1,46 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
-capability.unjustified:
 check.review.with_deploy:
-config.const.backlog_order.ATTEMPTS:
+config.ask_limits:
+  cases:
+  - config.const.board_flow.ANALYST_ASK_LIMIT
+  - config.const.delivery.ASKED_FILES_LIMIT
+  description: 'How much a role may ask for: the Business Analyst''s questions, and the files a delivery
+    adds by asking.'
+  origin:
+  - crew#231
+  - sprint-metrics#529
+config.attempts:
+  cases:
+  - config.org.execution.local_repair_attempts
+  - config.const.backlog_order.ATTEMPTS
+  - config.const.settle.ATTEMPTS
+  - config.const.board_flow.ANSWER_ATTEMPTS
+  - config.const.merge.MAX_REBUILDS
+  - config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING
+  - config.const.board_flow.IDENTICAL_FAILURES_BEFORE_PARKING
+  - config.const.story_problem.MAX_ROUND_TRIPS
+  description: How many times each step tries, or tolerates a repeat, before it gives up or hands the
+    card on. Each value stays where its step reads it.
+  origin:
+  - crew#242
+  - sprint-metrics#49
 config.const.backlog_order.MAX_STORIES:
   origin:
   - crew#358
-config.const.board_flow.ANALYST_ASK_LIMIT:
-  origin:
-  - crew#231
-config.const.board_flow.ANSWER_ATTEMPTS:
-config.const.board_flow.IDENTICAL_FAILURES_BEFORE_PARKING:
-  origin:
-  - sprint-metrics#49
 config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS:
   origin:
   - crew#231
   - crew#62
 config.const.claude_code.DEFAULT_TIMEOUT:
-config.const.delivery.ASKED_FILES_LIMIT:
-  origin:
-  - crew#231
-  - sprint-metrics#529
-config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING:
-config.const.escalation.MIN_JUSTIFICATION_CHARS:
 config.const.loop.MAX_PASSES:
 config.const.loop.QUEUE_POLL:
 config.const.loop.QUEUE_WAIT:
   origin:
   - crew#314
-config.const.merge.MAX_REBUILDS:
 config.const.merge.SETTLE_TRIES:
   origin:
   - crew#302
 config.const.merge.SETTLE_WAIT:
-config.const.settle.ATTEMPTS:
-config.const.story_problem.MAX_ROUND_TRIPS:
-  origin:
-  - crew#242
 config.const.story_problem.SHOWN:
 config.const.strain.REVISIT_CONFLICTS:
 config.org.board.blocked_column:
@@ -45,15 +49,12 @@ config.org.board.human_gates:
 config.org.delivery.repos:
 config.org.escalation.may_escalate:
 config.org.escalation.never_escalate:
-config.org.escalation.require_justification:
-config.org.execution.local_repair_attempts:
 config.org.refinement.panel:
 config.org.sprint.blocked_aging_days:
 config.org.sprint.capacity_points:
 config.org.sprint.escalation_budget:
 config.org.sprint.timezone:
 config.org.wip_limits:
-decision.acceptance.awaiting_qa:
 decision.acceptance.ci_only:
 decision.acceptance.close_finished_parents:
   origin:
@@ -62,21 +63,16 @@ decision.acceptance.close_finished_parents:
   - crew#187
   - sprint-metrics#184
 decision.backlog_order.what_is_ordered:
-decision.board_flow.admit_held_stories:
-  origin:
-  - crew#33
-  - crew#34
 decision.board_flow.already_delivered:
   origin:
   - crew#192
   - crew#440
-decision.board_flow.approved_epics:
 decision.board_flow.design_required:
   origin:
   - crew#192
   - crew#440
+decision.board_flow.epics_to_split:
 decision.board_flow.goal_cards:
-decision.board_flow.goals_missing_work_type:
 decision.board_flow.lacking_goals:
 decision.board_flow.parked:
   origin:
@@ -85,10 +81,6 @@ decision.board_flow.parked:
 decision.board_flow.product_step:
   origin:
   - crew#189
-decision.board_flow.rework_gate:
-  origin:
-  - crew#192
-  - crew#440
 decision.board_flow.skeleton_only:
   origin:
   - ADR 0030
@@ -104,15 +96,10 @@ decision.board_flow.technical_work_first:
   origin:
   - crew#192
   - crew#440
-decision.bugs.bugs_to_triage:
 decision.bugs.carry_out:
 decision.bugs.collaborators_only:
 decision.close.carry_over:
   origin:
-  - crew#389
-decision.close.close_sprint:
-  origin:
-  - crew#314
   - crew#389
 decision.delivery.interrupted:
 decision.delivery.limit:
@@ -122,7 +109,6 @@ decision.delivery.reconcile_orphans:
 decision.delivery.rework:
   origin:
   - sprint-metrics#31
-decision.delivery.sprint_stories:
 decision.delivery.waits_on_files:
   origin:
   - crew#436
@@ -132,28 +118,46 @@ decision.diagnose.diagnose_blocked:
   origin:
   - sprint-metrics#200
 decision.github_issues.trust:
+decision.land:
+  cases:
+  - decision.merge.land
+  - decision.merge.merge_approved
+  - decision.close.close_sprint
+  - decision.revert.land
+  description: An approved pull request lands through one path, and each way landing ends is handled by
+    the phase that asked.
+  origin:
+  - crew#116
+  - crew#302
+  - crew#314
+  - crew#389
+  - crew#436
 decision.main_watch.red_main:
 decision.merge.conflict:
   origin:
   - crew#100
   - crew#158
   - crew#95
-decision.merge.done_but_open:
-decision.merge.land:
+decision.phase_cards:
+  cases:
+  - decision.delivery.sprint_stories
+  - decision.merge.merged_elsewhere
+  - decision.review.what_is_reviewed
+  - decision.sprint.left_over
+  - decision.sprint.parked
+  - decision.bugs.bugs_to_triage
+  - decision.board_flow.goals_missing_work_type
+  description: A phase takes the open cards in its column, of the types it works, in the repositories
+    the crew works.
   origin:
-  - crew#116
-  - crew#302
-decision.merge.merge_approved:
-  origin:
-  - crew#436
-decision.merge.merged_elsewhere:
+  - crew#353
+  - sprint-metrics#284
 decision.presentation_notes.write_notes:
 decision.refine_panel.panel_step:
   origin:
   - crew#192
   - crew#440
 decision.release_check.check_releases:
-decision.revert.land:
 decision.revert.refused:
 decision.revert.return_card:
 decision.review.deploy_review:
@@ -164,29 +168,29 @@ decision.review.verdict:
   origin:
   - crew#215
   - crew#252
-decision.review.what_is_reviewed:
 decision.revisit.back_to_work:
   origin:
   - crew#690
 decision.revisit.design_faults:
 decision.revisit.file_work:
+decision.rework_gate:
+  cases:
+  - decision.board_flow.rework_gate
+  - skip.board_flow.rework_refused
+  - skip.board_flow.already_answered
+  description: An epic the Sponsor sent back is split again only on their word, and once.
+  origin:
+  - crew#192
+  - crew#440
 decision.settle.design_questions:
+  cases:
+  - §5.7
   origin:
   - ADR 0018
 decision.settle.settle_epic:
 decision.sprint.capacity:
-decision.sprint.left_over:
-  origin:
-  - crew#353
-  - sprint-metrics#284
-decision.sprint.parked:
 decision.sprint.plan_sprint:
 decision.sprint.start_sprint:
-decision.sprint.waits_on_work_outside:
-decision.story_problem.return_to_refinement:
-  origin:
-  - crew#189
-  - crew#242
 decision.strain.strained:
 delivery.conflict_with_main:
 delivery.open_pull_request:
@@ -194,46 +198,70 @@ delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
-edit.local_repair:
-edit.not_applied:
-escalation.allowed:
-escalation.budget:
-escalation.unresolved:
-escalation.usage_limit:
+escalation.policy:
+  cases:
+  - escalation.allowed
+  - escalation.budget
+  - escalation.unresolved
+  - escalation.usage_limit
+  description: A failure is escalated to Claude only within the sprint's budget, and its outcome is recorded.
 gate.criteria_cannot_all_pass:
 gate.qa_unproven:
 gate.review_changes_requested:
 gate.reviewer_and_developer_disagree:
-guard.local_repair:
 guard.no_change:
 guard.not_reproduced:
 guard.overwrite:
 guard.protected:
 guard.workflow_permission:
-hold.builds_on:
-hold.sibling:
-hold.wip_limit:
-regression.local_repair:
-regression.persisted:
-schema.local_repair:
-schema.persisted:
-scope.return:
-skip.acceptance.already_judged_at:
+hold.waits_for_earlier_work:
+  cases:
+  - hold.sibling
+  - hold.builds_on
+  - decision.sprint.waits_on_work_outside
+  description: 'A story waits for the work it builds on: an earlier sibling in its epic, or work it names,
+    outside or inside the sprint.'
+hold.wip:
+  cases:
+  - hold.wip_limit
+  - decision.board_flow.admit_held_stories
+  description: A card waits while the column it would enter is at its WIP limit, and is admitted when
+    there's room.
+  origin:
+  - crew#33
+  - crew#34
+repair.gave_up:
+  cases:
+  - schema.persisted
+  - regression.persisted
+  - edit.not_applied
+  description: 'Local repair gave up: the attempt still fails after the attempts allowed.'
+repair.local:
+  cases:
+  - schema.local_repair
+  - verify.local_repair
+  - edit.local_repair
+  - guard.local_repair
+  - regression.local_repair
+  description: A refused or failed attempt is repaired locally, within the attempts allowed, before it's
+    escalated.
 skip.board_flow.a_goal_written_by_not_the:
-skip.board_flow.already_answered:
 skip.board_flow.its_criteria_cant_all_pass_to:
   origin:
   - crew#583
   - crew#612
   - sprint-metrics#551
 skip.board_flow.not_ready_still_open_for_the:
-skip.board_flow.rework_refused:
 skip.board_flow.waits_for_planned:
-skip.board_flow.waits_for_the_sponsors_answer_on:
+skip.judged_at_this_head:
+  cases:
+  - skip.acceptance.already_judged_at
+  - skip.review.already_reviewed_at_this_head
+  description: 'A gate judges a pull request''s head once: QA''s verdict and the Code Reviewer''s review
+    aren''t repeated at the same head.'
 skip.refine_panel.waits_for_a_person_to_settle:
   origin:
   - ADR 0018
-skip.refine_panel.waits_for_the_sponsors_answer_on:
 skip.refine_panel.waits_for_to_be_split_it:
   origin:
   - crew#611
@@ -241,86 +269,53 @@ skip.refine_panel.waits_for_to_be_split_it:
   - crew-presentation#138
   - sprint-metrics#551
   - sprint-metrics#552
-skip.review.already_reviewed_at_this_head:
 skip.review.draft:
-story.gate_round_trips:
-story.pinned_tests:
-story.review_conflicts_with_criterion:
-told.form.BacklogOrder.holds:
-  guidance: true
-  owner: Product Owner
-told.form.BacklogOrder.order:
-  guidance: true
-  owner: Product Owner
-told.form.Finding.blocking:
-  guidance: true
-told.form.Hold.builds_on:
-  guidance: true
-  owner: Product Owner
-told.form.Hold.story:
-  guidance: true
-  owner: Product Owner
-told.refinement_crew.then_only_where_the_new_work:
-  guidance: true
-  owner: Product Owner
+skip.waits_for_the_sponsors_answer:
+  cases:
+  - skip.board_flow.waits_for_the_sponsors_answer_on
+  - skip.refine_panel.waits_for_the_sponsors_answer_on
+  description: An epic waits for the Sponsor's answer before it's refined further.
+story.return_to_refinement:
+  cases:
+  - scope.return
+  - story.pinned_tests
+  - story.gate_round_trips
+  - story.review_conflicts_with_criterion
+  - decision.story_problem.return_to_refinement
+  description: A story goes back to refinement when its problem is the story's, not the code's.
+  origin:
+  - crew#189
+  - crew#242
 told.review_crew.do_not_ask_whether_it_works:
   guidance: true
   owner: Code Reviewer
 told.review_crew.do_not_re_litigate_a_point:
   guidance: true
   owner: Code Reviewer
-verify.local_repair:
 §1 a_defect_is_filed_where_it:
   guidance: true
+  owner: Senior Engineer
 §1 card_movement_and_wip_limits_are:
   guidance: true
+  owner: Senior Engineer
 §1 no_agent_may_move_a_card:
   guidance: true
+  owner: Senior Engineer
 §1 what_holds_them_is_the_output:
   guidance: true
-§11 stopping_starting_and_starting_finishing_is:
-  guidance: true
-  owner: Scrum Master
-§17 column_names_live_in_crew_org:
-  guidance: true
-§17 columns_are_queues:
-  guidance: true
-§17 every_phase_drains_its_own_column:
-  guidance: true
-§17 the_names_describe_the_wait_not:
-  guidance: true
-§17 this_is_a_choice_and_the:
-  guidance: true
-§18 a_finding_goes_to_the_repository:
-  guidance: true
-§18 sprint_metrics_is_a_pilot_not:
-  guidance: true
-§18 the_board_is_the_crews_workplace:
-  guidance: true
-§5.1:
-  guidance: true
-  owner: Business Analyst
-§5.2:
-  guidance: true
-  owner: Business Analyst
-§5.3:
-  guidance: true
-  owner: Business Analyst
+  owner: Senior Engineer
 §5.4:
-  guidance: true
-  owner: Business Analyst
-§5.5:
   guidance: true
   owner: Business Analyst
 §5.6:
   guidance: true
   owner: Business Analyst
-§5.7:
-  guidance: true
-  owner: Business Analyst
 §9 a_short_plan_first:
   guidance: true
+  owner: Senior Engineer
 §9 the_pieces_are_merged_into_one:
   guidance: true
+  owner: Senior Engineer
 §9 then_one_small_answer_per_file:
   guidance: true
+  owner: Senior Engineer

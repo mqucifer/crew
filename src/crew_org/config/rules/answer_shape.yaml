@@ -21,6 +21,8 @@ call.join_blocks:
   - crew#734
   - sprint-metrics#529
 call.schema:
+  cases:
+  - §5.2
   origin:
   - ADR 0025
 call.split_blocks:
@@ -246,6 +248,8 @@ form.Retro.few:
   owner: Scrum Master
   told_in: Retro.went
 form.ReviewVerdict.a_rejection_must_say_why:
+  cases:
+  - told.form.Finding.blocking
   description: Refused if it requests changes with no blocking finding, or approves with one.
   messages:
     approved_blocking: 'an approval can''t carry a finding that blocks. Request changes, or mark it `blocking:

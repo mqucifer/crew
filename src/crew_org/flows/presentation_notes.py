@@ -234,7 +234,13 @@ def write_notes(
         if isinstance(outcome, tuple):
             why = outcome[0]
             artifacts.label(
-                issues, sink, repo=repo, number=number, by=BY, add=["blocked", "needs:human"]
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                by=BY,
+                add=["blocked", "needs:human"],
+                rule="decision.presentation_notes.write_notes",
             )
             artifacts.comment(
                 issues,

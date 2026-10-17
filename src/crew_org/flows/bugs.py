@@ -97,7 +97,15 @@ def triage_bugs(
             artifacts.comment(
                 issues, sink, repo=repo, number=number, body=NOT_A_COLLABORATOR, by=ROLE
             )
-            artifacts.label(issues, sink, repo=repo, number=number, by=ROLE, add=[NEEDS_HUMAN])
+            artifacts.label(
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                by=ROLE,
+                add=[NEEDS_HUMAN],
+                rule="decision.bugs.collaborators_only",
+            )
             done.append((number, "not a collaborator"))
             continue
         report = issue.get("body") or ""
@@ -172,6 +180,7 @@ def carry_out(
             card=number,
             frm=card.status,
             summary=f"bug accepted, {triage.points} points",
+            rule="decision.bugs.carry_out",
         )
     elif triage.outcome == "more_information":
         artifacts.comment(
@@ -182,7 +191,15 @@ def carry_out(
             body=f"Before this can be triaged: {triage.question}\n\n{triage.reason}",
             by=ROLE,
         )
-        artifacts.label(issues, sink, repo=repo, number=number, by=ROLE, add=[NEEDS_HUMAN])
+        artifacts.label(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            by=ROLE,
+            add=[NEEDS_HUMAN],
+            rule="decision.bugs.carry_out",
+        )
     else:
         said = (
             f"A duplicate of #{triage.duplicate_of}: {triage.reason}"

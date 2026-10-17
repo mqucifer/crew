@@ -1,17 +1,19 @@
 # Each role's guidance budget: the lines it's told that nothing checks (crew#756,
 # ADR 0031). Set at the count on 2026-10-17, so it can only go down. Those lines are
 # guidance because nothing checks them yet, not by decision: each category's cleanup decides.
+# Lowered by flow's cleanup (crew#756): lines cut from prompts, and lines linked to the
+# check that enforces them.
 Architect: 34
 Architect (design_placement): 3
-Business Analyst: 32
+Business Analyst: 27
 Business Analyst (bug_triage): 1
-Code Reviewer: 21
-DevOps Engineer: 31
+Code Reviewer: 20
+DevOps Engineer: 30
 Developer: 32
-Product Owner: 36
-Product Owner (onboarding): 12
+Product Owner: 27
+Product Owner (onboarding): 8
 QA Engineer: 26
 QA Engineer (criteria_check): 2
-Scrum Master: 13
+Scrum Master: 9
 Senior Engineer: 11
 UX Designer: 12

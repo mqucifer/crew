@@ -209,3 +209,13 @@ def test_the_sponsor_is_told_what_the_package_does_not_carry():
 
     note = not_in_package_note([NotInPackage(value="crew issues fixed", why="a big number")])
     assert "For the Sponsor" in note and "- **crew issues fixed**: a big number" in note
+
+
+def test_the_story_check_reads_the_scale_and_its_ceiling_from_org_yaml():
+    """crew#756: one source; a constant beside org.yaml's could change without it."""
+    from crew_org.config import load_org
+    from crew_org.crews import refinement_crew
+
+    estimation = load_org()["estimation"]
+    assert tuple(estimation["scale"]) == refinement_crew.POINT_SCALE
+    assert estimation["max_story_points"] == refinement_crew.MAX_POINTS

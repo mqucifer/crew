@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from crew_org.columns import BLOCKED, DONE
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows.artifacts import signed
 from crew_org.flows.merge import Landing, land
@@ -306,9 +306,11 @@ def _land(issues: IssueClient, result: RevertLanding, pull: dict, *, repo: str) 
     """
     number = pull["number"]
     if not any(r.get("state") == "APPROVED" for r in issues.pull_reviews(repo, number)):
+        held("decision.revert.land", repo=repo)
         result.awaiting_approval.append(number)
         return False
     if issues.review_decision(repo, number) == REVIEW_REQUIRED:
+        held("decision.revert.land", repo=repo)
         result.unapprovable.append(number)
         return False
     try:
@@ -317,9 +319,11 @@ def _land(issues: IssueClient, result: RevertLanding, pull: dict, *, repo: str) 
         result.failed.append((number, str(exc)[:120]))
         return False
     if landed.how in (Landing.CONFLICTED, Landing.REMOVED):
+        held("decision.revert.land", repo=repo)
         result.conflicted.append(number)
         return False
     if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
+        held("decision.revert.land", repo=repo)
         result.failed.append((number, landed.reason))
         return False
     # Queued, brought up to date, or checks still running: it merges without the crew, and the pass

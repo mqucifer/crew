@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
@@ -32,7 +32,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import DELIVERED, open_in
 
 STORY_TYPE = "Story"
 
@@ -213,17 +213,7 @@ def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card
     built — and merging siblings out of that order conflicts the remainder,
     which blocks those cards and labels them for a person.
     """
-    return sorted(
-        (
-            c
-            for c in cards
-            if c.status == MERGING
-            and c.work_type in DELIVERED
-            and c.state != "CLOSED"
-            and (repos is None or c.repo in repos)
-        ),
-        key=lambda c: c.number or 0,
-    )
+    return sorted(open_in(cards, MERGING, repos=repos), key=lambda c: c.number or 0)
 
 
 def merge_approved(
@@ -273,8 +263,10 @@ def merge_approved(
         branch = branch_name(number, card.title)
         pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
         if pull is None:
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             merged = _merged_pull(issues, repo, branch)
             if merged is not None:
+                held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
                 _done(board, sink, card, pull=merged, result=result, issues=issues, repo=repo)
             else:
                 result.failed.append((number, "no open pull request"))
@@ -284,6 +276,7 @@ def merge_approved(
             r.get("state") == "APPROVED" for r in issues.pull_reviews(repo, pull["number"])
         )
         if not approved:
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
 
@@ -304,9 +297,16 @@ def merge_approved(
                 frm=MERGING,
                 summary=f"PR #{pull['number']} cannot be approved by any crew identity",
                 kind=EventKind.CARD_BLOCKED,
+                rule="decision.merge.merge_approved",
             )
             artifacts.label(
-                issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"]
+                issues,
+                sink,
+                repo=repo,
+                number=number,
+                by=None,
+                add=["blocked", "needs:human"],
+                rule="decision.merge.merge_approved",
             )
             artifacts.comment(
                 issues,
@@ -328,6 +328,7 @@ def merge_approved(
         # nothing: the Developer is shown why instead (#325).
         failed = _failed(issues.failed_checks, repo, (pull.get("head") or {}).get("sha", ""))
         if failed:
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             return_for_ci(
                 board, issues, sink, card, repo=repo, pull=pull, failed=failed, where="on its head"
             )
@@ -340,6 +341,7 @@ def merge_approved(
             result.failed.append((number, str(exc)[:120]))
             continue
         if landed.how == Landing.CONFLICTED:
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             _conflict(
                 board, issues, sink, card, repo=repo, pull=pull, result=result, keep_both=keep_both
             )
@@ -353,6 +355,7 @@ def merge_approved(
                     kind=EventKind.NOTE,
                     card=number,
                     summary=f"PR #{pull['number']} left the merge queue: {landed.reason}"[:120],
+                    detail={"rule": "decision.merge.merge_approved"},
                 )
             )
             failed = _failed(issues.merge_group_failures, repo, pull["number"])
@@ -374,9 +377,11 @@ def merge_approved(
             )
             continue
         if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             result.failed.append((number, landed.reason))
             continue
         if landed.how == Landing.CHECKING:
+            held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             result.checking.append((number, landed.reason))
             continue
         if landed.how == Landing.QUEUED:
@@ -391,6 +396,7 @@ def merge_approved(
                         kind=EventKind.NOTE,
                         card=number,
                         summary=f"PR #{pull['number']} joined the merge queue",
+                        detail={"rule": "decision.merge.merge_approved"},
                     )
                 )
             continue
@@ -401,6 +407,7 @@ def merge_approved(
                     kind=EventKind.NOTE,
                     card=number,
                     summary=f"PR #{pull['number']} was behind main — brought up to date",
+                    detail={"rule": "decision.merge.merge_approved"},
                 )
             )
             continue
@@ -434,14 +441,7 @@ def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[C
 
 def done_but_open(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
     """Stories in Done whose issue is still open: merged, and never closed."""
-    return [
-        c
-        for c in cards
-        if c.status == DONE
-        and c.work_type in DELIVERED
-        and c.state != "CLOSED"
-        and (repos is None or c.repo in repos)
-    ]
+    return open_in(cards, DONE, repos=repos)
 
 
 def _merged_pull(issues: IssueClient, repo: str, branch: str) -> dict | None:
@@ -562,7 +562,12 @@ def _conflict(
             files, landed = list(exc.files), exc.landed
         except Exception as exc:  # noqa: BLE001
             kept = None
-            sink.note(EventKind.NOTE, f"#{number} PR #{pull['number']}: {exc}"[:120], card=number)
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} PR #{pull['number']}: {exc}"[:120],
+                card=number,
+                rule="decision.merge.conflict",
+            )
         if kept is not None:
             issues.comment(
                 repo,
@@ -583,6 +588,7 @@ def _conflict(
                     :120
                 ],
                 card=number,
+                rule="decision.merge.conflict",
             )
             result.updating.append((number, pull["number"]))
             return
@@ -592,6 +598,7 @@ def _conflict(
         comments = []
     rebuilt = sum(1 for c in comments if "<!-- crew:rebuild head=" in (c.get("body") or ""))
     if rebuilt >= MAX_REBUILDS:
+        held("decision.merge.conflict", repo=card.repo or repo, card=number)
         _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
         result.conflicted.append((number, pull["number"]))
         return

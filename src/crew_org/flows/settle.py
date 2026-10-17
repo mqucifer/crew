@@ -312,7 +312,12 @@ def settle_epic(
             record=record_flow.Record(nothing_raised=True),
             read=issue.get("body") or "",
         )
-        sink.note(EventKind.NOTE, f"epic #{epic}: the panel raised nothing", card=epic)
+        sink.note(
+            EventKind.NOTE,
+            f"epic #{epic}: the panel raised nothing",
+            card=epic,
+            rule="decision.settle.settle_epic",
+        )
         return Settled(Outcome.WRITTEN, record_flow.render(written))
 
     asked, reply = _reply(issues, repo, epic)
@@ -332,14 +337,27 @@ def settle_epic(
             "are settled with your answer.",
             by="Product Owner",
         )
-        artifacts.label(issues, sink, repo=repo, number=epic, by="Product Owner", add=[NEEDS_HUMAN])
+        artifacts.label(
+            issues,
+            sink,
+            repo=repo,
+            number=epic,
+            by="Product Owner",
+            add=[NEEDS_HUMAN],
+            rule="decision.settle.settle_epic",
+        )
         sink.emit(
             CrewEvent(
                 kind=EventKind.PRODUCT_ASKED,
                 role="Product Owner",
                 card=epic,
                 summary=f"epic #{epic}: asks the Sponsor — {question}"[:120],
-                detail={"repo": repo, "question": question, "step": "settle"},
+                detail={
+                    "repo": repo,
+                    "question": question,
+                    "step": "settle",
+                    "rule": "decision.settle.settle_epic",
+                },
             )
         )
         return Settled(Outcome.WAITING, question)
@@ -362,7 +380,13 @@ def settle_epic(
             description="Its conclusion decides something the project's log doesn't hold yet",
         )
         artifacts.label(
-            issues, sink, repo=repo, number=epic, by="Product Owner", add=[TO_LOG_LABEL]
+            issues,
+            sink,
+            repo=repo,
+            number=epic,
+            by="Product Owner",
+            add=[TO_LOG_LABEL],
+            rule="decision.settle.settle_epic",
         )
     sink.emit(
         CrewEvent(

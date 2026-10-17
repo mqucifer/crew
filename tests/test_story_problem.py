@@ -103,7 +103,6 @@ def test_without_the_merged_state_nothing_is_pinned():
 def test_a_repeat_is_scope_and_goes_back_to_refinement_without_spending_the_budget():
     policy = EscalationPolicy(
         never_escalate={FailureClass.SCHEMA, FailureClass.SCOPE, FailureClass.REGRESSION},
-        require_justification={FailureClass.CAPABILITY},
         local_repair_attempts=2,
         sprint_budget=1,
     )

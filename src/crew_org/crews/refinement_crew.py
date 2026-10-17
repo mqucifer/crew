@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
+from crew_org.config import load_org
 from crew_org.crews.asks import FileAsk
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
@@ -26,8 +27,11 @@ from crew_org.rulebook import refuse
 from crew_org.tools.repo_context import READ_MIN_CHARS, READING_CHAR_CEILING
 from crew_org.tools.repo_read import Reader
 
-# Modified Fibonacci, per constitution §6. Nothing larger enters a sprint.
-POINT_SCALE = (1, 2, 3, 5, 8)
+# Modified Fibonacci, per constitution §6, and the most a story may be: org.yaml's
+# `estimation`, the one source the story check reads (crew#756). Nothing larger
+# enters a sprint.
+POINT_SCALE = tuple(load_org()["estimation"]["scale"])
+MAX_POINTS = int(load_org()["estimation"]["max_story_points"])
 MIN_CRITERIA = 2
 
 # A Sponsor goal that decomposes into one epic has not been decomposed — there
@@ -150,10 +154,10 @@ class Story(BaseModel):
     @field_validator("points")
     @classmethod
     def _on_the_scale(cls, value: int) -> int:
-        if value not in POINT_SCALE:
+        if value not in POINT_SCALE or value > MAX_POINTS:
             raise ValueError(
                 f"{value} is not on the estimation scale {POINT_SCALE}. "
-                "Anything larger than 8 must be split, not admitted."
+                f"Anything larger than {MAX_POINTS} must be split, not admitted."
             )
         return value
 

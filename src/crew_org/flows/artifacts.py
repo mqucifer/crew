@@ -133,8 +133,9 @@ def label(
     by: str | None,
     add: Iterable[str] = (),
     remove: Iterable[str] = (),
+    rule: str = "",
 ) -> None:
-    """Add and remove labels, recording who did it.
+    """Add and remove labels, recording who did it, and the rule that decided it.
 
     GitHub's timeline attributes a label change to the bot and offers nowhere
     else to put an actor, so the role is recorded in the event log only. That is
@@ -152,7 +153,13 @@ def label(
                 role=by,
                 card=number,
                 summary="+" + ",".join(add) if add else "-" + ",".join(remove),
-                detail={"artifact": "label", "added": add, "removed": remove, "repo": repo},
+                detail={
+                    "artifact": "label",
+                    "added": add,
+                    "removed": remove,
+                    "repo": repo,
+                    **({"rule": rule} if rule else {}),
+                },
             )
         )
 

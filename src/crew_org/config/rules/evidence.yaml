@@ -96,6 +96,8 @@ form.ReaderCriterion.stated:
 form.RepairedStory.enough_criteria:
   owner: Business Analyst
 form.Story.enough_criteria:
+  cases:
+  - §5.3
   owner: Business Analyst
 form.StoryCriteria.at_least_two:
   owner: UX Designer

@@ -267,7 +267,7 @@ def diagnose_blocked(
     them. Filing stays a person's call, through `crew diagnose`'s offer.
     """
     from crew_org.columns import BLOCKED  # noqa: PLC0415
-    from crew_org.events import EventKind  # noqa: PLC0415
+    from crew_org.events import EventKind, held  # noqa: PLC0415
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
 
     blocked = sorted(
@@ -285,6 +285,7 @@ def diagnose_blocked(
     done: list[tuple[str, int]] = []
     for card in blocked:
         if len(done) >= limit:
+            held("decision.diagnose.diagnose_blocked", repo=card.repo, card=card.number)
             break
         repo, number = card.repo, card.number
         try:

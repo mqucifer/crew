@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org.events import EventKind, EventSink, attributed
+from crew_org.events import EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import (
     NEEDS_DESIGN,
@@ -188,6 +188,7 @@ def write_notes(
             continue
         why, stories_at_fault = outcome
         if stories_at_fault:
+            held("decision.design_notes.write_notes", repo=repo, card=number)
             _to_product_owner(issues, sink, repo, number, why, stories_at_fault)
             result.returned.append((number, why))
             continue

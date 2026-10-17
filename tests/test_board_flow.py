@@ -418,7 +418,7 @@ from crew_org.flows.board_flow import (  # noqa: E402
     READY,
     REFINEMENT,
     STORY_SPLIT_MARKER,
-    approved_epics,
+    epics_to_split,
 )
 
 
@@ -464,10 +464,10 @@ def run_split(board, issues, monkeypatch, proposal=SPLIT):
     return tick(board, issues, sink, default_repo="sprint-metrics")
 
 
-def test_only_approved_epics_are_split():
+def test_only_epics_waiting_to_be_split_are_split():
     """An epic still at the gate has not been approved."""
     cards = [epic_card(3), epic_card(5, status=INBOX), card(1)]
-    assert [c.number for c in approved_epics(cards)] == [3]
+    assert [c.number for c in epics_to_split(cards)] == [3]
 
 
 def test_an_approved_epic_becomes_story_cards(monkeypatch):

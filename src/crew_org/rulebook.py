@@ -70,6 +70,10 @@ class RuleSpec:
     # What the form tells the role it fills, and where: `Form` or `Form.field`.
     description: str = ""
     told_in: str = ""
+    # The rules merged into this one, by the names the code and the event log still
+    # give them: each is one of its cases, as ESLint's message ids are (crew#756). A
+    # line a role is told is a case of the check that enforces it.
+    cases: tuple[str, ...] = ()
 
     def says(self, which: str = "default", **values: Any) -> str:
         return dict(self.messages)[which].format(**values)
@@ -120,6 +124,7 @@ def _read(path: Path) -> dict[str, RuleSpec]:
             messages=tuple((str(k), str(v)) for k, v in (fields.get("messages") or {}).items()),
             description=str(fields.get("description") or ""),
             told_in=str(fields.get("told_in") or ""),
+            cases=tuple(str(c) for c in fields.get("cases") or ()),
         )
     return found
 
@@ -137,6 +142,16 @@ def catalog(directory: Path | None = None) -> dict[str, RuleSpec]:
                 raise ValueError(f"{rule} is declared twice: in {found[rule].category} and {path}")
             found[rule] = spec
     return found
+
+
+@cache
+def _cases(directory: Path | None = None) -> dict[str, str]:
+    return {case: spec.id for spec in catalog(directory).values() for case in spec.cases}
+
+
+def rule_of(name: str) -> str:
+    """The declared rule a name is: itself, or the rule it's a case of since a merge."""
+    return _cases().get(name, name)
 
 
 @cache
@@ -179,4 +194,5 @@ def write(
         )
         written.append(path)
     catalog.cache_clear()
+    _cases.cache_clear()
     return written

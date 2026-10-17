@@ -49,6 +49,10 @@ def _validate(org: dict[str, Any]) -> None:
     if gates:
         raise ValueError(f"board.human_gates names columns not on the board: {sorted(gates)}")
 
+    estimation = org["estimation"]
+    if estimation["max_story_points"] not in estimation["scale"]:
+        raise ValueError("estimation.max_story_points must be a point on estimation.scale")
+
     design = org["design"]
     if design["force_label"] == design["skip_label"]:
         raise ValueError("design.force_label and design.skip_label must differ")

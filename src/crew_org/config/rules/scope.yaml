@@ -1,5 +1,11 @@
 # The work stays in the story. Declared once each (crew#756, ADR 0031): change a rule here.
 check.backlog_order.check:
+  cases:
+  - told.form.BacklogOrder.holds
+  - told.form.BacklogOrder.order
+  - told.form.Hold.builds_on
+  - told.form.Hold.story
+  - told.refinement_crew.then_only_where_the_new_work
 check.conclusion.feedback:
   owner: Business Analyst
 check.conclusion.problems:
@@ -39,6 +45,12 @@ config.org.design.min_points:
 config.org.design.min_stories:
 config.org.design.revisit_conflicts:
 config.org.design.skip_label:
+config.org.estimation.max_story_points:
+  origin:
+  - crew#756
+config.org.estimation.scale:
+  origin:
+  - crew#756
 form.Change.work_is_said:
   owner: Architect
 form.Epic.is_an_argument:
@@ -58,6 +70,8 @@ form.Row.a_call_stays_within_the_goal:
 form.SkeletonEpic.decomposed:
   owner: Product Owner
 form.Story.on_the_scale:
+  cases:
+  - §5.5
   owner: Business Analyst
 form.StoryProposal.not_empty:
   owner: Business Analyst

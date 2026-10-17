@@ -290,7 +290,6 @@ def harness(tmp_path, monkeypatch):
             "escalation": {
                 "never_escalate": ["SCHEMA", "SCOPE", "REGRESSION"],  # as org.yaml
                 "may_escalate": ["VERIFY", "CAPABILITY"],
-                "require_justification": ["CAPABILITY"],
             },
         }
         result = delivery.deliver(

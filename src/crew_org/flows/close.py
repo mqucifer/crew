@@ -16,7 +16,7 @@ from pathlib import Path
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.escalation import EscalationLedger
-from crew_org.events import EventKind, EventSink, attributed
+from crew_org.events import EventKind, EventSink, attributed, held
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.deployed import commits_seen
@@ -230,6 +230,7 @@ def _carry_over(board, sink, result, cards: list[Card], sprint: str) -> None:
         if card.status != MERGING or number in result.merged:
             continue
         if following is None:
+            held("decision.close.carry_over", repo=card.repo, card=number)
             result.carried.append((number, ""))
             continue
         board.set_iteration(card.item_id, "Sprint", following[0])
@@ -281,12 +282,14 @@ def close_sprint(
         if card.status == DONE:
             continue
         if card.status != MERGING:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.still_open.append(card.name(qualify=qualify))
             continue
 
         branch = branch_name(number, card.title)
         pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
         if pull is None:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unmergeable.append((number, "no open pull request"))
             continue
 
@@ -295,6 +298,7 @@ def close_sprint(
         reviews = issues.pull_reviews(repo, pull["number"])
         approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
 
@@ -303,10 +307,12 @@ def close_sprint(
         # identity can approve into the void — and the sprint review must not
         # ask the Sponsor for an approval that is already there.
         if issues.review_decision(repo, pull["number"]) == REVIEW_REQUIRED:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unapprovable.append((number, pull["number"]))
             continue
 
         if not merge:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
 
@@ -319,22 +325,28 @@ def close_sprint(
             result.unmergeable.append((number, str(exc)[:120]))
             continue
         if landed.how == Landing.QUEUED:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.queued.append((number, pull["number"]))
             in_queue.append((card, pull["number"], (pull.get("base") or {}).get("ref", "main")))
             continue
         if landed.how == Landing.UPDATING:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.updating.append((number, pull["number"]))
             continue
         if landed.how == Landing.CONFLICTED:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unmergeable.append((number, "conflicts with main"))
             continue
         if landed.how == Landing.REMOVED:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unmergeable.append((number, f"left the merge queue: {landed.reason}"))
             continue
         if landed.how in (Landing.UNSETTLED, Landing.UNPROVEN):
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unmergeable.append((number, landed.reason))
             continue
         if landed.how == Landing.CHECKING:
+            held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.checking.append((number, landed.reason))
             continue
 

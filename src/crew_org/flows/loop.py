@@ -36,6 +36,8 @@ from crew_org.events import (
     EventSink,
     attributed,
     forward_calls_to,
+    held_so_far,
+    holding,
 )
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
@@ -910,6 +912,8 @@ def _record(outcome: PhaseOutcome) -> None:
 def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     """Run every phase, in order, until a pass moves nothing."""
     result = LoopResult()
+    # The holds and skips no event names, collected for the tick's end (crew#756).
+    holds = holding()
 
     # Model calls, their tokens and the tools they used, for the whole tick: a
     # log blind to what the model did can't say what a run cost.
@@ -973,6 +977,7 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             crew.sink.note(
                 EventKind.NOTE,
                 f"{column} is over its WIP limit: {count} cards against {limit}",
+                rule="hold.wip_limit",
                 column=column,
                 count=count,
                 limit=limit,
@@ -1059,6 +1064,9 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
             EventKind.NOTE,
             f"{repo}#{number}: a comment by {login or 'an unknown account'} was not read "
             "(not in org.yaml's trust list, crew#399)",
+            card=number,
+            repo=repo,
+            rule="decision.github_issues.trust",
         )
 
     crew.sink.note(
@@ -1066,5 +1074,6 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
         f"{result.passes} pass{'es' if result.passes != 1 else ''}, "
         f"{'stable' if result.settled else 'stopped at the pass cap'}, "
         f"{len(result.failed)} failed",
+        held=held_so_far(holds),
     )
     return result

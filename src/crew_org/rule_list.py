@@ -47,7 +47,7 @@ from typing import Any, get_args
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
-from crew_org import rulebook
+from crew_org import constitution, rulebook
 from crew_org.permissions import load_agents
 from crew_org.rules import Rule, meanings
 
@@ -130,6 +130,8 @@ class Entry:
     sections: set[str] = field(default_factory=set)
     # The text it was linked by, for wording.
     text: str = ""
+    # For a merged rule: each case, by the name the code still gives it, and where.
+    cases: dict[str, str] = field(default_factory=dict)
 
 
 # --- reading the source -----------------------------------------------------------------
@@ -1674,6 +1676,11 @@ def _section_roles() -> dict[int, set[str]]:
 _ITEM = re.compile(r"^(?:(\d+)\.\s+|-\s+)?\*\*(.+?)\*\*")
 
 
+def _role(name: str) -> str:
+    """A role's name without its step: `Product Owner (onboarding)` is the Product Owner."""
+    return name.split(" (")[0]
+
+
 def _told_constitution() -> list[Entry]:
     """Each rule of the constitution's sections a role is given: a numbered item, or a
     paragraph or item that opens in bold."""
@@ -1686,10 +1693,20 @@ def _told_constitution() -> list[Entry]:
             continue
         number = int(heading.group(1))
         roles = given.get(number, set())
-        # Paragraphs and top-level list items, each with its continuation lines.
-        items: list[list[str]] = []
+        # Paragraphs and top-level list items, each with its continuation lines, and
+        # the roles a marked passage is told to (None: every role given the section).
+        items: list[tuple[list[str], set[str] | None]] = []
         fenced = False
+        only: set[str] | None = None
         for line in chunk.splitlines()[1:]:
+            if marker := re.match(r"<!-- told to: (.+?) -->$", line):
+                only = constitution.told_to(marker.group(1))
+                items.append(([], only))
+                continue
+            if line == "<!-- /told to -->":
+                only = None
+                items.append(([], only))
+                continue
             if line.startswith("```"):
                 fenced = not fenced
                 continue
@@ -1699,11 +1716,15 @@ def _told_constitution() -> list[Entry]:
                 not line.strip() or re.match(r"^(\d+\.\s|-\s|\*\*)", line) or line.startswith("#")
             )
             if starts or not items:
-                items.append([])
+                items.append(([], only))
             if line.strip():
-                items[-1].append(line.strip())
-        for item in items:
+                items[-1][0].append(line.strip())
+        for item, told_only in items:
             if not item:
+                continue
+            here = roles if told_only is None else {r for r in roles if _role(r) in told_only}
+            # Kept in the document for people, and told to no role: not a rule a role meets.
+            if told_only is not None and not here:
                 continue
             body = " ".join(item)
             numbered = re.match(r"^(\d+)\.\s+(.*)", body)
@@ -1723,8 +1744,8 @@ def _told_constitution() -> list[Entry]:
                     "told",
                     f"docs/ways-of-working.md:§{number}",
                     _first_sentence(re.sub(r"[*`]", "", re.sub(r"^\d+\.\s+|^-\s+", "", body))),
-                    roles=set(roles),
-                    told={f"§{number}"} if roles else set(),
+                    roles=set(here),
+                    told={f"§{number}"} if here else set(),
                     checked={f"named in the text: {_first_sentence(enforced)}"}
                     if enforced
                     else set(),
@@ -1977,7 +1998,8 @@ def entries() -> tuple[Entry, ...]:
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
     declared = rulebook.catalog()
-    for entry in checks + told:
+    found = _merged(checks + told, declared)
+    for entry in found:
         entry.declared = declared.get(entry.id)
         if entry.declared is not None:
             entry.category = entry.declared.category
@@ -1985,7 +2007,47 @@ def entries() -> tuple[Entry, ...]:
         else:
             entry.category = place(entry)
     order = list(GROUPS)
-    return tuple(sorted(checks + told, key=lambda e: (order.index(e.group), e.id)))
+    return tuple(sorted(found, key=lambda e: (order.index(e.group), e.id)))
+
+
+def _merged(found: list[Entry], declared: dict[str, rulebook.RuleSpec]) -> list[Entry]:
+    """Each merged rule as one entry, its cases folded in (crew#756).
+
+    A case keeps the name the code and the event log give it, so nothing that
+    records one changes; it's listed, counted and declared as its rule. A line a
+    role is told is a case of the check that enforces it: one rule, told there and
+    checked here.
+    """
+    case_of = {case: spec.id for spec in declared.values() for case in spec.cases}
+    out: list[Entry] = []
+    # A merged rule the code names by its own id too takes its cases in.
+    into: dict[str, Entry] = {e.id: e for e in found if declared.get(e.id) and declared[e.id].cases}
+    for entry in found:
+        entry.checked = {
+            c.replace(i, case_of[i]) if (i := c.removeprefix("maybe ")) in case_of else c
+            for c in entry.checked
+        }
+        rule = case_of.get(entry.id)
+        if rule is None:
+            out.append(entry)
+            continue
+        merged = into.get(rule)
+        if merged is None:
+            spec = declared[rule]
+            merged = into[rule] = Entry(
+                id=rule,
+                group=entry.group,
+                where=entry.where,
+                says=spec.description or entry.says,
+                failure_class=entry.failure_class,
+            )
+            out.append(merged)
+        merged.cases[entry.id] = entry.where
+        for name in ("roles", "told", "checked", "origin", "named", "sections"):
+            getattr(merged, name).update(getattr(entry, name))
+        merged.messages += [m for m in entry.messages if m not in merged.messages]
+        merged.failure_class = merged.failure_class or entry.failure_class
+    return out
 
 
 # --- what each rule protects ------------------------------------------------------------
@@ -2106,9 +2168,6 @@ _TOLD_SITES = {
     "refinement_crew:AnswerRow": "answer_shape",
     "refinement_crew:RepairedStory": "answer_shape",
     "refinement_crew:RowNotForStories": "answer_shape",
-    "refinement_crew:BacklogOrder": "flow",
-    "refinement_crew:Hold": "flow",
-    "refinement_crew:order_backlog": "flow",
     "refinement_crew:propose_epics": "scope",
     "refinement_crew:propose_missing_epics": "scope",
     "refinement_crew:_delivered_block": "scope",
@@ -2334,6 +2393,12 @@ def _guidance(entry: Entry) -> str:
     return "guidance" if entry.declared is not None and entry.declared.guidance else "—"
 
 
+def _cases(entry: Entry) -> str:
+    if not entry.cases:
+        return ""
+    return "<br>Cases: " + ", ".join(f"`{c}` ({_cell(w)})" for c, w in sorted(entry.cases.items()))
+
+
 def render() -> str:
     """The rules list, as committed."""
     rows = entries()
@@ -2389,7 +2454,7 @@ def render() -> str:
         ]
         for r in (r for r in rows if r.group == group):
             lines.append(
-                f"| `{_cell(r.id)}`<br>{_cell(r.says)} | {r.category or '—'} "
+                f"| `{_cell(r.id)}`<br>{_cell(r.says)}{_cases(r)} | {r.category or '—'} "
                 f"| `{_cell(r.where)}` | {_cell(r.roles)} "
                 f"| {_cell(r.told)} "
                 f"| {_cell(r.checked) if r.checked else _guidance(r)} | {_cell(r.origin)} |"
@@ -2423,6 +2488,7 @@ def declarations() -> dict[str, dict[str, dict[str, Any]]]:
                 "messages": dict(spec.messages),
                 "description": spec.description,
                 "told_in": spec.told_in,
+                "cases": list(spec.cases),
             }
         else:
             fields = {
@@ -2447,6 +2513,9 @@ def write_declarations() -> list[Path]:
     """
     declared = declarations()
     kept = {rule for rules in declared.values() for rule in rules}
+    kept |= {
+        case for rules in declared.values() for f in rules.values() for case in f.get("cases", ())
+    }
     dropped.extend(sorted(set(rulebook.catalog()) - kept))
     for path in rulebook.CATALOG.glob("*.yaml"):
         if path.stem in {*CATEGORIES, rulebook.UNPLACED}:
