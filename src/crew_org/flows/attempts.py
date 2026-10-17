@@ -19,7 +19,7 @@ import hashlib
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +96,8 @@ class Attempt:
     cause: str
     error: str
     at: str = ""
+    # Which repository's card: numbers repeat across repositories (crew#752).
+    repo: str | None = None
 
 
 def _mask(text: str) -> str:
@@ -179,8 +181,15 @@ def _gate_return(event: dict[str, Any]) -> Attempt | None:
     return None
 
 
-def read_attempts(events_dir: Path) -> list[Attempt]:
-    """Every retry the event log recorded, and every gate return, oldest first."""
+def read_attempts(
+    events_dir: Path, start: str | None = None, end: str | None = None
+) -> list[Attempt]:
+    """Every retry the event log recorded, and every gate return, oldest first.
+
+    Between `start` and `end` when given, as `read_loops` reads. Without them the
+    Sprint 27 retro took sprint-metrics' attempts from 2026-09-26 as its own
+    cards', which had the same numbers, and filed three findings from them (crew#752).
+    """
     found: list[Attempt] = []
     for path in sorted(events_dir.glob("*.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -190,9 +199,13 @@ def read_attempts(events_dir: Path) -> list[Attempt]:
                 continue
             if event.get("card") is None:
                 continue
+            at = str(event.get("at") or "")
+            if (start is not None and at < start) or (end is not None and at >= end):
+                continue
+            repo = (event.get("ctx") or {}).get("repo") or (event.get("detail") or {}).get("repo")
             gate = _gate_return(event)
             if gate is not None:
-                found.append(gate)
+                found.append(replace(gate, repo=repo))
                 continue
             if event.get("kind") != "escalation.decided":
                 continue
@@ -209,6 +222,7 @@ def read_attempts(events_dir: Path) -> list[Attempt]:
                     cause=cause,
                     error=error[:300],
                     at=event.get("at") or "",
+                    repo=repo,
                 )
             )
     return sorted(found, key=lambda a: a.at)
@@ -248,8 +262,12 @@ def sprint_report(
 ) -> dict[str, Any]:
     """A sprint's stories, their attempts, and the causes across them."""
     stories = sorted(stories, key=lambda c: c.number or 0)
-    numbers = {c.number for c in stories}
-    ours = [a for a in attempts if a.card in numbers]
+
+    def its(a: Attempt, c: Any) -> bool:
+        # An event without a repository is older than the field: matched by number.
+        return a.card == c.number and (a.repo is None or c.repo is None or a.repo == c.repo)
+
+    ours = [a for a in attempts if any(its(a, c) for c in stories)]
     causes: dict[tuple[str, str], Cause] = {}
     for a in ours:
         entry = causes.setdefault(
@@ -269,7 +287,7 @@ def sprint_report(
                 "repo": c.repo,
                 "status": c.status,
                 "superseded": bool(getattr(c, "superseded", False)),
-                "first_try": not any(a.card == c.number for a in ours),
+                "first_try": not any(its(a, c) for a in ours),
                 "attempts": [
                     {
                         "class": a.failure_class,
@@ -279,7 +297,7 @@ def sprint_report(
                         "at": a.at,
                     }
                     for a in ours
-                    if a.card == c.number
+                    if its(a, c)
                 ],
             }
             for c in stories
