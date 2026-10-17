@@ -579,6 +579,8 @@ def test_what_imports_it_and_the_tests_that_run_it_are_named_not_shown(graph, mo
     text, focus = focused_context(graph, about=f"Change {PKG}/metrics.py", coverage=Map())
     close = text.split("Close to this work", 1)[1].split("Every other file", 1)[0]
     assert f"`{PKG}/report.py`" in close and f"{PKG}/report.py" not in focus.shown
+    # Recorded too, for each read's note (crew#778): named, not shown.
+    assert focus.selected(f"{PKG}/report.py") == "left_out"
     assert close.index("tests/test_schema.py::test_keys") < close.index(
         "tests/test_report.py::test_table"
     ), "the most specific test first"
@@ -606,6 +608,7 @@ def test_a_repair_sees_only_what_it_changed_of_a_large_written_file(repo: Path, 
         changed={big: ["calculate_cycle_time"]},
     )
     assert big in focus.shown and "def calculate_cycle_time(cards):" in text
+    assert focus.selected(big) == "part", "shown as what it changed, recorded so (crew#778)"
     assert "def other_5():" not in text and "Read any other by name." in text
     whole, _ = focused_context(repo, about="x", written=[big], above=10, reading=True)
     assert "def other_5():" in whole, "without what it changed, the file is shown whole"

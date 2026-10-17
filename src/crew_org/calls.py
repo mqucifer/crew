@@ -21,6 +21,7 @@ move only after it is proven on a real epic, a few per pull request.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -268,6 +269,9 @@ class Tool:
     description: str
     parameters: dict[str, Any]
     run: Callable[[dict[str, Any]], str]
+    # What a call of it records beyond its size: names and flags, never what it
+    # returned (crew#778). The read tool's path, definition and selection.
+    notes: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
     def spec(self) -> dict[str, Any]:
         return {
@@ -787,6 +791,10 @@ def _use_tools(
                 said = "Those arguments aren't a JSON object: call the tool again."
             else:
                 said = tool.run(arguments)
+            noted: dict[str, Any] = {}
+            if tool is not None and tool.notes is not None and isinstance(arguments, dict):
+                with contextlib.suppress(Exception):  # a note never costs the read
+                    noted = tool.notes(arguments)
             record(
                 EventKind.TOOL_FINISHED,
                 name,
@@ -794,6 +802,7 @@ def _use_tools(
                 tool=name,
                 round=turn,
                 chars=len(said),
+                **noted,
             )
             messages.append({"role": "tool", "tool_call_id": made.get("id", ""), "content": said})
     return [*messages, {"role": "user", "content": ANSWER_NOW}]
