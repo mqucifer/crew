@@ -29,7 +29,7 @@ Every record carries the same context, and records join by its ids, never by tim
 tick (id, commit, dirty) ─┬─ pass ─ phase
                           └─ run: one role, one card, one phase
                                ├─ card (repo, number), sprint, attempt
-                               ├─ model calls (call_id, prompt_hash, output_schema)
+                               ├─ model calls (call_id, prompt_hash, output_schema, the rules given)
                                ├─ files.shown / files.asked (+ why)
                                ├─ decisions (rule, failure_kind)
                                ├─ what the gates found (findings, unproven_numbers, failing_tests)

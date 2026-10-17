@@ -106,3 +106,7 @@ is a log record with an `event.name`, so events and logs are the same stream.
   The readers handle the old and new records, so the sprint's close reads both.
 - **2026-10-11:** CrewAI and LiteLLM's SDK leave the quiet-logger list with CrewAI
   (crew#583, ADR 0025); httpx, OpenTelemetry and urllib3 stay.
+- **2026-10-17:** `llm.started` gains the rule ids its prompt gave, as a hash with the
+  catalog's version, and the ids themselves the first time a process gives that set
+  (crew#778). Additive, so `schema_version` stays 1. They stay in `var/events`: not
+  content, but not on the telemetry allow-list unless the Sponsor decides it.

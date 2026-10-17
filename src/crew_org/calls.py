@@ -606,10 +606,13 @@ def ask[Answer: BaseModel](
         "prompt_hash": _fingerprint(system),
         "output_schema": f"{answer.__name__}:{_fingerprint(json.dumps(form, sort_keys=True))}",
     }
+    told = _given(role, step, spec, answer, messages)
     sizes = {p.name: len(p.text) for p in parts}
     if tools:
         messages[-1]["content"] += f"\n\n{READ_FIRST}"
-        messages = _use_tools(spec, messages, tools, rounds=rounds, send=reader, sizes=sizes)
+        messages = _use_tools(
+            spec, messages, tools, rounds=rounds, send=reader, sizes=sizes, told=told
+        )
     reason = ""
     empties = 0
     refused: list[str] = []
@@ -623,7 +626,15 @@ def ask[Answer: BaseModel](
         }
         call = str(uuid.uuid4())
         detail = {"model": body["model"], "call_id": call, "try": attempt, **versions}
-        record(EventKind.LLM_CALL_STARTED, spec["role"], role=spec["role"], parts=sizes, **detail)
+        record(
+            EventKind.LLM_CALL_STARTED,
+            spec["role"],
+            role=spec["role"],
+            parts=sizes,
+            **told,
+            **detail,
+        )
+        told.pop("given_rules", None)  # written once; later calls carry the hash
         started = time.monotonic()
         began = datetime.now(UTC)
         try:
@@ -713,8 +724,10 @@ def _use_tools(
     rounds: int,
     send: Callable[[dict[str, Any]], dict[str, Any]],
     sizes: dict[str, int],
+    told: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """The conversation after the tool rounds, ending with the request for the answer."""
+    told = told if told is not None else {}
     by_name = {t.name: t for t in tools}
     params = spec.get("llm_params") or {}
     for turn in range(1, rounds + 1):
@@ -726,7 +739,15 @@ def _use_tools(
             "tool_choice": "auto",
         }
         detail = {"model": body["model"], "call_id": str(uuid.uuid4()), "round": turn}
-        record(EventKind.LLM_CALL_STARTED, spec["role"], role=spec["role"], parts=sizes, **detail)
+        record(
+            EventKind.LLM_CALL_STARTED,
+            spec["role"],
+            role=spec["role"],
+            parts=sizes,
+            **told,
+            **detail,
+        )
+        told.pop("given_rules", None)
         started = time.monotonic()
         data = send(body)
         message = ((data.get("choices") or [{}])[0]).get("message") or {}
@@ -776,6 +797,59 @@ def _use_tools(
             )
             messages.append({"role": "tool", "tool_call_id": made.get("id", ""), "content": said})
     return [*messages, {"role": "user", "content": ANSWER_NOW}]
+
+
+# Each set of rule ids a prompt gave, by its hash, already written in full by this
+# process: the next call that gives the same set carries only the hash (crew#778).
+_GIVEN_WRITTEN: set[str] = set()
+
+
+def _given(
+    key: str,
+    step: str | None,
+    spec: dict[str, Any],
+    answer: type[BaseModel],
+    messages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The rule ids this prompt gives, for its `llm.started` (crew#778).
+
+    `given` hashes the ids, grouped by where they sit (system, form, site); the first
+    call in a process to give a set carries the lists too, as `given_rules`, so a call
+    costs a few dozen bytes. `catalog` says which version of the rules the ids mean.
+    The lookup reads `rule_list`'s told places, built once a process. Best effort: a
+    lookup that fails leaves the call unmarked, never unmade.
+    """
+    try:
+        from crew_org import rule_list  # noqa: PLC0415
+
+        own = (load_agents().get(key) or {}).get(step) if step else None
+        role = (
+            f"{spec['role']} ({step})"
+            if isinstance(own, dict) and "constitution" in own
+            else spec["role"]
+        )
+        places = [
+            f"agents.yaml {key}.{step}.{field}"
+            if isinstance(own, dict) and field in own
+            else f"agents.yaml {key}.{field}"
+            for field in ("backstory", "goal")
+        ]
+        forms = [answer.__name__, *(f.__name__ for f in rule_list._nested(answer))]
+        rules = rule_list.given(
+            role=role,
+            sections=spec.get("constitution", []),
+            agents=places,
+            forms=forms,
+            prompt="\n\n".join(str(m.get("content") or "") for m in messages),
+        )
+        hashed = _fingerprint(json.dumps(rules, sort_keys=True))
+        out: dict[str, Any] = {"given": hashed, "catalog": rule_list.catalog_version()}
+        if hashed not in _GIVEN_WRITTEN:
+            _GIVEN_WRITTEN.add(hashed)
+            out["given_rules"] = rules
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _rules(exc: Exception) -> list[str]:

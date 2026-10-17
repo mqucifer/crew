@@ -370,6 +370,7 @@ holding finished work reports a queue that is not a queue.
 
 - what the gates found is kept, not only counted: each review finding as a file, a one-line statement and whether it blocks; QA's unproven criteria by number; a VERIFY failure's failing tests by id, with their assertion line. These stay local;
 - every model call carries `prompt_hash` (the role's system message) and `output_schema` (the output model and its fingerprint), so a defect, its fix and a recurrence can be placed either side of a change;
+- every model call's `llm.started` names the rules its prompt gave (crew#778): `given`, a hash of the rule ids grouped by where they sit (`system`: its constitution sections and agents.yaml lines; `form`: its answer's form; `site`: the lines of the code that built the prompt, counted where the prompt says them), and `catalog`, the version of the rules those ids mean. The first call in a process to give a set also carries the ids, as `given_rules`. Beside the rule ids a refusal names (`rules`, since crew#772), what a role was told and what it was refused for sit side by side. They stay local;
 - a file asked for comes with a line saying why (`why`, local).
 
 - a crew issue joins the cards it's about by field: each pass records `issue.cites` for the crew issues changed since the last one, with the qualified cards their body names, whoever filed them, and a recurring defect the retro files names its cards qualified, with its cause's key. A bare `#N` isn't guessed at;
