@@ -461,6 +461,19 @@ def describe(path: Path, *, branch: str, protection: dict[str, Any] | None) -> s
     return "\n".join(lines)
 
 
+def refused(found: Any, *, skeleton: bool) -> list[Any]:
+    """What keeps `crew onboard` from taking a repository over, or nothing (crew#757).
+
+    Onboarding is the crew's takeover, after Claude's alpha has passed the handover
+    check, so a repository below readiness level 2 is refused and what it lacks is
+    named (the Sponsor, 2026-10-17; ADR 0030). With `skeleton`, the Sponsor wants
+    the crew to start the project itself: it has nothing to be ready yet.
+    """
+    if skeleton or found.level >= 2:
+        return []
+    return list(found.missing)
+
+
 def read_project(ws: Any, issues: Any, repo: str) -> Project:
     """The project as it stands on its default branch. Empty if it has no commits yet."""
     intent = describe_intent(issues.open_issues(repo))

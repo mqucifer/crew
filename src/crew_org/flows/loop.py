@@ -89,7 +89,7 @@ class Crew:
     # Goal (crew#690, ADR 0030). Their other Goals wait.
     skeleton_only: dict[str, str] = field(default_factory=dict)
     # The crew's own login on the board, without `[bot]`: the author of the
-    # skeleton Goal `crew onboard` files on the Sponsor's yes (crew#690).
+    # skeleton Goal `crew onboard --skeleton` files on the Sponsor's yes (crew#690).
     crew_login: str | None = None
     # Projects whose approved epics wait while the Architect revisits their
     # design, and why (#192). Set by the revisit phase each pass.

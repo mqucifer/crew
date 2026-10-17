@@ -184,6 +184,38 @@ def contract(use: Use, root: Path | None) -> str:
     return "\n".join(lines)
 
 
+def unreadable(use: Use, root: Path | None) -> list[str]:
+    """Why the roles couldn't be shown what `use` points to, one line per gap.
+
+    `notes` and `contract` say so inside the prompt, where only a role reads it.
+    The handover check names the same gaps before the crew takes a project over
+    (crew#757).
+    """
+    gaps = []
+    try:
+        found = section(_file(use.repo, use.file), use.section)
+    except httpx.HTTPError as exc:
+        gaps.append(f"`{use.file}` can't be read from {use.repo}: {exc}")
+    else:
+        if found is None:
+            gaps.append(f'{use.repo}\'s `{use.file}` has no section "{use.section}"')
+    if not use.pin or not use.contract:
+        gaps.append(
+            f"it names no {'`pin`' if not use.pin else '`contract`'}, so the roles aren't "
+            f"shown what {use.repo} provides at the release this project uses"
+        )
+        return gaps
+    release = pinned(use, root)
+    if release is None:
+        return [*gaps, f"`{use.pin}` names no release"]
+    for path in use.contract:
+        try:
+            _file(use.repo, path, release)
+        except httpx.HTTPError as exc:
+            gaps.append(f"`{path}` can't be read at `{release}`: {exc}")
+    return gaps
+
+
 def provided_fields(uses: list[Use], root: Path | None) -> frozenset[str]:
     """Every field the pinned releases' JSON schemas define, by path and by name."""
     names: set[str] = set()
