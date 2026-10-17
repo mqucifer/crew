@@ -150,3 +150,12 @@ def test_a_rule_a_refusal_names_twice_counts_once_with_its_time():
     )
     fired = report.fired["form.TextEdit.changes_something"]
     assert (fired.events, fired.seconds) == (1, 60)
+
+
+def test_a_rule_that_repairs_silently_is_marked_in_the_snapshot():
+    """The review page filters on it (crew#756): it was only in the report's text."""
+    rows = rule_report.snapshot(rule_report.count([]))["rows"]
+    repairs = {rule for rule, row in rows.items() if row["repairs"]}
+    assert "form.Settlement.stripped" in repairs
+    assert "form.TextEdit.changes_something" not in repairs
+    assert all(rows[r]["group"] == "form" for r in repairs)
