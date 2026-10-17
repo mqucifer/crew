@@ -467,8 +467,9 @@ def render(report: Report, *, source: str = "", built_from: str = "") -> str:
 def _untold(entry: Entry) -> bool:
     """Checked and never told, against the second policy (crew#756): a check is told in
     the form it checks. Exempt are the call layer's, since the model doesn't choose an
-    empty answer or a cut field, and the crew's own decisions, which check no form."""
-    return entry.group not in ("told", "call", "decides") and not entry.told
+    empty answer or a cut field, and the crew's own decisions and holds, which check no
+    form."""
+    return entry.group not in ("told", "call", "decides", "skip") and not entry.told
 
 
 def _unchecked(entry: Entry) -> bool:

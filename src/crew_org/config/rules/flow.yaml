@@ -31,6 +31,31 @@ regression.persisted:
 schema.local_repair:
 schema.persisted:
 scope.return:
+skip.acceptance.already_judged_at:
+skip.board_flow.a_goal_written_by_not_the:
+skip.board_flow.already_answered:
+skip.board_flow.its_criteria_cant_all_pass_to:
+  origin:
+  - crew#583
+  - crew#612
+  - sprint-metrics#551
+skip.board_flow.not_ready_still_open_for_the:
+skip.board_flow.rework_refused:
+skip.board_flow.waits_for_planned:
+skip.board_flow.waits_for_the_sponsors_answer_on:
+skip.refine_panel.waits_for_a_person_to_settle:
+  origin:
+  - ADR 0018
+skip.refine_panel.waits_for_the_sponsors_answer_on:
+skip.refine_panel.waits_for_to_be_split_it:
+  origin:
+  - crew#611
+  - crew#773
+  - crew-presentation#138
+  - sprint-metrics#551
+  - sprint-metrics#552
+skip.review.already_reviewed_at_this_head:
+skip.review.draft:
 story.gate_round_trips:
 story.pinned_tests:
 story.review_conflicts_with_criterion:

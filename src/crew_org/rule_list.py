@@ -63,6 +63,7 @@ GROUPS = {
     "guard": "A guard on a change sends it back",
     "edit": "An edit can't be applied, and why is sent back",
     "repair": "The crew changes the work itself, and records it",
+    "skip": "The crew holds work back, said only in words",
     "told": "Told, and not checked by anything above",
 }
 
@@ -1372,6 +1373,64 @@ def _fallback_names(value: ast.expr, fn: Any, source: Source) -> list[str]:
     return names
 
 
+def _skips() -> list[Entry]:
+    """Each place a flow holds a card or a pull request back, with only a sentence.
+
+    A decision like a `rules.Rule`, with no name for the event log: `result.skipped`
+    gets the card and why, as `refine_panel.builds_on_unsplit`'s hold does (crew#773).
+    What decides it is the call its branch tests.
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        parents = _parents(source.tree)
+        for call in (n for n in ast.walk(source.tree) if isinstance(n, ast.Call)):
+            func = call.func
+            if not (
+                isinstance(func, ast.Attribute)
+                and func.attr == "append"
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "skipped"
+                and call.args
+            ):
+                continue
+            given = call.args[0]
+            why: ast.expr | None = None
+            if isinstance(given, ast.Tuple) and len(given.elts) > 1:
+                why = given.elts[1]
+            elif isinstance(given, ast.Call):
+                why = next((k.value for k in given.keywords if k.arg == "skipped"), None)
+            text = _template(why, source.tree) if why is not None else ""
+            if not re.search(r"[A-Za-z]", text):
+                continue
+            fn = _enclosing(call, parents, ast.FunctionDef)
+            branch = _enclosing(call, parents, ast.If)
+            checks = (
+                _tested_calls(source, fn, branch) if fn is not None and branch is not None else []
+            )
+            comments = _comments_above(source.lines, getattr(call, "lineno", 1))
+            if branch is not None:
+                comments = _comments_above(source.lines, branch.lineno) + " " + comments
+            rule_id = f"skip.{_short(source)}.{_slug(text.replace('{}', ' '), 6)}"
+            where = f"{source.path}:{fn.name if fn is not None else '<module>'}"
+            docs = " ".join(ast.get_docstring(f) or "" for _, f in checks)
+            entry = out.setdefault(
+                rule_id,
+                Entry(
+                    rule_id,
+                    "skip",
+                    where,
+                    _first_sentence(text.replace("{}", "…")),
+                    origin=refs(comments + " " + docs),
+                    text=text + " " + comments,
+                    sections=_cited_sections(comments),
+                ),
+            )
+            entry.checked |= {f"{s.path}:{f.name}" for s, f in checks} or {where}
+    return list(out.values())
+
+
 def _guard_rules() -> list[Entry]:
     """Each place delivery records a failure class for a change and sends a reason back.
 
@@ -1761,6 +1820,7 @@ def entries() -> tuple[Entry, ...]:
         + _fed_back_rules()
         + _changed_answers()
         + _repairs()
+        + _skips()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
@@ -1942,8 +2002,9 @@ def _section(entry: Entry) -> int | None:
 PLACEMENT: list[tuple[str, str, Any]] = [
     (
         "flow",
-        "the crew's own decisions (`rules.Rule`): retry, return, block, hold",
-        lambda e: e.group == "decides",
+        "the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the "
+        "holds said only in words",
+        lambda e: e.group in ("decides", "skip"),
     ),
     ("answer_shape", "the call layer's refusals, for every form", lambda e: e.group == "call"),
     (

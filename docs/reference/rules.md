@@ -18,6 +18,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A guard on a change sends it back | 5 |
 | An edit can't be applied, and why is sent back | 7 |
 | The crew changes the work itself, and records it | 6 |
+| The crew holds work back, said only in words | 13 |
 | Told, and not checked by anything above | 222 |
 
 ## Categories
@@ -33,7 +34,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 30 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 66 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 46 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `refinement_crew:BacklogOrder`, `refinement_crew:Hold`, `refinement_crew:order_backlog`, `review_crew` | 65 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `refinement_crew:BacklogOrder`, `refinement_crew:Hold`, `refinement_crew:order_backlog`, `review_crew` | 78 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 24 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 19 |
 | Unplaced | | 24 |
@@ -228,6 +229,24 @@ section; one no line holds for is unplaced, never guessed.
 | `repair.unsafe_fix.B905`<br>B905: `strict=False` is what `zip()` does without it, so behaviour is unchanged. | edits | `src/crew_org/tools/workspace.py:UNSAFE_FIXES` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:UNSAFE_FIXES | crew#758<br>sprint-metrics#453 |
 | `repair.unsafe_fix.SIM102`<br>SIM102: Joining nested `if`s with `and` runs the same code in the same order. | edits | `src/crew_org/tools/workspace.py:UNSAFE_FIXES` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:UNSAFE_FIXES | crew#758<br>sprint-metrics#563 |
 | `repair.workspace.autofix`<br>What a developer's editor does on save. | edits | `src/crew_org/tools/workspace.py:AUTOFIX` | — | §14 before_the_checks_the_projects_own (both cite crew#758; in §14) | src/crew_org/tools/workspace.py:AUTOFIX | crew#758 |
+
+## The crew holds work back, said only in words
+
+| Rule | Category | Where | Roles | Told | Checked by | From |
+|---|---|---|---|---|---|---|
+| `skip.acceptance.already_judged_at`<br>already judged at … | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa | — |
+| `skip.board_flow.a_goal_written_by_not_the`<br>a Goal written by …, not the Sponsor | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | — |
+| `skip.board_flow.already_answered`<br>already answered | flow | `src/crew_org/flows/board_flow.py:rework_gate` | — | — | src/crew_org/flows/board_flow.py:rework_gate | — |
+| `skip.board_flow.its_criteria_cant_all_pass_to`<br>its criteria can't all pass: to the Product Owner | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | §16.1 (both cite crew#583; given to no role) | src/crew_org/events.py:attributed<br>src/crew_org/flows/criteria_check.py:check_each | crew#583<br>crew#612<br>sprint-metrics#551 |
+| `skip.board_flow.not_ready_still_open_for_the`<br>not ready: … still open for the Architect | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/record.py:parse<br>src/crew_org/flows/record.py:split | — |
+| `skip.board_flow.rework_refused`<br>rework refused — … | flow | `src/crew_org/flows/board_flow.py:rework_gate` | — | — | src/crew_org/flows/board_flow.py:unstarted_children | — |
+| `skip.board_flow.waits_for_planned`<br>waits for planned … | flow | `src/crew_org/flows/board_flow.py:settle_wait` | — | — | src/crew_org/flows/board_flow.py:settle_wait | — |
+| `skip.board_flow.waits_for_the_sponsors_answer_on`<br>waits for the Sponsor's answer on the epic | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step<br>src/crew_org/tools/github_issues.py:from_sponsor | — |
+| `skip.refine_panel.waits_for_a_person_to_settle`<br>waits for a person to settle its design questions | flow | `src/crew_org/flows/refine_panel.py:panel_step` | — | — | src/crew_org/flows/settle.py:settle_design_questions | ADR 0018 |
+| `skip.refine_panel.waits_for_the_sponsors_answer_on`<br>waits for the Sponsor's answer on the epic | flow | `src/crew_org/flows/refine_panel.py:panel_step` | — | — | src/crew_org/flows/settle.py:settle_epic | — |
+| `skip.refine_panel.waits_for_to_be_split_it`<br>waits for #… to be split: it builds on it | flow | `src/crew_org/flows/refine_panel.py:panel_step` | — | — | src/crew_org/flows/refine_panel.py:builds_on_unsplit | crew#611<br>crew#773<br>crew-presentation#138<br>sprint-metrics#551<br>sprint-metrics#552 |
+| `skip.review.already_reviewed_at_this_head`<br>already reviewed at this head | flow | `src/crew_org/flows/review.py:review_open_pulls` | — | — | src/crew_org/flows/review.py:review_open_pulls | — |
+| `skip.review.draft`<br>draft | flow | `src/crew_org/flows/review.py:review_open_pulls` | — | — | src/crew_org/flows/review.py:review_open_pulls | — |
 
 ## Told, and not checked by anything above
 
