@@ -1108,7 +1108,7 @@ def deliver_story(
                     len(part) for part in (context, story_text, prior, feedback)
                 )
                 reader = (
-                    Reader(worktree, budget=room, shown=focus.shown)
+                    Reader(worktree, budget=room, shown=focus.shown, focus=focus)
                     if focus.focused and room >= repo_context.READ_MIN_CHARS
                     else None
                 )

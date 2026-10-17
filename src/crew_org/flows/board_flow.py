@@ -1358,7 +1358,9 @@ class RepoContext:
         if self._ws is None or not focus.focused:
             return None
         try:
-            return Reader(self._ws.for_repo(repo).current(), budget=0, shown=focus.shown)
+            return Reader(
+                self._ws.for_repo(repo).current(), budget=0, shown=focus.shown, focus=focus
+            )
         except Exception:  # noqa: BLE001 - the split goes on, asking instead
             return None
 

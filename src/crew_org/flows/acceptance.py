@@ -43,6 +43,7 @@ from crew_org.tools.repo_context import (
     READ_MIN_CHARS,
     READING_CHAR_CEILING,
     WHOLE_FILE_CHARS,
+    Focus,
     project_files,
 )
 from crew_org.tools.repo_read import Reader
@@ -420,7 +421,13 @@ def _judge(
             - sum(len(str(v)) for v in evidence.values())
         )
         reader = (
-            Reader(worktree, budget=room, shown=tests.shown)
+            Reader(
+                worktree,
+                budget=room,
+                shown=tests.shown,
+                # What QA was shown, in the selection's terms, for each read's note.
+                focus=Focus(focused=tests.focused, shown=tests.shown, partial=list(tests.cut)),
+            )
             if tests.focused and room >= READ_MIN_CHARS
             else None
         )

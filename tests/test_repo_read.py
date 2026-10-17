@@ -94,3 +94,96 @@ def test_a_large_written_file_is_shown_as_the_definitions_changed():
     assert "@property\n    def rows(self):" in shown and "THRESHOLD = 3" not in shown
     assert "Read any other by name." in shown
     assert changed_only(METRICS, ["nothing_here"]) == METRICS
+
+
+# --- what each read records (crew#778, discussion 553) ----------------------
+
+
+def test_a_read_records_its_path_definition_and_what_the_selection_did_with_it(repo: Path):
+    from crew_org import calls, events, telemetry
+    from crew_org.events import EventKind, EventSink
+    from crew_org.tools.repo_context import Focus
+
+    focus = Focus(focused=True, shown=["src/metrics.py"], partial=["src/metrics.py"])
+    focus.close = ["docs/metrics.md"]
+    reader = Reader(repo, budget=1_000, focus=focus)
+    tool = reader.tool()
+    seen: list = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    events.reset_bridge()
+    events._TARGETS.append((sink, None))
+    try:
+        replies = iter(
+            [
+                {
+                    "id": "r",
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": f"c{i}",
+                                        "function": {"name": "read_file", "arguments": args},
+                                    }
+                                    for i, args in enumerate(
+                                        [
+                                            '{"path": "src/metrics.py", "name": "cycle_time"}',
+                                            '{"path": "docs/metrics.md"}',
+                                            '{"path": "logo.png"}',
+                                        ]
+                                    )
+                                ],
+                            }
+                        }
+                    ],
+                    "usage": {},
+                },
+                {"id": "r", "choices": [{"message": {"content": "done"}}], "usage": {}},
+            ]
+        )
+        calls._use_tools(
+            calls.role_spec("developer"),
+            [{"role": "user", "content": "go"}],
+            [tool],
+            rounds=2,
+            send=lambda body: next(replies),
+            sizes={},
+        )
+    finally:
+        events.reset_bridge()
+    notes = [
+        {k: e.detail.get(k) for k in ("read_path", "read_name", "selected", "read")}
+        for e in seen
+        if e.kind is EventKind.TOOL_FINISHED
+    ]
+    assert notes == [
+        {
+            "read_path": "src/metrics.py",
+            "read_name": "cycle_time",
+            "selected": "part",
+            "read": True,
+        },
+        {"read_path": "docs/metrics.md", "read_name": None, "selected": "left_out", "read": True},
+        {"read_path": "logo.png", "read_name": None, "selected": "not_a_candidate", "read": False},
+    ]
+    # Paths and names, kept in the crew's own record: never in telemetry.
+    for e in seen:
+        assert not {"read_path", "read_name", "selected"} & set(telemetry.view(e))
+
+
+def test_a_file_s_place_in_the_selection():
+    from crew_org.tools.repo_context import Focus
+
+    focus = Focus(
+        focused=True, shown=["a.py", "b.py"], partial=["b.py"], omitted=["c.py"], close=["d.py"]
+    )
+    assert [focus.selected(p) for p in ("a.py", "b.py", "c.py", "d.py", "e.py")] == [
+        "full",
+        "part",
+        "left_out",
+        "left_out",
+        "not_a_candidate",
+    ]
+    assert Focus(focused=False).selected("anything.py") == "full", "the whole repository shown"
