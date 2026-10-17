@@ -51,7 +51,7 @@ decision was first made.
 | [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (the Architect's settle before the split to be built by crew#440) |
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | The Sponsor decides when a release is cut | 2026-10-07 | Accepted (until crew#500 settles how releases happen) |
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
-| [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source | 2026-10-07 | Accepted (to be built by mqucifer/sprint-metrics#461 and crew#521) |
+| [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source, and the consumer reviews what it receives | 2026-10-07 | Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the consumer's review planned for M10) |
 | [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
 | [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan) |
 | [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it) |
