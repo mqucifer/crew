@@ -20,7 +20,7 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
   - its owner, the role it serves;
   - its origin, the incidents it came from;
   - whether it's guidance;
-  - for a rule that refuses through `rulebook.refuse()`, its message and how its form tells it.
+  - for a rule that refuses through `rulebook.refuse()`, its messages, each by name as ESLint names a rule's messages (`refuse(rule, which, **values)`), and how its form tells it.
 
   Where a rule is checked and where it's told are read from the code by `rule_list`, never written twice.
 - **The code and the catalog are held together by tests:**
@@ -42,7 +42,7 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
   | guidance | writing guidance |
 - **Two policies** (the Sponsor, 2026-10-17):
   1. **A rule that's told is checked, or labelled guidance.** A told-only rule gets a check where its condition is clear and testable. Otherwise it's labelled guidance (kept in the prompt, not enforced, counted against its role's budget) or cut. A literal check that refuses legitimate answers is worse than guidance (crew#761).
-  2. **A rule that's checked is told,** in the description of the form it checks and only to the role that fills that form. The told text comes from the same declaration as its refusal message. Checks on the model call itself (an empty answer, a field cut off) are exempt, because the model doesn't choose them. So are the crew's own decisions (`rules.Rule`), which check no form.
+  2. **A rule that's checked is told,** in the description of the form it checks and only to the role that fills that form. The told text comes from the same declaration as its refusal message. Checks on the model call itself (an empty answer, a field cut off) are exempt, because the model doesn't choose them. So are the crew's own decisions (`rules.Rule`), which check no form, and a repair that never refuses, which has no refusal for its telling to come from. Each such repair is listed and decided in its category's cleanup.
 - **A guidance budget per role** (the operator, 2026-10-17): each role starts at its count that day (`config/rules/budget.yaml`, 266 lines in all), so it can only go down. A test fails when a role goes over.
 - **The starting guidance label isn't a decision.** The 266 lines are labelled guidance because nothing checks them today, not because anyone decided they should stay. Each is decided in its category's cleanup: given a check, kept as guidance, or cut.
 - **Retirement is flagged at the retro, never automatic** (the operator, 2026-10-17). A rule that can fire and hasn't in the last 10 sprints is a candidate to retire, and the five that fire most are shown as "a missing tool?". Both come from `crew rules --events`.
@@ -56,7 +56,8 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
   2. `refuse("<id>", ...)` where it's checked.
 
   The form's description, the refusal, the list, the counts and the docs follow from them. A rule added any other way fails the tests.
-- **Refusals name their rule.** A refusal raised through `refuse()` carries its id, and the event log records it. `crew rules --events` counts those by name, where today most refusals are matched by their text.
+- **Refusals name their rule.** A refusal raised through `refuse()` carries its id, and `llm.refused` records it as `rules`, read from the refusal or from pydantic's error context. `crew rules --events` counts those by name first, where before most refusals were matched by their text.
+- **The prompts of the forms that carry a migrated rule change,** and only those: each rule's description is added to the field or form it checks. When answer_shape moved, 20 forms changed and 126 renderings stayed byte for byte the same.
 - **The Sponsor reviews by category, not by row.** Each category's summary covers: rules by kind, both policy gaps, fires, refused hours and roles.
 - **The cleanup is category by category,** each one deciding check, guidance or cut for its told-only rules and giving each rule one owner.
 - **Some lines are unplaced.** 24 told lines fit no one category: the onboarding interview, the Developer's instructions for reading files, and §16 of the ways of working. They're declared in `unplaced.yaml` until a cleanup places them.
