@@ -21,10 +21,14 @@ from pathlib import Path
 
 DEFAULT_TIMEOUT = 1800
 
-# The crew gives Claude Code the tools a developer needs in a worktree and no
-# more. It notably cannot push: landing work stays with crew_org.git_ops, which
-# refuses to write to main.
-ALLOWED_TOOLS = "Read,Write,Edit,Glob,Grep,Bash(uv run:*),Bash(uv sync:*),Bash(python3:*)"
+# The crew gives Claude Code the tools to read and edit a worktree, and no
+# more. It cannot push: landing work stays with crew_org.git_ops, which refuses
+# to write to main. It cannot run anything either: it runs on the host, and the
+# crew's generated code runs only in the sandbox (CLAUDE.md). With `uv run` and
+# `uv sync` allowed, an escalation ran the project on the Mac and left a macOS
+# `.venv` the sandbox's setup couldn't replace, which blocked the story (crew#780).
+# The crew's checks run its edits in the sandbox afterwards.
+ALLOWED_TOOLS = "Read,Write,Edit,Glob,Grep"
 
 # The operator's own Claude Code setup (a repo's CLAUDE.md, hooks, skills) is
 # for the operator, not the crew. Safe mode leaves it all out, while auth stays
@@ -110,6 +114,11 @@ def escalate(
                 prompt,
                 "--output-format",
                 "json",
+                # `--tools` is what limits the session: `--allowedTools` only
+                # approves without asking, and the operator's own permission
+                # mode approved `uv run` with Bash off that list (crew#780).
+                "--tools",
+                ALLOWED_TOOLS,
                 "--allowedTools",
                 ALLOWED_TOOLS,
                 *ISOLATION_FLAGS,

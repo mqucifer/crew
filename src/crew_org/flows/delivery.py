@@ -851,6 +851,8 @@ def escalation_prompt(story: str, failure: str) -> str:
         "Fix the implementation so the tests and lint pass. Write the test that "
         "expresses each acceptance criterion if it is missing. Stay inside the story's "
         "scope — anything else you notice belongs in a new issue, not this change.\n"
+        "You can read and edit files, but not run commands: the crew runs the tests "
+        "and lint in its sandbox after you finish.\n"
         "Do not commit or push; the crew handles that."
     )
 
