@@ -102,7 +102,14 @@ def triage_bugs(
             continue
         report = issue.get("body") or ""
         sink.emit(
-            CrewEvent(kind=EventKind.AGENT_STARTED, role=ROLE, card=number, summary="triage a bug")
+            CrewEvent(
+                kind=EventKind.AGENT_STARTED,
+                role=ROLE,
+                card=number,
+                summary="triage a bug",
+                # A card number alone names no repository (crew#752).
+                detail={"repo": repo},
+            )
         )
         try:
             shown, focus = context.focused_for(repo, f"{card.title}\n\n{report}")
@@ -118,7 +125,11 @@ def triage_bugs(
             failed.append((number, f"{type(exc).__name__}: {exc}"))
             sink.emit(
                 CrewEvent(
-                    kind=EventKind.AGENT_FAILED, role=ROLE, card=number, summary=str(exc)[:100]
+                    kind=EventKind.AGENT_FAILED,
+                    role=ROLE,
+                    card=number,
+                    summary=str(exc)[:100],
+                    detail={"repo": repo},
                 )
             )
             continue
@@ -130,6 +141,7 @@ def triage_bugs(
                 role=ROLE,
                 card=number,
                 summary=f"bug triaged: {triage.outcome}",
+                detail={"repo": repo},
             )
         )
     return done

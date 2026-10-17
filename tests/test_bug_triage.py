@@ -203,3 +203,31 @@ def test_triage_is_the_business_analysts_with_the_report_and_the_repository(monk
     assert "## The bug filed, #593: A title" in seen["description"]
     assert "the map" in seen["description"]
     assert bug_triage_crew.BUG_POINTS == (1, 2, 3, 5)
+
+
+class Recorded(Sink):
+    def __init__(self) -> None:
+        self.events: list[Any] = []
+
+    def emit(self, event: Any) -> None:
+        self.events.append(event)
+
+
+class Context:
+    def focused_for(self, repo: str, text: str) -> tuple[str, None]:
+        return "the map", None
+
+    def reader_for(self, repo: str, focus: Any) -> None:
+        return None
+
+
+def test_a_triage_names_the_bugs_repository(monkeypatch):
+    """crew#756: the triage's events named a card and no repository (crew#752's class)."""
+    monkeypatch.setattr(bugs, "triage_bug", lambda *a, **kw: _triage("not_a_bug"))
+    sink = Recorded()
+    bugs.triage_bugs(
+        Board(), Issues(), sink, [_card()], default_repo="other", context=Context(), failed=[]
+    )
+    started, finished = [e for e in sink.events if e.kind in ("agent.started", "agent.finished")]
+    assert (started.card, started.detail["repo"]) == (593, "sm")
+    assert (finished.card, finished.detail["repo"]) == (593, "sm")
