@@ -1,4 +1,10 @@
 # A change applies cleanly. Declared once each (crew#756, ADR 0031): change a rule here.
+config.const.delivery_crew.MAX_FILE_BYTES:
+config.const.pinning.PINNING_CHAR_CEILING:
+config.const.regression.RESTORE_CHAR_CEILING:
+config.const.workspace.DEFAULT_TIMEOUT:
+config.const.workspace.MAX_FAILURE_REPORT_CHARS:
+config.const.workspace.REPLACE_SHOWN_CHARS:
 edit.ast_edit.apply_edit:
   owner: Developer
 edit.delivery.these_tests_arent_in_their:

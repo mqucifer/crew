@@ -1,0 +1,1579 @@
+# Every decision point no evidence in the code maps to a rule, reviewed by hand
+# (crew#756): the rule it is, or why it isn't one. A new point fails the tests until
+# it's entered here or its code names its rule. `at` and `if` are for reading.
+calls.form_text:skip:cc375f62:
+  at: calls.py:form_text
+  if: '''properties'' not in model'
+  not_a_rule: renders an answer's form
+cli._render_tick:filter:8ab5a662:
+  at: cli.py:_render_tick
+  if: v
+  not_a_rule: 'a report or a render: lists, decides nothing'
+cli.diagnose:end:2a7a6322:
+  at: cli.py:diagnose
+  if: not offer
+  not_a_rule: 'not the tick: a command a person runs'
+cli.export:filter:338ef58c:
+  at: cli.py:export
+  if: c.work_type in DELIVERED and c.repo == repo
+  not_a_rule: 'not the tick: a command a person runs'
+cli.export:filter:d354ee08:
+  at: cli.py:export
+  if: c.sprint == sprint or c.number in returned
+  not_a_rule: 'not the tick: a command a person runs'
+crews.refinement_crew.check_provided:filter:2b3ad7bf:
+  at: crews/refinement_crew.py:check_provided
+  if: field not in provided and field.removesuffix('[]').rsplit('.', 1)[-1].removesuffix('[]') not in
+    provided
+  rule: check.refinement_crew.check
+flows.acceptance._already_done:end:11e9b3e2:
+  at: flows/acceptance.py:_already_done
+  if: not latest or ALREADY_DONE_MARKER not in latest[-1]
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.acceptance._existing_proof:end:aa8c27db:
+  at: flows/acceptance.py:_existing_proof
+  if: not latest or EXISTING_PROOF_MARKER not in latest[-1]
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.acceptance._judge:filter:3e200959:
+  at: flows/acceptance.py:_judge
+  if: f'{rel}::{name}' not in asked
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.acceptance.awaiting_qa:filter:5b2cb0c5:
+  at: flows/acceptance.py:awaiting_qa
+  if: c.status == QAING and c.work_type in DELIVERED and (c.state != 'CLOSED')
+  rule: decision.acceptance.awaiting_qa
+flows.acceptance.close_finished_parents:filter:ac818ed0:
+  at: flows/acceptance.py:close_finished_parents
+  if: c.parent == card.number and c.repo == card.repo
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:move:a334dd35:
+  at: flows/acceptance.py:close_finished_parents
+  if: card.status != DONE
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:2cdc68b2:
+  at: flows/acceptance.py:close_finished_parents
+  if: on_board
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:42199b1c:
+  at: flows/acceptance.py:close_finished_parents
+  if: card.work_type != parent_type or card.state == 'CLOSED'
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:457739df:
+  at: flows/acceptance.py:close_finished_parents
+  if: child.get('state_reason') == 'not_planned'
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:8283b335:
+  at: flows/acceptance.py:close_finished_parents
+  if: not statuses or any((status != DONE for status in statuses))
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:c810c2ee:
+  at: flows/acceptance.py:close_finished_parents
+  if: total is not None and (total == 0 or (closed_count or 0) < total)
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:c9dd52c1:
+  at: flows/acceptance.py:close_finished_parents
+  if: NEEDS_REWORK in card.labels
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:d1f14bcc:
+  at: flows/acceptance.py:close_finished_parents
+  if: any((c.status != DONE for c in on_board))
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.close_finished_parents:skip:f22119e0:
+  at: flows/acceptance.py:close_finished_parents
+  if: not children
+  rule: decision.acceptance.close_finished_parents
+flows.acceptance.in_part:filter:1789d18f:
+  at: flows/acceptance.py:in_part
+  if: isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.acceptance.in_part:filter:863032e4:
+  at: flows/acceptance.py:in_part
+  if: k.rsplit('.', 1)[-1] in names or any((span(n)[0] <= x <= span(n)[1] for x in lines))
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.acceptance.in_part:filter:9a734677:
+  at: flows/acceptance.py:in_part
+  if: k not in picked and (not isinstance(n, ast.ClassDef))
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.acceptance.qa_tests:filter:9427ab87:
+  at: flows/acceptance.py:qa_tests
+  if: rel not in chosen
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.acceptance.run_qa:result:verified:4ab74c3b:
+  at: flows/acceptance.py:run_qa
+  if: verdict.accepted and done
+  rule: gate.qa_unproven
+flows.acceptance.run_qa:result:verified:78ce9961:
+  at: flows/acceptance.py:run_qa
+  if: ci_only(worktree)
+  rule: decision.acceptance.ci_only
+flows.artifacts.label:label:449dc0cb:
+  at: flows/artifacts.py:label
+  if: add
+  not_a_rule: 'the label helper: applies what its callers decide'
+flows.attempts.retries_text:filter:0d8e7773:
+  at: flows/attempts.py:retries_text
+  if: not s.get('superseded')
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.backlog_order.needs_ordering:filter:356d1388:
+  at: flows/backlog_order.py:needs_ordering
+  if: c.rank is None
+  rule: decision.backlog_order.what_is_ordered
+flows.backlog_order.open_epics:filter:9ef3f87f:
+  at: flows/backlog_order.py:open_epics
+  if: c.work_type == EPIC_TYPE and c.repo == repo and (c.state != 'CLOSED') and (c.status != DONE)
+  rule: decision.backlog_order.what_is_ordered
+flows.backlog_order.order_backlogs:filter:70bd7266:
+  at: flows/backlog_order.py:order_backlogs
+  if: c.work_type == STORY_TYPE and c.repo == repo and (c.state != 'CLOSED') and (c.status in UNSTARTED)
+  rule: decision.backlog_order.what_is_ordered
+flows.backlog_order.order_backlogs:result:failed:ade3d7cd:
+  at: flows/backlog_order.py:order_backlogs
+  if: isinstance(answer, str)
+  rule: decision.backlog_order.what_is_ordered
+flows.backlog_order.order_backlogs:result:holds:a3e14531:
+  at: flows/backlog_order.py:order_backlogs
+  if: updated != body
+  rule: decision.backlog_order.what_is_ordered
+flows.board_flow._last_marked:filter:36182919:
+  at: flows/board_flow.py:_last_marked
+  if: marker in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.board_flow.admit_held_stories:result:waiting:539e9641:
+  at: flows/board_flow.py:admit_held_stories
+  if: not verdict.allowed
+  rule: hold.wip_limit
+flows.board_flow.admit_held_stories:skip:1e378846:
+  at: flows/board_flow.py:admit_held_stories
+  if: card.status != REFINEMENT or card.state == 'CLOSED' or card.work_type != STORY_TYPE or (HELD_FOR_ROOM
+    not in card.labels)
+  rule: decision.board_flow.admit_held_stories
+flows.board_flow.approved_epics:filter:ac4b49b1:
+  at: flows/board_flow.py:approved_epics
+  if: c.status == REFINEMENT and c.state != 'CLOSED' and (c.work_type == EPIC_TYPE)
+  rule: decision.board_flow.approved_epics
+flows.board_flow.goal_cards:filter:68917dfd:
+  at: flows/board_flow.py:goal_cards
+  if: c.status == INBOX and c.state != 'CLOSED' and (c.work_type == GOAL_TYPE) and set_by_the_sponsor(c,
+    sponsor, crew_login)
+  rule: decision.board_flow.goal_cards
+flows.board_flow.goals_missing_work_type:filter:b611faa8:
+  at: flows/board_flow.py:goals_missing_work_type
+  if: c.status == INBOX and c.state != 'CLOSED' and (not c.work_type) and (GOAL_LABEL in c.labels)
+  rule: decision.board_flow.goals_missing_work_type
+flows.board_flow.lacking_goals:filter:e6e90da4:
+  at: flows/board_flow.py:lacking_goals
+  if: c.work_type == GOAL_TYPE and c.state != 'CLOSED' and (NEEDS_EPIC in c.labels) and (NEEDS_REWORK
+    not in c.labels) and set_by_the_sponsor(c, sponsor, crew_login)
+  rule: decision.board_flow.lacking_goals
+flows.board_flow.planned_elsewhere:filter:3d76f4a9:
+  at: flows/board_flow.py:planned_elsewhere
+  if: c.work_type == STORY_TYPE and (c.repo or repo) == repo and (c.state != 'CLOSED') and (c.status !=
+    'Done') and (c.parent not in (None, epic))
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.board_flow.product_step:end:0314e915:
+  at: flows/board_flow.py:product_step
+  if: record_flow.has_change(after, ANSWER)
+  rule: decision.board_flow.product_step
+flows.board_flow.product_step:end:4fdc031c:
+  at: flows/board_flow.py:product_step
+  if: reply.answer.strip()
+  rule: decision.board_flow.product_step
+flows.board_flow.product_step:end:7dae908b:
+  at: flows/board_flow.py:product_step
+  if: not problems
+  rule: decision.board_flow.product_step
+flows.board_flow.product_step:end:df353202:
+  at: flows/board_flow.py:product_step
+  if: NEEDS_REWORK not in epic.labels
+  rule: decision.board_flow.product_step
+flows.board_flow.record_split_tests:end:cbd4d796:
+  at: flows/board_flow.py:record_split_tests
+  if: not record_flow.has_record(issues.get(repo, epic).get('body') or '')
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_split_tests:end:e2823bf7:
+  at: flows/board_flow.py:record_split_tests
+  if: not (changes or proposal.tests_dropped)
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_split_tests:filter:195eda64:
+  at: flows/board_flow.py:record_split_tests
+  if: story.pinned_behaviour.lower().startswith('contract change')
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_sponsor_words:end:afb2e8e1:
+  at: flows/board_flow.py:record_sponsor_words
+  if: began is None
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_sponsor_words:end:c7d5c456:
+  at: flows/board_flow.py:record_sponsor_words
+  if: not record_flow.has_record(body)
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_sponsor_words:filter:03081723:
+  at: flows/board_flow.py:record_sponsor_words
+  if: _RECORD_CHANGE in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.board_flow.record_sponsor_words:filter:6707411f:
+  at: flows/board_flow.py:record_sponsor_words
+  if: '''<!-- crew:'' not in (c.get(''body'') or '''') and (c.get(''body'') or '''').strip() and from_sponsor(issues,
+    c) and (_comment_ref(c) not in sources)'
+  rule: decision.board_flow.sponsor_words
+flows.board_flow.refine_epics:close:895cac16:
+  at: flows/board_flow.py:refine_epics
+  if: not proposal.stories
+  rule: decision.board_flow.already_delivered
+flows.board_flow.refine_epics:filter:15a2daec:
+  at: flows/board_flow.py:refine_epics
+  if: c.number and c.status == INBOX and ((c.repo or repo) == repo)
+  rule: skip.refine_panel.waits_for_to_be_split_it
+flows.board_flow.refine_epics:filter:33574705:
+  at: flows/board_flow.py:refine_epics
+  if: s not in named
+  rule: gate.criteria_cannot_all_pass
+flows.board_flow.refine_epics:result:design_required:7b4b01aa:
+  at: flows/board_flow.py:refine_epics
+  if: decision.required
+  rule: decision.board_flow.design_required
+flows.board_flow.refine_epics:result:held_for_design:129f578d:
+  at: flows/board_flow.py:refine_epics
+  if: repo in holds and TECHNICAL not in epic_card.labels
+  rule: decision.board_flow.technical_work_first
+flows.board_flow.refine_epics:result:parked:ad5874e3:
+  at: flows/board_flow.py:refine_epics
+  if: seen_failures.count(fingerprint) + 1 >= IDENTICAL_FAILURES_BEFORE_PARKING
+  rule: decision.board_flow.parked
+flows.board_flow.refine_epics:skip:10f3b583:
+  at: flows/board_flow.py:refine_epics
+  if: waited
+  rule: skip.board_flow.waits_for_planned
+flows.board_flow.refine_epics:skip:593c1e25:
+  at: flows/board_flow.py:refine_epics
+  if: (_epic_state(issues, repo, number) or '').lower() == 'closed'
+  not_a_rule: 'the epic was closed meanwhile: nothing to refine'
+flows.board_flow.refine_epics:skip:926ce33e:
+  at: flows/board_flow.py:refine_epics
+  if: not record_sponsor_words(issues, sink, result, epic_card, repo)
+  rule: decision.board_flow.sponsor_words
+flows.board_flow.refine_epics:skip:98af5afe:
+  at: flows/board_flow.py:refine_epics
+  if: not proceed
+  rule: decision.board_flow.product_step
+flows.board_flow.refine_epics:skip:e1acdf1c:
+  at: flows/board_flow.py:refine_epics
+  if: settled != RESPLIT
+  rule: decision.board_flow.rework_gate
+flows.board_flow.refine_epics:skip:f4e0ec9f:
+  at: flows/board_flow.py:refine_epics
+  if: panel_search is not None and (not panel_step(issues, sink, result, epic_card, repo, project=context.record_for(repo),
+    search=panel_search, code=partial(_focused
+  rule: decision.refine_panel.panel_step
+flows.board_flow.rework_gate:end:857c696b:
+  at: flows/board_flow.py:rework_gate
+  if: not wants_rework
+  rule: decision.board_flow.rework_gate
+flows.board_flow.rework_gate:filter:99a5d287:
+  at: flows/board_flow.py:rework_gate
+  if: (c.repo or repo) == repo
+  rule: decision.board_flow.rework_gate
+flows.board_flow.rework_gate:filter:cc75e0b4:
+  at: flows/board_flow.py:rework_gate
+  if: part
+  rule: decision.board_flow.rework_gate
+flows.board_flow.set_by_the_sponsor:end:fa8eb7cc:
+  at: flows/board_flow.py:set_by_the_sponsor
+  if: sponsor is None or card.author == sponsor
+  rule: decision.board_flow.goal_cards
+flows.board_flow.settle_wait:close:b01a6884:
+  at: flows/board_flow.py:settle_wait
+  if: waited <= done.numbers
+  rule: skip.board_flow.waits_for_planned
+flows.board_flow.settle_wait:label:842e2185:
+  at: flows/board_flow.py:settle_wait
+  if: gone
+  rule: skip.board_flow.waits_for_planned
+flows.board_flow.stamp_goal_work_type:end:4a4b84e5:
+  at: flows/board_flow.py:stamp_goal_work_type
+  if: not pending
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.started:skip:84f82897:
+  at: flows/board_flow.py:started
+  if: card.number is None
+  rule: decision.board_flow.started
+flows.board_flow.started:skip:a85c931b:
+  at: flows/board_flow.py:started
+  if: card.status in (INBOX, REFINEMENT, READY)
+  rule: decision.board_flow.started
+flows.board_flow.story_problem_evidence:end:00ed48fa:
+  at: flows/board_flow.py:story_problem_evidence
+  if: not found
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.board_flow.tick:filter:627174b2:
+  at: flows/board_flow.py:tick
+  if: c.key not in lacking_keys
+  rule: decision.board_flow.lacking_goals
+flows.board_flow.tick:filter:a4aaaaa5:
+  at: flows/board_flow.py:tick
+  if: c.status == INBOX and (not c.work_type)
+  rule: decision.board_flow.goals_missing_work_type
+flows.board_flow.tick:label:322f0fac:
+  at: flows/board_flow.py:tick
+  if: extend
+  rule: decision.board_flow.lacking_goals
+flows.board_flow.tick:result:held_for_design:79c291da:
+  at: flows/board_flow.py:tick
+  if: repo in (skeleton_only or {}) and SKELETON_LABEL not in card.labels
+  rule: decision.board_flow.skeleton_only
+flows.board_flow.tick:skip:98af5afe:
+  at: flows/board_flow.py:tick
+  if: not proceed
+  rule: decision.board_flow.rework_gate
+flows.board_flow.unauthored_goals:end:0b75f5ea:
+  at: flows/board_flow.py:unauthored_goals
+  if: sponsor is None
+  rule: skip.board_flow.a_goal_written_by_not_the
+flows.board_flow.unauthored_goals:filter:fbc3e55e:
+  at: flows/board_flow.py:unauthored_goals
+  if: c.status == INBOX and c.state != 'CLOSED' and (c.work_type == GOAL_TYPE) and (not set_by_the_sponsor(c,
+    sponsor, crew_login))
+  rule: skip.board_flow.a_goal_written_by_not_the
+flows.board_flow.unstarted_children:filter:29d74df2:
+  at: flows/board_flow.py:unstarted_children
+  if: (card := by_key.get((repo, child))) is not None and card.state != 'CLOSED'
+  rule: decision.board_flow.rework_gate
+flows.bugs.bugs_to_triage:filter:2713807a:
+  at: flows/bugs.py:bugs_to_triage
+  if: c.status == NEEDS_REFINEMENT and c.state != 'CLOSED' and (not c.work_type) and (BUG_LABEL in c.labels)
+    and (NEEDS_HUMAN not in c.labels)
+  rule: decision.bugs.bugs_to_triage
+flows.bugs.carry_out:label:934218e6:
+  at: flows/bugs.py:carry_out
+  if: triage.outcome == 'more_information'
+  rule: decision.bugs.carry_out
+flows.bugs.carry_out:move:7d7d054f:
+  at: flows/bugs.py:carry_out
+  if: triage.outcome == 'accepted'
+  rule: decision.bugs.carry_out
+flows.bugs.triage_bugs:label:75023923:
+  at: flows/bugs.py:triage_bugs
+  if: issues.permission(repo, author) not in COLLABORATORS
+  rule: decision.bugs.collaborators_only
+flows.capability.measure:skip:796e82ae:
+  at: flows/capability.py:measure
+  if: card.state == 'CLOSED'
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.citations.record_citations:skip:fbe8d503:
+  at: flows/citations.py:record_citations
+  if: not cites or known.get(str(number)) == cites
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.close._carry_over:result:carried:ace21385:
+  at: flows/close.py:_carry_over
+  if: following is None
+  rule: decision.close.carry_over
+flows.close._carry_over:skip:ad26b794:
+  at: flows/close.py:_carry_over
+  if: card.status != MERGING or number in result.merged
+  rule: decision.close.carry_over
+flows.close._settle_queue:skip:dbf38796:
+  at: flows/close.py:_settle_queue
+  if: not merged
+  rule: decision.close.close_sprint
+flows.close.close_sprint:close:2b80ec04:
+  at: flows/close.py:close_sprint
+  if: crew_repo is not None and result.retro is not None
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.close.close_sprint:close:34dbdc0b:
+  at: flows/close.py:close_sprint
+  if: standup is not None and result.retro_record.issue is not None
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.close.close_sprint:filter:0c697ef7:
+  at: flows/close.py:close_sprint
+  if: c.work_type in DELIVERED and (not delivery_repos or c.repo in delivery_repos)
+  rule: decision.close.close_sprint
+flows.close.close_sprint:filter:2ac108d3:
+  at: flows/close.py:close_sprint
+  if: c.superseded
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:awaiting_approval:17dffdc2:
+  at: flows/close.py:close_sprint
+  if: not merge
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:awaiting_approval:ddf120c8:
+  at: flows/close.py:close_sprint
+  if: not approved
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:checking:7a2475dd:
+  at: flows/close.py:close_sprint
+  if: landed.how == Landing.CHECKING
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:queued:25a7ef4a:
+  at: flows/close.py:close_sprint
+  if: landed.how == Landing.QUEUED
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:still_open:7489d0f6:
+  at: flows/close.py:close_sprint
+  if: card.status != MERGING
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:unapprovable:47f46e7c:
+  at: flows/close.py:close_sprint
+  if: issues.review_decision(repo, pull['number']) == REVIEW_REQUIRED
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:unmergeable:0c636a13:
+  at: flows/close.py:close_sprint
+  if: landed.how == Landing.CONFLICTED
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:unmergeable:4e472476:
+  at: flows/close.py:close_sprint
+  if: landed.how == Landing.REMOVED
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:unmergeable:7b8d923d:
+  at: flows/close.py:close_sprint
+  if: pull is None
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:unmergeable:ca823f11:
+  at: flows/close.py:close_sprint
+  if: landed.how in (Landing.UNSETTLED, Landing.UNPROVEN)
+  rule: decision.close.close_sprint
+flows.close.close_sprint:result:updating:75355e40:
+  at: flows/close.py:close_sprint
+  if: landed.how == Landing.UPDATING
+  rule: decision.close.close_sprint
+flows.close.close_sprint:skip:819fa0b8:
+  at: flows/close.py:close_sprint
+  if: card.status == DONE
+  rule: decision.close.close_sprint
+flows.close.sprint_cards:filter:3697dabb:
+  at: flows/close.py:sprint_cards
+  if: c.sprint == sprint and c.work_type in DELIVERED
+  rule: decision.close.close_sprint
+flows.conclusion.story_rows:end:19db48bf:
+  at: flows/conclusion.py:story_rows
+  if: not ids
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.conclusion.story_rows:end:5b123f34:
+  at: flows/conclusion.py:story_rows
+  if: story is None or story.parent is None or story.number is None
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.criteria_check.check_each:filter:55b23bd0:
+  at: flows/criteria_check.py:check_each
+  if: s is not story
+  rule: gate.criteria_cannot_all_pass
+flows.criteria_check.check_each:skip:9b265f0a:
+  at: flows/criteria_check.py:check_each
+  if: titles is not None and _key(story.title) not in titles
+  rule: gate.criteria_cannot_all_pass
+flows.criteria_check.flagged:filter:e4456a56:
+  at: flows/criteria_check.py:flagged
+  if: _key(s.title) in names
+  rule: gate.criteria_cannot_all_pass
+flows.criteria_check.planned_criteria:skip:2ea28daf:
+  at: flows/criteria_check.py:planned_criteria
+  if: start == -1
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.decision_log._merge:end:c2fd9666:
+  at: flows/decision_log.py:_merge
+  if: landed.how != Landing.MERGED
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.decision_log._write_log:filter:4fe7c36a:
+  at: flows/decision_log.py:_write_log
+  if: _ENTRY.match(n)
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.decision_log._write_log:filter:7c1d2357:
+  at: flows/decision_log.py:_write_log
+  if: '''pull_request'' not in i'
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.decision_log._write_log:filter:f8b64c27:
+  at: flows/decision_log.py:_write_log
+  if: LOG_PR in (p.get('body') or '')
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.decision_log._write_log:label:6f7e218b:
+  at: flows/decision_log.py:_write_log
+  if: not new
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.decisions._comments:filter:85f1bc08:
+  at: flows/decisions.py:_comments
+  if: author(c) == sponsor and (not any((m in (c.get('body') or '') for m in MARKED)))
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.decisions.collect_decisions:filter:0a2b3aff:
+  at: flows/decisions.py:collect_decisions
+  if: pattern.search(c.get('body') or '')
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.decisions.collect_decisions:skip:4194bdd9:
+  at: flows/decisions.py:collect_decisions
+  if: repo == goal_repo and n in tree
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.decisions.collect_decisions:skip:9cafaef5:
+  at: flows/decisions.py:collect_decisions
+  if: authored and body and (pattern.search(body) or linked)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivered.delivered:filter:3d8b4b2a:
+  at: flows/delivered.py:delivered
+  if: (c.repo or repo) == repo and c.work_type in DELIVERED and (c.number is not None)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivered.delivered:filter:9e684ba4:
+  at: flows/delivered.py:delivered
+  if: issue.get('state_reason') == 'completed' and issue.get('number') in stories
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery._deliver_and_move:end:7d493eb9:
+  at: flows/delivery.py:_deliver_and_move
+  if: rework and _gates_disagree(card, board=board, issues=issues, sink=sink, repo=card_repo, result=result)
+  rule: gate.reviewer_and_developer_disagree
+flows.delivery._deliver_and_move:result:delivered:018164d9:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.ok
+  rule: decision.delivery.outcome
+flows.delivery._deliver_and_move:result:delivered:81c0ce16:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.already_done
+  rule: decision.delivery.outcome
+flows.delivery._deliver_and_move:result:interrupted:525aee2d:
+  at: flows/delivery.py:_deliver_and_move
+  if: interrupted is not None
+  rule: decision.delivery.interrupted
+flows.delivery._deliver_and_move:result:returned:00f5cd0f:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.returned and story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
+    comment=outcome.returned)
+  rule: decision.delivery.outcome
+flows.delivery._gates_disagree:end:35cf9a3c:
+  at: flows/delivery.py:_gates_disagree
+  if: not story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
+    comment=comment, reason='gate round trips')
+  rule: gate.reviewer_and_developer_disagree
+flows.delivery._gates_disagree:end:dc3ba109:
+  at: flows/delivery.py:_gates_disagree
+  if: rounds < story_problem.MAX_ROUND_TRIPS
+  rule: gate.reviewer_and_developer_disagree
+flows.delivery._interrupted_streak:skip:e39a6a03:
+  at: flows/delivery.py:_interrupted_streak
+  if: '''<!-- crew:'' in body'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.delivery._keep_proposal:end:af55ef71:
+  at: flows/delivery.py:_keep_proposal
+  if: sink.path is None
+  not_a_rule: keeps a record for a person; decides nothing
+flows.delivery._keep_refused:end:b581b970:
+  at: flows/delivery.py:_keep_refused
+  if: sink.path is None or not answers
+  not_a_rule: keeps a record for a person; decides nothing
+flows.delivery._record_autofix:end:bb7da915:
+  at: flows/delivery.py:_record_autofix
+  if: not (fixed or reverted or unsafe)
+  not_a_rule: records the autofix (repair.workspace.autofix)
+flows.delivery._what_sent_it_back:end:3cf60fe1:
+  at: flows/delivery.py:_what_sent_it_back
+  if: qa and 'not accepted' in qa[-1]
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.delivery._what_sent_it_back:end:4807095f:
+  at: flows/delivery.py:_what_sent_it_back
+  if: ci
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.delivery._what_sent_it_back:end:71c00187:
+  at: flows/delivery.py:_what_sent_it_back
+  if: review.get('state') == 'APPROVED'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.delivery._what_sent_it_back:filter:c0537204:
+  at: flows/delivery.py:_what_sent_it_back
+  if: QA_MARKER in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.delivery.awaiting_rework:end:7287767e:
+  at: flows/delivery.py:awaiting_rework
+  if: not head
+  rule: decision.delivery.rework
+flows.delivery.awaiting_rework:end:ce5ed0a9:
+  at: flows/delivery.py:awaiting_rework
+  if: pull is None
+  rule: decision.delivery.rework
+flows.delivery.deliver:end:ee4e179c:
+  at: flows/delivery.py:deliver
+  if: result.rate_limited
+  rule: decision.delivery.rate_limited
+flows.delivery.deliver:move:95ef3d3c:
+  at: flows/delivery.py:deliver
+  if: card.status == REVIEWING
+  rule: decision.delivery.rework
+flows.delivery.deliver:result:waiting_on_files:de3c63ff:
+  at: flows/delivery.py:deliver
+  if: waiting is not None
+  rule: decision.delivery.waits_on_files
+flows.delivery.deliver:skip:02bfad69:
+  at: flows/delivery.py:deliver
+  if: limit is not None and claimed >= limit
+  rule: decision.delivery.limit
+flows.delivery.deliver:skip:53b50333:
+  at: flows/delivery.py:deliver
+  if: result.rate_limited
+  rule: decision.delivery.rate_limited
+flows.delivery.deliver:skip:d9825b8d:
+  at: flows/delivery.py:deliver
+  if: repos is not None and (card.repo or repo) not in repos
+  rule: decision.delivery.sprint_stories
+flows.delivery.deliver_story:end:99042fca:
+  at: flows/delivery.py:deliver_story
+  if: done
+  rule: decision.delivery.outcome
+flows.delivery.deliver_story:filter:5489883d:
+  at: flows/delivery.py:deliver_story
+  if: not regression._declares(declared, k)
+  rule: guard.scope.without_declared
+flows.delivery.held_by_a_sibling:end:e625c569:
+  at: flows/delivery.py:held_by_a_sibling
+  if: story.parent is None
+  rule: hold.sibling
+flows.delivery.held_by_a_sibling:filter:d96bfd15:
+  at: flows/delivery.py:held_by_a_sibling
+  if: c.repo == story.repo and c.parent == story.parent and (c.work_type == STORY_TYPE) and ((c.number
+    or 0) < (story.number or 0)) and (c.state != 'CLOSED') and (c.s
+  rule: hold.sibling
+flows.delivery.held_by_what_it_builds_on:filter:69928729:
+  at: flows/delivery.py:held_by_what_it_builds_on
+  if: c.repo == story.repo and c.number in wanted and (c.state != 'CLOSED') and (c.status != DONE)
+  rule: hold.builds_on
+flows.delivery.needs_rework:filter:15ae8390:
+  at: flows/delivery.py:needs_rework
+  if: c.status in (IN_PROGRESS, REVIEWING) and c.work_type in DELIVERED and (c.state != 'CLOSED')
+  rule: decision.delivery.rework
+flows.delivery.needs_rework:filter:273ada58:
+  at: flows/delivery.py:needs_rework
+  if: awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title), c)
+  rule: decision.delivery.rework
+flows.delivery.not_ours:filter:3af5a48e:
+  at: flows/delivery.py:not_ours
+  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.sprint
+    == sprint or sprint is None) and (c.repo not in repos)
+  rule: decision.delivery.sprint_stories
+flows.delivery.not_reproduced:end:1836ae22:
+  at: flows/delivery.py:not_reproduced
+  if: card.work_type != BUG
+  rule: guard.not_reproduced
+flows.delivery.not_reproduced:end:5af06f1e:
+  at: flows/delivery.py:not_reproduced
+  if: found.unchecked
+  rule: guard.not_reproduced
+flows.delivery.not_reproduced:end:b27fb176:
+  at: flows/delivery.py:not_reproduced
+  if: not tests or merged is None
+  rule: guard.not_reproduced
+flows.delivery.prior_context:end:40465ec7:
+  at: flows/delivery.py:prior_context
+  if: not (verdicts or fate)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery.prior_verdicts:filter:c0537204:
+  at: flows/delivery.py:prior_verdicts
+  if: QA_MARKER in (c.get('body') or '')
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery.prior_verdicts:filter:c608375c:
+  at: flows/delivery.py:prior_verdicts
+  if: REVIEW_MARKER in (r.get('body') or '')
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery.rebuild_waits_for:end:1043e6d1:
+  at: flows/delivery.py:rebuild_waits_for
+  if: overlap
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:end:ce5ed0a9:
+  at: flows/delivery.py:rebuild_waits_for
+  if: pull is None
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:end:cfc22686:
+  at: flows/delivery.py:rebuild_waits_for
+  if: not files
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:filter:0289c83c:
+  at: flows/delivery.py:rebuild_waits_for
+  if: (c.repo or repo) == repo and c.status == BLOCKED
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:skip:1a7b5d23:
+  at: flows/delivery.py:rebuild_waits_for
+  if: story is None or int(story.group(1)) in blocked
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:skip:51bca278:
+  at: flows/delivery.py:rebuild_waits_for
+  if: any((REBUILD_MARKER.format(head=its_head) in (c.get('body') or '') for c in issues.comments(repo,
+    other['number'])))
+  rule: decision.delivery.waits_on_files
+flows.delivery.rebuild_waits_for:skip:c56e005a:
+  at: flows/delivery.py:rebuild_waits_for
+  if: other['number'] == pull['number']
+  rule: decision.delivery.waits_on_files
+flows.delivery.reconcile_orphans:end:83b50e34:
+  at: flows/delivery.py:reconcile_orphans
+  if: not in_progress
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.reconcile_orphans:filter:6298460e:
+  at: flows/delivery.py:reconcile_orphans
+  if: c.status == IN_PROGRESS and c.work_type in DELIVERED
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.reconcile_orphans:move:7762cd32:
+  at: flows/delivery.py:reconcile_orphans
+  if: branch in open_prs
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.reconcile_orphans:skip:95859012:
+  at: flows/delivery.py:reconcile_orphans
+  if: awaiting_rework(issues, repo, branch, card) is not None
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.rule_on_contract:end:1f5d8473:
+  at: flows/delivery.py:rule_on_contract
+  if: ruling.decision != 'amend'
+  rule: guard.scope.without_declared
+flows.delivery.sprint_stories:filter:b75c690e:
+  at: flows/delivery.py:sprint_stories
+  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.sprint
+    == sprint or sprint is None) and (repos is None or c.repo in rep
+  rule: decision.delivery.sprint_stories
+flows.design_notes._write_one:end:1c024681:
+  at: flows/design_notes.py:_write_one
+  if: note.beyond_reach
+  rule: decision.design_notes.write_notes
+flows.design_notes._write_one:end:2e3fe556:
+  at: flows/design_notes.py:_write_one
+  if: not reasons
+  rule: decision.design_notes.write_notes
+flows.design_notes.awaiting_design:filter:842d4050:
+  at: flows/design_notes.py:awaiting_design
+  if: wants_note(epic) and NEEDS_REWORK not in epic.labels and (not note_for(issues, epic.repo or default_repo,
+    epic.number or 0))
+  rule: decision.design_notes.write_notes
+flows.design_notes.story_note:end:0e9f6629:
+  at: flows/design_notes.py:story_note
+  if: card.parent is None
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.design_notes.write_notes:filter:21cf3420:
+  at: flows/design_notes.py:write_notes
+  if: s.get('state') == 'closed' and s.get('state_reason') != 'not_planned'
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:filter:4da93a8d:
+  at: flows/design_notes.py:write_notes
+  if: s.get('state') != 'closed'
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:result:returned:3cb8b1eb:
+  at: flows/design_notes.py:write_notes
+  if: stories_at_fault
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:result:written:f50e457d:
+  at: flows/design_notes.py:write_notes
+  if: isinstance(outcome, str)
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:skip:b99a2fba:
+  at: flows/design_notes.py:write_notes
+  if: repo not in repos or not needs_note(epic) or note_for(issues, repo, number)
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:skip:f22119e0:
+  at: flows/design_notes.py:write_notes
+  if: not children
+  rule: decision.design_notes.write_notes
+flows.design_notes.write_notes:skip:fed25047:
+  at: flows/design_notes.py:write_notes
+  if: not stories
+  rule: decision.design_notes.write_notes
+flows.diagnose.diagnose_blocked:filter:d19a63d0:
+  at: flows/diagnose.py:diagnose_blocked
+  if: c.status == BLOCKED and 'needs:human' in c.labels and (c.state != 'CLOSED') and c.number and (c.repo
+    in repos)
+  rule: decision.diagnose.diagnose_blocked
+flows.diagnose.diagnose_blocked:skip:0733bef5:
+  at: flows/diagnose.py:diagnose_blocked
+  if: len(done) >= limit
+  rule: decision.diagnose.diagnose_blocked
+flows.diagnose.diagnose_blocked:skip:4923f58a:
+  at: flows/diagnose.py:diagnose_blocked
+  if: issues.has_comment_marked(repo, number, DIAGNOSED_MARKER)
+  rule: decision.diagnose.diagnose_blocked
+flows.diagnose.failure_of:filter:94d67657:
+  at: flows/diagnose.py:failure_of
+  if: '''<!-- crew:'' in (c.get(''body'') or '''')'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.diagnose.render:end:89993a6e:
+  at: flows/diagnose.py:render
+  if: report.diagnosis is None
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.goal_index.refresh:end:4ebe1b47:
+  at: flows/goal_index.py:refresh
+  if: not body
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.goal_index.refresh:end:6d180a86:
+  at: flows/goal_index.py:refresh
+  if: mine and (mine[-1].get('body') or '').strip() == body.strip()
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.goal_index.refresh:filter:65f2ba44:
+  at: flows/goal_index.py:refresh
+  if: INDEX_MARKER in (c.get('body') or '')
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.goal_index.render:end:be6225d2:
+  at: flows/goal_index.py:render
+  if: not rows
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.handover.sizes:filter:e25eeafb:
+  at: flows/handover.py:sizes
+  if: n > QA_FOCUS_ABOVE_CHARS
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.handover.sizes:filter:fb53bc9e:
+  at: flows/handover.py:sizes
+  if: profiles.PYTHON.is_test_path(f)
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.history.latest_answer:filter:5b48d4f2:
+  at: flows/history.py:latest_answer
+  if: ANSWERED_MARKER in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.history.past_qa:filter:36182919:
+  at: flows/history.py:past_qa
+  if: marker in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.history.past_reviews:filter:f9eb5648:
+  at: flows/history.py:past_reviews
+  if: marker in (r.get('body') or '') and (not head or r.get('commit_id') != head)
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.loop._record_citations:filter:b70d926c:
+  at: flows/loop.py:_record_citations
+  if: c.repo
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.loops.from_comments:filter:dedc2da7:
+  at: flows/loops.py:from_comments
+  if: str(c.get('created_at') or '')[:19] >= chain.at[:19]
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.main_watch._close_if_untouched:end:1b67a788:
+  at: flows/main_watch.py:_close_if_untouched
+  if: issues.sub_issues(repo, number)
+  rule: decision.main_watch.red_main
+flows.main_watch._open_red:skip:2ea28daf:
+  at: flows/main_watch.py:_open_red
+  if: start == -1
+  rule: decision.main_watch.red_main
+flows.main_watch._open_red:skip:76ea1de5:
+  at: flows/main_watch.py:_open_red
+  if: issue.get('state') != 'open'
+  rule: decision.main_watch.red_main
+flows.merge._conflict:filter:bf551557:
+  at: flows/merge.py:_conflict
+  if: '''<!-- crew:rebuild head='' in (c.get(''body'') or '''')'
+  rule: decision.merge.conflict
+flows.merge._conflict:result:conflicted:168c1d3e:
+  at: flows/merge.py:_conflict
+  if: rebuilt >= MAX_REBUILDS
+  rule: decision.merge.conflict
+flows.merge._conflict:result:updating:2a2bd934:
+  at: flows/merge.py:_conflict
+  if: keep_both is not None
+  rule: decision.merge.conflict
+flows.merge._conflict:result:updating:e77b9b9e:
+  at: flows/merge.py:_conflict
+  if: kept is not None
+  rule: decision.merge.conflict
+flows.merge._merged_pull:filter:ff5de38e:
+  at: flows/merge.py:_merged_pull
+  if: p.get('merged_at')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.merge.done_but_open:filter:49277376:
+  at: flows/merge.py:done_but_open
+  if: c.status == DONE and c.work_type in DELIVERED and (c.state != 'CLOSED') and (repos is None or c.repo
+    in repos)
+  rule: decision.merge.done_but_open
+flows.merge.land:end:16af43ba:
+  at: flows/merge.py:land
+  if: detail is None
+  rule: decision.merge.land
+flows.merge.land:end:244c263c:
+  at: flows/merge.py:land
+  if: queue.has_queue
+  rule: decision.merge.land
+flows.merge.land:end:3304d1d8:
+  at: flows/merge.py:land
+  if: queue.removed
+  rule: decision.merge.land
+flows.merge.land:end:5046a670:
+  at: flows/merge.py:land
+  if: detail.get('merged')
+  rule: decision.merge.land
+flows.merge.land:end:7d08ed55:
+  at: flows/merge.py:land
+  if: detail.get('mergeable_state') == BEHIND
+  rule: decision.merge.land
+flows.merge.land:end:807aeec7:
+  at: flows/merge.py:land
+  if: queue.merged
+  rule: decision.merge.land
+flows.merge.land:end:bf7ddb8d:
+  at: flows/merge.py:land
+  if: held
+  rule: decision.merge.land
+flows.merge.land:end:df5daa49:
+  at: flows/merge.py:land
+  if: detail.get('mergeable_state') == CONFLICTED or detail.get('mergeable') is False
+  rule: decision.merge.land
+flows.merge.land:end:f3a36f16:
+  at: flows/merge.py:land
+  if: queue.queued
+  rule: decision.merge.land
+flows.merge.merge_approved:label:1374eee3:
+  at: flows/merge.py:merge_approved
+  if: issues.review_decision(repo, pull['number']) == REVIEW_REQUIRED
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:awaiting_approval:ddf120c8:
+  at: flows/merge.py:merge_approved
+  if: not approved
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:checking:7a2475dd:
+  at: flows/merge.py:merge_approved
+  if: landed.how == Landing.CHECKING
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:ci_failed:315e2a3a:
+  at: flows/merge.py:merge_approved
+  if: failed
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:ci_failed:f574e144:
+  at: flows/merge.py:merge_approved
+  if: landed.how == Landing.REMOVED
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:failed:0bce2fa4:
+  at: flows/merge.py:merge_approved
+  if: landed.how in (Landing.UNSETTLED, Landing.UNPROVEN)
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:failed:70a52b9f:
+  at: flows/merge.py:merge_approved
+  if: merged is not None
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:failed:7ce7d7c8:
+  at: flows/merge.py:merge_approved
+  if: pull is None
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:in_queue:a3fa2f9f:
+  at: flows/merge.py:merge_approved
+  if: landed.how == Landing.QUEUED
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:result:updating:75355e40:
+  at: flows/merge.py:merge_approved
+  if: landed.how == Landing.UPDATING
+  rule: decision.merge.merge_approved
+flows.merge.merge_approved:skip:5961229c:
+  at: flows/merge.py:merge_approved
+  if: landed.how == Landing.CONFLICTED
+  rule: decision.merge.merge_approved
+flows.merge.merged_elsewhere:filter:3cc79fb3:
+  at: flows/merge.py:merged_elsewhere
+  if: c.status == MERGING and c.work_type in DELIVERED and (c.state == 'CLOSED') and (repos is None or
+    c.repo in repos)
+  rule: decision.merge.merged_elsewhere
+flows.merge.ready_to_land:filter:754a3162:
+  at: flows/merge.py:ready_to_land
+  if: c.status == MERGING and c.work_type in DELIVERED and (c.state != 'CLOSED') and (repos is None or
+    c.repo in repos)
+  rule: decision.merge.merge_approved
+flows.merge.settled:end:14a1cfaa:
+  at: flows/merge.py:settled
+  if: detail.get('merged') or detail.get('mergeable') is not None
+  rule: decision.merge.land
+flows.onboard.interview:filter:c91058d7:
+  at: flows/onboard.py:interview
+  if: key(p) not in by_key
+  not_a_rule: 'not the tick: a command a person runs'
+flows.onboard.merge:skip:16edcf58:
+  at: flows/onboard.py:merge
+  if: value is None
+  not_a_rule: 'not the tick: a command a person runs'
+flows.onboard.takeaway:skip:4380419b:
+  at: flows/onboard.py:takeaway
+  if: value is not None
+  not_a_rule: 'not the tick: a command a person runs'
+flows.panel._carried:end:f748494b:
+  at: flows/panel.py:_carried
+  if: not binding
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.panel.panel_on:end:b83f9f59:
+  at: flows/panel.py:panel_on
+  if: PANEL_MARKER in body and (found := read_panel(body))
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.panel.post:end:2652d731:
+  at: flows/panel.py:post
+  if: issues.has_comment_marked(repo, epic, PANEL_MARKER)
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.panel.render:skip:08405b8e:
+  at: flows/panel.py:render
+  if: answer.nothing_to_add
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.panel.siblings_of:skip:5d3a5c2b:
+  at: flows/panel.py:siblings_of
+  if: child['number'] == epic
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.presentation_notes._write_one:end:1c024681:
+  at: flows/presentation_notes.py:_write_one
+  if: note.beyond_reach
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes._write_one:end:7dae908b:
+  at: flows/presentation_notes.py:_write_one
+  if: not problems
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes.awaiting_presentation:filter:ce0198c8:
+  at: flows/presentation_notes.py:awaiting_presentation
+  if: needs_note(epic) and (not note_for(issues, epic.repo or default_repo, epic.number or 0))
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes.for_story:end:49dd03ae:
+  at: flows/presentation_notes.py:for_story
+  if: not number
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.presentation_notes.story_presentation:end:0e9f6629:
+  at: flows/presentation_notes.py:story_presentation
+  if: card.parent is None
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.presentation_notes.write_notes:filter:4da93a8d:
+  at: flows/presentation_notes.py:write_notes
+  if: s.get('state') != 'closed'
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes.write_notes:result:blocked:d6773432:
+  at: flows/presentation_notes.py:write_notes
+  if: isinstance(outcome, tuple)
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes.write_notes:skip:b99a2fba:
+  at: flows/presentation_notes.py:write_notes
+  if: repo not in repos or not needs_note(epic) or note_for(issues, repo, number)
+  rule: decision.presentation_notes.write_notes
+flows.presentation_notes.write_notes:skip:fed25047:
+  at: flows/presentation_notes.py:write_notes
+  if: not stories
+  rule: decision.presentation_notes.write_notes
+flows.project_log.read_log:filter:4fe7c36a:
+  at: flows/project_log.py:read_log
+  if: _ENTRY.match(n)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.readiness.check:filter:6ffd3a66:
+  at: flows/readiness.py:check
+  if: n != BOARD_WORKFLOW
+  not_a_rule: names the board's own workflow file among a project's
+flows.readiness.check:filter:907b460b:
+  at: flows/readiness.py:check
+  if: not (run.get('path') or '').endswith(f'/{BOARD_WORKFLOW}')
+  not_a_rule: names the board's own workflow file among a project's
+flows.record.edit:end:fcca2e00:
+  at: flows/record.py:edit
+  if: after == before
+  not_a_rule: 'nothing changed: nothing to write'
+flows.record_pr.propose:filter:3d312541:
+  at: flows/record_pr.py:propose
+  if: p['head']['ref'] == branch
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.record_pr.propose:filter:9e9a20b8:
+  at: flows/record_pr.py:propose
+  if: i['title'] == change.issue_title
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.refine_panel.builds_on_unsplit:end:ae1a8a42:
+  at: flows/refine_panel.py:builds_on_unsplit
+  if: not issues.has_comment_marked(repo, other, STORY_SPLIT_MARKER)
+  rule: skip.refine_panel.waits_for_to_be_split_it
+flows.refine_panel.builds_on_unsplit:end:d00d8e24:
+  at: flows/refine_panel.py:builds_on_unsplit
+  if: not named
+  rule: skip.refine_panel.waits_for_to_be_split_it
+flows.refine_panel.builds_on_unsplit:skip:35497e9c:
+  at: flows/refine_panel.py:builds_on_unsplit
+  if: epic in _named(child.get('body') or '', issues.owner, repo) and other > epic
+  rule: skip.refine_panel.waits_for_to_be_split_it
+flows.refine_panel.builds_on_unsplit:skip:f7e05675:
+  at: flows/refine_panel.py:builds_on_unsplit
+  if: other not in named or child.get('state') != 'open' or other in unapproved
+  rule: skip.refine_panel.waits_for_to_be_split_it
+flows.refine_panel.panel_step:end:3da49ac4:
+  at: flows/refine_panel.py:panel_step
+  if: not epic.parent
+  rule: decision.refine_panel.panel_step
+flows.release_check.check_releases:result:sponsor:33d43bd1:
+  at: flows/release_check.py:check_releases
+  if: not missing
+  rule: decision.release_check.check_releases
+flows.release_check.check_releases:result:verified:55e75060:
+  at: flows/release_check.py:check_releases
+  if: not missing and (not sponsor)
+  rule: decision.release_check.check_releases
+flows.release_check.check_releases:result:waiting:81eec5c7:
+  at: flows/release_check.py:check_releases
+  if: run.get('head_sha') != issues.head_sha(repo, branch)
+  rule: decision.release_check.check_releases
+flows.retro._file_recurring:filter:c4b22ebb:
+  at: flows/retro.py:_file_recurring
+  if: at and at > fixed_at
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.retro._retro_body:filter:e6d236e7:
+  at: flows/retro.py:_retro_body
+  if: s[2] != SUPERSEDED
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.retro.existing_retro:end:1420ee02:
+  at: flows/retro.py:existing_retro
+  if: marker(sprint) in (issue.get('body') or '')
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.retro.fixed_this_sprint:skip:2e9f57dd:
+  at: flows/retro.py:fixed_this_sprint
+  if: labels & {RETRO_LABEL, STANDUP_LABEL}
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.retro.known_issues:skip:2e9f57dd:
+  at: flows/retro.py:known_issues
+  if: labels & {RETRO_LABEL, STANDUP_LABEL}
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.retro.known_issues:skip:d0eca823:
+  at: flows/retro.py:known_issues
+  if: spent + len(line) > MAX_KNOWN_CHARS and lines
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.revert._land:end:c2fd9666:
+  at: flows/revert.py:_land
+  if: landed.how != Landing.MERGED
+  rule: decision.revert.land
+flows.revert._land:result:awaiting_approval:77e912b1:
+  at: flows/revert.py:_land
+  if: not any((r.get('state') == 'APPROVED' for r in issues.pull_reviews(repo, number)))
+  rule: decision.revert.land
+flows.revert._land:result:conflicted:3f91731e:
+  at: flows/revert.py:_land
+  if: landed.how in (Landing.CONFLICTED, Landing.REMOVED)
+  rule: decision.revert.land
+flows.revert._land:result:failed:0bce2fa4:
+  at: flows/revert.py:_land
+  if: landed.how in (Landing.UNSETTLED, Landing.UNPROVEN)
+  rule: decision.revert.land
+flows.revert._land:result:unapprovable:15f4a290:
+  at: flows/revert.py:_land
+  if: issues.review_decision(repo, number) == REVIEW_REQUIRED
+  rule: decision.revert.land
+flows.revert._refusal:end:28e943d7:
+  at: flows/revert.py:_refusal
+  if: not reason.strip()
+  rule: decision.revert.refused
+flows.revert._refusal:end:a160ba67:
+  at: flows/revert.py:_refusal
+  if: default and pull['base']['ref'] != default
+  rule: decision.revert.refused
+flows.revert._refusal:end:a843ba5c:
+  at: flows/revert.py:_refusal
+  if: not pull.get('merge_commit_sha')
+  rule: decision.revert.refused
+flows.revert._refusal:end:f4cc3b4e:
+  at: flows/revert.py:_refusal
+  if: not pull.get('merged')
+  rule: decision.revert.refused
+flows.revert._refusal:end:f69029ce:
+  at: flows/revert.py:_refusal
+  if: issues.pull_for_branch(repo, revert_branch(pull)) is not None
+  rule: decision.revert.refused
+flows.revert._return_card:end:5815ecc1:
+  at: flows/revert.py:_return_card
+  if: card is None
+  rule: decision.revert.return_card
+flows.revert._return_card:end:6f197c2d:
+  at: flows/revert.py:_return_card
+  if: parsed is None or parsed[1] is None
+  rule: decision.revert.return_card
+flows.revert._return_card:end:a2ed1a92:
+  at: flows/revert.py:_return_card
+  if: issues.has_comment_marked(card_repo, number, done_marker)
+  rule: decision.revert.return_card
+flows.revert._return_card:filter:ffbb2434:
+  at: flows/revert.py:_return_card
+  if: c.key == key
+  rule: decision.revert.return_card
+flows.revert.card_for_pull:end:a565a9c2:
+  at: flows/revert.py:card_for_pull
+  if: not match or match['type'] == REVERT_KIND
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.revert.card_for_pull:filter:09b6ac9e:
+  at: flows/revert.py:card_for_pull
+  if: c.key == (repo, number)
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.revert.land_reverts:filter:0cc3007f:
+  at: flows/revert.py:land_reverts
+  if: is_revert(pull) and _land(issues, result, pull, repo=repo)
+  rule: decision.revert.land
+flows.revert.land_reverts:filter:52dcb1ef:
+  at: flows/revert.py:land_reverts
+  if: p.get('merged_at') and is_revert(p)
+  rule: decision.revert.land
+flows.revert.request_revert:end:dcb9f907:
+  at: flows/revert.py:request_revert
+  if: refusal
+  rule: decision.revert.refused
+flows.review._to_product_owner:end:0ecc81be:
+  at: flows/review.py:_to_product_owner
+  if: not story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
+    comment=comment, reason='review conflicts with a criterion')
+  rule: story.review_conflicts_with_criterion
+flows.review.cards_by_branch:filter:c13977cf:
+  at: flows/review.py:cards_by_branch
+  if: c.status == REVIEWING and c.state != 'CLOSED'
+  rule: decision.review.what_is_reviewed
+flows.review.review_open_pulls:move:bb417d8d:
+  at: flows/review.py:review_open_pulls
+  if: event == 'APPROVE'
+  rule: decision.review.verdict
+flows.review.review_open_pulls:move:c89f3f40:
+  at: flows/review.py:review_open_pulls
+  if: card is not None and board is not None and approved_at(reviews, bot_login, head)
+  rule: decision.review.verdict
+flows.review.review_open_pulls:result:failed:023dba39:
+  at: flows/review.py:review_open_pulls
+  if: touches_runnable(diff)
+  rule: decision.review.deploy_review
+flows.review.review_open_pulls:result:returned:f744e44f:
+  at: flows/review.py:review_open_pulls
+  if: event == 'REQUEST_CHANGES' and verdict.conflicts and _to_product_owner(card, verdict, number, board=board,
+    issues=writer or issues, sink=sink, repo=repo)
+  rule: story.review_conflicts_with_criterion
+flows.review.story_criteria:end:5815ecc1:
+  at: flows/review.py:story_criteria
+  if: card is None
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.review.story_criteria:end:ab99013b:
+  at: flows/review.py:story_criteria
+  if: start == -1
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.revisit._answer_design_faults:end:0dae1e57:
+  at: flows/revisit.py:_answer_design_faults
+  if: not blocked
+  rule: decision.revisit.design_faults
+flows.revisit._answer_design_faults:end:20c1d375:
+  at: flows/revisit.py:_answer_design_faults
+  if: record is None or record.design is None
+  rule: decision.revisit.design_faults
+flows.revisit._answer_design_faults:end:7e99ae67:
+  at: flows/revisit.py:_answer_design_faults
+  if: not faults
+  rule: decision.revisit.design_faults
+flows.revisit._answer_design_faults:end:8f543fc5:
+  at: flows/revisit.py:_answer_design_faults
+  if: designed.record is None or designed.record.design == record.design
+  rule: decision.revisit.design_faults
+flows.revisit._answer_design_faults:filter:071f90ab:
+  at: flows/revisit.py:_answer_design_faults
+  if: (c.repo or repo) == repo and c.status == BLOCKED and (c.state != 'CLOSED') and (c.work_type != EPIC_TYPE)
+    and c.number
+  rule: decision.revisit.design_faults
+flows.revisit._blocks:end:1aad8c4e:
+  at: flows/revisit.py:_blocks
+  if: any((FAULT_SENT in (c.get('body') or '') for c in comments))
+  rule: decision.revisit.design_faults
+flows.revisit._blocks:filter:2b3bbc1f:
+  at: flows/revisit.py:_blocks
+  if: BLOCKED_NOTE in (c.get('body') or '')
+  rule: decision.revisit.design_faults
+flows.revisit._give_to_epic:end:b6ca9142:
+  at: flows/revisit.py:_give_to_epic
+  if: line in body
+  rule: decision.revisit.file_work
+flows.revisit._merge:end:c2fd9666:
+  at: flows/revisit.py:_merge
+  if: landed.how != Landing.MERGED
+  rule: decision.revisit.file_work
+flows.revisit._product_epics:filter:2716695d:
+  at: flows/revisit.py:_product_epics
+  if: (c.repo or repo) == repo and c.work_type == EPIC_TYPE and (c.state != 'CLOSED') and (TECHNICAL not
+    in c.labels)
+  rule: decision.revisit.file_work
+flows.revisit._revise:filter:859f7d8c:
+  at: flows/revisit.py:_revise
+  if: (c.repo or repo) == repo and TECHNICAL not in c.labels
+  rule: decision.revisit.file_work
+flows.revisit._revise:filter:97d69cd2:
+  at: flows/revisit.py:_revise
+  if: (c.repo or repo) == repo and c.number
+  rule: decision.revisit.file_work
+flows.revisit._revise:result:refused:087cb7da:
+  at: flows/revisit.py:_revise
+  if: designed.record is None
+  rule: decision.revisit.file_work
+flows.revisit._revise:result:unchanged:82d852e6:
+  at: flows/revisit.py:_revise
+  if: designed.record.design == record.design and (not designed.proposal.changes)
+  rule: decision.revisit.file_work
+flows.revisit._revise:result:unchanged:aabc48a6:
+  at: flows/revisit.py:_revise
+  if: designed.record.design == record.design
+  rule: decision.revisit.file_work
+flows.revisit._revisit:filter:59624a7a:
+  at: flows/revisit.py:_revisit
+  if: REVISIT_MARKER in (p.get('body') or '')
+  rule: decision.revisit.file_work
+flows.revisit._revisit:filter:8369b26a:
+  at: flows/revisit.py:_revisit
+  if: r == repo
+  rule: decision.revisit.file_work
+flows.revisit._revisit:filter:b29ed425:
+  at: flows/revisit.py:_revisit
+  if: (c.repo or repo) == repo and c.work_type == EPIC_TYPE and (c.state != 'CLOSED') and (TECHNICAL in
+    c.labels)
+  rule: decision.revisit.file_work
+flows.revisit._revisit:filter:e8b42df0:
+  at: flows/revisit.py:_revisit
+  if: DESIGN_PR in (p.get('body') or '') and p.get('number') != (open_revision or {}).get('number')
+  rule: decision.revisit.file_work
+flows.revisit._route:end:ff6f5642:
+  at: flows/revisit.py:_route
+  if: place is None or not epics
+  rule: decision.revisit.file_work
+flows.revisit.back_to_work:filter:d7cf6f42:
+  at: flows/revisit.py:back_to_work
+  if: (c.repo or repo) == repo and c.number == number
+  rule: decision.revisit.back_to_work
+flows.revisit.back_to_work:skip:13505030:
+  at: flows/revisit.py:back_to_work
+  if: any((answered in (c.get('body') or '') for c in issues.comments(repo, number)))
+  rule: decision.revisit.back_to_work
+flows.revisit.back_to_work:skip:7b765f87:
+  at: flows/revisit.py:back_to_work
+  if: card is None or card.status != BLOCKED or card.state == 'CLOSED'
+  rule: decision.revisit.back_to_work
+flows.revisit.file_technical_epics:end:96531d90:
+  at: flows/revisit.py:file_technical_epics
+  if: not changes or issues.has_comment_marked(repo, pull['number'], EPICS_MARKER)
+  rule: decision.revisit.file_work
+flows.revisit.file_technical_epics:filter:3f4c4e79:
+  at: flows/revisit.py:file_technical_epics
+  if: c.get('needs_work')
+  rule: decision.revisit.file_work
+flows.revisit.file_unchanged_design_work:end:f7634573:
+  at: flows/revisit.py:file_unchanged_design_work
+  if: not changes
+  rule: decision.revisit.file_work
+flows.seen_moves._the_crews:end:dd8a2ac1:
+  at: flows/seen_moves.py:_the_crews
+  if: abs(event.at - card.status_set) <= SLACK
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.changed:skip:5164da90:
+  at: flows/seen_moves.py:changed
+  if: not (card.repo and card.number and card.status and card.status_set)
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.changed:skip:8afac724:
+  at: flows/seen_moves.py:changed
+  if: before.get('status') == card.status
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.changed:skip:8d3c0f77:
+  at: flows/seen_moves.py:changed
+  if: before is None
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.save_seen:filter:08160d93:
+  at: flows/seen_moves.py:save_seen
+  if: c.repo and c.number
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.seen_moves:end:2374b8f1:
+  at: flows/seen_moves.py:seen_moves
+  if: not others
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.seen_moves.seen_moves:filter:c8522a40:
+  at: flows/seen_moves.py:seen_moves
+  if: not _the_crews(c, logged)
+  not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.settle._reply:end:a2a99ea7:
+  at: flows/settle.py:_reply
+  if: not asked
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.settle._reply:filter:d5c4ad51:
+  at: flows/settle.py:_reply
+  if: '''<!-- crew:'' not in (c.get(''body'') or '''') and from_sponsor(issues, c)'
+  rule: decision.board_flow.sponsor_words
+flows.settle._reply:filter:f8fbd7d2:
+  at: flows/settle.py:_reply
+  if: SETTLE_QUESTION_MARKER in (c.get('body') or '')
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.settle.settle_design_questions:end:28b0fa92:
+  at: flows/settle.py:settle_design_questions
+  if: NEEDS_HUMAN in labels and any((DESIGN_QUESTION_MARKER in (c.get('body') or '') for c in issues.comments(repo,
+    epic)))
+  rule: decision.settle.design_questions
+flows.settle.settle_design_questions:end:a2a99ea7:
+  at: flows/settle.py:settle_design_questions
+  if: not asked
+  rule: decision.settle.design_questions
+flows.settle.settle_epic:end:047d106e:
+  at: flows/settle.py:settle_epic
+  if: not numbered(panel)
+  rule: decision.settle.settle_epic
+flows.settle.settle_epic:end:d34fb835:
+  at: flows/settle.py:settle_epic
+  if: has_conclusion(issue.get('body') or '')
+  rule: decision.settle.settle_epic
+flows.settle.settle_epic:end:ef34018d:
+  at: flows/settle.py:settle_epic
+  if: asked and (not reply)
+  rule: decision.settle.settle_epic
+flows.settle.settle_epic:label:458bc361:
+  at: flows/settle.py:settle_epic
+  if: settlement.conclusion is None
+  rule: decision.settle.settle_epic
+flows.settle.settle_epic:label:6e81168d:
+  at: flows/settle.py:settle_epic
+  if: any((r.project_wide for r in settlement.conclusion.rows))
+  rule: decision.settle.settle_epic
+flows.sprint._fill:result:admitted:f53f5607:
+  at: flows/sprint.py:_fill
+  if: points <= remaining
+  rule: decision.sprint.capacity
+flows.sprint._held_by_an_earlier_sibling:end:e625c569:
+  at: flows/sprint.py:_held_by_an_earlier_sibling
+  if: story.parent is None
+  rule: hold.sibling
+flows.sprint._waits_on_work_outside:end:c4c7e77f:
+  at: flows/sprint.py:_waits_on_work_outside
+  if: not lands(target)
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint._waits_on_work_outside:end:d60f66d2:
+  at: flows/sprint.py:_waits_on_work_outside
+  if: not children or not all((lands(c) for c in children))
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint._waits_on_work_outside:filter:ac212c58:
+  at: flows/sprint.py:_waits_on_work_outside
+  if: parent == target.key and k in by_key
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint._waits_on_work_outside:skip:033b6af5:
+  at: flows/sprint.py:_waits_on_work_outside
+  if: target.work_type in DELIVERED
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint._waits_on_work_outside:skip:154bb399:
+  at: flows/sprint.py:_waits_on_work_outside
+  if: target is None or target.state == 'CLOSED' or target.status == DONE
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint.approved_epics:filter:a4e15c48:
+  at: flows/sprint.py:approved_epics
+  if: c.work_type == EPIC_TYPE and c.status != INBOX and (c.state != 'CLOSED')
+  rule: decision.sprint.plan_sprint
+flows.sprint.committed_points:filter:719a2968:
+  at: flows/sprint.py:committed_points
+  if: c.sprint == sprint and c.work_type in DELIVERED and (repos is None or c.repo in repos) and (not
+    (c.state == 'CLOSED' and c.state_reason == 'NOT_PLANNED'))
+  rule: decision.sprint.capacity
+flows.sprint.left_over:filter:a20d969c:
+  at: flows/sprint.py:left_over
+  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and c.sprint and
+    (c.sprint != sprint) and (repos is None or c.repo in repos)
+  rule: decision.sprint.left_over
+flows.sprint.parked_epics:filter:c583c32b:
+  at: flows/sprint.py:parked_epics
+  if: c.work_type == EPIC_TYPE and c.status == INBOX and (c.state != 'CLOSED')
+  rule: decision.sprint.parked
+flows.sprint.plan_sprint:filter:12a48130:
+  at: flows/sprint.py:plan_sprint
+  if: key not in parents and c.parent is not None and ((c.repo or '', c.parent) in parked)
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:259743e4:
+  at: flows/sprint.py:plan_sprint
+  if: k not in ready
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:42122e44:
+  at: flows/sprint.py:plan_sprint
+  if: parents.get(key) == epic.key
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:54897c3e:
+  at: flows/sprint.py:plan_sprint
+  if: c.status == READY and c.work_type in DELIVERED and (c.state != 'CLOSED')
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:bbfef75a:
+  at: flows/sprint.py:plan_sprint
+  if: repos is None or c.repo in repos
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:d1cf0817:
+  at: flows/sprint.py:plan_sprint
+  if: key not in parents and key not in waiting
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:skip:2ef49728:
+  at: flows/sprint.py:plan_sprint
+  if: _waits_on_work_outside(cards, parents, story, wanted, admitted)
+  rule: decision.sprint.waits_on_work_outside
+flows.sprint.plan_sprint:skip:3852d9fa:
+  at: flows/sprint.py:plan_sprint
+  if: epic.key in (awaiting_design or set())
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:skip:6e9c259f:
+  at: flows/sprint.py:plan_sprint
+  if: NEEDS_REWORK in epic.labels
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:skip:e1901179:
+  at: flows/sprint.py:plan_sprint
+  if: _held_by_an_earlier_sibling(cards, story, sprint, piece.admitted)
+  rule: hold.sibling
+flows.sprint.plan_sprint:skip:fed25047:
+  at: flows/sprint.py:plan_sprint
+  if: not stories
+  rule: decision.sprint.plan_sprint
+flows.sprint.start_sprint:filter:cdf6c5db:
+  at: flows/sprint.py:start_sprint
+  if: c.key not in {k.key for k, _ in back}
+  rule: decision.sprint.start_sprint
+flows.sprint.start_sprint:skip:4d459956:
+  at: flows/sprint.py:start_sprint
+  if: not verdict.allowed
+  rule: hold.wip_limit
+flows.sprint.start_sprint:skip:a264d07a:
+  at: flows/sprint.py:start_sprint
+  if: not (card.status == READY and card.work_type in DELIVERED and (card.state != 'CLOSED') and (repos
+    is None or card.repo in repos))
+  rule: decision.sprint.start_sprint
+flows.sprint.under_a_parked_epic:filter:e8330b7c:
+  at: flows/sprint.py:under_a_parked_epic
+  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.parent
+    is not None) and ((c.repo or '', c.parent) in parked) and (repos
+  rule: decision.sprint.parked
+flows.standup.aging_blocked:skip:6fbb6a02:
+  at: flows/standup.py:aging_blocked
+  if: card.status != rules.blocked_column or card.state == 'CLOSED'
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.standup.awaiting_approval:filter:28a5c435:
+  at: flows/standup.py:awaiting_approval
+  if: card.state != 'CLOSED' and _at_the_gate(card)
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.standup.find_standup:end:1420ee02:
+  at: flows/standup.py:find_standup
+  if: marker(sprint) in (issue.get('body') or '')
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.standup.waiting_on_a_person:filter:18d389c9:
+  at: flows/standup.py:waiting_on_a_person
+  if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (card.status == BLOCKED or card.needs_human)
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.standup.write_standup:filter:8ab5a662:
+  at: flows/standup.py:write_standup
+  if: v
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.story_problem.pinned_failures:skip:417b0d65:
+  at: flows/story_problem.py:pinned_failures
+  if: (path, test) in own
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.story_problem.record_pinned:end:4ffffe43:
+  at: flows/story_problem.py:record_pinned
+  if: not record.has_record(issues.get(repo, epic).get('body') or '')
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.story_problem.record_pinned:end:658f3f2d:
+  at: flows/story_problem.py:record_pinned
+  if: not listed
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.story_problem.return_to_refinement:end:cdf0e957:
+  at: flows/story_problem.py:return_to_refinement
+  if: epic is None
+  rule: decision.story_problem.return_to_refinement
+flows.story_problem.return_to_refinement:filter:afa4b4c3:
+  at: flows/story_problem.py:return_to_refinement
+  if: (c.repo or repo) == repo and c.number in children and (c.number != card.number) and (c.state !=
+    'CLOSED')
+  rule: decision.story_problem.return_to_refinement
+flows.story_problem.round_trip_evidence:filter:b6633a25:
+  at: flows/story_problem.py:round_trip_evidence
+  if: r.get('state') == 'CHANGES_REQUESTED'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.story_problem.round_trip_evidence:filter:d0251ec2:
+  at: flows/story_problem.py:round_trip_evidence
+  if: '''## QA — not accepted'' in (c.get(''body'') or '''')'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.story_problem.round_trips:filter:8e992f46:
+  at: flows/story_problem.py:round_trips
+  if: (c.get('body') or '').startswith(DELIVERED)
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.strain.strained:filter:2e8972a4:
+  at: flows/strain.py:strained
+  if: (c.repo or repo) == repo and c.sprint
+  rule: decision.strain.strained
+flows.strain.strained:filter:aa3d823e:
+  at: flows/strain.py:strained
+  if: len(stories) >= threshold
+  rule: decision.strain.strained
+flows.strain.strained:filter:b7cb0b9d:
+  at: flows/strain.py:strained
+  if: c.repo and c.repo != repo and (repos is None or c.repo in repos)
+  rule: decision.strain.strained
+flows.template.files:skip:b5a049af:
+  at: flows/template.py:files
+  if: path in NOT_COPIED
+  not_a_rule: 'not the tick: a command a person runs'
+flows.template.wanted:filter:9f3abb91:
+  at: flows/template.py:wanted
+  if: not (merged / path).exists() or (is_protected(path, list(CREW_FILES)) and (merged / path).read_text(encoding='utf-8')
+    != text)
+  not_a_rule: 'not the tick: a command a person runs'
+tools.github_issues.comments:ignore:b30b67ad:
+  at: tools/github_issues.py:comments
+  if: login in self.trust.readable
+  rule: decision.github_issues.trust

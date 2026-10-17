@@ -98,8 +98,10 @@ def test_a_link_found_only_by_wording_is_a_maybe():
 
 
 def test_every_rule_that_refuses_or_decides_has_a_category():
-    """Only what a role is told can be unplaced; a check is placed by the table."""
-    unplaced = [e.id for e in rule_list.entries() if not e.category and e.group != "told"]
+    """Only what a role is told, or a setting, can be unplaced; a check is placed by the table."""
+    unplaced = [
+        e.id for e in rule_list.entries() if not e.category and e.group not in ("told", "config")
+    ]
     assert not unplaced, unplaced
     assert {e.category for e in rule_list.entries()} <= {"", *rule_list.CATEGORIES}
 

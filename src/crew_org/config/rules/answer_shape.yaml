@@ -90,6 +90,79 @@ check.settle_crew.not_cut_at_a_quote:
   origin:
   - crew#618
   told_in: Settlement
+config.agents.architect.llm:
+  owner: Architect
+config.agents.architect.llm_params:
+  owner: Architect
+config.agents.business_analyst.llm:
+  owner: Business Analyst
+config.agents.business_analyst.llm_params:
+  owner: Business Analyst
+config.agents.code_reviewer.llm:
+  owner: Code Reviewer
+config.agents.code_reviewer.llm_params:
+  owner: Code Reviewer
+config.agents.developer.llm:
+  owner: Developer
+config.agents.developer.llm_params:
+  owner: Developer
+config.agents.devops_engineer.llm:
+  owner: DevOps Engineer
+config.agents.devops_engineer.llm_params:
+  owner: DevOps Engineer
+config.agents.product_owner.llm:
+  owner: Product Owner
+config.agents.product_owner.llm_params:
+  owner: Product Owner
+config.agents.qa_engineer.llm:
+  owner: QA Engineer
+config.agents.qa_engineer.llm_params:
+  owner: QA Engineer
+config.agents.scrum_master.llm:
+  owner: Scrum Master
+config.agents.scrum_master.llm_params:
+  owner: Scrum Master
+config.agents.senior_engineer.llm:
+  owner: Senior Engineer
+config.agents.senior_engineer.llm_params:
+  owner: Senior Engineer
+config.agents.ux_designer.llm:
+  owner: UX Designer
+config.agents.ux_designer.llm_params:
+  owner: UX Designer
+config.const.calls.ATTEMPTS:
+config.const.calls.ECHO_CHARS:
+config.const.calls.EMPTY_LIMIT:
+  origin:
+  - crew#312
+  - sprint-metrics#567
+config.const.calls.RUNAWAY_CHARS:
+  origin:
+  - sprint-metrics#567
+config.const.calls.RUNAWAY_TAIL:
+config.const.calls.TOOL_ROUNDS:
+  origin:
+  - sprint-metrics#567
+config.const.llm.DEFAULT_MAX_TOKENS:
+config.const.llm.DEFAULT_TIMEOUT:
+config.const.llm.PROBE_TIMEOUT:
+config.const.retro_crew.MAX_TITLE:
+  origin:
+  - crew#176
+config.const.retro_crew.MAX_WENT:
+config.const.settle_crew.ASK_CHARS:
+config.const.settle_crew.CONSEQUENCES_CHARS:
+config.const.settle_crew.CONTEXT_CHARS:
+  origin:
+  - crew#440
+config.const.settle_crew.DECISION_CHARS:
+config.const.settle_crew.GOAL_QUOTE_CHARS:
+config.const.settle_crew.IMPACT_CHARS:
+config.const.settle_crew.INFRA_CHARS:
+config.const.settle_crew.QUESTION_CHARS:
+config.const.settle_crew.REASON_CHARS:
+config.const.settle_crew.SOURCE_CHARS:
+config.const.stepped.MAX_FILES:
 form.AnswerRow.an_id:
   description: When set, refused unless it's an ID, like R3 or Q1.
   messages:

@@ -1877,6 +1877,21 @@ def rules_command(
             console.print(f"[yellow]dropped[/] {rule}: the code no longer has it")
         rule_list.entries.cache_clear()
     console.print(f"wrote {rule_list.write().relative_to(rule_list.ROOT)}")
+    # The independent check on the list: every decision point is a rule's, or reviewed.
+    from crew_org import decision_points  # noqa: PLC0415
+
+    unresolved, stale = decision_points.unresolved(), decision_points.stale()
+    console.print(
+        f"{len(decision_points.points())} decision points: {len(unresolved)} unresolved, "
+        f"{len(stale)} stale entries in {decision_points.TABLE.name}"
+    )
+    for point in unresolved:
+        console.print(
+            f"[yellow]unresolved[/] {point.path}:{point.line} {point.kind} "
+            f"if {point.condition[:80]}"
+        )
+    for entry in stale:
+        console.print(f"[yellow]stale[/] {entry}")
     if not events:
         return
     version = code_version()
