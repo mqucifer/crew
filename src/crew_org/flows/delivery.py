@@ -1446,7 +1446,19 @@ def deliver_story(
         try:
             applied = True
             last_applied = implementation
-            workspace.apply_implementation(worktree, implementation)
+            loose: list[dict[str, Any]] = []
+            workspace.apply_implementation(worktree, implementation, loose=loose)
+            for match in loose:
+                sink.emit(
+                    CrewEvent(
+                        kind=EventKind.EDIT_LOOSE_MATCH,
+                        role="Developer",
+                        card=number,
+                        summary=f"#{number} quote matched by {match['fallback']}: "
+                        f"{match['path']}:{match['line']}",
+                        detail=match,
+                    )
+                )
             # Tests in a part that isn't Python are written as files: each one the
             # answer names must be in them, by its title (#404).
             unwritten = [
