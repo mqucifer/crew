@@ -107,6 +107,43 @@ def test_a_schema_is_shown_as_its_fields():
     ]
 
 
+def test_a_field_is_shown_with_what_its_schema_says_of_it():
+    """Shown only `cycle_time_days` beside `cycle_time_minutes`, the UX Designer picked
+    days, and the site showed "0 days" for one-day sprints (crew#761)."""
+    import json
+
+    schema = {
+        "properties": {
+            "cycle_time_minutes": {
+                "type": "integer",
+                "description": "Mean cycle time in whole minutes.",
+            },
+            "cycle_time_days": {
+                "type": "integer",
+                "description": "Mean cycle time in whole days.",
+                "deprecated": True,
+            },
+            "throughput": {"type": "integer"},
+        }
+    }
+    shown = usage._provided("schema.json", json.dumps(schema))
+    assert shown.splitlines() == [
+        "Fields:",
+        "- `cycle_time_minutes`: Mean cycle time in whole minutes.",
+        "- `cycle_time_days`: deprecated. Mean cycle time in whole days.",
+        "- `throughput`",
+    ]
+
+
+def test_the_crew_s_own_descriptions_reach_the_brief():
+    """The delivery-history contract's own fields carry descriptions the brief dropped."""
+    from crew_org.packages.contract import schemas
+
+    fields = usage.described_fields(schemas()["schema.json"])
+    assert fields["analysis.sprints[].as_of"].startswith("The moment it describes")
+    assert "sprint_metrics.answers.<key>.cycle_time_days" in fields
+
+
 def test_a_stylesheet_is_shown_as_its_tokens_and_classes():
     css = (
         ":root { --color-bg: #fff; } /* .not-a-class */ "
