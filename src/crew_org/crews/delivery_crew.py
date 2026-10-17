@@ -83,7 +83,7 @@ class FileWrite(BaseModel):
 class FileEdit(BaseModel):
     """One change to an existing file, addressed by name rather than position."""
 
-    path: str = Field(description="Repository-relative path of the file to edit")
+    path: str = Field(description="Repository-relative path of the Python file to edit")
     operation: Operation = Field(
         description=(
             "replace (an existing definition), add (a new top-level definition), "
@@ -104,7 +104,15 @@ class FileEdit(BaseModel):
     @field_validator("path")
     @classmethod
     def _stays_in_the_repository(cls, value: str) -> str:
-        return FileWrite._stays_in_the_repository(value)
+        cleaned = FileWrite._stays_in_the_repository(value)
+        # A named edit reads the file as Python. On a template it failed as the
+        # template's own en dash not parsing, which named the wrong fault (crew#744).
+        if PurePosixPath(cleaned).suffix != ".py":
+            raise ValueError(
+                f"{cleaned!r} isn't a Python file, so it has no definitions to edit by "
+                "name; change it with a text edit, quoting the text it replaces"
+            )
+        return cleaned
 
     @model_validator(mode="after")
     def _source_matches_the_operation(self) -> FileEdit:
