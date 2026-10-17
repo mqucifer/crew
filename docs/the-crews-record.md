@@ -91,6 +91,9 @@ as `crew_<key>` (`crew_run`, `crew_tick`), with the commit as `service_version` 
 - **A new context key:** set it with `log.scoped(...)`, explain it in `reference.CONTEXT`, and add
   it to `log._CONTEXT_OUT` only if it may leave.
 - **Then run `crew reference`.** A test fails while `docs/reference/records.md` is stale.
+- **A new rule a role meets** (a validator on a form, a check whose reason goes back to the
+  role, a line in a prompt): run `crew rules`. A test fails while `docs/reference/rules.md` is
+  stale. The list says where each rule lives, who's told it and what checks it (crew#756).
 
 ## History and what's still open
 
