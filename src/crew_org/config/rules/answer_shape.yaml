@@ -91,7 +91,7 @@ check.settle_crew.not_cut_at_a_quote:
   - crew#618
   told_in: Settlement
 form.AnswerRow.an_id:
-  description: Refused if it isn't an ID, like R3 or Q1.
+  description: When set, refused unless it's an ID, like R3 or Q1.
   messages:
     default: name a row or question of the epic's record by its ID, like R3 or Q1
   owner: Product Owner
@@ -198,7 +198,7 @@ form.Settlement.one_or_the_other:
 form.Settlement.stripped:
   owner: Product Owner
 form.SponsorRow.an_id:
-  description: Refused if it isn't an ID, like R3 or Q1.
+  description: When set, refused unless it's an ID, like R3 or Q1.
   messages:
     default: name a row or question of the epic's record by its ID, like R3 or Q1
   owner: Product Owner
