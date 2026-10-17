@@ -111,7 +111,7 @@ class Row(BaseModel):
     @model_validator(mode="after")
     def _a_call_stays_within_the_goal(self) -> Row:
         if self.own_call and not self.goal_wording.strip():
-            raise ValueError("your own call quotes the Goal's wording that it stays within")
+            refuse("form.Row.a_call_stays_within_the_goal")
         return self
 
 
@@ -305,11 +305,7 @@ def check_grounded(settlement: Settlement, goal: str) -> None:
         if r.own_call and _plain(r.goal_wording) not in text
     ]
     if ungrounded:
-        raise Unsettled(
-            f"{', '.join(ungrounded)}: your own call quotes wording that isn't in the Goal. "
-            "Quote the Goal's own words exactly, or if the Goal doesn't say which way it points, "
-            "ask the Sponsor one question instead."
-        )
+        refuse("check.settle_crew.check_grounded", kind=Unsettled, rows=", ".join(ungrounded))
 
 
 def note_owners(panel: PanelResult) -> dict[int, str]:
@@ -340,11 +336,7 @@ def check_product_calls(settlement: Settlement, panel: PanelResult) -> None:
         if r.own_call and any(owners.get(n) == "architect" for n in r.settles)
     ]
     if design:
-        raise Unsettled(
-            f"{'; '.join(design)} are your own call on a note a member marked for the Architect. "
-            "That is a design question: list it as an open question for the design note, or give "
-            "a source that settles it. Your own calls are for what the product does."
-        )
+        refuse("check.settle_crew.check_product_calls", kind=Unsettled, rows="; ".join(design))
 
 
 def check_covers(settlement: Settlement, count: int) -> None:

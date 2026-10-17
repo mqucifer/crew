@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from crew_org.flows import record
+from crew_org.rulebook import says
 
 FOLLOWS = "Follows the epic's"
 # The line a story carries: `Follows the epic's R1, R4.`
@@ -72,36 +73,32 @@ def problems(proposal: Any, rows: list[str], tests: Sequence[str] = ()) -> list[
         unknown = sorted(set(story.follows) - known)
         if unknown:
             found.append(
-                f"Story '{story.title}' follows {', '.join(unknown)}, not rows of the epic."
+                says(
+                    "check.conclusion.problems",
+                    "unknown",
+                    title=story.title,
+                    rows=", ".join(unknown),
+                )
             )
         followed.update(story.follows)
     # Only rows count: an open question (Q) or an infra item (I) listed here is harmless.
     left_out = {n.row for n in proposal.not_for_stories if n.row.startswith("R")}
     unknown_left = sorted(left_out - known)
     if unknown_left:
-        found.append(f"not_for_stories names {', '.join(unknown_left)}, not rows of the epic.")
+        found.append(
+            says("check.conclusion.problems", "unknown_left", rows=", ".join(unknown_left))
+        )
     unused = [r for r in rows if r not in followed and r not in left_out]
     if unused:
-        found.append(
-            f"No story follows {', '.join(unused)}. Name the story that does in its `follows`, "
-            "or list the row in `not_for_stories` with why it is not for stories."
-        )
+        found.append(says("check.conclusion.problems", "unused", rows=", ".join(unused)))
     carried = " ".join(s.pinned_behaviour for s in proposal.stories)
     dropped = {d.test for d in getattr(proposal, "tests_dropped", [])}
     silent = [t for t in tests if t not in dropped and t not in carried]
     if silent:
-        found.append(
-            f"No story changes {', '.join(silent)}, which the record says this epic changes. "
-            "Name each in the Existing tests line of the story that changes it, or list it in "
-            "`tests_dropped` with why."
-        )
+        found.append(says("check.conclusion.problems", "silent", tests=", ".join(silent)))
     return found
 
 
 def feedback(found: list[str]) -> str:
     """What the Business Analyst is told when its split doesn't fit the conclusion."""
-    return (
-        "## Your split doesn't fit the epic's conclusion\n\n"
-        + "\n".join(f"- {p}" for p in found)
-        + "\n\nThe conclusion's rows are settled: a story follows them, never contradicts them."
-    )
+    return says("check.conclusion.feedback", found="\n".join(f"- {p}" for p in found))

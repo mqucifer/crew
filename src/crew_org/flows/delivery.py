@@ -604,7 +604,7 @@ def _deliver_in_steps(
     )
     problems = stepped.check_plan(plan, worktree)
     if problems:
-        raise ValueError("the plan doesn't fit the repository: " + "; ".join(problems))
+        refuse("check.delivery.deliver_in_steps", problems="; ".join(problems))
     sink.note(
         EventKind.NOTE,
         f"#{number} planned {len(plan.files)} files: "
@@ -1255,20 +1255,14 @@ def deliver_story(
                 missing = [f for f in fresh if f not in exists]
                 # Said as it is: "you've been shown what you asked for", said of a file
                 # past the limit, had it ask again for the same file.
-                feedback = (
-                    (
-                        f"These aren't files in the repository: {', '.join(missing)}. "
-                        if missing
-                        else ""
-                    )
-                    + (
-                        f"Not shown: {', '.join(exists)}. A delivery may have "
-                        f"{ASKED_FILES_LIMIT} files added by asking, and this one has. "
-                        if exists
-                        else ""
-                    )
-                    + ("Everything else you named is already shown above. " if not fresh else "")
-                    + "Do the work now with the files you can see, and leave `need_files` empty."
+                rule = "check.delivery.do_the_work_now_with"
+                feedback = says(
+                    "check.delivery.do_the_work_now_with",
+                    missing=says(rule, "missing", files=", ".join(missing)) if missing else "",
+                    limited=says(rule, "limited", files=", ".join(exists), limit=ASKED_FILES_LIMIT)
+                    if exists
+                    else "",
+                    shown="" if fresh else says(rule, "shown"),
                 )
                 continue
 

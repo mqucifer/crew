@@ -354,6 +354,18 @@ def _raises(node: ast.AST, tree: ast.Module, depth: int = 0) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def _refused_through(node: ast.AST, tree: ast.Module, depth: int = 0) -> set[str]:
+    """The declared rules a function refuses by, its helpers' included, as `_raises` reads
+    their messages: a check that refuses in a helper is still that rule (ADR 0031)."""
+    found = set(_named(node))
+    if depth < 2:
+        for sub in ast.walk(node):
+            helper = _helper(sub, tree) if isinstance(sub, ast.Call) else None
+            if helper is not None and helper[0] is not node:
+                found |= _refused_through(helper[0], helper[1], depth + 1)
+    return found
+
+
 def _helper(call: ast.Call, tree: ast.Module) -> tuple[ast.FunctionDef, ast.Module] | None:
     """The function a call runs, with its module's tree, if the crew defines it."""
     func = call.func
@@ -737,7 +749,7 @@ def _check_rules() -> list[Entry]:
                     checked={where},
                     origin=refs(doc + " " + comments),
                     messages=messages,
-                    named=_named(fn),
+                    named=_refused_through(fn, ask.source.tree),
                     text=doc + " " + " ".join(messages),
                     sections=_cited_sections(doc + " " + comments),
                 )
@@ -1147,9 +1159,13 @@ def _fed_back_rules() -> list[Entry]:
                     where = f"{reached.path}:{callee.name}"
                     doc = ast.get_docstring(callee) or ""
                     comments = _comments_above(reached.lines, callee.lineno)
+                    # A function that refuses by one declared rule is that rule.
+                    named = _named(callee)
                     add(
                         Entry(
-                            f"{group}.{_short(reached)}.{callee.name.lstrip('_')}",
+                            next(iter(named))
+                            if len(named) == 1
+                            else f"{group}.{_short(reached)}.{callee.name.lstrip('_')}",
                             group,
                             where,
                             _first_sentence(doc) or _says(messages, callee.name),
@@ -1234,9 +1250,13 @@ def _fed_back_rules() -> list[Entry]:
                     where = f"{reached.path}:{callee.name}"
                     doc = ast.get_docstring(callee) or ""
                     comments = _comments_above(reached.lines, callee.lineno)
+                    # A function that writes by one declared rule is that rule.
+                    named = _named(callee)
                     add(
                         Entry(
-                            f"check.{_short(reached)}.{callee.name.lstrip('_')}",
+                            next(iter(named))
+                            if len(named) == 1
+                            else f"check.{_short(reached)}.{callee.name.lstrip('_')}",
                             "check",
                             where,
                             _first_sentence(doc) or _says(messages, callee.name),
@@ -1244,7 +1264,7 @@ def _fed_back_rules() -> list[Entry]:
                             checked={where},
                             origin=refs(doc + " " + comments),
                             messages=messages,
-                            named=_named(callee),
+                            named=named,
                             text=doc + " " + " ".join(messages),
                             sections=_cited_sections(doc + " " + comments),
                         )
