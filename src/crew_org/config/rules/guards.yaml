@@ -23,6 +23,35 @@ check.design.unlocked:
   origin:
   - crew#690
   owner: Architect
+config.agents.architect.can:
+  owner: Architect
+config.agents.business_analyst.can:
+  owner: Business Analyst
+config.agents.code_reviewer.can:
+  owner: Code Reviewer
+config.agents.developer.can:
+  owner: Developer
+config.agents.devops_engineer.can:
+  owner: DevOps Engineer
+config.agents.product_owner.can:
+  owner: Product Owner
+config.agents.qa_engineer.can:
+  owner: QA Engineer
+config.agents.scrum_master.can:
+  owner: Scrum Master
+config.agents.senior_engineer.can:
+  owner: Senior Engineer
+config.agents.ux_designer.can:
+  owner: UX Designer
+config.const.base_images.TIMEOUT:
+config.const.sandbox.DEFAULT_TIMEOUT:
+config.const.sandbox.PROBE_TIMEOUT:
+config.org.sandbox.engine:
+config.org.sandbox.image:
+config.org.sandbox.mode:
+config.org.trust.crew:
+config.org.trust.sponsor:
+config.org.trust.tools:
 form.CriterionTest.stays_in_the_repository:
   owner: Developer
 form.FileEdit.stays_in_the_repository:

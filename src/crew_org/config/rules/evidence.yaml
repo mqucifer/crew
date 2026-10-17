@@ -25,6 +25,25 @@ check.presentation_notes.coverage:
 check.review.with_docs_finding:
   origin:
   - crew#191
+config.const.acceptance.QA_ASK_LIMIT:
+config.const.acceptance.QA_CONTEXT_CHAR_CEILING:
+  origin:
+  - crew#13
+config.const.acceptance.QA_DOCS_CHAR_CEILING:
+config.const.acceptance.QA_FOCUS_ABOVE_CHARS:
+  origin:
+  - crew#231
+  - crew#312
+config.const.acceptance.QA_OUTPUT_CHAR_CEILING:
+config.const.ci.LOG_TAIL_CHARS:
+config.const.ci.MAX_JOBS:
+config.const.criteria_check.CRITERIA_LIMIT:
+config.const.criteria_check.PLANNED_LIMIT:
+config.const.deploy_evidence.MAX_DEPLOY_EVIDENCE_CHARS:
+config.const.qa_crew.MIN_EVIDENCE_CHARS:
+config.const.review_crew.MAX_DIFF_CHARS:
+config.const.review_crew.MIN_ACTION_CHARS:
+config.const.review_evidence.MAX_IMPORTED_CHARS:
 form.AcceptanceCriterion.names_what_to_check:
   origin:
   - crew#281

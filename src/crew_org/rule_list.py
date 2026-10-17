@@ -66,6 +66,7 @@ GROUPS = {
     "repair": "The crew changes the work itself, and records it",
     "skip": "The crew holds work back, said only in words",
     "decision": "The tick decides a card's handling, found by the decision-point audit",
+    "config": "A setting that changes what the tick does",
     "told": "Told, and not checked by anything above",
 }
 
@@ -1425,6 +1426,7 @@ def _skips() -> list[Entry]:
                     where,
                     _first_sentence(text.replace("{}", "…")),
                     origin=refs(comments + " " + docs),
+                    messages=[text],
                     text=text + " " + comments,
                     sections=_cited_sections(comments),
                 ),
@@ -1467,6 +1469,105 @@ def _decisions() -> list[Entry]:
                 text=doc,
             )
         )
+    return out
+
+
+ORG = PACKAGE / "config" / "org.yaml"
+# Agents' settings that change what a role does or may do.
+_AGENT_SETTINGS = ("llm", "llm_params", "can", "constitution")
+# Modules whose numeric constants set the tick's behaviour: its flows, crews and tools.
+_CONFIG_MODULES = ("crew_org.flows.", "crew_org.crews.", "crew_org.tools.")
+_CONFIG_EXTRA = ("crew_org.calls", "crew_org.cut_text", "crew_org.escalation", "crew_org.llm")
+
+
+def org_settings() -> list[tuple[str, Any, bool]]:
+    """Each org.yaml setting, its value, and whether any code reads its key.
+
+    A section of named entries (`wip_limits`, a column each) is one setting.
+    """
+    org = yaml.safe_load(ORG.read_text(encoding="utf-8")) or {}
+    code = "\n".join("\n".join(s.lines) for s in sources())
+    out = []
+    for section, value in org.items():
+        named = isinstance(value, dict) and not any(" " in str(k) for k in value)
+        for path, key, setting in (
+            [(f"{section}.{k}", k, v) for k, v in value.items()]
+            if named
+            else [(section, section, value)]
+        ):
+            read = re.search(rf"[\"']{re.escape(str(key))}[\"']", code) is not None
+            out.append((path, setting, read))
+    return out
+
+
+def _config() -> list[Entry]:
+    """Every setting the tick reads that changes what it does (crew#756).
+
+    org.yaml's settings the code reads (the board, the WIP limits and the sprint are
+    also `ProcessRules`), each role's model, its parameters, what it may do and its
+    constitution sections, and the numeric constants of the tick's modules.
+    """
+    out: list[Entry] = []
+    for path, value, read in org_settings():
+        if not read:
+            continue
+        out.append(
+            Entry(
+                f"config.org.{path}",
+                "config",
+                f"src/crew_org/config/org.yaml:{path}",
+                f"{path} = {value}"[:200],
+                checked={"src/crew_org/config/org.yaml"},
+            )
+        )
+    for key, spec in load_agents().items():
+        steps = [(key, spec)] + [
+            (f"{key}.{step}", sub) for step, sub in spec.items() if isinstance(sub, dict)
+        ]
+        for where, body in steps:
+            for setting in _AGENT_SETTINGS:
+                if setting in body:
+                    out.append(
+                        Entry(
+                            f"config.agents.{where}.{setting}",
+                            "config",
+                            f"src/crew_org/config/agents.yaml:{where}.{setting}",
+                            f"{setting} = {body[setting]}"[:200],
+                            roles={spec["role"]},
+                            checked={"src/crew_org/config/agents.yaml"},
+                        )
+                    )
+    for source in sources():
+        if not (source.module.startswith(_CONFIG_MODULES) or source.module in _CONFIG_EXTRA):
+            continue
+        for node in source.tree.body:
+            if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
+                continue
+            target = node.targets[0] if isinstance(node, ast.Assign) else node.target
+            if not (isinstance(target, ast.Name) and target.id.isupper()):
+                continue
+            try:
+                value = ast.literal_eval(node.value)
+            except ValueError:
+                try:
+                    value = eval(compile(ast.Expression(node.value), "<const>", "eval"), {})  # noqa: S307
+                except Exception:  # noqa: BLE001 - only literal arithmetic counts
+                    continue
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                continue
+            comments = _comments_above(source.lines, node.lineno)
+            where = f"{source.path}:{target.id}"
+            out.append(
+                Entry(
+                    f"config.const.{_short(source)}.{target.id}",
+                    "config",
+                    where,
+                    _first_sentence(comments) or f"{target.id} = {value}",
+                    checked={where},
+                    origin=refs(comments),
+                    text=comments,
+                )
+            )
     return out
 
 
@@ -1827,6 +1928,9 @@ def _link(checks: list[Entry], told: list[Entry]) -> list[Entry]:
             sections = line.sections & check.sections
             # Not the audit's decisions: their origins come from long docstrings, and a
             # shared incident there is a coincidence more often than a link.
+            if check.group == "config":
+                # A setting is a parameter, not a check a role is told of.
+                continue
             incidents = (
                 set()
                 if check.group == "decision"
@@ -1867,6 +1971,7 @@ def entries() -> tuple[Entry, ...]:
         + _repairs()
         + _skips()
         + _decisions()
+        + _config()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
@@ -2137,8 +2242,75 @@ PLACEMENT: list[tuple[str, str, Any]] = [
 ]
 
 
+# Where a setting sits, by what it changes: an org.yaml section, an agents.yaml setting,
+# or the module a constant lives in. The longest prefix of its id that's listed places
+# it; one at a place not listed stays unplaced: a platform's limits, the context a role
+# is shown, a report's sizes.
+_CONFIG_PLACES = {
+    "config.org.board.": "flow",
+    "config.org.wip_limits": "flow",
+    "config.org.sprint.": "flow",
+    "config.org.design.": "scope",
+    "config.org.refinement.": "flow",
+    "config.org.delivery.": "flow",
+    "config.org.sandbox.": "guards",
+    "config.org.execution.": "flow",
+    "config.org.escalation.": "flow",
+    "config.org.trust.": "guards",
+    "config.const.calls.": "answer_shape",
+    "config.const.cut_text.": "answer_shape",
+    "config.const.llm.": "answer_shape",
+    "config.const.escalation.": "flow",
+    "config.const.claude_code.": "flow",
+    "config.const.delivery.": "flow",
+    "config.const.merge.": "flow",
+    "config.const.board_flow.": "flow",
+    "config.const.loop.": "flow",
+    "config.const.story_problem.": "flow",
+    "config.const.strain.": "flow",
+    "config.const.settle.": "flow",
+    "config.const.backlog_order.": "flow",
+    "config.const.acceptance.": "evidence",
+    "config.const.qa_crew.": "evidence",
+    "config.const.criteria_check.": "evidence",
+    "config.const.review_crew.": "evidence",
+    "config.const.review_evidence.": "evidence",
+    "config.const.ci.": "evidence",
+    "config.const.deploy_evidence.": "evidence",
+    "config.const.workspace.": "edits",
+    "config.const.regression.": "edits",
+    "config.const.pinning.": "edits",
+    "config.const.delivery_crew.": "edits",
+    "config.const.sandbox.": "guards",
+    "config.const.base_images.": "guards",
+    "config.const.design.": "scope",
+    "config.const.design_notes.": "scope",
+    "config.const.presentation_notes.": "scope",
+    "config.const.refinement_crew.": "scope",
+    "config.const.delivered.": "scope",
+    "config.const.settle_crew.": "answer_shape",
+    "config.const.retro_crew.": "answer_shape",
+    "config.const.stepped.": "answer_shape",
+}
+_AGENT_PLACES = {
+    "llm": "answer_shape",
+    "llm_params": "answer_shape",
+    "can": "guards",
+    "constitution": "guidance",
+}
+
+
+def _config_place(entry: Entry) -> str:
+    if entry.id.startswith("config.agents."):
+        return _AGENT_PLACES.get(entry.id.rsplit(".", 1)[-1], "")
+    found = [p for p in _CONFIG_PLACES if entry.id.startswith(p)]
+    return _CONFIG_PLACES[max(found, key=len)] if found else ""
+
+
 def place(entry: Entry) -> str:
     """The category a rule protects, by PLACEMENT, or by its constitution section."""
+    if entry.group == "config":
+        return _config_place(entry)
     section = _section(entry)
     if section is not None:
         return _SECTIONS.get(section, "")

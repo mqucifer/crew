@@ -1,4 +1,67 @@
 # Rules no category holds yet. Declared once each (crew#756, ADR 0031): change a rule here.
+config.const.attempts.EXAMPLE_CODE_LINES:
+config.const.attempts.EXAMPLE_ERROR_LINES:
+config.const.attempts.OTHER_OUTPUT_CHARS:
+config.const.attempts.RECURRING_CARDS:
+config.const.attempts.REPAIR_REPORT_CHARS:
+  origin:
+  - crew#591
+  - sprint-metrics#567
+config.const.coverage_map.TIMEOUT:
+config.const.diagnose.MAX_CHARS:
+config.const.diagnose.MAX_COMMENT:
+config.const.diagnose.MAX_EVENTS:
+config.const.diagnose.PER_TICK:
+config.const.diagnosis_crew.MAX_FILES:
+config.const.github_http.ATTEMPTS:
+config.const.github_http.FIRST_BACKOFF:
+config.const.github_http.MAX_WAIT:
+config.const.github_http.TRANSIENT_ATTEMPTS:
+  origin:
+  - crew#515
+config.const.github_http.TRANSIENT_BACKOFF:
+config.const.github_http.WRITE_INTERVAL:
+config.const.github_issues.TIMEOUT:
+config.const.github_project.PAGE_SIZE:
+config.const.github_project.TIMEOUT:
+config.const.history.MAX_VERDICTS:
+config.const.history.MAX_VERDICT_CHARS:
+config.const.remote_errors._SERVER_ERROR:
+config.const.repo_context.CLOSE_LIMIT:
+config.const.repo_context.CONTEXT_CHAR_CEILING:
+config.const.repo_context.FOCUSED_CHAR_CEILING:
+  origin:
+  - crew#591
+  - sprint-metrics#537
+config.const.repo_context.FOCUS_ABOVE_CHARS:
+  origin:
+  - crew#11
+  - crew#140
+  - crew#231
+  - crew#268
+  - crew#312
+config.const.repo_context.READING_CHAR_CEILING:
+config.const.repo_context.READ_FIRST_CHAR_CEILING:
+  origin:
+  - crew#583
+  - sprint-metrics#567
+config.const.repo_context.READ_MIN_CHARS:
+config.const.repo_context.READ_ROOM_CHARS:
+  origin:
+  - sprint-metrics#561
+config.const.repo_context.SELECTION_TEXT_CHARS:
+  origin:
+  - crew#449
+config.const.repo_context.WHOLE_FILE_CHARS:
+  origin:
+  - crew#583
+  - crew#591
+  - sprint-metrics#567
+config.const.retro.MAX_KNOWN_CHARS:
+config.const.stack.TIMEOUT:
+config.const.standup.MAX_STANDUP_CHARS:
+config.org.sprint_metrics.url:
+config.org.telemetry.otlp_endpoint:
 told.delivery_crew.if_you_need_one_in_full:
   guidance: true
   owner: Developer

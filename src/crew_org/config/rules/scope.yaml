@@ -23,6 +23,22 @@ check.settle_crew.check_product_calls:
   owner: Product Owner
 check.stepped.implement_file:
   owner: Developer
+config.const.delivered.MAX_THEN:
+config.const.delivered.MAX_WHEN:
+config.const.design.ATTEMPTS:
+config.const.design_notes.ATTEMPTS:
+config.const.presentation_notes.ATTEMPTS:
+config.const.presentation_notes.OTHER_STORY_CHARS:
+config.const.refinement_crew.MAX_EPICS:
+config.const.refinement_crew.MIN_CRITERIA:
+config.const.refinement_crew.MIN_EPICS:
+config.const.refinement_crew.MIN_JUSTIFICATION:
+config.org.design.force_label:
+config.org.design.min_modules:
+config.org.design.min_points:
+config.org.design.min_stories:
+config.org.design.revisit_conflicts:
+config.org.design.skip_label:
 form.Change.work_is_said:
   owner: Architect
 form.Epic.is_an_argument:

@@ -48,7 +48,7 @@ _RESULTS = (
 # The words that make a loop one over cards, or a step one for a card.
 _CARDISH = re.compile(
     r"\b(card|cards|epic|epics|story|stories|child|children|issue|issues|pull|pulls|"
-    r"pr|prs|goal|goals|bug|bugs|number|numbers|item|items)\b"
+    r"pr|prs|goal|goals|bug|bugs|number|numbers|item|items|comment|comments)\b"
 )
 _STEP_ARGS = frozenset(
     ["card", "epic", "story", "pull", "pr", "issue", "goal", "number", "bug", "item"]
@@ -117,11 +117,25 @@ def _acts(nodes: list[ast.AST]) -> str:
             name == "append"
             and isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Attribute)
-            and func.value.attr in result_lists()
+            and (
+                func.value.attr in result_lists()
+                # Any phase's result, not only the four named: the release check's
+                # `result.sponsor` was missed (round 2).
+                or (isinstance(func.value.value, ast.Name) and func.value.value.id == "result")
+            )
         ):
             return f"result:{func.value.attr}"
+        if (
+            name in ("append", "add")
+            and isinstance(func, ast.Attribute)
+            and (isinstance(func.value, ast.Attribute) and func.value.attr == "ignored")
+        ):
+            return "ignore"
         if name in ("move_card", "set_status"):
             return "move"
+        # Closing a card, as "closed: already delivered" does (round 2).
+        if name in ("close", "close_issue") and len(node.args) >= 2:
+            return "close"
         if name == "label" or name in ("add_labels", "remove_label", "remove_labels"):
             return "label"
     return ""
@@ -164,12 +178,22 @@ def points() -> tuple[Point, ...]:
             fn = _enclosing(node, parents, ast.FunctionDef)
             name = fn.name if fn is not None else "<module>"
             where = f"{source.path}:{name}"
-            if tools and where not in checked_by:
-                continue
             kind, condition = "", ""
             if isinstance(node, ast.If):
                 body = _walk_shallow(node.body)
-                kind = _acts(body) or _ends(body, _card_loop(node, parents))
+                # A plain `else` is this branch's other side; an `elif` is its own point.
+                other = (
+                    _walk_shallow(node.orelse)
+                    if node.orelse
+                    and not (len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If))
+                    else []
+                )
+                kind = (
+                    _acts(body)
+                    or _ends(body, _card_loop(node, parents))
+                    or _acts(other)
+                    or _ends(other, _card_loop(node, parents))
+                )
                 if kind == "end" and not (_card_loop(node, parents) or _card_step(fn) or tools):
                     kind = ""
                 condition = ast.unparse(node.test)
@@ -181,6 +205,10 @@ def points() -> tuple[Point, ...]:
                     kind = "filter"
                     condition = " and ".join(ast.unparse(i) for g in gens for i in g.ifs)
             if not kind:
+                continue
+            # In tools/, a check's own branches, and what drops a person's input (round 2:
+            # the trust filter on comments was missed).
+            if tools and where not in checked_by and kind != "ignore":
                 continue
             condition = " ".join(condition.split())[:200]
             point_id = _point_id(source, name, kind, condition)
@@ -225,7 +253,16 @@ def _evidence(
     """The declared rules a decision point's own code names, or calls on."""
     found: set[str] = set()
     known = {e.id for e in rule_list.entries()}
-    parts = _walk_shallow([node]) if isinstance(node, ast.stmt) else list(ast.walk(node))
+    # The branch's own test and body: an `elif` after it is its own point.
+    if isinstance(node, ast.If):
+        other = (
+            node.orelse
+            if not (len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If))
+            else []
+        )
+        parts = list(ast.walk(node.test)) + _walk_shallow([*node.body, *other])
+    else:
+        parts = list(ast.walk(node))
     for sub in parts:
         # A rules.Rule named, or a declared rule refused by.
         if (
@@ -271,16 +308,16 @@ def _evidence(
                 rule = f"skip.{rule_list._short(source)}.{rule_list._slug(text, 6)}"
                 if rule in known:
                     found.add(rule)
-    # A branch that tests what a rule's check returned is that rule's.
+    # A branch whose test calls a rule's check is that rule's.
     if isinstance(node, ast.If) and fn is not None:
-        for checked_source, checked in rule_list._tested_calls(source, fn, node):
-            found |= checked_by.get(f"{checked_source.path}:{checked.name}", set())
         for call in (n for n in ast.walk(node.test) if isinstance(n, ast.Call)):
             resolved = rule_list._resolve(call, source)
             if resolved is not None:
                 found |= checked_by.get(f"{resolved[0].path}:{resolved[1].name}", set())
-    # Inside a function a rule checks with, the point is part of that rule.
-    found |= checked_by.get(where, set())
+    # Inside a check's own function, the point is part of that rule. Not in a flow: a
+    # flow function names a rule in one branch and decides other things in the rest.
+    if not source.module.startswith("crew_org.flows."):
+        found |= checked_by.get(where, set())
     return found
 
 

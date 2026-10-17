@@ -1,7 +1,60 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
 capability.unjustified:
 check.review.with_deploy:
+config.const.backlog_order.ATTEMPTS:
+config.const.backlog_order.MAX_STORIES:
+  origin:
+  - crew#358
+config.const.board_flow.ANALYST_ASK_LIMIT:
+  origin:
+  - crew#231
+config.const.board_flow.ANSWER_ATTEMPTS:
+config.const.board_flow.IDENTICAL_FAILURES_BEFORE_PARKING:
+  origin:
+  - sprint-metrics#49
+config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS:
+  origin:
+  - crew#231
+  - crew#62
+config.const.claude_code.DEFAULT_TIMEOUT:
+config.const.delivery.ASKED_FILES_LIMIT:
+  origin:
+  - crew#231
+  - sprint-metrics#529
+config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING:
+config.const.escalation.MIN_JUSTIFICATION_CHARS:
+config.const.loop.MAX_PASSES:
+config.const.loop.QUEUE_POLL:
+config.const.loop.QUEUE_WAIT:
+  origin:
+  - crew#314
+config.const.merge.MAX_REBUILDS:
+config.const.merge.SETTLE_TRIES:
+  origin:
+  - crew#302
+config.const.merge.SETTLE_WAIT:
+config.const.settle.ATTEMPTS:
+config.const.story_problem.MAX_ROUND_TRIPS:
+  origin:
+  - crew#242
+config.const.story_problem.SHOWN:
+config.const.strain.REVISIT_CONFLICTS:
+config.org.board.blocked_column:
+config.org.board.columns:
+config.org.board.human_gates:
+config.org.delivery.repos:
+config.org.escalation.may_escalate:
+config.org.escalation.never_escalate:
+config.org.escalation.require_justification:
+config.org.execution.local_repair_attempts:
+config.org.refinement.panel:
+config.org.sprint.blocked_aging_days:
+config.org.sprint.capacity_points:
+config.org.sprint.escalation_budget:
+config.org.sprint.timezone:
+config.org.wip_limits:
 decision.acceptance.awaiting_qa:
+decision.acceptance.ci_only:
 decision.acceptance.close_finished_parents:
   origin:
   - crew#174
@@ -13,14 +66,44 @@ decision.board_flow.admit_held_stories:
   origin:
   - crew#33
   - crew#34
+decision.board_flow.already_delivered:
+  origin:
+  - crew#192
+  - crew#440
 decision.board_flow.approved_epics:
+decision.board_flow.design_required:
+  origin:
+  - crew#192
+  - crew#440
 decision.board_flow.goal_cards:
 decision.board_flow.goals_missing_work_type:
 decision.board_flow.lacking_goals:
+decision.board_flow.parked:
+  origin:
+  - crew#192
+  - crew#440
+decision.board_flow.product_step:
+  origin:
+  - crew#189
+decision.board_flow.rework_gate:
+  origin:
+  - crew#192
+  - crew#440
+decision.board_flow.skeleton_only:
+  origin:
+  - ADR 0030
+  - crew#690
+decision.board_flow.sponsor_words:
+  origin:
+  - ADR 0023
 decision.board_flow.started:
   origin:
   - crew#189
   - sprint-metrics#97
+decision.board_flow.technical_work_first:
+  origin:
+  - crew#192
+  - crew#440
 decision.bugs.bugs_to_triage:
 decision.bugs.carry_out:
 decision.bugs.collaborators_only:
@@ -32,6 +115,9 @@ decision.close.close_sprint:
   - crew#314
   - crew#389
 decision.delivery.interrupted:
+decision.delivery.limit:
+decision.delivery.outcome:
+decision.delivery.rate_limited:
 decision.delivery.reconcile_orphans:
 decision.delivery.rework:
   origin:
@@ -45,6 +131,7 @@ decision.design_notes.write_notes:
 decision.diagnose.diagnose_blocked:
   origin:
   - sprint-metrics#200
+decision.github_issues.trust:
 decision.main_watch.red_main:
 decision.merge.conflict:
   origin:
@@ -61,17 +148,32 @@ decision.merge.merge_approved:
   - crew#436
 decision.merge.merged_elsewhere:
 decision.presentation_notes.write_notes:
-decision.refine_panel.no_goal_no_panel:
-decision.release_check.waits_for_the_run:
+decision.refine_panel.panel_step:
+  origin:
+  - crew#192
+  - crew#440
+decision.release_check.check_releases:
 decision.revert.land:
 decision.revert.refused:
 decision.revert.return_card:
+decision.review.deploy_review:
+  origin:
+  - crew#215
+  - crew#252
+decision.review.verdict:
+  origin:
+  - crew#215
+  - crew#252
 decision.review.what_is_reviewed:
 decision.revisit.back_to_work:
   origin:
   - crew#690
 decision.revisit.design_faults:
 decision.revisit.file_work:
+decision.settle.design_questions:
+  origin:
+  - ADR 0018
+decision.settle.settle_epic:
 decision.sprint.capacity:
 decision.sprint.left_over:
   origin:
