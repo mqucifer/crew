@@ -55,6 +55,9 @@ class Edit:
     operation: Operation
     target: str
     source: str = ""
+    # A criterion's test: one the file defines by the time it's added is replaced
+    # (#183), whether it was there before or an earlier edit wrote it (crew#735).
+    replaces_existing: bool = False
 
 
 def _definitions(tree: ast.Module) -> dict[str, ast.stmt]:
@@ -173,6 +176,11 @@ def apply_edit(source: str, edit: Edit) -> str:
 
     if edit.operation is Operation.ADD:
         if edit.target in definitions:
+            start, end = _span(definitions[edit.target])
+            if "\n".join(lines[start:end]).strip() == edit.source.strip():
+                return source  # already there, as sent
+            if edit.replaces_existing:
+                return apply_edit(source, Edit(Operation.REPLACE, edit.target, edit.source))
             raise EditError(f"{edit.target!r} already exists — use replace, or choose another name")
         body = edit.source.strip("\n")
         # Before the file's `__main__` block, not after it: run as a script, the

@@ -63,3 +63,8 @@ Sponsor, 2026-10-11: **option A.**
   can't be empty (`calls.blocks_grammar`). The bare grammar let `{}` through: answers
   came back empty-bodied after thousands of tokens of thinking, in replays and on
   mqucifer/sprint-metrics#585 in the live tick.
+- **2026-10-17:** a field holding exactly the name of a block written under another
+  name (`"f1"`, `"b_url_for"`) takes that block, recorded as an `edit.loose_match`
+  event (`block.name`). A block ends in a newline, so a quote of part of a line that
+  isn't found is matched without it, when that leaves one place (`quote.final_newline`,
+  crew#734).

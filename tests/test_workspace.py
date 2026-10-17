@@ -176,7 +176,7 @@ def test_the_fixable_is_fixed_before_anything_is_judged(tmp_path, recorded):
     calls, _ = recorded
     check(tmp_path, sandbox=HOST)
     joined = [" ".join(c) for c in calls]
-    fix = joined.index("uv run ruff check --fix-only .")
+    fix = joined.index("uv run ruff check --fix-only --no-unsafe-fixes .")
     lint = joined.index("uv run ruff check .")
     assert fix < lint, "autofix must run before the lint that judges"
     assert joined.index("uv run ruff format .") < lint
@@ -187,8 +187,66 @@ def test_a_failing_autofix_is_not_a_failing_check(tmp_path, recorded):
     That is the lint's verdict to deliver, not the autofix's — otherwise every
     unfixable finding would be reported twice and counted once too often."""
     _, codes = recorded
-    codes["uv run ruff check --fix-only ."] = 1
+    codes["uv run ruff check --fix-only --no-unsafe-fixes ."] = 1
     assert check(tmp_path, sandbox=HOST).ok
+
+
+def _repo(path):
+    import subprocess
+
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@example.com"],
+        ["config", "user.name", "t"],
+    ):
+        subprocess.run(["git", "-C", str(path), *args], check=True)
+    (path / "touched.py").write_text("x = 1\n")
+    (path / "elsewhere.py").write_text("y = 1\n")
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-qm", "base"], check=True)
+    return path
+
+
+@pytest.fixture
+def fixer(monkeypatch):
+    """A fixer that rewrites every Python file in the project, as `ruff --fix .` would."""
+
+    def fake_run(worktree, command, **_kwargs):
+        if "--fix-only" in command:
+            for path in worktree.glob("*.py"):
+                path.write_text(path.read_text() + "# fixed\n")
+        return CommandResult(command=" ".join(command), code=0, output="")
+
+    monkeypatch.setattr(workspace, "run", fake_run)
+
+
+def test_what_the_fixer_changed_is_recorded_and_kept_where_the_attempt_was(tmp_path, fixer):
+    """crew#758: the fix is part of the attempt, and on its record."""
+    repo = _repo(tmp_path)
+    (repo / "touched.py").write_text("x = 2\n")
+    (repo / "new.py").write_text("z = 1\n")
+    result = check(repo, sandbox=HOST)
+    assert result.fixed == ["new.py", "touched.py"]
+    assert (repo / "touched.py").read_text() == "x = 2\n# fixed\n"
+
+
+def test_a_fix_outside_what_the_attempt_touched_is_undone(tmp_path, fixer):
+    repo = _repo(tmp_path)
+    (repo / "touched.py").write_text("x = 2\n")
+    result = check(repo, sandbox=HOST)
+    assert result.reverted == ["elsewhere.py"]
+    assert (repo / "elsewhere.py").read_text() == "y = 1\n"
+
+
+def test_outside_git_the_fixer_runs_as_before_with_nothing_recorded(tmp_path, fixer):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    result = check(tmp_path, sandbox=HOST)
+    assert (result.fixed, result.reverted) == ([], [])
+    assert (tmp_path / "a.py").read_text() == "x = 1\n# fixed\n"
+
+
+def test_the_default_fixer_takes_only_safe_fixes():
+    assert "--no-unsafe-fixes" in workspace.AUTOFIX[0]
 
 
 def test_the_verdict_is_still_the_lint_and_the_tests(tmp_path, recorded):
@@ -241,3 +299,68 @@ def test_dependency_resolution_is_the_only_networked_step(tmp_path, monkeypatch)
     check(tmp_path, sandbox=HOST)
     assert seen[0][1] is True and "sync" in seen[0][0]
     assert all(networked is False for _cmd, networked in seen[1:])
+
+
+NESTED = """def check(event):
+    if "because" in event:
+        if event["because"] != "x":
+            return 1
+    unused = 2
+    return 0
+"""
+
+
+def test_an_allowed_unsafe_fix_is_applied_and_recorded_and_no_other(tmp_path, monkeypatch):
+    """sprint-metrics#563's only finding was SIM102, whose fix ruff calls unsafe (crew#758).
+
+    Runs the real ruff: F841's unsafe fix isn't on the list, so it stays for VERIFY.
+    """
+    import subprocess
+    import sys
+
+    real = workspace.run
+
+    def ruff_here(worktree, command, **kwargs):
+        if command[:3] != ["uv", "run", "ruff"]:
+            return CommandResult(command=" ".join(command), code=0, output="")  # setup, tests
+        return real(worktree, [sys.executable, "-m", "ruff", *command[3:]], **kwargs)
+
+    monkeypatch.setattr(workspace, "run", ruff_here)
+    repo = _repo(tmp_path)
+    (repo / "pyproject.toml").write_text('[tool.ruff.lint]\nselect = ["F", "SIM"]\n')
+    (repo / "elsewhere.py").write_text(NESTED)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qam", "merged"], check=True)
+    (repo / "touched.py").write_text(NESTED)
+    result = check(repo, sandbox=HOST)
+    assert result.unsafe == ["SIM102 touched.py:2"]
+    text = (repo / "touched.py").read_text()
+    assert 'if "because" in event and event["because"] != "x":' in text
+    assert "unused = 2" in text and not result.ok
+    # The merged file's finding is left as it was, for VERIFY to report.
+    assert "--> touched.py:2" not in result.failure_report
+    assert "--> elsewhere.py:2" in result.failure_report and "F841" in result.failure_report
+    assert (repo / "elsewhere.py").read_text() == NESTED
+
+
+def test_every_allowed_unsafe_fix_says_why():
+    assert workspace.UNSAFE_FIXES and all(len(why) > 40 for why in workspace.UNSAFE_FIXES.values())
+
+
+def test_the_attempts_record_and_pull_request_name_what_the_fixers_changed():
+    from crew_org.events import EventKind, EventSink
+    from crew_org.flows.delivery import DeliveryOutcome, _pr_body, _record_autofix
+    from tests.test_delivery_flow import IMPL, story
+
+    seen = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    outcome = DeliveryOutcome(card=6)
+    fixed = CheckResult(
+        results=[], fixed=["src/a.py"], reverted=["src/b.py"], unsafe=["SIM102 src/a.py:4"]
+    )
+    _record_autofix(fixed, outcome, sink, 6)
+    (event,) = [e for e in seen if e.kind is EventKind.AUTOFIX_APPLIED]
+    assert event.detail["rules"] == ["SIM102"] and event.detail["reverted"] == ["src/b.py"]
+    body = _pr_body(story(), IMPL, outcome)
+    assert "## Fixed by the project's own tools before the checks" in body
+    assert "- `src/a.py`" in body and "unsafe fix `SIM102` at `src/a.py:4`" in body
