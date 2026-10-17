@@ -21,7 +21,11 @@ config.agents.senior_engineer.constitution:
   owner: Senior Engineer
 config.agents.ux_designer.constitution:
   owner: UX Designer
-told.code_reviewer.you_never_ask_does_it_work:
+told.code_reviewer.never_asks_whether_it_works:
+  cases:
+  - told.code_reviewer.you_never_ask_does_it_work
+  - told.review_crew.do_not_ask_whether_it_works
+  description: 'The Code Reviewer never asks whether the code works: that is QA''s evidence to produce.'
   guidance: true
   owner: Code Reviewer
 told.code_reviewer.you_reject_vague_praise_and_vague:
@@ -33,9 +37,6 @@ told.form.Retro.summary:
 told.retro_crew.a_cause_seen_on_more_than:
   guidance: true
   owner: Scrum Master
-told.retro_crew.a_larger_escalation_budget_is_never:
-  guidance: true
-  owner: Scrum Master
 told.retro_crew.a_problem_one_of_these_fixed:
   guidance: true
   origin:
@@ -45,9 +46,6 @@ told.retro_crew.give_summary_one_or_two_sentences:
   guidance: true
   owner: Scrum Master
 told.retro_crew.the_crew_lays_the_retro_out:
-  guidance: true
-  owner: Scrum Master
-told.scrum_master.never_propose_a_larger_escalation_budget:
   guidance: true
   owner: Scrum Master
 told.scrum_master.you_report_you_do_not_decide:

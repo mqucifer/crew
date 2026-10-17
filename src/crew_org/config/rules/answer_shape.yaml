@@ -206,6 +206,9 @@ form.PresentationNote.has_a_sample:
   owner: UX Designer
   told_in: PresentationNote.sample
 form.ProcessDefect.is_a_change:
+  cases:
+  - told.retro_crew.a_larger_escalation_budget_is_never
+  - told.scrum_master.never_propose_a_larger_escalation_budget
   description: Refused if it asks for a larger escalation budget.
   messages:
     default: a larger escalation budget is not a process improvement. Escalation rate is a symptom of

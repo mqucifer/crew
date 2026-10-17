@@ -292,9 +292,6 @@ story.return_to_refinement:
   origin:
   - crew#189
   - crew#242
-told.review_crew.do_not_ask_whether_it_works:
-  guidance: true
-  owner: Code Reviewer
 told.review_crew.do_not_re_litigate_a_point:
   guidance: true
   owner: Code Reviewer
