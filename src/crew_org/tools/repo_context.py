@@ -315,6 +315,24 @@ class Focus:
     # Chosen, and named rather than shown, because the ceiling was reached (crew#591).
     omitted: list[str] = field(default_factory=list)
     chars: int = 0
+    # Shown as the definitions an answer changed, not whole (crew#591), and named as
+    # close to the work but not shown: importers and the tests that run it (ADR 0024).
+    partial: list[str] = field(default_factory=list)
+    close: list[str] = field(default_factory=list)
+    unshown: list[str] = field(default_factory=list)
+
+    def selected(self, rel: str) -> str:
+        """What this selection did with a file: `full`, `part`, `left_out`, or
+        `not_a_candidate` when nothing chose it (crew#778, discussion 553)."""
+        if not self.focused:
+            return "full"
+        if rel in self.partial:
+            return "part"
+        if rel in self.shown:
+            return "full"
+        if rel in self.omitted or rel in self.close or rel in self.unshown:
+            return "left_out"
+        return "not_a_candidate"
 
 
 def project_files(worktree: Path) -> list[Path]:
@@ -542,6 +560,7 @@ def focused_context(
     shown: list[str] = []
     unshown: list[str] = []
     omitted: list[str] = []
+    partial: list[str] = []
     for rel in order:
         path = worktree / rel
         if path.suffix == ".py":
@@ -557,7 +576,8 @@ def focused_context(
             shown.append(rel)
             continue  # already shown in full above
         body = path.read_text(encoding="utf-8", errors="ignore").strip()
-        if reading and changed and rel in changed and len(body) > WHOLE_FILE_CHARS:
+        part = bool(reading and changed and rel in changed and len(body) > WHOLE_FILE_CHARS)
+        if part and changed:
             body = changed_only(body, changed[rel])
         if len(body) > budget and rel not in kept:
             omitted.append(rel)
@@ -565,6 +585,8 @@ def focused_context(
         budget -= len(body)
         lines += [f"`{rel}`", "", f"```{fence}", body, "```", ""]
         shown.append(rel)
+        if part:
+            partial.append(rel)
     if unshown:
         lines += [
             "Not shown, because they aren't text: "
@@ -602,7 +624,15 @@ def focused_context(
     text = "\n".join(lines)
     asked = [a for a in extra if a in chosen]
     return text, Focus(
-        focused=True, shown=shown, asked=asked, unknown=unknown, omitted=omitted, chars=len(text)
+        focused=True,
+        shown=shown,
+        asked=asked,
+        unknown=unknown,
+        omitted=omitted,
+        chars=len(text),
+        partial=partial,
+        close=close,
+        unshown=unshown,
     )
 
 

@@ -13,7 +13,7 @@ import httpx
 import pytest
 from pydantic import BaseModel, Field
 
-from crew_org import calls, events
+from crew_org import calls, events, rule_list
 from crew_org.events import EventKind, EventSink
 from crew_org.llm import backend_down
 
@@ -515,3 +515,52 @@ def test_a_refusal_by_a_declared_rule_is_recorded_with_its_name(seen):
     ask(Proxy("", GOOD))
     (refused,) = [e for e in seen if e.kind == EventKind.LLM_CALL_REFUSED]
     assert refused.detail["rules"] == ["call.the_answer_was_empty_you"]
+
+
+# --- the rule ids a prompt gives (crew#778) ---------------------------------
+
+
+def test_each_call_names_the_rules_its_prompt_gives_and_the_catalog(seen):
+    """Given beside refused (crew#772): the first call that gives a set carries its ids,
+    by where they sit; every call carries the set's hash and the catalog's version."""
+    calls._GIVEN_WRITTEN.clear()
+    proxy = Proxy(called(("read_file", {"path": "src/metrics.py"})), reply("Done."), "", GOOD)
+    ask(proxy, tools=[reader()])
+    ask(Proxy(GOOD))
+    started = [e.detail for e in seen if e.kind is EventKind.LLM_CALL_STARTED]
+    assert len(started) == 5, "two tool rounds, two tries, then the second ask"
+    assert len({d["given"] for d in started}) == 1
+    assert all(d["catalog"] == rule_list.catalog_version() for d in started)
+    assert [("given_rules" in d) for d in started] == [True, False, False, False, False]
+    rules = started[0]["given_rules"]
+    assert set(rules) == {"system", "form", "site"}
+    assert all(i in {e.id for e in rule_list.entries()} for ids in rules.values() for i in ids)
+
+
+def test_a_prompt_site_s_line_counts_only_where_the_prompt_says_it():
+    rule, shown = next(iter(rule_list._site_lines()))
+    said = rule_list.given(role="", sections=[], agents=[], forms=[], prompt=f"a\n{shown}\nb")
+    unsaid = rule_list.given(role="", sections=[], agents=[], forms=[], prompt="nothing here")
+    assert rule in said["site"] and rule not in unsaid["site"]
+
+
+def test_a_passage_told_to_one_role_is_given_only_to_it():
+    """crew#756's markers: §1's mechanics are told to the Senior Engineer alone."""
+    senior = rule_list.given(role="Senior Engineer", sections=[1], agents=[], forms=[], prompt="")
+    owner = rule_list.given(role="Product Owner", sections=[1], agents=[], forms=[], prompt="")
+    assert "§1 no_agent_may_move_a_card" in senior["system"]
+    assert "§1 no_agent_may_move_a_card" not in owner["system"]
+
+
+def test_the_rules_given_stay_in_the_crews_own_record():
+    """Not content, but kept local unless the Sponsor says otherwise (crew#778)."""
+    from crew_org import telemetry
+
+    assert not {"given", "given_rules", "catalog"} & telemetry.DETAIL
+
+
+def test_a_lookup_that_fails_leaves_the_call_unmarked_not_unmade(seen, monkeypatch):
+    monkeypatch.setattr(rule_list, "given", lambda **kw: 1 / 0)
+    assert ask(Proxy(GOOD)).approved
+    started = [e.detail for e in seen if e.kind is EventKind.LLM_CALL_STARTED]
+    assert "given" not in started[0]

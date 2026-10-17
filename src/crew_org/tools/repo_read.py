@@ -20,7 +20,13 @@ from typing import Any
 
 from crew_org import calls
 from crew_org.tools.ast_edit import definitions
-from crew_org.tools.repo_context import CONTEXT_FILES, IGNORED_DIRS, WHOLE_FILE_CHARS, is_text
+from crew_org.tools.repo_context import (
+    CONTEXT_FILES,
+    IGNORED_DIRS,
+    WHOLE_FILE_CHARS,
+    Focus,
+    is_text,
+)
 
 NAME = "read_file"
 
@@ -32,12 +38,23 @@ class Reader:
     spends the budget, so the model is told it's there.
     """
 
-    def __init__(self, worktree: Path, *, budget: int, shown: list[str] | tuple[str, ...] = ()):
+    def __init__(
+        self,
+        worktree: Path,
+        *,
+        budget: int,
+        shown: list[str] | tuple[str, ...] = (),
+        focus: Focus | None = None,
+    ):
         self.worktree = worktree
         self.left = budget
         self.shown = set(shown) | set(CONTEXT_FILES)
+        # The selection the call was shown, to say what it did with each file read.
+        self.focus = focus
         # What was read, in order, as path or path::name, for the event log.
         self.read: list[str] = []
+        # Whether the last call returned what it asked for, for its note.
+        self._returned = False
 
     def reset(self, budget: int) -> None:
         """A new call over the same files: its own budget, and nothing read yet."""
@@ -64,9 +81,11 @@ class Reader:
                 "required": ["path"],
             },
             run=self.run,
+            notes=self.notes,
         )
 
     def run(self, arguments: dict[str, Any]) -> str:
+        self._returned = False
         rel = str(arguments.get("path") or "").strip().replace("\\", "/").removeprefix("./")
         name = str(arguments.get("name") or "").strip()
         pure = PurePosixPath(rel)
@@ -107,8 +126,23 @@ class Reader:
             )
         self.left -= len(body)
         self.read.append(key)
+        self._returned = True
         fence = "python" if rel.endswith(".py") else ""
         return f"`{key}`\n\n```{fence}\n{body}\n```"
+
+    def notes(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """What a read asked for, by name, and what the call's selection did with that
+        file (crew#778): the data a file-selection model would be judged on (discussion
+        553). Paths and names, never what was read. Named apart from the telemetry
+        allow-list's `path`, so they stay in the crew's own record."""
+        rel = str(arguments.get("path") or "").strip().replace("\\", "/").removeprefix("./")
+        name = str(arguments.get("name") or "").strip()
+        return {
+            "read_path": rel,
+            **({"read_name": name} if name else {}),
+            "selected": self.focus.selected(rel) if self.focus is not None else "",
+            "read": self._returned,
+        }
 
     def _names(self, rel: str, source: str) -> str:
         names = list(definitions(source)) if rel.endswith(".py") else []

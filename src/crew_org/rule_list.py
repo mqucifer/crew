@@ -37,7 +37,7 @@ import inspect
 import re
 import textwrap
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -2531,3 +2531,96 @@ def guidance_counts() -> dict[str, int]:
             for role in entry.roles:
                 counts[role] = counts.get(role, 0) + 1
     return dict(sorted(counts.items()))
+
+
+# --- what a prompt gives ----------------------------------------------------------------
+
+# A told line's place, as `_told_*` write it: a prompt site, a constitution section, an
+# agents.yaml field, or a form's description.
+_SECTION_PLACE = re.compile(r"§(\d+)")
+
+
+@cache
+def _told_index() -> dict[str, frozenset[str]]:
+    """Each place a rule is told, with the rules told there (crew#778).
+
+    Built from `entries()` once a process. A constitution section is keyed with each
+    role it's given to, since a passage can be told to some roles only.
+    """
+    index: dict[str, set[str]] = {}
+    for entry in entries():
+        if entry.form:
+            index.setdefault(f"form:{entry.form}", set()).add(entry.id)
+        for place in entry.told:
+            if place.startswith("the prompt, "):
+                keys = [f"site:{place.removeprefix('the prompt, ')}"]
+            elif place.startswith("agents.yaml "):
+                keys = [place]
+            elif place.startswith("`"):
+                keys = [f"form:{place[1:].split('`')[0].split('.')[0]}"]
+            elif section := _SECTION_PLACE.match(place):
+                keys = [f"§{section.group(1)}:{role}" for role in entry.roles]
+            else:
+                keys = []
+            for key in keys:
+                index.setdefault(key, set()).add(entry.id)
+    return {key: frozenset(ids) for key, ids in index.items()}
+
+
+@cache
+def _site_lines() -> tuple[tuple[str, str], ...]:
+    """Each line a prompt site tells, as (rule id, the text that shows it was given)."""
+    out = []
+    for entry in entries():
+        if not any(p.startswith("the prompt, ") for p in entry.told):
+            continue
+        # The fixed text before any value the line is written with.
+        shown = " ".join(entry.text.split("{", 1)[0].split())[:80]
+        if len(shown) >= SITE_TEXT_MIN:
+            out.append((entry.id, shown))
+    return tuple(out)
+
+
+# Shorter than this, a line's text could turn up in a prompt that never told it.
+SITE_TEXT_MIN = 24
+
+
+def given(
+    *,
+    role: str,
+    sections: Iterable[int],
+    agents: Iterable[str],
+    forms: Iterable[str],
+    prompt: str,
+) -> dict[str, list[str]]:
+    """The rule ids a prompt gives, by where they sit (crew#778).
+
+    `role` is the name the constitution's sections are given to (`Product Owner
+    (onboarding)` for a step with its own), `agents` the agents.yaml places its system
+    prompt is built from, and `forms` the answer's form and the forms inside it. A
+    prompt site's line counts where its text is in `prompt`: a site chooses some of
+    its lines per call, as the Developer's reading instructions do.
+    """
+    index = _told_index()
+
+    def ids(keys: Iterable[str]) -> list[str]:
+        return sorted({i for key in keys for i in index.get(key, ())})
+
+    said = " ".join(prompt.split())
+    return {
+        "system": ids([*(f"§{n}:{role}" for n in sections), *agents]),
+        "form": ids(f"form:{form}" for form in forms),
+        "site": sorted({rule for rule, shown in _site_lines() if shown in said}),
+    }
+
+
+@cache
+def catalog_version() -> str:
+    """A fingerprint of what the rule ids mean: the catalog, the constitution, agents.yaml."""
+    import hashlib  # noqa: PLC0415
+
+    digest = hashlib.sha256()
+    meaning = [*sorted(rulebook.CATALOG.glob("*.yaml")), CONSTITUTION, ORG.parent / "agents.yaml"]
+    for path in meaning:
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
