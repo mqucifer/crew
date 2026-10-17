@@ -37,7 +37,7 @@ from crew_org.columns import BLOCKED, NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows import record as record_flow
-from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, approved_epics
+from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, epics_to_split
 from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
@@ -482,7 +482,7 @@ def _revise(
         return
     titles = {c.number: c.title for c in cards if (c.repo or repo) == repo and c.number}
     waiting = [
-        c for c in approved_epics(cards) if (c.repo or repo) == repo and TECHNICAL not in c.labels
+        c for c in epics_to_split(cards) if (c.repo or repo) == repo and TECHNICAL not in c.labels
     ]
     reason = (
         "Stories keep colliding in the same files, so work that should run side by "

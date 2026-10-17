@@ -86,7 +86,7 @@ def test_a_rule_and_a_guard_are_matched_by_the_names_the_event_records():
             )
         ]
     )
-    assert report.fired["guard.local_repair"].events == 1
+    assert report.fired["repair.local"].events == 1
     assert report.fired["guard.overwrite.overwrites_existing"].events == 1
 
 
@@ -99,7 +99,7 @@ def test_cards_are_counted_with_their_repository_and_an_unknown_one_stays_unknow
             event("note", {"rule": "hold.sibling"}, card=7, repo=""),
         ]
     )
-    fired = report.fired["hold.sibling"]
+    fired = report.fired["hold.waits_for_earlier_work"]
     assert fired.cards == {"sprint-metrics#7", "crew-presentation#7", "repo unknown#7"}
     assert fired.repos[rule_report.UNKNOWN] == 1
 
@@ -183,9 +183,9 @@ def test_a_rule_quiet_for_ten_sprints_is_a_candidate_and_the_loudest_is_a_missin
     report = rule_report.count(events)
     text = "\n".join(rule_report.retirement(report, rule_list.entries()))
     quiet = text.split("### Firing most")[0]
-    assert "`hold.wip_limit`" in quiet, "fired only before the last ten sprints"
-    assert "`hold.sibling`" not in quiet
-    assert "| `hold.sibling` | flow | 10 | 11 |" in text
+    assert "`hold.wip`" in quiet, "fired only before the last ten sprints"
+    assert "`hold.waits_for_earlier_work`" not in quiet
+    assert "| `hold.waits_for_earlier_work` | flow | 10 | 11 |" in text
     assert "fewer than the 10" in "\n".join(
         rule_report.retirement(rule_report.count(events[:3]), rule_list.entries())
     )
@@ -213,7 +213,7 @@ def test_the_holds_a_tick_lists_on_its_end_are_counted_by_rule_and_card():
         {"rule": "no.such.rule", "repo": "sprint-metrics", "card": 9},
     ]
     report = rule_report.count([event("tick.finished", {"held": held, "sprint": "Sprint 30"})])
-    assert report.fired["hold.sibling"].cards == {"sprint-metrics#7"}
-    assert report.fired["hold.sibling"].sprints == {"Sprint 30"}
-    assert report.fired["decision.merge.merge_approved"].events == 1
+    assert report.fired["hold.waits_for_earlier_work"].cards == {"sprint-metrics#7"}
+    assert report.fired["hold.waits_for_earlier_work"].sprints == {"Sprint 30"}
+    assert report.fired["decision.land"].events == 1
     assert not report.unmatched

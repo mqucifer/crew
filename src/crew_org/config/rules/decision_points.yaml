@@ -38,10 +38,6 @@ flows.acceptance._judge:filter:3e200959:
   at: flows/acceptance.py:_judge
   if: f'{rel}::{name}' not in asked
   not_a_rule: chooses what a role is shown, not what happens to a card
-flows.acceptance.awaiting_qa:filter:5b2cb0c5:
-  at: flows/acceptance.py:awaiting_qa
-  if: c.status == QAING and c.work_type in DELIVERED and (c.state != 'CLOSED')
-  rule: decision.acceptance.awaiting_qa
 flows.acceptance.close_finished_parents:filter:ac818ed0:
   at: flows/acceptance.py:close_finished_parents
   if: c.parent == card.number and c.repo == card.repo
@@ -147,10 +143,10 @@ flows.board_flow.admit_held_stories:skip:1e378846:
   if: card.status != REFINEMENT or card.state == 'CLOSED' or card.work_type != STORY_TYPE or (HELD_FOR_ROOM
     not in card.labels)
   rule: decision.board_flow.admit_held_stories
-flows.board_flow.approved_epics:filter:ac4b49b1:
-  at: flows/board_flow.py:approved_epics
+flows.board_flow.epics_to_split:filter:ac4b49b1:
+  at: flows/board_flow.py:epics_to_split
   if: c.status == REFINEMENT and c.state != 'CLOSED' and (c.work_type == EPIC_TYPE)
-  rule: decision.board_flow.approved_epics
+  rule: decision.board_flow.epics_to_split
 flows.board_flow.goal_cards:filter:68917dfd:
   at: flows/board_flow.py:goal_cards
   if: c.status == INBOX and c.state != 'CLOSED' and (c.work_type == GOAL_TYPE) and set_by_the_sponsor(c,
@@ -612,15 +608,6 @@ flows.delivery.deliver_story:filter:5489883d:
   at: flows/delivery.py:deliver_story
   if: not regression._declares(declared, k)
   rule: guard.scope.without_declared
-flows.delivery.held_by_a_sibling:end:e625c569:
-  at: flows/delivery.py:held_by_a_sibling
-  if: story.parent is None
-  rule: hold.sibling
-flows.delivery.held_by_a_sibling:filter:d96bfd15:
-  at: flows/delivery.py:held_by_a_sibling
-  if: c.repo == story.repo and c.parent == story.parent and (c.work_type == STORY_TYPE) and ((c.number
-    or 0) < (story.number or 0)) and (c.state != 'CLOSED') and (c.s
-  rule: hold.sibling
 flows.delivery.held_by_what_it_builds_on:filter:69928729:
   at: flows/delivery.py:held_by_what_it_builds_on
   if: c.repo == story.repo and c.number in wanted and (c.state != 'CLOSED') and (c.status != DONE)
@@ -711,11 +698,6 @@ flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
   rule: guard.scope.without_declared
-flows.delivery.sprint_stories:filter:b75c690e:
-  at: flows/delivery.py:sprint_stories
-  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.sprint
-    == sprint or sprint is None) and (repos is None or c.repo in rep
-  rule: decision.delivery.sprint_stories
 flows.design_notes._write_one:end:1c024681:
   at: flows/design_notes.py:_write_one
   if: note.beyond_reach
@@ -858,11 +840,6 @@ flows.merge._merged_pull:filter:ff5de38e:
   at: flows/merge.py:_merged_pull
   if: p.get('merged_at')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.merge.done_but_open:filter:49277376:
-  at: flows/merge.py:done_but_open
-  if: c.status == DONE and c.work_type in DELIVERED and (c.state != 'CLOSED') and (repos is None or c.repo
-    in repos)
-  rule: decision.merge.done_but_open
 flows.merge.land:end:16af43ba:
   at: flows/merge.py:land
   if: detail is None
@@ -948,11 +925,6 @@ flows.merge.merged_elsewhere:filter:3cc79fb3:
   if: c.status == MERGING and c.work_type in DELIVERED and (c.state == 'CLOSED') and (repos is None or
     c.repo in repos)
   rule: decision.merge.merged_elsewhere
-flows.merge.ready_to_land:filter:754a3162:
-  at: flows/merge.py:ready_to_land
-  if: c.status == MERGING and c.work_type in DELIVERED and (c.state != 'CLOSED') and (repos is None or
-    c.repo in repos)
-  rule: decision.merge.merge_approved
 flows.merge.settled:end:14a1cfaa:
   at: flows/merge.py:settled
   if: detail.get('merged') or detail.get('mergeable') is not None
@@ -1395,10 +1367,6 @@ flows.sprint._fill:result:admitted:f53f5607:
   at: flows/sprint.py:_fill
   if: points <= remaining
   rule: decision.sprint.capacity
-flows.sprint._held_by_an_earlier_sibling:end:e625c569:
-  at: flows/sprint.py:_held_by_an_earlier_sibling
-  if: story.parent is None
-  rule: hold.sibling
 flows.sprint._waits_on_work_outside:end:c4c7e77f:
   at: flows/sprint.py:_waits_on_work_outside
   if: not lands(target)
@@ -1428,11 +1396,6 @@ flows.sprint.committed_points:filter:719a2968:
   if: c.sprint == sprint and c.work_type in DELIVERED and (repos is None or c.repo in repos) and (not
     (c.state == 'CLOSED' and c.state_reason == 'NOT_PLANNED'))
   rule: decision.sprint.capacity
-flows.sprint.left_over:filter:a20d969c:
-  at: flows/sprint.py:left_over
-  if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and c.sprint and
-    (c.sprint != sprint) and (repos is None or c.repo in repos)
-  rule: decision.sprint.left_over
 flows.sprint.parked_epics:filter:c583c32b:
   at: flows/sprint.py:parked_epics
   if: c.work_type == EPIC_TYPE and c.status == INBOX and (c.state != 'CLOSED')
@@ -1577,3 +1540,23 @@ tools.github_issues.comments:ignore:b30b67ad:
   at: tools/github_issues.py:comments
   if: login in self.trust.readable
   rule: decision.github_issues.trust
+flows.siblings.unlanded_earlier_siblings:end:e625c569:
+  at: flows/siblings.py:unlanded_earlier_siblings
+  if: story.parent is None
+  rule: hold.waits_for_earlier_work
+flows.siblings.unlanded_earlier_siblings:filter:d96bfd15:
+  at: flows/siblings.py:unlanded_earlier_siblings
+  if: c.repo == story.repo and c.parent == story.parent and (c.work_type == STORY_TYPE)
+  rule: hold.waits_for_earlier_work
+flows.delivery.sprint_stories:filter:7fe276d7:
+  at: flows/delivery.py:sprint_stories
+  if: c.sprint == sprint or sprint is None
+  rule: decision.delivery.sprint_stories
+flows.sprint.left_over:filter:ed146956:
+  at: flows/sprint.py:left_over
+  if: c.sprint and c.sprint != sprint
+  rule: decision.sprint.left_over
+work_types.open_in:filter:5de9924e:
+  at: work_types.py:open_in
+  if: c.status == status and c.work_type in DELIVERED and (c.state != 'CLOSED') and (r
+  rule: decision.phase_cards

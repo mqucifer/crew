@@ -55,7 +55,7 @@ _STEP_ARGS = frozenset(
 )
 # The tick's code, by module: the flows, the crews, the call layer and the CLI.
 _TICK = ("crew_org.flows.", "crew_org.crews.")
-_TICK_MODULES = ("crew_org.calls", "crew_org.cli")
+_TICK_MODULES = ("crew_org.calls", "crew_org.cli", "crew_org.work_types")
 
 
 @dataclass
@@ -252,7 +252,8 @@ def _evidence(
 ) -> set[str]:
     """The declared rules a decision point's own code names, or calls on."""
     found: set[str] = set()
-    known = {e.id for e in rule_list.entries()}
+    # A merged rule's cases too, by the names the code still gives them (crew#756).
+    known = {i for e in rule_list.entries() for i in (e.id, *e.cases)}
     # The branch's own test and body: an `elif` after it is its own point.
     if isinstance(node, ast.If):
         other = (
@@ -288,7 +289,7 @@ def _evidence(
                 found |= {
                     e.id
                     for e in rule_list.entries()
-                    if e.failure_class == klass and e.where == where
+                    if e.failure_class == klass and where in (e.where, *e.cases.values())
                 }
         # A hold said in words: the skip rule its reason makes.
         if (
@@ -348,7 +349,7 @@ def stale() -> list[str]:
     for point, entry in table().items():
         if point not in ids:
             out.append(f"{point}: no such decision point")
-        elif "rule" in entry and entry["rule"] not in declared:
+        elif "rule" in entry and rulebook.rule_of(entry["rule"]) not in declared:
             out.append(f"{point}: rule {entry['rule']} isn't declared")
     return out
 
@@ -380,6 +381,7 @@ def unnamed(category: str = "flow") -> list[str]:
         rules = set(point.evidence) | (
             {entries[point.id]["rule"]} if "rule" in entries.get(point.id, {}) else set()
         )
+        rules = {rulebook.rule_of(r) for r in rules}
         if point.kind == "filter" or not any(
             declared[r].category == category for r in rules if r in declared
         ):

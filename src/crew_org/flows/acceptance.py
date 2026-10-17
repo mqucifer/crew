@@ -47,7 +47,7 @@ from crew_org.tools.repo_context import (
 )
 from crew_org.tools.repo_read import Reader
 from crew_org.tools.sandbox import Sandbox
-from crew_org.work_types import BUG, DELIVERED
+from crew_org.work_types import BUG, open_in
 
 # QA reasons about the test code, so what it is shown decides its verdict. A
 # 12,000-character slice in the prompt cut story #13's two new tests off the end
@@ -116,9 +116,7 @@ class AcceptanceResult:
 
 
 def awaiting_qa(cards: list[Card]) -> list[Card]:
-    return [
-        c for c in cards if c.status == QAING and c.work_type in DELIVERED and c.state != "CLOSED"
-    ]
+    return open_in(cards, QAING)
 
 
 def render_qa(verdict: QAVerdict, revision: str = "") -> str:

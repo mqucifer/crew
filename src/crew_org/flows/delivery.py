@@ -45,6 +45,7 @@ from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved, r
 from crew_org.flows.moves import move_card
 from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
+from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
@@ -55,9 +56,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
 from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
 from crew_org.tools.repo_read import Reader
-from crew_org.work_types import BUG, DELIVERED
-
-STORY_TYPE = "Story"
+from crew_org.work_types import BUG, DELIVERED, open_in
 
 # Marks the comment a repair leaves on the pull request it updated, so the
 # thread says why a new commit appeared rather than leaving the reviewer to
@@ -423,12 +422,8 @@ def sprint_stories(cards: list[Card], sprint: str, *, repos: set[str] | None = N
     return sorted(
         (
             c
-            for c in cards
-            if c.status == SPRINT_BACKLOG
-            and c.work_type in DELIVERED
-            and c.state != "CLOSED"
-            and (c.sprint == sprint or sprint is None)
-            and (repos is None or c.repo in repos)
+            for c in open_in(cards, SPRINT_BACKLOG, repos=repos)
+            if c.sprint == sprint or sprint is None
         ),
         key=lambda c: c.number or 0,
     )
@@ -558,37 +553,14 @@ def prior_context(
 
 
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
-    """The earlier story in this story's epic that has not landed yet.
+    """The first earlier story in this story's epic that has not landed yet.
 
-    Stories in one epic extend each other. `In Progress` has a WIP limit of 3,
-    so without this the crew claims three siblings at once, each branching from
-    a default branch that does not yet contain the others.
-
-    sprint-metrics #31 created `scrape.py` with an HTTP server on it; #32, whose
-    story was "handle unavailable data **at the scrape endpoint**", was claimed
-    100 seconds later, could not see `scrape.py`, and built a second server in
-    another module. Both passed their own tests.
-
-    Earlier means lower card number, which is the order the Business Analyst
-    proposed the stories: `refine_epics` creates their issues in that order, so
-    the numbers ascend in it. Landed means Done or closed — an open pull request
-    is not in anyone's base.
+    `In Progress` has a WIP limit of 3, so without this the crew claims three
+    siblings at once, each branching from a default branch that does not yet
+    contain the others. Which siblings are earlier is `siblings`' reading, the
+    one sprint planning reads too.
     """
-    if story.parent is None:
-        return None
-    blockers = [
-        c
-        for c in cards
-        # The repository as well as the parent number. Both are plain numbers,
-        # so a story in one repository could be held back by a sibling of an
-        # epic in another whenever the epic numbers happened to line up.
-        if c.repo == story.repo
-        and c.parent == story.parent
-        and c.work_type == STORY_TYPE
-        and (c.number or 0) < (story.number or 0)
-        and c.state != "CLOSED"
-        and c.status != DONE
-    ]
+    blockers = unlanded_earlier_siblings(cards, story)
     return min(blockers, key=lambda c: c.number or 0) if blockers else None
 
 

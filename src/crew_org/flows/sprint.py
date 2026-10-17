@@ -31,13 +31,13 @@ from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows.board_flow import NEEDS_REWORK, TECHNICAL
 from crew_org.flows.board_flow import builds_on as builds_on_line
 from crew_org.flows.moves import move_card
+from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import DELIVERED, open_in
 
 EPIC_TYPE = "Epic"
-STORY_TYPE = "Story"
 
 NO_EPIC = "Stories with no epic"
 
@@ -265,22 +265,12 @@ def _held_by_an_earlier_sibling(
     """An earlier open story in its epic that won't land this sprint: not in the
     sprint's flow, and not admitted by this plan.
 
-    Earlier means a lower number, as delivery reads it: the order the Business
-    Analyst proposed them in.
+    Which siblings are earlier is `siblings`' reading, the one delivery holds by.
     """
-    if story.parent is None:
-        return False
     admitted_keys = {c.key for c in admitted}
     return any(
-        c.repo == story.repo
-        and c.parent == story.parent
-        and c.work_type == STORY_TYPE
-        and (c.number or 0) < (story.number or 0)
-        and c.state != "CLOSED"
-        and c.status != DONE
-        and c.status not in ON_ITS_WAY
-        and c.key not in admitted_keys
-        for c in cards
+        c.status not in ON_ITS_WAY and c.key not in admitted_keys
+        for c in unlanded_earlier_siblings(cards, story)
     )
 
 
@@ -345,14 +335,7 @@ def left_over(cards: list[Card], sprint: str, *, repos: set[str] | None = None) 
     sprint-metrics#284 after Sprint 9 (crew#353).
     """
     return [
-        c
-        for c in cards
-        if c.status == SPRINT_BACKLOG
-        and c.work_type in DELIVERED
-        and c.state != "CLOSED"
-        and c.sprint
-        and c.sprint != sprint
-        and (repos is None or c.repo in repos)
+        c for c in open_in(cards, SPRINT_BACKLOG, repos=repos) if c.sprint and c.sprint != sprint
     ]
 
 

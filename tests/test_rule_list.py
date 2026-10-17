@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ast
 
-from crew_org import rule_list
+from crew_org import rule_list, rulebook
 from crew_org.rules import Rule
 
 
@@ -32,9 +32,10 @@ def test_every_rule_id_is_unique_and_stable():
 def test_every_decision_the_crew_records_is_listed_with_where_its_made():
     entries = {e.id: e for e in rule_list.entries()}
     for rule in Rule:
-        assert rule.value in entries
+        # A merged rule's case is listed as its rule (crew#756).
+        assert rulebook.rule_of(rule.value) in entries
     # Named outside the enum, in the return reasons' vocabulary.
-    assert entries[Rule.RETURN_PINNED_TESTS.value].checked
+    assert entries[rulebook.rule_of(Rule.RETURN_PINNED_TESTS.value)].checked
 
 
 def test_every_validator_on_a_form_a_role_answers_is_listed():
@@ -109,7 +110,7 @@ def test_every_rule_that_refuses_or_decides_has_a_category():
 def test_a_rule_is_placed_by_what_it_protects():
     placed = {e.id: e.category for e in rule_list.entries()}
     assert placed["call.schema"] == "answer_shape"
-    assert placed["hold.sibling"] == "flow"
+    assert placed["hold.waits_for_earlier_work"] == "flow"
     assert placed["form.FileWrite.stays_in_the_repository"] == "guards"
     assert placed["form.CriterionTest.is_that_test"] == "evidence"
     assert placed["edit.workspace.plan_text_edits"] == "edits"
@@ -137,3 +138,20 @@ def test_a_hold_said_only_in_words_is_checked_by_what_its_branch_tests():
     )
     assert hold.checked == {"src/crew_org/flows/refine_panel.py:builds_on_unsplit"}
     assert hold.category == "flow" and "crew#773" in hold.origin
+
+
+def test_a_merged_rule_is_listed_once_with_each_case_where_the_code_has_it():
+    """crew#756: the cases keep the names the code and the event log give them."""
+    entries = {e.id: e for e in rule_list.entries()}
+    merged = entries["hold.waits_for_earlier_work"]
+    assert set(merged.cases) == {
+        "hold.sibling",
+        "hold.builds_on",
+        "decision.sprint.waits_on_work_outside",
+    }
+    assert merged.cases["decision.sprint.waits_on_work_outside"].startswith(
+        "src/crew_org/flows/sprint.py"
+    )
+    assert not {"hold.sibling", "hold.builds_on"} & set(entries)
+    assert rulebook.rule_of("hold.sibling") == "hold.waits_for_earlier_work"
+    assert rulebook.rule_of("call.schema") == "call.schema"

@@ -32,7 +32,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED
+from crew_org.work_types import DELIVERED, open_in
 
 STORY_TYPE = "Story"
 
@@ -213,17 +213,7 @@ def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card
     built — and merging siblings out of that order conflicts the remainder,
     which blocks those cards and labels them for a person.
     """
-    return sorted(
-        (
-            c
-            for c in cards
-            if c.status == MERGING
-            and c.work_type in DELIVERED
-            and c.state != "CLOSED"
-            and (repos is None or c.repo in repos)
-        ),
-        key=lambda c: c.number or 0,
-    )
+    return sorted(open_in(cards, MERGING, repos=repos), key=lambda c: c.number or 0)
 
 
 def merge_approved(
@@ -451,14 +441,7 @@ def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[C
 
 def done_but_open(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
     """Stories in Done whose issue is still open: merged, and never closed."""
-    return [
-        c
-        for c in cards
-        if c.status == DONE
-        and c.work_type in DELIVERED
-        and c.state != "CLOSED"
-        and (repos is None or c.repo in repos)
-    ]
+    return open_in(cards, DONE, repos=repos)
 
 
 def _merged_pull(issues: IssueClient, repo: str, branch: str) -> dict | None:

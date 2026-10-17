@@ -1053,7 +1053,7 @@ def create_epic_cards(
     return created
 
 
-def approved_epics(cards: list[Card]) -> list[Card]:
+def epics_to_split(cards: list[Card]) -> list[Card]:
     """Epics the Sponsor has released from the gate, awaiting story splitting."""
     return [
         c
@@ -1590,7 +1590,7 @@ def refine_epics(
     # what a sibling epic splitting next would otherwise duplicate (#295).
     split_now: list[tuple[str, int, str, int]] = []
 
-    for epic_card in approved_epics(cards):
+    for epic_card in epics_to_split(cards):
         # One Business Analyst run per epic (crew#449).
         with log.run(
             "Business Analyst", card=epic_card.number, repo=epic_card.repo or default_repo

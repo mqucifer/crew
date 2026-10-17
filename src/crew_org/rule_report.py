@@ -210,16 +210,19 @@ class Matcher:
         kind = event.get("kind")
         detail = event.get("detail") or {}
         found: list[tuple[str | None, str]] = []
-        rule = detail.get("rule")
+        # A merged rule's case is counted as its rule (crew#756).
+        rule = rulebook.rule_of(str(detail.get("rule") or ""))
         if rule and rule in self.entries:
             found.append((rule, BY_NAME))
         if kind != "llm.refused" and detail.get("rules"):
             # A step's own refusal, named by the rule that made it (ADR 0031).
-            found += [(r if r in self.entries else None, BY_NAME) for r in detail["rules"]]
+            named = [rulebook.rule_of(r) for r in detail["rules"]]
+            found += [(r if r in self.entries else None, BY_NAME) for r in named]
         if kind == "llm.refused" and detail.get("rules"):
             # Named by the refusal itself, since the rulebook (ADR 0031).
             found += [
-                (r, BY_NAME) if r in self.entries else (None, BY_NAME) for r in detail["rules"]
+                (r, BY_NAME) if r in self.entries else (None, BY_NAME)
+                for r in map(rulebook.rule_of, detail["rules"])
             ]
         elif kind == "llm.refused":
             form = str(detail.get("output_schema") or "").partition(":")[0]
@@ -315,9 +318,10 @@ def count(events: Iterable[dict[str, Any]], entries: Iterable[Entry] | None = No
                 f.tokens += int(detail.get("completion_tokens") or 0)
         # The holds a tick decided without an event of their own, on its end (crew#756).
         for hold in detail.get("held") or () if event.get("kind") == "tick.finished" else ():
-            if not isinstance(hold, dict) or hold.get("rule") not in matcher.entries:
+            rule = rulebook.rule_of(str(hold.get("rule") or "")) if isinstance(hold, dict) else ""
+            if rule not in matcher.entries:
                 continue
-            f = fired[hold["rule"]]
+            f = fired[rule]
             f.events += 1
             if sprint:
                 f.sprints.add(sprint)
