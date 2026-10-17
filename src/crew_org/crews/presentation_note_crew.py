@@ -75,18 +75,14 @@ class ReaderCriterion(BaseModel):
     @classmethod
     def _stated(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("every part of a criterion says something")
+            refuse("form.ReaderCriterion.stated")
         return value
 
     @field_validator("then")
     @classmethod
     def _observable(cls, value: str) -> str:
         if found := _JUDGEMENT.search(value):
-            raise ValueError(
-                f"'{found.group(0)}' asks for judgement, which a test can't check. State "
-                "what the output contains: an order, a position, exact text, a count, a "
-                "format. Whether it reads well is the Sponsor's to judge at review."
-            )
+            refuse("form.ReaderCriterion.observable", word=found.group(0))
         return value
 
 
@@ -100,7 +96,7 @@ class StoryCriteria(BaseModel):
     @classmethod
     def _at_least_two(cls, value: list[ReaderCriterion]) -> list[ReaderCriterion]:
         if len(value) < 2:
-            raise ValueError("each story gets at least two criteria about what the reader sees")
+            refuse("form.StoryCriteria.at_least_two")
         return value
 
 

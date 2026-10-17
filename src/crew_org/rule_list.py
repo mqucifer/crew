@@ -1173,8 +1173,29 @@ def _fed_back_rules() -> list[Entry]:
                 branch = _enclosing(node, parents, ast.If)
                 if _guarded(node, parents):
                     continue  # a guard: listed with its failure class
+                # What the flow writes itself, by a declared rule's message (ADR 0031).
+                for rule in sorted(_named(value)):
+                    comments = _comments_above(source.lines, getattr(node, "lineno", 1))
+                    if branch is not None:
+                        comments = _comments_above(source.lines, branch.lineno) + " " + comments
+                    messages = _declared(rule)
+                    add(
+                        Entry(
+                            rule,
+                            "check",
+                            f"{source.path}:{fn.name}",
+                            _first_sentence(messages[0].replace("{}", "…")) if messages else rule,
+                            roles=set(fed),
+                            checked={f"{source.path}:{fn.name}"},
+                            origin=refs(comments),
+                            messages=messages,
+                            text=" ".join(messages) + " " + comments,
+                            sections=_cited_sections(comments),
+                            named={rule},
+                        )
+                    )
                 # What the flow writes itself, such as the limit on asking for files.
-                for message in _texts(value, source.tree):
+                for message in [] if _named(value) else _texts(value, source.tree):
                     rule_id = f"check.{_short(source)}.{_slug(message.replace('{}', ' '), 5)}"
                     comments = _comments_above(source.lines, getattr(node, "lineno", 1))
                     if branch is not None:
@@ -2488,6 +2509,7 @@ def declarations() -> dict[str, dict[str, dict[str, Any]]]:
                 "messages": dict(spec.messages),
                 "description": spec.description,
                 "told_in": spec.told_in,
+                "exempt": spec.exempt,
                 "cases": list(spec.cases),
             }
         else:

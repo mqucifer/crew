@@ -1,30 +1,77 @@
 # Tests prove the criteria. Declared once each (crew#756, ADR 0031): change a rule here.
 check.acceptance.held_to_what_it_read:
+  description: A criterion proven by a test you weren't shown, or one no test file defines, is held unproven.
+  messages:
+    default: cites `{name}`, which {why}
   origin:
   - crew#221
   - crew#768
   owner: QA Engineer
+  told_in: CriterionVerdict.evidence
 check.attempts.repair_report:
+  exempt: shapes the failure report a repair is shown; refuses nothing
   owner: Developer
 check.criteria_check.feedback:
+  description: Sent back once if its criteria can't all pass, together and with the project's code.
+  messages:
+    default: 'Your last split had criteria that can''t all pass:
+
+
+      {conflicts}
+
+
+      Split it again so every criterion can pass alongside the others and the project''s code. Where the
+      epic doesn''t say which outcome it wants, choose none: leave the case out of the criteria rather
+      than guessing.'
   owner: Business Analyst
+  told_in: StoryProposal
 check.criteria_check.with_repairs:
+  exempt: applies the Business Analyst's criteria repair to its split; refuses nothing
   origin:
   - crew#612
   owner: Business Analyst
 check.delivery.lint_or_tests_failed:
+  description: Sent back with the report if lint or the tests fail once it's applied.
+  messages:
+    default: '{amended}{repair}Lint or tests failed:
+
+
+      {report}'
   owner: Developer
+  told_in: FirstAttempt, FirstOrDone, Implementation, Rework
 check.delivery.these_named_tests_dont_exist:
+  description: Refused if a test it names doesn't exist in the repository.
+  messages:
+    default: 'these named tests don''t exist in the repository: {tests}. Name existing tests, or write
+      the test in `criteria_tests`.'
   origin:
   - crew#217
   - crew#221
   owner: Developer
+  told_in: ExistingProof, CriterionMet.test
 check.delivery.this_ci_evidence_doesnt_hold:
+  description: Refused if the step doesn't exist, or its workflow didn't pass on the default branch.
+  messages:
+    default: 'this CI evidence doesn''t hold: {unproven}. Name a workflow step that exists and whose workflow
+      passed on `{branch}`, or change the code.'
   owner: Developer
+  told_in: CriterionMet.ci_step
 check.presentation_notes.coverage:
+  description: Refused unless every story of the epic appears once, and only those.
+  messages:
+    missing: '#{n} has no criteria'
+    twice: '#{n} appears more than once'
+    unknown: '#{n} isn''t one of this epic''s stories'
+  told_in: PresentationNote.stories
 check.review.with_docs_finding:
+  description: An option the change adds that no user doc mentions is added as a blocking finding.
+  messages:
+    action: 'Document `{option}` in {docs} in this pull request: what it does, and an example of using
+      it'
+    concern: '`{option}` is added by this change, and no user doc ({docs}) mentions it'
   origin:
   - crew#191
+  told_in: ReviewVerdict
 config.const.acceptance.QA_ASK_LIMIT:
 config.const.acceptance.QA_CONTEXT_CHAR_CEILING:
   origin:
@@ -45,16 +92,39 @@ config.const.review_crew.MAX_DIFF_CHARS:
 config.const.review_crew.MIN_ACTION_CHARS:
 config.const.review_evidence.MAX_IMPORTED_CHARS:
 form.AcceptanceCriterion.names_what_to_check:
+  description: Refused if it names a quality a test can't check, with nothing observable.
+  messages:
+    default: '''{word}'' names a quality, not something a test can check. Say what a reader would see
+      instead: the exact text, the line or position it appears in, the order of sections, or a value.'
   origin:
   - crew#281
   owner: Business Analyst
+  told_in: AcceptanceCriterion.then
 form.CriterionMet.one_proof:
+  description: Refused unless it gives exactly one of `test` and `ci_step`.
+  messages:
+    default: 'each criterion is proven by an existing test, or, for what a CI workflow does, by its workflow
+      step: give exactly one'
   owner: Developer
+  told_in: CriterionMet
 form.CriterionTest.a_name_not_its_code:
+  description: Refused if it holds the test's code.
+  messages:
+    default: '`test` is the test''s name alone, e.g. test_range_as_json. Its code goes in `source`'
   origin:
   - crew#583
   owner: Developer
+  told_in: CriterionTest.test
 form.CriterionTest.is_that_test:
+  description: Refused if its path is a doc or not a test file, if it has no source, or if the source
+    doesn't define the test.
+  messages:
+    a_doc: '{path} is documentation. A criterion about what a doc says is proven by reading the doc, not
+      by a test: leave it out of criteria_tests and make the doc change in new_files or text_edits'
+    no_source: '{test} has no source. criteria_tests holds new tests, written in full. A test already
+      in the repository goes in proven_by_existing, named as {path}::{name}'
+    not_a_test_file: '{path} isn''t a test file: {hint}'
+    undefined: the source for {test} doesn't define it
   origin:
   - crew#196
   - crew#404
@@ -62,18 +132,37 @@ form.CriterionTest.is_that_test:
   - sprint-metrics#381
   - sprint-metrics#386
   owner: Developer
+  told_in: CriterionTest
 form.CriterionVerdict.is_specific:
+  description: Refused if too short to name a test or say what is missing.
+  messages:
+    default: name the test that proves this criterion, or say specifically what is missing. 'Tested' is
+      not evidence.
   owner: QA Engineer
+  told_in: CriterionVerdict.evidence
 form.FileWrite.tests_declare_their_fixtures:
   origin:
   - crew#196
   owner: Developer
 form.FirstAttempt.has_a_test:
+  description: 'Refused with no test: a criterion''s test, an existing test named, or a test file written.'
+  messages:
+    default: no test. Every acceptance criterion needs an automated test that proves it — add one to an
+      existing test file, or create a new test_*.py.
   origin:
   - crew#591
   owner: Developer
+  told_in: FirstAttempt
 form.FirstOrDone.has_a_test:
+  description: Refused if an already-done answer changes anything, or if it gives no test.
+  messages:
+    changes_something: an already-done answer changes nothing. Either change the code and leave `already_done`
+      empty, or name the existing code and tests and change nothing.
+    no_test: no test. For each acceptance criterion, give the test that proves it in `criteria_tests`,
+      or name the existing tests in `proven_by_existing` — or, if the code already meets every criterion,
+      say so in `already_done`.
   owner: Developer
+  told_in: FirstOrDone
 form.Implementation.drops_doc_criteria_with_no_test:
   origin:
   - sprint-metrics#529
@@ -86,24 +175,69 @@ form.Implementation.drops_tests_it_only_names:
   - sprint-metrics#453
   owner: Developer
 form.QAVerdict.a_verdict_or_an_ask:
+  description: Refused if empty, unless the answer only asks for files.
+  messages:
+    default: a story is accepted against its criteria; list them
   owner: QA Engineer
+  told_in: QAVerdict.criteria
 form.QAVerdict.acceptance_requires_every_criterion:
+  description: Refused if true while any criterion is unproven.
+  messages:
+    default: 'cannot accept with {count} unproven criteria. Definition of Done requires every criterion
+      proven: by a test, or a doc criterion by the doc.'
   owner: QA Engineer
+  told_in: QAVerdict.accepted
 form.ReaderCriterion.observable:
+  description: Refused if it asks for judgement a test can't check.
+  messages:
+    default: '''{word}'' asks for judgement, which a test can''t check. State what the output contains:
+      an order, a position, exact text, a count, a format. Whether it reads well is the Sponsor''s to
+      judge at review.'
   owner: UX Designer
+  told_in: ReaderCriterion.then
 form.ReaderCriterion.stated:
+  description: Refused if its given, when or then is empty.
+  messages:
+    default: every part of a criterion says something
   owner: UX Designer
+  told_in: ReaderCriterion
 form.RepairedStory.enough_criteria:
+  description: Refused if there are fewer.
+  messages:
+    default: a story needs at least {count} acceptance criteria, at least one of them a failure or edge
+      case
   owner: Business Analyst
+  told_in: RepairedStory.acceptance_criteria
 form.Story.enough_criteria:
   cases:
   - §5.3
+  description: Refused if there are fewer.
+  messages:
+    default: a story needs at least {count} acceptance criteria, at least one of them a failure or edge
+      case
   owner: Business Analyst
+  told_in: Story.acceptance_criteria
 form.StoryCriteria.at_least_two:
+  description: Refused with fewer than two.
+  messages:
+    default: each story gets at least two criteria about what the reader sees
   owner: UX Designer
+  told_in: StoryCriteria.criteria
 form.Triage.fits_its_outcome:
+  description: 'Refused unless it fits its outcome: an accepted bug has criteria and a size from the scale,
+    and only it has criteria; a duplicate names its issue; more_information asks its question.'
+  messages:
+    criteria: only an accepted bug has criteria, not one {outcome}
+    duplicate: a duplicate names the issue it duplicates in duplicate_of
+    no_criteria: an accepted bug needs at least one criterion reproducing it
+    question: more_information asks its question in question
+    size: an accepted bug is sized one of {sizes}
   owner: Business Analyst
+  told_in: Triage
 guard.reproduce.check:
+  messages:
+    default: The fix passes the checks, but {why}. Change them so at least one fails against the code
+      as merged, for the reason the bug describes.
   origin:
   - crew#407
   owner: Developer

@@ -69,6 +69,7 @@ def test_a_migrated_categorys_checks_are_told_in_their_form():
         if e.category in rulebook.MIGRATED
         and e.group in ("form", "check")
         and not e.repairs
+        and not e.declared.exempt
         and not (e.declared.description and e.declared.told_in)
     ]
     assert not untold, untold
@@ -108,6 +109,7 @@ def test_a_migrated_rule_refuses_by_its_own_declaration():
         if e.category in rulebook.MIGRATED
         and e.group in ("form", "check", "call")
         and not e.repairs
+        and not (e.declared and e.declared.exempt)
         and e.id != "call.schema"
         and e.id not in e.named
     ]

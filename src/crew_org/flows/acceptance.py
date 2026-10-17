@@ -35,6 +35,7 @@ from crew_org.git_ops import Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.profiles import profile_for
 from crew_org.project import brief, read_record
+from crew_org.rulebook import says
 from crew_org.rules import Rule
 from crew_org.tools import workspace
 from crew_org.tools.github_issues import IssueClient
@@ -370,8 +371,11 @@ def held_to_what_it_read(verdict: QAVerdict, tests: QATests) -> QAVerdict:
             criteria.append(c)
             continue
         why = "; ".join(
-            f"cites `{n}`, which "
-            + ("no test file defines" if unseen[n] is None else "QA wasn't shown")
+            says(
+                "check.acceptance.held_to_what_it_read",
+                name=n,
+                why="no test file defines" if unseen[n] is None else "QA wasn't shown",
+            )
             for n in missing
         )
         criteria.append(c.model_copy(update={"proven": False, "evidence": f"{c.evidence} ({why})"}))

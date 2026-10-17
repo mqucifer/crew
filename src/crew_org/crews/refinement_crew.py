@@ -79,11 +79,7 @@ class AcceptanceCriterion(BaseModel):
         """A quality alone isn't a criterion: QA can't prove "clear" (#281)."""
         found = SUBJECTIVE.search(value)
         if found and not OBSERVABLE.search(SUBJECTIVE.sub("", value)):
-            raise ValueError(
-                f"'{found.group(0)}' names a quality, not something a test can check. Say "
-                "what a reader would see instead: the exact text, the line or position it "
-                "appears in, the order of sections, or a value."
-            )
+            refuse("form.AcceptanceCriterion.names_what_to_check", word=found.group(0))
         return value
 
 
@@ -165,10 +161,7 @@ class Story(BaseModel):
     @classmethod
     def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
         if len(value) < MIN_CRITERIA:
-            raise ValueError(
-                f"a story needs at least {MIN_CRITERIA} acceptance criteria, "
-                "at least one of them a failure or edge case"
-            )
+            refuse("form.Story.enough_criteria", count=MIN_CRITERIA)
         return value
 
 
@@ -926,7 +919,9 @@ class RepairedStory(BaseModel):
     @field_validator("acceptance_criteria")
     @classmethod
     def _enough_criteria(cls, value: list[AcceptanceCriterion]) -> list[AcceptanceCriterion]:
-        return Story._enough_criteria(value)
+        if len(value) < MIN_CRITERIA:
+            refuse("form.RepairedStory.enough_criteria", count=MIN_CRITERIA)
+        return value
 
     @field_validator("pinned_behaviour")
     @classmethod

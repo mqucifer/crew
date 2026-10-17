@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from crew_org import calls
 from crew_org.crews.refinement_crew import AcceptanceCriterion
+from crew_org.rulebook import refuse
 from crew_org.tools.repo_context import READ_MIN_CHARS, READING_CHAR_CEILING
 from crew_org.tools.repo_read import Reader
 
@@ -63,15 +64,15 @@ class Triage(BaseModel):
     def _fits_its_outcome(self) -> Triage:
         if self.outcome == "accepted":
             if not self.acceptance_criteria:
-                raise ValueError("an accepted bug needs at least one criterion reproducing it")
+                refuse("form.Triage.fits_its_outcome", "no_criteria")
             if self.points not in BUG_POINTS:
-                raise ValueError(f"an accepted bug is sized one of {BUG_POINTS}")
+                refuse("form.Triage.fits_its_outcome", "size", sizes=BUG_POINTS)
         elif self.acceptance_criteria:
-            raise ValueError(f"only an accepted bug has criteria, not one {self.outcome}")
+            refuse("form.Triage.fits_its_outcome", "criteria", outcome=self.outcome)
         if self.outcome == "duplicate" and not self.duplicate_of:
-            raise ValueError("a duplicate names the issue it duplicates in duplicate_of")
+            refuse("form.Triage.fits_its_outcome", "duplicate")
         if self.outcome == "more_information" and not self.question.strip():
-            raise ValueError("more_information asks its question in question")
+            refuse("form.Triage.fits_its_outcome", "question")
         return self
 
 

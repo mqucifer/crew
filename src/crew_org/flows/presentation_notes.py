@@ -30,6 +30,7 @@ from crew_org.flows.board_flow import (
 )
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.rulebook import says
 from crew_org.tools.github_project import Card
 
 NOTE_MARKER = "<!-- crew:presentation-note -->"
@@ -174,11 +175,16 @@ def coverage(note: Any, stories: list[dict]) -> list[str]:
     """What's wrong with the note's reach: stories it misses or doesn't know."""
     wanted = {s["number"] for s in stories}
     given = [s.story for s in note.stories]
-    problems = [f"#{n} has no criteria" for n in sorted(wanted - set(given))]
-    problems += [f"#{n} isn't one of this epic's stories" for n in sorted(set(given) - wanted)]
-    problems += [
-        f"#{n} appears more than once" for n in sorted({n for n in given if given.count(n) > 1})
+    twice = sorted({n for n in given if given.count(n) > 1})
+    problems = [
+        says("check.presentation_notes.coverage", "missing", n=n)
+        for n in sorted(wanted - set(given))
     ]
+    problems += [
+        says("check.presentation_notes.coverage", "unknown", n=n)
+        for n in sorted(set(given) - wanted)
+    ]
+    problems += [says("check.presentation_notes.coverage", "twice", n=n) for n in twice]
     return problems
 
 
