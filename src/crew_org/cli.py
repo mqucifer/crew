@@ -1771,6 +1771,40 @@ def reference_command() -> None:
     console.print(f"wrote {reference.write().relative_to(reference.ROOT)}")
 
 
+@app.command(name="rules")
+def rules_command(
+    events: str = typer.Option(
+        "", "--events", help="An event log to count each rule in: var/events/tick.jsonl."
+    ),
+    out: str = typer.Option(
+        "var/notes/rules", "--out", help="Where the report and its snapshot go."
+    ),
+    since: str = typer.Option(
+        "", "--since", help="An earlier rules.json: also report what changed since it."
+    ),
+) -> None:
+    """Write every rule a role meets into docs/reference/rules.md (crew#756).
+
+    With --events, also how often each fired, on which cards, and the model's time
+    by role, as a report and a snapshot keyed by rule id.
+    """
+    from crew_org import rule_list, rule_report  # noqa: PLC0415
+    from crew_org.log import code_version  # noqa: PLC0415
+
+    console.print(f"wrote {rule_list.write().relative_to(rule_list.ROOT)}")
+    if not events:
+        return
+    version = code_version()
+    built = version.get("commit", "")[:7]
+    if version.get("dirty"):
+        built += " (with uncommitted changes)"
+    written = rule_report.write(
+        Path(events), Path(out), since=Path(since) if since else None, built_from=built
+    )
+    for path in written:
+        console.print(f"wrote {path}")
+
+
 @app.command(name="runs")
 def runs_command(
     card: str = typer.Option(..., "--card", help="The card, as repo#N: sprint-metrics#475."),
