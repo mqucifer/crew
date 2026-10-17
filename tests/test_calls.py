@@ -488,3 +488,23 @@ def test_code_that_merely_mentions_at_signs_is_still_code():
     head = '{"summary": "s", "writes": [{"path": "p", "source": "@decorator"}]}'
     joined = calls.join_blocks(json.loads(head), {}, frozenset({"source"}))
     assert joined["writes"][0]["source"] == "@decorator"
+
+
+@pytest.mark.parametrize("named", ["f1", "b_url_for", "@@f1@@"])
+def test_a_block_written_under_another_name_is_found_and_recorded(named):
+    """sprint-metrics#626 wrote blocks f1 to f8; each name went in as the quote (crew#734)."""
+    bare = named.strip("@")
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ {bare} @@@\nx = 1\n@@@ end @@@\n")
+    loose: list[dict] = []
+    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
+    assert joined["writes"][0]["source"] == "x = 1\n"
+    assert loose == [{"fallback": "block.name", "field": "source", "name": bare}]
+
+
+def test_a_block_named_b1_records_no_fallback():
+    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": "b1"}]})
+    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
+    loose: list[dict] = []
+    calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
+    assert loose == []
