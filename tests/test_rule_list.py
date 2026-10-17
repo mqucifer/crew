@@ -113,3 +113,15 @@ def test_a_rule_is_placed_by_what_it_protects():
     assert placed["guard.regression.broken_contracts"] == "contracts"
     assert placed["form.Plan.one_step_per_file"] == "scope"
     assert placed["§19.6"] == "guards", "by its constitution section"
+    assert placed["told.delivery_crew.functions_and_classes_always_change_with"] == "edits"
+
+
+def test_every_site_in_the_told_table_places_a_line():
+    """A site no told line sits at any more is a stale entry in the table."""
+    sites = {rule_list._told_site(e) and e.where for e in rule_list.entries() if e.group == "told"}
+    for site in rule_list._TOLD_SITES:
+        module, _, name = site.partition(":")
+        if module == "agents.yaml":
+            assert any(f"agents.yaml:{name}." in s for s in sites if s), site
+        else:
+            assert any(f"/{module}.py:{name}" in s for s in sites if s), site
