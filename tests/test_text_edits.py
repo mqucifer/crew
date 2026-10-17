@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from crew_org.crews.delivery_crew import FileWrite, Implementation, TextEdit
+from crew_org.crews.delivery_crew import FileEdit, FileWrite, Implementation, TextEdit
 from crew_org.tools import regression, workspace
 from crew_org.tools.ast_edit import EditError
 from crew_org.tools.repo_context import repository_context
@@ -73,6 +73,18 @@ def test_an_existing_non_python_file_is_changed(repo, path, find, replace):
     )
     assert written == [path]
     assert (repo / path).read_text() == before.replace(find, replace)
+
+
+def test_a_non_python_file_is_not_edited_by_name():
+    # crew-presentation#130 replaced a template "block" by name; the edit read the
+    # HTML as Python and failed on the template's en dash, naming the wrong fault.
+    with pytest.raises(ValidationError, match="text edit"):
+        FileEdit(
+            path="site/templates/sprint_overview.html",
+            operation="replace",
+            target="attempt-row-block",
+            source="<li></li>",
+        )
 
 
 def test_an_empty_find_adds_to_the_end(repo):
