@@ -196,3 +196,10 @@ def test_a_refusal_that_names_its_rule_is_counted_by_that_name_alone():
     report = rule_report.count([event("llm.refused", named)])
     assert report.fired["call.schema"].matched == {rule_report.BY_NAME: 1}
     assert sum(report.unmatched.values()) == 0
+
+
+def test_a_steps_own_refusal_note_is_counted_by_the_rule_it_names():
+    """Settle logs its refusals as notes; since ADR 0031 each names its rule."""
+    named = {"reason": "There are 3 notes, N1 to N3.", "rules": ["check.settle_crew.check_covers"]}
+    report = rule_report.count([event("note", named, role="Product Owner")])
+    assert report.fired["check.settle_crew.check_covers"].matched == {rule_report.BY_NAME: 1}

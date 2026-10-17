@@ -213,6 +213,9 @@ class Matcher:
         rule = detail.get("rule")
         if rule and rule in self.entries:
             found.append((rule, BY_NAME))
+        if kind != "llm.refused" and detail.get("rules"):
+            # A step's own refusal, named by the rule that made it (ADR 0031).
+            found += [(r if r in self.entries else None, BY_NAME) for r in detail["rules"]]
         if kind == "llm.refused" and detail.get("rules"):
             # Named by the refusal itself, since the rulebook (ADR 0031).
             found += [

@@ -596,6 +596,7 @@ def test_each_refusal_is_in_the_event_log_with_its_reason(monkeypatch):
     assert len(refused) == 1
     assert "attempt 1 of 3" in refused[0].summary and "N2" in refused[0].summary
     assert "No row, question or dismissal for N2" in refused[0].detail["reason"]
+    assert refused[0].detail["rules"] == ["check.settle_crew.check_covers"], "by name (ADR 0031)"
 
 
 def test_an_own_call_on_a_design_question_is_asked_for_again_as_an_open_question(monkeypatch):
