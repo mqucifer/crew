@@ -595,7 +595,9 @@ lines outside any function or class can be changed this way: its imports, an
 and a refactor has to repoint and tidy them. A quote reaching into a
 definition, or a replacement that brings one in, is refused, because the rules
 above read definitions by name. So is a change that leaves the file invalid
-Python.
+Python. A walking skeleton's placeholder is the exception to the first rule: the
+story replacing it rewrites it (ADR 0030), so its quotes may bring in or reach
+into definitions, as long as the `crew:placeholder` marker goes (crew#731).
 
 This replaced whole-file rewriting, which failed for a reason worth recording.
 Returning a whole file makes every story a transcription exercise: regenerate
