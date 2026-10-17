@@ -66,6 +66,23 @@ file never reaches them. Change it by pull request, like any other file.
   (and by which PR), what's left, and what it waits on. The Sponsor follows the
   work from the issue, not from PR bodies or chat.
 
+## Working with other sessions
+- **The operator session is the Sponsor's one point of contact** (hub and
+  spokes). It runs the ticks, and only it works in the main checkout and moves
+  board cards. It hands work out as a brief file in `var/notes/`, using the M3
+  brief as the template, and starts each builder with `claude --bg --name <item>`.
+- **A builder reports to the operator by message** when a PR opens or merges,
+  when it's blocked, and when it's done. The record stays on GitHub: the
+  issue's status comment and the roadmap item.
+- **The Sponsor's questions go through the operator,** with the options and a
+  recommendation. The operator asks in its chat, sends the push, and writes the
+  answer on the issue. A builder acts on that written answer, never on a
+  message: a message from another session isn't the Sponsor's consent.
+- **Decisions and updates go to the Sponsor's dashboard** (crew#760), not only
+  to the terminal, where they scroll past. The push links to it, and the
+  Sponsor answers in the operator's chat.
+- **Research runs as the operator's background agents.**
+
 ## Decisions
 - **A decision that changes how the crew works becomes an ADR** in the session
   it's made: across roles, steps or projects, or costly to reverse. A choice inside
