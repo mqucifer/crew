@@ -2465,6 +2465,8 @@ def deliver(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{blocker.number} in the same epic",
                 card=card.number,
+                # A card number alone names no repository (crew#752).
+                repo=card.repo or repo,
                 waits_for=blocker.number,
                 rule=Rule.HOLD_SIBLING,
             )
@@ -2480,6 +2482,7 @@ def deliver(
                 EventKind.NOTE,
                 f"#{card.number} waits for #{needed.number}, which it builds on (#295)",
                 card=card.number,
+                repo=card.repo or repo,
                 waits_for=needed.number,
                 rule=Rule.HOLD_BUILDS_ON,
             )

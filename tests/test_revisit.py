@@ -337,12 +337,14 @@ def clone(tmp_path: Path) -> Workspace:
     return Workspace(tmp_path)
 
 
-def revisit(issues, clone, cards, architect, *, events_dir=None, reviewer=None, board=None):
+def revisit(
+    issues, clone, cards, architect, *, events_dir=None, reviewer=None, board=None, sink=None
+):
     return revisit_designs(
         issues,
         reviewer or issues,
         board or Board(),
-        EventSink(),
+        sink or EventSink(),
         clone,
         cards,
         repos={REPO},
@@ -463,6 +465,17 @@ def test_an_open_revision_is_approved_and_merged_and_its_work_filed(clone):
     assert board.fields[item]["Work Type"] == "Epic"
     assert result.merged == [(REPO, 9)] and result.epics == [(REPO, filed["number"])]
     assert result.holds[REPO].endswith(f"#{filed['number']}"), "held on work filed this pass"
+
+
+def test_a_technical_epics_move_names_its_repository(clone):
+    """crew#756: the epic is added to the board in the same pass, so the board can't yet
+    say whose it is, and its move named no repository (crew#752's class)."""
+    sink = EventSink()
+    seen: list = []
+    sink.subscribe(seen.append)
+    revisit(Issues(open_pulls=[revision()]), clone, SPRINT6, Architect(), sink=sink)
+    (moved,) = [e for e in seen if e.kind == "card.moved"]
+    assert moved.detail["repo"] == REPO
 
 
 def test_a_revision_not_yet_mergeable_holds_its_projects_epics(clone):
