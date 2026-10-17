@@ -1,7 +1,7 @@
 # 21. Contracts between projects flow from their source
 
 - **Date:** 2026-10-07
-- **Status:** Accepted (to be built by mqucifer/sprint-metrics#461 and crew#521)
+- **Status:** Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the changelog and the consumer's review planned for M10 on the Crew roadmap)
 
 ## Context
 
@@ -27,6 +27,17 @@ constantly ensure it's up to date with checking." And on how the data arrives: "
 expecting crew to just generate its data, call sprint metrics, package this up and
 release it by tag and has a defined schema we can test with (its own schema which is
 going to inherently contain sprint metrics data)."
+
+Once packages flowed, nothing ruled on what a release changed. A consumer's CI goes red
+on a major version it can't display, but a minor change passes with no one deciding
+whether the consumer can still read it or wants what was added. The Sponsor, 2026-10-15
+(Discussion 263): a delivered schema change gets the consumer Architect's ruling on
+support and its Product Owner's ruling on use. M6 research R6 proposed that the producer
+check every consumer's list of the fields it reads before releasing (Pact's
+can-i-deploy). The Sponsor rejected that, 2026-10-17: "Producers do not care about how
+they are consumed unless something is requested. A consumer reviews what it receives
+and determines what it's going to use. If it has a need or Goal that cannot be met by
+what has been delivered, it can request the producer make it."
 
 ## Decision
 
@@ -58,6 +69,26 @@ going to inherently contain sprint metrics data)."
 - **The consumer's own check is which major versions it can display.** A package on
   a major version it can't display fails the pull request that brought it. It
   keeps no copy of a schema.
+- **A producer doesn't track how it's consumed.** It keeps no list of what each
+  consumer reads, and runs no check against one before it releases. It describes
+  what it delivered (DDD's upstream and downstream: the producer publishes a
+  language, the consumer reads it as a tolerant reader).
+- **The package's pull request says what changed, from the producer's side, as a
+  schema diff:** Added, Changed and Removed, against the version the consumer pins
+  now. It describes the delivery, never how it's used.
+- **The consumer reviews every change it receives,** a minor one included (the
+  Sponsor, 2026-10-17). A change is noticed when the delivered schema differs from
+  the one in use, and it gets two rulings:
+  - **support,** by the consumer's Architect: can the consumer still read it? If not,
+    a technical epic holds the package's pull request until it can;
+  - **use,** by the consumer's Product Owner: what will it use? An epic under a Goal,
+    a proposed Goal (ADR 0027), or "no use" in one line.
+- **A need the delivery can't meet is requested of the producer,** as an issue in the
+  producer's repository linked to the consumer's epic. That is the path the retro
+  already takes when it files a finding in the repository of the thing it found
+  (ways-of-working §18). A board project's Product Owner takes the request as proposed
+  work. The crew repository is off the board (ADR 0008), so a request to it is a crew
+  issue on the Crew roadmap, which Claude builds.
 - **A dependency that isn't data,** such as a stylesheet, is pinned once, in the
   consumer's code, and bumped by pull request.
 - **Records and Goals point to the source's usage notes.** They never restate a
@@ -69,6 +100,11 @@ going to inherently contain sprint metrics data)."
 
 - A producer's release reaches its consumer as a pull request it can check. No one
   edits the consumer by hand to keep up.
+- **No change passes unreviewed,** and a producer never waits on its consumers to
+  release. What a consumer wants and can't get arrives at the producer as a request.
+- **Still to build** (M10): the schema diff in the package's pull request, noticing a
+  change, and both rulings. The version bump, the release, the package's pull request
+  and the consumer's red CI on an unsupported major exist today.
 - A consumer's history lives in the producer's releases, not in the consumer's
   repository.
 - A Goal whose contract isn't published yet waits in Inbox (Goals).
@@ -92,3 +128,8 @@ going to inherently contain sprint metrics data)."
 - 2026-10-14: The record's pointer to a producer's usage notes is a field the
   crew follows and shows to the roles; unfollowed, the Architect guessed the
   package's layout (crew#690, plan Part 7c). The Sponsor chose it in chat.
+- 2026-10-17: The consumer reviews every change it receives (support by its Architect,
+  use by its Product Owner), from a schema diff the producer's pull request carries, and
+  requests what it lacks. Producers keep no list of what consumers read. The Sponsor
+  decided it in the M6 planning session (crew#755), rejecting research R6's
+  producer-side check.
