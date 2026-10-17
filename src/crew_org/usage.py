@@ -100,8 +100,20 @@ def pinned(use: Use, root: Path | None) -> str | None:
 
 def schema_fields(schema: dict[str, Any]) -> list[str]:
     """Every field a JSON schema defines, as a path: `sprints[].name`."""
+    return list(described_fields(schema))
+
+
+def described_fields(schema: dict[str, Any]) -> dict[str, str]:
+    """Every field a JSON schema defines, by path, with what the schema says of it.
+
+    Its description, and that it's deprecated when it is: the facts that say which
+    of two fields to use. Shown only the names, the UX Designer was offered
+    `cycle_time_days` beside `cycle_time_minutes` and picked days, and the site
+    showed "0 days" for one-day sprints (crew#761). Empty for a field the schema
+    says nothing about.
+    """
     defs = schema.get("$defs") or schema.get("definitions") or {}
-    found: list[str] = []
+    found: dict[str, str] = {}
 
     def walk(node: Any, path: str, depth: int, seen: frozenset[str]) -> None:
         if not isinstance(node, dict) or depth > DEPTH:
@@ -123,11 +135,21 @@ def schema_fields(schema: dict[str, Any]) -> list[str]:
             walk(extra, f"{path}.<key>" if path else "<key>", depth, seen)
         for name, sub in (node.get("properties") or {}).items():
             child = f"{path}.{name}" if path else name
-            found.append(child)
+            if child not in found:
+                found[child] = _said(sub)
             walk(sub, child, depth + 1, seen)
 
     walk(schema, "", 0, frozenset())
-    return list(dict.fromkeys(found))
+    return found
+
+
+def _said(field: Any) -> str:
+    if not isinstance(field, dict):
+        return ""
+    said = " ".join(str(field.get("description") or "").split())
+    if field.get("deprecated") is True:
+        said = f"deprecated. {said}".strip()
+    return said
 
 
 def css_names(text: str) -> tuple[list[str], list[str]]:
@@ -146,8 +168,12 @@ def _provided(path: str, text: str) -> str:
             schema = json.loads(text)
         except ValueError:
             return text
-        fields = schema_fields(schema) if isinstance(schema, dict) else []
-        return "Fields: " + ", ".join(f"`{f}`" for f in fields) if fields else text
+        fields = described_fields(schema) if isinstance(schema, dict) else {}
+        if not fields:
+            return text
+        return "Fields:\n" + "\n".join(
+            f"- `{f}`: {said}" if said else f"- `{f}`" for f, said in fields.items()
+        )
     if path.endswith(".css"):
         tokens, classes = css_names(text)
         return (
