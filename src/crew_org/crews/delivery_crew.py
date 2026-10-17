@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from crew_org import calls
 from crew_org.crews.asks import FileAsk
 from crew_org.profiles import profile_for
+from crew_org.rulebook import refuse
 from crew_org.tools.ast_edit import Operation
 from crew_org.tools.ci_guard import is_workflow
 
@@ -251,10 +252,7 @@ class CriterionTest(BaseModel):
         # function in `test` twice, told only that "the source for '<the function>'
         # doesn't define it", which named no field to change.
         if "\n" in value.strip() or value.lstrip().startswith(("def ", "async def ")):
-            raise ValueError(
-                "`test` is the test's name alone, e.g. test_range_as_json. Its code goes "
-                "in `source`"
-            )
+            refuse("form.CriterionTest.a_name_not_its_code")
         return value.strip()
 
     @model_validator(mode="after")
@@ -263,29 +261,32 @@ class CriterionTest(BaseModel):
         if is_doc(self.path):
             # "Name it tests/test_*.py" can't be followed for a doc criterion:
             # sprint-metrics#381 was refused that way twice in a row.
-            raise ValueError(
-                f"{self.path!r} is documentation. A criterion about what a doc says is "
-                "proven by reading the doc, not by a test: leave it out of criteria_tests "
-                "and make the doc change in new_files or text_edits"
-            )
+            refuse("form.CriterionTest.is_that_test", "a_doc", path=repr(self.path))
         if not profile.is_test_file(self.path):
-            raise ValueError(f"{self.path!r} isn't a test file: {profile.test_file_hint}")
+            refuse(
+                "form.CriterionTest.is_that_test",
+                "not_a_test_file",
+                path=repr(self.path),
+                hint=profile.test_file_hint,
+            )
         if not profile.edit_by_name:
             # Written in new_files or text_edits; delivery checks it's there (#404).
             if self.source.strip() and not profile.defines_test(self.source, self.test):
-                raise ValueError(f"the source for {self.test!r} doesn't define it")
+                refuse("form.CriterionTest.is_that_test", "undefined", test=repr(self.test))
             return self
         if not self.source.strip():
             # Named with no code: almost always a test already in the repository.
             # "Doesn't define it" never said where that goes, and sprint-metrics#386
             # spent four attempts and the sprint's escalation finding out (#448).
-            raise ValueError(
-                f"{self.test!r} has no source. criteria_tests holds new tests, written in "
-                "full. A test already in the repository goes in proven_by_existing, named "
-                f"as {self.path}::{self.test}"
+            refuse(
+                "form.CriterionTest.is_that_test",
+                "no_source",
+                test=repr(self.test),
+                path=self.path,
+                name=self.test,
             )
         if not profile.defines_test(self.source, self.test):
-            raise ValueError(f"the source for {self.test!r} doesn't define it")
+            refuse("form.CriterionTest.is_that_test", "undefined", test=repr(self.test))
         self.source = profile.prepare_test(self.path, self.source)  # #196
         return self
 
@@ -619,10 +620,7 @@ class FirstAttempt(Implementation):
             or self.ci_only
         ):
             return self
-        raise ValueError(
-            "no test. Every acceptance criterion needs an automated test that proves "
-            "it — add one to an existing test file, or create a new test_*.py."
-        )
+        refuse("form.FirstAttempt.has_a_test")
 
 
 class CriterionMet(BaseModel):
@@ -653,10 +651,7 @@ class CriterionMet(BaseModel):
     @model_validator(mode="after")
     def _one_proof(self) -> CriterionMet:
         if bool(self.test.strip()) == bool(self.ci_step.strip()):
-            raise ValueError(
-                "each criterion is proven by an existing test, or, for what a CI workflow "
-                "does, by its workflow step: give exactly one"
-            )
+            refuse("form.CriterionMet.one_proof")
         return self
 
 
@@ -696,17 +691,10 @@ class FirstOrDone(FirstAttempt):
             return self
         if self.already_done:
             if not self.changes_nothing:
-                raise ValueError(
-                    "an already-done answer changes nothing. Either change the code and leave "
-                    "`already_done` empty, or name the existing code and tests and change nothing."
-                )
+                refuse("form.FirstOrDone.has_a_test", "changes_something")
             return self
         if not (self.criteria_tests or self.proven_by_existing or self.docs_only or self.ci_only):
-            raise ValueError(
-                "no test. For each acceptance criterion, give the test that proves it in "
-                "`criteria_tests`, or name the existing tests in `proven_by_existing` — or, if "
-                "the code already meets every criterion, say so in `already_done`."
-            )
+            refuse("form.FirstOrDone.has_a_test", "no_test")
         return self
 
 

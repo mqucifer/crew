@@ -18,6 +18,7 @@ from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
 from crew_org.crews.refinement_crew import CriteriaRepair, Story, StoryProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.rulebook import says
 from crew_org.rules import Rule
 
 # What the check is shown of other epics' planned stories. A pass can plan
@@ -171,13 +172,7 @@ def with_repairs(
 
 def feedback(check: CriteriaCheck) -> str:
     """What the Business Analyst is told when its split is sent back once."""
-    return (
-        "Your last split had criteria that can't all pass:\n\n"
-        f"{described(check)}\n\n"
-        "Split it again so every criterion can pass alongside the others and the "
-        "project's code. Where the epic doesn't say which outcome it wants, choose "
-        "none: leave the case out of the criteria rather than guessing."
-    )
+    return says("check.criteria_check.feedback", conflicts=described(check))
 
 
 def to_product_owner(

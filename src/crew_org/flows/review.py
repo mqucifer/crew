@@ -28,6 +28,7 @@ from crew_org.flows.presentation_notes import story_notes
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
+from crew_org.rulebook import says
 from crew_org.rules import Rule
 from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
 from crew_org.tools.github_issues import FAILED_CONCLUSIONS, IssueClient
@@ -616,9 +617,8 @@ def with_docs_finding(
     found = [
         Finding(
             file=docs[0],
-            concern=f"`{option}` is added by this change, and no user doc ({named}) mentions it",
-            action=f"Document `{option}` in {named} in this pull request: what it does, and an "
-            "example of using it",
+            concern=says("check.review.with_docs_finding", "concern", option=option, docs=named),
+            action=says("check.review.with_docs_finding", "action", option=option, docs=named),
         )
         for option in missing
     ]

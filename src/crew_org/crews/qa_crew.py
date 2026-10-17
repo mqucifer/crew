@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from crew_org import calls
 from crew_org.crews import epic_rows
 from crew_org.crews.asks import FileAsk
+from crew_org.rulebook import refuse
 from crew_org.tools import repo_read
 
 MIN_EVIDENCE_CHARS = 20
@@ -41,10 +42,7 @@ class CriterionVerdict(BaseModel):
     @classmethod
     def _is_specific(cls, value: str) -> str:
         if len(value.strip()) < MIN_EVIDENCE_CHARS:
-            raise ValueError(
-                "name the test that proves this criterion, or say specifically what is "
-                "missing. 'Tested' is not evidence."
-            )
+            refuse("form.CriterionVerdict.is_specific")
         return value
 
 
@@ -69,18 +67,14 @@ class QAVerdict(BaseModel):
     @model_validator(mode="after")
     def _a_verdict_or_an_ask(self) -> QAVerdict:
         if not self.criteria and not self.need_files:
-            raise ValueError("a story is accepted against its criteria; list them")
+            refuse("form.QAVerdict.a_verdict_or_an_ask")
         return self
 
     @model_validator(mode="after")
     def _acceptance_requires_every_criterion(self) -> QAVerdict:
         unproven = [c.criterion for c in self.criteria if not c.proven]
         if self.accepted and unproven:
-            raise ValueError(
-                f"cannot accept with {len(unproven)} unproven criteria. "
-                "Definition of Done requires every criterion proven: by a test, or a "
-                "doc criterion by the doc."
-            )
+            refuse("form.QAVerdict.acceptance_requires_every_criterion", count=len(unproven))
         return self
 
     @property

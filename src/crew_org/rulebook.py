@@ -48,7 +48,7 @@ CATEGORIES = {
 
 # The categories whose checks refuse through `refuse()`, their message and their
 # form's description from the declaration. The others move in their own cleanups.
-MIGRATED: frozenset[str] = frozenset({"answer_shape"})
+MIGRATED: frozenset[str] = frozenset({"answer_shape", "evidence"})
 
 
 @dataclass(frozen=True)
@@ -67,9 +67,13 @@ class RuleSpec:
     # What a refusal says, by name, as ESLint's `meta.messages`: `{value}` for each
     # value `refuse()` is given. A rule that refuses one way has one, `default`.
     messages: tuple[tuple[str, str], ...] = ()
-    # What the form tells the role it fills, and where: `Form` or `Form.field`.
+    # What the form tells the role it fills, and where: `Form` or `Form.field`, or
+    # several, comma-separated, for a check every form of a role's answer meets.
     description: str = ""
     told_in: str = ""
+    # Why a check refuses nothing a role chose, so it has nothing to tell: the call
+    # layer's kind of exemption from the second policy, declared with its reason.
+    exempt: str = ""
     # The rules merged into this one, by the names the code and the event log still
     # give them: each is one of its cases, as ESLint's message ids are (crew#756). A
     # line a role is told is a case of the check that enforces it.
@@ -124,6 +128,7 @@ def _read(path: Path) -> dict[str, RuleSpec]:
             messages=tuple((str(k), str(v)) for k, v in (fields.get("messages") or {}).items()),
             description=str(fields.get("description") or ""),
             told_in=str(fields.get("told_in") or ""),
+            exempt=str(fields.get("exempt") or ""),
             cases=tuple(str(c) for c in fields.get("cases") or ()),
         )
     return found
@@ -167,9 +172,12 @@ def told(form: str) -> dict[str, list[str]]:
     """What a form tells its role, from its rules' declarations, by field ("" the form)."""
     out: dict[str, list[str]] = {}
     for spec in catalog().values():
-        here, _, field = spec.told_in.partition(".")
-        if here == form and spec.description and spec.category in MIGRATED:
-            out.setdefault(field, []).append(spec.description)
+        if not (spec.description and spec.category in MIGRATED):
+            continue
+        for place in (p.strip() for p in spec.told_in.split(",")):
+            here, _, field = place.partition(".")
+            if here == form:
+                out.setdefault(field, []).append(spec.description)
     return out
 
 

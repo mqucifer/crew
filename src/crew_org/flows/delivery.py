@@ -50,6 +50,7 @@ from crew_org.git_ops import MergeConflict, Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
+from crew_org.rulebook import refuse, says
 from crew_org.rules import Kind, Rule
 from crew_org.tools import bounds, claude_code, regression, repo_context, reproduction, workspace
 from crew_org.tools.github_issues import IssueClient
@@ -1153,19 +1154,17 @@ def deliver_story(
                 [met.ci_step for met in done_now if met.ci_step],
             )
             if unproven:
-                raise ValueError(
-                    "this CI evidence doesn't hold: "
-                    + "; ".join(unproven)
-                    + ". Name a workflow step that exists and whose workflow passed on "
-                    f"`{default_branch}`, or change the code."
+                refuse(
+                    "check.delivery.this_ci_evidence_doesnt_hold",
+                    unproven="; ".join(unproven),
+                    branch=default_branch,
                 )
             if missing:
                 # Refused, naming each (#221, #217): evidence that doesn't
                 # exist is no evidence.
-                raise ValueError(
-                    "these named tests don't exist in the repository: "
-                    + ", ".join(dict.fromkeys(missing))
-                    + ". Name existing tests, or write the test in `criteria_tests`."
+                refuse(
+                    "check.delivery.these_named_tests_dont_exist",
+                    tests=", ".join(dict.fromkeys(missing)),
                 )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -1518,10 +1517,7 @@ def deliver_story(
                 )
             )
             if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = (
-                    f"The fix passes the checks, but {unreproduced}. Change them so at least "
-                    "one fails against the code as merged, for the reason the bug describes."
-                )
+                feedback = says("guard.reproduce.check", why=unreproduced)
                 continue
             outcome.blocked_rule = Rule.GUARD_NOT_REPRODUCED
             outcome.blocked_reason = f"its tests don't reproduce the bug: {unreproduced}"
@@ -1635,8 +1631,11 @@ def deliver_story(
             # Each cause once, every failing test named (crew#591): the whole report
             # is for the escalation, which reads it with tools of its own.
             repair = outcome.contract_repair if undeclared else ""
-            feedback = (
-                f"{amended}{repair}Lint or tests failed:\n\n{repair_report(check.failure_report)}"
+            feedback = says(
+                "check.delivery.lint_or_tests_failed",
+                amended=amended,
+                repair=repair,
+                report=repair_report(check.failure_report),
             )
             continue
 
