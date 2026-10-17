@@ -1171,6 +1171,49 @@ def _fed_back_rules() -> list[Entry]:
     return list(out.values())
 
 
+def _changed_answers() -> list[Entry]:
+    """Each flow function that takes a role's answer and returns it changed.
+
+    Neither a refusal nor feedback: the role is never told. `held_to_what_it_read`
+    holds a criterion unproven when QA cites a test it wasn't shown (crew#770).
+    """
+    forms = {form.__name__: roles for form, roles in answered().items()}
+    out: list[Entry] = []
+    for source in sources():
+        if not source.module.startswith("crew_org.flows."):
+            continue
+        for fn in (n for n in source.tree.body if isinstance(n, ast.FunctionDef)):
+            params = {
+                a.annotation.id
+                for a in fn.args.args + fn.args.kwonlyargs
+                if isinstance(a.annotation, ast.Name) and a.annotation.id in forms
+            }
+            if not (isinstance(fn.returns, ast.Name) and fn.returns.id in params):
+                continue
+            doc = ast.get_docstring(fn) or ""
+            comments = (
+                _comments_above(source.lines, fn.lineno) + " " + _comments_in(source.lines, fn)
+            )
+            where = f"{source.path}:{fn.name}"
+            out.append(
+                Entry(
+                    f"check.{_short(source)}.{fn.name.lstrip('_')}",
+                    "check",
+                    where,
+                    (_first_sentence(doc) or fn.name) + " (changes the answer, never refuses it)",
+                    roles=set(forms[fn.returns.id]),
+                    checked={where},
+                    origin=refs(doc + " " + comments),
+                    messages=_findings(fn, source.tree),
+                    form=fn.returns.id,
+                    repairs=True,
+                    text=doc,
+                    sections=_cited_sections(doc + " " + comments),
+                )
+            )
+    return out
+
+
 def _guard_rules() -> list[Entry]:
     """Each place delivery records a failure class for a change and sends a reason back.
 
@@ -1400,6 +1443,13 @@ def _prompt_texts(source: Source) -> Iterator[tuple[ast.AST, str]]:
             skip |= {id(n) for n in ast.walk(raised)}
         if isinstance(node, ast.keyword) and node.arg == "description":
             skip |= {id(n) for n in ast.walk(node.value)}
+        # A pattern a check matches with is the check's, not a line a role reads.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "compile"
+        ):
+            skip |= {id(n) for a in node.args for n in ast.walk(a)}
     for node in ast.walk(source.tree):
         if id(node) in skip or not isinstance(node, ast.Constant | ast.JoinedStr | ast.BinOp):
             continue
@@ -1551,6 +1601,7 @@ def entries() -> tuple[Entry, ...]:
         + _check_rules()
         + _call_rules()
         + _fed_back_rules()
+        + _changed_answers()
         + _guard_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
@@ -1637,13 +1688,83 @@ _SECTIONS = {
     8: "guidance",
     9: "flow",
     11: "flow",
+    1: "flow",
+    2: "scope",
+    10: "guidance",
     12: "flow",
+    13: "scope",
     14: "guards",
     15: "contracts",
     17: "flow",
+    18: "flow",
     19: "guards",
     20: "guards",
 }
+
+# Where a told line sits, by what the lines there protect: an agents.yaml section (a
+# role, or a role's step), or a crew module's prompt, a function, constant or form in
+# it. A line is placed by the most particular site listed; one at a site not listed
+# stays unplaced. Left out on purpose, as no one category holds them: the onboarding
+# interview, the Developer's instructions for reading files, and §16, what a role is
+# shown.
+_TOLD_SITES = {
+    "agents.yaml:architect": "scope",
+    "agents.yaml:architect.design_placement": "scope",
+    "agents.yaml:business_analyst": "evidence",
+    "agents.yaml:business_analyst.bug_triage": "evidence",
+    "agents.yaml:code_reviewer": "guidance",
+    "agents.yaml:developer": "scope",
+    "agents.yaml:devops_engineer": "guards",
+    "agents.yaml:product_owner": "scope",
+    "agents.yaml:qa_engineer": "evidence",
+    "agents.yaml:qa_engineer.criteria_check": "evidence",
+    "agents.yaml:scrum_master": "guidance",
+    "agents.yaml:senior_engineer": "guidance",
+    "agents.yaml:ux_designer": "scope",
+    "bug_triage_crew": "scope",
+    "contract_crew": "contracts",
+    "criteria_crew": "evidence",
+    "delivery_crew:STANDING_INSTRUCTIONS": "edits",
+    "delivery_crew:implement_story": "scope",
+    "delivery_crew:Rework": "evidence",
+    "deploy_review_crew": "guards",
+    "design_crew:DesignProposal": "guards",
+    "design_crew:propose_design": "guards",
+    "design_crew:review_design": "guards",
+    "design_crew:place_changes": "scope",
+    "design_note_crew": "scope",
+    "panel_crew": "scope",
+    "presentation_note_crew": "evidence",
+    "qa_crew": "evidence",
+    "refinement_crew:AnswerRow": "answer_shape",
+    "refinement_crew:RepairedStory": "answer_shape",
+    "refinement_crew:RowNotForStories": "answer_shape",
+    "refinement_crew:BacklogOrder": "flow",
+    "refinement_crew:Hold": "flow",
+    "refinement_crew:order_backlog": "flow",
+    "refinement_crew:propose_epics": "scope",
+    "refinement_crew:propose_missing_epics": "scope",
+    "refinement_crew:_delivered_block": "scope",
+    "refinement_crew:split_epic": "scope",
+    "refinement_crew:repair_criteria": "evidence",
+    "retro_crew": "guidance",
+    "review_crew": "flow",
+    "settle_crew": "scope",
+}
+
+
+def _told_site(entry: Entry) -> str:
+    """The category of the site a told line sits at, from _TOLD_SITES, or ""."""
+    path, _, name = entry.where.partition(":")
+    if path.endswith("agents.yaml"):
+        return _TOLD_SITES.get(f"agents.yaml:{name.rpartition('.')[0]}", "")
+    if not path.startswith("src/crew_org/crews/"):
+        return ""
+    module = Path(path).stem
+    for site in (f"{module}:{name}", f"{module}:{name.partition('.')[0]}", module):
+        if site in _TOLD_SITES:
+            return _TOLD_SITES[site]
+    return ""
 
 
 def _name(entry: Entry) -> str:
@@ -1703,7 +1824,7 @@ PLACEMENT: list[tuple[str, str, Any]] = [
             or e.form in _EVIDENCE_FORMS
             or bool(e.fields & _EVIDENCE_FIELDS)
             and e.form not in _SCOPE_FORMS
-            or re.search(r"tests|evidence|criteria", _name(e)) is not None
+            or re.search(r"tests|evidence|criteria|docs", _name(e)) is not None
             or _file(e)
             in (
                 "src/crew_org/flows/attempts.py",
@@ -1744,6 +1865,11 @@ PLACEMENT: list[tuple[str, str, Any]] = [
         "a step that asks to see more than it may",
         lambda e: _name(e).startswith("do_the_work_now"),
     ),
+    (
+        "flow",
+        "the review gates' one decision from both",
+        lambda e: _file(e) == "src/crew_org/flows/review.py",
+    ),
 ]
 
 
@@ -1755,7 +1881,7 @@ def place(entry: Entry) -> str:
     for category, _, holds in PLACEMENT:
         if holds(entry):
             return category
-    return ""
+    return _told_site(entry) if entry.group == "told" else ""
 
 
 # --- the page ---------------------------------------------------------------------------
@@ -1800,6 +1926,11 @@ def render() -> str:
             + (
                 f"<br>constitution {', '.join(f'§{n}' for n, s in _SECTIONS.items() if s == c)}"
                 if c in _SECTIONS.values()
+                else ""
+            )
+            + (
+                "<br>told at " + ", ".join(f"`{s}`" for s, t in _TOLD_SITES.items() if t == c)
+                if c in _TOLD_SITES.values()
                 else ""
             )
             + f" | {sum(1 for r in rows if r.category == c)} |"
