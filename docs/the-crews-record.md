@@ -92,8 +92,12 @@ as `crew_<key>` (`crew_run`, `crew_tick`), with the commit as `service_version` 
   it to `log._CONTEXT_OUT` only if it may leave.
 - **Then run `crew reference`.** A test fails while `docs/reference/records.md` is stale.
 - **A new rule a role meets** (a validator on a form, a check whose reason goes back to the
-  role, a line in a prompt): run `crew rules`. A test fails while `docs/reference/rules.md` is
-  stale. The list says where each rule lives, who's told it and what checks it (crew#756).
+  role, a line in a prompt) is declared once, in its category's file in
+  `src/crew_org/config/rules/` (ADR 0031). `crew rules --declare` proposes the declaration;
+  decide its category, owner, origin and whether it's guidance, then run `crew rules`. Tests fail
+  while a rule in the code has no declaration, a declaration has no rule, a told rule is neither
+  checked nor guidance, or a role's guidance is over its budget. The list says where each rule
+  lives, who's told it and what checks it (crew#756).
 
 ## History and what's still open
 
