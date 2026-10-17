@@ -781,6 +781,19 @@ def test_a_story_waits_for_its_earlier_sibling(harness):
     assert ("S7", "In Progress") not in board.moves
 
 
+def test_a_hold_names_the_cards_repository(harness, monkeypatch):
+    """crew#756: every hold note named a card and no repository, so a count by card
+    couldn't tell sprint-metrics#7 from crew-presentation#7 (crew#752's class)."""
+    result, _, _, _, _, seen = harness(checks=[green()], cards=[sibling(6), sibling(7)])
+    (held,) = [e for e in seen if e.detail.get("rule") == "hold.sibling"]
+    assert (held.detail["card"], held.detail["repo"]) == (7, "sprint-metrics")
+
+    monkeypatch.setattr(delivery, "held_by_what_it_builds_on", lambda cards, card, body: story(5))
+    result, _, _, _, _, seen = harness(checks=[green()], cards=[story(8)])
+    (held,) = [e for e in seen if e.detail.get("rule") == "hold.builds_on"]
+    assert (held.detail["card"], held.detail["repo"]) == (8, "sprint-metrics")
+
+
 def test_a_landed_sibling_does_not_hold_anything(harness):
     """Landed means Done or closed — an open pull request is not in anyone's
     base, but a merged one is."""

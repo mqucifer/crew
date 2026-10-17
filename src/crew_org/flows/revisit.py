@@ -864,6 +864,8 @@ def _file_epics(
             by=BY,
             card=issue["number"],
             summary=f"technical epic — {work[:50]}",
+            # Just added, so the board's cache doesn't know its repository yet.
+            repo=repo,
         )
         board.set_select(item, "Work Type", EPIC_TYPE)
         filed.append(issue["number"])
