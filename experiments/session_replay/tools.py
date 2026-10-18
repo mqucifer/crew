@@ -122,9 +122,12 @@ SPECS = [
     ),
     _spec(
         "done",
-        "Finish: the story is done. For each acceptance criterion, the test that proves it; "
-        "each merged test you changed or removed, with why; and a summary. The crew's gates "
-        "then judge the whole branch.",
+        "Finish: the story is done. The crew then checks your branch, and returns it if any "
+        "of these fails: each acceptance criterion has a test that proves it and passes (a "
+        "criterion about what a user doc says is proven by that doc); the docs that describe "
+        "what you changed are updated on the same branch; each merged test you changed or "
+        "removed is named here, with why; and the project's whole checks pass. Then review "
+        "and QA follow.",
         {
             "criteria": {
                 "type": "array",
@@ -134,9 +137,13 @@ SPECS = [
                 "type": "array",
                 "items": {"type": "object", "properties": {"test": S, "why": S}},
             },
+            "docs": {
+                "type": "string",
+                "description": "The docs you updated, or why none describe this change.",
+            },
             "summary": S,
         },
-        ["criteria", "summary"],
+        ["criteria", "docs", "summary"],
     ),
     _spec(
         "blocked",

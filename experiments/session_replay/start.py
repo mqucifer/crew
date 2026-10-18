@@ -38,10 +38,8 @@ story needs.
 lint, in the project's container, which has no network. It's feedback, not the verdict.
 - **Older tool output** is cut to one line once a newer one of its kind arrives; the \
 latest view and the latest run stay whole. View again what you need again.
-- **`done`** is for when the work is finished and you've seen the checks pass. Name, for \
-each acceptance criterion, the test that proves it, and each merged test you changed or \
-removed, with why. The crew then runs the whole checks on your branch, and review and QA \
-follow.
+- **`done`** is for when the work is finished and you've seen the checks pass. Its \
+description says what the crew checks on your branch after it.
 - **`blocked`** is for when the work can't be finished from what's here: a file that \
 isn't in the repository, a fact the story doesn't give, or a choice nobody has made. Say \
 which, in your own words; it goes back to whoever wrote the story.
