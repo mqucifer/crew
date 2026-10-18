@@ -37,7 +37,7 @@ The Sponsor, on crew#778: decisions 1 to 9 and 4b on 2026-10-17. Then, on 2026-1
 | `replace_definition(path, name, source)` | Replaces a Python definition or method, by name |
 | `write_file(path, content, overwrite)` | Writes a whole file; an existing one only with `overwrite` |
 | `run(what, tests)` | Runs in the workspace: named tests, the project's whole checks, or the checks' own lint. It's feedback, not a verdict, and its reply leads with the first error |
-| `done` | Names the test that proves each criterion, the merged tests changed and why, and the docs updated. Its description says what the gate returns a branch for |
+| `done` | Names the test that proves each criterion, the merged tests changed and why, and the docs updated. It checks first that the tests it names exist: a failure is a reply, and the session writes the test or names the right one. Its description says what the gate returns a branch for |
 | `blocked(missing, kind)` | Says what's missing: a file, a fact the story doesn't give, or a choice no one has made |
 
 Every tool:
@@ -200,3 +200,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
   - one a line saying the story changes tests doesn't name is a question for review;
   - a line saying the tests stay unchanged, while `done` changed some, is the disagreement the Business Analyst rules on;
   - an empty diff at `done` takes today's already-done path (mqucifer/crew#221).
+- **2026-10-18:** `done` checks that the tests it names exist, and nothing more (the Sponsor, on crew#778). The real run on mqucifer/sprint-metrics#662 found 5 of the 10 tests its `done` named didn't exist, although `done`'s description already asked for a test per criterion. A failure is a reply in the same session, not a failure or an attempt, and it leads with writing the test: on #662 no proving test existed under any name. The gate's own copy of the check goes. Whether a test proves its criterion stays with QA.
