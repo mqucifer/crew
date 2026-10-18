@@ -138,6 +138,14 @@ guard.bounds.out_of_bounds:
       Workflows may change, but every design check must still run there and still be able to fail: no
       `|| true`, no `continue-on-error`.'
   owner: Developer
+session.path:
+  description: A tool reads and writes only the worktree, never the crew's own folders or what tools make.
+  messages:
+    outside: '`{path}` isn''t a path in the repository: give it relative to its root.'
+    skipped: '`{path}` is in a folder the session doesn''t {verb}.'
+  origin:
+  - crew#778
+  owner: Developer
 told.delivery_crew.the_repository_below_may_show_some:
   guidance: true
   owner: Developer

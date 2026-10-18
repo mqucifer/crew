@@ -17,11 +17,12 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 30 |
 | A guard on a change sends it back | 5 |
 | An edit can't be applied, and why is sent back | 7 |
+| A session's tool refuses a call, and says why in its reply | 10 |
 | A gate at `done` sends a session's branch back | 3 |
 | The crew changes the work itself, and records it | 6 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 47 |
-| A setting that changes what the tick does | 175 |
+| A setting that changes what the tick does | 193 |
 | Told, and not checked by anything above | 199 |
 
 ## Categories
@@ -32,15 +33,15 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 75 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 78 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:developer`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `delivery_crew:implement_story`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:propose_epics`, `refinement_crew:propose_missing_epics`, `refinement_crew:_delivered_block`, `refinement_crew:split_epic`, `settle_crew` | 87 |
-| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 36 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 80 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 64 |
+| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 40 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 82 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 65 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 116 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 25 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 28 |
-| Unplaced | | 62 |
+| Unplaced | | 80 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -205,6 +206,21 @@ section; one no line holds for is unplaced, never guessed.
 | `edit.workspace.outside_definitions`<br>A text edit to Python may change module-level lines only (#204). | edits | `src/crew_org/tools/workspace.py:_outside_definitions` | Developer | §15 a_file_that_is_not_python (both cite crew#204; given to no role) | src/crew_org/tools/workspace.py:_outside_definitions | crew#204<br>sprint-metrics#133 |
 | `edit.workspace.plan_text_edits`<br>What each file quoted by `text_edits` would hold afterwards. | edits | `src/crew_org/tools/workspace.py:plan_text_edits` | Developer | — | src/crew_org/tools/workspace.py:plan_text_edits | — |
 
+## A session's tool refuses a call, and says why in its reply
+
+| Rule | Category | Where | Roles | Told | Checked by | From |
+|---|---|---|---|---|---|---|
+| `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/tools.py:check_arguments` | Developer | — | src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
+| `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |
+| `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make. | guards | `src/crew_org/session/tools.py:Tools._path` | Developer | — | src/crew_org/session/tools.py:Tools._path | crew#778 |
+| `session.replace_definition`<br>`replace_definition` changes an existing Python file. | edits | `src/crew_org/session/tools.py:Tools.replace_definition` | Developer | — | src/crew_org/session/tools.py:Tools.replace_definition | crew#778 |
+| `session.replace_text`<br>`replace_text` quotes whole lines of a file there is, once in it, and changes them. | edits | `src/crew_org/session/tools.py:Tools._not_found` | Developer | — | src/crew_org/session/tools.py:Tools._not_found<br>src/crew_org/session/tools.py:Tools.replace_text | crew#778 |
+| `session.run`<br>`run` of tests names them, and needs the project's checks to run pytest; `run` of lint needs a lint among them. | evidence | `src/crew_org/session/tools.py:Tools.run` | Developer | — | src/crew_org/session/tools.py:Tools.run | crew#778 |
+| `session.search`<br>`search` is given a pattern, and a path there is. | answer_shape | `src/crew_org/session/tools.py:Tools.search` | Developer | — | src/crew_org/session/tools.py:Tools.search | crew#778 |
+| `session.tests_for`<br>`tests_for` needs the project's coverage map, which is Python only. | evidence | `src/crew_org/session/tools.py:Tools.tests_for` | Developer | — | src/crew_org/session/tools.py:Tools.tests_for | crew#778 |
+| `session.view`<br>`view` shows a text file there is, or a definition it has. | answer_shape | `src/crew_org/session/tools.py:Tools.view` | Developer | — | src/crew_org/session/tools.py:Tools.view | crew#778 |
+| `session.write_file`<br>`write_file` rewrites an existing file only when told to overwrite it. | edits | `src/crew_org/session/tools.py:Tools.write_file` | Developer | — | src/crew_org/session/tools.py:Tools.write_file | crew#778 |
+
 ## A gate at `done` sends a session's branch back
 
 | Rule | Category | Where | Roles | Told | Checked by | From |
@@ -360,9 +376,13 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.ci.LOG_TAIL_CHARS`<br>Generous, not a budget (§16): the end of a log is where the failure is. | evidence | `src/crew_org/flows/ci.py:LOG_TAIL_CHARS` | — | — | src/crew_org/flows/ci.py:LOG_TAIL_CHARS | — |
 | `config.const.ci.MAX_JOBS`<br>MAX_JOBS = 3 | evidence | `src/crew_org/flows/ci.py:MAX_JOBS` | — | — | src/crew_org/flows/ci.py:MAX_JOBS | — |
 | `config.const.claude_code.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 1800 | flow | `src/crew_org/tools/claude_code.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/claude_code.py:DEFAULT_TIMEOUT | — |
+| `config.const.container.GONE`<br>A container that's gone answers every command with this code: Docker's own for "the engine failed, not the command", which the held container also returns when it finds its container missing. | — | `src/crew_org/session/container.py:GONE` | — | — | src/crew_org/session/container.py:GONE | crew#778 |
 | `config.const.container.GRACE`<br>How long a command has to stop after its timeout, before it's killed. | guards | `src/crew_org/tools/container.py:GRACE` | — | — | src/crew_org/tools/container.py:GRACE | — |
 | `config.const.container.LIFETIME`<br>How long a container keeps itself alive. | guards | `src/crew_org/tools/container.py:LIFETIME` | — | — | src/crew_org/tools/container.py:LIFETIME | — |
 | `config.const.container.SETUP_TIMEOUT`<br>Setup fetches and installs, so it gets longer than a test run. | guards | `src/crew_org/tools/container.py:SETUP_TIMEOUT` | — | — | src/crew_org/tools/container.py:SETUP_TIMEOUT | — |
+| `config.const.conversation.BACKSTOP_S`<br>BACKSTOP_S = 7200 | — | `src/crew_org/session/conversation.py:BACKSTOP_S` | — | — | src/crew_org/session/conversation.py:BACKSTOP_S | crew#778 |
+| `config.const.conversation.COMPACT_AT`<br>A prompt this size or larger is compacted first, once (the Sponsor's 125k): the window is 262,144 tokens, about 196k once 65,536 of output is kept. | — | `src/crew_org/session/conversation.py:COMPACT_AT` | — | — | src/crew_org/session/conversation.py:COMPACT_AT | crew#778 |
+| `config.const.conversation.QUIET_LIMIT`<br>QUIET_LIMIT = 3 | — | `src/crew_org/session/conversation.py:QUIET_LIMIT` | — | — | src/crew_org/session/conversation.py:QUIET_LIMIT | crew#778 |
 | `config.const.coverage_map.TIMEOUT`<br>The whole suite under coverage, which is slower than a plain run. | — | `src/crew_org/tools/coverage_map.py:TIMEOUT` | — | — | src/crew_org/tools/coverage_map.py:TIMEOUT | — |
 | `config.const.criteria_check.CRITERIA_LIMIT`<br>CRITERIA_LIMIT = 2000 | evidence | `src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT | — |
 | `config.const.criteria_check.PLANNED_LIMIT`<br>What the check is shown of other epics' planned stories. | evidence | `src/crew_org/flows/criteria_check.py:PLANNED_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:PLANNED_LIMIT | — |
@@ -434,11 +454,25 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.settle_crew.QUESTION_CHARS`<br>QUESTION_CHARS = 140 | answer_shape | `src/crew_org/crews/settle_crew.py:QUESTION_CHARS` | — | — | src/crew_org/crews/settle_crew.py:QUESTION_CHARS | — |
 | `config.const.settle_crew.REASON_CHARS`<br>REASON_CHARS = 100 | answer_shape | `src/crew_org/crews/settle_crew.py:REASON_CHARS` | — | — | src/crew_org/crews/settle_crew.py:REASON_CHARS | — |
 | `config.const.settle_crew.SOURCE_CHARS`<br>SOURCE_CHARS = 160 | answer_shape | `src/crew_org/crews/settle_crew.py:SOURCE_CHARS` | — | — | src/crew_org/crews/settle_crew.py:SOURCE_CHARS | — |
+| `config.const.signals.READING_CALLS`<br>Model calls in a row with no edit applied and no run, before the session stops. | — | `src/crew_org/session/signals.py:READING_CALLS` | — | — | src/crew_org/session/signals.py:READING_CALLS | crew#778<br>crew-presentation#124 |
+| `config.const.signals.VIEWS_OF_ONE_FILE`<br>Views of one file with no edit to it between, before the session stops. | — | `src/crew_org/session/signals.py:VIEWS_OF_ONE_FILE` | — | — | src/crew_org/session/signals.py:VIEWS_OF_ONE_FILE | crew#778<br>crew-presentation#124 |
 | `config.const.stack.TIMEOUT`<br>TIMEOUT = 3.0 | — | `src/crew_org/tools/stack.py:TIMEOUT` | — | — | src/crew_org/tools/stack.py:TIMEOUT | — |
 | `config.const.standup.MAX_STANDUP_CHARS`<br>The retro reads the sprint's standups; this bounds how much. | — | `src/crew_org/flows/standup.py:MAX_STANDUP_CHARS` | — | — | src/crew_org/flows/standup.py:MAX_STANDUP_CHARS | — |
+| `config.const.start.HINTS`<br>HINTS = 15 | — | `src/crew_org/session/start.py:HINTS` | — | — | src/crew_org/session/start.py:HINTS | crew#778 |
 | `config.const.stepped.MAX_FILES`<br>A plan is for splitting one answer that's too big; past this, the story is. | answer_shape | `src/crew_org/crews/stepped.py:MAX_FILES` | — | — | src/crew_org/crews/stepped.py:MAX_FILES | — |
 | `config.const.story_problem.SHOWN`<br>How many of the failing tests the evidence lists: the pattern shows well before 25, and the comment is read by a person as well as the crew. | flow | `src/crew_org/flows/story_problem.py:SHOWN` | — | — | src/crew_org/flows/story_problem.py:SHOWN | — |
 | `config.const.strain.REVISIT_CONFLICTS`<br>How many different stories of one sprint must collide in the same file before the Architect revisits the design. org.yaml's `design.revisit_conflicts` overrides it. | flow | `src/crew_org/flows/strain.py:REVISIT_CONFLICTS` | — | — | src/crew_org/flows/strain.py:REVISIT_CONFLICTS | — |
+| `config.const.tools.EDIT_CONTEXT`<br>The lines either side of an edit its reply shows (SWE-agent's and OpenHands' editors). | — | `src/crew_org/session/tools.py:EDIT_CONTEXT` | — | — | src/crew_org/session/tools.py:EDIT_CONTEXT | crew#778 |
+| `config.const.tools.EDIT_LINES`<br>EDIT_LINES = 80 | — | `src/crew_org/session/tools.py:EDIT_LINES` | — | — | src/crew_org/session/tools.py:EDIT_LINES | crew#778 |
+| `config.const.tools.FIND_HITS`<br>FIND_HITS = 40 | — | `src/crew_org/session/tools.py:FIND_HITS` | — | — | src/crew_org/session/tools.py:FIND_HITS | crew#778 |
+| `config.const.tools.LINT_TIMEOUT`<br>LINT_TIMEOUT = 120 | — | `src/crew_org/session/tools.py:LINT_TIMEOUT` | — | — | src/crew_org/session/tools.py:LINT_TIMEOUT | crew#778 |
+| `config.const.tools.NEAR_CONTEXT`<br>The lines either side of the closest block shown when `old` isn't found (Aider). | — | `src/crew_org/session/tools.py:NEAR_CONTEXT` | — | — | src/crew_org/session/tools.py:NEAR_CONTEXT | crew#778 |
+| `config.const.tools.NEAR_RATIO`<br>NEAR_RATIO = 0.6 | — | `src/crew_org/session/tools.py:NEAR_RATIO` | — | — | src/crew_org/session/tools.py:NEAR_RATIO | crew#778 |
+| `config.const.tools.RUN_TIMEOUT`<br>A run's command, and the lint after an edit: the replay's limits. | — | `src/crew_org/session/tools.py:RUN_TIMEOUT` | — | — | src/crew_org/session/tools.py:RUN_TIMEOUT | crew#778 |
+| `config.const.tools.SEARCH_FILES`<br>SEARCH_FILES = 30 | — | `src/crew_org/session/tools.py:SEARCH_FILES` | — | — | src/crew_org/session/tools.py:SEARCH_FILES | crew#778 |
+| `config.const.tools.SEARCH_HITS`<br>SEARCH_HITS = 50 | — | `src/crew_org/session/tools.py:SEARCH_HITS` | — | — | src/crew_org/session/tools.py:SEARCH_HITS | crew#778 |
+| `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
+| `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |
 | `config.const.workspace.MAX_FAILURE_REPORT_CHARS`<br>What a command produced, kept whole. | edits | `src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS` | — | — | src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS | — |
 | `config.const.workspace.REPLACE_SHOWN_CHARS`<br>The most of a definition a refusal shows back, ready to send as a `replace`. | edits | `src/crew_org/tools/workspace.py:REPLACE_SHOWN_CHARS` | — | — | src/crew_org/tools/workspace.py:REPLACE_SHOWN_CHARS | — |
@@ -512,7 +546,7 @@ section; one no line holds for is unplaced, never guessed.
 | `told.deploy_review_crew.block_the_change_when_what_it`<br>Block the change when what it runs or ships can't be run or reached as it will be deployed, or runs with more privilege than it needs. | guards | `src/crew_org/crews/deploy_review_crew.py:review_deploy` | DevOps Engineer | the prompt, src/crew_org/crews/deploy_review_crew.py:review_deploy | guidance | — |
 | `told.deploy_review_crew.dont_raise_a_new_one_late`<br>Don't raise a new one late unless this change introduced it. | guards | `src/crew_org/crews/deploy_review_crew.py:review_deploy` | DevOps Engineer | the prompt, src/crew_org/crews/deploy_review_crew.py:review_deploy | guidance | — |
 | `told.deploy_review_crew.that_holds_even_when_the_line`<br>That holds even when the line at fault is older than this change: an image whose server can't be reached is the image's problem. | guards | `src/crew_org/crews/deploy_review_crew.py:review_deploy` | DevOps Engineer | the prompt, src/crew_org/crews/deploy_review_crew.py:review_deploy | guidance | — |
-| `told.deploy_review_crew.where_a_mechanical_check_would_catch`<br>Where a mechanical check would catch it next time (a linter rule, a smoke test run the way it's deployed, a dependency updater), the action names that check too: the tool, and a rule number only when you're sure of it. | guards | `src/crew_org/crews/deploy_review_crew.py:review_deploy` | DevOps Engineer | the prompt, src/crew_org/crews/deploy_review_crew.py:review_deploy | guidance | — |
+| `told.deploy_review_crew.where_a_mechanical_check_would_catch`<br>Where a mechanical check would catch it next time (a linter rule, a smoke test run the way it's deployed, a dependency updater), the action names that check too: the tool, and a rule number only when you're sure of it. | guards | `src/crew_org/crews/deploy_review_crew.py:review_deploy` | DevOps Engineer | the prompt, src/crew_org/crews/deploy_review_crew.py:review_deploy | maybe session.run | — |
 | `told.design_crew.also_report_in_undeclared_every_choice`<br>Also report, in `undeclared`, every choice that introduces a practice the code above doesn't show and the declared changes don't list, with what the project does today. | guards | `src/crew_org/crews/design_crew.py:review_design` | Code Reviewer | the prompt, src/crew_org/crews/design_crew.py:review_design | guidance | — |
 | `told.design_crew.it_is_being_revisited_because_change`<br>It is being revisited because: … Change only what that reason calls for, and list each change. | guards | `src/crew_org/crews/design_crew.py:propose_design` | Architect | the prompt, src/crew_org/crews/design_crew.py:propose_design | guidance | — |
 | `told.design_crew.name_an_epic_only_from_the`<br>Name an epic only from the list above. | scope | `src/crew_org/crews/design_crew.py:place_changes` | Architect | the prompt, src/crew_org/crews/design_crew.py:place_changes | guidance | — |
@@ -564,7 +598,7 @@ section; one no line holds for is unplaced, never guessed.
 | `told.product_owner.onboarding.the_record_is_read_by_roles`<br>The record is read by roles that cannot: a Business Analyst splitting an epic against its scope, a Developer checking what it may touch. | — | `src/crew_org/config/agents.yaml:product_owner.onboarding.backstory` | Product Owner (onboarding) | agents.yaml product_owner.onboarding.backstory | guidance | — |
 | `told.product_owner.you_decompose_by_outcome_never_by`<br>You decompose by outcome, never by architectural layer — "build the database layer" is not an epic because nobody can use it. | scope | `src/crew_org/config/agents.yaml:product_owner.backstory` | Product Owner | agents.yaml product_owner.backstory | guidance | — |
 | `told.product_owner.you_do_not_write_acceptance_criteria`<br>You do not write acceptance criteria and you do not size work; that is the Business Analyst's craft, and you will not be able to do it. | evidence | `src/crew_org/config/agents.yaml:product_owner.backstory` | Product Owner | agents.yaml product_owner.backstory | guidance | — |
-| `told.qa_crew.a_check_proves_only_what_its`<br>A check proves only what its steps execute: a `tests` check that runs lint and pytest proves nothing about a workflow it never runs, and a test the run skipped proves nothing at all. | evidence | `src/crew_org/crews/qa_crew.py:verify_story` | QA Engineer | the prompt, src/crew_org/crews/qa_crew.py:verify_story | maybe check.gates.the_branch_changes_nothing | — |
+| `told.qa_crew.a_check_proves_only_what_its`<br>A check proves only what its steps execute: a `tests` check that runs lint and pytest proves nothing about a workflow it never runs, and a test the run skipped proves nothing at all. | evidence | `src/crew_org/crews/qa_crew.py:verify_story` | QA Engineer | the prompt, src/crew_org/crews/qa_crew.py:verify_story | maybe session.run | — |
 | `told.qa_crew.a_criterion_is_proven_only_by`<br>A criterion is proven only by work that also keeps to them: hold it unproven if the code does what a row rules out. | evidence | `src/crew_org/crews/qa_crew.py:verify_story` | QA Engineer | the prompt, src/crew_org/crews/qa_crew.py:verify_story | guidance | — |
 | `told.qa_crew.a_criterion_only_ci_can_run`<br>A criterion only CI can run (an image build, a workflow) is proven by naming the passing check above **that runs it**. | evidence | `src/crew_org/crews/qa_crew.py:verify_story` | QA Engineer | the prompt, src/crew_org/crews/qa_crew.py:verify_story | guidance | — |
 | `told.qa_crew.dont_cite_a_test_you_havent`<br>Don't cite a test you haven't read. | evidence | `src/crew_org/crews/qa_crew.py:verify_story` | QA Engineer | the prompt, src/crew_org/crews/qa_crew.py:verify_story | guidance | — |
@@ -643,7 +677,7 @@ section; one no line holds for is unplaced, never guessed.
 | `§16.3`<br>When it fires, fail loudly. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |
 | `§19 a_digest_cant_be_invented`<br>A digest can't be invented. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | guidance | crew#364 |
 | `§19.1`<br>Generated code runs sandboxed. §14 applies to every project. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | named in the text: `tools/sandbox.py`. | — |
-| `§19.5`<br>Checks are never weakened to make a change pass. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | named in the text: merged definitions and their tests can't disappear silently (§15). | crew#140 |
+| `§19.5`<br>Checks are never weakened to make a change pass. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | maybe session.run<br>named in the text: merged definitions and their tests can't disappear silently (§15). | crew#140 |
 | `§19.6`<br>Failure is loud. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | guidance | — |
 | `§19.8`<br>What ships as an image is proven the way it's run. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | guidance | crew#494<br>sprint-metrics#433 |
 | `§19.9`<br>A release can be run again. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Developer<br>Product Owner (onboarding) | §19 | maybe decision.acceptance.close_finished_parents<br>named in the text: by the release check (§20), which reads what each version actually published, and by the deploy review of any change to a release. | — |

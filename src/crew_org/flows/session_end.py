@@ -25,10 +25,10 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from crew_org.columns import BLOCKED
-from crew_org.events import EventKind, EventSink, held
+from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts, delivery, gates
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.conclusion import story_rows
@@ -37,6 +37,7 @@ from crew_org.flows.story_problem import return_to_refinement
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
 from crew_org.rules import Rule
+from crew_org.session.conversation import Ending
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.workspace import CheckResult, check
@@ -58,21 +59,6 @@ _STOPS = {
     "ceiling": "a ceiling",
     "no_tool_call": "3 replies in a row that called no tool",
 }
-
-
-class Ending(Protocol):
-    """How a session ended: Stage C's `crew_org.session.conversation.Ending`.
-
-    `said` is `done`'s statement, or `blocked`'s `missing` and `kind`; `stop` names
-    a stop; `evidence` is the last failure, what it tried, the signals, and on a
-    stop what stopped it.
-    """
-
-    how: str
-    said: dict[str, Any]
-    stop: str
-    why: str
-    evidence: dict[str, Any]
 
 
 @dataclass
@@ -121,6 +107,22 @@ def route(
         record=record,
         run_checks=run_checks,
         note=note,
+    )
+    # Which rules sent a story back, for the measures of decision 8: names only (ADR 0010).
+    rules = [finding.rule for finding in verdict.findings]
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.GATE_CHECKED,
+            role="Developer",
+            card=number,
+            summary=f"#{number} gates at done: " + (", ".join(rules) if rules else "passed"),
+            detail={
+                "repo": repo,
+                "passed": verdict.passed,
+                "rules": rules,
+                "already_done": verdict.already_done,
+            },
+        )
     )
     if verdict.already_done:
         return Route(QA, "decision.delivery.outcome", verdict=verdict)

@@ -579,3 +579,23 @@ def test_a_rule_is_told_once_in_a_form_however_many_fields_it_checks():
     path = rulebook.catalog()["form.path.stays_in_the_repository"].description
     named = rulebook.catalog()["check.delivery.these_named_tests_dont_exist"].description
     assert text.count(path) == 1 and text.count(named) == 1
+
+
+def test_a_conversation_call_sends_the_tools_and_records_it_as_any_call(seen):
+    """The Developer's session (crew#778): one call of a conversation the caller keeps."""
+    proxy = Proxy(reply("", finish="tool_calls", reasoning=7))
+    tool = {"type": "function", "function": {"name": "view", "parameters": {}}}
+    said = calls.converse(
+        "developer", [{"role": "system", "content": "s"}], [tool], send=proxy, turn=4
+    )
+    body = proxy.sent[0]
+    assert (body["model"], body["max_tokens"], body["tool_choice"]) == (
+        "crew-code-think",
+        65536,
+        "auto",
+    )
+    assert body["tools"] == [tool] and "response_format" not in body
+    assert (said.finish_reason, said.usage["reasoning_tokens"]) == ("tool_calls", 7)
+    started, finished = (e for e in seen if e.kind.value.startswith("llm."))
+    assert started.detail["turn"] == finished.detail["turn"] == 4
+    assert finished.detail["tool_calls"] == 0 and finished.detail["completion_tokens"] == 27

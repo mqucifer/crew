@@ -75,6 +75,8 @@ One ADR for the session (decisions 1 to 4b and P1 to P6 as the replay left them)
 - Context kept bounded (P1, decision 3).
 - The records of P5.
 
+Built in `crew_org/session/`, with each model call made by `calls.converse` (crew#778, Stage C). `scripts/run_session.py` runs one session on a story at a commit, outside the tick, for proving it before Stage D wires it into delivery.
+
 ### Stage D: delivery
 
 - The deliver phase runs sessions (P1), commits and resumes (P2, P3), and routes `blocked` (decision 9).

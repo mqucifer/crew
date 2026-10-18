@@ -168,6 +168,20 @@ SORTED: dict[str, tuple[str, str]] = {
     "repair.fallback.quote.indent": (FEEDBACK, "replace_text's tolerance for indentation"),
     "repair.fallback.quote.final_newline": (FEEDBACK, "replace_text's tolerance for a newline"),
     "repair.fallback.block.name": (RETIRED, "a block found under another name (ADR 0026)"),
+    # --- the session's own tools (built, crew#778 Stage C) ------------------------------
+    "session.arguments": (FEEDBACK, "a call's arguments: the reply lists what it takes"),
+    "session.view": (FEEDBACK, "no such file or definition, or not text"),
+    "session.search": (FEEDBACK, "no pattern, or no such path"),
+    "session.path": (
+        FEEDBACK,
+        "the tools read and write on the host, so their reply holds them to the worktree",
+    ),
+    "session.replace_text": (FEEDBACK, "the quoted lines aren't there once, whole"),
+    "session.replace_definition": (FEEDBACK, "not an existing Python file"),
+    "session.write_file": (FEEDBACK, "an existing file, without `overwrite`"),
+    "session.parse_guard": (FEEDBACK, "an edit that would stop the file parsing isn't applied"),
+    "session.run": (FEEDBACK, "no tests named, or no pytest or lint among the checks"),
+    "session.tests_for": (FEEDBACK, "no coverage map: Python only"),
     # --- settings ------------------------------------------------------------------------
     "config.org.sandbox.engine": (WORKSPACE, "the container's engine"),
     "config.org.sandbox.image": (WORKSPACE, "the default image, before a project's own"),

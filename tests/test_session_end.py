@@ -8,10 +8,8 @@ goes to the gates, and from there to review, QA, a new session or the ruling.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -19,21 +17,11 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows import delivery, gates, session_end
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER
 from crew_org.rules import RETURN_RULES, Rule
+from crew_org.session.conversation import Ending
 from crew_org.tools.github_project import Card
 
 REPO = "sprint-metrics"
 CAPPED = "tests/test_metrics.py::test_rate_is_capped"
-
-
-@dataclass
-class Ending:
-    """Stage C's `Ending`, by its fields."""
-
-    how: str
-    said: dict[str, Any] = field(default_factory=dict)
-    stop: str = ""
-    why: str = ""
-    evidence: dict[str, Any] = field(default_factory=dict)
 
 
 EVIDENCE = {
@@ -226,9 +214,16 @@ def verdict(monkeypatch):
 
 def test_done_through_every_gate_goes_on_to_review_with_its_sections(verdict):
     verdict.verdict = gates.Verdict(declared={CAPPED: "uncapped"})
-    routed, board, issues, _ = route(Ending("done", SAID))
+    routed, board, issues, seen = route(Ending("done", SAID))
     assert routed.to == session_end.REVIEW and not board.status and not issues.posted
     assert f"- `{CAPPED}`: uncapped" in routed.sections, "for the pull request"
+    [checked] = [e for e in seen if e.kind is EventKind.GATE_CHECKED]
+    assert checked.detail == {
+        "repo": REPO,
+        "passed": True,
+        "rules": [],
+        "already_done": False,
+    }
 
 
 def test_done_already_proven_goes_to_qa(verdict):
@@ -240,8 +235,10 @@ def test_findings_start_a_new_session_with_every_one_and_the_last_done(verdict):
     verdict.verdict = gates.Verdict(
         findings=[gates.Finding("a.rule", "First finding."), gates.Finding("b.rule", "Second.")]
     )
-    routed, board, _, _ = route(Ending("done", SAID))
+    routed, board, _, seen = route(Ending("done", SAID))
     assert routed.to == session_end.SESSION and routed.rule == "a.rule" and not board.status
+    [checked] = [e for e in seen if e.kind is EventKind.GATE_CHECKED]
+    assert checked.detail["rules"] == ["a.rule", "b.rule"] and not checked.detail["passed"]
     assert "### 1.\n\nFirst finding." in routed.start and "### 2.\n\nSecond." in routed.start
     assert "## The last `done`" in routed.start
     assert "- `tests/test_metrics.py::test_rate_is_capped`: uncapped" in routed.start
