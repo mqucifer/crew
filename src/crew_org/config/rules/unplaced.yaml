@@ -209,11 +209,6 @@ told.refinement_crew.propose_epics_only_for_what_the:
   - crew#369
   - crew#645
   - sprint-metrics#569
-§16 the_business_analyst_splits_each_epic:
-  guidance: true
-  origin:
-  - crew#231
-  - crew#312
 §16 the_projects_record_comes_first:
   guidance: true
   origin:

@@ -23,7 +23,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
 | A setting that changes what the tick does | 186 |
-| Told, and not checked by anything above | 172 |
+| Told, and not checked by anything above | 171 |
 
 ## Categories
 
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 101 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 89 |
+| Unplaced | | 88 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -206,7 +206,7 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|---|---|---|---|
 | `decision.rework_gate`<br>An epic the Sponsor sent back is split again only on their word, and once.<br>Cases: `decision.board_flow.rework_gate` (src/crew_org/flows/board_flow.py:refine_epics), `skip.board_flow.already_answered` (src/crew_org/flows/board_flow.py:rework_gate), `skip.board_flow.rework_refused` (src/crew_org/flows/board_flow.py:rework_gate) | flow | `src/crew_org/flows/board_flow.py:rework_gate` | — | — | src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/board_flow.py:rework_gate<br>src/crew_org/flows/board_flow.py:tick<br>src/crew_org/flows/board_flow.py:unstarted_children | crew#192<br>crew#440 |
 | `skip.board_flow.a_goal_written_by_not_the`<br>a Goal written by …, not the Sponsor | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | — |
-| `skip.board_flow.its_criteria_cant_all_pass_to`<br>its criteria can't all pass: to the Product Owner | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | §16.1 (both cite crew#583; given to no role) | src/crew_org/events.py:attributed<br>src/crew_org/flows/criteria_check.py:check_each | crew#583<br>crew#612<br>crew#807<br>sprint-metrics#551 |
+| `skip.board_flow.its_criteria_cant_all_pass_to`<br>its criteria can't all pass: to the Product Owner | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | §16 refinements_steps_read_the_code_in (both cite crew#807; given to no role)<br>§16.1 (both cite crew#583; given to no role) | src/crew_org/events.py:attributed<br>src/crew_org/flows/criteria_check.py:check_each | crew#583<br>crew#612<br>crew#807<br>sprint-metrics#551 |
 | `skip.board_flow.not_ready_still_open_for_the`<br>not ready: … still open for the Architect | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/record.py:parse<br>src/crew_org/flows/record.py:split | — |
 | `skip.board_flow.waits_for_planned`<br>waits for planned … | flow | `src/crew_org/flows/board_flow.py:settle_wait` | — | — | src/crew_org/flows/board_flow.py:settle_wait | — |
 | `skip.judged_at_this_head`<br>A gate judges a pull request's head once: QA's verdict and the Code Reviewer's review aren't repeated at the same head.<br>Cases: `skip.acceptance.already_judged_at` (src/crew_org/flows/acceptance.py:run_qa), `skip.review.already_reviewed_at_this_head` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa<br>src/crew_org/flows/review.py:review_open_pulls | — |
@@ -597,7 +597,6 @@ section; one no line holds for is unplaced, never guessed.
 | `§16 a_failing_run_is_reported_grouped`<br>A failing run is reported grouped by cause (crew#591, 2026-10-11), in the Developer's session and in the gates' findings: each first error line once, with how many tests it hit, every failing test as… | — | `docs/ways-of-working.md:§16` | — | — | maybe config.const.attempts.REPAIR_REPORT_CHARS | crew#591<br>sprint-metrics#567 |
 | `§16 a_focused_context_has_a_ceiling`<br>A focused context has a ceiling (crew#591, 2026-10-10). sprint-metrics#537's repair was shown all 25 files its test report's tracebacks passed through, 479,252 characters (181k tokens), and came back… | — | `docs/ways-of-working.md:§16` | — | — | maybe config.const.repo_context.FOCUSED_CHAR_CEILING | crew#591<br>sprint-metrics#537<br>sprint-metrics#567 |
 | `§16 qa_is_shown_the_tests_the`<br>QA is shown the tests the work touches or names, and asks for more (crew#231, #369, 2026-09-29). | — | `docs/ways-of-working.md:§16` | — | — | maybe config.const.repo_context.READ_FIRST_CHAR_CEILING | crew#231<br>crew#312<br>crew#369<br>crew#645<br>sprint-metrics#569 |
-| `§16 the_business_analyst_splits_each_epic`<br>The Business Analyst splits each epic from its own view of the repository (crew#231, 2026-09-30). | — | `docs/ways-of-working.md:§16` | — | — | maybe config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS | crew#231<br>crew#312 |
 | `§16 the_projects_record_comes_first`<br>The project's record comes first. | — | `docs/ways-of-working.md:§16` | — | — | guidance | crew#111<br>crew#131 |
 | `§16 what_this_does_not_license`<br>What this does not license. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |
 | `§16 why_this_is_a_rule_and`<br>Why this is a rule and not a lesson learned. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |

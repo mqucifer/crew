@@ -29,12 +29,11 @@ Sponsor, 2026-10-10 (D4 of the plan).
   and which merged tests execute which code. The last is a coverage map the crew builds
   in its sandbox for each base commit: test impact analysis, also called regression test
   selection.
-- **The split's pinning tests come from the map,** not from text matching: the tests
-  covering the files and definitions the epic and its rows name, each declared by a
-  story as kept or changed (ADR 0023).
-- **What the graph misses is read by a tool inside the call** (ADR 0025): the split
-  reads a file and continues, instead of returning `need_files` and being re-prompted.
-  `need_files` stays as the last resort, for the split and QA.
+- **The tests that run what an epic names come from the map,** not from text matching,
+  each declared by a story as kept or changed (ADR 0023). Refinement's steps ask for
+  them with `tests_for` in their sessions (ADR 0033); nothing preloads them.
+- **What the graph misses is read by a tool inside the call** (ADR 0025): QA and bug
+  triage read a file and continue, with `need_files` as the last resort.
 - **A small scout model is kept as a re-ranker option,** the two-stage pattern from
   information retrieval, for when the graph's candidates exceed the ceiling. It is built
   only if the replay after the graph shows that gap. It need not be the crew's main
@@ -53,8 +52,9 @@ Sponsor, 2026-10-10 (D4 of the plan).
   - The Developer finds the rest with `find` (a definition with its callers and
     importers, from the graph), `tests_for` (the coverage map) and `search`, and reads
     windows of files with `view`. `find` and `tests_for` are Python only to start.
-  - The read tool, `need_files` and the reading ceilings stay for refinement and QA.
-    The Developer has none of them (crew#778, Stage E).
+  - Refinement's steps work the same way (crew#807, ADR 0033), with the read tools
+    only. The read tool, `need_files` and the reading ceilings stay for QA and bug
+    triage. The Developer and refinement have none of them.
 
 **The standards.** Test impact analysis (Rothermel and Harrold's regression test
 selection; pytest-testmon and Ekstazi in practice); a dependency graph from static
@@ -102,3 +102,4 @@ analysis; tool use, also called function calling; two-stage retrieval.
 - **2026-10-18:** built for the Developer. Delivery runs as a session only, and the
   Developer's `read_file`, `need_files` and reading ceilings are deleted; the split and
   QA keep theirs (crew#778, Stage E; the Sponsor's no-fallback decision).
+- **2026-10-18:** refinement works in a session (crew#807, ADR 0033). Its steps start with the graph's hints and look up the rest; the split's pinning tests and `need_files` are gone. The read tool stays for QA and bug triage.

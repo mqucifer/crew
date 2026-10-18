@@ -151,3 +151,4 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
 - **2026-10-18:** the Developer's one-call path is deleted: its answer forms and their
   refusals, its rounds and its repairs (crew#778, Stage E; the Sponsor's no-fallback
   decision). The other steps keep their rounds and forms.
+- **2026-10-18:** refinement's steps (the panel, the decomposition, the settles, the split, the criteria check and its repair, the UX note) are sessions through `calls.converse`, each ending with its own form as `done` (crew#807, ADR 0033). A refusal is a reply in the session, not a re-ask.
