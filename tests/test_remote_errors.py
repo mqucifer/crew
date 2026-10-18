@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from crew_org.events import EventSink
-from crew_org.flows import delivery
+from crew_org.flows import session_delivery
 from crew_org.flows.delivery import (
     INTERRUPTED_MARKER,
     INTERRUPTIONS_BEFORE_BLOCKING,
@@ -119,7 +119,7 @@ def work(monkeypatch, issues):
     def interrupted(*_a, **_k):
         _unreadable_reply()
 
-    monkeypatch.setattr(delivery, "developer", lambda: interrupted)
+    monkeypatch.setattr(session_delivery, "deliver_by_session", interrupted)
     board, result = Board(), DeliveryResult()
     _work_one_card(
         CARD,
@@ -163,7 +163,7 @@ def test_a_session_its_container_interrupted_is_tried_again_from_its_checkpoint(
     def lost(*_a, **_k):
         raise SessionInterrupted("the workspace container", "No such container")
 
-    monkeypatch.setattr(delivery, "developer", lambda: lost)
+    monkeypatch.setattr(session_delivery, "deliver_by_session", lost)
     issues = Issues()
     board, result = Board(), DeliveryResult()
     _work_one_card(

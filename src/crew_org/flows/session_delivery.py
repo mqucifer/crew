@@ -26,7 +26,7 @@ resumed.
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -42,7 +42,14 @@ from crew_org.flows.delivery import (
     prior_verdicts,
 )
 from crew_org.flows.presentation_notes import story_notes
-from crew_org.git_ops import CHECKPOINT, MergeConflict, Workspace, branch_name
+from crew_org.git_ops import (
+    CHECKPOINT,
+    DONE_TRAILER,
+    GitError,
+    MergeConflict,
+    Workspace,
+    branch_name,
+)
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
 from crew_org.rules import Rule
@@ -54,6 +61,8 @@ from crew_org.tools.workspace import check
 
 # One delivery's model time, shared by its sessions (decision 3; the operator, crew#778).
 BACKSTOP_S = conversation.BACKSTOP_S
+# Where a story goes when the route itself fails: blocked for a person, by delivery.
+UNROUTED = "unrouted"
 
 
 class SessionInterrupted(RuntimeError):
@@ -76,6 +85,12 @@ class Delivered:
     said: dict[str, Any]
     verdict: Any = None
     rule: str = ""
+    # The pull request's sections from the gates (`Route.sections`).
+    sections: list[str] = field(default_factory=list)
+    # When the route couldn't be settled: how the session ended, why, and its evidence.
+    how: str = ""
+    error: str = ""
+    evidence: str = ""
 
 
 def deliver_by_session(
@@ -105,6 +120,10 @@ def deliver_by_session(
     branch = branch_name(number, card.title)
     outcome.branch = branch
     live = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+    if live is not None and not rework:
+        # Before any session: re-delivering would overwrite the diff a review is
+        # reading, so nothing is worth building. Checked again before the push.
+        return _open_pull(outcome, live)
     coverage = coverage_for(ws, repo, sink, number)
 
     checkpoint = ws.checkpoint_on(branch)
@@ -146,7 +165,8 @@ def deliver_by_session(
         instead = returned_start(issues, repo, number, branch, worktree, known=card)
     else:
         instead = None
-    since = _merge_base(worktree)
+    # After a catch-up, the branch's base is main as it is now.
+    since = _merge_base(worktree) or "origin/HEAD"
     sink.emit(
         CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
     )
@@ -157,13 +177,19 @@ def deliver_by_session(
     held = Held(worktree, f"{repo}-{number}")
     try:
         started = held.start()
-        if not started.ok:
+        if not started.ok and started.code == 2:
+            # The project's own definition can't be run: the design's to fix, said as
+            # a refused design is today, so it's found as one (crew#690).
             return _unready(
-                outcome,
-                Rule.WORKSPACE_UNREADY,
-                f"the workspace didn't start: {started.output[-500:]}",
+                outcome, Rule.WORKSPACE_UNREADY, f"$ design\n(exit 2)\n{started.output}"
             )
+        if not started.ok:
+            # The engine down, or the image unreachable: not the story's.
+            raise SessionInterrupted("the container engine", started.output[-300:])
         setup = held.setup()
+        if setup is not None and not setup.ok:
+            # Once more: a fetch can fail for a moment.
+            setup = held.setup()
         if setup is not None and not setup.ok:
             # As a failed setup is reported today, so a design's fault is still found
             # as one (crew#690).
@@ -237,7 +263,11 @@ def _sessions(
     rounds = 0
 
     def run_checks(at: Path) -> Any:
-        return check(at, held=held, since=since)
+        checked = check(at, held=held, since=since)
+        if held.lost:
+            # A gate's finding would blame the branch for the infrastructure.
+            raise SessionInterrupted("the workspace container", "lost while the gates ran")
+        return checked
 
     while True:
         rounds += 1
@@ -267,13 +297,18 @@ def _sessions(
             )
             raise SessionInterrupted(service, str(ending.said.get("error") or ending.why))
         if ending.how == "done":
-            # Always a commit, so the next delivery can read what this `done` said.
-            ws.commit(
-                f"feat({number}): {card.title}\n\n{session_end.last_done(ending.said)}\n"
-                f"Closes #{number}",
-                allow_empty=True,
-            )
-        routed = route(
+            # Always a commit, so the next delivery can read what this `done` said, and
+            # resume from it if the gates don't finish.
+            try:
+                ws.commit(
+                    f"feat({number}): {card.title}\n\n{session_end.last_done(ending.said)}\n"
+                    f"Closes #{number}\n\n{DONE_TRAILER}",
+                    allow_empty=True,
+                )
+            except GitError as exc:
+                raise SessionInterrupted("git", f"the commit at `done` failed: {exc}") from exc
+        routed = _route(
+            route,
             ending,
             card=card,
             repo=repo,
@@ -300,7 +335,8 @@ def _sessions(
                 evidence=ending.evidence,
                 error=None,
             )
-            routed = route(
+            routed = _route(
+                route,
                 stopped,
                 card=card,
                 repo=repo,
@@ -313,8 +349,48 @@ def _sessions(
                 run_checks=run_checks,
             )
         if routed.to != session_end.SESSION:
-            return Delivered(routed.to, ending.said, routed.verdict, routed.rule)
+            return Delivered(
+                routed.to,
+                ending.said,
+                routed.verdict,
+                routed.rule,
+                sections=list(getattr(routed, "sections", None) or []),
+                how=ending.how,
+                error=getattr(routed, "error", ""),
+                evidence=(
+                    session_end.last_done(ending.said)
+                    if ending.how == "done"
+                    else session_end.evidence(ending)
+                ),
+            )
         instead = routed.start
+
+
+def _route(route: Any, ending: Any, **kw: Any) -> Any:
+    """Where the ending goes; or, when that can't be settled, why, for a person.
+
+    A failure that passes, or a lost container, is an interruption, resumed next pass.
+    Anything else, the gates raising or the route's moves failing partway, blocks the
+    card for a person with the session's evidence: wherever the moves stopped, the
+    card ends blocked, labelled and said why (the Sponsor, on crew#778).
+    """
+    from crew_org.tools.remote_errors import transient_remote, where  # noqa: PLC0415
+
+    try:
+        return route(ending, **kw)
+    except SessionInterrupted:
+        raise
+    except Exception as exc:  # noqa: BLE001 - every failure has a handled ending
+        reraise_if_down(exc)
+        if transient_remote(exc):
+            raise
+        return SimpleNamespace(
+            to=UNROUTED,
+            rule=Rule.ROUTE_FAILED,
+            start="",
+            verdict=None,
+            error=f"{type(exc).__name__}: {str(exc)[:300]} at {where(exc)}",
+        )
 
 
 def _land(
@@ -341,19 +417,33 @@ def _land(
 
     number = card.number or 0
     outcome.ended = True
+    if reached.to == UNROUTED:
+        # Delivery blocks it, labels it and says why, wherever the route's moves stopped.
+        outcome.blocked_rule = Rule.ROUTE_FAILED
+        outcome.blocked_reason = (
+            f"its session ended `{reached.how}`, and where that sends the story couldn't be "
+            f"settled: {reached.error}. It's blocked for a person, with the session's "
+            f"evidence.\n\n{reached.evidence}"
+        ).strip()
+        outcome.rejected_diff = _diff(worktree, since)
+        return outcome
     if reached.to not in (session_end.REVIEW, session_end.QA):
         # Back to refinement, or blocked for a person: the route has moved the card.
         outcome.routed = reached.to
         outcome.blocked_rule = reached.rule
         outcome.rejected_diff = _diff(worktree, since)
         return outcome
-    if live is not None and not rework:
-        outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
-        outcome.blocked_reason = (
-            f"PR #{live['number']} is still open on `{outcome.branch}`. Close it, or let that "
-            "pull request finish; re-delivering would overwrite the diff it is reviewing."
-        )
-        return outcome
+    _record_autofix(getattr(reached.verdict, "check", None), outcome, sink, number)
+    try:
+        # The gates ran the project's fixers on the branch, after the commit at `done`:
+        # what they changed is part of what passed, and lands with it (crew#758).
+        ws.commit(f"style({number}): what the project's fixers changed before the checks")
+    except GitError as exc:
+        raise SessionInterrupted("git", f"the fixers' commit failed: {exc}") from exc
+    opened = live or issues.pull_for_branch(repo, outcome.branch or "", known=None)
+    if opened is not None and not rework:
+        outcome.ended = False  # the work is kept, and nothing is pushed over the review
+        return _open_pull(outcome, opened)
     try:
         # A rework's commits go on top of what the review read; a fresh branch or a
         # rebuild replaces the crew's own dead branch, with a lease.
@@ -363,6 +453,8 @@ def _land(
             raise
         outcome.blocked_rule = Rule.PUSH_FAILED
         outcome.blocked_reason = f"could not push `{outcome.branch}`: {exc}"[:400]
+        # The work is only in the clone: kept, so it isn't lost with the block.
+        outcome.ended = False
         return outcome
     summary = str(reached.said.get("summary") or card.title)
     if reached.to == session_end.QA:
@@ -387,28 +479,45 @@ def _land(
         return outcome
     if live is not None:
         outcome.pr = live["number"]
-        issues.comment(
-            repo,
-            live["number"],
-            signed(
-                f"{REWORK_MARKER}\n**Re-worked.** {summary}\n\n"
-                + (
-                    "Rebuilt from main, where other work had changed the same lines. "
-                    if rebuilt
-                    else ""
-                )
-                + "Lint and the full test suite pass in the story's workspace.",
-                "Developer",
-            ),
-        )
+        try:
+            issues.comment(
+                repo,
+                live["number"],
+                signed(
+                    f"{REWORK_MARKER}\n**Re-worked.** {summary}\n\n"
+                    + (
+                        "Rebuilt from main, where other work had changed the same lines. "
+                        if rebuilt
+                        else ""
+                    )
+                    + "Lint and the full test suite pass in the story's workspace."
+                    + "\n".join(reached.sections),
+                    "Developer",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - the push already updated the pull request
+            reraise_if_down(exc)
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} re-worked on PR #{live['number']}, and its comment failed: {exc}"[:300],
+                card=number,
+            )
     else:
-        pr = issues.create_pull(
-            repo,
-            title=card.title,
-            head=outcome.branch,
-            base=default_branch,
-            body=pr_body(card, reached, outcome, _changes(worktree, since)),
-        )
+        try:
+            pr = issues.create_pull(
+                repo,
+                title=card.title,
+                head=outcome.branch or "",
+                base=default_branch,
+                body=pr_body(card, reached, outcome, _changes(worktree, since)),
+            )
+        except Exception as exc:  # noqa: BLE001 - pushed, so the clone's branch is kept
+            if transient_remote(exc):
+                raise
+            outcome.blocked_rule = Rule.PULL_REQUEST_FAILED
+            outcome.blocked_reason = f"pushed `{outcome.branch}`, and no pull request: {exc}"[:400]
+            outcome.ended = False
+            return outcome
         outcome.pr = pr["number"]
     sink.emit(
         CrewEvent(
@@ -441,9 +550,15 @@ def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: l
         "",
         session_end.last_done(reached.said).rstrip(),
     ]
-    sections = session_end.pr_sections(reached.verdict) if reached.verdict is not None else ""
-    if sections:
-        lines += ["", sections.rstrip()]
+    if outcome.autofixed or outcome.unsafe_fixes:
+        lines += ["", "## Fixed by the project's own tools before the checks", ""]
+        lines += [f"- `{path}`" for path in outcome.autofixed]
+        lines += [
+            f"- unsafe fix `{u.split()[0]}` at `{u.split()[1]}`, allowed by "
+            "`workspace.UNSAFE_FIXES`"
+            for u in outcome.unsafe_fixes
+        ]
+    lines += reached.sections
     lines += ["", f"Closes #{card.number}"]
     return signed("\n".join(lines), "Developer")
 
@@ -469,9 +584,10 @@ def resumed_start(checkpoint: str) -> str:
     return (
         "## Where the last session stopped\n\n"
         "It was interrupted: a model call failed, its container was lost, or the tick "
-        "stopped. Its work up to its last green run is in the files below, committed. "
-        "Anything it changed after that run is gone. Carry on from here. Its last "
-        "checkpoint:\n\n" + _quoted(checkpoint)
+        "stopped. Its work up to its last checkpoint, a green run or its `done`, is in the "
+        "files below, committed. Anything it changed after that is gone. If the checkpoint "
+        "is a `done`, the gates didn't finish with it: check the work and call `done` "
+        "again. Its last checkpoint:\n\n" + _quoted(checkpoint)
     )
 
 
@@ -500,7 +616,7 @@ def last_done_on(worktree: Path, number: int) -> str:
     """The last `done` committed on the branch, as the commit at `done` wrote it."""
     found = _git(worktree, "log", "-1", "--format=%B", "--fixed-strings", f"--grep=feat({number}):")
     body = found.split("\n", 1)[1] if "\n" in found else ""
-    return body.replace(f"Closes #{number}", "").strip()
+    return body.replace(f"Closes #{number}", "").replace(DONE_TRAILER, "").strip()
 
 
 def checkpointed(ws: Workspace, sink: EventSink, number: int) -> Any:
@@ -522,6 +638,40 @@ def checkpointed(ws: Workspace, sink: EventSink, number: int) -> Any:
             )
 
     return after_run
+
+
+def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, number: int) -> None:
+    """What the project's fixers changed in the gates' last checks, for review and QA (crew#758)."""
+    fixed = list(getattr(check, "fixed", None) or [])
+    reverted = list(getattr(check, "reverted", None) or [])
+    unsafe = list(getattr(check, "unsafe", None) or [])
+    if not (fixed or reverted or unsafe):
+        return
+    outcome.autofixed, outcome.unsafe_fixes = sorted(fixed), unsafe
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.AUTOFIX_APPLIED,
+            role="Developer",
+            card=number,
+            summary=f"#{number} autofix: {len(fixed)} fixed, {len(reverted)} undone, "
+            f"{len(unsafe)} unsafe",
+            detail={
+                "fixed": fixed,
+                "reverted": reverted,
+                "unsafe": unsafe,
+                "rules": sorted({u.split()[0] for u in unsafe}),
+            },
+        )
+    )
+
+
+def _open_pull(outcome: DeliveryOutcome, live: dict[str, Any]) -> DeliveryOutcome:
+    outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
+    outcome.blocked_reason = (
+        f"PR #{live['number']} is still open on `{outcome.branch}`. Close it, or let that "
+        "pull request finish; re-delivering would overwrite the diff it is reviewing."
+    )
+    return outcome
 
 
 def _unready(outcome: DeliveryOutcome, rule: Rule, why: str) -> DeliveryOutcome:

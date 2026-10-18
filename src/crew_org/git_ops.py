@@ -99,6 +99,9 @@ WORKTREES = WORK_ROOT / "worktrees"
 
 # How a session's checkpoint commit starts (crew#778, P3): `checkpoint(<card>): ...`.
 CHECKPOINT = "checkpoint("
+# The trailer on the commit a session makes at `done`: a checkpoint too, so a delivery
+# whose gates, push or pull request didn't finish resumes from it.
+DONE_TRAILER = "Crew-Checkpoint: done"
 
 # git waits forever on a prompt; fail instead.
 NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "never"}
@@ -303,10 +306,11 @@ class Workspace:
     def checkpoint_on(self, branch: str) -> str | None:
         """The message of the checkpoint the clone's `branch` ends in, or None.
 
-        A session commits a checkpoint after each green run and never pushes it
-        (crew#778, P3), so the clone's branch is the only copy. It outlives the
-        worktree: a crashed or stopped tick leaves it for the next one to resume.
-        None when the branch ends in anything else, or is already on the remote.
+        A session commits a checkpoint after each green run and at `done` (crew#778,
+        P3). The clone's branch outlives the worktree, so a crashed or stopped tick
+        leaves it for the next one to resume. A delivery that ends forgets it, so one
+        still here is unfinished, even if `done`'s was pushed and its pull request
+        failed. None when the branch ends in anything else, or has merged.
         """
         self._ensure_clone()
         try:
@@ -314,15 +318,13 @@ class Workspace:
         except GitError:
             return None
         message = _run(["log", "-1", "--format=%B", tip], cwd=self.clone)
-        if not message.startswith(CHECKPOINT):
+        if not (message.startswith(CHECKPOINT) or DONE_TRAILER in message):
             return None
-        for pushed in (f"origin/{branch}", "origin/HEAD"):
-            try:
-                _run(["merge-base", "--is-ancestor", tip, pushed], cwd=self.clone)
-            except GitError:
-                continue
-            return None
-        return message
+        try:
+            _run(["merge-base", "--is-ancestor", tip, "origin/HEAD"], cwd=self.clone)
+        except GitError:
+            return message
+        return None
 
     def forget(self, branch: str) -> None:
         """Drop the clone's own copy of `branch`, and any checkpoint on it, once closed."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -2157,7 +2158,7 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     return True
 
 
-def developer() -> Any:
+def developer() -> Callable[..., DeliveryOutcome]:
     """Who delivers a story: a session of tool calls (crew#778, ADR 0032).
 
     `deliver_story`, the one-call Developer, is kept, unused, until Stage E removes
@@ -2285,6 +2286,7 @@ def _deliver_and_move(
         )
         result.interrupted.append(card.number or 0)
         return
+    assert outcome is not None, "delivered, or blocked by the error, unless interrupted"
 
     if outcome.routed:
         # The session's ending took it back to refinement, or blocked it for a
