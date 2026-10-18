@@ -9,8 +9,10 @@ with the step's own answer form as `done`. No step edits or runs anything.
 What a step starts with is what it decides from (the Goal, the epic, its siblings, the
 Sponsor's decisions and the record), with the session's map and hints; the repository
 itself is read through the tools. A part another step writes, such as the panel's
-notes, is passed in as it's written. This module says what each step is told; the
-loop, its tools and its records are the Developer's (`conversation`, `tools`).
+notes, is passed in as it's written. This module says what every step is told and
+runs it (`run`); each step's own parts are beside its form, in its crew module. The
+loop and its records are the Developer's (`conversation`), and the tools are its
+read tools (`reading`).
 """
 
 from __future__ import annotations
