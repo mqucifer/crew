@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 6 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 47 |
-| A setting that changes what the tick does | 172 |
+| A setting that changes what the tick does | 175 |
 | Told, and not checked by anything above | 199 |
 
 ## Categories
@@ -36,7 +36,7 @@ section; one no line holds for is unplaced, never guessed.
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:developer`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `delivery_crew:implement_story`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:propose_epics`, `refinement_crew:propose_missing_epics`, `refinement_crew:_delivered_block`, `refinement_crew:split_epic`, `settle_crew` | 87 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 36 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 80 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 61 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 64 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 116 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 25 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 28 |
@@ -360,6 +360,9 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.ci.LOG_TAIL_CHARS`<br>Generous, not a budget (§16): the end of a log is where the failure is. | evidence | `src/crew_org/flows/ci.py:LOG_TAIL_CHARS` | — | — | src/crew_org/flows/ci.py:LOG_TAIL_CHARS | — |
 | `config.const.ci.MAX_JOBS`<br>MAX_JOBS = 3 | evidence | `src/crew_org/flows/ci.py:MAX_JOBS` | — | — | src/crew_org/flows/ci.py:MAX_JOBS | — |
 | `config.const.claude_code.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 1800 | flow | `src/crew_org/tools/claude_code.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/claude_code.py:DEFAULT_TIMEOUT | — |
+| `config.const.container.GRACE`<br>How long a command has to stop after its timeout, before it's killed. | guards | `src/crew_org/tools/container.py:GRACE` | — | — | src/crew_org/tools/container.py:GRACE | — |
+| `config.const.container.LIFETIME`<br>How long a container keeps itself alive. | guards | `src/crew_org/tools/container.py:LIFETIME` | — | — | src/crew_org/tools/container.py:LIFETIME | — |
+| `config.const.container.SETUP_TIMEOUT`<br>Setup fetches and installs, so it gets longer than a test run. | guards | `src/crew_org/tools/container.py:SETUP_TIMEOUT` | — | — | src/crew_org/tools/container.py:SETUP_TIMEOUT | — |
 | `config.const.coverage_map.TIMEOUT`<br>The whole suite under coverage, which is slower than a plain run. | — | `src/crew_org/tools/coverage_map.py:TIMEOUT` | — | — | src/crew_org/tools/coverage_map.py:TIMEOUT | — |
 | `config.const.criteria_check.CRITERIA_LIMIT`<br>CRITERIA_LIMIT = 2000 | evidence | `src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT | — |
 | `config.const.criteria_check.PLANNED_LIMIT`<br>What the check is shown of other epics' planned stories. | evidence | `src/crew_org/flows/criteria_check.py:PLANNED_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:PLANNED_LIMIT | — |

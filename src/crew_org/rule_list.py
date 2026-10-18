@@ -2430,6 +2430,7 @@ _CONFIG_PLACES = {
     "config.const.pinning.": "edits",
     "config.const.delivery_crew.": "edits",
     "config.const.sandbox.": "guards",
+    "config.const.container.": "guards",
     "config.const.base_images.": "guards",
     "config.const.design.": "scope",
     "config.const.design_notes.": "scope",
