@@ -198,6 +198,9 @@ delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
+delivery.workspace_unready:
+  origin:
+  - crew#778
 escalation.policy:
   cases:
   - escalation.allowed

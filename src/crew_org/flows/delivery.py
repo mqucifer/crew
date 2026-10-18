@@ -114,6 +114,11 @@ class DeliveryOutcome:
     # unsafe fix (crew#758): in the diff, and named for review and QA.
     autofixed: list[str] = field(default_factory=list)
     unsafe_fixes: list[str] = field(default_factory=list)
+    # Where a session's ending already moved the card (crew#778): back to refinement,
+    # or blocked for a person. Only the clean-up is left.
+    routed: str | None = None
+    # Its sessions ended, other than by an interruption: the clone's checkpoints go.
+    ended: bool = False
 
     def seen(self, failure_class: str) -> int:
         return self.attempts_by_class.get(failure_class, 0)
@@ -2152,6 +2157,17 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     return True
 
 
+def developer() -> Any:
+    """Who delivers a story: a session of tool calls (crew#778, ADR 0032).
+
+    `deliver_story`, the one-call Developer, is kept, unused, until Stage E removes
+    it with its tests, which reach it through this.
+    """
+    from crew_org.flows.session_delivery import deliver_by_session  # noqa: PLC0415
+
+    return deliver_by_session
+
+
 def _work_one_card(card: Card, **kwargs: Any) -> None:
     """`_deliver_and_move`, as one Developer run: its records share the run's id (crew#449)."""
     with log.run(
@@ -2202,7 +2218,7 @@ def _deliver_and_move(
     outcome = None
     interrupted: str | None = None
     try:
-        outcome = deliver_story(
+        outcome = developer()(
             card,
             board=board,
             issues=issues,
@@ -2223,7 +2239,9 @@ def _deliver_and_move(
         # was blocked for a person on an unreadable GitHub reply mid-outage.
         # The card stays In Progress, and the next pass's reconciliation
         # returns it to the backlog to be tried again. Only a streak blocks it.
-        service = transient_remote(exc)
+        # A session interrupted by its call layer or its container is the same,
+        # and resumes from its last checkpoint (crew#778, P3).
+        service = transient_remote(exc) or getattr(exc, "service", None)
         streak = _interrupted_streak(issues, card_repo, card.number or 0) if service else 0
         if service and streak + 1 < INTERRUPTIONS_BEFORE_BLOCKING:
             interrupted = (
@@ -2248,9 +2266,11 @@ def _deliver_and_move(
         # card that failed this worktree is the only copy of what was
         # written. Read it before removing it, or the card blocks with no
         # evidence of why and the diagnosis has to be guessed.
-        if outcome is not None and not outcome.ok:
+        if outcome is not None and not outcome.ok and outcome.rejected_diff is None:
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
+        if outcome is not None and outcome.ended and outcome.branch:
+            card_ws.forget(outcome.branch)
         profiles.clear()
 
     if interrupted is not None:
@@ -2264,6 +2284,16 @@ def _deliver_and_move(
             rule="decision.delivery.interrupted",
         )
         result.interrupted.append(card.number or 0)
+        return
+
+    if outcome.routed:
+        # The session's ending took it back to refinement, or blocked it for a
+        # person, and said why on the card or its epic (crew#778, decision 9).
+        counts[IN_PROGRESS] -= 1
+        if outcome.routed == "refinement":
+            result.returned.append((card.number or 0, card.parent or 0))
+        else:
+            result.blocked.append(outcome)
         return
 
     if outcome.already_done:

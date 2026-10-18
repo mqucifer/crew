@@ -256,6 +256,8 @@ def harness(tmp_path, monkeypatch):
             calls["escalate"] += 1
             return escalate_result or EscalationResult(outcome=Outcome.COMPLETED, detail="fixed")
 
+        # The one-call Developer these tests cover, kept until Stage E removes both.
+        monkeypatch.setattr(delivery, "developer", lambda: delivery.deliver_story)
         monkeypatch.setattr(delivery, "implement_story", fake_implement)
         # The stepped second attempt (#276) answers through the same fake, so no
         # test here reaches a real model through the plan or the per-file calls.

@@ -97,6 +97,9 @@ WORK_ROOT = Path("var").resolve()
 CLONES = WORK_ROOT / "repos"
 WORKTREES = WORK_ROOT / "worktrees"
 
+# How a session's checkpoint commit starts (crew#778, P3): `checkpoint(<card>): ...`.
+CHECKPOINT = "checkpoint("
+
 # git waits forever on a prompt; fail instead.
 NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "never"}
 
@@ -297,7 +300,36 @@ class Workspace:
             return True
         return False
 
-    def open(self, branch: str, *, resume: bool = False) -> Path:
+    def checkpoint_on(self, branch: str) -> str | None:
+        """The message of the checkpoint the clone's `branch` ends in, or None.
+
+        A session commits a checkpoint after each green run and never pushes it
+        (crew#778, P3), so the clone's branch is the only copy. It outlives the
+        worktree: a crashed or stopped tick leaves it for the next one to resume.
+        None when the branch ends in anything else, or is already on the remote.
+        """
+        self._ensure_clone()
+        try:
+            tip = _run(["rev-parse", "--verify", f"refs/heads/{branch}"], cwd=self.clone)
+        except GitError:
+            return None
+        message = _run(["log", "-1", "--format=%B", tip], cwd=self.clone)
+        if not message.startswith(CHECKPOINT):
+            return None
+        for pushed in (f"origin/{branch}", "origin/HEAD"):
+            try:
+                _run(["merge-base", "--is-ancestor", tip, pushed], cwd=self.clone)
+            except GitError:
+                continue
+            return None
+        return message
+
+    def forget(self, branch: str) -> None:
+        """Drop the clone's own copy of `branch`, and any checkpoint on it, once closed."""
+        with contextlib.suppress(GitError):
+            _run(["branch", "-D", branch], cwd=self.clone)
+
+    def open(self, branch: str, *, resume: bool = False, checkpoint: bool = False) -> Path:
         """Create a worktree on `branch`.
 
         Off `origin/HEAD` by default: a story being delivered for the first
@@ -309,6 +341,9 @@ class Workspace:
         `self.resumed` — the caller has to tell the Developer which world it is
         in, because a prompt describing files that are not there is worse than
         one describing none.
+
+        `checkpoint` starts from the clone's own `branch`, which `checkpoint_on`
+        found ending in a session's checkpoint.
         """
         assert_writable(branch)
         validate_branch_name(branch)
@@ -325,8 +360,8 @@ class Workspace:
         _run(["worktree", "prune"], cwd=self.clone)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.resumed = bool(resume) and self.unfinished_work_on(branch)
-        base = f"origin/{branch}" if self.resumed else "origin/HEAD"
+        self.resumed = checkpoint or (bool(resume) and self.unfinished_work_on(branch))
+        base = branch if checkpoint else f"origin/{branch}" if self.resumed else "origin/HEAD"
         _run(
             ["worktree", "add", "-B", branch, str(path), base],
             cwd=self.clone,
