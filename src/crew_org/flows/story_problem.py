@@ -92,12 +92,14 @@ def return_to_refinement(
     cards: list[Card],
     comment: str,
     reason: str = "pinned tests",
+    **detail: Any,
 ) -> bool:
     """Send the story's epic back to be split again. False if it has no epic.
 
     `reason` is why, for the event: "pinned tests" (the same merged tests
-    broke again, #189) or "gate round trips" (the gates kept returning it,
-    #242).
+    broke again, #189), "gate round trips" (the gates kept returning it,
+    #242), or a Developer session's ending (crew#778). `detail` goes on the
+    event with it: which kind of `blocked`, or which stop.
 
     The story and its unbuilt siblings go back to Ready, out of their sprint,
     so the rework supersedes them and they stop counting against capacity. The
@@ -157,6 +159,7 @@ def return_to_refinement(
                 "epic": epic,
                 "reason": reason,
                 "with": [s.number for s in back if s.number != card.number],
+                **detail,
             },
         )
     )
