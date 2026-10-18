@@ -258,9 +258,13 @@ class Cause:
 
 
 def sprint_report(
-    sprint: str, stories: Iterable[Any], attempts: list[Attempt], escalations: int
+    sprint: str, stories: Iterable[Any], attempts: list[Attempt], returned: int
 ) -> dict[str, Any]:
-    """A sprint's stories, their attempts, and the causes across them."""
+    """A sprint's stories, their attempts, and the causes across them.
+
+    `returned` is how many of them went back to the Business Analyst: what the
+    escalation count measured before escalation retired (ADR 0032, decision 9).
+    """
     stories = sorted(stories, key=lambda c: c.number or 0)
 
     def its(a: Attempt, c: Any) -> bool:
@@ -279,7 +283,7 @@ def sprint_report(
             entry.cards.append(a.card)
     return {
         "sprint": sprint,
-        "escalations": escalations,
+        "returned": returned,
         "stories": [
             {
                 "number": c.number,
@@ -344,6 +348,8 @@ def retries_text(report: dict[str, Any]) -> str:
     lines = [f"{first} of {len(landed)} stories landed on their first attempt."]
     if len(landed) < len(stories):
         lines[0] += f" {len(stories) - len(landed)} more were superseded before they landed."
+    if report.get("returned"):
+        lines[0] += f" {report['returned']} went back to the Business Analyst."
     for c in report["causes"]:
         cards = ", ".join(f"#{n}" for n in c["cards"])
         times = "once" if c["count"] == 1 else f"{c['count']} times"

@@ -12,7 +12,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | Kind | Rules |
 |---|---|
 | The crew's own decisions (`rules.Rule`) | 20 |
-| An answer's form refuses it | 60 |
+| An answer's form refuses it | 59 |
 | The call layer refuses any answer | 7 |
 | A flow's own check sends the answer back | 30 |
 | A guard on a change sends it back | 5 |
@@ -31,7 +31,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 75 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:developer`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `delivery_crew:implement_story`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:propose_epics`, `refinement_crew:propose_missing_epics`, `refinement_crew:_delivered_block`, `refinement_crew:split_epic`, `settle_crew` | 87 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 36 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 79 |
@@ -104,7 +104,6 @@ section; one no line holds for is unplaced, never guessed.
 | `form.Plan.one_step_per_file`<br>a plan names at least one file | scope | `src/crew_org/crews/stepped.py:Plan._one_step_per_file` | Developer | `Plan.files`'s description | src/crew_org/crews/stepped.py:Plan._one_step_per_file | — |
 | `form.PlannedFile.says_what`<br>say what changes in this file | answer_shape | `src/crew_org/crews/stepped.py:PlannedFile._says_what` | Developer | — | src/crew_org/crews/stepped.py:PlannedFile._says_what | — |
 | `form.PresentationNote.has_a_sample`<br>the note carries a sample of the finished output | answer_shape | `src/crew_org/crews/presentation_note_crew.py:PresentationNote._has_a_sample` | UX Designer | `PresentationNote.sample`'s description | src/crew_org/crews/presentation_note_crew.py:PresentationNote._has_a_sample | — |
-| `form.ProcessDefect.is_a_change`<br>a larger escalation budget is not a process improvement.<br>Cases: `told.retro_crew.a_larger_escalation_budget_is_never` (src/crew_org/crews/retro_crew.py:write_retro), `told.scrum_master.never_propose_a_larger_escalation_budget` (src/crew_org/config/agents.yaml:scrum_master.backstory) | answer_shape | `src/crew_org/crews/retro_crew.py:ProcessDefect._is_a_change` | Scrum Master | agents.yaml scrum_master.backstory<br>the prompt, src/crew_org/crews/retro_crew.py:write_retro | src/crew_org/crews/retro_crew.py:ProcessDefect._is_a_change | — |
 | `form.ProcessDefect.short`<br>a title is a short statement of the problem, under … characters; this one is … | answer_shape | `src/crew_org/crews/retro_crew.py:ProcessDefect._short` | Scrum Master | — | src/crew_org/crews/retro_crew.py:ProcessDefect._short | — |
 | `form.ProductAnswer.one_or_the_other`<br>an answer names what it follows: the Goal, the record, or a story | answer_shape | `src/crew_org/crews/refinement_crew.py:ProductAnswer._one_or_the_other` | Product Owner | `ProductAnswer.rows`'s description | src/crew_org/crews/refinement_crew.py:ProductAnswer._one_or_the_other | — |
 | `form.QAVerdict.a_verdict_or_an_ask`<br>a story is accepted against its criteria; list them | evidence | `src/crew_org/crews/qa_crew.py:QAVerdict._a_verdict_or_an_ask` | QA Engineer | `QAVerdict.need_files`'s description | src/crew_org/crews/qa_crew.py:QAVerdict._a_verdict_or_an_ask | — |

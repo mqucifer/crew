@@ -95,7 +95,7 @@ def tick(
     """
     org = load_org()
     sink = _sink(demo)
-    view = LiveView(org["board"]["columns"], budget=org["sprint"]["escalation_budget"])
+    view = LiveView(org["board"]["columns"])
 
     if demo:
         with attach(sink, view):
@@ -1150,7 +1150,7 @@ def deliver(
     console.print(f"[dim]acting as {escape(identity)} · sandbox {box.mode} · {sprint}[/]")
 
     sink = EventSink(VAR / "events" / "deliver.jsonl")
-    view = LiveView(org["board"]["columns"], budget=org["sprint"]["escalation_budget"])
+    view = LiveView(org["board"]["columns"])
     with attach(sink, view):
         result = run_delivery(
             board,
@@ -2060,14 +2060,13 @@ def export(
 
     Which stories landed on their first attempt, what the others took (each
     retry's failure class, role and first error line), the causes across them,
-    and the sprint's escalations from the ledger. Nothing is sent anywhere: it
+    and how many went back to the Business Analyst. Nothing is sent anywhere: it
     writes one JSON file.
     """
     import json
 
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger
     from crew_org.flows.attempts import read_attempts, retries_text, sprint_report
     from crew_org.tools.github_project import ProjectClient
     from crew_org.work_types import DELIVERED
@@ -2089,7 +2088,7 @@ def export(
         sprint,
         stories,
         read_attempts(VAR / "events", *(window or (None, None))),
-        EscalationLedger(VAR / "ledger" / "escalations.jsonl").spent(sprint),
+        len(returned & {c.number for c in stories}),
     )
     from crew_org.flows.model_calls import read_model_calls
 
@@ -2100,7 +2099,7 @@ def export(
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     console.print(escape(retries_text(report)))
     console.print(
-        f"[dim]{report['escalations']} escalations · {len(report['model_calls'])} model calls"
+        f"[dim]{report['returned']} returned · {len(report['model_calls'])} model calls"
         f" · written to {path}[/]"
     )
 
@@ -2249,7 +2248,6 @@ def sprint_retro(
 
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger
     from crew_org.flows.close import close_sprint
     from crew_org.llm import health
     from crew_org.process import ProcessRules
@@ -2274,7 +2272,6 @@ def sprint_retro(
             board,
             IssueClient(token, owner),
             EventSink(None),
-            EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
             sprint=sprint,
             repo=repo,
             merge=False,
@@ -2372,7 +2369,6 @@ def _close_and_report(
 ) -> None:
     """Close `sprint` and print its report: `crew sprint close`, and a tick at a
     sprint's end (ADR 0028)."""
-    from crew_org.escalation import EscalationLedger  # noqa: PLC0415
     from crew_org.events import forward_calls_to  # noqa: PLC0415
     from crew_org.flows.close import close_sprint  # noqa: PLC0415
     from crew_org.process import ProcessRules  # noqa: PLC0415
@@ -2384,7 +2380,6 @@ def _close_and_report(
         board,
         issues,
         close_sink,
-        EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         sprint=sprint,
         repo=repo,
         merge=merge,

@@ -8,7 +8,7 @@ from crew_org.tui import LiveView
 
 
 def view() -> LiveView:
-    return LiveView([READY, IN_PROGRESS, BLOCKED], budget=3)
+    return LiveView([READY, IN_PROGRESS, BLOCKED])
 
 
 def test_the_lanes_start_from_the_real_board():

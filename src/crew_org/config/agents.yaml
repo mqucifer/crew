@@ -300,10 +300,9 @@ scrum_master:
     You write for the Sponsor, who was not present. You say what happened,
     including what went badly, and you never present a sprint as healthier than
     the board says it is. You cite cards by number.
-    In the retro you read the escalation ledger. An escalation rate above
-    threshold is a defect in task design — name the specific stories that were
-    too large or whose criteria were ambiguous, and propose process defects
-    against them. Never propose a larger escalation budget.
+    In the retro you read which stories went back to the Business Analyst.
+    Each is a defect in task design: name what the story lacked, and propose
+    process defects against it.
   # Not crew-draft: the retro is analysis, not prose. It reads the standups,
   # the retries, and the open and fixed issues, and decides what's a defect.
   # With #174 and #176 adding to that, crew-draft spent all 16,384 tokens

@@ -8,11 +8,8 @@ delivery repository that holds it.
 
 from __future__ import annotations
 
-import pytest
-
 import crew_org.flows.close as close_mod
 from crew_org.crews.retro_crew import ProcessDefect, Retro
-from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink
 from crew_org.flows.close import close_sprint
 from crew_org.flows.retro import (
@@ -194,17 +191,11 @@ class CloseBoard:
         return []
 
 
-@pytest.fixture
-def ledger(tmp_path):
-    return EscalationLedger(tmp_path / "escalations.jsonl")
-
-
-def close(issues, ledger, *, crew_repo=CREW):
+def close(issues, *, crew_repo=CREW):
     return close_sprint(
         CloseBoard(),
         issues,
         EventSink(None),
-        ledger,
         sprint=SPRINT,
         repo=PRODUCT,
         crew_repo=crew_repo,
@@ -212,17 +203,17 @@ def close(issues, ledger, *, crew_repo=CREW):
     )
 
 
-def test_a_close_records_the_retro_it_wrote(monkeypatch, ledger):
+def test_a_close_records_the_retro_it_wrote(monkeypatch):
     monkeypatch.setattr(
         close_mod, "write_retro", lambda *a, **k: Retro(summary="s", defects=[process()])
     )
     issues = FakeIssues()
-    result = close(issues, ledger)
+    result = close(issues)
     assert result.retro_record is not None and result.retro_record.issue == 202
     assert not result.retro_already
 
 
-def test_a_close_run_again_does_not_write_or_file_a_second_retro(monkeypatch, ledger):
+def test_a_close_run_again_does_not_write_or_file_a_second_retro(monkeypatch):
     """One retro per sprint. Running the close twice used to be harmless because
     nothing was recorded; now it would file every defect twice."""
 
@@ -231,28 +222,17 @@ def test_a_close_run_again_does_not_write_or_file_a_second_retro(monkeypatch, le
 
     monkeypatch.setattr(close_mod, "write_retro", must_not_run)
     issues = FakeIssues(existing=[{"number": 12, "labels": [RETRO_LABEL], "body": marker(SPRINT)}])
-    result = close(issues, ledger)
+    result = close(issues)
     assert result.retro_already and result.retro_record.issue == 12
     assert issues.created == []
 
 
-def test_without_a_crew_repository_the_retro_is_only_printed(monkeypatch, ledger):
+def test_without_a_crew_repository_the_retro_is_only_printed(monkeypatch):
     monkeypatch.setattr(close_mod, "write_retro", lambda *a, **k: Retro(summary="s"))
     issues = FakeIssues()
-    result = close(issues, ledger, crew_repo=None)
+    result = close(issues, crew_repo=None)
     assert result.retro is not None and result.retro_record is None
     assert issues.created == []
-
-
-def test_a_retro_still_rejects_asking_for_a_bigger_budget():
-    """The schema grew two fields; the rule it already enforced still holds."""
-    with pytest.raises(ValueError, match="budget"):
-        ProcessDefect(
-            subject="S4",
-            problem="three escalations",
-            change="increase the escalation budget",
-            about="process",
-        )
 
 
 def test_the_retro_and_a_crew_defect_link_to_the_delivery_cards_they_name():
