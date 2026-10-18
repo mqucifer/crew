@@ -11,8 +11,7 @@ used to run on an answer before it was applied:
   regression guard already compares every changed file with what's merged, so it
   runs with nothing left to apply;
 - **the declared tests:** each merged test the diff changes is declared in `done`,
-  and is read against the story's **Existing tests** line (decision 6); the tests
-  `done` names for its criteria exist;
+  and is read against the story's **Existing tests** line (decision 6);
 - **the whole checks,** by the runner the caller passes: the session's container,
   once delivery runs sessions;
 - **a bug's tests** fail without the fix (crew#407).
@@ -20,6 +19,9 @@ used to run on an answer before it was applied:
 Every gate runs, and every finding goes back together, since a new session starts
 from all of them (P2). A test per criterion and the docs aren't mechanical yet: review
 and QA judge them (crew#790).
+
+That the tests `done` names exist isn't a gate: `done` checks it itself, and a
+session can't end with a `done` that fails it (`missing_named_tests`).
 """
 
 from __future__ import annotations
@@ -75,6 +77,31 @@ class Verdict:
         return not self.findings
 
 
+def missing_named_tests(worktree: Path, said: dict[str, Any]) -> list[Finding]:
+    """`done`'s one check of itself: the tests it names for criteria exist (crew#778).
+
+    The Sponsor's decision (2026-10-18): one narrow check inside `done`, a fact and not
+    a judgement. A session can't end with a `done` that fails it, so the gate doesn't
+    repeat it. Whether a test proves its criterion stays with QA. The reply leads with
+    writing the test: on mqucifer/sprint-metrics#662 no proving test existed under any
+    name, and "name the test" first would push toward the nearest one, which proves
+    nothing.
+    """
+    missing = [t for t in _named(said) if t and not delivery.names_a_test(worktree, t)]
+    if not missing:
+        return []
+    return [
+        Finding(
+            "check.delivery.these_named_tests_dont_exist",
+            says(
+                "check.delivery.these_named_tests_dont_exist",
+                "done",
+                tests=", ".join(f"`{t}`" for t in dict.fromkeys(missing)),
+            ),
+        )
+    ]
+
+
 def at_done(
     worktree: Path,
     said: dict[str, Any],
@@ -90,27 +117,15 @@ def at_done(
 
     `said` is `done`'s statement: `criteria` [{criterion, test}], `changed_tests`
     [{test, why}], `docs` and `summary`. `note` hears what a gate couldn't check.
+    That the tests it names exist is `done`'s own check, not the gate's.
     """
     verdict = Verdict()
     merged = regression.merged_base(worktree)
     paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
-    named = [p.get("test") or "" for p in said.get("criteria") or []]
-    missing = [t for t in named if t and not delivery.names_a_test(worktree, t)]
-    if missing:
-        verdict.findings.append(
-            Finding(
-                "check.delivery.these_named_tests_dont_exist",
-                says(
-                    "check.delivery.these_named_tests_dont_exist",
-                    "done",
-                    tests=", ".join(dict.fromkeys(missing)),
-                ),
-            )
-        )
+    named = _named(said)
     if not paths:
         verdict.check = run_checks(worktree)
-        proven = bool(named) and all(named) and not missing
-        if proven and verdict.check.ok:
+        if named and all(named) and verdict.check.ok:
             verdict.already_done = True
             return verdict
         verdict.findings.append(
@@ -154,6 +169,11 @@ def at_done(
     if card.work_type == BUG and merged is not None:
         _reproduced(worktree, merged, named, verdict, note)
     return verdict
+
+
+def _named(said: dict[str, Any]) -> list[str]:
+    """The tests `done` names for its criteria, one per criterion, "" where it names none."""
+    return [p.get("test") or "" for p in said.get("criteria") or []]
 
 
 # The pull request's section of changed merged tests the story doesn't name (decision 6).

@@ -486,3 +486,56 @@ def test_a_failing_step_after_a_run_is_recorded_and_the_session_goes_on(root, se
     assert (failed.detail["tool"], failed.detail["turn"]) == ("after_run", 1)
     ended = kinds(seen, EventKind.SESSION_ENDED)[0].detail
     assert ended["after_run_errors"] == ["OSError: index.lock exists"]
+
+
+# --- `done` checks itself (the Sponsor's principle on crew#778) -----------------------------
+
+
+def test_done_checks_itself_and_the_session_answers_what_it_finds(root, seen):
+    """A refused `done` is a reply in the same session, never a new one (decision 5)."""
+    answers = [
+        [SimpleNamespace(rule="a.rule", says="First."), SimpleNamespace(rule="b", says="B.")]
+    ]
+
+    def check_done(said):
+        return answers.pop(0) if answers else []
+
+    proxy = Proxy(said(("done", DONE)), said(("done", DONE)))
+    _, ending = run_session(root, proxy, check_done=check_done)
+    assert ending.how == "done"
+    refused = kinds(seen, EventKind.TOOL_FINISHED)[0].detail
+    assert (refused["result"], refused["rule"], refused["rules"]) == (
+        "refused",
+        "a.rule",
+        ["a.rule", "b"],
+    )
+    told = proxy.sent[1]["messages"][-1]["content"]
+    assert told.startswith("`done` checked your branch, and the session goes on.")
+    assert "1. First.\n\n2. B." in told
+
+
+def test_a_check_of_done_that_cant_run_lets_it_through_on_the_record(root, seen):
+    """The gate at `done` runs the same checks again, so `done` isn't held on them."""
+
+    def check_done(said):
+        raise OSError("git is gone")
+
+    _, ending = run_session(root, Proxy(said(("done", DONE))), check_done=check_done)
+    assert ending.how == "done"
+    [failed] = [
+        e for e in kinds(seen, EventKind.TOOL_FAILED) if e.detail.get("tool") == "check_done"
+    ]
+    assert "OSError: git is gone" in failed.detail["error"]
+
+
+def test_a_session_refuses_a_done_naming_a_test_that_isnt_there(root, seen):
+    """The real check, as `session()` wires it: mqucifer/sprint-metrics#662 named five."""
+    invented = {**DONE, "criteria": [{"criterion": "f is 2", "test": "tests/test_app.py::test_g"}]}
+    proxy = Proxy(said(("done", invented)), said(("done", DONE)))
+    _, ending = run_session(root, proxy)
+    assert ending.how == "done" and ending.said["criteria"] == DONE["criteria"]
+    refused = kinds(seen, EventKind.TOOL_FINISHED)[0].detail
+    assert refused["rule"] == "check.delivery.these_named_tests_dont_exist"
+    told = proxy.sent[1]["messages"][-1]["content"]
+    assert "No test by these names exists: `tests/test_app.py::test_g`." in told
+    assert "write one and run it" in told and "`search` for `def test_`" in told

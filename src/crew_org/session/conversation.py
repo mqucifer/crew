@@ -84,6 +84,9 @@ class Session:
     # when it passed (P3). One that raises is recorded in `after_run_errors`.
     after_run: Callable[[dict[str, Any]], None] | None = None
     after_run_errors: list[str] = field(default_factory=list)
+    # `done` checks itself before it ends the session: the findings, each with its rule
+    # and what it says (`gates.missing_named_tests`, the Sponsor's one check).
+    check_done: Callable[[dict[str, Any]], list[Any]] | None = None
     backstop_s: float = BACKSTOP_S
     compact_at: int = COMPACT_AT
     model_s: float = 0.0
@@ -194,8 +197,12 @@ class Session:
                     statement = dict(args)
                     if name == "done":
                         statement.setdefault("changed_tests", [])
-                    ending = Ending(name, statement, evidence=self._evidence())
-                    reply = Reply("The session ends here.", "end", name)
+                    refused = self._refused_done(statement) if name == "done" else None
+                    if refused is not None:
+                        reply = refused
+                    else:
+                        ending = Ending(name, statement, evidence=self._evidence())
+                        reply = Reply("The session ends here.", "end", name)
                 except Refusal as exc:
                     reply = Reply(str(exc), "refused", f"{name}: refused", rule=exc.rule)
             elif ending is None:
@@ -240,6 +247,41 @@ class Session:
             return self._stopped("ceiling", seen, reached)
         return None
 
+    def _refused_done(self, said: dict[str, Any]) -> Reply | None:
+        """`done`'s reply when its own checks find something, or None to end the session.
+
+        A refusal is a reply, and the session goes on to answer it (decision 5's
+        feedback): the Sponsor, on crew#778, "we expect failures, we handle them
+        gracefully". Nothing is thrown away, and it isn't a failure or an attempt. A
+        check that can't run lets `done` through, recorded: QA still judges the proof.
+        """
+        if self.check_done is None:
+            return None
+        try:
+            findings = self.check_done(said)
+        except Exception as exc:  # noqa: BLE001 - a check that can't run holds nothing
+            said_why = f"{type(exc).__name__}: {str(exc)[:300]}"
+            record(
+                EventKind.TOOL_FAILED,
+                f"done's own checks: {said_why}",
+                role=_role(),
+                tool="check_done",
+                turn=self.calls,
+                error=said_why,
+            )
+            return None
+        if not findings:
+            return None
+        return Reply(
+            "`done` checked your branch, and the session goes on. Answer each of these, "
+            "then call `done` again.\n\n"
+            + "\n\n".join(f"{i}. {f.says.strip()}" for i, f in enumerate(findings, 1)),
+            "refused",
+            f"done: refused by its own checks ({len(findings)})",
+            detail={"rules": [f.rule for f in findings]},
+            rule=findings[0].rule,
+        )
+
     def _after_run(self, run: dict[str, Any]) -> None:
         """The caller's step after a run. One that fails is recorded, and the session
         goes on: its work is still on the branch, for the next run or `done`."""
@@ -273,6 +315,8 @@ class Session:
         }
         if reply.rule:
             detail["rule"] = reply.rule
+        if name == "done" and reply.detail.get("rules"):
+            detail["rules"] = reply.detail["rules"]  # every check `done` failed
         if reply.empty:
             detail["found_nothing"] = True
             if isinstance(args, dict) and args.get("pattern"):
@@ -380,7 +424,25 @@ def session(
         },
         **about,
     )
-    return Session(tools, system_text(ROLE), opening, send=send, after_run=after_run)
+    return Session(
+        tools,
+        system_text(ROLE),
+        opening,
+        send=send,
+        after_run=after_run,
+        check_done=own_checks(worktree),
+    )
+
+
+def own_checks(worktree: Path) -> Callable[[dict[str, Any]], list[Any]]:
+    """`done`'s one check of itself on this worktree: the tests it names exist (crew#778)."""
+    # Here, not at the top: delivery, which the gates read, runs the session.
+    from crew_org.flows import gates  # noqa: PLC0415
+
+    def checked(said: dict[str, Any]) -> list[Any]:
+        return gates.missing_named_tests(worktree, said)
+
+    return checked
 
 
 def unfit(worktree: Path) -> str | None:

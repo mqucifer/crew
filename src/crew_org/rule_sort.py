@@ -122,7 +122,10 @@ SORTED: dict[str, tuple[str, str]] = {
         GATE,
         "verify on the whole branch at `done`; `run` during the session is feedback",
     ),
-    "check.delivery.these_named_tests_dont_exist": (GATE, "named tests exist, at `done`"),
+    "check.delivery.these_named_tests_dont_exist": (
+        FEEDBACK,
+        "named tests exist: `done` checks it, as its reply (the Sponsor, crew#778)",
+    ),
     "check.delivery.this_ci_evidence_doesnt_hold": (GATE, "CI evidence, at `done`"),
     "check.delivery.workflows_not_permitted": (GATE, "workflow files, policy at `done`"),
     "check.delivery.deliver_in_steps": (RETIRED, "stepped delivery, for answers too big"),
