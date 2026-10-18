@@ -79,6 +79,8 @@ class Rule(StrEnum):
     """A pull request is still open on the branch; re-delivering would overwrite it."""
     PUSH_FAILED = "delivery.push_failed"
     """The work was done, and the branch couldn't be pushed."""
+    WORKSPACE_UNREADY = "delivery.workspace_unready"
+    """The story's workspace container didn't start, or its setup failed (crew#778)."""
     EDIT_LOCAL_REPAIR = "edit.local_repair"
     """Its edits couldn't be applied, retried with why shown, up to the local limit."""
     GUARD_LOCAL_REPAIR = "guard.local_repair"

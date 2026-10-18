@@ -247,3 +247,68 @@ def test_machine_files_are_never_committed_from_any_worktree(tmp_path):
     assert status.splitlines() == ["?? kept.py"]
     exclude = (clone / ".git/info/exclude").read_text()
     assert exclude.count("never committed") == 1
+
+
+# --- a session's checkpoints (crew#778, P3) ------------------------------------
+
+
+def _real_workspace(monkeypatch, tmp_path):
+    """A Workspace over a real clone of a local origin with one commit on main."""
+    import subprocess
+
+    from crew_org import git_ops
+
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    seed = tmp_path / "seed"
+    subprocess.run([*git, "init", "-q", "-b", "main", str(seed)], check=True)
+    (seed / "README.md").write_text("x\n")
+    subprocess.run([*git, "-C", str(seed), "add", "."], check=True)
+    subprocess.run([*git, "-C", str(seed), "commit", "-qm", "first"], check=True)
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(seed), str(origin)], check=True)
+    monkeypatch.setattr(git_ops, "CLONES", tmp_path / "repos")
+    monkeypatch.setattr(git_ops, "WORKTREES", tmp_path / "wt")
+    subprocess.run(["git", "clone", "-q", str(origin), str(tmp_path / "repos" / "r")], check=True)
+    return git_ops.Workspace("o", "r", "tok", git_ops.BotIdentity("bot", 1))
+
+
+def test_a_checkpoint_outlives_its_worktree_and_is_resumed(monkeypatch, tmp_path):
+    """A stopped tick removes the worktree; the clone's branch keeps the checkpoint."""
+    ws = _real_workspace(monkeypatch, tmp_path)
+    branch = "feat/1-a-story"
+    tree = ws.open(branch)
+    (tree / "work.py").write_text("done = True\n")
+    ws.commit("checkpoint(1): run tests passed\n\n$ uv run pytest -q\n(exit 0)")
+    ws.close()
+
+    said = ws.checkpoint_on(branch)
+    assert said is not None and said.startswith("checkpoint(1): run tests passed")
+    tree = ws.open(branch, checkpoint=True)
+    assert (tree / "work.py").read_text() == "done = True\n" and ws.resumed
+    ws.close()
+
+
+def test_a_branch_ending_in_anything_else_isn_t_a_checkpoint(monkeypatch, tmp_path):
+    ws = _real_workspace(monkeypatch, tmp_path)
+    branch = "feat/1-a-story"
+    tree = ws.open(branch)
+    (tree / "work.py").write_text("done = True\n")
+    ws.commit("feat(1): a story")
+    ws.close()
+    assert ws.checkpoint_on(branch) is None
+    assert ws.checkpoint_on("feat/2-never-opened") is None
+
+
+def test_a_forgotten_checkpoint_isn_t_resumed(monkeypatch, tmp_path):
+    """Any ending but an interruption drops it, so stale work is never resumed later."""
+    ws = _real_workspace(monkeypatch, tmp_path)
+    branch = "feat/1-a-story"
+    tree = ws.open(branch)
+    (tree / "work.py").write_text("done = True\n")
+    ws.commit("checkpoint(1): run lint passed")
+    ws.close()
+    ws.forget(branch)
+    assert ws.checkpoint_on(branch) is None
+    tree = ws.open(branch)
+    assert not (tree / "work.py").exists() and not ws.resumed
+    ws.close()
