@@ -80,11 +80,18 @@ def diff(root: Path, base: str) -> str:
     ).stdout
 
 
-def replay(name: str, backstop_s: float | None = None, context: str = "cut") -> dict[str, Any]:
+def replay(
+    name: str,
+    backstop_s: float | None = None,
+    context: str = "cut",
+    label: str = "",
+    parse_guard: bool = True,
+) -> dict[str, Any]:
     case = CASES[name]
     # Pass 2 (the "whole" context rule) is told apart by its runs' names.
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-    run = stamp if context == "cut" else f"p2-{stamp}"
+    label = label or ("" if context == "cut" else "p2")
+    run = f"{label}-{stamp}" if label else stamp
     out = RUNS / name / run
     out.mkdir(parents=True, exist_ok=True)
     text = story(case)
@@ -118,7 +125,7 @@ def replay(name: str, backstop_s: float | None = None, context: str = "cut") -> 
         if not cut.ok:
             result["refused"] = f"the network wasn't cut: {cut.output}"
             return result
-        tools = Tools(root, held, cov, notes)
+        tools = Tools(root, held, cov, notes, parse_guard=parse_guard)
 
         def write(entry: dict[str, Any]) -> None:
             log.write(
@@ -145,6 +152,8 @@ def replay(name: str, backstop_s: float | None = None, context: str = "cut") -> 
                 "developer_last_run": last,
                 "first_green_suite_run": green[0] if green else None,
                 "context": context,
+                "label": label or "p1",
+                "parse_guard": parse_guard,
                 "compacted": session.compacted or None,
                 "troubles": session.troubles,
             }
@@ -168,8 +177,11 @@ def main() -> None:
     try:
         args = sys.argv[1:]
         context = "whole" if "--whole" in args else "cut"
-        for name in [a for a in args if a != "--whole"] or list(CASES):
-            r = replay(name, context=context)
+        label = next((a.split("=", 1)[1] for a in args if a.startswith("--label=")), "")
+        guard = "--no-parse-guard" not in args
+        names = [a for a in args if not a.startswith("--")]
+        for name in names or list(CASES):
+            r = replay(name, context=context, label=label, parse_guard=guard)
             u = r.get("usage", {})
             g = r.get("gate_at_done", {}).get("green")
             print(

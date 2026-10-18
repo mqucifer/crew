@@ -17,7 +17,7 @@ import cases  # noqa: E402
 import session as session_mod  # noqa: E402
 import start as start_mod  # noqa: E402
 from container import Result  # noqa: E402
-from tools import Tools  # noqa: E402
+from tools import Tools, first_failure, is_text  # noqa: E402
 
 from crew_org.tools.workspace import AUTOFIX, VERIFY, Toolchain  # noqa: E402
 
@@ -28,10 +28,18 @@ class FakeHeld:
         self.results = list(results or [])
         self.ran: list[list[str]] = []
 
-    def exec(self, command: list[str], timeout: int = 0) -> Result:
+    def exec(self, command: list[str], timeout: int = 0, stdin: str | None = None) -> Result:
         self.ran.append(command)
         if "pytest" in command and self.results:
             return self.results.pop(0)
+        if stdin is not None:
+            # ruff on stdin: one F401 per `import os` line, as its concise format writes it.
+            found = [
+                f"src/calc.py:{n}:1: F401 `os` imported but unused"
+                for n, line in enumerate(stdin.splitlines(), 1)
+                if line == "import os"
+            ]
+            return Result(" ".join(command), 1 if found else 0, "\n".join(found))
         return Result(" ".join(command), 0, "All checks passed!")
 
 
@@ -66,13 +74,126 @@ def test_notes_named_by_the_start_are_viewed_as_files(repo: Path) -> None:
     assert "    2| two" in tools.view("@notes/x.md").text
 
 
-def test_replace_text_needs_text_found_once(repo: Path) -> None:
+def test_replace_text_replaces_whole_lines_found_once(repo: Path) -> None:
     tools = Tools(repo, FakeHeld())
-    assert tools.replace_text("src/calc.py", "return", "yield").kind == "refused"
-    reply = tools.replace_text("src/calc.py", "min(100, a * 100 // b)", "a * 100 // b")
-    assert reply.kind == "ok" and "It parses." in reply.text
+    reply = tools.replace_text(
+        "src/calc.py", "    return min(100, a * 100 // b)\n", "    return a * 100 // b\n"
+    )
+    assert reply.kind == "ok"
     assert "min(" not in (repo / "src" / "calc.py").read_text()
     assert tools.edited == ["src/calc.py"]
+
+
+def test_replace_text_refuses_part_of_a_line_and_shows_it(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    reply = tools.replace_text("src/calc.py", "min(100, a * 100 // b)", "a * 100 // b")
+    assert reply.kind == "refused"
+    assert "line 2: `return min(100, a * 100 // b)`" in reply.text
+
+
+def test_replace_text_names_every_line_a_repeated_quote_is_at(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    (repo / "src" / "calc.py").write_text("x = 1\ny = 2\nx = 1\n")
+    reply = tools.replace_text("src/calc.py", "x = 1", "x = 3")
+    assert reply.kind == "refused" and "at lines 1, 3" in reply.text
+
+
+def test_replace_text_not_found_shows_the_closest_block(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    reply = tools.replace_text(
+        "src/calc.py", "def rate(a, c):\n    return min(100, a * 100 // c)", "x"
+    )
+    assert reply.kind == "refused" and "closest block starts at line 1" in reply.text
+    assert "    2|     return min(100, a * 100 // b)" in reply.text
+
+
+def test_an_edit_that_stops_a_file_parsing_is_not_applied(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    before = (repo / "src" / "calc.py").read_text()
+    reply = tools.replace_text("src/calc.py", "def other():", "def other(:")
+    assert reply.kind == "refused" and "NOT been applied" in reply.text
+    assert "def other(:" in reply.text and "    5| def other():" in reply.text
+    assert (repo / "src" / "calc.py").read_text() == before and tools.edited == []
+
+
+def test_without_the_parse_guard_a_broken_edit_is_applied(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld(), parse_guard=False)
+    reply = tools.replace_text("src/calc.py", "def other():", "def other(:")
+    assert reply.kind == "ok" and "doesn't parse" in reply.text
+
+
+def test_an_edit_reply_shows_the_edited_lines_numbered_with_four_either_side(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    (repo / "src" / "calc.py").write_text("".join(f"v{n} = {n}\n" for n in range(1, 21)))
+    reply = tools.replace_text("src/calc.py", "v10 = 10", "v10 = 0")
+    assert "   10| v10 = 0" in reply.text
+    assert "    6| v6 = 6" in reply.text and "   14| v14 = 14" in reply.text
+    assert "    5| v5" not in reply.text and "   15| v15" not in reply.text
+
+
+def test_lint_reports_only_what_the_edit_added(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    (repo / "src" / "calc.py").write_text("import os\n\n\ndef other():\n    return 1\n")
+    reply = tools.replace_text("src/calc.py", "    return 1", "    return 2")
+    assert "Lint finds nothing new." in reply.text
+    reply = tools.replace_text("src/calc.py", "def other():", "import os\n\n\ndef other():")
+    assert "new with this edit: F401" in reply.text
+
+
+def test_lint_is_the_gates_never_a_check_only_autofix(repo: Path) -> None:
+    held = FakeHeld()
+    held.tools = Toolchain(
+        image="x@sha256:1",
+        setup=None,
+        autofix=(["ruff", "format", "--check", "."],),
+        verify=(["python", "-m", "pytest", "-v"],),
+        problem=None,
+    )
+    tools = Tools(repo, held)
+    assert tools.run("lint").kind == "refused" and tools.lint_cmds == []
+
+
+def test_a_failure_with_no_known_error_leads_with_its_first_error_line(repo: Path) -> None:
+    out = (
+        "unformatted: File would be reformatted\n --> build.py:114:9\n2 files would be reformatted"
+    )
+    assert first_failure(out) == "unformatted: File would be reformatted"
+    assert first_failure("nothing\nat the end") == "at the end"
+    held = FakeHeld([Result("pytest -q", 1, out)])
+    reply = Tools(repo, held).run("tests", ["tests/test_calc.py"])
+    assert "failed: unformatted: File would be reformatted" in reply.summary
+
+
+def test_search_honours_path_takes_a_pattern_and_falls_back_to_text(repo: Path) -> None:
+    tools = Tools(repo, FakeHeld())
+    reply = tools.search(r"def (rate|other)", path="src")
+    assert reply.text.startswith("2 lines in `src` match")
+    assert "src/calc.py:\n  1: def rate(a, b):" in reply.text
+    assert "test_calc" not in tools.search("rate", path="src").text
+    assert "as plain text (it isn't a valid pattern)" in tools.search("rate(").text
+    assert tools.search("x", path="nowhere").kind == "refused"
+
+
+def test_many_search_hits_are_counted_by_file_src_and_tests_first(repo: Path) -> None:
+    (repo / ".package").mkdir()
+    (repo / ".package" / "data.txt").write_text("hit\n" * 60)
+    (repo / "src" / "more.py").write_text("hit = 1\n")
+    reply = Tools(repo, FakeHeld()).search("hit")
+    assert "61 lines match" in reply.text and "in 2 files" in reply.text
+    assert reply.text.index("src/more.py: 1 lines") < reply.text.index(".package/data.txt: 60")
+
+
+def test_text_is_told_by_content_not_extension(tmp_path: Path) -> None:
+    (tmp_path / "design-system.version").write_text("v0.1.0\n")
+    (tmp_path / "logo.bin").write_bytes(b"PNG\0\x01")
+    assert is_text(tmp_path / "design-system.version")
+    assert not is_text(tmp_path / "logo.bin")
+
+
+def test_a_tool_refuses_arguments_it_does_not_take(repo: Path) -> None:
+    reply = Tools(repo, FakeHeld()).call("search", {"text": "rate"})
+    assert reply.kind == "refused"
+    assert "doesn't take `text`" in reply.text and "needs `pattern`" in reply.text
 
 
 def test_write_file_does_not_overwrite_unasked(repo: Path) -> None:
@@ -132,11 +253,15 @@ def test_a_session_ends_at_done_and_shrinks_older_output(repo: Path) -> None:
         _calls(
             (
                 "replace_text",
-                {"path": "src/calc.py", "old": "min(100, a * 100 // b)", "new": "a * 100 // b"},
+                {
+                    "path": "src/calc.py",
+                    "old": "    return min(100, a * 100 // b)",
+                    "new": "    return a * 100 // b",
+                },
             )
         ),
         _calls(("run", {"what": "suite"})),
-        _calls(("done", {"criteria": [], "summary": "removed the cap"})),
+        _calls(("done", {"criteria": [], "docs": "none", "summary": "removed the cap"})),
     ]
     sent: list[dict[str, Any]] = []
 
@@ -208,7 +333,7 @@ def test_the_whole_rule_keeps_replies_until_one_compaction(repo: Path) -> None:
     script = [
         _calls(("view", {"path": "src/calc.py"})),
         _calls(("view", {"path": "src/calc.py", "from_line": 4})),
-        _calls(("search", {"text": "rate"})),
+        _calls(("search", {"pattern": "rate"})),
         _calls(("done", {"criteria": [], "docs": "none", "summary": "s"})),
     ]
     sent: list[dict[str, Any]] = []

@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from tools import SPECS, Reply, Tools  # type: ignore[import-not-found]
+from tools import SPECS, Reply, Tools, refused_arguments  # type: ignore[import-not-found]
 
 from crew_org.calls import _usage, post, role_spec
 
@@ -217,6 +217,8 @@ class Session:
                         "refused",
                         f"{name}: bad arguments",
                     )
+                elif name in ("done", "blocked") and (refused := refused_arguments(name, args)):
+                    reply = refused
                 elif name in ("done", "blocked"):
                     self._end(name, args)
                     reply = Reply("The session ends here.", "end", name)
