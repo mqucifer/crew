@@ -56,6 +56,26 @@ class Recorded:
     def __getattr__(self, name: str) -> Any:
         return getattr(self.real, name)
 
+    def replay(self, writes: list[dict[str, Any]]) -> None:
+        """An earlier run's writes, as if they had been made, to go on from where it ended."""
+        for w in writes:
+            repo, number = w["repo"], w["number"]
+            if w["kind"] == "comment":
+                self.comment(repo, number, w["body"])
+            elif w["kind"] == "edit":
+                self.edit_issue(repo, number, body=w["body"])
+            elif w["kind"] == "create":
+                self._next = max(self._next, number - 1)
+                self.create(repo, w["title"], w["body"])
+            elif w["kind"] == "label" and "add" in w:
+                self.add_labels(repo, number, w["add"])
+            elif w["kind"] == "label":
+                self.remove_label(repo, number, w["remove"])
+            elif w["kind"] == "sub_issue":
+                self.add_sub_issue(repo, number, w["child"])
+            elif w["kind"] == "close":
+                self.close(repo, number, reason=w["reason"])
+
     def _wrote(self, kind: str, repo: str, number: int, **detail: Any) -> None:
         self.writes.append({"kind": kind, "repo": repo, "number": number, **detail})
 
@@ -198,6 +218,9 @@ def main() -> None:
     parser.add_argument("repo")
     parser.add_argument("epic", type=int)
     parser.add_argument("--goal", type=int, help="also decompose this Goal")
+    parser.add_argument(
+        "--resume", type=Path, help="an earlier run's folder: its writes are made first"
+    )
     args = parser.parse_args()
     from crew_org.crews import presentation_note_crew as ux  # noqa: PLC0415
     from crew_org.crews.refinement_crew import propose_epics  # noqa: PLC0415
@@ -212,11 +235,18 @@ def main() -> None:
     sink = EventSink(Path("var/events/refine-run.jsonl"))
     events.forward_calls_to(sink, card=args.epic)
     issues = Recorded(IssueClient(token, owner))
+    if args.resume:
+        issues.replay(json.loads((args.resume / "writes.json").read_text()))
+        summary_from = str(args.resume)
     board = RecordedBoard(ProjectClient(token, owner, 1), {(args.repo, args.epic)})
     ws = git_ops.Workspace(owner, args.repo, token, git_ops.BotIdentity("quarters-claude", 0))
     context = board_flow.RepoContext(ws, sink)
     known = board_flow.KnownDelivered(issues, sink)
     summary: dict[str, Any] = {"repo": args.repo, "epic": args.epic, "goal": args.goal}
+    if args.resume:
+        # The first writes in writes.json are the earlier run's, made again.
+        summary["resumed_from"] = summary_from
+        summary["replayed_writes"] = len(issues.writes)
     began = time.monotonic()
     try:
         if args.goal:
