@@ -197,8 +197,15 @@ def how_it_works(record: Any, root: Path) -> tuple[str, dict[str, str]]:
     return text, notes
 
 
-def start(root: Path, story: str, coverage: Any) -> tuple[str, dict[str, int], dict[str, str]]:
-    """The start, each part's size in characters, and the notes it names."""
+def start(
+    root: Path, story: str, coverage: Any, instead_of_hints: str | None = None
+) -> tuple[str, dict[str, int], dict[str, str]]:
+    """The start, each part's size in characters, and the notes it names.
+
+    `instead_of_hints` goes where the hints would, as it's written: for a session
+    that starts from a branch with work on it, such as review's findings and the last
+    `done` (P2) or the checkpoint's message (P3), in place of the graph's picks.
+    """
     try:
         record = read_record(root)
     except ProjectRecordError:
@@ -213,8 +220,14 @@ def start(root: Path, story: str, coverage: Any) -> tuple[str, dict[str, int], d
         "project": project,
         "map": "## The map: every file, its size, and a Python file's top-level names\n\n"
         + project_map(root),
-        "hints": "## Likely relevant, as hints (paths only; view what you need)\n\n"
-        + ("\n".join(hints(root, story, coverage)) or "- (none)"),
+        **(
+            {"instead_of_hints": instead_of_hints}
+            if instead_of_hints is not None
+            else {
+                "hints": "## Likely relevant, as hints (paths only; view what you need)\n\n"
+                + ("\n".join(hints(root, story, coverage)) or "- (none)")
+            }
+        ),
         "rules": RULES.format(view_lines=VIEW_LINES),
     }
     sizes = {k: len(v) for k, v in parts.items()}

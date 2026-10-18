@@ -443,3 +443,46 @@ def test_telemetry_gets_the_sessions_counts_never_its_paths_or_text():
     out = telemetry.view(event)
     assert {"tool", "turn", "args_chars", "reply_chars", "found_nothing", "rule"} <= set(out)
     assert not {"target", "looked_for", "commands", "first_error", "result", "summary"} & set(out)
+
+
+def test_a_session_from_a_branch_with_work_is_told_that_where_the_hints_would_be(root, seen):
+    """P2 and P3: review's findings and the last `done`, or the checkpoint's message."""
+    told = "## What review returned it for\n\n- `f` still caps at 100"
+    s = conversation.session(root, "# Story", Fake(), CHECKS, instead_of_hints=told)
+    assert told in s.start and "## Likely relevant" not in s.start
+    assert s.start.index(told) < s.start.index("## How this session works")
+    sizes = kinds(seen, EventKind.SESSION_STARTED)[0].detail["start_chars"]
+    assert sizes["instead_of_hints"] == len(told) and "hints" not in sizes
+    assert "## Likely relevant" in conversation.session(root, "# Story", Fake(), CHECKS).start
+
+
+def test_the_caller_is_given_each_run_once_it_has_run(root):
+    """Delivery commits a checkpoint after a green run (P3)."""
+    runs: list[dict] = []
+    failed = "FAILED tests/test_app.py::test_f - assert 1 == 2"
+    fake = Fake({"uv run pytest -q tests/test_app.py": (1, failed)})
+    proxy = Proxy(
+        said(("run", {"what": "tests", "tests": ["tests/test_app.py"]})),
+        said(("run", {"what": "suite"}), ("run", {"what": "tests"})),  # the second is refused
+        said(("done", DONE)),
+    )
+    s = conversation.session(root, "# Story", fake, CHECKS, send=proxy, after_run=runs.append)
+    assert s.run().how == "done"
+    assert [(r["what"], r["ok"], r["turn"]) for r in runs] == [
+        ("tests", False, 1),
+        ("suite", True, 2),
+    ]
+
+
+def test_a_failing_step_after_a_run_is_recorded_and_the_session_goes_on(root, seen):
+    def commit(run):
+        raise OSError("index.lock exists")
+
+    proxy = Proxy(said(("run", {"what": "suite"})), said(("done", DONE)))
+    s = conversation.session(root, "# Story", Fake(), CHECKS, send=proxy, after_run=commit)
+    assert s.run().how == "done"
+    assert s.after_run_errors == ["OSError: index.lock exists"]
+    (failed,) = kinds(seen, EventKind.TOOL_FAILED)
+    assert (failed.detail["tool"], failed.detail["turn"]) == ("after_run", 1)
+    ended = kinds(seen, EventKind.SESSION_ENDED)[0].detail
+    assert ended["after_run_errors"] == ["OSError: index.lock exists"]

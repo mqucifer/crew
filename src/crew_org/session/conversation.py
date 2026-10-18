@@ -80,6 +80,10 @@ class Session:
     system: str
     start: str
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+    # Called with each run's record once it has run, such as to commit a checkpoint
+    # when it passed (P3). One that raises is recorded in `after_run_errors`.
+    after_run: Callable[[dict[str, Any]], None] | None = None
+    after_run_errors: list[str] = field(default_factory=list)
     backstop_s: float = BACKSTOP_S
     compact_at: int = COMPACT_AT
     model_s: float = 0.0
@@ -206,6 +210,9 @@ class Session:
                         evidence=self._evidence(),
                         error=exc,
                     )
+                else:
+                    if name == "run" and reply.kind in ("passed", "failed"):
+                        self._after_run(reply.detail)
             else:
                 reply = Reply("Not run: the session had ended.", "end", f"{name}: not run")
             self._tool(name, args, raw, reply, time.monotonic() - began)
@@ -232,6 +239,25 @@ class Session:
             )
             return self._stopped("ceiling", seen, reached)
         return None
+
+    def _after_run(self, run: dict[str, Any]) -> None:
+        """The caller's step after a run. One that fails is recorded, and the session
+        goes on: its work is still on the branch, for the next run or `done`."""
+        if self.after_run is None:
+            return
+        try:
+            self.after_run({**run, "turn": self.calls})
+        except Exception as exc:  # noqa: BLE001 - the caller's failure, never the session's end
+            said = f"{type(exc).__name__}: {str(exc)[:300]}"
+            self.after_run_errors.append(said)
+            record(
+                EventKind.TOOL_FAILED,
+                f"after a run: {said}",
+                role=_role(),
+                tool="after_run",
+                turn=self.calls,
+                error=said,
+            )
 
     # --- the records --------------------------------------------------------------------
     def _tool(self, name: str, args: Any, raw: str, reply: Reply, seconds: float) -> None:
@@ -317,6 +343,7 @@ class Session:
             tools_used=dict(self.used),
             compaction=self.compacted or None,
             troubles=self.troubles,
+            after_run_errors=self.after_run_errors,
             **{k: v for k, v in self.usage.items() if isinstance(v, int)},
         )
 
@@ -329,13 +356,15 @@ def session(
     *,
     coverage: Any = None,
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    instead_of_hints: str | None = None,
+    after_run: Callable[[dict[str, Any]], None] | None = None,
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
 
     `about` goes on the `session.started` event, such as the base commit.
     """
-    opening, sizes, notes = start(worktree, story, coverage)
+    opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     tools = Tools(worktree, workspace, toolchain, coverage, notes)
     record(
         EventKind.SESSION_STARTED,
@@ -351,7 +380,7 @@ def session(
         },
         **about,
     )
-    return Session(tools, system_text(ROLE), opening, send=send)
+    return Session(tools, system_text(ROLE), opening, send=send, after_run=after_run)
 
 
 def unfit(worktree: Path) -> str | None:
