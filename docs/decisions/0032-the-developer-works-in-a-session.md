@@ -21,7 +21,7 @@ Each case ran once per pass, and pass 3 changed the tools and the context rule t
 
 ## Decision
 
-The Sponsor, on crew#778: decisions 1 to 9 and 4b on 2026-10-17. Then, on 2026-10-18 after the replay: the parse guard, the context rule, pass 3's tools as the build's start (by accepting the report), and the stops. P1 to P6 are from the plan, which the Sponsor approved on 2026-10-18 (mqucifer/crew#789, with P6 as the Sponsor edited it). **Everything in this section is decided and not yet built.**
+The Sponsor, on crew#778: decisions 1 to 9 and 4b on 2026-10-17. Then, on 2026-10-18 after the replay: the parse guard, the context rule, pass 3's tools as the build's start (by accepting the report), the stops, and `devcontainer.json` as the workspace's one source. P1 to P6 are from the plan, which the Sponsor approved on 2026-10-18 (mqucifer/crew#789, with P6 as the Sponsor edited it). **Everything in this section is decided and not yet built.**
 
 **1. A session driven by tools.** The Developer works in one conversation of plain tool calls: view, search, edit and run, with code inside the edit tools' arguments. Each edit applies to the draft branch at once. The session ends with a short structured `done`, and the gates at the end read the branch's diff.
 
@@ -84,7 +84,11 @@ Other tests, and the bodies of importers and callers, come through `tests_for`, 
 - Setup runs once at the start, with network. Then the session runs with none.
 - It keeps today's sandbox hardening (ADR 0006): not root, all capabilities dropped, no new privileges, and memory, CPU and process caps.
 - It's removed at the session's end, and cleaned up after a crash.
-- The project's image, setup and checks come from its own definition. crew-presentation's Playwright image and `.package/` become part of its workspace, not special cases.
+- **`devcontainer.json` is the one source of the workspace** ([the Sponsor, 2026-10-18](https://github.com/mqucifer/crew/issues/778#issuecomment-6250085435)). It's the standard file. The project's design points to it, and the Architect owns it.
+  - The crew reads only a subset of it: the image, the setup command and the environment.
+  - It always applies its own hardening, so nothing in the file can loosen the container. `runArgs`, `mounts`, `privileged`, features and host commands are not honoured.
+  - The project's checks come from its design, as today.
+- crew-presentation's Playwright image and `.package/` become part of its workspace, not special cases.
 - `crew ready` checks that a project's workspace builds.
 
 One environment for working and testing removes the mismatch between host and container (crew#780). In the replay, mqucifer/crew-presentation#83's first run failed on `net::ERR_INTERNET_DISCONNECTED`. That was the fact behind its real failure, and the session fixed it from the run.
@@ -150,7 +154,7 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 | The session and its tools (1, 2) | Yes, with pass 3's tools | The Developer answers in one call with `read_file` and `need_files` (ADRs 0024, 0025), its code in blocks (ADR 0026). The tools exist only in the replay's prototype, mqucifer/crew#791 |
 | How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Attempt limits, repairs and escalation |
 | The start (4) | Yes | A prompt of about 50k characters, and the reading ceilings |
-| The workspace (4b) | Yes | Each check is its own container (ADR 0006). The replay's held container is a prototype |
+| The workspace (4b) | Yes, with `devcontainer.json` as its one source | Each check is its own container (ADR 0006). The replay's held container is a prototype |
 | The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
 | Stories and the contract ruling (6) | Yes | The ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
 | Measures (8) | Yes | As before, until the Sponsor's Goal in sprint-metrics |
@@ -180,8 +184,8 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
   - a container held for each running session, with tools that execute in it and reliable clean-up. Docker Desktop's memory fits three workspaces only just (`var/notes/778/research-workspace.md`), and P1 starts with one;
   - input per story is about what the real attempts used, but mostly served from cache.
 - **What this doesn't decide:**
-  - how a compaction compacts, since it never ran (Stage C);
-  - which `devcontainer.json` fields the crew reads, and whether the file or the record's design is the one source of a project's image and setup (Stage B, `var/notes/778/research-workspace.md`);
+  - how a compaction compacts, since it never ran. Stage C starts from the research: mask older output first, and summarise only if that isn't enough (`var/notes/778/research-context.md`);
+  - how sprint-metrics and crew-presentation get their first `devcontainer.json` (Stage B);
   - from mqucifer/crew#790: how a session recognises a criterion no code can meet, parallel sessions, mechanical checks at `done` for a test per criterion and for docs, QA and other roles as sessions, nudges, and tuning the ceilings;
   - test-first (Discussion 665), and whether struggling files trigger strain (decision 7);
   - paring the rules further once the session is in use.
@@ -189,4 +193,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 ## Changelog
 
 - **2026-10-17:** decided. Decisions 1 to 9 and 4b are the Sponsor's, on crew#778.
-- **2026-10-18:** after the replay (Stage R), on crew#778. The Sponsor decided the parse guard and the whole history with one compaction near 125k. They accepted the report, with pass 3's tools as the build's start, and replaced its proposed stops with high ceilings, no nudges, and every signal recorded. The Sponsor approved P1 to P6 with the plan (mqucifer/crew#789). Written as this ADR in Stage A.
+- **2026-10-18:** after the replay (Stage R), on crew#778. The Sponsor decided the parse guard and the whole history with one compaction near 125k. They accepted the report, with pass 3's tools as the build's start, and replaced its proposed stops with high ceilings, no nudges, and every signal recorded. They also made `devcontainer.json` the workspace's one source, read as a subset under the crew's hardening. The Sponsor approved P1 to P6 with the plan (mqucifer/crew#789). Written as this ADR in Stage A.
