@@ -5,19 +5,20 @@ One conversation with the Developer's model, a call at a time through the call l
 is stopped. A stop ends it as `blocked`, with the session's evidence, for the Business
 Analyst (decision 9):
 
-- no progress: the same first error in the same test after 3 runs with edits between;
-- the backstop: 2 hours of model time;
-- a ceiling (`signals`): 60 calls with no edit and no run, or 50 views of one file with
+- `no_progress`: the same first error in the same test after 3 runs with edits between;
+- `backstop`: 2 hours of model time;
+- `ceiling` (`signals`): 60 calls with no edit and no run, or 50 views of one file with
   no edit between;
-- 3 replies in a row that call no tool. Each gets one line back, since a conversation
-  can't go on without a turn: not a nudge about progress (the operator, crew#778).
+- `no_tool_call`: 3 replies in a row that call no tool. Each gets one line back, since
+  a conversation can't go on without a turn: not a nudge about progress (the operator,
+  crew#778).
 
 A model call that fails, or a workspace container that's gone, ends it as
 `interrupted`: nothing about the story, so it's resumed (P3), not returned.
 
 Every call is recorded: its `llm.*` events by the call layer, each tool call as a
-`tool.finished`, and the signals after it as a `session.turn`. Telemetry gets their
-counts only (ADR 0010).
+`tool.finished`, the signals after it as a `session.turn`, and a compaction as a
+`session.compacted`. Telemetry gets their counts only (ADR 0010).
 """
 
 from __future__ import annotations
@@ -51,14 +52,25 @@ COMPACT_AT = 125_000
 
 @dataclass
 class Ending:
+    """How a session ended, in the fields delivery reads (Stage D).
+
+    - `done`: `said` is `done`'s own: `criteria` (criterion, test), `changed_tests`
+      (test, why), `docs` and `summary`.
+    - `blocked`: `said` is `missing` and `kind`. The session's own `blocked` says file,
+      fact or choice; a stop is kind `stop`, `stop` names it, and `missing` says what
+      it saw.
+    - `interrupted`: `why` names it, `call_failed` or `workspace_gone`; `said` has the
+      error's text, and `error` the exception, for the caller to handle as it handles
+      any (a server that's down).
+
+    `evidence`, on each: the last failure, what it tried, and the signals.
+    """
+
     how: str  # "done", "blocked" or "interrupted"
-    # `done`'s or `blocked`'s own arguments, or what stopped it and at what value.
-    said: dict[str, Any]
-    # What stopped it, if it didn't end itself: "no progress", "backstop", "reading",
-    # "re-viewing", "no tool call", "call failed" or "workspace gone".
+    said: dict[str, Any] = field(default_factory=dict)
     stop: str = ""
+    why: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
-    # What interrupted it, for the caller to handle as it handles any (a server down).
     error: BaseException | None = None
 
 
@@ -86,7 +98,12 @@ class Session:
         ending: Ending | None = None
         while ending is None:
             if self.model_s >= self.backstop_s:
-                ending = self._stopped("backstop", {"model_minutes": round(self.model_s / 60)})
+                minutes = round(self.model_s / 60)
+                ending = self._stopped(
+                    "backstop",
+                    f"{minutes} minutes of model time, the backstop",
+                    {"model_minutes": minutes},
+                )
                 break
             sent = self._messages()
             try:
@@ -95,9 +112,9 @@ class Session:
                 ending = Ending(
                     "interrupted",
                     {"error": f"{type(exc).__name__}: {str(exc)[:300]}"},
-                    "call failed",
-                    self._evidence(),
-                    exc,
+                    why="call_failed",
+                    evidence=self._evidence(),
+                    error=exc,
                 )
                 break
             self.calls += 1
@@ -117,9 +134,16 @@ class Session:
             if estimated >= self.compact_at:
                 self.history = compact(self.history)
                 masked = sum(isinstance(t, Turn) and t.masked for t in self.history)
-                self.compacted = {"before_call": self.calls + 1, "tokens": estimated}
-                self.compacted["masked"] = masked
+                self.compacted = {"turn": self.calls + 1, "estimated_tokens": estimated}
+                self.compacted["turns_masked"] = masked
                 sent = messages(self.system, self.start, self.history)
+                record(
+                    EventKind.SESSION_COMPACTED,
+                    f"compacted before call {self.calls + 1}: {masked} replies masked",
+                    role=_role(),
+                    chars_after=_chars(sent),
+                    **self.compacted,
+                )
         return sent
 
     def _answer(self, answered: Answered) -> Ending | None:
@@ -136,7 +160,11 @@ class Session:
             self._quiet.append(content[:2000])
             self._turn([], answered.usage)
             if len(self._quiet) >= QUIET_LIMIT:
-                return self._stopped("no tool call", {"replies": list(self._quiet)})
+                return self._stopped(
+                    "no_tool_call",
+                    f"{QUIET_LIMIT} replies in a row called no tool",
+                    {"replies": list(self._quiet)},
+                )
             self.history.append({"role": "user", "content": QUIET})
             return None
         self._quiet = []
@@ -159,7 +187,10 @@ class Session:
             if name in ENDINGS and ending is None:
                 try:
                     check_arguments(name, args)
-                    ending = Ending(name, dict(args), evidence=self._evidence())
+                    statement = dict(args)
+                    if name == "done":
+                        statement.setdefault("changed_tests", [])
+                    ending = Ending(name, statement, evidence=self._evidence())
                     reply = Reply("The session ends here.", "end", name)
                 except Refusal as exc:
                     reply = Reply(str(exc), "refused", f"{name}: refused", rule=exc.rule)
@@ -171,9 +202,9 @@ class Session:
                     ending = Ending(
                         "interrupted",
                         {"error": str(exc)[:300]},
-                        "workspace gone",
-                        self._evidence(),
-                        exc,
+                        why="workspace_gone",
+                        evidence=self._evidence(),
+                        error=exc,
                     )
             else:
                 reply = Reply("Not run: the session had ended.", "end", f"{name}: not run")
@@ -185,13 +216,21 @@ class Session:
             return ending
         if self.tools.no_progress():
             last = self.tools.runs[-1]
+            test = (last["failing"] or [""])[0]
             return self._stopped(
-                "no progress",
-                {"first_error": last["first_error"], "test": (last["failing"] or [""])[0]},
+                "no_progress",
+                f"the same first error in `{test}` after 3 runs with edits between: "
+                f"{last['first_error']}",
+                {"first_error": last["first_error"], "test": test},
             )
         reached = self.watch.ceiling()
         if reached is not None:
-            return self._stopped(reached.pop("stop"), reached)
+            seen = (
+                f"{reached['calls']} calls with no edit and no run"
+                if reached["ceiling"] == "reading"
+                else f"{reached['views']} views of `{reached['file']}` with no edit between"
+            )
+            return self._stopped("ceiling", seen, reached)
         return None
 
     # --- the records --------------------------------------------------------------------
@@ -233,7 +272,6 @@ class Session:
             turn=self.calls,
             tool_calls=len(replies),
             model_s=round(self.model_s, 1),
-            **({"compacted": True} if self.compacted.get("before_call") == self.calls else {}),
             **seen,
         )
 
@@ -242,29 +280,34 @@ class Session:
             {"call": self.calls, "kind": kind, "prompt_tokens": usage.get("prompt_tokens"), **more}
         )
 
-    def _stopped(self, stop: str, said: dict[str, Any]) -> Ending:
-        """A stop: `blocked`, with the session's evidence (decision 9)."""
-        return Ending("blocked", said, stop, self._evidence())
+    def _stopped(self, stop: str, missing: str, seen: dict[str, Any]) -> Ending:
+        """A stop: `blocked`, kind `stop`, with the session's evidence (decision 9)."""
+        said = {"missing": missing, "kind": "stop"}
+        return Ending("blocked", said, stop, evidence=self._evidence(seen))
 
-    def _evidence(self) -> dict[str, Any]:
-        """What the session did: its last run, what it read and changed, its signals."""
+    def _evidence(self, stop: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The last failure, what the session tried, and its signals; and what stopped it."""
+        runs = self.tools.runs
         return {
-            "last_run": self.tools.runs[-1] if self.tools.runs else None,
-            "runs": len(self.tools.runs),
-            "files_read": sorted({r.split(":", 1)[0] for r in self.tools.read}),
-            "files_edited": sorted(set(self.tools.edited)),
-            "since_action": self.watch.since_action,
-            "most_views": max(self.watch.views.values(), default=0),
-            "empty_lookups": self.watch.empty_lookups,
+            "last_failure": runs[-1] if runs and not runs[-1]["ok"] else None,
+            "tried": {
+                "runs": len(runs),
+                "files_read": sorted({r.split(":", 1)[0] for r in self.tools.read}),
+                "files_edited": sorted(set(self.tools.edited)),
+                "tools_used": dict(self.used),
+            },
+            "signals": self.watch.now(),
+            **({"stop": stop} if stop else {}),
         }
 
     def _ended(self, ending: Ending) -> None:
         record(
             EventKind.SESSION_ENDED,
-            f"{ending.how}{f' ({ending.stop})' if ending.stop else ''}",
+            f"{ending.how}{f' ({ending.stop or ending.why})' if ending.stop or ending.why else ''}",
             role=_role(),
             how=ending.how,
             stop=ending.stop,
+            why=ending.why,
             said=ending.said,
             evidence=ending.evidence,
             model_calls=self.calls,

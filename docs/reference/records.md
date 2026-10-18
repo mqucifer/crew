@@ -110,6 +110,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `tool.failed`
 - `session.started`
 - `session.turn`
+- `session.compacted`
 - `session.ended`
 - `revert.opened`
 - `revert.refused`

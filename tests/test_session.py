@@ -212,11 +212,11 @@ def test_a_ceiling_stops_reading_without_acting_and_circling_one_file(monkeypatc
     watch = signals.Signals()
     for _ in range(2):
         watch.after([view("a.py"), view("a.py")], {})
-    assert watch.ceiling() == {"stop": "re-viewing", "file": "a.py", "views": 4}
+    assert watch.ceiling() == {"ceiling": "re_viewing", "file": "a.py", "views": 4}
     watch = signals.Signals()
     for _ in range(3):
         watch.after([], {})
-    assert watch.ceiling() == {"stop": "reading", "calls": 3}
+    assert watch.ceiling() == {"ceiling": "reading", "calls": 3}
 
 
 def test_compaction_keeps_each_files_latest_view_the_latest_run_and_the_newest_turn():
@@ -308,6 +308,7 @@ def test_a_session_works_by_tools_until_done_and_records_every_call(root, seen):
     )
     s, ending = run_session(root, proxy)
     assert (ending.how, ending.stop, ending.said["summary"]) == ("done", "", "f returns 2")
+    assert ending.said["changed_tests"] == [] and ending.said["criteria"] == DONE["criteria"]
     assert "return 2" in (root / "src" / "app.py").read_text()
     # The tools the model was offered, and the conversation it was sent, grown whole.
     assert [t["function"]["name"] for t in proxy.sent[0]["tools"]][-2:] == ["done", "blocked"]
@@ -358,8 +359,8 @@ def test_blocked_ends_the_session_with_what_is_missing(root):
 def test_three_replies_that_call_no_tool_end_the_session_as_blocked(root):
     proxy = Proxy(*(said(content=f"thinking {i}") for i in range(3)))
     _, ending = run_session(root, proxy)
-    assert (ending.how, ending.stop) == ("blocked", "no tool call")
-    assert ending.said["replies"] == ["thinking 0", "thinking 1", "thinking 2"]
+    assert (ending.how, ending.stop, ending.said["kind"]) == ("blocked", "no_tool_call", "stop")
+    assert ending.evidence["stop"]["replies"] == ["thinking 0", "thinking 1", "thinking 2"]
     assert proxy.sent[1]["messages"][-1] == {"role": "user", "content": conversation.QUIET}
 
 
@@ -372,18 +373,21 @@ def test_the_same_first_error_after_three_runs_with_edits_between_stops_it(root)
 
     proxy = Proxy(said(run), change(1, 2), said(run), change(2, 3), said(run))
     _, ending = run_session(root, proxy, Fake({"uv run pytest": (1, failed)}))
-    assert (ending.how, ending.stop) == ("blocked", "no progress")
-    assert ending.said["test"] == "tests/test_app.py::test_f"
-    assert ending.evidence["last_run"]["failing"] == ["tests/test_app.py::test_f"]
-    assert ending.evidence["files_edited"] == ["src/app.py"]
+    assert (ending.how, ending.stop, ending.said["kind"]) == ("blocked", "no_progress", "stop")
+    assert "`tests/test_app.py::test_f` after 3 runs" in ending.said["missing"]
+    assert ending.evidence["last_failure"]["failing"] == ["tests/test_app.py::test_f"]
+    assert ending.evidence["tried"]["files_edited"] == ["src/app.py"]
+    assert ending.evidence["signals"]["edits_since_run"] == 0
 
 
 def test_reading_without_acting_stops_at_its_ceiling(root, monkeypatch):
     monkeypatch.setattr(signals, "READING_CALLS", 2)
     look = said(("view", {"path": "src/app.py"}))
     _, ending = run_session(root, Proxy(look, look))
-    assert (ending.how, ending.stop, ending.said) == ("blocked", "reading", {"calls": 2})
-    assert ending.evidence["files_read"] == ["src/app.py"]
+    assert (ending.how, ending.stop) == ("blocked", "ceiling")
+    assert ending.said == {"missing": "2 calls with no edit and no run", "kind": "stop"}
+    assert ending.evidence["stop"] == {"ceiling": "reading", "calls": 2}
+    assert ending.evidence["tried"]["files_read"] == ["src/app.py"]
 
 
 def test_the_backstop_of_model_time_stops_it(root):
@@ -394,23 +398,22 @@ def test_the_backstop_of_model_time_stops_it(root):
 def test_a_failed_call_interrupts_the_session_and_blames_nothing(root, seen):
     down = calls.ServiceUnavailableError("503: no backend")
     _, ending = run_session(root, Proxy(down))
-    assert (ending.how, ending.stop, ending.error) == ("interrupted", "call failed", down)
+    assert (ending.how, ending.why, ending.error) == ("interrupted", "call_failed", down)
     assert kinds(seen, EventKind.LLM_CALL_FAILED)
 
 
 def test_a_container_thats_gone_interrupts_the_session(root):
     gone = Fake({"uv run pytest": (GONE, "the workspace container is gone")})
     _, ending = run_session(root, Proxy(said(("run", {"what": "suite"}))), gone)
-    assert (ending.how, ending.stop) == ("interrupted", "workspace gone")
+    assert (ending.how, ending.why) == ("interrupted", "workspace_gone")
 
 
 def test_the_history_is_compacted_once_when_a_prompt_would_pass_the_limit(root, seen):
     look = said(("view", {"path": "src/app.py", "from_line": 1, "to_line": 2}))
     s, ending = run_session(root, Proxy(look, look, look, said(("done", DONE))), compact_at=1)
-    assert ending.how == "done" and s.compacted["before_call"] == 2
-    assert [e.detail.get("compacted") for e in kinds(seen, EventKind.SESSION_TURN)] == [
-        None, True, None, None,
-    ]  # fmt: skip
+    assert ending.how == "done" and s.compacted["turn"] == 2
+    (compacted,) = kinds(seen, EventKind.SESSION_COMPACTED)
+    assert compacted.detail["turn"] == 2 and compacted.detail["estimated_tokens"] >= 1
 
 
 def test_a_worktree_with_a_host_made_venv_is_refused(root):

@@ -57,9 +57,10 @@ class EventKind(StrEnum):
     TOOL_FAILED = "tool.failed"
 
     # The Developer's session (crew#778, P5): what it started with, its signals after
-    # each call, and how it ended. Each tool call in it is a `tool.finished`.
+    # each call, its compaction, and how it ended. Each tool call is a `tool.finished`.
     SESSION_STARTED = "session.started"
     SESSION_TURN = "session.turn"
+    SESSION_COMPACTED = "session.compacted"
     SESSION_ENDED = "session.ended"
 
     # A merged change being undone. Each carries the pull request reverted,

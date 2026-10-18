@@ -118,6 +118,7 @@ def main() -> None:
         result |= {
             "how": ending.how,
             "stop": ending.stop,
+            "why": ending.why,
             "said": ending.said,
             "evidence": ending.evidence,
             "model_minutes": round(session.model_s / 60, 1),
@@ -139,8 +140,9 @@ def main() -> None:
         )
     usage = result.get("usage", {})
     green = (result.get("gate_at_done") or {}).get("green")
+    stopped = result.get("stop") or result.get("why") or ""
     print(
-        f"{args.repo}#{args.card}: {result.get('how')} {result.get('stop') or ''}".rstrip()
+        f"{args.repo}#{args.card}: {result.get('how')} {stopped}".rstrip()
         + f", gate {'green' if green else 'red' if green is not None else '-'}, "
         f"{result.get('model_minutes')} model min, {result.get('calls')} calls, "
         f"{usage.get('completion_tokens')} out ({usage.get('reasoning_tokens')} reasoning). "

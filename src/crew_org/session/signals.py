@@ -54,6 +54,10 @@ class Signals:
         self.since_action = 0 if acted else self.since_action + 1
         self.empty_lookups += empty
         self.reasoning_tokens = int(usage.get("reasoning_tokens") or 0)
+        return {**self.now(), "empty_lookups": empty}
+
+    def now(self) -> dict[str, Any]:
+        """Each signal as it stands: `empty_lookups_total` is the session's so far."""
         most = max(self.views.items(), key=lambda kv: kv[1], default=("", 0))
         return {
             "since_action": self.since_action,
@@ -61,15 +65,14 @@ class Signals:
             "most_viewed": most[0],
             "reasoning_tokens": self.reasoning_tokens,
             "edits_since_run": self.edits_since_run,
-            "empty_lookups": empty,
             "empty_lookups_total": self.empty_lookups,
         }
 
     def ceiling(self) -> dict[str, Any] | None:
         """The ceiling reached, with its value, or None."""
         if self.since_action >= READING_CALLS:
-            return {"stop": "reading", "calls": self.since_action}
+            return {"ceiling": "reading", "calls": self.since_action}
         path, views = max(self.views.items(), key=lambda kv: kv[1], default=("", 0))
         if views >= VIEWS_OF_ONE_FILE:
-            return {"stop": "re-viewing", "file": path, "views": views}
+            return {"ceiling": "re_viewing", "file": path, "views": views}
         return None
