@@ -892,8 +892,8 @@ def _calls_in(node: ast.AST) -> Iterator[ast.Call]:
 def _reached(source: Source, node: ast.AST, depth: int = 5) -> list[tuple[Source, ast.FunctionDef]]:
     """Every crew function a block reaches by its calls, a few calls deep.
 
-    A function passed to another counts as called: `attributed(stepped.implement_file,
-    ...)(...)` runs it.
+    A function passed to another counts as called: `attributed(fn, ...)(...)` runs
+    `fn`.
     """
     out: dict[tuple[str, str], tuple[Source, ast.FunctionDef]] = {}
     # Breadth first, so each function is reached by its shortest path and its own
@@ -1483,7 +1483,7 @@ _AGENT_SETTINGS = ("llm", "llm_params", "can", "constitution")
 # Modules whose numeric constants set the tick's behaviour: its flows, crews and tools,
 # and the Developer's session (crew#778).
 _CONFIG_MODULES = ("crew_org.flows.", "crew_org.crews.", "crew_org.tools.", "crew_org.session.")
-_CONFIG_EXTRA = ("crew_org.calls", "crew_org.cut_text", "crew_org.escalation", "crew_org.llm")
+_CONFIG_EXTRA = ("crew_org.calls", "crew_org.cut_text", "crew_org.llm")
 
 
 def org_settings() -> list[tuple[str, Any, bool]]:

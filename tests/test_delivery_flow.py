@@ -462,6 +462,31 @@ def test_a_session_its_workspace_interrupted_is_tried_again_not_blocked(harness)
     assert any("Interrupted by the workspace container" in body for _, body in issues.comments_)
 
 
+def test_a_model_server_that_is_down_stops_the_tick_and_blames_no_card(harness):
+    """A dead backend isn't the story's failure (#153): it passes through to stop the
+    tick, and the next pass's reconciliation returns the card."""
+    from crew_org import calls
+    from crew_org.llm import ModelUnavailable
+
+    def down(card, **_):
+        raise calls.ServiceUnavailableError("Connection error: refused")
+
+    with pytest.raises(ModelUnavailable):
+        harness(developer=down)
+
+
+def test_an_exception_no_step_owns_blocks_the_card_saying_what_it_was(harness):
+    """The last resort: nothing is left In Progress with nobody to act (§9)."""
+
+    def broke(card, **_):
+        raise ValueError("a bug in the crew")
+
+    result, board, *_ = harness(developer=broke)
+    assert [o.card for o in result.blocked] == [6]
+    assert result.blocked[0].blocked_reason == "ValueError: a bug in the crew"
+    assert ("S6", "Blocked") in board.moves
+
+
 # --- one story at a time within an epic ----------------------------------
 
 

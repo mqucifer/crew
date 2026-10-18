@@ -806,8 +806,8 @@ def _deliver_and_move(
                 f"{INTERRUPTIONS_BEFORE_BLOCKING} before it's blocked for a person)."
             )
         else:
-            # A last resort. Anything deliver_story can attribute it returns on
-            # its own outcome; reaching here means it could not.
+            # A last resort. Anything the session's delivery can attribute it
+            # returns on its own outcome; reaching here means it could not.
             reason = f"{type(exc).__name__}: {exc}"
             if service:
                 reason = (
