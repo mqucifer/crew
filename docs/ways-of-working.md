@@ -453,6 +453,7 @@ step applied later.
 | All capabilities dropped, `no-new-privileges` | Nothing can escalate. |
 | Memory, CPU and PID limits | A runaway process is killed rather than taking the machine with it. |
 | Only the worktree and a cache are mounted | The host filesystem is not visible. |
+| The worktree's `.git` mounted read-only | Code run inside can't write a hook or a config that git would run on the host at the crew's next commit (crew#788). |
 | Every credential stripped from the environment | Code the model wrote never sees the token that can write to the repository. |
 
 **When no container engine is available, the check fails.** It does not fall
@@ -471,6 +472,30 @@ names its own image runs only what it names. Every protection in the table holds
 whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
+
+<!-- told to: nobody -->
+**A project's `devcontainer.json` is the one source of its image, setup and
+environment** (the Sponsor, 2026-10-18; crew#778). The crew reads only the
+`image`, one setup command (`onCreateCommand`, `updateContentCommand` or
+`postCreateCommand`, as an array of words: a string would run in a shell) and
+`containerEnv`, and the crew's own variables win (`tools/devcontainer.py`).
+Everything that would loosen the container, build an image or run on the host
+(`runArgs`, `mounts`, `privileged`, `capAdd`, features, `build`,
+`initializeCommand` and the like) isn't honoured, and `crew ready` names each
+one. A project without the file uses its design's image and setup, as above.
+Moving the first two projects to the file waits on the Architect's `crew
+design` writing it.
+
+**The Developer's session holds one workspace container for its story**
+(`tools/container.py`; crew#778, decision 4b). It's built, and the Developer uses
+it once the session is (Stages C and D). Setup runs once in a one-off container
+with the network; the session's container then starts with none, under every
+protection in the table, with an init process, and runs each command with
+`docker exec` under a timeout. Clean-up has three layers: it's removed at the
+session's end; a tick's start removes those whose crew process has gone; and one
+the crew forgets ends itself after 3 hours, past the 2-hour backstop, and is
+removed. `crew ready <project> --setup` starts the project's workspace this way.
+<!-- /told to -->
 
 **Before the checks, the project's own fixers run, and the attempt answers for
 what they change** (crew#758). The design's `autofix` commands run as named; a

@@ -150,6 +150,11 @@ def tick(
     if unavailable:
         console.print(f"[red]Sandbox unavailable.[/] {unavailable}")
         raise typer.Exit(code=1)
+    # Sessions' workspaces a crashed crew left behind (crew#778).
+    from crew_org.tools.container import sweep  # noqa: PLC0415
+
+    if swept := sweep(sandbox.engine):
+        console.print(f"[dim]removed {len(swept)} workspaces left behind: {', '.join(swept)}[/]")
 
     env = load_env()
     try:
