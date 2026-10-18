@@ -48,7 +48,7 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `delivery.conflict_with_main`<br>The branch conflicts with main: resolving it is for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
-| `delivery.open_pull_request`<br>A pull request is still open on the branch; re-delivering would overwrite it. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_open_pull | — |
+| `delivery.open_pull_request`<br>A pull request is still open on the branch; re-delivering would overwrite it. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:deliver_by_session | — |
 | `delivery.pull_request_failed`<br>The branch was pushed, and its pull request couldn't be opened. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land | — |
 | `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land | crew#10 |
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:deliver_by_session | — |

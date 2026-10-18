@@ -123,6 +123,7 @@ def deliver_by_session(
     if live is not None and not rework:
         # Before any session: re-delivering would overwrite the diff a review is
         # reading, so nothing is worth building. Checked again before the push.
+        outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
         return _open_pull(outcome, live)
     coverage = coverage_for(ws, repo, sink, number)
 
@@ -411,8 +412,6 @@ def _land(
 ) -> DeliveryOutcome:
     """Push and open for review, or for QA, as today; a story the route moved is done here."""
     from crew_org.flows import session_end  # noqa: PLC0415
-    from crew_org.flows.artifacts import signed  # noqa: PLC0415
-    from crew_org.flows.delivery import REWORK_MARKER  # noqa: PLC0415
     from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
 
     number = card.number or 0
@@ -443,6 +442,7 @@ def _land(
     opened = live or issues.pull_for_branch(repo, outcome.branch or "", known=None)
     if opened is not None and not rework:
         outcome.ended = False  # the work is kept, and nothing is pushed over the review
+        outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
         return _open_pull(outcome, opened)
     try:
         # A rework's commits go on top of what the review read; a fresh branch or a
@@ -479,29 +479,7 @@ def _land(
         return outcome
     if live is not None:
         outcome.pr = live["number"]
-        try:
-            issues.comment(
-                repo,
-                live["number"],
-                signed(
-                    f"{REWORK_MARKER}\n**Re-worked.** {summary}\n\n"
-                    + (
-                        "Rebuilt from main, where other work had changed the same lines. "
-                        if rebuilt
-                        else ""
-                    )
-                    + "Lint and the full test suite pass in the story's workspace."
-                    + "\n".join(reached.sections),
-                    "Developer",
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 - the push already updated the pull request
-            reraise_if_down(exc)
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} re-worked on PR #{live['number']}, and its comment failed: {exc}"[:300],
-                card=number,
-            )
+        _say_reworked(issues, sink, repo, number, live["number"], summary, reached, rebuilt)
     else:
         try:
             pr = issues.create_pull(
@@ -528,6 +506,42 @@ def _land(
         )
     )
     return outcome
+
+
+def _say_reworked(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    number: int,
+    pull: int,
+    summary: str,
+    reached: Delivered,
+    rebuilt: bool,
+) -> None:
+    """The rework, said on its pull request, as today. The push already updated it."""
+    from crew_org.flows.artifacts import signed  # noqa: PLC0415
+    from crew_org.flows.delivery import REWORK_MARKER  # noqa: PLC0415
+
+    rebuilt_line = "Rebuilt from main, where other work had changed the same lines. "
+    try:
+        issues.comment(
+            repo,
+            pull,
+            signed(
+                f"{REWORK_MARKER}\n**Re-worked.** {summary}\n\n"
+                + (rebuilt_line if rebuilt else "")
+                + "Lint and the full test suite pass in the story's workspace."
+                + "\n".join(reached.sections),
+                "Developer",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing comment doesn't undo the push
+        reraise_if_down(exc)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} re-worked on PR #{pull}, and its comment failed: {exc}"[:300],
+            card=number,
+        )
 
 
 def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: list[str]) -> str:
@@ -666,7 +680,6 @@ def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, numbe
 
 
 def _open_pull(outcome: DeliveryOutcome, live: dict[str, Any]) -> DeliveryOutcome:
-    outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
     outcome.blocked_reason = (
         f"PR #{live['number']} is still open on `{outcome.branch}`. Close it, or let that "
         "pull request finish; re-delivering would overwrite the diff it is reviewing."
