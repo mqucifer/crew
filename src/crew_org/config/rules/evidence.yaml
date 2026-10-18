@@ -44,6 +44,8 @@ check.delivery.these_named_tests_dont_exist:
   messages:
     default: 'these named tests don''t exist in the repository: {tests}. Name existing tests, or write
       the test in `criteria_tests`.'
+    done: 'these tests `done` names don''t exist in the repository: {tests}. Name the test that proves
+      each criterion, or write it.'
   origin:
   - crew#217
   - crew#221
@@ -56,6 +58,16 @@ check.delivery.this_ci_evidence_doesnt_hold:
       passed on `{branch}`, or change the code.'
   owner: Developer
   told_in: CriterionMet.ci_step
+check.gates.the_branch_changes_nothing:
+  description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion
+    and the checks pass, as an already-done story does (crew#221).
+  messages:
+    default: Your branch changes nothing. A story that's already done names, in `done`, an existing test
+      that proves each criterion, and the checks pass. Do the work, or name those tests.
+  origin:
+  - crew#221
+  - crew#778
+  owner: Developer
 check.presentation_notes.coverage:
   description: Refused unless every story of the epic appears once, and only those.
   messages:
