@@ -97,6 +97,12 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.parse_guard": (FEEDBACK, "an edit that would stop the file parsing isn't applied"),
     "session.run": (FEEDBACK, "no tests named, or no pytest or lint among the checks"),
     "session.tests_for": (FEEDBACK, "no coverage map: Python only"),
+    "session.git": (
+        FEEDBACK,
+        "a git command that isn't a read or restore, or an option that writes, reads outside "
+        "the repository or runs a program: the reply lists what runs",
+    ),
+    "session.restore": (FEEDBACK, "no `--source` or files, or a file that can't be written"),
     # --- settings ------------------------------------------------------------------------
     "config.org.sandbox.engine": (WORKSPACE, "the container's engine"),
     "config.org.sandbox.image": (WORKSPACE, "the default image, before a project's own"),

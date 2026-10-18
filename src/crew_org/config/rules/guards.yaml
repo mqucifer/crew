@@ -107,6 +107,22 @@ guard.bounds.out_of_bounds:
       Workflows may change, but every design check must still run there and still be able to fail: no
       `|| true`, no `continue-on-error`.'
   owner: Developer
+session.git:
+  description: The git tool runs one git command line with no shell, and only the commands that read and
+    `restore`; never an option that writes, reads outside the repository or runs a program.
+  messages:
+    empty: Give a git command line, such as `git diff base`. It runs {allowed}.
+    global_option: '`{option}` comes before the command, and git''s own options are the crew''s to set.
+      It runs {allowed}. Nothing was run.'
+    not_allowed: '`git {command}` isn''t run here: the session''s git reads and restores, and the crew
+      commits. It runs {allowed}.'
+    option: '`{option}` isn''t taken: it {why}. Nothing was run.'
+    shell: 'There''s no shell: {operators} would be a shell''s. Run one git command; its whole output
+      comes back.'
+    unparsed: 'The command line can''t be split into words: {error}.'
+  origin:
+  - crew#778
+  owner: Developer
 session.path:
   description: A tool reads and writes only the worktree, never the crew's own folders or what tools make,
     and never through a symbolic link that leads out of it.

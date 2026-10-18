@@ -120,7 +120,7 @@ def test_a_changed_test_done_doesnt_declare_goes_back(repo):
     assert [f.rule for f in verdict.findings] == ["check.gates.these_merged_tests_changed"]
     says = verdict.findings[0].says
     assert f"`{TESTS}::test_rate_is_capped` (changed)" in says
-    # A session has no git, so the merged test it would put back is shown (#316).
+    # The merged test it would put back is shown (#316).
     assert "As merged:" in says and "assert rate(2, 1) == 100" in says
 
 

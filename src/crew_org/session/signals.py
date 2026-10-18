@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org.session.tools import EDITS, Reply
+from crew_org.session.tools import Reply, edited
 
 # Model calls in a row with no edit applied and no run, before the session stops.
 READING_CALLS = 60
@@ -42,10 +42,12 @@ class Signals:
         for name, reply in replies:
             empty += reply.empty
             path = str(reply.detail.get("path", ""))
-            if name in EDITS and reply.kind == "ok":
+            changed = edited(name, reply)
+            if changed and reply.kind == "ok":
                 acted = True
                 self.edits_since_run += 1
-                self.views.pop(path, None)
+                for each in changed:
+                    self.views.pop(each, None)
             elif name == "run" and reply.kind in ("passed", "failed"):
                 acted = True
                 self.edits_since_run = 0

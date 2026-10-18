@@ -22,6 +22,7 @@ import difflib
 import errno
 import os
 import re
+import shlex
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ from typing import Any, NoReturn
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
 from crew_org.rulebook import Refusal, refuse
 from crew_org.session.container import GONE, Gone, Workspace
+from crew_org.session.git import INJECTED, OUTPUT_CHARS, Git, parse, restore_args
 from crew_org.tools.ast_edit import Edit, EditError, apply_edit, definitions
 
 # Never read or written: the crew's own folders and what tools make.
@@ -231,6 +233,19 @@ SPECS = [
         ["what"],
     ),
     _spec(
+        "git",
+        "Run one git command line on your branch, as you'd type it, with no shell: "
+        "`status`, `diff`, `log`, `show`, `blame` and `grep` read, and `restore "
+        "--source=<ref> -- <paths>` puts files back as they are at a commit, applied as an "
+        "edit (a file the commit doesn't have is deleted). The story's base, the commit your "
+        "branch started from, is the ref `base`: `git diff base`, `git show base:<path>`. "
+        "The crew commits your work after each green run, so `git diff base` shows all of "
+        "it. Nothing else runs, nor an option that writes a file, reads outside the "
+        f"repository or runs a program. Output past {OUTPUT_CHARS} characters is cut.",
+        {"command": S},
+        ["command"],
+    ),
+    _spec(
         "done",
         "Finish: the story is done. First `done` checks that each test you name for a "
         "criterion exists; if one doesn't, the reply says so, and you write it or name the "
@@ -272,6 +287,13 @@ ENDINGS = ("done", "blocked")
 EDITS = ("replace_text", "replace_definition", "write_file")
 
 
+def edited(name: str, reply: Reply) -> list[str]:
+    """The files a call's edit changed: an edit tool's, or `git restore`'s (crew#778)."""
+    if name in EDITS or reply.detail.get("edit"):
+        return list(reply.detail.get("paths") or [str(reply.detail.get("path", ""))])
+    return []
+
+
 class Missing(Refusal):
     """A lookup refused for what isn't there: a file, a folder, a definition, a map."""
 
@@ -308,7 +330,7 @@ def target_of(args: Any) -> str:
     """What a call is about, for its record: a path, or a name looked for."""
     if not isinstance(args, dict):
         return ""
-    for key in ("path", "name", "definition"):
+    for key in ("path", "name", "definition", "command"):
         if isinstance(args.get(key), str) and args[key]:
             return str(args[key])
     return ""
@@ -372,6 +394,7 @@ class Tools:
         # on its base's own formatting, from a check-only `ruff format --check`).
         self.lint_cmds = [c for c in self.verify if "ruff" in c or "lint" in " ".join(c)]
         self.ruff = _prefix(self.lint_cmds, "ruff")
+        self.repo = Git(self.root)
 
     def _exec(self, command: list[str], timeout: int, stdin: str | None = None) -> Any:
         done = self.workspace.exec(command, timeout=timeout, stdin=stdin)
@@ -802,6 +825,124 @@ class Tools:
             record,
         )
 
+    # --- history ------------------------------------------------------------------------
+    def git(self, command: str) -> Reply:
+        """One git command line: a read's output, or `restore` applied as an edit."""
+        sub, args = parse(command)
+        restoring = restore_args(args) if sub == "restore" else None
+        self.repo.set_base()
+        if restoring:
+            return self._restore(*restoring)
+        ran = self.repo.run([sub, *INJECTED[sub], *args], limit=OUTPUT_CHARS)
+        text = ran.output.decode("utf-8", errors="replace")
+        # grep finding nothing, and diff's `--exit-code` finding a change, exit 1.
+        ok = ran.code == 0 or (ran.code == 1 and sub in ("grep", "diff"))
+        if ran.cut:
+            text = (
+                text[:OUTPUT_CHARS] + f"\n(cut at {OUTPUT_CHARS} characters: narrow it with a "
+                "path, `-n`, `--stat` or `--name-only`)"
+            )
+        body = (
+            text.rstrip() or ran.errors or ("No lines match." if sub == "grep" else "(no output)")
+        )
+        shown = shlex.join([sub, *args])
+        lines = len(text.splitlines())
+        return Reply(
+            f"$ git {shown}\n" + ("" if ok else f"(exit {ran.code})\n") + body,
+            "ok" if ok else "failed",
+            f"git {shown[:80]}: " + (f"{lines} lines" if ok else f"exit {ran.code}"),
+            {"git": sub, "exit": ran.code, "lines": lines},
+            empty=ok and not text.strip() and sub in ("grep", "log"),
+        )
+
+    def _restore(self, ref: str, paths: list[str]) -> Reply:
+        """`git restore --source=<ref>`: each file as it is at `ref`, written as an edit is,
+        or deleted where `ref` doesn't have it. Read with `ls-tree` and `cat-file`, never
+        by running `git restore`, so it gets an edit's reply and parse guard. Every file
+        is checked before any is written."""
+        planned: list[tuple[str, Path, str, bytes | None]] = []
+        for given in paths:
+            target, rel = self._path(given, write=True)
+            if target.is_dir():
+                refuse("session.restore", "folder", path=rel, ref=ref)
+            listed = self.repo.run(["ls-tree", "-z", ref, "--", rel])
+            if listed.code != 0:
+                refuse("session.restore", "no_ref", ref=ref, said=listed.errors.strip()[:300])
+            entry = next(
+                (
+                    e
+                    for e in listed.output.decode("utf-8", "replace").split("\0")
+                    if e.endswith(f"\t{rel}")
+                ),
+                "",
+            )
+            mode, kind, sha = entry.partition("\t")[0].split() if entry else ("", "", "")
+            if kind == "tree":
+                refuse("session.restore", "folder", path=rel, ref=ref)
+            if kind not in ("", "blob") or mode == "120000":
+                refuse("session.restore", "link", path=rel, ref=ref)
+            content = self.repo.run(["cat-file", "blob", sha]).output if sha else None
+            if content is not None and not is_text_bytes(content):
+                refuse("session.restore", "not_text", path=rel, ref=ref)
+            if content is None and not target.is_file():
+                refuse("session.restore", "neither", kind=Missing, path=rel, ref=ref)
+            planned.append((rel, target, mode, content))
+        said: list[str] = []
+        applied: list[str] = []
+        refused: Refusal | None = None
+        for rel, target, mode, content in planned:
+            before = self._text(target, rel) if target.is_file() else None
+            if content is None:
+                self._remove(target, rel)
+                self.edited.append(rel)
+                self.edits_since_run += 1
+                said.append(f"Deleted `{rel}`: `{ref}` doesn't have it.")
+                applied.append(rel)
+                continue
+            after = content.decode("utf-8")
+            if after == before:
+                said.append(f"`{rel}` is already as it is at `{ref}`: nothing to change.")
+                continue
+            try:
+                written = self._write(rel, target, f"Restored as at `{ref}`:", before, after)
+            except Refusal as exc:
+                refused = refused or exc
+                said.append(str(exc))
+                continue
+            self._executable(target, rel, mode == "100755")
+            said.append(written.text)
+            applied.append(rel)
+        if refused is not None and not applied:
+            raise refused
+        return Reply(
+            "\n\n".join(said),
+            "ok",
+            f"restored {', '.join(applied) or 'nothing'} as at {ref}"[:160],
+            {"path": (applied or [planned[0][0]])[0], "paths": applied, "edit": bool(applied)},
+        )
+
+    def _remove(self, real: Path, given: str) -> None:
+        """Delete `real`, a file in the worktree, with no symlink followed on the way."""
+        if real.parent == self.root:
+            fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        else:
+            fd = self._open(real.parent, os.O_RDONLY | os.O_DIRECTORY, given)
+        try:
+            os.unlink(real.name, dir_fd=fd)
+        finally:
+            os.close(fd)
+
+    def _executable(self, real: Path, given: str, executable: bool) -> None:
+        """Give a restored file the executable bit it has at the ref, as git would."""
+        fd = self._open(real, os.O_RDONLY, given)
+        try:
+            mode = os.fstat(fd).st_mode & 0o777
+            wanted = mode | 0o111 if executable else mode & ~0o111
+            if wanted != mode:
+                os.fchmod(fd, wanted)
+        finally:
+            os.close(fd)
+
     def no_progress(self) -> bool:
         """The same first error in the same test after 3 runs with edits between (decision 3)."""
         failed = [r for r in self.runs if not r["ok"]][-3:]
@@ -833,6 +974,8 @@ class Tools:
                 return self.write_file(args["path"], args["content"], bool(args.get("overwrite")))
             if name == "run":
                 return self.run(args["what"], args.get("tests"))
+            if name == "git":
+                return self.git(args["command"])
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)

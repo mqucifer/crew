@@ -17,12 +17,12 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 12 |
+| A session's tool refuses a call, and says why in its reply | 14 |
 | A gate at `done` sends a session's branch back | 8 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
-| A setting that changes what the tick does | 186 |
+| A setting that changes what the tick does | 188 |
 | Told, and not checked by anything above | 169 |
 
 ## Categories
@@ -35,13 +35,13 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 72 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:propose_epics`, `refinement_crew:propose_missing_epics`, `refinement_crew:_delivered_block`, `refinement_crew:split_epic`, `settle_crew` | 76 |
-| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
+| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 71 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 61 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 62 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 102 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 27 |
-| Unplaced | | 79 |
+| Unplaced | | 81 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -164,10 +164,12 @@ section; one no line holds for is unplaced, never guessed.
 | `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/tools.py:check_arguments` | Developer | — | src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
+| `session.git`<br>The git tool runs one git command line with no shell, and only the commands that read and `restore`; never an option that writes, reads outside the repository or runs a program. | guards | `src/crew_org/session/git.py:parse` | Developer | — | src/crew_org/session/git.py:_check_option<br>src/crew_org/session/git.py:parse | crew#778 |
 | `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |
-| `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make, and never through a symbolic link that leads out of it. | guards | `src/crew_org/session/tools.py:Tools._path` | Developer | — | src/crew_org/session/tools.py:Tools._open<br>src/crew_org/session/tools.py:Tools._path | crew#778 |
+| `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make, and never through a symbolic link that leads out of it. | guards | `src/crew_org/session/git.py:outside` | Developer | — | src/crew_org/session/git.py:outside<br>src/crew_org/session/tools.py:Tools._open<br>src/crew_org/session/tools.py:Tools._path | crew#778 |
 | `session.replace_definition`<br>`replace_definition` changes an existing Python file. | edits | `src/crew_org/session/tools.py:Tools.replace_definition` | Developer | — | src/crew_org/session/tools.py:Tools.replace_definition | crew#778 |
 | `session.replace_text`<br>`replace_text` quotes whole lines of a file there is, once in it, and changes them. | edits | `src/crew_org/session/tools.py:Tools._not_found` | Developer | — | src/crew_org/session/tools.py:Tools._not_found<br>src/crew_org/session/tools.py:Tools.replace_text | crew#778 |
+| `session.restore`<br>`git restore` takes `--source=<ref>` and files, and writes text files in the branch only. | edits | `src/crew_org/session/git.py:restore_args` | Developer | — | src/crew_org/session/git.py:restore_args<br>src/crew_org/session/tools.py:Tools._restore | crew#778 |
 | `session.run`<br>`run` of tests names them, and needs the project's checks to run pytest; `run` of lint needs a lint among them. | evidence | `src/crew_org/session/tools.py:Tools.run` | Developer | — | src/crew_org/session/tools.py:Tools.run | crew#778 |
 | `session.search`<br>`search` is given a pattern, and a path there is. | answer_shape | `src/crew_org/session/tools.py:Tools.search` | Developer | — | src/crew_org/session/tools.py:Tools.search | crew#778 |
 | `session.tests_for`<br>`tests_for` needs the project's coverage map, which is Python only. | evidence | `src/crew_org/session/tools.py:Tools.tests_for` | Developer | §14 a_project_in_more_than_one (both cite crew#404; in §14) | src/crew_org/session/tools.py:Tools.tests_for | crew#404<br>crew#778 |
@@ -351,6 +353,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.diagnose.MAX_EVENTS`<br>MAX_EVENTS = 40 | — | `src/crew_org/flows/diagnose.py:MAX_EVENTS` | — | — | src/crew_org/flows/diagnose.py:MAX_EVENTS | — |
 | `config.const.diagnose.PER_TICK`<br>Diagnoses per tick. | — | `src/crew_org/flows/diagnose.py:PER_TICK` | — | — | src/crew_org/flows/diagnose.py:PER_TICK | — |
 | `config.const.diagnosis_crew.MAX_FILES`<br>MAX_FILES = 8 | — | `src/crew_org/crews/diagnosis_crew.py:MAX_FILES` | — | — | src/crew_org/crews/diagnosis_crew.py:MAX_FILES | — |
+| `config.const.git.OUTPUT_CHARS`<br>The most of a reply's output read: the rest is cut, and git stopped. | — | `src/crew_org/session/git.py:OUTPUT_CHARS` | — | — | src/crew_org/session/git.py:OUTPUT_CHARS | crew#778 |
+| `config.const.git.TIMEOUT`<br>A git command that runs longer than this is stopped. | — | `src/crew_org/session/git.py:TIMEOUT` | — | — | src/crew_org/session/git.py:TIMEOUT | crew#778 |
 | `config.const.github_http.ATTEMPTS`<br>ATTEMPTS = 3 | — | `src/crew_org/tools/github_http.py:ATTEMPTS` | — | — | src/crew_org/tools/github_http.py:ATTEMPTS | — |
 | `config.const.github_http.FIRST_BACKOFF`<br>FIRST_BACKOFF = 60.0 | — | `src/crew_org/tools/github_http.py:FIRST_BACKOFF` | — | — | src/crew_org/tools/github_http.py:FIRST_BACKOFF | — |
 | `config.const.github_http.MAX_WAIT`<br>MAX_WAIT = 120.0 | — | `src/crew_org/tools/github_http.py:MAX_WAIT` | — | — | src/crew_org/tools/github_http.py:MAX_WAIT | — |
