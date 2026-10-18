@@ -51,11 +51,15 @@ class Session:
     ending: dict[str, Any] = field(default_factory=dict)
     # How older tool output is kept: "cut", each reply shrinks to its line once a newer
     # one of its kind arrives (pass 1); or "whole", every reply stays whole and the
-    # conversation is compacted once, all at once, if a prompt reaches `compact_at`
-    # tokens (pass 2: a cut rewrites the prefix SGLang has cached).
+    # conversation is compacted once, all at once, before a prompt would pass
+    # `compact_at` tokens (pass 2: a cut rewrites the prefix SGLang has cached). The
+    # Sponsor set 125k: the window is 262,144, about 196k once 65,536 of output is kept.
     context: str = "cut"
-    compact_at: int = 100_000
+    compact_at: int = 125_000
     compacted: dict[str, Any] = field(default_factory=dict)
+    # Each empty, cut-off or malformed answer, with its call's prompt size.
+    troubles: list[dict[str, Any]] = field(default_factory=list)
+    _chars_per_token: float = 0.0  # from the last call, to estimate the next prompt
     _history: list[Any] = field(default_factory=list)  # assistant messages and Turns
     _latest: set[str] = field(default_factory=set)  # the newest turn's call ids
     _frozen: set[int] = field(default_factory=set)  # turns cut by the one compaction
@@ -93,14 +97,14 @@ class Session:
                 out.append(item)
         return out
 
-    def _compact(self, prompt_tokens: int) -> None:
+    def _compact(self, estimated: int) -> None:
         """Once, all at once: every reply the cut rule wouldn't keep shrinks to its line."""
         kept = self._kept()
         turns = sum(isinstance(t, Turn) for t in self._history)
         self._frozen = set(range(turns)) - kept
         self.compacted = {
-            "call": self.calls,
-            "prompt_tokens": prompt_tokens,
+            "before_call": self.calls + 1,
+            "estimated_tokens": estimated,
             "cut": len(self._frozen),
         }
         self.log({"compacted": self.compacted})
@@ -133,6 +137,11 @@ class Session:
                 self._end("backstop", f"{round(self.model_s / 60)} minutes of model time")
                 break
             body = self._body()
+            if self.context == "whole" and not self.compacted and self._chars_per_token:
+                estimated = int(_chars(body) / self._chars_per_token)
+                if estimated >= self.compact_at:
+                    self._compact(estimated)
+                    body = self._body()
             began = time.monotonic()
             try:
                 data = sender(body)
@@ -145,15 +154,20 @@ class Session:
             usage = _usage(data)
             for k, v in usage.items():
                 self.usage[k] = self.usage.get(k, 0) + v
-            if (
-                self.context == "whole"
-                and not self.compacted
-                and usage.get("prompt_tokens", 0) >= self.compact_at
-            ):
-                self._compact(usage["prompt_tokens"])
+            if usage.get("prompt_tokens"):
+                self._chars_per_token = _chars(body) / usage["prompt_tokens"]
             choice = (data.get("choices") or [{}])[0]
             message = choice.get("message") or {}
             made = message.get("tool_calls") or []
+            trouble = (
+                "cut off"
+                if choice.get("finish_reason") == "length"
+                else "empty"
+                if not made and not (message.get("content") or "").strip()
+                else None
+            )
+            if trouble:
+                self._trouble(trouble, usage)
             self.log(
                 {
                     "call": self.calls,
@@ -169,7 +183,7 @@ class Session:
                         }
                         for m in made
                     ],
-                    "prompt_chars": sum(len(str(m.get("content") or "")) for m in body["messages"]),
+                    "prompt_chars": _chars(body),
                 }
             )
             if not made:
@@ -195,6 +209,8 @@ class Session:
                     args = json.loads(function.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     args = None
+                if not isinstance(args, dict):
+                    self._trouble("malformed", usage, tool=name)
                 if not isinstance(args, dict):
                     reply = Reply(
                         "Those arguments aren't a JSON object: call the tool again.",
@@ -227,8 +243,18 @@ class Session:
                 )
         return self.ending
 
+    def _trouble(self, kind: str, usage: dict[str, int], **more: Any) -> None:
+        self.troubles.append(
+            {"call": self.calls, "kind": kind, "prompt_tokens": usage.get("prompt_tokens"), **more}
+        )
+
     def _end(self, how: str, said: Any) -> None:
         self.ending = {"how": how, "said": said}
+
+
+def _chars(body: dict[str, Any]) -> int:
+    """A request's size in characters: its messages' text."""
+    return sum(len(str(m.get("content") or "")) for m in body["messages"])
 
 
 def _short(args: Any) -> Any:
