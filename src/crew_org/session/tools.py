@@ -17,7 +17,10 @@ doesn't take. Each refusal is a declared rule (ADR 0031), named on its event.
 from __future__ import annotations
 
 import ast
+import contextlib
 import difflib
+import errno
+import os
 import re
 import time
 from collections import Counter
@@ -65,9 +68,14 @@ def is_text(path: Path) -> bool:
     """
     try:
         with path.open("rb") as f:
-            chunk = f.read(8192)
+            return is_text_bytes(f.read(8192))
     except OSError:
         return False
+
+
+def is_text_bytes(content: bytes) -> bool:
+    """`is_text`, of content already read."""
+    chunk = content[:8192]
     if b"\0" in chunk:
         return False
     for cut in range(4):  # a read can end inside a multi-byte character
@@ -376,7 +384,45 @@ class Tools:
             refuse("session.path", "outside", path=given)
         if SKIPPED & set(pure.parts):
             refuse("session.path", "skipped", path=given, verb="write" if write else "read")
-        return self.root / rel, rel
+        # The tools run on the host, so a symlink in the worktree, the project's or one a
+        # process in the container made, mustn't take them out of it (crew#778). What's
+        # used is the resolved path, opened without following a link (`_open`).
+        target = self.root / rel
+        real = target.resolve()
+        if not real.is_relative_to(self.root):
+            refuse("session.path", "outside", path=given)
+        if write and target.is_symlink():
+            refuse("session.path", "link", path=given)
+        return real, rel
+
+    def _open(self, real: Path, flags: int, given: str) -> int:
+        """`real`, a resolved path in the worktree, opened from the worktree's root one
+        part at a time with no symlink followed, so a link swapped in after `_path`
+        checked it fails here rather than leading out. Creating, the folders are made."""
+        parts = real.relative_to(self.root).parts
+        fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for part in parts[:-1]:
+                if flags & os.O_CREAT:
+                    with contextlib.suppress(FileExistsError):
+                        os.mkdir(part, dir_fd=fd)
+                inner = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = inner
+            return os.open(parts[-1], flags | os.O_NOFOLLOW, 0o644, dir_fd=fd)
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                refuse("session.path", "outside", path=given)
+            raise
+        finally:
+            os.close(fd)
+
+    def _read(self, real: Path, given: str) -> bytes:
+        with os.fdopen(self._open(real, os.O_RDONLY, given), "rb") as f:
+            return f.read()
+
+    def _text(self, real: Path, given: str) -> str:
+        return self._read(real, given).decode("utf-8", errors="replace")
 
     # --- see and find -------------------------------------------------------------------
     def view(
@@ -394,9 +440,10 @@ class Tools:
             target, rel = self._path(path)
             if not target.is_file():
                 refuse("session.view", "no_file", kind=Missing, path=rel)
-            if not is_text(target):
+            content = self._read(target, path)
+            if not is_text_bytes(content):
                 refuse("session.view", "not_text", path=rel)
-            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = content.decode("utf-8", errors="replace").splitlines()
         if definition:
             node = definitions("\n".join(lines)).get(definition) if rel.endswith(".py") else None
             if node is None:
@@ -443,20 +490,24 @@ class Tools:
             return (4 if top.startswith(".") else order.get(top, 2), str(p))
 
         out = []
-        for p in self.root.rglob("*"):
-            rel = p.relative_to(self.root).as_posix()
-            if under and rel != under and not rel.startswith(f"{under}/"):
-                continue
-            if p.is_file() and not (SKIPPED & set(PurePosixPath(rel).parts)) and is_text(p):
-                out.append(p)
+        # No symlink is followed, to a folder or a file: one could lead out (crew#778).
+        for here, folders, files in os.walk(self.root, followlinks=False):
+            folders[:] = [f for f in folders if f not in SKIPPED]
+            for name in files:
+                p = Path(here) / name
+                rel = p.relative_to(self.root).as_posix()
+                if under and rel != under and not rel.startswith(f"{under}/"):
+                    continue
+                if not p.is_symlink() and p.is_file() and is_text(p):
+                    out.append(p)
         return sorted(out, key=rank)
 
     def _grep(self, files: list[Path], match: Any) -> list[tuple[str, int, str]]:
         hits = []
         for p in files:
             try:
-                text = p.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
+                text = self._text(p, p.relative_to(self.root).as_posix())
+            except (OSError, Refusal):
                 continue
             for n, line in enumerate(text.splitlines(), 1):
                 if match(line):
@@ -518,7 +569,10 @@ class Tools:
             if p.suffix != ".py":
                 continue
             rel = str(p.relative_to(self.root))
-            source = p.read_text(encoding="utf-8", errors="ignore")
+            try:
+                source = self._text(p, rel)
+            except (OSError, Refusal):
+                continue
             for qual, node in definitions(source).items():
                 if qual == name or qual.split(".")[-1] == short:
                     defined.append(f"{rel}:{node.lineno} defines `{qual}`")
@@ -598,8 +652,9 @@ class Tools:
                         before=changed_lines(before, after, side="old"),
                     )
                 broken = f" It doesn't parse: {exc.msg} on line {exc.lineno}."
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(after, encoding="utf-8")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        with os.fdopen(self._open(target, flags, rel), "w", encoding="utf-8") as f:
+            f.write(after)
         self.edited.append(rel)
         self.edits_since_run += 1
         notes = broken
@@ -623,7 +678,7 @@ class Tools:
         target, rel = self._path(path, write=True)
         if not target.is_file():
             refuse("session.replace_text", "no_file", path=rel)
-        text = target.read_text(encoding="utf-8")
+        text = self._text(target, path)
         old, new = _trim(old), _trim(new)
         if not old.strip():
             refuse("session.replace_text", "empty")
@@ -679,7 +734,7 @@ class Tools:
         target, rel = self._path(path, write=True)
         if not rel.endswith(".py") or not target.is_file():
             refuse("session.replace_definition", "not_python", path=rel)
-        before = target.read_text(encoding="utf-8")
+        before = self._text(target, path)
         try:
             changed = apply_edit(before, Edit(Operation.REPLACE, name, source))
         except EditError as exc:
@@ -692,7 +747,7 @@ class Tools:
         target, rel = self._path(path, write=True)
         if target.exists() and not overwrite:
             refuse("session.write_file", "exists", path=rel)
-        before = target.read_text(encoding="utf-8") if target.exists() else None
+        before = self._text(target, path) if target.exists() else None
         return self._write(rel, target, "Wrote", before, content)
 
     # --- check --------------------------------------------------------------------------
