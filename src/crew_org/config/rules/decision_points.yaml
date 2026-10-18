@@ -764,6 +764,26 @@ flows.diagnose.render:end:89993a6e:
   at: flows/diagnose.py:render
   if: report.diagnosis is None
   not_a_rule: 'a report or a render: lists, decides nothing'
+flows.gates._declared_tests:end:988b1ee5:
+  at: flows/gates.py:_declared_tests
+  if: 'merged is None'
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.gates._declared_tests:skip:e715346d:
+  at: flows/gates.py:_declared_tests
+  if: 'not declared'
+  rule: check.gates.these_merged_tests_changed
+flows.gates._tests_in:filter:16ec752a:
+  at: flows/gates.py:_tests_in
+  if: 'isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and name.rpartition(''.'')[2].startswith(''test'')'
+  not_a_rule: 'picks a module''s test functions out: no decision'
+flows.gates.at_done:end:2825a647:
+  at: flows/gates.py:at_done
+  if: 'proven and verdict.check.ok'
+  rule: check.gates.the_branch_changes_nothing
+flows.gates.at_done:filter:cbd17a84:
+  at: flows/gates.py:at_done
+  if: 'not _is_test(key)'
+  rule: guard.regression.broken_contracts
 flows.goal_index.refresh:end:4ebe1b47:
   at: flows/goal_index.py:refresh
   if: not body
@@ -1322,6 +1342,26 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.session_end._ruled:end:e3655272:
+  at: flows/session_end.py:_ruled
+  if: 'ruling is not None and ruling.decision == ''amend'''
+  rule: story.contract_ruling
+flows.session_end.route:end:24369425:
+  at: flows/session_end.py:route
+  if: 'verdict.already_done'
+  rule: decision.delivery.outcome
+flows.session_end.route:end:7a8d6454:
+  at: flows/session_end.py:route
+  if: 'not verdict.passed'
+  rule: decision.delivery.outcome
+flows.session_end.route:end:a77846b4:
+  at: flows/session_end.py:route
+  if: 'ending.how == ''blocked'''
+  rule: decision.delivery.outcome
+flows.session_end.route:end:d5a03eed:
+  at: flows/session_end.py:route
+  if: 'verdict.disagree'
+  rule: decision.delivery.outcome
 flows.settle._reply:end:a2a99ea7:
   at: flows/settle.py:_reply
   if: not asked

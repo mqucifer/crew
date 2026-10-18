@@ -1,4 +1,23 @@
 # What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
+check.gates.the_business_analyst_ruled_that:
+  description: At `done`, merged tests changed where the story says they stay unchanged go back when the
+    Business Analyst rules the story doesn't change them.
+  messages:
+    default: 'The Business Analyst ruled that this story doesn''t change {tests}: {why} Put them back
+      as they were, and make your change pass with them as they are.'
+  origin:
+  - crew#584
+  - crew#778
+  owner: Developer
+check.gates.these_merged_tests_changed:
+  description: At `done`, a merged test the branch changes or removes is declared in `done`'s changed
+    tests, with why.
+  messages:
+    default: 'These merged tests changed, and `done` doesn''t declare them: {tests}. Declare each in `done`''s
+      changed tests with why, or put it back as it was.'
+  origin:
+  - crew#778
+  owner: Developer
 check.record.check_change:
   description: 'Refused if it changes or deletes a row in place, or settles a question it may not: a later
     row replaces a row, and only its author or the Sponsor may.'

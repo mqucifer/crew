@@ -115,6 +115,16 @@ class Rule(StrEnum):
     """It keeps breaking merged tests it didn't write."""
     RETURN_REVIEW_CONFLICT = "story.review_conflicts_with_criterion"
     """The review asks for what a criterion forbids."""
+    RETURN_SESSION_BLOCKED = "story.session_blocked"
+    """Its Developer session ended blocked on a missing file or fact, or was stopped."""
+    RETURN_CONTRACT_RULING = "story.contract_ruling"
+    """At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed."""
+
+    # --- a Developer session's ending (session_end.py) ---
+    SESSION_CHOICE = "session.choice"
+    """Its session ended blocked on a choice no one has made: for the Sponsor."""
+    SESSION_NO_EPIC = "session.no_epic"
+    """Its session ended blocked, and it has no epic to be split again: for a person."""
 
     # --- holds ---
     HOLD_SIBLING = "hold.sibling"
@@ -130,6 +140,8 @@ RETURN_RULES = {
     "gate round trips": Rule.RETURN_GATE_ROUND_TRIPS,
     "pinned tests": Rule.RETURN_PINNED_TESTS,
     "review conflicts with a criterion": Rule.RETURN_REVIEW_CONFLICT,
+    "session blocked": Rule.RETURN_SESSION_BLOCKED,
+    "contract ruling": Rule.RETURN_CONTRACT_RULING,
 }
 
 # What each failure class an attempt is judged under means, as a kind.
