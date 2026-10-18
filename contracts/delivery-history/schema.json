@@ -3,6 +3,14 @@
     "Analysis": {
       "additionalProperties": false,
       "properties": {
+        "deliveries": {
+          "description": "Every delivery in Developer sessions, by story, oldest first.",
+          "items": {
+            "$ref": "#/$defs/Delivery"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
         "sprints": {
           "description": "Every sprint started by the package's date.",
           "items": {
@@ -22,7 +30,8 @@
       },
       "required": [
         "sprints",
-        "stories"
+        "stories",
+        "deliveries"
       ],
       "title": "Analysis",
       "type": "object"
@@ -408,6 +417,283 @@
         "text"
       ],
       "title": "Decided",
+      "type": "object"
+    },
+    "Delivery": {
+      "additionalProperties": false,
+      "description": "One delivery of a story in Developer sessions, from its first session to its outcome.\n\nDerived from the package's own events (crew#778, decision 8). An attempt is the\nbranch handed to review and QA (the Sponsor, 2026-10-18): `submissions` counts\nthem, and the gate's returns before review are `gate_rounds`, which don't spoil a\nfirst attempt. Outcomes: `done` (moved to Done), `returned` (to the Business\nAnalyst), `blocked` (left for a person: a choice, or nowhere to return it),\n`interrupted` (its last session was, and none followed), `open`.",
+      "properties": {
+        "blocked_on": {
+          "anyOf": [
+            {
+              "enum": [
+                "file",
+                "fact",
+                "choice",
+                "stop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked On"
+        },
+        "cached_tokens": {
+          "title": "Cached Tokens",
+          "type": "integer"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "ceiling": {
+          "anyOf": [
+            {
+              "enum": [
+                "reading",
+                "re_viewing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ceiling"
+        },
+        "completion_tokens": {
+          "title": "Completion Tokens",
+          "type": "integer"
+        },
+        "edits_since_run": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Edits Since Run"
+        },
+        "empty_lookups": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Empty Lookups"
+        },
+        "ended": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ended"
+        },
+        "first_green_run": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Of its runs, from 1, the first whole suite that passed.",
+          "title": "First Green Run"
+        },
+        "gaps": {
+          "description": "What its records lacked, built around: a session with no end (a crash, or still running), or an end with no start. Nothing is guessed.",
+          "items": {
+            "enum": [
+              "session_not_ended",
+              "session_not_started"
+            ],
+            "type": "string"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "gate_rounds": {
+          "description": "Times the gate at `done` returned it before review.",
+          "title": "Gate Rounds",
+          "type": "integer"
+        },
+        "gate_rules": {
+          "description": "The rules the gate's returns were by.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Gate Rules",
+          "type": "array"
+        },
+        "model_calls": {
+          "title": "Model Calls",
+          "type": "integer"
+        },
+        "model_seconds": {
+          "title": "Model Seconds",
+          "type": "number"
+        },
+        "most_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Most Views"
+        },
+        "number": {
+          "description": "Which delivery of the story this is, from 1.",
+          "title": "Number",
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "done",
+            "returned",
+            "blocked",
+            "interrupted",
+            "open"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "prompt_tokens": {
+          "title": "Prompt Tokens",
+          "type": "integer"
+        },
+        "reasoning_tokens": {
+          "title": "Reasoning Tokens",
+          "type": "integer"
+        },
+        "resumes": {
+          "description": "Sessions started after an interrupted one (P3).",
+          "title": "Resumes",
+          "type": "integer"
+        },
+        "returned_because": {
+          "anyOf": [
+            {
+              "enum": [
+                "gate round trips",
+                "pinned tests",
+                "review conflicts with a criterion",
+                "session blocked",
+                "contract ruling"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Returned Because"
+        },
+        "review_returns": {
+          "description": "Returns by review or QA.",
+          "title": "Review Returns",
+          "type": "integer"
+        },
+        "rework_rounds": {
+          "description": "Sessions started after a return by the gate, review or QA (P2).",
+          "title": "Rework Rounds",
+          "type": "integer"
+        },
+        "runs": {
+          "title": "Runs",
+          "type": "integer"
+        },
+        "sessions": {
+          "title": "Sessions",
+          "type": "integer"
+        },
+        "since_action": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its last session's signals at the end.",
+          "title": "Since Action"
+        },
+        "started": {
+          "format": "date-time",
+          "title": "Started",
+          "type": "string"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_progress",
+                "backstop",
+                "ceiling",
+                "no_tool_call"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What stopped its last session, if anything did.",
+          "title": "Stop"
+        },
+        "submissions": {
+          "description": "Times its branch was handed to review and QA: a move into Reviewing, or into QAing from anywhere else, as a story already done is.",
+          "title": "Submissions",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "card",
+        "number",
+        "started",
+        "ended",
+        "outcome",
+        "sessions",
+        "submissions",
+        "gate_rounds",
+        "gate_rules",
+        "review_returns",
+        "rework_rounds",
+        "resumes",
+        "model_calls",
+        "model_seconds",
+        "prompt_tokens",
+        "cached_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "runs",
+        "first_green_run",
+        "stop",
+        "blocked_on",
+        "ceiling",
+        "since_action",
+        "most_views",
+        "edits_since_run",
+        "empty_lookups",
+        "returned_because",
+        "gaps"
+      ],
+      "title": "Delivery",
       "type": "object"
     },
     "Period": {
@@ -951,6 +1237,12 @@
       "additionalProperties": false,
       "description": "What a story's model calls cost in tokens and time. No money is recorded.",
       "properties": {
+        "cached_tokens": {
+          "default": 0,
+          "description": "Of its prompt tokens, those the server's prefix cache held.",
+          "title": "Cached Tokens",
+          "type": "integer"
+        },
         "completion_tokens": {
           "title": "Completion Tokens",
           "type": "integer"
@@ -978,6 +1270,7 @@
         "prompt_tokens",
         "completion_tokens",
         "reasoning_tokens",
+        "cached_tokens",
         "model_seconds"
       ],
       "title": "StoryCost",
@@ -1027,11 +1320,12 @@
           "title": "Delivered"
         },
         "escalations": {
+          "description": "Times it was escalated: none in sprints after escalation retired (ADR 0032).",
           "title": "Escalations",
           "type": "integer"
         },
         "misses": {
-          "description": "Attempts that didn't land.",
+          "description": "Attempts that didn't land. For a story delivered in sessions, its returns by review or QA, or to the Business Analyst; never the gate's before review.",
           "title": "Misses",
           "type": "integer"
         },

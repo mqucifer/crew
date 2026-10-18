@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "1.5.1",
+ "schema_version": "1.6.0",
  "sprint": "Sprint 5",
  "start": "2026-09-24",
  "end": "2026-09-24",
@@ -40,6 +40,7 @@
    "prompt_tokens": 140000,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 190.0,
    "failed": false
   },
@@ -56,6 +57,7 @@
    "prompt_tokens": 140000,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -67,7 +69,8 @@
     "number": 110
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -105,7 +108,8 @@
     "repo": "sprint-metrics",
     "number": 115
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -194,6 +198,7 @@
    "prompt_tokens": 140900,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 190.0,
    "failed": false
   },
@@ -210,6 +215,7 @@
    "prompt_tokens": 140900,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -221,7 +227,8 @@
     "number": 111
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -259,7 +266,8 @@
     "repo": "sprint-metrics",
     "number": 116
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -348,6 +356,7 @@
    "prompt_tokens": 39000,
    "completion_tokens": 4100,
    "reasoning_tokens": 3300,
+   "cached_tokens": null,
    "seconds": 170.0,
    "failed": false
   },
@@ -377,6 +386,7 @@
    "prompt_tokens": 141800,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 190.0,
    "failed": false
   },
@@ -409,6 +419,7 @@
    "prompt_tokens": 141800,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -420,7 +431,8 @@
     "number": 112
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -458,7 +470,8 @@
     "repo": "sprint-metrics",
     "number": 117
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
