@@ -148,6 +148,55 @@ repair.unsafe_fix.SIM102:
 repair.workspace.autofix:
   origin:
   - crew#758
+session.parse_guard:
+  description: 'An edit that would stop a Python file parsing isn''t applied: the reply shows the error,
+    the lines as they would have been and as they are.'
+  messages:
+    default: 'Your changes have NOT been applied: `{path}` would stop parsing ({error}, line {line}).
+
+      The lines as they would have been:
+
+      {after}
+
+      The lines as they are:
+
+      {before}'
+  origin:
+  - crew#778
+  - SWE-agent's edit guardrail
+  owner: Developer
+session.replace_definition:
+  description: '`replace_definition` changes an existing Python file.'
+  messages:
+    not_python: '`{path}` isn''t an existing Python file: use `replace_text` or `write_file`.'
+  origin:
+  - crew#778
+  owner: Developer
+session.replace_text:
+  description: '`replace_text` quotes whole lines of a file there is, once in it, and changes them.'
+  messages:
+    already: '`old` isn''t in `{path}`, and `new` already is: the change may be made.'
+    closest: 'Those lines aren''t in `{path}`. The closest block starts at line {line}:
+
+      {shown}'
+    empty: Quote the lines to replace.
+    no_file: 'There''s no file `{path}`: `write_file` makes a new one.'
+    not_found: 'Those lines aren''t in `{path}`, and nothing close is: view the file first.'
+    part_of_a_line: '`old` matches only part of a line, not whole lines: {where}. Quote whole lines.'
+    same: '`old` and `new` are the same: nothing to change.'
+    twice: 'Those lines occur {count} times in `{path}`, at lines {lines}: quote more lines around the
+      one you mean.'
+  origin:
+  - crew#778
+  owner: Developer
+session.write_file:
+  description: '`write_file` rewrites an existing file only when told to overwrite it.'
+  messages:
+    exists: '`{path}` exists. Change it with `replace_text` or `replace_definition`, or rewrite it whole
+      with `overwrite: true`.'
+  origin:
+  - crew#778
+  owner: Developer
 told.delivery_crew.configuration_may_change_when_the_story:
   guidance: true
   owner: Developer

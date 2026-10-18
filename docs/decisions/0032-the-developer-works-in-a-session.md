@@ -1,7 +1,7 @@
 # 32. The Developer works in a session
 
 - **Date:** 2026-10-17
-- **Status:** Accepted, not built. Every part below is decided, and none of it runs in a tick yet. Until Stages B to D of `docs/plans/developer-session.md` land, the Developer answers in one call as ADRs 0024 to 0026 say, and escalation stands (ADRs 0004 and 0005). What exists today is the replay's prototype (mqucifer/crew#791, off the tick path) and the rule sort (crew#788), which nothing in the tick reads.
+- **Status:** Accepted, partly built. Every part below is decided, and none of it runs in a tick yet. The session is built beside delivery (Stage C, `crew_org/session/`, mqucifer/crew#797): until Stage D of `docs/plans/developer-session.md` wires it in, the Developer answers in one call as ADRs 0024 to 0026 say, and escalation stands (ADRs 0004 and 0005). The rule sort (crew#788) is read by nothing in the tick.
 
 ## Context
 
@@ -151,15 +151,15 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 
 | Part | Decided | True now |
 |---|---|---|
-| The session and its tools (1, 2) | Yes, with pass 3's tools | The Developer answers in one call with `read_file` and `need_files` (ADRs 0024, 0025), its code in blocks (ADR 0026). The tools exist only in the replay's prototype, mqucifer/crew#791 |
-| How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Attempt limits, repairs and escalation |
-| The start (4) | Yes | A prompt of about 50k characters, and the reading ceilings |
+| The session and its tools (1, 2) | Yes, with pass 3's tools | Built in `crew_org/session/` (Stage C, mqucifer/crew#797), run only by `scripts/run_session.py`. In a tick, the Developer answers in one call with `read_file` and `need_files` (ADRs 0024, 0025), its code in blocks (ADR 0026) |
+| How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Built with the session: its endings, the ceilings at 60 and 50, and the replay's masking as its one compaction. In a tick: attempt limits, repairs and escalation |
+| The start (4) | Yes | Built with the session. In a tick: a prompt of about 50k characters, and the reading ceilings |
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Each check is its own container (ADR 0006). The replay's held container is a prototype |
 | The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
 | Stories and the contract ruling (6) | Yes | The ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
 | Measures (8) | Yes | As before, until the Sponsor's Goal in sprint-metrics |
 | No escalation (9) | Yes | Escalation is in the code. Ticks are paused until Stage D's first story |
-| P1 to P6 | Yes | None built |
+| P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P4 are Stage D's |
 
 ## Consequences
 
@@ -184,7 +184,7 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
   - a container held for each running session, with tools that execute in it and reliable clean-up. Docker Desktop's memory fits three workspaces only just (`var/notes/778/research-workspace.md`), and P1 starts with one;
   - input per story is about what the real attempts used, but mostly served from cache.
 - **What this doesn't decide:**
-  - how a compaction compacts, since it never ran. Stage C starts from the research: mask older output first, and summarise only if that isn't enough (`var/notes/778/research-context.md`);
+  - how a compaction compacts, since it never ran. Stage C built the replay's masking, once near 125k, as a placeholder: its form is a later experiment (mqucifer/crew#790);
   - how sprint-metrics and crew-presentation get their first `devcontainer.json` (Stage B);
   - from mqucifer/crew#790: how a session recognises a criterion no code can meet, parallel sessions, mechanical checks at `done` for a test per criterion and for docs, QA and other roles as sessions, nudges, and tuning the ceilings;
   - test-first (Discussion 665), and whether struggling files trigger strain (decision 7);
@@ -194,3 +194,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 
 - **2026-10-17:** decided. Decisions 1 to 9 and 4b are the Sponsor's, on crew#778.
 - **2026-10-18:** after the replay (Stage R), on crew#778. The Sponsor decided the parse guard and the whole history with one compaction near 125k. They accepted the report, with pass 3's tools as the build's start, and replaced its proposed stops with high ceilings, no nudges, and every signal recorded. They also made `devcontainer.json` the workspace's one source, read as a subset under the crew's hardening. The Sponsor approved P1 to P6 with the plan (mqucifer/crew#789). Written as this ADR in Stage A.
+- **2026-10-18:** the session is built, beside delivery (Stage C, mqucifer/crew#797): `crew_org/session/`, its calls through `calls.converse`. A reply that calls no tool gets one line back, and 3 in a row end it as `blocked` (the operator's call, on crew#778). The compaction is the replay's masking, its form a later experiment (mqucifer/crew#790). One real session, on mqucifer/sprint-metrics#662, reached `done` with the gate green in 5.3 model minutes.

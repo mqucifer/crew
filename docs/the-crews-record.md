@@ -59,6 +59,8 @@ issue.cites ─► cards (repo#n)        a fix's merge commit ─► the first t
 | Every event of one run | `jq -c 'select(.ctx.run == "RUN")' var/events/*.jsonl` |
 | What blocked cards this sprint, by rule | `jq -r 'select(.kind == "card.blocked" and .ctx.sprint == "Sprint 20") \| .detail.rule' var/events/*.jsonl \| sort \| uniq -c` |
 | Which issues cite a card | `jq -c 'select(.kind == "issue.cites" and (.detail.cites \| index("sprint-metrics#475")))' var/events/*.jsonl` |
+| How a Developer session went, call by call (crew#778) | `jq -c 'select(.card == 662 and (.kind \| startswith("session.")))' var/events/*.jsonl` |
+| A session's tool calls: what each did, and the rule behind each refusal | `jq -r 'select(.card == 662 and .kind == "tool.finished" and .detail.turn) \| [.detail.turn, .detail.tool, .detail.target, .detail.result, .detail.rule // ""] \| @tsv' var/events/*.jsonl` |
 | In Grafana, one run's events | `{service_name="crew"} \| run="RUN"` |
 | In Grafana, one rule's events | `{service_name="crew"} \| rule="escalation.budget"` |
 | In Grafana, a run's events by kind and rule (instant query) | `sum by (failure_kind, rule) (count_over_time({service_name="crew"} \| run="RUN" [6h]))` |
@@ -73,11 +75,14 @@ as `crew_<key>` (`crew_run`, `crew_tick`), with the commit as `service_version` 
 ## What leaves, and what stays
 
 - **Leaves:** names, ids, hashes and numbers: the context, `rule`, `failure_kind`, `pr`,
-  `prompt_hash`, `output_schema`, token counts and durations. The allow-lists are
+  `prompt_hash`, `output_schema`, token counts and durations, and a Developer session's counts
+  (each tool call's sizes, the signals after each model call, the session's totals). The allow-lists are
   `telemetry.DETAIL` and `log._CONTEXT_OUT`, and the collector drops content-named keys again.
 - **Stays in `var/`:** messages and summaries, prompts and answers, review findings' statements,
   failing tests' assertion lines, what the file selection read (`selection_text`), and the reason
-  given for each file asked for (`why`).
+  given for each file asked for (`why`), and in a session, each tool call's path or name
+  (`target`), what a lookup looked for, a run's commands and first failure, and what `done` or
+  `blocked` said.
 - A key added to a record stays local until it's put on an allow-list on purpose.
 
 ## Adding to it
