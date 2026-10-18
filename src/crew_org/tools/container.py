@@ -30,10 +30,11 @@ from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
 # so a sweep can tell which are left behind.
 LABEL = "crew.workspace"
 OWNER = "crew.pid"
-# How long a container keeps itself alive. The session's backstop is 2 hours of
-# model time, and its runs and setup take time besides. A container the crew
-# forgets ends after this, and `--rm` removes it.
-LIFETIME = 3 * 60 * 60
+# How long a container keeps itself alive. A delivery's backstop is 3 hours of
+# model time, and its runs, setup and gates take time besides, so it can't end
+# under a live session (the Sponsor, crew#778). A container the crew forgets ends
+# after this, and `--rm` removes it.
+LIFETIME = 4 * 60 * 60
 # Setup fetches and installs, so it gets longer than a test run.
 SETUP_TIMEOUT = 900
 # How long a command has to stop after its timeout, before it's killed.

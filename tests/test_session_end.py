@@ -4,6 +4,9 @@ A missing file or fact, or a stop, goes back to the Business Analyst who wrote t
 story by the path a story takes back to refinement, with the session's evidence. A
 choice goes to the Sponsor as one reaches a person today: blocked, saying so. `done`
 goes to the gates, and from there to review, QA, a new session or the ruling.
+
+Work leaving for a rewrite is kept first, and its note links it, saying what happened
+in plain words (sprint-metrics#662's stop gave the backstop as what's missing).
 """
 
 from __future__ import annotations
@@ -25,6 +28,12 @@ CAPPED = "tests/test_metrics.py::test_rate_is_capped"
 
 
 EVIDENCE = {
+    "last_run": {
+        "what": "tests",
+        "ok": False,
+        "first_error": "AssertionError: assert '0.5 days' in text",
+        "failing": ["tests/test_browser.py::test_stats_row"],
+    },
     "last_failure": {
         "what": "tests",
         "ok": False,
@@ -45,7 +54,13 @@ EVIDENCE = {
         "edits_since_run": 0,
         "empty_lookups_total": 3,
     },
+    "last_words": "Now let me run the full suite to confirm it's green:",
 }
+GREEN = {"what": "suite", "ok": True, "first_error": "", "failing": []}
+STORY = (
+    "**Existing tests** — this story changes what they assert: "
+    "tests/test_docs.py::test_drift_check: the docs say uncapped."
+)
 
 
 def story(number=124, parent: int | None = 120) -> Card:
@@ -138,8 +153,12 @@ def test_a_missing_fact_goes_back_to_the_business_analyst_with_the_evidence():
     assert epic == 120 and comment.startswith(STORY_PROBLEM_MARKER)
     assert "on a fact the story doesn't give" in comment
     assert "> criterion 4 asks for '0.5 days'; the data has hours" in comment
-    assert "AssertionError: assert '0.5 days' in text" in comment
-    assert "Edited `site/css/site.css`" in comment and "12865 reasoning tokens" in comment
+    assert (
+        "**Its last run:** `run tests` failed: AssertionError: assert '0.5 days' in text "
+        "(failing: `tests/test_browser.py::test_stats_row`)." in comment
+    )
+    assert "the story has to give what's missing" in comment
+    assert "Its last words" not in comment, "a `blocked` says it in its own words"
     [returned] = [e for e in seen if e.kind is EventKind.STORY_RETURNED]
     assert returned.detail["reason"] == "session blocked" and returned.detail["kind"] == "fact"
     assert RETURN_RULES[returned.detail["reason"]] == Rule.RETURN_SESSION_BLOCKED
@@ -152,20 +171,167 @@ def test_a_stop_goes_back_the_same_way_with_its_signals():
     )
     routed, _, issues, seen = route(ending)
     assert routed.to == session_end.REFINEMENT
-    assert "on a ceiling" in issues.posted[0][1]
-    assert '**What stopped it:** `{"calls": 60, "ceiling": "reading"}`' in issues.posted[0][1]
+    comment = issues.posted[0][1]
+    assert (
+        "its Developer session was stopped by a ceiling: 60 model calls in a row with no "
+        "edit and no run, at a limit of 60.**" in comment
+    )
+    assert '"ceiling"' not in comment and "{" not in comment, "never raw JSON"
+    assert "> Now let me run the full suite to confirm it's green:" in comment
+    assert "what's missing" not in comment, "a stop isn't the story's to supply"
     [returned] = [e for e in seen if e.kind is EventKind.STORY_RETURNED]
     assert returned.detail["stop"] == "ceiling"
 
 
-def test_replies_that_call_no_tool_are_quoted_as_the_evidence():
-    evidence = dict(EVIDENCE, stop={"replies": ["I think the criterion is wrong.", "Still."]})
+def test_replies_that_call_no_tool_end_on_the_last_one_as_its_last_words():
+    evidence = dict(
+        EVIDENCE,
+        stop={"replies": ["I think the criterion is wrong.", "Still."]},
+        last_words="Still.",
+    )
     ending = Ending(
         "blocked", {"missing": "3 replies", "kind": "stop"}, "no_tool_call", evidence=evidence
     )
     _, _, issues, _ = route(ending)
-    assert "3 replies in a row that called no tool" in issues.posted[0][1]
-    assert "> I think the criterion is wrong." in issues.posted[0][1]
+    assert "stopped by 3 replies in a row that called no tool.**" in issues.posted[0][1]
+    assert "**Its last words:**\n\n> Still." in issues.posted[0][1]
+    assert "For the rewrite" not in issues.posted[0][1]
+
+
+def kept(tests: dict[str, str] | None = None) -> session_end.Kept:
+    return session_end.Kept(
+        "crew/kept/124-20261018-1745",
+        "https://github.com/mqucifer/sprint-metrics/compare/abc...crew/kept/124-20261018-1745",
+        files=["`src/rate.py` (changed)", "`tests/test_rate.py` (new)"],
+        tests=tests or {},
+        unproven=True,
+    )
+
+
+DRIFT = "tests/test_docs.py::test_drift_check"
+
+
+def leaving(held: session_end.Kept | None, **kw) -> session_end.Leaving:
+    return session_end.Leaving(lambda: held, **kw)
+
+
+def note(stop: str, seen: dict, *, held=None, run=GREEN, **kw) -> str:
+    ending = Ending(
+        "blocked",
+        {"missing": "...", "kind": "stop"},
+        stop,
+        evidence=dict(EVIDENCE, last_run=run, stop=seen),
+    )
+    return session_end.returned_note(
+        ending, card=story(), story=STORY, leaving=leaving(held, **kw), kept=held
+    )
+
+
+def test_a_backstop_with_a_green_run_says_so_with_the_findings_and_links_the_kept_work():
+    findings = [gates.Finding("a.rule", "These merged tests changed: `x`.\n\nAs merged:\n\nbig")]
+    held = kept({DRIFT: "changed"})
+    said = note(
+        "backstop",
+        {"model_minutes": 114},
+        held=held,
+        model_s=7340.0,
+        sessions=2,
+        findings=[findings],
+    )
+    assert (
+        "stopped by the backstop: 122 minutes of model time over 2 sessions, the delivery's "
+        "3 hours.**" in said
+    )
+    assert "**Its last run:** `run suite`, green." in said
+    assert "- At `done` 1: These merged tests changed: `x`." in said and "big" not in said
+    assert "**What it changed:** 2 files: `src/rate.py` (changed), `tests/test_rate.py` (new)." in (
+        said
+    )
+    assert (
+        "**Merged tests it changed:** 1. The story's Existing tests line names 1: "
+        "`tests/test_docs.py`: `test_drift_check`." in said
+    )
+    assert "> Now let me run the full suite to confirm it's green:" in said
+    assert f"on [`{held.branch}`]({held.link}), with no pull request." in said
+    assert "which no run proved" in said
+    assert "For the rewrite" not in said, "a backstop on a green run doesn't point at the story"
+
+
+def test_merged_tests_the_story_doesn_t_name_are_called_out_for_the_rewrite():
+    held = kept(
+        {
+            DRIFT: "changed",
+            "tests/test_report.py::test_table": "changed",
+            "tests/test_report.py::test_old": "removed",
+        }
+    )
+    said = note("backstop", {"model_minutes": 180}, held=held, model_s=10800.0)
+    assert "**2 merged tests the story doesn't name**, beyond its scope:" in said
+    assert "- `tests/test_report.py`: `test_old` (removed), `test_table`" in said
+    assert said.endswith(
+        "**For the rewrite:** It changed 2 merged tests the Existing tests line doesn't name: "
+        "say whether this behaviour is opt-in, or a contract change that names them."
+    )
+    from crew_org.flows.story_problem import _LISTED
+
+    assert not _LISTED.findall(said), "a stop's tests aren't pinned on the epic's record"
+
+
+def test_no_progress_says_the_test_and_its_error_and_points_at_the_story():
+    failed = {
+        "what": "tests",
+        "ok": False,
+        "first_error": "E   assert 100 == 200",
+        "failing": ["tests/test_rate.py::test_cap"],
+    }
+    said = note(
+        "no_progress",
+        {"first_error": "E   assert 100 == 200", "test": "tests/test_rate.py::test_cap"},
+        run=failed,
+    )
+    assert (
+        "stopped by no progress: the same first error in `tests/test_rate.py::test_cap` "
+        "after 3 runs, with edits between.**" in said
+    )
+    assert "**Its last run:** `run tests` failed: E   assert 100 == 200" in said
+    assert "**Nothing was kept:** its branch was no different from main." in said
+    assert "**For the rewrite:** `tests/test_rate.py::test_cap` failed the same way" in said
+
+
+def test_a_ceiling_on_one_file_says_which_and_points_at_the_story():
+    said = note("ceiling", {"ceiling": "re_viewing", "file": "src/rate.py", "views": 50})
+    assert (
+        "stopped by a ceiling: 50 views of `src/rate.py` with no edit to it between, at a "
+        "limit of 50.**" in said
+    )
+    assert "**For the rewrite:** It read without acting until a ceiling stopped it" in said
+
+
+def test_the_work_is_kept_before_the_note_is_written_and_a_failed_keep_writes_nothing():
+    posted_when_kept: list[int] = []
+    issues = Issues()
+
+    def keep():
+        posted_when_kept.append(len(issues.posted))
+        return kept()
+
+    ending = Ending("blocked", {"missing": "a fact", "kind": "fact"}, evidence=EVIDENCE)
+    route(ending, issues=issues, leaving=session_end.Leaving(keep))
+    assert posted_when_kept == [0] and "crew/kept/124-20261018-1745" in issues.posted[0][1]
+
+    def refused():
+        raise session_end.NotKept("crew/kept/124-x", "hook declined")
+
+    board, issues = Board([story()]), Issues()
+    with pytest.raises(session_end.NotKept):
+        route(ending, board=board, issues=issues, leaving=session_end.Leaving(refused))
+    assert not board.status and not issues.posted, "nothing moved or said"
+
+
+def test_a_choice_for_the_sponsor_links_the_kept_work_too():
+    ending = Ending("blocked", {"missing": "which cap", "kind": "choice"}, evidence=EVIDENCE)
+    _, _, issues, _ = route(ending, leaving=leaving(kept()))
+    assert "crew/kept/124-20261018-1745" in issues.posted[0][1]
 
 
 def test_a_choice_goes_to_the_sponsor_blocked_saying_so():
@@ -257,7 +423,12 @@ def test_the_ruling_decides_where_a_disagreement_goes(verdict, monkeypatch, deci
     verdict.verdict = gates.Verdict(
         disagree={"tests/test_metrics.py::test_rate_is_capped": "uncapped"}
     )
-    routed, board, issues, _ = route(Ending("done", SAID))
+    taken: list = []
+    held = kept({CAPPED: "changed"})
+    routed, board, issues, _ = route(
+        Ending("done", SAID, evidence={"last_run": GREEN}),
+        leaving=session_end.Leaving(lambda: taken.append(1) or held),
+    )
     assert asked == [{CAPPED: "changed by the Developer, who says: uncapped"}]
     if decision == "amend":
         assert routed.to == session_end.REVIEW
@@ -267,4 +438,9 @@ def test_the_ruling_decides_where_a_disagreement_goes(verdict, monkeypatch, deci
         assert "The Business Analyst ruled that this story doesn't change" in routed.start
     else:
         assert routed.to == session_end.REFINEMENT and board.status == {"S124": "Ready"}
-        assert "- `tests/test_metrics.py::test_rate_is_capped`: uncapped" in issues.posted[0][1]
+        comment = issues.posted[0][1]
+        assert "- `tests/test_metrics.py::test_rate_is_capped`: uncapped" in comment
+        assert taken == [1] and f"[`{held.branch}`]({held.link})" in comment
+        assert "**Its last run:** `run suite`, green." in comment
+    if decision != "return":
+        assert taken == [], "work that stays in delivery isn't pushed aside"

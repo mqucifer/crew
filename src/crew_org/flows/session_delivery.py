@@ -12,7 +12,7 @@ session runs in it (Stage C). How the session ends decides the rest:
 - **interrupted:** a server that's down stops the tick, as it always has. Anything
   else, a failed call or a lost container, is retried next pass (`SessionInterrupted`).
 
-Every session in one delivery shares one 2-hour budget of model time, so a loop
+Every session in one delivery shares one 3-hour budget of model time, so a loop
 between a session and the gates can't run unbounded (the operator, on crew#778). A
 return from review or QA is a new delivery, and a new session (P2).
 
@@ -21,19 +21,29 @@ push to an open pull request's branch would move the head under review. The clon
 branch outlives the worktree, so a crashed or stopped tick leaves the checkpoint for
 the next one, which resumes from it. Any other ending drops it, so stale work is never
 resumed.
+
+**Kept work:** a delivery that leaves for a rewrite, blocked, stopped or ruled
+against, first pushes its work to a branch of its own, `crew/kept/<n>-<when>`, with
+any edits since the last checkpoint as one more commit, and no pull request. Its note
+links it (`session_end.Leaving`). sprint-metrics#662 lost two hours of green work
+without it. A push that fails is handled as any failed push, and the clone keeps the
+work. Resuming from kept work is for later (the Sponsor, crew#778): a fresh delivery
+starts from main.
 """
 
 from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from crew_org import profiles
 from crew_org.crews import epic_rows
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
+from crew_org.flows import gates
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.delivery import (
     DeliveryOutcome,
@@ -49,6 +59,7 @@ from crew_org.git_ops import (
     MergeConflict,
     Workspace,
     branch_name,
+    kept_name,
 )
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
@@ -59,10 +70,17 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.workspace import check
 
+if TYPE_CHECKING:
+    from crew_org.flows import session_end
+
 # One delivery's model time, shared by its sessions (decision 3; the operator, crew#778).
 BACKSTOP_S = conversation.BACKSTOP_S
 # Where a story goes when the route itself fails: blocked for a person, by delivery.
 UNROUTED = "unrouted"
+# Where it goes when the push that keeps its work fails: blocked as any failed push is.
+UNKEPT = "unkept"
+# The commit that keeps a stopped session's edits after its last green run.
+STOPPED = "stopped({number}): edits since the last green run, not run green"
 
 
 class SessionInterrupted(RuntimeError):
@@ -257,6 +275,11 @@ def _sessions(
     number = card.number or 0
     spent = 0.0
     rounds = 0
+    # The gates' findings at each `done` they sent back, for a note if it leaves.
+    found: list[list[Any]] = []
+
+    def keep() -> session_end.Kept | None:
+        return _keep(ws, worktree, since, number, sink)
 
     def run_checks(at: Path) -> Any:
         checked = check(at, held=held, since=since)
@@ -303,6 +326,7 @@ def _sessions(
                 )
             except GitError as exc:
                 raise SessionInterrupted("git", f"the commit at `done` failed: {exc}") from exc
+        leaving = session_end.Leaving(keep, spent, rounds, list(found))
         routed = _route(
             route,
             ending,
@@ -315,15 +339,19 @@ def _sessions(
             issues=issues,
             sink=sink,
             run_checks=run_checks,
+            leaving=leaving,
         )
+        if routed.to == session_end.SESSION:
+            found.append(list(getattr(routed.verdict, "findings", None) or []))
         if routed.to == session_end.SESSION and spent >= BACKSTOP_S:
             # The budget's spent with the gates' findings still open: a stop, as the
             # backstop is inside a session, back to the Business Analyst.
+            leaving = session_end.Leaving(keep, spent, rounds, list(found))
             stopped = SimpleNamespace(
                 how="blocked",
                 said={
                     "missing": f"the gates' findings, still open after {round(spent / 60)} "
-                    "minutes of model time, the backstop:\n\n" + routed.start,
+                    "minutes of model time, the backstop",
                     "kind": "stop",
                 },
                 stop="backstop",
@@ -343,6 +371,7 @@ def _sessions(
                 issues=issues,
                 sink=sink,
                 run_checks=run_checks,
+                leaving=leaving,
             )
         if routed.to != session_end.SESSION:
             return Delivered(
@@ -356,10 +385,46 @@ def _sessions(
                 evidence=(
                     session_end.last_done(ending.said)
                     if ending.how == "done"
-                    else session_end.evidence(ending)
+                    else session_end.evidence(ending, leaving, leaving.kept, story_text)
                 ),
             )
         instead = routed.start
+
+
+def _keep(
+    ws: Workspace, worktree: Path, since: str, number: int, sink: EventSink
+) -> session_end.Kept | None:
+    """Push the delivery's work to a branch of its own, before its note is written.
+
+    A push GitHub's side failed is an interruption, as any is. Any other failure is
+    `NotKept`, which delivery blocks for a person as it does any failed push.
+    """
+    from crew_org.flows import session_end  # noqa: PLC0415
+    from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
+
+    name = kept_name(number, datetime.now(UTC))
+    head = _git(worktree, "rev-parse", "HEAD")
+    try:
+        sha = ws.keep(name, base=since, message=STOPPED.format(number=number))
+    except Exception as exc:  # noqa: BLE001 - every failure has a handled ending
+        if transient_remote(exc):
+            raise
+        raise session_end.NotKept(name, str(exc)[:300]) from exc
+    if sha is None:
+        return None
+    sink.note(
+        EventKind.NOTE,
+        f"#{number} its work is kept on {name}, with no pull request",
+        card=number,
+        kept=name,
+    )
+    return session_end.Kept(
+        name,
+        f"https://github.com/{ws.owner}/{ws.repo}/compare/{since}...{name}",
+        files=_changes(worktree, since, sha),
+        tests=gates.merged_tests_changed(worktree),
+        unproven=sha != head,
+    )
 
 
 def _route(route: Any, ending: Any, **kw: Any) -> Any:
@@ -370,12 +435,17 @@ def _route(route: Any, ending: Any, **kw: Any) -> Any:
     card for a person with the session's evidence: wherever the moves stopped, the
     card ends blocked, labelled and said why (the Sponsor, on crew#778).
     """
+    from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.tools.remote_errors import transient_remote, where  # noqa: PLC0415
 
     try:
         return route(ending, **kw)
     except SessionInterrupted:
         raise
+    except session_end.NotKept as exc:
+        return SimpleNamespace(
+            to=UNKEPT, rule=Rule.PUSH_FAILED, start="", verdict=None, error=str(exc)
+        )
     except Exception as exc:  # noqa: BLE001 - every failure has a handled ending
         reraise_if_down(exc)
         if transient_remote(exc):
@@ -419,6 +489,17 @@ def _land(
             f"settled: {reached.error}. It's blocked for a person, with the session's "
             f"evidence.\n\n{reached.evidence}"
         ).strip()
+        outcome.rejected_diff = _diff(worktree, since)
+        return outcome
+    if reached.to == UNKEPT:
+        # As any failed push: blocked for a person, the work kept in the clone, both its
+        # checkpoint and the branch the push would have made.
+        outcome.blocked_rule = Rule.PUSH_FAILED
+        outcome.blocked_reason = (
+            f"its session ended `{reached.how}`, and {reached.error}"[:400]
+            + f". The work is kept in the crew's clone.\n\n{reached.evidence}"
+        ).strip()
+        outcome.ended = False
         outcome.rejected_diff = _diff(worktree, since)
         return outcome
     if reached.to not in (session_end.REVIEW, session_end.QA):
@@ -693,10 +774,10 @@ def _merge_base(worktree: Path) -> str:
     return _git(worktree, "merge-base", "HEAD", "origin/HEAD")
 
 
-def _changes(worktree: Path, since: str) -> list[str]:
+def _changes(worktree: Path, since: str, until: str = "HEAD") -> list[str]:
     """Each file the branch changes against where it started, with how."""
     words = {"A": "new", "D": "deleted", "M": "changed", "R": "renamed"}
-    listed = _git(worktree, "diff", "--name-status", since, "HEAD")
+    listed = _git(worktree, "diff", "--name-status", since, until)
     found = []
     for line in listed.splitlines():
         status, _, path = line.partition("\t")

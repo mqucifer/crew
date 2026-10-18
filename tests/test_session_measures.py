@@ -105,6 +105,7 @@ def ended(m, card, how="done", *, stop="", why="", kind=None, calls=10, ceiling=
         "tried": {"files_read": [SECRET]},
         "signals": {"since_action": 2, "most_views": 3, "edits_since_run": 1, "most_viewed": SECRET}
         | {"empty_lookups_total": 4},
+        "last_words": "Let me rewrite the zebra_crossing helper",
     }
     if ceiling:
         evidence["stop"] = {"ceiling": ceiling, "calls": 60}
@@ -262,6 +263,7 @@ def test_the_session_reaches_the_package_by_names_and_counts_and_matches_its_sch
         "the rate's cap",
         "f returns 2",
         "cap's test",
+        "rewrite the zebra",
     ):
         assert never not in written, never
     assert {e.kind for p in files.values() for e in p.events} >= {

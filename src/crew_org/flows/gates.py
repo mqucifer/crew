@@ -234,6 +234,23 @@ def changed_tests(worktree: Path, merged: regression.Merged, paths: list[str]) -
     return found
 
 
+def merged_tests_changed(worktree: Path) -> dict[str, str]:
+    """Each merged test the worktree changes as it stands, committed or not."""
+    merged = regression.merged_base(worktree)
+    if merged is None:
+        return {}
+    return changed_tests(worktree, merged, reproduction._changed(worktree, merged.sha))
+
+
+def unnamed_by_story(tests: list[str], story: str) -> list[str]:
+    """The merged tests in `tests` that the story's **Existing tests** line doesn't name.
+
+    All of them when the line says merged tests stay unchanged.
+    """
+    named = {_as_key(t) for t in delivery.declared_contract(story)}
+    return [key for key in tests if not any(_names(entry, key) for entry in named)]
+
+
 def _tests_in(source: str) -> dict[str, ast.stmt]:
     """A module's test functions and methods, by dotted name (`Class.test_x`)."""
     return {

@@ -122,6 +122,8 @@ class Sessions:
                 (worktree / path).write_text(text)
             for record in script.get("runs", []):
                 kw["after_run"](record)
+            for path, text in script.get("later", {}).items():
+                (worktree / path).write_text(text)
             return script["ending"]
 
         session.run = run
@@ -134,11 +136,31 @@ class Routes:
     def __init__(self, *answers) -> None:
         self.answers = list(answers)
         self.asked: list[Any] = []
+        self.leavings: list[Any] = []
 
     def __call__(self, ending, **kw):
         self.asked.append(ending)
+        self.leavings.append(kw["leaving"])
         kw["run_checks"]  # the container's checks are always offered
         return self.answers.pop(0)
+
+
+class Leaves(Routes):
+    """A route that sends the work back for a rewrite: it keeps it, then writes the note."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.notes: list[str] = []
+
+    def __call__(self, ending, **kw):
+        self.asked.append(ending)
+        kept = kw["leaving"].take()
+        self.notes.append(
+            session_end.returned_note(
+                ending, card=kw["card"], story=kw["story"], leaving=kw["leaving"], kept=kept
+            )
+        )
+        return session_end.Route(session_end.REFINEMENT, Rule.RETURN_SESSION_BLOCKED)
 
 
 @pytest.fixture
@@ -338,16 +360,128 @@ def test_findings_start_a_new_session_with_them_and_what_is_left_of_the_budget(w
 
 
 def test_findings_with_the_budget_spent_are_a_stop_for_the_business_analyst(ws, deliver):
+    from crew_org.flows.gates import Finding, Verdict
+
+    finding = Finding("check.gates.x", "One finding.")
     sessions = Sessions({"ending": Ending("done", DONE), "model_s": BACKSTOP_S})
     routes = Routes(
-        session_end.Route(session_end.SESSION, "check.gates.x", start="## Findings"),
+        session_end.Route(
+            session_end.SESSION,
+            "check.gates.x",
+            start="## Findings",
+            verdict=Verdict(findings=[finding]),
+        ),
         session_end.Route(session_end.REFINEMENT, Rule.RETURN_SESSION_BLOCKED),
     )
     outcome = deliver(ws, sessions, routes)
-    stopped = routes.asked[1]
+    stopped, leaving = routes.asked[1], routes.leavings[1]
     assert stopped.how == "blocked" and stopped.stop == "backstop"
-    assert stopped.said["kind"] == "stop" and "## Findings" in stopped.said["missing"]
+    assert stopped.said["kind"] == "stop"
+    assert (leaving.findings, leaving.model_s, leaving.sessions) == ([[finding]], BACKSTOP_S, 1)
+    assert routes.leavings[0].findings == [], "the first `done` has no earlier findings"
     assert outcome.routed == session_end.REFINEMENT and outcome.ended
+
+
+GREEN = {"what": "suite", "ok": True, "commands": [{"command": "pytest", "code": 0}]}
+STOP = Ending(
+    "blocked",
+    {"missing": "180 minutes of model time, the backstop", "kind": "stop"},
+    "backstop",
+    evidence={"last_run": {"what": "suite", "ok": True}, "stop": {"model_minutes": 180}},
+)
+
+
+def kept_on_origin(ws) -> list[str]:
+    return subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "for-each-ref", "--format=%(refname:short)"]
+        + ["refs/heads/crew/kept/"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+
+
+def test_a_stop_after_a_green_run_keeps_the_work_on_a_branch_of_its_own_and_links_it(ws, deliver):
+    """sprint-metrics#662: two hours of green work were dropped with the clone's branch."""
+    sessions = Sessions(
+        {
+            "writes": {"rate.py": "RATE = 2\n"},
+            "runs": [GREEN],
+            "later": {"rate.py": "RATE = 3\n"},
+            "ending": STOP,
+            "model_s": BACKSTOP_S,
+        }
+    )
+    routes = Leaves()
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.routed == session_end.REFINEMENT and outcome.ended
+    [kept] = kept_on_origin(ws)
+    assert kept.startswith("crew/kept/662-")
+    assert pushed(ws, kept).splitlines()[:2] == [
+        "stopped(662): edits since the last green run, not run green",
+        "checkpoint(662): run suite passed",
+    ], "every edit kept, and the unproven ones said to be"
+    shown = subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "show", f"{kept}:rate.py"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert shown == "RATE = 3\n"
+    assert pushed(ws) == "", "the story's own branch isn't pushed"
+    [note] = routes.notes
+    assert f"[`{kept}`](https://github.com/mqucifer/sprint-metrics/compare/" in note
+    assert f"...{kept}), with no pull request." in note
+    assert "**Its last run:** `run suite`, green." in note
+    assert "**What it changed:** 1 file: `rate.py` (new)." in note
+    assert "which no run proved" in note
+    left = subprocess.run(
+        ["git", "-C", str(ws.clone), "branch", "--list", "crew/kept/*"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert left == "", "the clone's copy goes once the push is made"
+
+
+def test_a_kept_push_the_remote_refuses_blocks_as_a_failed_push_and_keeps_the_work(ws, deliver):
+    hook = ws.origin / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho no new branches >&2\nexit 1\n")
+    hook.chmod(0o755)
+    sessions = Sessions({"writes": {"rate.py": "RATE = 2\n"}, "runs": [GREEN], "ending": STOP})
+    routes = Leaves()
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.blocked_rule == Rule.PUSH_FAILED and not outcome.ended, "the work is kept"
+    assert routes.notes == [], "no note links a branch that isn't there"
+    assert "to keep its work" in (outcome.blocked_reason or "")
+    assert "**Its last run:** `run suite`, green." in (outcome.blocked_reason or "")
+    assert kept_on_origin(ws) == []
+    left = subprocess.run(
+        ["git", "-C", str(ws.clone), "branch", "--list", "--format=%(refname:short)"]
+        + ["crew/kept/*"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert len(left) == 1 and left[0].startswith("crew/kept/662-"), "in the clone, unpushed"
+    ws.close()
+    assert ws.checkpoint_on(BRANCH), "and the story's branch keeps its checkpoint"
+
+
+def test_a_kept_push_github_s_side_failed_is_an_interruption(ws, deliver, monkeypatch):
+    def stumbled(*a, **kw):
+        raise git_ops.GitError("git push failed: remote: fatal error in commit_refs")
+
+    monkeypatch.setattr(ws, "keep", stumbled)
+    sessions = Sessions({"writes": {"rate.py": "RATE = 2\n"}, "runs": [GREEN], "ending": STOP})
+    with pytest.raises(git_ops.GitError):
+        deliver(ws, sessions, Leaves())
+    ws.close()
+    assert ws.checkpoint_on(BRANCH), "retried next pass, as any failed push"
+
+
+def test_work_no_different_from_main_keeps_nothing(ws, deliver):
+    blocked = Ending("blocked", {"missing": "the rate's unit", "kind": "fact"})
+    routes = Leaves()
+    outcome = deliver(ws, Sessions({"ending": blocked}), routes)
+    assert outcome.routed == session_end.REFINEMENT and kept_on_origin(ws) == []
+    assert "**Nothing was kept:** its branch was no different from main." in routes.notes[0]
 
 
 def test_a_story_the_route_moved_is_only_cleaned_up(ws, deliver):
