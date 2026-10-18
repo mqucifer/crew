@@ -64,6 +64,8 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
+| `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
+| `delivery.pull_request_failed` | The branch was pushed, and its pull request couldn't be opened. |
 | `edit.local_repair` | Its edits couldn't be applied, retried with why shown, up to the local limit. |
 | `guard.local_repair` | A guard refused the change, retried with what it refused shown. |
 | `guard.overwrite` | It kept rewriting existing files whole instead of editing them. |
@@ -117,6 +119,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `session.turn`
 - `session.compacted`
 - `session.ended`
+- `gate.checked`
 - `revert.opened`
 - `revert.refused`
 - `revert.landed`

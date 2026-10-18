@@ -194,10 +194,12 @@ decision.sprint.start_sprint:
 decision.strain.strained:
 delivery.conflict_with_main:
 delivery.open_pull_request:
+delivery.pull_request_failed:
 delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
+delivery.route_failed:
 delivery.workspace_unready:
   origin:
   - crew#778

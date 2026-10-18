@@ -11,7 +11,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 
 | Kind | Rules |
 |---|---|
-| The crew's own decisions (`rules.Rule`) | 25 |
+| The crew's own decisions (`rules.Rule`) | 27 |
 | An answer's form refuses it | 60 |
 | The call layer refuses any answer | 7 |
 | A flow's own check sends the answer back | 30 |
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself<br>the forms that carry a change<br>told at `delivery_crew:STANDING_INSTRUCTIONS` | 40 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `delivery_crew:Rework`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_criteria` | 82 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 65 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 117 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 119 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 25 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 28 |
 | Unplaced | | 80 |
@@ -48,10 +48,12 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `delivery.conflict_with_main`<br>The branch conflicts with main: resolving it is for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story | — |
-| `delivery.open_pull_request`<br>A pull request is still open on the branch; re-delivering would overwrite it. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land | — |
+| `delivery.open_pull_request`<br>A pull request is still open on the branch; re-delivering would overwrite it. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_open_pull | — |
+| `delivery.pull_request_failed`<br>The branch was pushed, and its pull request couldn't be opened. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land | — |
 | `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land | crew#10 |
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:deliver_by_session | — |
-| `delivery.workspace_unready`<br>The story's workspace container didn't start, or its setup failed (crew#778). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | crew#778 |
+| `delivery.route_failed`<br>Where a session's ending sends the story couldn't be settled: blocked for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | — |
+| `delivery.workspace_unready`<br>The story's workspace container didn't start, or its setup failed (crew#778). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | crew#690<br>crew#778 |
 | `escalation.policy`<br>A failure is escalated to Claude only within the sprint's budget, and its outcome is recorded.<br>Cases: `escalation.allowed` (src/crew_org/rules.py:Rule), `escalation.budget` (src/crew_org/rules.py:Rule), `escalation.unresolved` (src/crew_org/rules.py:Rule), `escalation.usage_limit` (src/crew_org/rules.py:Rule) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/escalation.py:EscalationPolicy.decide<br>src/crew_org/flows/delivery.py:deliver_story | — |
 | `gate.ci_before_review`<br>CI failed on the pull request's head: back to the Developer with its log, unreviewed.<br>Cases: `skip.review.ci_failed_on_its_head` (src/crew_org/flows/review.py:review_open_pulls), `skip.review.ci_still_running` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/review.py:review_open_pulls | crew#756 |
 | `gate.criteria_cannot_all_pass`<br>A split's criteria contradict each other or a merged test. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/criteria_check.py:to_product_owner | — |
@@ -213,7 +215,7 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|---|---|---|---|
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/tools.py:check_arguments` | Developer | — | src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
 | `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |
-| `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make. | guards | `src/crew_org/session/tools.py:Tools._path` | Developer | — | src/crew_org/session/tools.py:Tools._path | crew#778 |
+| `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make, and never through a symbolic link that leads out of it. | guards | `src/crew_org/session/tools.py:Tools._path` | Developer | — | src/crew_org/session/tools.py:Tools._open<br>src/crew_org/session/tools.py:Tools._path | crew#778 |
 | `session.replace_definition`<br>`replace_definition` changes an existing Python file. | edits | `src/crew_org/session/tools.py:Tools.replace_definition` | Developer | — | src/crew_org/session/tools.py:Tools.replace_definition | crew#778 |
 | `session.replace_text`<br>`replace_text` quotes whole lines of a file there is, once in it, and changes them. | edits | `src/crew_org/session/tools.py:Tools._not_found` | Developer | — | src/crew_org/session/tools.py:Tools._not_found<br>src/crew_org/session/tools.py:Tools.replace_text | crew#778 |
 | `session.run`<br>`run` of tests names them, and needs the project's checks to run pytest; `run` of lint needs a lint among them. | evidence | `src/crew_org/session/tools.py:Tools.run` | Developer | — | src/crew_org/session/tools.py:Tools.run | crew#778 |
@@ -279,7 +281,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.close.carry_over`<br>Approved stories still not merged move to the next sprint, and are named (#389). | flow | `src/crew_org/flows/close.py:_carry_over` | — | — | src/crew_org/flows/close.py:_carry_over | crew#389 |
 | `decision.delivery.interrupted`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move | — |
 | `decision.delivery.limit`<br>Pull stories into progress up to the WIP limit, and deliver them. | flow | `src/crew_org/flows/delivery.py:deliver` | — | — | src/crew_org/flows/delivery.py:deliver | — |
-| `decision.delivery.outcome`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land | — |
+| `decision.delivery.outcome`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/delivery.py:deliver_story<br>src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_end.py:route | — |
 | `decision.delivery.rate_limited`<br>Pull stories into progress up to the WIP limit, and deliver them. | flow | `src/crew_org/flows/delivery.py:deliver` | — | — | src/crew_org/flows/delivery.py:deliver | — |
 | `decision.delivery.reconcile_orphans`<br>Return cards stranded In Progress to the backlog. | flow | `src/crew_org/flows/delivery.py:reconcile_orphans` | — | — | src/crew_org/flows/delivery.py:reconcile_orphans | — |
 | `decision.delivery.rework`<br>The open pull request on `branch` whose *current* head was refused. | flow | `src/crew_org/flows/delivery.py:awaiting_rework` | — | — | src/crew_org/flows/delivery.py:awaiting_rework<br>src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:needs_rework | sprint-metrics#31 |
