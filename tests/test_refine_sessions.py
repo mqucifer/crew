@@ -198,3 +198,34 @@ def test_a_failed_model_call_is_raised_as_it_was(main, seen):  # noqa: F811
 def test_with_no_checkout_a_step_cant_be_worked():
     with pytest.raises(steps.NoCheckout):
         steps.run(step(), {"step": "x"}, None, about="x")
+
+
+def test_a_form_with_every_field_defaulted_is_taken_with_a_nested_form_as_text(main, seen):  # noqa: F811
+    """sprint-metrics#667's settle passed its whole `conclusion` as JSON text, to a form
+    with no required field, and the session crashed on it (crew#807)."""
+    from crew_org.crews.settle_crew import Settlement
+
+    conclusion = {"dismissed": [{"note": 1, "why": "Already settled by the Goal's D1"}]}
+    proxy = Proxy(said(("done", {"conclusion": json.dumps(conclusion)})))
+    answer = run_step(main, proxy, form=Settlement)
+    assert isinstance(answer, Settlement) and answer.conclusion.dismissed[0].note == 1
+
+
+def test_a_failure_handling_done_is_a_reply_and_the_session_goes_on(main, seen, monkeypatch):  # noqa: F811
+    from crew_org.session import conversation
+
+    calls = []
+
+    def broken(name, args, accepted=None):
+        calls.append(name)
+        if len(calls) == 1:
+            raise KeyError("required")
+
+    monkeypatch.setattr(conversation, "check_arguments", broken)
+    proxy = Proxy(
+        said(("done", {"nothing_to_add": True, "notes": []})),
+        said(("done", {"nothing_to_add": True, "notes": []})),
+    )
+    assert run_step(main, proxy).nothing_to_add
+    failed = proxy.sent[1]["messages"][-1]
+    assert failed["role"] == "tool" and "The tool failed: KeyError" in failed["content"]

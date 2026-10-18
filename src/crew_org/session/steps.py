@@ -18,6 +18,7 @@ read tools (`reading`).
 from __future__ import annotations
 
 import copy
+import json
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -345,7 +346,7 @@ def own_checks(
 
     def checked(said: dict[str, Any]) -> list[Finding]:
         try:
-            found = form.model_validate(said)
+            found = form.model_validate(unquoted(form, said))
             check_not_cut_at_a_quote(found)
             if check is not None:
                 check(found)
@@ -356,6 +357,24 @@ def own_checks(
         return []
 
     return checked
+
+
+def unquoted(form: type[BaseModel], said: dict[str, Any]) -> dict[str, Any]:
+    """The answer with a field written as JSON text read as JSON, where the form wants
+    an object or a list: models pass a nested form as a string (crew#807, the settle's
+    whole `conclusion` on sprint-metrics#667). Anything else is left for the form."""
+    out = dict(said)
+    for name, info in form.model_fields.items():
+        value = out.get(name)
+        if not isinstance(value, str) or not value.strip().startswith(("{", "[")):
+            continue
+        if info.annotation is str:
+            continue
+        try:
+            out[name] = json.loads(value)
+        except json.JSONDecodeError:
+            continue
+    return out
 
 
 def _finding(error: Any) -> Finding:
@@ -375,8 +394,12 @@ def run(
     check: Callable[[Any], None] | None = None,
     notes: dict[str, str] | None = None,
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    on_end: Callable[[Session, Ending], None] | None = None,
 ) -> Any:
     """The step's answer, from a session over `reading`, or `StepStopped`.
+
+    `on_end` is given the session and its ending once it ends, as the panel measures
+    its members (crew#807). One that fails is recorded, and costs the step nothing.
 
     A model call that fails is raised as it was, for the caller to handle as it handles
     any (a server that's down). With no checkout to read, the step can't be worked.
@@ -426,8 +449,13 @@ def run(
         refused_done=REFUSED_DONE,
     )
     ending = session.run()
+    if on_end is not None:
+        try:
+            on_end(session, ending)
+        except Exception as exc:  # noqa: BLE001 - a measure never costs the answer
+            record(EventKind.TOOL_FAILED, f"after {step.name}: {exc}"[:160], step=step.name)
     if ending.how == "done":
-        return step.form.model_validate(ending.said)
+        return step.form.model_validate(unquoted(step.form, ending.said))
     if ending.error is not None:
         raise ending.error
     raise StepStopped(step.name, ending)

@@ -319,7 +319,8 @@ def check_arguments(name: str, args: Any, accepted: dict[str, Any] | None = None
             unknown=", ".join(f"`{a}`" for a in unknown),
             takes=takes,
         )
-    missing = [a for a in spec["required"] if a not in args]
+    # A form whose every field has a default lists none (crew#807: the settle's).
+    missing = [a for a in spec.get("required", []) if a not in args]
     if missing:
         refuse(
             "session.arguments",

@@ -233,6 +233,10 @@ class Session:
                         reply = Reply("The session ends here.", "end", name)
                 except Refusal as exc:
                     reply = Reply(str(exc), "refused", f"{name}: refused", rule=exc.rule)
+                except Exception as exc:  # noqa: BLE001 - a failure here is a reply, as a tool's is
+                    reply = Reply(
+                        f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"
+                    )
             elif ending is None:
                 try:
                     reply = self.tools.call(name, args)
