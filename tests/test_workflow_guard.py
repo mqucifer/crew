@@ -8,12 +8,9 @@ repository's secrets.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from crew_org import auth
-from crew_org.crews.delivery_crew import FileWrite, Implementation
 from crew_org.flows.delivery import workflows_not_permitted
 from crew_org.project import parse
 from crew_org.tools import bounds, ci_guard
@@ -73,52 +70,36 @@ def test_a_secret_is_allowed_only_when_the_design_names_it():
     assert any("PYPI_TOKEN" in r for r in reasons(RELEASE, secrets=frozenset()))
 
 
-def repo(tmp_path: Path) -> Path:
-    (tmp_path / ".github" / "workflows").mkdir(parents=True)
-    (tmp_path / ".github" / "workflows" / "old.yml").write_text(
-        "on: [pull_request_target]\njobs: {}\n"  # already there: not this change's doing
-    )
-    return tmp_path
+# Already on main, and unsafe: not this change's doing.
+OLD = {".github/workflows/old.yml": "on: [pull_request_target]\njobs: {}\n"}
 
 
-def test_a_workflow_may_change_with_the_code_it_runs(tmp_path):
+def judged(files: dict[str, str]) -> list[str]:
+    """What the gates at `done` find in a branch that writes `files` (crew#778)."""
+    after = {**OLD, **{path: text for path, text in files.items() if ci_guard.is_workflow(path)}}
+    return bounds.judged(list(files), parse(RECORD), workflows=(dict(OLD), after), dockerfiles={})
+
+
+def test_a_workflow_may_change_with_the_code_it_runs():
     """sprint-metrics#307: an ENTRYPOINT breaks the smoke job and the tests that
     invoke the image, so all three change together (Sponsor, 2026-09-29, crew#335)."""
-    change = Implementation(
-        summary="s",
-        new_files=[
-            FileWrite(path=".github/workflows/release.yml", content=RELEASE),
-            FileWrite(path="src/pkg/version.py", content="V = 1\n"),
-        ],
-    )
-    assert bounds.out_of_bounds(repo(tmp_path), change, parse(RECORD)) == []
+    files = {".github/workflows/release.yml": RELEASE, "src/pkg/version.py": "V = 1\n"}
+    assert judged(files) == []
 
 
-def test_a_workflow_changed_with_code_is_still_held_to_the_guard(tmp_path):
+def test_a_workflow_changed_with_code_is_still_held_to_the_guard():
     unsafe = "on: [pull_request_target]\njobs: {}\n"
-    change = Implementation(
-        summary="s",
-        new_files=[
-            FileWrite(path=".github/workflows/release.yml", content=unsafe),
-            FileWrite(path="src/pkg/version.py", content="V = 1\n"),
-        ],
-    )
-    found = bounds.out_of_bounds(repo(tmp_path), change, parse(RECORD))
-    assert any("pull_request_target" in r for r in found)
+    files = {".github/workflows/release.yml": unsafe, "src/pkg/version.py": "V = 1\n"}
+    assert any("pull_request_target" in r for r in judged(files))
 
 
-def test_only_the_workflows_a_change_writes_are_judged(tmp_path):
-    change = Implementation(
-        summary="s", new_files=[FileWrite(path=".github/workflows/release.yml", content=RELEASE)]
-    )
-    assert bounds.out_of_bounds(repo(tmp_path), change, parse(RECORD)) == []
+def test_only_the_workflows_a_change_writes_are_judged():
+    assert judged({".github/workflows/release.yml": RELEASE}) == []
 
 
 # --- a push the app can't make ----------------------------------------------------------
 
-WORKFLOW_CHANGE = Implementation(
-    summary="s", new_files=[FileWrite(path=".github/workflows/release.yml", content=RELEASE)]
-)
+WORKFLOW_CHANGE = [".github/workflows/release.yml"]
 
 
 def test_a_workflow_change_without_the_permission_is_refused_naming_it():
@@ -132,10 +113,7 @@ def test_a_workflow_change_without_the_permission_is_refused_naming_it():
     [
         (WORKFLOW_CHANGE, {"contents": "write", "workflows": "write"}),  # granted
         (WORKFLOW_CHANGE, {}),  # not an app, or not known: GitHub will say
-        (
-            Implementation(summary="s", new_files=[FileWrite(path="README.md", content="x")]),
-            {"contents": "write"},
-        ),
+        (["README.md"], {"contents": "write"}),
     ],
 )
 def test_nothing_is_refused_when_it_can_be_pushed_or_it_can_t_be_told(change, held):

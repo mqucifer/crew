@@ -24,7 +24,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import re
 import time
 import uuid
 from collections.abc import Callable
@@ -48,8 +47,8 @@ ATTEMPTS = 3
 # Empty answers in a row before the call gives up early. An empty answer is the
 # model thinking itself out on a prompt or an answer too big to finish (crew#312),
 # and the same prompt again rarely finishes: mqucifer/sprint-metrics#567 answered
-# empty ten times in two hours at 82k prompt tokens (2026-10-11). The caller has
-# a smaller way to ask, such as the Developer's attempt in steps.
+# empty ten times in two hours at 82k prompt tokens (2026-10-11). The caller
+# decides how to ask again.
 EMPTY_LIMIT = 2
 # Of a refused answer, how much is sent back with its reason: enough to see what
 # was wrong with it, not a second copy of a long answer.
@@ -63,175 +62,6 @@ ECHO_CHARS = 4000
 RUNAWAY_CHARS = 2000
 # How much of the answer before the run is shown to the model with the reason.
 RUNAWAY_TAIL = 300
-
-# An answer whose code comes back in blocks (ADR 0026): the JSON holds the structure,
-# and each code field names a block written after it, exactly as the code reads.
-_BLOCK_START = re.compile(r"^@@@ ([A-Za-z0-9_-]+) @@@[ \t]*$")
-_BLOCK_END = "@@@ end @@@"
-_FENCE = re.compile(r"^```[\w+-]*[ \t]*$")
-BLOCKS_FORMAT = (
-    "Write your answer in two parts. First the JSON, in the form below, every field "
-    'present, each as its description says. A field marked "code, as a block" holds '
-    'the name of a block, such as "b1", not the code: an empty one may stay "". '
-    "Then, after the JSON, write each block once:\n\n"
-    "@@@ b1 @@@\n"
-    "the code or text exactly as it should read, nothing escaped, no ``` around it\n"
-    "@@@ end @@@\n\n"
-    "Every block the JSON names is written after it, and every block written is named."
-)
-
-
-def split_blocks(text: str) -> tuple[str, dict[str, str]]:
-    """An answer in two parts: its JSON, and its blocks by name (ADR 0026).
-
-    A block runs from its `@@@ name @@@` line to the next `@@@ end @@@` line, its text
-    exactly as written. A block wrapped whole in a ``` fence has the fence taken off:
-    the instruction says not to, and a habit is not the code.
-    """
-    lines = text.splitlines()
-    first = next((i for i, x in enumerate(lines) if _BLOCK_START.match(x)), len(lines))
-    head = "\n".join(lines[:first]).strip()
-    if head.startswith("```"):
-        head = "\n".join(x for x in head.splitlines() if not _FENCE.match(x)).strip()
-    blocks: dict[str, str] = {}
-    name: str | None = None
-    body: list[str] = []
-    for line in lines[first:]:
-        if name is None:
-            started = _BLOCK_START.match(line)
-            if started:
-                name, body = started.group(1), []
-            elif line.strip():
-                rulebook.refuse("call.split_blocks", "outside", line=repr(line.strip()[:80]))
-            continue
-        if line.strip() == _BLOCK_END:
-            if body and _FENCE.match(body[0]) and len(body) > 1 and body[-1].strip() == "```":
-                body = body[1:-1]
-            if name in blocks:
-                rulebook.refuse("call.split_blocks", "twice", name=repr(name))
-            blocks[name] = "\n".join(body) + ("\n" if body else "")
-            name = None
-            continue
-        body.append(line)
-    if name is not None:
-        rulebook.refuse("call.split_blocks", "unclosed", name=repr(name))
-    return head, blocks
-
-
-def join_blocks(
-    data: Any,
-    blocks: dict[str, str],
-    fields: frozenset[str],
-    loose: list[dict[str, Any]] | None = None,
-) -> Any:
-    """The answer with each block named in a code field put in its place (ADR 0026).
-
-    A name no block answers, or a block no field names, is refused with that reason.
-    A field holding exactly the name of a block written under a name other than
-    b1, b2 and so on takes that block, and is added to `loose` (crew#734).
-    """
-    used: set[str] = set()
-
-    def walk(value: Any) -> Any:
-        if isinstance(value, dict):
-            out = {}
-            for key, item in value.items():
-                named = _block_named(item) if key in fields else None
-                bare = str(item).strip().strip("@`'\" ").strip() if key in fields else ""
-                if named is None and bare in blocks:
-                    # sprint-metrics#626 wrote blocks f1 to f8, and crew-presentation#73
-                    # b_url_for: each name went in as the code, and was refused.
-                    named = bare
-                    if loose is not None:
-                        loose.append({"fallback": "block.name", "field": key, "name": bare})
-                if named is not None and named in blocks:
-                    used.add(named)
-                    out[key] = blocks[named]
-                elif named is not None:
-                    rulebook.refuse(
-                        "call.join_blocks", "unwritten", key=key, name=repr(named), bare=named
-                    )
-                elif key in fields and _NOT_A_BLOCK_NAME.match(str(item)):
-                    written = ", ".join(blocks) or "none"
-                    rulebook.refuse(
-                        "call.join_blocks",
-                        "not_a_name",
-                        key=key,
-                        value=repr(str(item).strip()),
-                        written=written,
-                    )
-                else:
-                    out[key] = walk(item)
-            return out
-        if isinstance(value, list):
-            return [walk(item) for item in value]
-        return value
-
-    # A block no field names is left out, not refused: answers that only asked to read
-    # files wrote an example block and were refused for it (2026-10-11). Code meant for
-    # a field and left in a stray block still fails that field's own check.
-    return walk(data)
-
-
-# How a code field names its block. Read loosely: the first real answer wrote "@@b1",
-# and a field holding only a block's name, with marks around it, can't be code. Aider
-# measured permissive parsing at a ninth of the errors of strict (ways-of-working).
-_BLOCK_NAME = re.compile(r"^[\s@`'\"]*(?:block\s+)?(b\d+)[\s@`'\"]*$", re.IGNORECASE)
-
-
-# A code field that points at a block by some other name, such as "@@criteria_test_1@@"
-# (mqucifer/sprint-metrics#569, 2026-10-11). Taken as code it was refused for not
-# defining its test, which didn't say what was wrong.
-_NOT_A_BLOCK_NAME = re.compile(r"^\s*@{2,3}\s*[\w.-]+\s*@{0,3}\s*$")
-
-
-def _block_named(value: Any) -> str | None:
-    """The block a code field names, or None when it holds anything else."""
-    if not isinstance(value, str):
-        return None
-    found = _BLOCK_NAME.match(value)
-    return found.group(1).lower() if found else None
-
-
-# The grammar a two-part answer is held to while it's written (ADR 0026): JSON, then
-# blocks of plain lines. Without one, mqucifer/sprint-metrics#567's Developer went on
-# reading after its reading rounds, writing tool calls as text, and three answers in
-# four came back empty (2026-10-11). The JSON holds no code, and its whitespace is
-# bounded, so nothing in it can run away; a block's lines are any text but a line
-# starting `@@@`. At most 60 blocks: without a bound, two answers wrote the same empty
-# block 4,994 and 6,464 times, a runaway of blocks instead of whitespace.
-BLOCKS_GRAMMAR = r"""root ::= head "\n"+ block{0,60}
-head ::= object
-block ::= "@@@ " name " @@@\n" line* "@@@ end @@@\n"
-name ::= "b" [0-9]+
-line ::= ([^@\n] [^\n]* | "@" [^@\n] [^\n]* | "@@" [^@\n] [^\n]*)? "\n"
-object ::= "{" ws (member (ws "," ws member)*)? ws "}"
-member ::= string ws ":" ws value
-value ::= object | array | string | number | "true" | "false" | "null"
-array ::= "[" ws (value (ws "," ws value)*)? ws "]"
-string ::= "\"" ([^"\\\x00-\x1f] | escape)* "\""
-escape ::= "\\" (["\\/bfnrt] | "u" hex hex hex hex)
-hex ::= [0-9a-fA-F]
-number ::= "-"? ("0" | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
-nonempty ::= "\"" ([^"\\\x00-\x1f] | escape)+ "\""
-ws ::= [ \t\n]{0,40}"""
-
-
-def blocks_grammar(schema: dict[str, Any]) -> str:
-    """BLOCKS_GRAMMAR with the JSON opening on the form's first field, holding a value.
-
-    The bare grammar let an empty object through: answers came back as `{}` after
-    thousands of tokens of thinking, refused as "summary: Field required", in replays
-    and in the live tick (mqucifer/sprint-metrics#585, 2026-10-11). Every form the
-    blocks serve opens with its `summary`; a text first field can't be empty.
-    """
-    fields = list((schema.get("properties") or {}).items())
-    if not fields:
-        return BLOCKS_GRAMMAR
-    name, field = fields[0]
-    first = "nonempty" if field.get("type") == "string" else "value"
-    head = f'head ::= "{{" ws "\\"{name}\\"" ws ":" ws {first} (ws "," ws member)* ws "}}"'
-    return BLOCKS_GRAMMAR.replace("head ::= object", head)
 
 
 @dataclass(frozen=True)
@@ -335,7 +165,6 @@ def task_text(
     parts: list[Part],
     expected: str,
     form: dict[str, Any] | None = None,
-    blocks: frozenset[str] = frozenset(),
 ) -> str:
     """What the step is shown, part by part, what its answer should be, and its form.
 
@@ -348,11 +177,11 @@ def task_text(
     shown = "\n\n".join(p.text.strip() for p in parts if p.text.strip())
     text = f"{shown}\n\nYour answer: {expected}" if expected else shown
     if form is not None:
-        text += f"\n\n{form_text(form, blocks)}"
+        text += f"\n\n{form_text(form)}"
     return text
 
 
-def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> str:
+def form_text(schema: dict[str, Any]) -> str:
     """An answer's JSON schema as the model reads it: each field, its type and what it is.
 
     The server holds the answer to the full schema; the prompt's copy says the same in
@@ -402,7 +231,7 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
         # A field's description, then each rule that checks it, from the rule's own
         # declaration (ADR 0031): a check is told in the form it checks.
         return [
-            f"- `{name}` ({'code, as a block' if name in blocks else kind(field)})"
+            f"- `{name}` ({kind(field)})"
             + (
                 f": {text}"
                 if (text := said(str(field.get("description") or ""), *once(told.get(name, []))))
@@ -420,9 +249,7 @@ def form_text(schema: dict[str, Any], blocks: frozenset[str] = frozenset()) -> s
         return f"**{name}**" + (f": {text}" if text else "")
 
     lines = [
-        BLOCKS_FORMAT
-        if blocks
-        else "Write your answer as JSON in this form, every field present, each as its "
+        "Write your answer as JSON in this form, every field present, each as its "
         "description says.",
         "",
         heading(str(schema.get("title", "Answer")), {}),
@@ -581,7 +408,6 @@ def ask[Answer: BaseModel](
     tools: list[Tool] | None = None,
     rounds: int = TOOL_ROUNDS,
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-    blocks: frozenset[str] = frozenset(),
 ) -> Answer:
     """The role's answer, in its form, asked for again with the reason when refused.
 
@@ -592,15 +418,10 @@ def ask[Answer: BaseModel](
     and is given each result; when it stops, or after `rounds`, it is asked for the
     answer in its form (ADR 0025). A schema constrains every token, so a call held
     to one can't also call a tool: CrewAI dropped the schema instead.
-
-    With `blocks`, the fields named there hold code, and come back as blocks after the
-    JSON instead of inside it (ADR 0026): no code is escaped, so none can close a string
-    early. The answer is held to BLOCKS_GRAMMAR while it's written, JSON then blocks,
-    and to its form when it's joined.
     """
     spec = role_spec(role, step)
     params = spec.get("llm_params") or {}
-    # The role's own timeout: a Developer's answer can take most of an hour. The answer
+    # The role's own timeout: a long answer can take most of an hour. The answer
     # is streamed, so one that runs away is stopped; tool rounds return tool calls, not
     # text, and are asked for whole.
     timeout = float(params.get("timeout", DEFAULT_TIMEOUT))
@@ -611,11 +432,10 @@ def ask[Answer: BaseModel](
         {"role": "system", "content": system},
         {
             "role": "user",
-            "content": task_text(parts, expected, answer.model_json_schema(), blocks),
+            "content": task_text(parts, expected, answer.model_json_schema()),
         },
     ]
     form = response_format(answer)
-    grammar = blocks_grammar(answer.model_json_schema()) if blocks else ""
     versions = {
         "prompt_hash": _fingerprint(system),
         "output_schema": f"{answer.__name__}:{_fingerprint(json.dumps(form, sort_keys=True))}",
@@ -631,12 +451,11 @@ def ask[Answer: BaseModel](
     empties = 0
     refused: list[str] = []
     for attempt in range(1, attempts + 1):
-        loose: list[dict[str, Any]] = []
         body = {
             "model": spec.get("llm", "crew-local"),
             "messages": messages,
             "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
-            **({"extra_body": {"ebnf": grammar}} if blocks else {"response_format": form}),
+            "response_format": form,
         }
         call = str(uuid.uuid4())
         detail = {"model": body["model"], "call_id": call, "try": attempt, **versions}
@@ -680,28 +499,12 @@ def ask[Answer: BaseModel](
                 _runaway(text)
             if not text.strip():
                 rulebook.refuse("call.the_answer_was_empty_you")
-            if blocks:
-                head, written = split_blocks(text)
-                try:
-                    data = json.loads(head)
-                except json.JSONDecodeError as exc:
-                    rulebook.refuse("call.the_json_before_the_blocks", error=exc)
-                found = answer.model_validate(join_blocks(data, written, blocks, loose))
-            else:
-                found = answer.model_validate_json(text)
+            found = answer.model_validate_json(text)
             # Before the step's own rules: a value cut at a double quote reads as
             # finished to every rule after it (crew#618).
             check_not_cut_at_a_quote(found)
             if check is not None:
                 check(found)
-            for match in loose:
-                record(
-                    EventKind.EDIT_LOOSE_MATCH,
-                    f"{spec['role']}: block {match['name']!r} named in `{match['field']}`",
-                    role=spec["role"],
-                    **match,
-                    **detail,
-                )
             return found
         except (ValidationError, ValueError) as exc:
             reason = _reason(exc)
@@ -816,6 +619,82 @@ def _use_tools(
             )
             messages.append({"role": "tool", "tool_call_id": made.get("id", ""), "content": said})
     return [*messages, {"role": "user", "content": ANSWER_NOW}]
+
+
+@dataclass(frozen=True)
+class Answered:
+    """One call of a conversation: the model's message, why it stopped, its tokens, its time."""
+
+    message: dict[str, Any]
+    finish_reason: str | None
+    usage: dict[str, int]
+    seconds: float
+
+
+def converse(
+    role: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    *,
+    step: str | None = None,
+    send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    **detail: Any,
+) -> Answered:
+    """One call of a conversation the caller keeps, with tools and no answer form.
+
+    The Developer's session (crew#778) is many of these: the caller holds the history
+    and runs the tools, and the session ends with a tool call, not a form. Made and
+    recorded as every call is, so the crew's calls stay in one module (ADR 0025).
+    `detail` goes on the call's events, such as the session's call number. Not
+    streamed: a tool call is short, and the role's own timeout bounds the call.
+    """
+    spec = role_spec(role, step)
+    params = spec.get("llm_params") or {}
+    sender = send or partial(post, timeout=float(params.get("timeout", DEFAULT_TIMEOUT)))
+    body = {
+        "model": spec.get("llm", "crew-local"),
+        "messages": messages,
+        "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
+        "tools": tools,
+        "tool_choice": "auto",
+    }
+    call = {
+        "model": body["model"],
+        "call_id": str(uuid.uuid4()),
+        "prompt_hash": _fingerprint(str(messages[0].get("content") or "")) if messages else "",
+        **detail,
+    }
+    record(EventKind.LLM_CALL_STARTED, spec["role"], role=spec["role"], **call)
+    started = time.monotonic()
+    began = datetime.now(UTC)
+    try:
+        data = sender(body)
+    except Exception as exc:
+        record(
+            EventKind.LLM_CALL_FAILED,
+            spec["role"],
+            role=spec["role"],
+            error=f"{type(exc).__name__}: {exc}"[:400],
+            duration_s=round(time.monotonic() - started, 3),
+            **call,
+        )
+        raise
+    seconds = time.monotonic() - started
+    choice = (data.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    usage = _usage(data)
+    call.update(
+        {
+            "finish_reason": str(choice.get("finish_reason")),
+            "response_id": str(data.get("id", "")),
+            "duration_s": round(seconds, 3),
+            "tool_calls": len(message.get("tool_calls") or []),
+            **usage,
+        }
+    )
+    record(EventKind.LLM_CALL_FINISHED, spec["role"], role=spec["role"], **call)
+    _trace(began, call, spec["role"])
+    return Answered(message, choice.get("finish_reason"), usage, seconds)
 
 
 # Each set of rule ids a prompt gave, by its hash, already written in full by this

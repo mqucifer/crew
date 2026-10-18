@@ -1,4 +1,23 @@
 # What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
+check.gates.the_business_analyst_ruled_that:
+  description: At `done`, merged tests changed where the story says they stay unchanged go back when the
+    Business Analyst rules the story doesn't change them.
+  messages:
+    default: 'The Business Analyst ruled that this story doesn''t change {tests}: {why} Put them back
+      as they were, and make your change pass with them as they are.'
+  origin:
+  - crew#584
+  - crew#778
+  owner: Developer
+check.gates.these_merged_tests_changed:
+  description: At `done`, a merged test the branch changes or removes is declared in `done`'s changed
+    tests, with why.
+  messages:
+    default: 'These merged tests changed, and `done` doesn''t declare them: {tests}. Declare each in `done`''s
+      changed tests with why, or put it back as it was.'
+  origin:
+  - crew#778
+  owner: Developer
 check.record.check_change:
   description: 'Refused if it changes or deletes a row in place, or settles a question it may not: a later
     row replaces a row, and only its author or the Sponsor may.'
@@ -36,19 +55,6 @@ form.ContractRuling.test_ids:
     default: name each test as `path::test`, not {tests}
   owner: Business Analyst
   told_in: ContractRuling.tests
-form.RetiredTest.a_test_file:
-  description: Refused unless it's a test file.
-  messages:
-    default: '{path} isn''t a test file: only tests can be retired. Code that still has callers moves,
-      it isn''t retired'
-  owner: Developer
-  told_in: RetiredTest.path
-form.RetiredTest.says_why:
-  description: Refused if too short.
-  messages:
-    default: say what this story ends that the test pinned
-  owner: Developer
-  told_in: RetiredTest.why
 form.story.opt_in_or_contract:
   cases:
   - form.Story.opt_in_or_contract
@@ -60,21 +66,12 @@ form.story.opt_in_or_contract:
   told_in: Story.pinned_behaviour, RepairedStory.pinned_behaviour
 guard.regression.broken_contracts:
   owner: Developer
-guard.scope.without_declared:
-  owner: Developer
 told.contract_crew.if_the_story_cant_be_done:
   guidance: true
   owner: Business Analyst
 told.form.ContractRuling.why:
   guidance: true
   owner: Business Analyst
-§15 18x_the_tokens_and_12x_the:
-  guidance: true
-§15 a_first_attempt_starts_with_its:
-  guidance: true
-  origin:
-  - crew#172
-  - sprint-metrics#75
 §15 a_move_is_one_step_not:
   guidance: true
   origin:
@@ -96,13 +93,6 @@ told.form.ContractRuling.why:
   guidance: true
   origin:
   - sprint-metrics#132
-§15 tests_retired:
-  guidance: true
-§15 the_code_comes_back_in_blocks:
-  guidance: true
-  origin:
-  - ADR 0026
-  - sprint-metrics#567
 §15 why_this_is_a_check_and:
   guidance: true
 §15.1:

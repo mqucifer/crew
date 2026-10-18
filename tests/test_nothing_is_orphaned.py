@@ -37,7 +37,7 @@ def _module_functions() -> dict[Path, dict[str, ast.FunctionDef]]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         # Private functions are in the graph but never reported: a public
         # function called only by a private one is reachable, and leaving them
-        # out made `deliver_story` look dead because `_work_one_card` calls it.
+        # out made a public function only a private one calls look dead.
         out[path] = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     return out
 

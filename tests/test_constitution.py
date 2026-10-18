@@ -17,7 +17,7 @@ def test_a_marked_passage_is_told_only_to_the_roles_it_names():
 def test_the_crews_own_mechanics_reach_only_the_senior_engineer():
     """The Sponsor, 2026-10-17: cut for the roles that can't act on them; the Senior
     Engineer diagnoses the crew's own code, and keeps them."""
-    mechanics = ("No agent may move a card out of a human gate", "A short plan first")
+    mechanics = ("No agent may move a card out of a human gate",)
     senior = calls.system_text(calls.role_spec("senior_engineer"))
     owner = calls.system_text(calls.role_spec("product_owner"))
     master = calls.system_text(calls.role_spec("scrum_master"))

@@ -56,6 +56,16 @@ class EventKind(StrEnum):
     TOOL_FINISHED = "tool.finished"
     TOOL_FAILED = "tool.failed"
 
+    # The Developer's session (crew#778, P5): what it started with, its signals after
+    # each call, its compaction, and how it ended. Each tool call is a `tool.finished`.
+    SESSION_STARTED = "session.started"
+    SESSION_TURN = "session.turn"
+    SESSION_COMPACTED = "session.compacted"
+    SESSION_ENDED = "session.ended"
+    # The gates' verdict on a session's branch at `done`: whether it passed, and the
+    # rules of what sent it back.
+    GATE_CHECKED = "gate.checked"
+
     # A merged change being undone. Each carries the pull request reverted,
     # the card it belonged to and why, so the audit trail can answer all three.
     REVERT_OPENED = "revert.opened"
@@ -67,6 +77,8 @@ class EventKind(StrEnum):
     STANDUP_WRITTEN = "standup.written"
     DEFECT_FILED = "defect.filed"
 
+    # The one-call Developer's retries and escalations, written until it retired
+    # (crew#778). Nothing writes them now; past logs still hold them, and still read.
     ESCALATION_DECIDED = "escalation.decided"
     ESCALATED = "escalation.sent"
 
@@ -87,7 +99,8 @@ class EventKind(StrEnum):
     FILES_SHOWN = "files.shown"
     FILES_ASKED = "files.asked"
     # A quote or a block name matched by a fallback the strict rule would refuse
-    # (crew#734): which one, and where, so each is counted and reviewed.
+    # (crew#734). Written by the one-call Developer's edits until they retired
+    # (crew#778); past logs still hold them.
     EDIT_LOOSE_MATCH = "edit.loose_match"
     # What the project's own fixers changed before VERIFY (crew#758): the files,
     # the changes outside the attempt undone, and each allowed unsafe fix.

@@ -1,7 +1,7 @@
 # 26. Code comes back in blocks, its structure in JSON
 
 - **Date:** 2026-10-11
-- **Status:** Accepted (built for the Developer and its steps, crew#626)
+- **Status:** Accepted, and no step answers in blocks now. The Developer's session puts its code in its tools' arguments (ADR 0032), and the blocks were deleted with the one-call Developer (crew#778, Stage E). A step that writes code in an answer form again answers in blocks, as decided below.
 
 ## Context
 
@@ -18,6 +18,8 @@ What fails is the code inside it. Each body of code is a JSON string, so every d
 mqucifer/crew#627 stops a runaway early and tells the model where it went wrong, but each slip still costs a whole answer. Escaping also makes answers longer.
 
 **This is a new choice, not a reversal.** On 2026-09-18 the Sponsor asked for research on how an edit addresses code, and edits by name were chosen over whole files, search/replace and unified diff, with zero format failures against 11 and 31. That decision stands. Where the code sits in the answer was never weighed: the JSON came with CrewAI's typed answer (`output_pydantic`), and the substrate gate measured it only on small answers (5 of 5 valid). Since ADR 0025 the crew makes its own calls, so a mixed answer is an ordinary change.
+
+**Code in tool arguments was measured on 2026-10-17** ([the probe on crew#778](https://github.com/mqucifer/crew/issues/778#issuecomment-6243289556)). Through LiteLLM, six real edits were each made three times, and all 18 code arguments survived exactly, this ADR's triple-escaping case among them. The replay's sessions wrote all their code that way, and the runs that recorded bad answers had none: no answer came back empty, cut off or malformed.
 
 The prior art that research missed: Aider measured in 2024 that models write worse code when it is wrapped in JSON. Markdown-delimited code beat JSON for every model tried, for example 60.5% against 54.1% (Claude 3.5 Sonnet) and 60.6% against 51.1% (DeepSeek-Coder V2) on 133 problems ([aider.chat, 2024-08-14](https://aider.chat/2024/08/14/code-in-json.html)).
 
@@ -37,7 +39,8 @@ Sponsor, 2026-10-11: **option A.**
 - **The crew joins them before anything reads the answer.** The forms' checks, the guards and the downstream roles see the same joined answer they see today. A block named but missing, or a block no field names, is a refusal with that reason (ADR 0025).
 - **Edits by name stay as decided on 2026-09-18.** Only where the code sits changes, not how an edit addresses it.
 - **The server holds the shape.** The two-part answer is held to its own grammar (EBNF, through LiteLLM to SGLang): JSON with bounded whitespace, then at most 60 blocks of plain lines. Measured when built: without a grammar, the model went on reading after its reading rounds, writing tool calls as text, and three answers in four came back empty.
-- **The Developer first,** and its steps (`crews/stepped.py`). Other steps that write code or quote it (QA quoting criteria, the Architect's design note) follow only if their slips are measured.
+- **The Developer first,** and its steps. Other steps that write code or quote it (QA quoting criteria, the Architect's design note) follow only if their slips are measured.
+- **The Developer's session puts its code in its edit tools' arguments** (the Sponsor, 2026-10-17, crew#778 decision 1; ADR 0032). The Developer no longer answers in blocks, and no other step does: `calls.ask(..., blocks=...)` and its grammar are deleted (crew#778, Stage E).
 
 **The standard.** Structured output for control and plain text for content, the edit-block format coding agents such as Aider use, with the crew's own validation on the joined result.
 
@@ -46,7 +49,7 @@ Sponsor, 2026-10-11: **option A.**
 - The call layer gains a two-part answer: what it asks for, how it splits and joins it, and the refusals for a missing or unnamed block. One real call through LiteLLM proves it before the PR.
 - The Developer's forms describe their code fields as naming a block. The schema's prompt copy (plan step L3) shrinks with them.
 - The test of the change: mqucifer/sprint-metrics#567's logged requests replayed in the new form, with no quote slips in 10 runs where 3 in 6 slipped, and fewer tokens written.
-- crew-presentation's web code (HTML, CSS, JavaScript) is all quotes and today changes by whole-file and quoted edits inside JSON strings. It gains the most.
+- crew-presentation's web code (HTML, CSS, JavaScript) is all quotes. It changes through the session's `write_file` and `replace_text`, whose arguments kept code exact in the probe.
 
 ## Changelog
 
@@ -68,3 +71,10 @@ Sponsor, 2026-10-11: **option A.**
   event (`block.name`). A block ends in a newline, so a quote of part of a line that
   isn't found is matched without it, when that leaves one place (`quote.final_newline`,
   crew#734).
+- **2026-10-17:** the Developer's session will put its code in tool arguments, after the
+  probe kept 18 of 18 exact (ADR 0032, decision 1; the Sponsor, on crew#778). Decided,
+  not built.
+- **2026-10-18:** built: delivery runs only the session, and the blocks (the two-part
+  answer, its grammar, `delivery_crew.CODE_FIELDS` and the loose block-name match) are
+  deleted with the one-call Developer (crew#778, Stage E; the Sponsor's no-fallback
+  decision). No other step used them.

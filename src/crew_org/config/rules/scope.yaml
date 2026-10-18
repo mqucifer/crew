@@ -43,26 +43,6 @@ check.conclusion.problems:
   - crew#583
   owner: Business Analyst
   told_in: StoryProposal
-check.delivery.deliver_in_steps:
-  description: Refused if a new file already exists, or a file to edit or delete doesn't.
-  messages:
-    default: 'the plan doesn''t fit the repository: {problems}'
-    exists: '{path} already exists: plan it as an edit'
-    missing: '{path} doesn''t exist: plan it as new, or name the right file'
-  origin:
-  - crew#276
-  owner: Developer
-  told_in: PlannedFile.kind
-check.delivery.do_the_work_now_with:
-  description: Past the limit on files added by asking, you're told to do the work with what you can see.
-  messages:
-    default: '{missing}{limited}{shown}Do the work now with the files you can see, and leave `need_files`
-      empty.'
-    limited: 'Not shown: {files}. A delivery may have {limit} files added by asking, and this one has. '
-    missing: 'These aren''t files in the repository: {files}. '
-    shown: 'Everything else you named is already shown above. '
-  owner: Developer
-  told_in: FirstAttempt.need_files, FirstOrDone.need_files, Implementation.need_files, Rework.need_files
 check.refinement_crew.check:
   description: Refused if `already_delivered` names a story neither delivered nor planned, if a story
     it replaces isn't accounted for, or if a story names a package field the pinned package doesn't define.
@@ -93,12 +73,6 @@ check.settle_crew.check_product_calls:
   - ADR 0018
   owner: Product Owner
   told_in: Row.own_call
-check.stepped.implement_file:
-  description: Refused if it changes a file other than this step's.
-  messages:
-    default: step {step} is `{path}`, and its answer also changes {others}
-  owner: Developer
-  told_in: StepAnswer
 config.const.delivered.MAX_THEN:
 config.const.delivered.MAX_WHEN:
 config.const.design.ATTEMPTS:
@@ -167,16 +141,6 @@ form.Placement.epic_is_named:
     default: 'change {change} belongs to an epic: name it in `epic`'
   owner: Architect
   told_in: Placement.epic
-form.Plan.one_step_per_file:
-  description: Refused with no files or more than its limit, a file planned twice, or a criterion's test
-    in a file not planned.
-  messages:
-    no_files: a plan names at least one file
-    too_many: at most {limit} files; more than that is more than one story
-    twice: 'each file appears once: say everything that changes in it together'
-    unplanned_test: '{test} proves a criterion, but {path} isn''t among the planned files'
-  owner: Developer
-  told_in: Plan
 form.Row.a_call_stays_within_the_goal:
   description: Refused if empty for your own call.
   messages:
@@ -223,24 +187,12 @@ told.architect.you_are_called_only_for_epics:
 told.bug_triage_crew.a_request_for_behaviour_the_project:
   guidance: true
   owner: Business Analyst
-told.delivery_crew.do_not_redesign_the_module_layout:
-  guidance: true
-  owner: Developer
-told.delivery_crew.that_changes_what_you_return_return:
-  guidance: true
-  owner: Developer
 told.design_crew.name_an_epic_only_from_the:
   guidance: true
   owner: Architect
 told.design_note_crew.the_epics_record_is_settled_build:
   guidance: true
   owner: Architect
-told.developer.when_a_card_turns_out_to:
-  guidance: true
-  owner: Developer
-told.developer.you_never_push_to_main_and:
-  guidance: true
-  owner: Developer
 told.form.DesignAnswer.decision:
   guidance: true
   owner: Architect
@@ -308,15 +260,6 @@ told.settle_crew.it_must_not_contradict_the_goal:
   guidance: true
 told.settle_crew.settle_each_one_now_before_the:
   guidance: true
-told.stepped.change_only_the_file_named_below:
-  guidance: true
-  owner: Developer
-told.stepped.the_plan_already_says_which_test:
-  guidance: true
-  owner: Developer
-told.stepped.use_exactly_the_names_and_signatures:
-  guidance: true
-  owner: Developer
 told.ux_designer.you_add_to_a_storys_acceptance:
   guidance: true
   owner: UX Designer

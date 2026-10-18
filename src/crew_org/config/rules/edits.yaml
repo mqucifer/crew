@@ -1,142 +1,17 @@
 # A change applies cleanly. Declared once each (crew#756, ADR 0031): change a rule here.
-config.const.delivery_crew.MAX_FILE_BYTES:
 config.const.pinning.PINNING_CHAR_CEILING:
 config.const.regression.RESTORE_CHAR_CEILING:
 config.const.workspace.DEFAULT_TIMEOUT:
 config.const.workspace.MAX_FAILURE_REPORT_CHARS:
-config.const.workspace.REPLACE_SHOWN_CHARS:
 edit.ast_edit.apply_edit:
-  description: Refused if `target` names no definition (or, for `add`, one already there), if the file
-    doesn't parse, or if a replacement is empty.
+  description: Refused if the name is no definition in the file, if the file doesn't parse, or if the
+    replacement is empty.
   messages:
-    empty: replacing {target} with nothing — use delete if that is meant
-    exists: '{target} already exists — use replace, or choose another name'
-    no_class: no class named {name} to add a method to
+    empty: 'replacing {target} with nothing: to remove it, use `replace_text` on its lines'
     no_definition: 'no definition named {target}. This file defines: {known}. A file''s imports and its
-      `if __name__` block have no name: to change those, quote the lines in `text_edits` (#204).'
-    no_import: add_import needs the import statement as its source
+      `if __name__` block have no name: to change those, use `replace_text` (#204).'
     unparsed: 'the file does not parse: {error}'
   owner: Developer
-  told_in: FileEdit
-edit.delivery.these_tests_arent_in_their:
-  description: Outside Python, refused unless written under this name in new_files or text_edits.
-  messages:
-    default: 'these tests aren''t in their files: {tests}. Write each one in new_files or text_edits,
-      titled as named here.'
-  owner: Developer
-  told_in: CriterionTest.test
-edit.move_code.move_one:
-  description: Refused if the file or the definition isn't there, the destination already defines it,
-    or it uses definitions left behind.
-  messages:
-    defined: 'can''t move `{name}`: {path} already defines it'
-    left_behind: 'can''t move `{name}` alone: it uses {uses} from {source}. Move those to {target} in
-      the same change.'
-    no_definition: 'can''t move `{name}`: {path} has no top-level definition by that name'
-    no_file: 'can''t move `{name}`: {path} doesn''t exist'
-  owner: Developer
-  told_in: Move
-edit.workspace.apply:
-  exempt: re-checks a path the form already refused; no answer reaches it
-  messages:
-    default: '{path} resolves outside the worktree'
-  owner: Developer
-edit.workspace.apply_implementation:
-  description: 'Refused if the file doesn''t exist: a new one goes in `new_files`.'
-  messages:
-    missing: '{path} does not exist. A file that does not exist yet belongs in new_files, written in full.'
-    not_a_file: '{path} can''t be deleted: it isn''t a file in the repository'
-    outside: '{path} resolves outside the worktree'
-  owner: Developer
-  told_in: FileEdit.path
-edit.workspace.outside_definitions:
-  description: In a Python file, refused if it reaches into or brings in a function or class, or appends
-    imports at the end.
-  messages:
-    appends_imports: this text edit appends imports to the end of {path}, after the code that uses them.
-      Add each import with `edits`, operation `add_import`, which puts it with the file's imports, or
-      replace the file's import lines with a text edit whose `find` is those lines.
-    brings_in: this text edit brings in a definition. {how}
-    reaches_into: this text edit reaches into `{name}`. {how}{replace}
-  origin:
-  - crew#204
-  - sprint-metrics#133
-  owner: Developer
-  told_in: TextEdit
-edit.workspace.plan_text_edits:
-  description: Refused unless it's in the file exactly once, as the file has it; the file must exist,
-    not be a placeholder, and stay valid Python.
-  messages:
-    ambiguous: 'the text to replace occurs {count} times in {path}. Quote more of the surrounding text
-      so it names one place:
-
-      {quote}'
-    invalid: 'after the text edits, {path} is no longer valid Python: {error} on line {line}'
-    missing: '{path} does not exist. A file that does not exist yet belongs in new_files, written in full.'
-    not_found: 'the text to replace in {path} is not in the file. Quote it exactly as the file has it,
-      including indentation:
-
-      {quote}'
-    outside: '{path} resolves outside the worktree'
-    placeholder: '{path} is a walking skeleton''s placeholder. Replace it whole in `new_files`, without
-      the `crew:placeholder` marker.'
-  owner: Developer
-  told_in: TextEdit.find
-form.FileEdit.source_matches_the_operation:
-  description: Refused if empty, except for `delete`.
-  messages:
-    default: '{operation} needs source. Only delete may omit it.'
-  origin:
-  - crew#196
-  owner: Developer
-  told_in: FileEdit.source
-form.FileWrite.is_plausible:
-  description: Refused if empty or over its size limit.
-  messages:
-    empty: file content is empty
-    too_large: file exceeds {limit} bytes. Split the work into smaller changes rather than generating
-      one very large file.
-  owner: Developer
-  told_in: FileWrite.content
-form.Implementation.does_something:
-  description: Refused if it changes no file, unless it only asks for files.
-  messages:
-    default: an implementation must create a file or edit one
-  owner: Developer
-  told_in: Implementation, FirstAttempt
-form.Move.somewhere_else:
-  description: Refused if `to_path` is `from_path`.
-  messages:
-    default: '`{name}` would move to the file it''s already in'
-  owner: Developer
-  told_in: Move
-form.TextEdit.changes_something:
-  description: Refused if `replace` is the same as `find`.
-  messages:
-    default: the edit to {path} changes nothing
-  owner: Developer
-  told_in: TextEdit
-guard.overwrite.overwrites_existing:
-  messages:
-    default: 'These already exist: {files}. Change them with `edits`, addressed by name, rather than rewriting
-      them as new files. Only a file that does not exist yet belongs in new_files, or a placeholder marked
-      `crew:placeholder` replaced whole, without the marker.{not_applied}'
-  owner: Developer
-repair.fallback.block.name:
-repair.fallback.quote.final_newline:
-  origin:
-  - ADR 0026
-  - crew#204
-  - crew#734
-  - sprint-metrics#133
-  - sprint-metrics#604
-repair.fallback.quote.indent:
-  origin:
-  - ADR 0026
-  - crew#204
-  - crew#734
-  - sprint-metrics#133
-  - sprint-metrics#604
 repair.unsafe_fix.B905:
   origin:
   - crew#758
@@ -148,36 +23,68 @@ repair.unsafe_fix.SIM102:
 repair.workspace.autofix:
   origin:
   - crew#758
-told.delivery_crew.configuration_may_change_when_the_story:
-  guidance: true
+session.parse_guard:
+  description: 'An edit that would stop a Python file parsing isn''t applied: the reply shows the error,
+    the lines as they would have been and as they are.'
+  messages:
+    default: 'Your changes have NOT been applied: `{path}` would stop parsing ({error}, line {line}).
+
+      The lines as they would have been:
+
+      {after}
+
+      The lines as they are:
+
+      {before}'
+  origin:
+  - crew#778
+  - SWE-agent's edit guardrail
   owner: Developer
-told.delivery_crew.dont_also_delete_it_or_write:
-  guidance: true
+session.replace_definition:
+  description: '`replace_definition` changes an existing Python file.'
+  messages:
+    not_python: '`{path}` isn''t an existing Python file: use `replace_text` or `write_file`.'
+  origin:
+  - crew#778
   owner: Developer
-told.delivery_crew.dont_write_a_test_that_matches:
-  guidance: true
+session.replace_text:
+  description: '`replace_text` quotes whole lines of a file there is, once in it, and changes them.'
+  messages:
+    already: '`old` isn''t in `{path}`, and `new` already is: the change may be made.'
+    closest: 'Those lines aren''t in `{path}`. The closest block starts at line {line}:
+
+      {shown}'
+    empty: Quote the lines to replace.
+    no_file: 'There''s no file `{path}`: `write_file` makes a new one.'
+    not_found: 'Those lines aren''t in `{path}`, and nothing close is: view the file first.'
+    part_of_a_line: '`old` matches only part of a line, not whole lines: {where}. Quote whole lines.'
+    same: '`old` and `new` are the same: nothing to change.'
+    twice: 'Those lines occur {count} times in `{path}`, at lines {lines}: quote more lines around the
+      one you mean.'
+  origin:
+  - crew#778
   owner: Developer
-told.delivery_crew.for_an_existing_file_that_is:
-  guidance: true
+session.restore:
+  description: '`git restore` takes `--source=<ref>` and files, and writes text files in the branch only.'
+  messages:
+    folder: '`{path}` is a folder, at `{ref}` or in your branch: name the files in it.'
+    link: '`{path}` is a symbolic link or a submodule at `{ref}`: the session writes files only.'
+    neither: '`{path}` is neither at `{ref}` nor in your branch.'
+    no_paths: 'Name the files to restore: `git restore --source={ref} -- <paths>`.'
+    no_ref: '`{ref}` isn''t a commit here: {said}'
+    no_source: '`git restore` here takes `--source=<ref>`, such as `--source=base` or `--source=HEAD`,
+      and the files: `git restore --source=base -- <paths>`.'
+    not_text: '`{path}` isn''t text at `{ref}`: the session writes text files only.'
+    option: '`git restore` doesn''t take `{option}` here: it writes the files in your branch, never the
+      index. It takes `--source=<ref>` and the files.'
+  origin:
+  - crew#778
   owner: Developer
-told.delivery_crew.functions_and_classes_always_change_with:
-  guidance: true
-  owner: Developer
-told.delivery_crew.implement_only_this_story_work_belonging:
-  guidance: true
-  owner: Developer
-told.delivery_crew.that_is_the_only_way_a:
-  guidance: true
-  owner: Developer
-told.delivery_crew.to_remove_a_file_entirely_list:
-  guidance: true
-  owner: Developer
-told.delivery_crew.you_never_reproduce_code_you_are:
-  guidance: true
-  owner: Developer
-told.form.Implementation.need_files:
-  guidance: true
-  owner: Developer
-told.form.Implementation.new_files:
-  guidance: true
+session.write_file:
+  description: '`write_file` rewrites an existing file only when told to overwrite it.'
+  messages:
+    exists: '`{path}` exists. Change it with `replace_text` or `replace_definition`, or rewrite it whole
+      with `overwrite: true`.'
+  origin:
+  - crew#778
   owner: Developer

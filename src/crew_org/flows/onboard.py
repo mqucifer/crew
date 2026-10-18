@@ -444,7 +444,7 @@ def describe(path: Path, *, branch: str, protection: dict[str, Any] | None) -> s
     files = project_files(path)
     if not files:
         return ""
-    lines = [repository_context(path, editing=False)]
+    lines = [repository_context(path)]
     # CI is where a project's checks already live, so it is most of the answer
     # to what done means there. The general context lists workflows by name only.
     for workflow in sorted((path / ".github" / "workflows").glob("*.y*ml")):

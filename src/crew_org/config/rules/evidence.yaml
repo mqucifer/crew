@@ -8,9 +8,6 @@ check.acceptance.held_to_what_it_read:
   - crew#768
   owner: QA Engineer
   told_in: CriterionVerdict.evidence
-check.attempts.repair_report:
-  exempt: shapes the failure report a repair is shown; refuses nothing
-  owner: Developer
 check.criteria_check.feedback:
   description: Sent back once if its criteria can't all pass, together and with the project's code.
   messages:
@@ -44,18 +41,24 @@ check.delivery.these_named_tests_dont_exist:
   messages:
     default: 'these named tests don''t exist in the repository: {tests}. Name existing tests, or write
       the test in `criteria_tests`.'
+    done: 'No test by these names exists: {tests}. If no test proves the criterion yet, write one and
+      run it. If one exists under another name, name that. To look, `search` for `def test_` in its file,
+      or ask `tests_for` the definition.'
   origin:
   - crew#217
   - crew#221
   owner: Developer
   told_in: ExistingProof, CriterionMet.test
-check.delivery.this_ci_evidence_doesnt_hold:
-  description: Refused if the step doesn't exist, or its workflow didn't pass on the default branch.
+check.gates.the_branch_changes_nothing:
+  description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion
+    and the checks pass, as an already-done story does (crew#221).
   messages:
-    default: 'this CI evidence doesn''t hold: {unproven}. Name a workflow step that exists and whose workflow
-      passed on `{branch}`, or change the code.'
+    default: Your branch changes nothing. A story that's already done names, in `done`, an existing test
+      that proves each criterion, and the checks pass. Do the work, or name those tests.
+  origin:
+  - crew#221
+  - crew#778
   owner: Developer
-  told_in: CriterionMet.ci_step
 check.presentation_notes.coverage:
   description: Refused unless every story of the epic appears once, and only those.
   messages:
@@ -100,39 +103,6 @@ form.AcceptanceCriterion.names_what_to_check:
   - crew#281
   owner: Business Analyst
   told_in: AcceptanceCriterion.then
-form.CriterionMet.one_proof:
-  description: Refused unless it gives exactly one of `test` and `ci_step`.
-  messages:
-    default: 'each criterion is proven by an existing test, or, for what a CI workflow does, by its workflow
-      step: give exactly one'
-  owner: Developer
-  told_in: CriterionMet
-form.CriterionTest.a_name_not_its_code:
-  description: Refused if it holds the test's code.
-  messages:
-    default: '`test` is the test''s name alone, e.g. test_range_as_json. Its code goes in `source`'
-  origin:
-  - crew#583
-  owner: Developer
-  told_in: CriterionTest.test
-form.CriterionTest.is_that_test:
-  description: Refused if its path is a doc or not a test file, if it has no source, or if the source
-    doesn't define the test.
-  messages:
-    a_doc: '{path} is documentation. A criterion about what a doc says is proven by reading the doc, not
-      by a test: leave it out of criteria_tests and make the doc change in new_files or text_edits'
-    no_source: '{test} has no source. criteria_tests holds new tests, written in full. A test already
-      in the repository goes in proven_by_existing, named as {path}::{name}'
-    not_a_test_file: '{path} isn''t a test file: {hint}'
-    undefined: the source for {test} doesn't define it
-  origin:
-  - crew#196
-  - crew#404
-  - crew#448
-  - sprint-metrics#381
-  - sprint-metrics#386
-  owner: Developer
-  told_in: CriterionTest
 form.CriterionVerdict.is_specific:
   description: Refused if too short to name a test or say what is missing.
   messages:
@@ -140,40 +110,6 @@ form.CriterionVerdict.is_specific:
       not evidence.
   owner: QA Engineer
   told_in: CriterionVerdict.evidence
-form.FileWrite.tests_declare_their_fixtures:
-  origin:
-  - crew#196
-  owner: Developer
-form.FirstAttempt.has_a_test:
-  description: 'Refused with no test: a criterion''s test, an existing test named, or a test file written.'
-  messages:
-    default: no test. Every acceptance criterion needs an automated test that proves it — add one to an
-      existing test file, or create a new test_*.py.
-  origin:
-  - crew#591
-  owner: Developer
-  told_in: FirstAttempt
-form.FirstOrDone.has_a_test:
-  description: Refused if an already-done answer changes anything, or if it gives no test.
-  messages:
-    changes_something: an already-done answer changes nothing. Either change the code and leave `already_done`
-      empty, or name the existing code and tests and change nothing.
-    no_test: no test. For each acceptance criterion, give the test that proves it in `criteria_tests`,
-      or name the existing tests in `proven_by_existing` — or, if the code already meets every criterion,
-      say so in `already_done`.
-  owner: Developer
-  told_in: FirstOrDone
-form.Implementation.drops_doc_criteria_with_no_test:
-  origin:
-  - sprint-metrics#529
-  owner: Developer
-form.Implementation.drops_tests_it_only_names:
-  origin:
-  - crew#450
-  - crew#489
-  - crew#511
-  - sprint-metrics#453
-  owner: Developer
 form.QAVerdict.a_verdict_or_an_ask:
   description: Refused if empty, unless the answer only asks for files.
   messages:
@@ -236,6 +172,24 @@ guard.reproduce.check:
   origin:
   - crew#407
   owner: Developer
+session.run:
+  description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint
+    needs a lint among them.'
+  messages:
+    no_lint: 'This project''s checks have no lint: the `suite` is what the crew runs.'
+    no_pytest: 'This project''s checks name no pytest command: run the `suite`.'
+    no_tests: Name the tests (ids or files), or run the `suite`.
+  origin:
+  - crew#778
+  owner: Developer
+session.tests_for:
+  description: '`tests_for` needs the project''s coverage map, which is Python only.'
+  messages:
+    no_map: There's no coverage map for this project (it's Python only).
+  origin:
+  - crew#404
+  - crew#778
+  owner: Developer
 told.business_analyst.a_criterion_naming_a_table_a:
   guidance: true
   owner: Business Analyst
@@ -278,9 +232,6 @@ told.form.CriteriaConflict.story:
 told.form.PresentationNote.beyond_reach:
   guidance: true
   owner: UX Designer
-told.form.Rework.already_satisfied:
-  guidance: true
-  owner: Developer
 told.presentation_note_crew.add_to_the_stories_criteria_never:
   guidance: true
   owner: UX Designer

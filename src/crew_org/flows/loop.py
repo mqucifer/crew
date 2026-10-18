@@ -29,7 +29,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org import log, profiles
-from crew_org.escalation import EscalationLedger, EscalationPolicy
 from crew_org.events import (
     CrewEvent,
     EventKind,
@@ -70,8 +69,6 @@ class Crew:
     ws: Workspace
     sandbox: Sandbox
     rules: ProcessRules
-    policy: EscalationPolicy
-    ledger: EscalationLedger
     org: dict[str, Any]
     repo: str
     repos: set[str]
@@ -657,8 +654,6 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         crew.issues,
         crew.sink,
         crew.rules,
-        crew.policy,
-        crew.ledger,
         crew.ws,
         sprint=crew.sprint,
         repo=crew.repo,

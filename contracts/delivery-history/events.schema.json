@@ -2,7 +2,7 @@
   "$defs": {
     "Attempt": {
       "additionalProperties": false,
-      "description": "An attempt that didn't land, and what the crew decided to do about it.\n\n`reason` is present only when one of the crew's own checks wrote it with\nnothing but names filled in (ADR 0020); otherwise the failure class stands\nalone.",
+      "description": "An attempt that didn't land, and what the crew decided to do about it.\n\n`reason` is present only when one of the crew's own checks wrote it with\nnothing but names filled in (ADR 0020); otherwise the failure class stands\nalone.\n\nEscalation's policy decides these, so they end with escalation (ADR 0032, Stage\nE): earlier sprints keep theirs, and later ones have none. A story delivered in\nDeveloper sessions misses on review's and QA's returns instead (`verdict` on\n`work_finished`), and its deliveries are in the analysis.",
       "properties": {
         "at": {
           "format": "date-time",
@@ -221,7 +221,7 @@
     },
     "Escalated": {
       "additionalProperties": false,
-      "description": "An attempt sent to the escalation model, which the sprint's budget pays for.",
+      "description": "An attempt sent to the escalation model, which the sprint's budget pays for.\n\nEscalation retires with ADR 0032 (Stage E): earlier sprints keep these, and later\nones have none. A stuck story goes back to the Business Analyst instead\n(`returned`).",
       "properties": {
         "at": {
           "format": "date-time",
@@ -258,6 +258,53 @@
       "title": "Escalated",
       "type": "object"
     },
+    "GateChecked": {
+      "additionalProperties": false,
+      "description": "The crew's gate on a session's branch at `done`, before review (ADR 0032).\n\nA gate's return is the Developer still working, not an attempt (the Sponsor,\n2026-10-18, crew#778): its findings are named by their rules, never their text.",
+      "properties": {
+        "already_done": {
+          "description": "The branch had nothing to change: the story goes to QA with an empty diff.",
+          "title": "Already Done",
+          "type": "boolean"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "kind": {
+          "const": "gate_checked",
+          "default": "gate_checked",
+          "title": "Kind",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "rules": {
+          "description": "The declared rules its findings were by (ADR 0031).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "passed",
+        "rules",
+        "already_done"
+      ],
+      "title": "GateChecked",
+      "type": "object"
+    },
     "ModelCall": {
       "additionalProperties": false,
       "description": "One call to a model: what it cost in tokens and time. No money is recorded.",
@@ -266,6 +313,19 @@
           "format": "date-time",
           "title": "At",
           "type": "string"
+        },
+        "cached_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Of its prompt tokens, those the server's prefix cache held.",
+          "title": "Cached Tokens"
         },
         "card": {
           "anyOf": [
@@ -377,6 +437,7 @@
         "prompt_tokens",
         "completion_tokens",
         "reasoning_tokens",
+        "cached_tokens",
         "seconds",
         "failed"
       ],
@@ -469,6 +530,748 @@
       "title": "PullRef",
       "type": "object"
     },
+    "Returned": {
+      "additionalProperties": false,
+      "description": "A story sent back to refinement, to the Business Analyst who wrote it (ADR 0032).",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "blocked_on": {
+          "anyOf": [
+            {
+              "enum": [
+                "file",
+                "fact",
+                "choice",
+                "stop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a blocked session, what it lacked.",
+          "title": "Blocked On"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "kind": {
+          "const": "returned",
+          "default": "returned",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "gate round trips",
+            "pinned tests",
+            "review conflicts with a criterion",
+            "session blocked",
+            "contract ruling"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_progress",
+                "backstop",
+                "ceiling",
+                "no_tool_call"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a stopped session, what stopped it.",
+          "title": "Stop"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "reason",
+        "blocked_on",
+        "stop"
+      ],
+      "title": "Returned",
+      "type": "object"
+    },
+    "SessionCompacted": {
+      "additionalProperties": false,
+      "description": "A session's history compacted, once, before a prompt would pass its limit.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "estimated_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Tokens"
+        },
+        "kind": {
+          "const": "session_compacted",
+          "default": "session_compacted",
+          "title": "Kind",
+          "type": "string"
+        },
+        "turn": {
+          "description": "The call it was compacted before.",
+          "title": "Turn",
+          "type": "integer"
+        },
+        "turns_masked": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Tool replies shrunk to their one line.",
+          "title": "Turns Masked"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "turn",
+        "estimated_tokens",
+        "turns_masked"
+      ],
+      "title": "SessionCompacted",
+      "type": "object"
+    },
+    "SessionEnded": {
+      "additionalProperties": false,
+      "description": "How a session ended, what it cost, and its signals at the end.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "blocked_on": {
+          "anyOf": [
+            {
+              "enum": [
+                "file",
+                "fact",
+                "choice",
+                "stop"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What a blocked session lacked: a file, a fact, a choice, or `stop`.",
+          "title": "Blocked On"
+        },
+        "cached_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cached Tokens"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "ceiling": {
+          "anyOf": [
+            {
+              "enum": [
+                "reading",
+                "re_viewing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ceiling a `ceiling` stop reached.",
+          "title": "Ceiling"
+        },
+        "changed_tests": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "At `done`, the merged tests it changed.",
+          "title": "Changed Tests"
+        },
+        "completion_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completion Tokens"
+        },
+        "criteria": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "At `done`, the criteria it named a test for.",
+          "title": "Criteria"
+        },
+        "edits": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Edits"
+        },
+        "edits_since_run": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Edits Since Run"
+        },
+        "empty_lookups": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The session's lookups that found nothing.",
+          "title": "Empty Lookups"
+        },
+        "how": {
+          "enum": [
+            "done",
+            "blocked",
+            "interrupted"
+          ],
+          "title": "How",
+          "type": "string"
+        },
+        "kind": {
+          "const": "session_ended",
+          "default": "session_ended",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Each count is None if it wasn't recorded.",
+          "title": "Model Calls"
+        },
+        "model_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Model Seconds"
+        },
+        "most_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Most Views"
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prompt Tokens"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reasoning Tokens"
+        },
+        "runs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Runs"
+        },
+        "since_action": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its signals at the end; None if unrecorded.",
+          "title": "Since Action"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "enum": [
+                "no_progress",
+                "backstop",
+                "ceiling",
+                "no_tool_call"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What stopped it, when it didn't end itself.",
+          "title": "Stop"
+        },
+        "why": {
+          "anyOf": [
+            {
+              "enum": [
+                "call_failed",
+                "workspace_gone"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What interrupted it.",
+          "title": "Why"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "how",
+        "blocked_on",
+        "stop",
+        "ceiling",
+        "why",
+        "model_calls",
+        "model_seconds",
+        "prompt_tokens",
+        "cached_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "edits",
+        "runs",
+        "criteria",
+        "changed_tests",
+        "since_action",
+        "most_views",
+        "edits_since_run",
+        "empty_lookups"
+      ],
+      "title": "SessionEnded",
+      "type": "object"
+    },
+    "SessionStarted": {
+      "additionalProperties": false,
+      "description": "A Developer session starting on a story: the size of each part of its start.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "kind": {
+          "const": "session_started",
+          "default": "session_started",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rework": {
+          "description": "It started from the branch's history, such as the gates' or review's findings or a checkpoint, in place of the hints: a rework round or a resume.",
+          "title": "Rework",
+          "type": "boolean"
+        },
+        "start_chars": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Each part's size in characters, and `total`: story, declared_tests, project, map, hints or instead_of_hints, rules.",
+          "title": "Start Chars",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "start_chars",
+        "rework"
+      ],
+      "title": "SessionStarted",
+      "type": "object"
+    },
+    "SessionTurn": {
+      "additionalProperties": false,
+      "description": "The signals after one model call of a session, recorded on every call.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "edits_since_run": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Edits Since Run"
+        },
+        "empty_lookups": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This call's lookups that found nothing.",
+          "title": "Empty Lookups"
+        },
+        "kind": {
+          "const": "session_turn",
+          "default": "session_turn",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The session's model time so far.",
+          "title": "Model Seconds"
+        },
+        "most_views": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The most views of one file since its last edit.",
+          "title": "Most Views"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reasoning Tokens"
+        },
+        "since_action": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Model calls in a row with no edit applied and no run.",
+          "title": "Since Action"
+        },
+        "tool_calls": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Each count is None if it wasn't recorded.",
+          "title": "Tool Calls"
+        },
+        "turn": {
+          "description": "The model call's number in its session, from 1.",
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "turn",
+        "tool_calls",
+        "since_action",
+        "most_views",
+        "edits_since_run",
+        "empty_lookups",
+        "reasoning_tokens",
+        "model_seconds"
+      ],
+      "title": "SessionTurn",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "description": "One tool call of a session: which tool, how it went, and its sizes. Never its\narguments or its reply, a path, a pattern or a command.",
+      "properties": {
+        "argument_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Argument Chars"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "$ref": "#/$defs/CardRef"
+        },
+        "exit_codes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A run's commands' exit codes, in order.",
+          "title": "Exit Codes"
+        },
+        "found_nothing": {
+          "description": "A lookup that found no file, definition or hit.",
+          "title": "Found Nothing",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reply_chars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reply Chars"
+        },
+        "result": {
+          "enum": [
+            "ok",
+            "refused",
+            "failed",
+            "passed",
+            "error",
+            "end"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The declared rule a refusal was by (ADR 0031).",
+          "title": "Rule"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "enum": [
+                "tests",
+                "suite",
+                "lint"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What a run ran.",
+          "title": "Run"
+        },
+        "seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seconds"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "enum": [
+                "view",
+                "search",
+                "find",
+                "tests_for",
+                "replace_text",
+                "replace_definition",
+                "write_file",
+                "run",
+                "git",
+                "done",
+                "blocked",
+                "after_run"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None for a tool there isn't, which it named.",
+          "title": "Tool"
+        },
+        "turn": {
+          "title": "Turn",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "turn",
+        "tool",
+        "result",
+        "rule",
+        "found_nothing",
+        "argument_chars",
+        "reply_chars",
+        "seconds",
+        "run",
+        "exit_codes"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
     "WorkFinished": {
       "additionalProperties": false,
       "properties": {
@@ -506,6 +1309,25 @@
         "role": {
           "title": "Role",
           "type": "string"
+        },
+        "verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "approved",
+                "changes_requested",
+                "accepted",
+                "returned"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A review's or QA's verdict: approved or changes requested, accepted or returned. None for other work.",
+          "title": "Verdict"
         }
       },
       "required": [
@@ -513,7 +1335,8 @@
         "at",
         "card",
         "pull",
-        "role"
+        "role",
+        "verdict"
       ],
       "title": "WorkFinished",
       "type": "object"
@@ -585,8 +1408,15 @@
             "blocked": "#/$defs/Blocked",
             "card_moved": "#/$defs/CardMoved",
             "escalated": "#/$defs/Escalated",
+            "gate_checked": "#/$defs/GateChecked",
             "model_call": "#/$defs/ModelCall",
             "pull_merged": "#/$defs/PullMerged",
+            "returned": "#/$defs/Returned",
+            "session_compacted": "#/$defs/SessionCompacted",
+            "session_ended": "#/$defs/SessionEnded",
+            "session_started": "#/$defs/SessionStarted",
+            "session_turn": "#/$defs/SessionTurn",
+            "tool_call": "#/$defs/ToolCall",
             "work_finished": "#/$defs/WorkFinished",
             "work_started": "#/$defs/WorkStarted"
           },
@@ -616,6 +1446,27 @@
           },
           {
             "$ref": "#/$defs/PullMerged"
+          },
+          {
+            "$ref": "#/$defs/SessionStarted"
+          },
+          {
+            "$ref": "#/$defs/SessionTurn"
+          },
+          {
+            "$ref": "#/$defs/ToolCall"
+          },
+          {
+            "$ref": "#/$defs/SessionCompacted"
+          },
+          {
+            "$ref": "#/$defs/SessionEnded"
+          },
+          {
+            "$ref": "#/$defs/GateChecked"
+          },
+          {
+            "$ref": "#/$defs/Returned"
           }
         ]
       },

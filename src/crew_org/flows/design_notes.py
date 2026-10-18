@@ -172,7 +172,7 @@ def write_notes(
                 epic=epic_text,
                 stories=story_text,
                 project=project,
-                repository=repository_context(clone, editing=False),
+                repository=repository_context(clone),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)

@@ -74,8 +74,6 @@ def test_a_sprint_without_a_retro_is_open():
 
 
 def test_a_preview_records_nothing_even_for_a_sprint_that_has_a_retro(monkeypatch, tmp_path):
-    from crew_org.escalation import EscalationLedger
-
     monkeypatch.setattr(
         close_mod,
         "write_retro",
@@ -86,7 +84,6 @@ def test_a_preview_records_nothing_even_for_a_sprint_that_has_a_retro(monkeypatc
         CloseBoard(),
         issues,
         close_mod.EventSink(None),
-        EscalationLedger(tmp_path / "ledger.jsonl"),
         sprint=SPRINT,
         repo=PRODUCT,
         crew_repo=CREW,
@@ -103,7 +100,6 @@ def test_a_preview_records_nothing_even_for_a_sprint_that_has_a_retro(monkeypatc
 def test_a_preview_cites_what_a_known_issue_explains_as_the_close_would(monkeypatch, tmp_path):
     """Sprint 7's preview said it "would file" a defect #252 already covered;
     the close itself cites a known issue and files nothing."""
-    from crew_org.escalation import EscalationLedger
 
     explained = process("A design note can contradict a criterion").model_copy(
         update={"explained_by": 252}
@@ -119,7 +115,6 @@ def test_a_preview_cites_what_a_known_issue_explains_as_the_close_would(monkeypa
         CloseBoard(),
         issues,
         close_mod.EventSink(None),
-        EscalationLedger(tmp_path / "ledger.jsonl"),
         sprint=SPRINT,
         repo=PRODUCT,
         crew_repo=CREW,

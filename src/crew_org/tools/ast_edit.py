@@ -1,4 +1,4 @@
-"""Editing code by name rather than by position.
+"""Replacing code by name rather than by position: the session's `replace_definition`.
 
 The Developer used to return whole files, which made every story a
 transcription exercise: regenerate three hundred lines, change four, and leave
@@ -8,14 +8,14 @@ in code nobody had asked it to touch.
 
 Targeting by name removes the transcription entirely. The model names a
 definition and supplies its new source; nothing else is reproduced, so nothing
-else can be damaged. Deleting becomes an operation it has to choose rather than
-an accident of regeneration.
+else can be damaged. In the Developer's session (crew#778) this is one of its
+edit tools, beside quoting lines (`replace_text`) and writing whole files.
 
 Two findings shaped this. Aider measured a 30-50% rise in editing errors when
 models were pushed toward surgical line edits instead of whole functions, and a
 9x rise without permissive parsing — so edits are whole definitions and the
-applier forgives imperfect input. A published comparison of edit formats found
-name-addressed AST edits had zero format failures across four models, where
+applier forgives imperfect indentation. A published comparison of edit formats
+found name-addressed AST edits had zero format failures across four models, where
 search/replace had eleven and unified diff thirty-one, because both of those
 require reproducing existing text exactly.
 
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from enum import StrEnum
 
 from crew_org.rulebook import Refusal, refuse
 
@@ -35,31 +34,12 @@ class EditError(Refusal):
     """An edit that cannot be applied, described so the model can fix it."""
 
 
-class Operation(StrEnum):
-    REPLACE = "replace"
-    """Replace an existing top-level definition or method, by name."""
-
-    ADD = "add"
-    """Append a new top-level definition."""
-
-    ADD_METHOD = "add_method"
-    """Add a method to an existing class."""
-
-    ADD_IMPORT = "add_import"
-    """Add an import. Separate because a spliced function often needs one."""
-
-    DELETE = "delete"
-    """Remove a definition. Deliberate, never incidental."""
-
-
 @dataclass(frozen=True)
 class Edit:
-    operation: Operation
+    """Replace an existing top-level definition or method, by name."""
+
     target: str
     source: str = ""
-    # A criterion's test: one the file defines by the time it's added is replaced
-    # (#183), whether it was there before or an earlier edit wrote it (crew#735).
-    replaces_existing: bool = False
 
 
 def _definitions(tree: ast.Module) -> dict[str, ast.stmt]:
@@ -124,39 +104,6 @@ def _reindent(source: str, indent: str) -> str:
     return "\n".join(out)
 
 
-def _import_insertion_point(tree: ast.Module, lines: list[str]) -> int:
-    """After the last import, or after the module docstring, or the top."""
-    last = 0
-    for node in tree.body:
-        is_import = isinstance(node, ast.Import | ast.ImportFrom)
-        # A leading string expression is the module docstring — but only while
-        # nothing has been seen before it.
-        is_docstring = (
-            last == 0 and isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
-        )
-        if is_import or is_docstring:
-            last = node.end_lineno or node.lineno
-    return last
-
-
-def _main_guard(tree: ast.Module, lines: list[str]) -> int | None:
-    """Where a top-level `if __name__ == "__main__":` starts (0-based), with the
-    comments directly above it, which belong to it. None when the file has none."""
-    for node in tree.body:
-        test = node.test if isinstance(node, ast.If) else None
-        if not isinstance(test, ast.Compare) or len(test.comparators) != 1:
-            continue
-        sides = [test.left, test.comparators[0]]
-        names = {s.id for s in sides if isinstance(s, ast.Name)}
-        values = {s.value for s in sides if isinstance(s, ast.Constant)}
-        if names == {"__name__"} and values == {"__main__"}:
-            start = node.lineno - 1
-            while start > 0 and lines[start - 1].lstrip().startswith("#"):
-                start -= 1
-            return start
-    return None
-
-
 def apply_edit(source: str, edit: Edit) -> str:
     """Apply one edit. The file is re-parsed per edit, so spans never go stale."""
     try:
@@ -166,44 +113,6 @@ def apply_edit(source: str, edit: Edit) -> str:
 
     lines = source.splitlines()
     definitions = _definitions(tree)
-
-    if edit.operation is Operation.ADD_IMPORT:
-        statement = edit.source.strip()
-        if not statement:
-            refuse("edit.ast_edit.apply_edit", "no_import", kind=EditError)
-        if any(line.strip() == statement for line in lines):
-            return source  # already there; adding it twice is not an error
-        at = _import_insertion_point(tree, lines)
-        return "\n".join(lines[:at] + [statement] + lines[at:]) + "\n"
-
-    if edit.operation is Operation.ADD:
-        if edit.target in definitions:
-            start, end = _span(definitions[edit.target])
-            if "\n".join(lines[start:end]).strip() == edit.source.strip():
-                return source  # already there, as sent
-            if edit.replaces_existing:
-                return apply_edit(source, Edit(Operation.REPLACE, edit.target, edit.source))
-            refuse("edit.ast_edit.apply_edit", "exists", kind=EditError, target=repr(edit.target))
-        body = edit.source.strip("\n")
-        # Before the file's `__main__` block, not after it: run as a script, the
-        # block calls into the module before anything below it is defined.
-        # sprint-metrics#434 and #443 each added a generator to `_docs_gen.py`
-        # past `sys.exit(main())`, and `python -m` failed with NameError (crew#497).
-        guard = _main_guard(tree, lines)
-        if guard is not None:
-            head = "\n".join(lines[:guard]).rstrip("\n")
-            return head + "\n\n\n" + body + "\n\n\n" + "\n".join(lines[guard:]) + "\n"
-        return source.rstrip("\n") + "\n\n\n" + body + "\n"
-
-    if edit.operation is Operation.ADD_METHOD:
-        class_name = edit.target.split(".")[0]
-        node = definitions.get(class_name)
-        if not isinstance(node, ast.ClassDef):
-            refuse("edit.ast_edit.apply_edit", "no_class", kind=EditError, name=repr(class_name))
-        _start, end = _span(node)
-        indent = _indent_of(lines[node.body[0].lineno - 1]) if node.body else "    "
-        body = _reindent(edit.source, indent)
-        return "\n".join(lines[:end] + [""] + body.splitlines() + lines[end:]) + "\n"
 
     node = definitions.get(edit.target)
     if node is None:
@@ -217,32 +126,8 @@ def apply_edit(source: str, edit: Edit) -> str:
         )
 
     start, end = _span(node)
-
-    if edit.operation is Operation.DELETE:
-        return "\n".join(lines[:start] + lines[end:]) + "\n"
-
     indent = _indent_of(lines[start])
     body = _reindent(edit.source, indent)
     if not body.strip():
         refuse("edit.ast_edit.apply_edit", "empty", kind=EditError, target=repr(edit.target))
     return "\n".join(lines[:start] + body.splitlines() + lines[end:]) + "\n"
-
-
-def apply_edits(source: str, edits: list[Edit]) -> str:
-    """Apply edits in order, re-parsing between each.
-
-    A delete the others already make is dropped rather than failed: removing
-    `Card.is_completed` when `Card` itself is removed, or removing the same
-    name twice. sprint-metrics#125 deleted a class and then each of its methods,
-    and was refused for the methods being gone.
-    """
-    deleted = {e.target for e in edits if e.operation is Operation.DELETE}
-    seen: set[str] = set()
-    for edit in edits:
-        if edit.operation is Operation.DELETE:
-            owner = edit.target.split(".")[0]
-            if edit.target in seen or (owner != edit.target and owner in deleted):
-                continue
-            seen.add(edit.target)
-        source = apply_edit(source, edit)
-    return source

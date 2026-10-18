@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from crew_org.tokens import Token, current
@@ -75,6 +76,11 @@ def branch_name(issue: int, summary: str, *, kind: str = "feat") -> str:
     return name
 
 
+def kept_name(issue: int, at: datetime) -> str:
+    """The branch a delivery's work is kept on: `crew/kept/<issue>-<yyyymmdd-hhmm>`, UTC."""
+    return f"{KEPT}{issue}-{at.astimezone(UTC):%Y%m%d-%H%M}"
+
+
 def validate_branch_name(branch: str) -> None:
     """Check a branch follows the convention, and is not protected."""
     assert_writable(branch)
@@ -96,6 +102,15 @@ def validate_branch_name(branch: str) -> None:
 WORK_ROOT = Path("var").resolve()
 CLONES = WORK_ROOT / "repos"
 WORKTREES = WORK_ROOT / "worktrees"
+
+# How a session's checkpoint commit starts (crew#778, P3): `checkpoint(<card>): ...`.
+CHECKPOINT = "checkpoint("
+# The trailer on the commit a session makes at `done`: a checkpoint too, so a delivery
+# whose gates, push or pull request didn't finish resumes from it.
+DONE_TRAILER = "Crew-Checkpoint: done"
+# Where a delivery that leaves for a rewrite keeps its work (crew#778): a branch of
+# its own, never the story's or a pull request's, so no review's head moves.
+KEPT = "crew/kept/"
 
 # git waits forever on a prompt; fail instead.
 NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "never"}
@@ -153,29 +168,39 @@ def _auth_header(token: str) -> str:
     return f"Authorization: Basic {encoded}"
 
 
-def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) -> str:
-    """Run git, with credentials supplied per-command.
+def _auth_env(token: str) -> dict[str, str]:
+    """The token as git config in git's environment: `http.extraheader`, after any set.
 
-    The token is passed with -c http.extraheader rather than embedded in the
-    remote URL, so it is never written into .git/config where it would outlive
-    its hour and end up in a backup.
+    Not in argv, where `ps` shows it to every user of the machine (crew#778): a
+    process's environment is readable only by its own user and root. Not in the
+    remote URL either, where it would be written into .git/config and outlive its
+    hour in a backup. And not through a credential helper: git on a Mac names
+    osxkeychain in its own config, and a successful push would store the token there.
+    `GIT_CONFIG_COUNT` needs git 2.31 or later.
     """
     import os  # noqa: PLC0415
 
-    command = ["git"]
-    if token:
-        command += ["-c", f"http.extraheader={_auth_header(token)}"]
-    command += args
+    n = int(os.environ.get("GIT_CONFIG_COUNT") or 0)
+    return {
+        "GIT_CONFIG_COUNT": str(n + 1),
+        f"GIT_CONFIG_KEY_{n}": "http.extraheader",
+        f"GIT_CONFIG_VALUE_{n}": _auth_header(token),
+    }
+
+
+def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) -> str:
+    """Run git, with credentials supplied per-command, in its environment (`_auth_env`)."""
+    import os  # noqa: PLC0415
 
     result = subprocess.run(
-        command,
+        ["git", *args],
         cwd=cwd,
         capture_output=True,
         text=True,
-        env={**os.environ, **NO_PROMPT},
+        env={**os.environ, **NO_PROMPT, **(_auth_env(token) if token else {})},
     )
     if result.returncode != 0:
-        # Never echo the command: it carries the credential.
+        # git's own words only: never the environment, which carries the credential.
         raise GitError(f"git {args[0]} failed: {result.stderr.strip()[:300]}")
     return result.stdout.strip()
 
@@ -297,7 +322,74 @@ class Workspace:
             return True
         return False
 
-    def open(self, branch: str, *, resume: bool = False) -> Path:
+    def checkpoint_on(self, branch: str) -> str | None:
+        """The message of the checkpoint the clone's `branch` ends in, or None.
+
+        A session commits a checkpoint after each green run and at `done` (crew#778,
+        P3). The clone's branch outlives the worktree, so a crashed or stopped tick
+        leaves it for the next one to resume. A delivery that ends forgets it, so one
+        still here is unfinished, even if `done`'s was pushed and its pull request
+        failed. None when the branch ends in anything else, or has merged.
+        """
+        self._ensure_clone()
+        try:
+            tip = _run(["rev-parse", "--verify", f"refs/heads/{branch}"], cwd=self.clone)
+        except GitError:
+            return None
+        message = _run(["log", "-1", "--format=%B", tip], cwd=self.clone)
+        if not (message.startswith(CHECKPOINT) or DONE_TRAILER in message):
+            return None
+        try:
+            _run(["merge-base", "--is-ancestor", tip, "origin/HEAD"], cwd=self.clone)
+        except GitError:
+            return message
+        return None
+
+    def keep(self, name: str, *, base: str, message: str) -> str | None:
+        """Push the open worktree, as it stands, to a new branch `name`; its commit.
+
+        Edits since the worktree's last commit go in one more commit, `message`, made
+        on `name` alone: the worktree's own branch stays at its last checkpoint. A
+        plain push of a new name, never forced. None when the work is no different
+        from `base`, and nothing is pushed. The clone's copy of `name` goes once the
+        push is made; a push that fails leaves it there, with the work.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        assert_writable(name)
+        _run(["add", "-A"], cwd=self.path)
+        tree = _run(["write-tree"], cwd=self.path)
+        if tree == _run(["rev-parse", f"{base}^{{tree}}"], cwd=self.path):
+            return None
+        sha = _run(["rev-parse", "HEAD"], cwd=self.path)
+        if tree != _run(["rev-parse", "HEAD^{tree}"], cwd=self.path):
+            sha = _run(
+                [
+                    "-c",
+                    f"user.name={self.identity.name}",
+                    "-c",
+                    f"user.email={self.identity.email}",
+                    "commit-tree",
+                    tree,
+                    "-p",
+                    sha,
+                    "-m",
+                    message,
+                ],
+                cwd=self.path,
+            )
+        _run(["branch", name, sha], cwd=self.path)
+        _run(["push", "origin", f"refs/heads/{name}"], cwd=self.path, token=self.token)
+        with contextlib.suppress(GitError):
+            _run(["branch", "-D", name], cwd=self.path)
+        return sha
+
+    def forget(self, branch: str) -> None:
+        """Drop the clone's own copy of `branch`, and any checkpoint on it, once closed."""
+        with contextlib.suppress(GitError):
+            _run(["branch", "-D", branch], cwd=self.clone)
+
+    def open(self, branch: str, *, resume: bool = False, checkpoint: bool = False) -> Path:
         """Create a worktree on `branch`.
 
         Off `origin/HEAD` by default: a story being delivered for the first
@@ -309,6 +401,9 @@ class Workspace:
         `self.resumed` — the caller has to tell the Developer which world it is
         in, because a prompt describing files that are not there is worse than
         one describing none.
+
+        `checkpoint` starts from the clone's own `branch`, which `checkpoint_on`
+        found ending in a session's checkpoint.
         """
         assert_writable(branch)
         validate_branch_name(branch)
@@ -325,8 +420,8 @@ class Workspace:
         _run(["worktree", "prune"], cwd=self.clone)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.resumed = bool(resume) and self.unfinished_work_on(branch)
-        base = f"origin/{branch}" if self.resumed else "origin/HEAD"
+        self.resumed = checkpoint or (bool(resume) and self.unfinished_work_on(branch))
+        base = branch if checkpoint else f"origin/{branch}" if self.resumed else "origin/HEAD"
         _run(
             ["worktree", "add", "-B", branch, str(path), base],
             cwd=self.clone,

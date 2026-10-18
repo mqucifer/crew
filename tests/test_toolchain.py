@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from crew_org.tools import workspace
@@ -65,7 +66,7 @@ def test_check_runs_the_design_s_commands_in_the_design_s_image(tmp_path, monkey
     design = f"  sandbox_image: {PLAYWRIGHT}\n  setup: npm ci\n  checks:\n  - npx playwright test\n"
     ran = []
 
-    def fake_run(worktree, command, *, sandbox, network, timeout):
+    def fake_run(worktree, command, *, sandbox, network, timeout, env=None):
         ran.append((command, sandbox.image, network))
         return CommandResult(command=" ".join(command), code=0, output="")
 
@@ -243,3 +244,107 @@ def test_a_merged_design_whose_setup_needs_a_shell_is_a_problem(tmp_path):
     )
     problem = toolchain(project(tmp_path, design)).problem
     assert "uses `&&`" in problem and "without a shell" in problem
+
+
+# --- devcontainer.json, the workspace's one source (crew#778) -----------------
+
+
+def with_file(tmp_path: Path, text: str, design: str = "  checks:\n  - npx playwright test\n"):
+    root = project(tmp_path, design)
+    (root / ".devcontainer").mkdir()
+    (root / ".devcontainer/devcontainer.json").write_text(text)
+    return root
+
+
+def test_the_file_gives_the_image_setup_and_environment(tmp_path):
+    tools = toolchain(
+        with_file(
+            tmp_path,
+            f'{{"image": "{PLAYWRIGHT}", "postCreateCommand": ["npm", "ci"],'
+            ' "containerEnv": {"CI": "1"}}',
+        )
+    )
+    assert tools.image == PLAYWRIGHT and tools.setup == ["npm", "ci"]
+    assert tools.env == {"CI": "1"} and tools.problem is None
+    # Its own image, so only what the design names runs in it.
+    assert tools.autofix == () and tools.verify == (["npx", "playwright", "test"],)
+
+
+def test_the_file_is_the_one_source_over_the_design(tmp_path):
+    design = "  sandbox_image: other@sha256:abc\n  setup: uv sync\n  checks:\n  - uv run pytest\n"
+    tools = toolchain(with_file(tmp_path, f'{{"image": "{PLAYWRIGHT}"}}', design))
+    assert tools.image == PLAYWRIGHT and tools.setup is None
+
+
+def test_a_file_that_can_t_be_used_is_refused_before_anything_runs(tmp_path, monkeypatch):
+    root = with_file(tmp_path, f'{{"image": "{PLAYWRIGHT}", "postCreateCommand": "npm ci"}}')
+    assert "array of words" in toolchain(root).problem
+    monkeypatch.setattr(workspace, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    result = workspace.check(root, sandbox=Sandbox(mode=Mode.REQUIRED))
+    assert not result.ok and "array of words" in result.results[0].output
+
+
+def test_the_file_s_image_is_pinned_like_the_design_s(tmp_path):
+    problem = toolchain(with_file(tmp_path, '{"image": "node:22"}')).problem
+    assert "`.devcontainer/devcontainer.json`" in problem and "isn't pinned by digest" in problem
+
+
+def test_check_gives_each_command_the_file_s_environment(tmp_path, monkeypatch):
+    seen = []
+
+    def fake_run(worktree, command, *, sandbox, network, timeout, env=None):
+        seen.append(env)
+        return CommandResult(command=" ".join(command), code=0, output="")
+
+    monkeypatch.setattr(workspace, "run", fake_run)
+    root = with_file(
+        tmp_path,
+        f'{{"image": "{PLAYWRIGHT}", "postCreateCommand": ["npm", "ci"],'
+        ' "containerEnv": {"CI": "1"}}',
+    )
+    assert workspace.check(root, sandbox=Sandbox(mode=Mode.REQUIRED)).ok
+    assert seen == [{"CI": "1"}, {"CI": "1"}]
+
+
+# --- in a session's workspace container (crew#778, Stage D) --------------------
+
+
+class Held:
+    """A session's container: what ran in it, each answered with success."""
+
+    def __init__(self) -> None:
+        self.ran: list[list[str]] = []
+
+    def exec(self, command, timeout=0):
+        self.ran.append(list(command))
+        return CommandResult(command=" ".join(command), code=0, output="")
+
+
+def test_in_a_held_container_the_fixers_and_checks_run_there_and_setup_doesn_t(
+    tmp_path, monkeypatch
+):
+    """Setup ran when the container started; running it again would need a network."""
+    design = f"  sandbox_image: {PLAYWRIGHT}\n  setup: npm ci\n  checks:\n  - npx playwright test\n"
+    design += "  autofix:\n  - npx prettier --write .\n"
+    monkeypatch.setattr(workspace, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    held = Held()
+    assert workspace.check(project(tmp_path, design), held=held).ok
+    assert held.ran == [["npx", "prettier", "--write", "."], ["npx", "playwright", "test"]]
+
+
+def test_what_a_session_touched_counts_its_committed_checkpoints(tmp_path):
+    """A fixer's change to a file committed at a checkpoint is the work's, not undone."""
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "b.py").write_text("y = 1\n")
+    subprocess.run([*git, "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run([*git, "commit", "-qm", "base"], cwd=tmp_path, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout.strip()
+    (tmp_path / "a.py").write_text("x = 2\n")
+    subprocess.run([*git, "commit", "-qam", "checkpoint(1): run tests passed"], cwd=tmp_path)
+    (tmp_path / "c.py").write_text("z = 1\n")
+    assert workspace._changed(tmp_path) == {"c.py"}
+    assert workspace._changed(tmp_path, base) == {"a.py", "c.py"}

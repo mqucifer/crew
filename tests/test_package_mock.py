@@ -51,6 +51,13 @@ def test_the_mock_shows_every_kind_a_consumer_meets():
         "escalated",
         "model_call",
         "pull_merged",
+        "session_started",
+        "session_turn",
+        "tool_call",
+        "session_compacted",
+        "session_ended",
+        "gate_checked",
+        "returned",
     }
     assert {e["by"] for e in events if e["kind"] == "card_moved"} == {
         "crew",
@@ -77,4 +84,6 @@ def test_the_mock_shows_every_kind_a_consumer_meets():
         "technical_epic_filed",
     }
     assert {c["source"] for s in sprints for c in s["changed"]} == {"sprint-metrics", "crew"}
+    assert {d["outcome"] for d in analysis["deliveries"]} == {"returned", "open"}
+    assert any(e["kind"] == "work_finished" and e["verdict"] for e in events)
     assert json.loads(files["manifest.json"])["left_out"] == {}

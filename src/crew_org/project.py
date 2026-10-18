@@ -258,7 +258,7 @@ class Learned(Section):
     """One thing the crew found out about this project (#112). Proposed by PR."""
 
     fact: str
-    evidence: str = Field(description="The retro, issue or escalation it came from")
+    evidence: str = Field(description="The retro or issue it came from")
     found: date
 
 

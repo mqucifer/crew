@@ -69,15 +69,16 @@ def test_every_refusal_a_crew_step_raises_is_on_the_list():
 
 def test_each_kind_of_rule_is_found():
     found = ids()
-    assert "form.CriterionTest.is_that_test" in found
+    assert "form.QAVerdict.a_verdict_or_an_ask" in found
     assert "call.check_not_cut_at_a_quote" in found
     assert "call.schema" in found
     assert "check.design.shelled" in found
-    assert "edit.workspace.outside_definitions" in found
-    assert "guard.overwrite.overwrites_existing" in found
+    assert "edit.ast_edit.apply_edit" in found
+    assert "guard.bounds.out_of_bounds" in found
     assert "skip.refine_panel.waits_for_to_be_split_it" in found, "a hold said only in words"
-    assert any(i.startswith("told.developer.") for i in found)
-    assert any(i.startswith("told.delivery_crew.") for i in found)
+    assert "session.replace_text" in found, "a session tool's reply (crew#778)"
+    assert "check.gates.the_branch_changes_nothing" in found, "a gate at `done` (crew#778)"
+    assert any(i.startswith("told.business_analyst.") for i in found)
     assert "§19.4" in found or any("§19.4" in t for e in rule_list.entries() for t in e.told)
 
 
@@ -112,13 +113,12 @@ def test_a_rule_is_placed_by_what_it_protects():
     placed = {e.id: e.category for e in rule_list.entries()}
     assert placed["call.schema"] == "answer_shape"
     assert placed["hold.waits_for_earlier_work"] == "flow"
-    assert placed["form.path.stays_in_the_repository"] == "guards"
-    assert placed["form.CriterionTest.is_that_test"] == "evidence"
-    assert placed["edit.workspace.plan_text_edits"] == "edits"
+    assert placed["session.path"] == "guards"
+    assert placed["form.QAVerdict.a_verdict_or_an_ask"] == "evidence"
+    assert placed["session.replace_text"] == "edits"
     assert placed["guard.regression.broken_contracts"] == "contracts"
-    assert placed["form.Plan.one_step_per_file"] == "scope"
+    assert placed["form.Epic.is_an_argument"] == "scope"
     assert placed["§19.6"] == "guards", "by its constitution section"
-    assert placed["told.delivery_crew.functions_and_classes_always_change_with"] == "edits"
 
 
 def test_every_site_in_the_told_table_places_a_line():

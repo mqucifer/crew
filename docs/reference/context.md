@@ -81,13 +81,13 @@ A split that names a story the project hasn't delivered or planned, or drops a s
 
 ## Business Analyst, ruling on a story's contract in delivery
 
-`contract_crew.rule_on_contract`, called by `delivery.rule_on_contract` (crew#584, step A5).
+`contract_crew.rule_on_contract`, called by `delivery.rule_on_contract` from the gates' route (`session_end.route`; crew#584, ADR 0032 decision 6).
 
 | Part | From | Why |
 |---|---|---|
 | The story | its issue | Its criteria and Existing tests line |
 | The rows it follows | `story_rows` | The decisions that may require the change |
-| The merged tests it broke and doesn't declare | `story_problem.pinned_failures`, less what it declares | What to rule on |
+| The merged tests `done` changed where the story says they stay, with `done`'s why | `gates.changed_tests` | What to rule on |
 
 ## The refinement panel (four members)
 
@@ -129,19 +129,21 @@ A split that names a story the project hasn't delivered or planned, or drops a s
 
 ## Developer, delivering a story
 
-`delivery_crew.implement_story`, called by `delivery.deliver_story`.
+`start.start`, the start of a session `session_delivery.deliver_by_session` runs (ADR 0032, decision 4). The rest the session looks up with its tools.
 
 | Part | From | Why |
 |---|---|---|
-| The story | its issue | What to build, and its Existing tests line |
+| The story | its issue, with `session_delivery.story_section` | What to build, and its Existing tests line |
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
 | The epic's notes | `presentation_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
-| What the gates said before | `delivery.prior_context` | A rework answers the verdict it is about |
-| The repository | `repo_context.focused_context`, with `delivery.coverage_for` | The map, the files the work names and their imports, and by name what imports them and the merged tests that run them (C3), up to 50,000 characters; a test file far from the work in brief (L1) |
-| What it reads | `repo_read.Reader`, its `read_file` tool | A file or one definition the work needs and wasn't shown, read inside the call, until the call holds 175,000 characters (C4) |
-| The last failure | `deliver_story`'s feedback, a test report through `attempts.repair_report` | What to repair, and why the previous answer was refused; a test report grouped by cause, every failing test named (crew#591) |
+| The tests the story declares | `start.declared_tests` | Always shown, as merged at the base commit |
+| How the project works | `start.how_it_works`, from the project's record | Its checks, its parts and its conventions |
+| The map | `start.project_map` | Every file, its size, and a Python file's top-level names |
+| Hints | `start.hints`, from the graph and `delivery.coverage_for` | Paths only, each with why it was picked |
+| Instead of the hints, on a rework or a resume | `session_delivery.returned_start`, `session_delivery.resumed_start`, `session_end.rework_start` | Review's or the gates' findings and the last `done`, or the last checkpoint (P2, P3) |
+| The rules for its tools and its `done` | `start.RULES` | Each told once |
 
-The call is the crew's own (`calls.ask`, ADR 0025): a refused answer is asked for again with why, and two empty answers in a row end it.
+Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's reply stays in the history whole, until one compaction near 125k tokens (ADR 0032).
 
 ## Code Reviewer, judging a diff
 
@@ -171,7 +173,7 @@ The call is the crew's own (`calls.ask`, ADR 0025): a refused answer is asked fo
 
 | Part | From | Why |
 |---|---|---|
-| What the board says, the standups, the escalation ledger | the board, the event log | What happened in the sprint |
+| What the board says, and the standups | the board, the event log | What happened in the sprint |
 | Why work didn't land first time | the event log | The causes, by fingerprint |
 | Stories that went back, and what was decided for each | `loops.from_comments` | Each answer paired with its own story's return, from the record (step A6) |
 | Known and closed crew issues | the crew repository | What's already filed |

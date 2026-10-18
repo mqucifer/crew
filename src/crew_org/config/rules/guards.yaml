@@ -84,6 +84,9 @@ config.agents.senior_engineer.can:
 config.agents.ux_designer.can:
   owner: UX Designer
 config.const.base_images.TIMEOUT:
+config.const.container.GRACE:
+config.const.container.LIFETIME:
+config.const.container.SETUP_TIMEOUT:
 config.const.sandbox.DEFAULT_TIMEOUT:
 config.const.sandbox.PROBE_TIMEOUT:
 config.org.sandbox.engine:
@@ -92,37 +95,6 @@ config.org.sandbox.mode:
 config.org.trust.crew:
 config.org.trust.sponsor:
 config.org.trust.tools:
-form.FileEdit.stays_in_the_repository:
-  description: Refused if not a Python file.
-  messages:
-    not_python: '{path} isn''t a Python file, so it has no definitions to edit by name; change it with
-      a text edit, quoting the text it replaces'
-  origin:
-  - crew#744
-  owner: Developer
-  told_in: FileEdit.path
-form.Move.stays_in_the_repository:
-  description: Refused if a file isn't Python.
-  messages:
-    not_python: '{path} isn''t a Python file; only Python definitions move'
-  owner: Developer
-  told_in: Move
-form.path.stays_in_the_repository:
-  cases:
-  - form.FileWrite.stays_in_the_repository
-  - form.TextEdit.stays_in_the_repository
-  - form.CriterionTest.stays_in_the_repository
-  - form.PlannedFile.in_the_repository
-  - form.Implementation.deleted_stay_in_the_repository
-  description: Refused if a path is empty, outside the repo, or in .git.
-  messages:
-    empty: path is empty
-    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
-    git: refusing to write inside .git
-  origin:
-  - crew#204
-  owner: Developer
-  told_in: FileWrite.path, FileEdit.path, TextEdit.path, CriterionTest.path, PlannedFile.path, Move, Implementation.deleted_files
 guard.bounds.out_of_bounds:
   messages:
     default: 'This change goes outside what the project allows:
@@ -135,8 +107,31 @@ guard.bounds.out_of_bounds:
       Workflows may change, but every design check must still run there and still be able to fail: no
       `|| true`, no `continue-on-error`.'
   owner: Developer
-told.delivery_crew.the_repository_below_may_show_some:
-  guidance: true
+session.git:
+  description: The git tool runs one git command line with no shell, and only the commands that read and
+    `restore`; never an option that writes, reads outside the repository or runs a program.
+  messages:
+    empty: Give a git command line, such as `git diff base`. It runs {allowed}.
+    global_option: '`{option}` comes before the command, and git''s own options are the crew''s to set.
+      It runs {allowed}. Nothing was run.'
+    not_allowed: '`git {command}` isn''t run here: the session''s git reads and restores, and the crew
+      commits. It runs {allowed}.'
+    option: '`{option}` isn''t taken: it {why}. Nothing was run.'
+    shell: 'There''s no shell: {operators} would be a shell''s. Run one git command; its whole output
+      comes back.'
+    unparsed: 'The command line can''t be split into words: {error}.'
+  origin:
+  - crew#778
+  owner: Developer
+session.path:
+  description: A tool reads and writes only the worktree, never the crew's own folders or what tools make,
+    and never through a symbolic link that leads out of it.
+  messages:
+    link: '`{path}` is a symbolic link: edit the file it leads to instead.'
+    outside: '`{path}` isn''t a path in the repository: give it relative to its root.'
+    skipped: '`{path}` is in a folder the session doesn''t {verb}.'
+  origin:
+  - crew#778
   owner: Developer
 told.deploy_review_crew.block_the_change_when_what_it:
   guidance: true

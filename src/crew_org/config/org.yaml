@@ -43,17 +43,6 @@ sprint:
   # delivered all 20 in an afternoon of ticks, loop-breaking included (#88
   # is still where it becomes learned rather than typed).
   capacity_points: 40
-  # Cards per sprint permitted to escalate. One a day: at fortnightly sprints
-  # this was 3 per fortnight, and moving the board to daily iterations would
-  # have made the same number roughly fourteen times the spend without anyone
-  # choosing to. There is no whole number that preserves the old rate, so this
-  # is the deliberate one.
-  #
-  # It reads as spend because escalation today means headless Claude Code on a
-  # subscription. That is what escalation currently *is*, not what it must be —
-  # the budget limits how often a card may reach for help, whatever the help
-  # turns out to be.
-  escalation_budget: 1
   blocked_aging_days: 3         # raise to Sponsor at sprint review beyond this
 
 telemetry:
@@ -71,13 +60,12 @@ sprint_metrics:
   url: http://127.0.0.1:8080
 
 design:
-  # The Architect is the role a 27B model is weakest at, and therefore the one
-  # most likely to drain the escalation budget. Small epics skip design
-  # entirely: a design note on a two-story epic costs more than it saves.
+  # The Architect is the role a 27B model is weakest at. Small epics skip
+  # design entirely: a design note on a two-story epic costs more than it saves.
   #
   # An epic requires design if it exceeds ANY threshold below. Raise these to
-  # buy back escalation budget; lower them if developers start inventing
-  # conflicting approaches.
+  # design less; lower them if developers start inventing conflicting
+  # approaches.
   min_points: 13          # total story points in the epic
   min_stories: 4          # number of stories
   min_modules: 3          # distinct modules or packages the epic touches
@@ -136,14 +124,6 @@ sandbox:
   mode: required
   engine: docker
   image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-
-execution:
-  local_repair_attempts: 2      # SCHEMA / VERIFY retries before giving up
-
-escalation:
-  # Failure classes that may NEVER escalate. Enforced in code, not by prompt.
-  never_escalate: [SCHEMA, SCOPE, REGRESSION]
-  may_escalate: [VERIFY, CAPABILITY]
 
 # Whose comments the crew reads (crew#399). Everyone else's are ignored and
 # noted: the repositories are public, and a comment is read into prompts as

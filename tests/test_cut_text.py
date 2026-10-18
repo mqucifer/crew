@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 
-from crew_org.crews.delivery_crew import TextEdit
 from crew_org.crews.settle_crew import (
     DesignAnswer,
     DesignSettlement,
@@ -60,12 +59,6 @@ def test_a_finished_answer_passes():
     )
     check_design_cut(whole)
     check_not_cut_at_a_quote(whole)
-
-
-def test_a_files_own_text_may_end_on_a_colon():
-    """YAML the Developer copies exactly ends on a colon, and isn't cut."""
-    edit = TextEdit(path=".github/workflows/ci.yml", find="  docker-smoke:", replace="  smoke:")
-    assert cut_fields(edit) == []
 
 
 def test_the_call_layer_asks_again_with_the_reason():

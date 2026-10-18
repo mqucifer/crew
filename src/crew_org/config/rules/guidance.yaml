@@ -5,8 +5,6 @@ config.agents.business_analyst.constitution:
   owner: Business Analyst
 config.agents.code_reviewer.constitution:
   owner: Code Reviewer
-config.agents.developer.constitution:
-  owner: Developer
 config.agents.devops_engineer.constitution:
   owner: DevOps Engineer
 config.agents.product_owner.constitution:

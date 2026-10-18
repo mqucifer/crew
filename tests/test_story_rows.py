@@ -17,7 +17,6 @@ from crew_org.flows import conclusion as flow
 from crew_org.flows import record
 from crew_org.tools.github_project import Card
 from tests import asked
-from tests.test_delivery_flow import harness  # noqa: F401
 
 CONCLUSION = (
     "## Refinement conclusion\n\n"
@@ -216,24 +215,6 @@ def test_a_story_with_no_rows_gets_the_prompt_it_always_did(monkeypatch, module,
 
 
 # --- the flows hand them over ------------------------------------------------------------------
-
-
-def test_the_developer_is_shown_only_the_rows_its_story_names(harness, monkeypatch):  # noqa: F811
-    from tests.test_delivery_flow import FakeIssues, green
-    from tests.test_delivery_flow import story as delivery_story
-
-    monkeypatch.setattr(
-        FakeIssues,
-        "get",
-        lambda self, repo, n: {"body": {6: EPIC, 7: STORY}.get(n, "As a Sponsor…")},
-    )
-    child = delivery_story(7).model_copy(update={"parent": 6})
-    _, _, _, _, calls, _ = harness(checks=[green()], cards=[child])
-    context = calls["context"][0]
-    assert "# What the epic decided that this story follows" in context
-    assert "Postgres, own schema" in context and "CI only" in context
-    assert "Counted where it merges" not in context
-    assert "## What the epic decided" not in context
 
 
 def test_the_code_reviewer_is_shown_the_rows_its_story_names(monkeypatch):

@@ -121,7 +121,7 @@ def test_a_sprints_stories_carry_their_attempts_and_first_try(tmp_path):
         ],
     )
     report = sprint_report(
-        "Sprint 6", [story(73), story(75), story(76)], read_attempts(events), escalations=0
+        "Sprint 6", [story(73), story(75), story(76)], read_attempts(events), returned=0
     )
 
     by_number = {s["number"]: s for s in report["stories"]}
@@ -168,7 +168,7 @@ def test_only_the_sprints_own_attempts_count_on_a_number_reused_elsewhere(tmp_pa
         for n in (127, 129)
     ]
     attempts = read_attempts(events, "2026-10-16T05:00:00", "2026-10-17T05:00:00")
-    report = sprint_report("Sprint 27", cards, attempts, escalations=0)
+    report = sprint_report("Sprint 27", cards, attempts, returned=0)
 
     by_number = {s["number"]: s for s in report["stories"]}
     assert by_number[129]["first_try"] and by_number[129]["attempts"] == []
@@ -198,11 +198,20 @@ def test_a_superseded_story_never_landed_first_time_but_its_failures_count():
     assert "- SCHEMA: no test (once, on #75; cause " in text
 
 
-# --- 2: escalations come from the ledger ----------------------------------------------------
+# --- 2: stories returned to the Business Analyst --------------------------------------------
 
 
-def test_the_escalation_count_is_carried_in_the_export():
-    assert sprint_report("S", [], [], escalations=2)["escalations"] == 2
+def test_the_stories_returned_to_the_analyst_are_carried_in_the_export():
+    """What the escalation count measured, once escalation retired (ADR 0032, decision 9)."""
+    assert sprint_report("S", [], [], returned=2)["returned"] == 2
+
+
+def test_the_retro_is_told_how_many_stories_went_back_to_the_analyst():
+    text = retries_text(sprint_report("S", [story(73), story(74)], [], returned=1))
+    assert text.startswith(
+        "2 of 2 stories landed on their first attempt. 1 went back to the Business Analyst."
+    )
+    assert "Business Analyst" not in retries_text(sprint_report("S", [story(73)], [], 0))
 
 
 # --- 3 and 4: the retro files what recurs -----------------------------------------------------
@@ -388,7 +397,7 @@ def test_a_review_whose_finding_was_not_recorded_is_counted_and_never_filed(tmp_
         ],
     )
     (cause,) = causes_of(
-        sprint_report("S", [story(145), story(147)], read_attempts(events), escalations=0)
+        sprint_report("S", [story(145), story(147)], read_attempts(events), returned=0)
     )
     assert cause.cause == "changes requested; its cause wasn't recorded"
     assert not cause.recurring

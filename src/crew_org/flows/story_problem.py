@@ -7,10 +7,10 @@ the wrong target, and it blocked. Unblocking it took the Sponsor three manual
 steps. The failure was the story's, not the code's, and no number of attempts,
 nor escalation, would have fixed it.
 
-The signal is mechanical: the same merged tests, ones this story didn't write,
-failing on consecutive attempts. The story is changing behaviour other work
-pinned, and the story doesn't say whether it should. It goes back to be split
-again, with the evidence on its epic.
+A story goes back to be split again, with the evidence on its epic, when the
+gates keep returning it, when its review asks for what a criterion forbids, when
+the Business Analyst rules against the merged tests it changed, or when its
+Developer session ends blocked on what the story doesn't give (crew#778).
 """
 
 from __future__ import annotations
@@ -25,62 +25,6 @@ from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, starte
 from crew_org.flows.moves import move_card
 from crew_org.tools.github_project import Card
 
-_FAILED = re.compile(r"^FAILED ([^\s:]+\.py)::(\w+)(?:\[[^\]]*\])?(?: - (.*))?$", re.MULTILINE)
-# How many of the failing tests the evidence lists: the pattern shows well
-# before 25, and the comment is read by a person as well as the crew.
-SHOWN = 8
-
-
-def failing_tests(report: str) -> dict[str, str]:
-    """`path::test` -> its one-line failure, from pytest's short summary."""
-    found: dict[str, str] = {}
-    for path, test, why in _FAILED.findall(report or ""):
-        found.setdefault(f"{path}::{test}", (why or "").strip()[:200])
-    return found
-
-
-def pinned_failures(report: str, merged: Any, implementation: Any) -> dict[str, str]:
-    """The failing tests that are merged work, not this story's own.
-
-    Merged: its file on the default branch defines it. Not this story's: the
-    story didn't write or edit it. What's left is behaviour other stories
-    pinned, which this one is changing.
-    """
-    if merged is None:
-        return {}
-    own = {(e.path, e.target) for e in getattr(implementation, "all_edits", [])}
-    texts: dict[str, str | None] = {}
-    pinned: dict[str, str] = {}
-    for key, why in failing_tests(report).items():
-        path, _, test = key.partition("::")
-        if (path, test) in own:
-            continue
-        if path not in texts:
-            texts[path] = merged.text(path)
-        text = texts[path]
-        if text and re.search(rf"^\s*(?:async\s+)?def {re.escape(test)}\b", text, re.MULTILINE):
-            pinned[key] = why
-    return pinned
-
-
-def evidence(card: Card, pinned: dict[str, str], attempts: int) -> str:
-    """The comment on the epic: what the story asked, and what it kept breaking."""
-    shown = sorted(pinned.items())[:SHOWN]
-    more = len(pinned) - len(shown)
-    return (
-        f"{STORY_PROBLEM_MARKER}\n"
-        f"**#{card.number} went back to refinement: its failures are the story's, "
-        "not the code's.**\n\n"
-        f"*{card.title}* failed {attempts} attempts in a row by breaking the same "
-        f"{len(pinned)} merged tests, which it didn't write. It changes behaviour "
-        "other stories pinned, and it doesn't say whether it should:\n\n"
-        + "\n".join(f"- `{key}`: {why or 'failed'}" for key, why in shown)
-        + (f"\n- … and {more} more" if more > 0 else "")
-        + "\n\nWhen this epic is split again, each story that touches this behaviour "
-        "must say whether the change is opt-in or an expected contract change that "
-        "updates those tests."
-    )
-
 
 def return_to_refinement(
     board: Any,
@@ -91,13 +35,15 @@ def return_to_refinement(
     repo: str,
     cards: list[Card],
     comment: str,
-    reason: str = "pinned tests",
+    reason: str,
+    **detail: Any,
 ) -> bool:
     """Send the story's epic back to be split again. False if it has no epic.
 
-    `reason` is why, for the event: "pinned tests" (the same merged tests
-    broke again, #189) or "gate round trips" (the gates kept returning it,
-    #242).
+    `reason` is why, for the event, from `rules.RETURN_RULES`: "gate round trips"
+    (the gates kept returning it, #242), "review conflicts with a criterion",
+    "contract ruling", or "session blocked" (crew#778). `detail` goes on the event
+    with it: which kind of `blocked`, or which stop.
 
     The story and its unbuilt siblings go back to Ready, out of their sprint,
     so the rework supersedes them and they stop counting against capacity. The
@@ -157,6 +103,7 @@ def return_to_refinement(
                 "epic": epic,
                 "reason": reason,
                 "with": [s.number for s in back if s.number != card.number],
+                **detail,
             },
         )
     )

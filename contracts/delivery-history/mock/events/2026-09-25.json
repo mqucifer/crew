@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "1.5.1",
+ "schema_version": "1.7.0",
  "sprint": "Sprint 6",
  "start": "2026-09-25",
  "end": "2026-09-25",
@@ -29,7 +29,8 @@
    "at": "2026-09-25T23:37:00Z",
    "card": null,
    "pull": null,
-   "role": "Architect"
+   "role": "Architect",
+   "verdict": null
   },
   {
    "kind": "pull_merged",
@@ -82,6 +83,7 @@
    "prompt_tokens": 153500,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 190.0,
    "failed": false
   },
@@ -98,6 +100,7 @@
    "prompt_tokens": 153500,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -109,7 +112,8 @@
     "number": 125
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -147,7 +151,8 @@
     "repo": "sprint-metrics",
     "number": 134
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -236,6 +241,7 @@
    "prompt_tokens": 52000,
    "completion_tokens": 6100,
    "reasoning_tokens": 4400,
+   "cached_tokens": null,
    "seconds": 230.0,
    "failed": false
   },
@@ -265,6 +271,7 @@
    "prompt_tokens": 154400,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -276,7 +283,8 @@
     "number": 126
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -314,7 +322,8 @@
     "repo": "sprint-metrics",
     "number": 135
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -403,6 +412,7 @@
    "prompt_tokens": 47864,
    "completion_tokens": 10184,
    "reasoning_tokens": 8412,
+   "cached_tokens": null,
    "seconds": 335.8,
    "failed": false
   },
@@ -432,6 +442,7 @@
    "prompt_tokens": 49210,
    "completion_tokens": 9876,
    "reasoning_tokens": 7990,
+   "cached_tokens": null,
    "seconds": 301.2,
    "failed": false
   },
@@ -461,6 +472,7 @@
    "prompt_tokens": 50102,
    "completion_tokens": 9455,
    "reasoning_tokens": 7702,
+   "cached_tokens": null,
    "seconds": 288.4,
    "failed": false
   },
@@ -565,6 +577,7 @@
    "prompt_tokens": 51007,
    "completion_tokens": 8820,
    "reasoning_tokens": 6610,
+   "cached_tokens": null,
    "seconds": 274.9,
    "failed": false
   },
@@ -576,7 +589,8 @@
     "number": 127
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -614,7 +628,8 @@
     "repo": "sprint-metrics",
     "number": 137
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -703,6 +718,7 @@
    "prompt_tokens": 156200,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 190.0,
    "failed": false
   },
@@ -719,6 +735,7 @@
    "prompt_tokens": 156200,
    "completion_tokens": 5200,
    "reasoning_tokens": 3800,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -730,7 +747,8 @@
     "number": 128
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -768,7 +786,8 @@
     "repo": "sprint-metrics",
     "number": 138
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -857,6 +876,7 @@
    "prompt_tokens": 44000,
    "completion_tokens": 5000,
    "reasoning_tokens": 3900,
+   "cached_tokens": null,
    "seconds": 210.0,
    "failed": false
   },
@@ -886,6 +906,7 @@
    "prompt_tokens": 45000,
    "completion_tokens": 5100,
    "reasoning_tokens": 4000,
+   "cached_tokens": null,
    "seconds": 205.0,
    "failed": false
   },
@@ -931,7 +952,8 @@
     "number": 133
    },
    "pull": null,
-   "role": "Developer"
+   "role": "Developer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -969,7 +991,8 @@
     "repo": "sprint-metrics",
     "number": 139
    },
-   "role": "Code Reviewer"
+   "role": "Code Reviewer",
+   "verdict": null
   },
   {
    "kind": "card_moved",
@@ -1058,6 +1081,7 @@
    "prompt_tokens": 43000,
    "completion_tokens": 4800,
    "reasoning_tokens": 3500,
+   "cached_tokens": null,
    "seconds": 200.0,
    "failed": false
   },
@@ -1086,6 +1110,7 @@
    "prompt_tokens": 42000,
    "completion_tokens": 4400,
    "reasoning_tokens": 3000,
+   "cached_tokens": null,
    "seconds": 180.0,
    "failed": false
   },
@@ -1111,6 +1136,729 @@
    },
    "from_column": "In Progress",
    "to_column": "Blocked",
+   "by": "crew",
+   "role": "Developer"
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:30:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "from_column": "Sprint Backlog",
+   "to_column": "In Progress",
+   "by": "crew",
+   "role": "Developer"
+  },
+  {
+   "kind": "session_started",
+   "at": "2026-09-26T03:31:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "start_chars": {
+    "story": 3200,
+    "project": 5500,
+    "map": 4300,
+    "hints": 800,
+    "rules": 1400,
+    "total": 15200
+   },
+   "rework": false
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:32:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "view",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:32:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "search",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": true,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:32:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool_calls": 2,
+   "since_action": 1,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 1,
+   "reasoning_tokens": 900,
+   "model_seconds": 12.0
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:33:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "replace_text",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:34:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "run",
+   "result": "passed",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": "suite",
+   "exit_codes": [
+    0,
+    0
+   ]
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:34:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool_calls": 2,
+   "since_action": 0,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 0,
+   "reasoning_tokens": 1400,
+   "model_seconds": 30.0
+  },
+  {
+   "kind": "session_ended",
+   "at": "2026-09-26T03:35:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "how": "done",
+   "blocked_on": null,
+   "stop": null,
+   "ceiling": null,
+   "why": null,
+   "model_calls": 2,
+   "model_seconds": 30.0,
+   "prompt_tokens": 38000,
+   "cached_tokens": 34000,
+   "completion_tokens": 2600,
+   "reasoning_tokens": 2300,
+   "edits": 1,
+   "runs": 1,
+   "criteria": 2,
+   "changed_tests": 0,
+   "since_action": 0,
+   "most_views": 2,
+   "edits_since_run": 0,
+   "empty_lookups": 1
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:35:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "from_column": "Sprint Backlog",
+   "to_column": "In Progress",
+   "by": "crew",
+   "role": "Developer"
+  },
+  {
+   "kind": "gate_checked",
+   "at": "2026-09-26T03:36:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "passed": false,
+   "rules": [
+    "contract.declared_tests"
+   ],
+   "already_done": false
+  },
+  {
+   "kind": "session_started",
+   "at": "2026-09-26T03:36:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "start_chars": {
+    "story": 3200,
+    "project": 5500,
+    "map": 4300,
+    "hints": 800,
+    "rules": 1400,
+    "total": 15200
+   },
+   "rework": false
+  },
+  {
+   "kind": "session_started",
+   "at": "2026-09-26T03:37:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "start_chars": {
+    "story": 3200,
+    "project": 5500,
+    "map": 4300,
+    "instead_of_hints": 800,
+    "rules": 1400,
+    "total": 15200
+   },
+   "rework": true
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:37:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "turn": 1,
+   "tool": "view",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:37:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "turn": 1,
+   "tool": "search",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": true,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:37:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "turn": 1,
+   "tool_calls": 2,
+   "since_action": 1,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 1,
+   "reasoning_tokens": 900,
+   "model_seconds": 12.0
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:38:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "view",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:38:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "search",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": true,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:38:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool_calls": 2,
+   "since_action": 1,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 1,
+   "reasoning_tokens": 900,
+   "model_seconds": 12.0
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:39:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "replace_text",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_compacted",
+   "at": "2026-09-26T03:39:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 3,
+   "estimated_tokens": 126000,
+   "turns_masked": 14
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:40:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "run",
+   "result": "passed",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": "suite",
+   "exit_codes": [
+    0,
+    0
+   ]
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:40:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool_calls": 2,
+   "since_action": 0,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 0,
+   "reasoning_tokens": 1400,
+   "model_seconds": 30.0
+  },
+  {
+   "kind": "session_ended",
+   "at": "2026-09-26T03:40:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "how": "blocked",
+   "blocked_on": "stop",
+   "stop": "ceiling",
+   "ceiling": "reading",
+   "why": null,
+   "model_calls": 2,
+   "model_seconds": 30.0,
+   "prompt_tokens": 38000,
+   "cached_tokens": 34000,
+   "completion_tokens": 2600,
+   "reasoning_tokens": 2300,
+   "edits": 0,
+   "runs": 0,
+   "criteria": null,
+   "changed_tests": null,
+   "since_action": 60,
+   "most_views": 2,
+   "edits_since_run": 0,
+   "empty_lookups": 1
+  },
+  {
+   "kind": "session_ended",
+   "at": "2026-09-26T03:41:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "how": "done",
+   "blocked_on": null,
+   "stop": null,
+   "ceiling": null,
+   "why": null,
+   "model_calls": 2,
+   "model_seconds": 30.0,
+   "prompt_tokens": 38000,
+   "cached_tokens": 34000,
+   "completion_tokens": 2600,
+   "reasoning_tokens": 2300,
+   "edits": 1,
+   "runs": 1,
+   "criteria": 2,
+   "changed_tests": 0,
+   "since_action": 0,
+   "most_views": 2,
+   "edits_since_run": 0,
+   "empty_lookups": 1
+  },
+  {
+   "kind": "returned",
+   "at": "2026-09-26T03:41:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "reason": "session blocked",
+   "blocked_on": "stop",
+   "stop": "ceiling"
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:41:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "from_column": "In Progress",
+   "to_column": "Ready",
+   "by": "crew",
+   "role": "Developer"
+  },
+  {
+   "kind": "gate_checked",
+   "at": "2026-09-26T03:42:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "passed": true,
+   "rules": [],
+   "already_done": false
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:42:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "from_column": "In Progress",
+   "to_column": "Reviewing",
+   "by": "crew",
+   "role": "Developer"
+  },
+  {
+   "kind": "work_started",
+   "at": "2026-09-26T03:45:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "pull": {
+    "repo": "sprint-metrics",
+    "number": 140
+   },
+   "role": "Code Reviewer"
+  },
+  {
+   "kind": "work_finished",
+   "at": "2026-09-26T03:48:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "pull": {
+    "repo": "sprint-metrics",
+    "number": 140
+   },
+   "role": "Code Reviewer",
+   "verdict": "changes_requested"
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:48:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "from_column": "Reviewing",
+   "to_column": "In Progress",
+   "by": "crew",
+   "role": "Code Reviewer"
+  },
+  {
+   "kind": "session_started",
+   "at": "2026-09-26T03:50:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "start_chars": {
+    "story": 3200,
+    "project": 5500,
+    "map": 4300,
+    "instead_of_hints": 800,
+    "rules": 1400,
+    "total": 15200
+   },
+   "rework": true
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:51:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "view",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:51:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool": "search",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": true,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:51:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 1,
+   "tool_calls": 2,
+   "since_action": 1,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 1,
+   "reasoning_tokens": 900,
+   "model_seconds": 12.0
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:52:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "replace_text",
+   "result": "ok",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:53:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "run",
+   "result": "passed",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": 60,
+   "reply_chars": 1800,
+   "seconds": 0.3,
+   "run": "suite",
+   "exit_codes": [
+    0,
+    0
+   ]
+  },
+  {
+   "kind": "session_turn",
+   "at": "2026-09-26T03:53:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool_calls": 2,
+   "since_action": 0,
+   "most_views": 1,
+   "edits_since_run": 0,
+   "empty_lookups": 0,
+   "reasoning_tokens": 1400,
+   "model_seconds": 30.0
+  },
+  {
+   "kind": "tool_call",
+   "at": "2026-09-26T03:53:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "turn": 2,
+   "tool": "after_run",
+   "result": "error",
+   "rule": null,
+   "found_nothing": false,
+   "argument_chars": null,
+   "reply_chars": null,
+   "seconds": null,
+   "run": null,
+   "exit_codes": null
+  },
+  {
+   "kind": "session_ended",
+   "at": "2026-09-26T03:54:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "how": "done",
+   "blocked_on": null,
+   "stop": null,
+   "ceiling": null,
+   "why": null,
+   "model_calls": 2,
+   "model_seconds": 30.0,
+   "prompt_tokens": 38000,
+   "cached_tokens": 34000,
+   "completion_tokens": 2600,
+   "reasoning_tokens": 2300,
+   "edits": 1,
+   "runs": 1,
+   "criteria": 2,
+   "changed_tests": 0,
+   "since_action": 0,
+   "most_views": 2,
+   "edits_since_run": 0,
+   "empty_lookups": 1
+  },
+  {
+   "kind": "gate_checked",
+   "at": "2026-09-26T03:55:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "passed": true,
+   "rules": [],
+   "already_done": false
+  },
+  {
+   "kind": "card_moved",
+   "at": "2026-09-26T03:55:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "from_column": "In Progress",
+   "to_column": "Reviewing",
    "by": "crew",
    "role": "Developer"
   }

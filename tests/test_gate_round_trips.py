@@ -140,3 +140,23 @@ def test_past_the_limit_it_goes_back_with_both_gates_word_and_its_pr_closed():
     assert "the design note says not to" in evidence, "the reviewer's side"
     assert (59, NEEDS_REWORK) in issues.labels
     assert issues.closed_pulls == [164] and "went back to refinement" in issues.pr_comments[0]
+
+
+def test_past_the_limit_a_story_with_no_epic_is_blocked_for_a_person(monkeypatch):
+    """With no epic to split again, it went round review and rework without end (crew#778)."""
+    issues, board = Issues(deliveries=6), Board()
+    orphan = story()
+    orphan.parent = None
+    result = DeliveryResult()
+    went = delivery._gates_disagree(
+        orphan, board=board, issues=issues, sink=EventSink(None), repo=REPO, result=result
+    )
+    assert went and result.returned == []
+    (blocked,) = result.blocked
+    assert blocked.card == 145 and blocked.blocked_rule == "delivery.round_trips_no_epic"
+    assert board.status == {"S145": "Blocked"}
+    assert (145, "blocked") in issues.labels
+    (evidence,) = issues.pr_comments
+    assert not evidence.startswith(STORY_PROBLEM_MARKER) and "delivered 6 times" in evidence
+    assert "stdout is empty" in evidence and "the design note says not to" in evidence
+    assert issues.closed_pulls == [], "the pull request stays, for the person to read"

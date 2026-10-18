@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from crew_org.events import EventSink
-from crew_org.flows import delivery
+from crew_org.flows import session_delivery
 from crew_org.flows.delivery import (
     INTERRUPTED_MARKER,
     INTERRUPTIONS_BEFORE_BLOCKING,
@@ -119,7 +119,7 @@ def work(monkeypatch, issues):
     def interrupted(*_a, **_k):
         _unreadable_reply()
 
-    monkeypatch.setattr(delivery, "deliver_story", interrupted)
+    monkeypatch.setattr(session_delivery, "deliver_by_session", interrupted)
     board, result = Board(), DeliveryResult()
     _work_one_card(
         CARD,
@@ -127,8 +127,6 @@ def work(monkeypatch, issues):
         issues=issues,
         sink=EventSink(None),
         ws=Workspace(),
-        policy=None,
-        ledger=None,
         result=result,
         counts={"In Progress": 1},
         sprint="Sprint 11",
@@ -154,6 +152,33 @@ def test_a_streak_of_stumbles_blocks_it_naming_the_service_and_where(monkeypatch
     assert board.moves == ["Blocked"] and "blocked" in issues.labels
     body = issues.posted[-1]["body"]
     assert "failed 3 times in a row" in body and "Where: `" in body
+
+
+def test_a_session_its_container_interrupted_is_tried_again_from_its_checkpoint(monkeypatch):
+    """Not the story's failure either: a lost workspace resumes next pass (crew#778, P3)."""
+    from crew_org.flows.session_delivery import SessionInterrupted
+
+    def lost(*_a, **_k):
+        raise SessionInterrupted("the workspace container", "No such container")
+
+    monkeypatch.setattr(session_delivery, "deliver_by_session", lost)
+    issues = Issues()
+    board, result = Board(), DeliveryResult()
+    _work_one_card(
+        CARD,
+        board=board,
+        issues=issues,
+        sink=EventSink(None),
+        ws=Workspace(),
+        result=result,
+        counts={"In Progress": 1},
+        sprint="Sprint 11",
+        repo="sprint-metrics",
+        default_branch="main",
+    )
+    assert result.interrupted == [358] and board.moves == []
+    body = issues.posted[-1]["body"]
+    assert INTERRUPTED_MARKER in body and "Interrupted by the workspace container" in body
 
 
 def test_other_crew_work_since_resets_the_streak(monkeypatch):

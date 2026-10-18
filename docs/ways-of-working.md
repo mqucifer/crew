@@ -18,19 +18,19 @@ reads as noise (crew#756).
 
 ## 1. Roles and authority
 
-| Role | Produces | May escalate |
-|---|---|---|
-| Product Sponsor (human) | Goals; epic approval; sprint acceptance | n/a |
-| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's | No |
-| Business Analyst | Stories, Tasks, acceptance criteria, estimates | No |
-| UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one | No |
-| Architect | A project's design, design notes, technical epics, Tasks, Spikes | Yes |
-| Developer | Code, tests, docs, PRs, Bugs | Yes |
-| QA Engineer | Behaviour verdicts, Bugs | No |
-| Code Reviewer | Diff verdicts, Bugs | Yes |
-| Scrum Master | Standups, retros, defects — in the process or in the product | No |
-| Senior Engineer | Diagnoses of the crew's own code: at the end of each tick, for each card blocked for a person (up to two a tick, once per card, posted on the card), and on the Sponsor's request (`crew diagnose`). It changes nothing and files nothing; a person decides which findings become crew issues (crew#9) | No |
-| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project, and the deploy review of any change to something that runs or deploys. Its other duties run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies | No |
+| Role | Produces |
+|---|---|
+| Product Sponsor (human) | Goals; epic approval; sprint acceptance |
+| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
+| Business Analyst | Stories, Tasks, acceptance criteria, estimates |
+| UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one |
+| Architect | A project's design, design notes, technical epics, Tasks, Spikes |
+| Developer | Code, tests, docs, PRs, Bugs |
+| QA Engineer | Behaviour verdicts, Bugs |
+| Code Reviewer | Diff verdicts, Bugs |
+| Scrum Master | Standups, retros, defects — in the process or in the product |
+| Senior Engineer | Diagnoses of the crew's own code: at the end of each tick, for each card blocked for a person (up to two a tick, once per card, posted on the card), and on the Sponsor's request (`crew diagnose`). It changes nothing and files nothing; a person decides which findings become crew issues (crew#9) |
+| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project, and the deploy review of any change to something that runs or deploys. Its other duties run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies |
 
 These boundaries are structural, not prompt wording — a boundary that depends on
 granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
@@ -115,15 +115,14 @@ criterion, because the note says otherwise — is not a change to request: the
 Reviewer names the criterion it conflicts with, and the story goes back to
 refinement on that first review, for the Product Owner to settle (crew#252).
 If the gates still disagree, the limit of three round trips (crew#243) sends
-it back.
+it back, or blocks it for a person when it has no epic to be split again.
 
-A story the code already satisfies needs no change. On its first attempt the
-Developer may answer that it's already done, naming, for each criterion, the
-code that meets it and the existing test that proves it. A named test that
-doesn't exist is refused. There's no diff, so the story skips review and goes
-straight to QA, which judges it like any other. If QA accepts it, the story
-closes with no pull request. If QA refuses it, it comes back to be built, and
-isn't offered the answer again (crew#221).
+A story the code already satisfies needs no change. The Developer's session may
+call `done` with no change on the branch, naming, for each criterion, the
+existing test that proves it. If each named test exists and the checks pass,
+the gates send it straight to QA, since there's no diff to review, and QA judges
+it like any other. If QA accepts it, the story closes with no pull request. If
+QA refuses it, it comes back to be built (crew#221).
 
 
 ---
@@ -199,7 +198,7 @@ A card may enter `Ready` only when **all** hold:
 7. No open clarifying question remains on the card.
 
 Failing any of these, the card returns to `Needs Refinement` with the reason
-stated in a comment. This is a `SCOPE` outcome, not a failure to escalate.
+stated in a comment.
 
 ---
 
@@ -282,36 +281,26 @@ developer agent works in an isolated `git worktree`.
 
 ---
 
-## 9. Escalation policy
+## 9. When a story can't be finished
 
-Escalation exists for genuinely hard problems. It is **never** the remedy for a
-poorly designed task. Every local failure is classified before anything
-escalates:
+Nothing escalates to a stronger model (ADR 0032, decision 9): escalation had
+been hiding problems, the Sponsor found, and the escalated sessions gave little
+to learn from. Instead, every way a story fails leads somewhere a role or a person acts on it,
+and nothing is left In Progress with nobody to act:
 
-| Class | Meaning | Escalates? | Required action |
-|---|---|---|---|
-| `SCHEMA` | Output did not parse into the task's expected structure | **Never** | Retry locally at most twice with the validation error supplied. Persistent failure files a `defect:prompt` issue against the crew repo. |
-| `SCOPE` | The task is too large or ambiguous to act on | **Never** | Return the card to `Needs Refinement` with the specific ambiguity named. |
-| `VERIFY` | Code was produced; tests or lint failed | After 2 local repair attempts — a first attempt plus two repairs, which the ledger records as three attempts | Escalate with the failing output attached. |
-| `CAPABILITY` | The agent judges the task beyond its reach | Yes, within budget | Escalate, naming what specifically it could not do. No step produces this class yet, so the check that a justification was given was retired (crew#756). |
+| How it fails | Where it goes |
+|---|---|
+| The Developer's session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with its work kept on a `crew/kept/` branch and the session's evidence in plain words: why it ended, its last run, the gate's earlier findings, the files and merged tests it changed, a stop's last words, and a line for the rewrite when the evidence points at the story |
+| `blocked` on a choice no one has made | Blocked, for the Sponsor |
+| The gates at `done` find something | A new session with every finding, within the delivery's three hours of model time; past them, back to the Business Analyst |
+| Review or QA return it | A new session; after three round trips, back to the Business Analyst |
+| A model call fails, or the workspace is lost | Resumed from the last checkpoint on the next pass; three in a row, blocked for a person |
+| The workspace won't start or set up, the project's record can't be read, or the push fails | Blocked for a person, with the reason |
+| Any of these for a story with no epic to be split again | Blocked for a person, with the same evidence |
 
-**A first attempt with no usable answer is retried in steps** (crew#276). When the Developer's first attempt at a story produces nothing usable (an empty answer, or output that doesn't validate), its next attempt doesn't repeat the same one-shot request.
-<!-- told to: Senior Engineer -->
-- **A short plan first:** the files the change touches, in order, with each file's intent; the new names and signatures they share; and which test proves each criterion. The plan is checked against the repository before any code is written.
-- **Then one small answer per file,** each shown the story, the plan, that file in full, and what the earlier steps wrote. A step may only change its own file.
-- **The pieces are merged into one ordinary answer,** which the guards, the checks, review and QA judge as any other.
-<!-- /told to -->
-
-An answer that runs on as whitespace is cut off after 2,000 characters of it, and asked for again saying where it went wrong (2026-10-11): a model that closes a string early can only write whitespace after it, and mqucifer/sprint-metrics#567's did for 40 minutes, to its token limit.
-
-Empty answers at a later attempt go in steps too, while nothing of the delivery is written yet (crew#583, 2026-10-11): mqucifer/sprint-metrics#567's first answer asked for files, so its next nine, all empty, never did. A call gives up after two empty answers in a row rather than asking the same way a third time, since the same prompt rarely finishes.
-
-It's the same attempt count and the same SCHEMA budget. It happens once per delivery; if it fails too, the usual repairs follow. An answer that arrived but failed a check (a named test that doesn't exist, say) is repaired as before, because its problem is its content, not its size. Why: sprint-metrics#268's one answer (rewrite the README, move ~20 tests, delete a file) stopped mid-thought 3 times in 5 even on a focused prompt (#312). Splitting the work from its tests, the other option #276 records, is still to be compared.
-
-Each sprint has a fixed escalation budget. When it is exhausted, further
-eligible cards are parked as `Blocked` rather than escalated. **A high
-escalation rate is a defect in task design, not a request for more budget** —
-the retro converts it into process-defect issues.
+The rate of stories returned to the Business Analyst is what escalation's rate
+was: a high rate is a defect in task design, and the retro converts it into
+process-defect issues.
 
 ---
 
@@ -425,17 +414,15 @@ replaces. The standup's **Decided by the crew** section says what the Architect
 did and why.
 
 **Why ration it.** Architectural judgment is the work a local model does worst,
-so the Architect is both the likeliest source of escalation and the scarcest
-role in the org. Requiring a design note on every epic would drain the sprint's
-escalation budget on epics that never needed one. A two-story epic costs more
-to design than to simply build.
+so the Architect is the scarcest role in the org. Requiring a design note on
+every epic would spend it on epics that never needed one. A two-story epic
+costs more to design than to simply build.
 
 **The tradeoff is real and is accepted deliberately.** Skipping design risks a
 developer inventing an approach that later has to be unpicked. The thresholds
-are the dial: raise them to buy back escalation budget, lower them if
-developers begin producing conflicting approaches. If neither setting works,
-the correct next move is a human gate before implementation — not a larger
-escalation budget.
+are the dial: raise them to design less, lower them if developers begin
+producing conflicting approaches. If neither setting works, the correct next
+move is a human gate before implementation.
 
 ---
 
@@ -453,6 +440,7 @@ step applied later.
 | All capabilities dropped, `no-new-privileges` | Nothing can escalate. |
 | Memory, CPU and PID limits | A runaway process is killed rather than taking the machine with it. |
 | Only the worktree and a cache are mounted | The host filesystem is not visible. |
+| The worktree's `.git` mounted read-only | Code run inside can't write a hook or a config that git would run on the host at the crew's next commit (crew#788). |
 | Every credential stripped from the environment | Code the model wrote never sees the token that can write to the repository. |
 
 **When no container engine is available, the check fails.** It does not fall
@@ -471,6 +459,30 @@ names its own image runs only what it names. Every protection in the table holds
 whatever the image: a browser test runs headless under the same limits, no
 network, read-only root, non-root, no capabilities. That was verified with a
 static site's Playwright test, and with a broken page making the check fail.
+
+<!-- told to: nobody -->
+**A project's `devcontainer.json` is the one source of its image, setup and
+environment** (the Sponsor, 2026-10-18; crew#778). The crew reads only the
+`image`, one setup command (`onCreateCommand`, `updateContentCommand` or
+`postCreateCommand`, as an array of words: a string would run in a shell) and
+`containerEnv`, and the crew's own variables win (`tools/devcontainer.py`).
+Everything that would loosen the container, build an image or run on the host
+(`runArgs`, `mounts`, `privileged`, `capAdd`, features, `build`,
+`initializeCommand` and the like) isn't honoured, and `crew ready` names each
+one. A project without the file uses its design's image and setup, as above.
+Moving the first two projects to the file waits on the Architect's `crew
+design` writing it.
+
+**The Developer's session holds one workspace container for its story**
+(`tools/container.py`; crew#778, decision 4b; ADR 0032). The deliver phase holds
+it for the story's sessions and the gates at `done`. Setup runs once in a one-off container
+with the network; the session's container then starts with none, under every
+protection in the table, with an init process, and runs each command with
+`docker exec` under a timeout. Clean-up has three layers: it's removed at the
+session's end; a tick's start removes those whose crew process has gone; and one
+the crew forgets ends itself after 4 hours, past the 3-hour backstop, and is
+removed. `crew ready <project> --setup` starts the project's workspace this way.
+<!-- /told to -->
 
 **Before the checks, the project's own fixers run, and the attempt answers for
 what they change** (crew#758). The design's `autofix` commands run as named; a
@@ -494,9 +506,10 @@ read by its part's profile:
 
 | | Python | Any other language (the generic profile) |
 |---|---|---|
-| Editing | By definition name, as well as whole files and find-and-replace | Whole files and exact find-and-replace |
-| A criterion's test | Written with the answer and added by name | Named by its title, written as a file; delivery checks it's there |
-| The regression guard | Refuses a change that removes or breaks a definition | None, and the Code Reviewer and QA are told which changed files had none |
+| Editing | The session's edit tools, `replace_definition` by name among them | The session's edit tools: `replace_text` and `write_file` |
+| Finding code | `find` and `tests_for` (ADR 0032, P6), as well as `search` and `view` | `search` and `view` |
+| A criterion's test | Named in `done` as `path::name`; the gates check it's there | Named in `done` by its title; the gates check it's there |
+| The regression guard | Sends back a change that removes or breaks a definition | None, and the Code Reviewer and QA are told which changed files had none |
 | The map | Every definition and signature | Files by name |
 
 A project that declares no parts is Python's throughout, as sprint-metrics is.
@@ -525,65 +538,51 @@ mechanically rather than asked for:
 Private helpers are exempt — how a module organises itself internally is the
 author's business.
 
-**The code comes back in blocks, its structure in JSON** (ADR 0026,
-2026-10-11). The Developer's answer is JSON for what changes (paths,
-operations, targets, which test proves which criterion), and each body of code
-or file text is a block written after it, between an `@@@ b1 @@@` line and an
-`@@@ end @@@` line, exactly as it reads. The JSON names the block
-(`"source": "b1"`), and the crew joins them before any check or guard reads
-the answer, so everything after sees the answer it always did. A block named
-but not written, written but not named, or left open is refused with that
-reason. Code inside JSON strings had every double quote escaped, and a slip
-closed the string early: mqucifer/sprint-metrics#567 slipped on 3 of 6 answers,
-once running on as whitespace for 40 minutes. Edits are still by name (below);
-only where the code sits changed.
-
 **Moving a definition is not deleting it** (crew#202). What callers rely on is
 that a name reaches them with the same shape, not which file defines it. A
 definition deleted from one module and defined, unchanged in shape, in another
 is kept when the old module imports it back. Or, when nothing in the repository
 asks the old module for it any more, it's kept when the package's
-`__init__.py` hands it out instead. Judged on a scratch copy with the whole
-change applied, since a move spans files. Without this, no refactor the
+`__init__.py` hands it out instead. Judged on the whole branch, since a move
+spans files. Without this, no refactor the
 Architect proposes (§13) could land: a split by concern is nothing but moves.
 
-**A move is one step, not a delete and an add** (crew#241). The Developer
-names the definition, the file it's in, and the file it moves to; the crew
-moves it whole, carries the imports it uses, and imports it back into the old
-module wherever something there still asks for it. `to_path` must differ from
-`from_path`, and only a Python definition can move this way.
+**A move is one step, not a delete and an add** (crew#241). The gates read a
+definition deleted from one file and defined, unchanged in shape, in another as
+a move, not as a removal and an addition. The Developer makes it with its edit
+tools, and imports it back into the old module wherever something there still
+asks for it.
 
 **A name a module passes along is protected too** (sprint-metrics#129). If
 another file imports a name from a module (a function it imported from
 elsewhere, or a constant), that module keeps providing it, or the other file
 is changed to import it from where it lives now. Lint calls a pass-along
 import unused; `from x import name as name` marks it deliberate and lint
-accepts it. The Developer is told which file still asks, and both ways out.
+accepts it. The gates' finding names which file still asks, and both ways out.
 
 **Retiring on purpose** (sprint-metrics#132). A story can delete a file, and
 every name it defined is judged as a move or a removal: it may go once each
 lives elsewhere and nothing imports the file. A merged test that pins
-behaviour the story deliberately ends may be deleted only by naming it as
-retired, with what the story ends; the pull request lists each one under
-**Tests retired** for the Code Reviewer. Only tests are retired this way:
-code that still has callers moves.
+behaviour the story deliberately ends may be changed or deleted only when the
+Developer's `done` declares it, with why (ADR 0032, decision 6); a changed
+merged test `done` doesn't declare sends the branch back. The pull request
+lists each declared one for the Code Reviewer. Only tests are retired this
+way: code that still has callers moves.
 
 **A story can declare it too** (crew#316). A story whose **Existing tests**
 line says it changes what they assert (`contract change: <the tests or test
 files it updates>`) may remove or reshape the merged tests it names there.
 The Business Analyst writes that line; a rename of anything a merged test
-asserts (a label, a key, a column, a flag) is a contract change. A removal
-the story doesn't name is still refused, and nothing but tests is excused. The
-pull request lists what the declaration let go for the Code Reviewer, and a
-rework keeps what its pull request already listed: that list is what the
-review read (sprint-metrics#200 was refused three times for a retirement its
-review had allowed, because the rework didn't repeat it). When
-the guard refuses a removed test, it shows the test as merged, so a repair can
-add it back rather than guess at code it was never shown (sprint-metrics#200).
+asserts (a label, a key, a column, a flag) is a contract change. At `done`, a
+changed merged test the line names is fine; one a line that says the story
+changes tests doesn't name goes to the Code Reviewer as a question; and where
+the line says the tests stay unchanged, the Business Analyst rules on the ones
+`done` changed (ADRs 0023 and 0032). Nothing but tests is excused. A merged
+test changed or removed that `done` doesn't declare sends the branch back with
+the test as merged, since a session has no git: the next session can put it
+back rather than guess at code it was never shown (sprint-metrics#200).
 
-**Why this is a check and not an instruction.** The Developer returns whole
-files, which is what makes its output easy to validate and repair. The cost is
-that extending a module means rewriting it, and a model asked to add one metric
+**Why this is a check and not an instruction.** A model asked to add one metric
 will redesign the module it is adding to. Story #7 attempted exactly this: it
 rewrote story #6's merged code, renamed its public functions, and would have
 deleted eleven tests — including the two QA had cited as proof that #6's
@@ -596,62 +595,9 @@ disappears silently. No other gate in the pipeline catches it.
 The prompt already forbade this and the model did it anyway on the first
 attempt. A prompt is a request; this is a guarantee.
 
-### How the Developer returns work
-
-A file that does not exist yet is returned whole. A file that already exists is
-changed by **name**: the Developer names a definition and supplies its new
-source, and the applier splices it in. Nothing it does not name is reproduced,
-so nothing it does not name can be damaged.
-
-Operations are `replace`, `add`, `add_method`, `add_import` and `delete`.
-Deleting is something to choose, not something that happens by omission. An
-`add` of a name already there is refused, unless what's there is exactly what it
-sends, which is already done. A criterion's test is the exception: one the file
-defines by the time it's added, whether it was merged or an earlier edit in the
-answer wrote it, is replaced (crew#735).
-
-**A first attempt starts with its tests** (crew#172). Before any code, it lists
-each acceptance criterion with the test that proves it, written in full, and the
-test file it goes in. The crew adds each test to its file. The answer's format
-requires the list, and a test can't be named without being written. Enforced
-only by a check afterwards, a first attempt at sprint-metrics#75 came back
-without a test three times in three.
-
-**A file that is not Python** (`pyproject.toml`, a README, a CI workflow) has no
-definitions to name. It is changed by quoting: the Developer copies the exact
-text to change, which must occur in the file once, and gives what replaces it
-(crew#140). The same property holds as for named edits: nothing unquoted is
-reproduced, so nothing unquoted can be lost. A quote that doesn't match, or
-matches twice, is refused and no file is changed. Two slips are matched anyway,
-when that leaves exactly one place: a quote of part of a line with a block's final
-newline, and a quote's lines all at one other indent, in spaces, whose replacement
-moves by the same amount. Each is recorded as an `edit.loose_match` event, so review
-sees it (crew#734). Changes by quoting are applied before named edits, since a quote
-is of the file as shown; quoted deletions come after them. In a Python file, only the
-lines outside any function or class can be changed this way: its imports, an
-`if __name__` block, its docstring (crew#204). They have no name to address,
-and a refactor has to repoint and tidy them. A quote reaching into a
-definition, or a replacement that brings one in, is refused, because the rules
-above read definitions by name. So is a change that leaves the file invalid
-Python. A walking skeleton's placeholder is the exception to the first rule: the
-story replacing it rewrites it (ADR 0030), so its quotes may bring in or reach
-into definitions, as long as the `crew:placeholder` marker goes (crew#731).
-
-This replaced whole-file rewriting, which failed for a reason worth recording.
-Returning a whole file makes every story a transcription exercise: regenerate
-three hundred lines, change four, leave the rest byte-identical. Story #8 could
-not do it — told not to delete, it stopped deleting and began silently altering
-six definitions instead, fixing whatever it was last told about and disturbing
-something adjacent each round.
-
-Published comparisons agree on why. Formats that require reproducing existing
-text — search/replace, unified diff — fail on transcription: eleven and
-thirty-one format failures respectively across four models, against **zero**
-for name-addressed edits. On a 4,200-line file, whole-file editing cost
-**18x the tokens and 12x the latency**. Aider separately measured a 30-50% rise
-in errors when models were pushed toward surgical line edits rather than whole
-functions, and a 9x rise without permissive parsing — so edits are whole
-definitions, and the applier corrects indentation rather than rejecting it.
+How the Developer changes code is ADR 0032's: in a session, with edit tools
+that apply at once and reply with what changed, judged by the gates at `done`
+on the branch's diff against what's merged.
 
 ## 16. What an agent is shown
 
@@ -667,90 +613,48 @@ Three rules for every limit on prompt content:
    was about 200,000 characters of context, and the Architect's design-note
    prompt about 56k tokens, more than half of it test bodies it doesn't use.
    Now a role is shown what its job needs: roles that decide see the source in
-   full and tests by name (crew#230); the Developer, which edits tests, sees
-   them whole; the Business Analyst is also shown, in full, the tests that pin
+   full and tests by name (crew#230); the Developer starts its session from a
+   map and looks up the rest itself (ADR 0032); the Business Analyst is also shown, in full, the tests that pin
    behaviour an epic touches (crew#189): from the project's coverage map, the
    merged tests that run the code the epic names, or read or call it in their
    own code when the sandbox skips them, and check a whole shape, plus any a
    story problem or the epic's record names (crew#583, crew#612, ADR 0024). What is left out is still said out
    loud (rule 3).
 
-   **The Developer sees the files its work names, and asks for the rest**
-   (crew#231, 2026-09-28). When the whole repository would come to more than
-   about 40k tokens, the Developer is shown:
-   - the map, meaning every file and every signature
-   - `pyproject.toml` and `README.md`
-   - in full, the files its story, criteria, the gates' verdicts or the last
-     failure name, whether by path, file name, module or definition, plus each
-     chosen module's own test file
-   - a definition named in plain prose, with the verb dropped and hyphens and
-     underscores treated alike: "first-attempt rate" is
-     `calculate_first_attempt_rate`. Multi-word names only. So a docs story sees
-     the code it describes (sprint-metrics#281 was shown only the doc, and
-     restated its criteria unchecked).
+   The Business Analyst's split reads what it isn't shown inside the call, with
+   `read_file`: the whole file, or one definition by name, and a Python file over
+   12,000 characters by definition only, its imports and definitions listed when
+   it's asked for whole (crew#583, step C4, 2026-10-11). It carries much besides
+   code (pinning tests, the Goal's other records, its own), so its code is sized
+   from the rest of its prompt to keep 40,000 characters free to read, within
+   175,000 for the whole call, and with under 5,000 free it isn't offered the
+   tool: the first real split with it had nothing left, thought 17k tokens
+   before its first read, and every read was refused. Answers came back empty
+   on 0% of prompts under 50k tokens, 6% from 50k to 90k and 26% above
+   (runbook `empty-model-answers.md`). Every call records its context size and
+   which files it was shown, and a note names what it read.
 
-   The epic's design note is still shown, but it doesn't choose files: it
-   describes the whole epic. Imports aren't followed, because the map carries
-   every signature; the one exception is a failing test's imports, below. A
-   file the Developer needs and can't see, it reads inside the call with
-   `read_file`: the whole file, or one definition by name, and a Python file
-   over 12,000 characters by definition only, its imports and definitions
-   listed when it's asked for whole (crew#583, step C4,
-   2026-10-11). The first real call read one 43k-character file whole and had
-   too little left for the tests it needed. Before, it named them in `need_files`, an answer that did no
-   work: on Goal mqucifer/sprint-metrics#558 the first answer only asked on 7
-   of 7 stories, and each ask re-sent a larger prompt. `need_files` stays as
-   the last resort, for a file it couldn't read: an answer that only asks is
-   asked again with them shown, and an answer that also changes code is
-   applied, the files it asked for shown to the next attempt (crew#591): one
-   repair fixed the code and asked to see the docs, and its fix would have been
-   thrown away. Asking isn't a failure. Every attempt records its context size and which files it was
-   shown, and a note names what it read. The Business Analyst's split reads
-   the same way. It carries much besides code (pinning tests, the Goal's other
-   records, its own), so its code is sized from the rest of its prompt to keep
-   40,000 characters free to read, and with under 5,000 free it isn't offered
-   the tool: the first real split with it had nothing left, thought 17k tokens
-   before its first read, and every read was refused.
+   **A focused context has a ceiling** (crew#591, 2026-10-10).
+   sprint-metrics#537's repair was shown all 25 files its test report's
+   tracebacks passed through, 479,252 characters (181k tokens), and came back
+   empty after 885 s. The files are shown in this order, until the context
+   reaches its ceiling (270,000 characters, or less for a step that reads the
+   rest): the files it asked for, kept to the ceiling, since it can read what
+   doesn't fit (shown regardless, asks grew mqucifer/sprint-metrics#567's prompt
+   to 82k tokens); then the files its work names, and the project modules they
+   import.
 
-   **What it reads shares one ceiling with what it is shown.** The Developer
-   is shown up to 50,000 characters of code, less beside a large record,
-   design note or failure report, so 40,000 stay free to read; reading may
-   take the call to 175,000, about 60k tokens, the line the plan's success test
-   sets. With under 5,000 free, the read tool isn't offered. Answers
-   came back empty on 0% of prompts under 50k tokens, 6% from 50k to 90k and
-   26% above (runbook `empty-model-answers.md`); mqucifer/sprint-metrics#567
-   answered at 45k tokens and went empty ten times at 82k.
+   **A failing run is reported grouped by cause** (crew#591, 2026-10-11), in
+   the Developer's session and in the gates' findings: each first error line
+   once, with how many tests it hit, every failing test as `FAILED <id>`, and
+   one test's output as its example. What isn't a test run (lint) is kept,
+   head and tail. mqucifer/sprint-metrics#567's first attempt broke 50 merged
+   tests: the report was 200,062 characters (cut from 352,767); grouped, it is
+   15,597 characters, and its first line is the cause of 46 of the 50.
 
-   **A focused context has a ceiling, and a repair is shown what it needs
-   first** (crew#591, 2026-10-10). sprint-metrics#537's repair was shown all
-   25 files its test report's tracebacks passed through, 479,252 characters
-   (181k tokens), and came back empty after 885 s. The files are now shown in
-   this order, until the context reaches its ceiling (270,000 characters, or
-   50,000 for the Developer, who reads the rest):
-   - the files the Developer's last applied answer wrote, always, even past
-     the ceiling; one over 12,000 characters as its imports and the
-     definitions that answer changed, the rest read by name (crew#591:
-     mqucifer/sprint-metrics#567's repair was shown a whole 111k-character
-     test file it had added to); the
-     files it asked for come next, and keep to the ceiling, since it can read
-     what doesn't fit: shown regardless, asks grew
-     mqucifer/sprint-metrics#567's prompt to 82k tokens
-   - the failing tests' files, and the project modules they import
-   - the files the story, its criteria and the gates' verdicts name
-   - last, the files only the test report names
-
-   **A repair is shown the failure report grouped by cause** (crew#591,
-   2026-10-11): each first error line once, with how many tests it hit, every
-   failing test as `FAILED <id>`, and one test's output as its example. What
-   isn't a test run (lint) is kept, head and tail. mqucifer/sprint-metrics#567's
-   first attempt broke 50 merged tests: the report was 200,062 characters
-   (cut from 352,767) and fed a repair of 142,865 prompt tokens; grouped, it is
-   15,597 characters, and its first line is the cause of 46 of the 50. An
-   escalation is given the whole report.
-
-   Code comes before tests within each group, because a paired test file is
-   often the largest thing chosen. A file that doesn't fit is named as left
-   out, and the Developer can read it. `files.shown`
+   Code comes before tests, because a paired test file is often the largest
+   thing chosen. A file that doesn't fit is named as left out, and the step
+   can read it. `files.shown`
    records the files left out as `omitted`. The ceiling is a guard (rule 2):
    in Sprint 20, every context up to 267,588 characters was ordinary work.
 
@@ -767,10 +671,9 @@ Three rules for every limit on prompt content:
    work names, and the fixtures those take, with every other definition
    listed by name. On mqucifer/sprint-metrics#569, a 200,000-character
    `tests/test_service.py` was shown whole for eight new tests. **QA reads
-   what else it needs with the read tool**, by file and name, as the
-   Developer does, within one ceiling shared with what it was shown.
-   `need_files` remains the last resort (twice per delivery, the same shape
-   as the Developer's ask); asking isn't a verdict, and asking twice for a
+   what else it needs with the read tool**, by file and name, as the split
+   does, within one ceiling shared with what it was shown. `need_files`
+   remains the last resort (twice per delivery); asking isn't a verdict, and asking twice for a
    file it already has means there's nothing more to show, so the next try
    must judge. **QA can cite only what it saw.** A criterion citing a test QA
    neither was shown nor read gets that test shown and is judged again,
@@ -778,7 +681,7 @@ Three rules for every limit on prompt content:
    unproven only because its test wasn't shown (crew#645). Past the ask limit, a cited
    test QA never saw, or one no file defines, isn't proof: the criterion is
    unproven with the reason, and acceptance follows from that. The context
-   is logged the same way the Developer's is, along with what QA read.
+   is logged, along with what QA read.
 
    **The Business Analyst splits each epic from its own view of the
    repository** (crew#231, 2026-09-30). Refinement used to hand it the whole
@@ -786,12 +689,13 @@ Three rules for every limit on prompt content:
    tokens, the band where empty answers begin, and long prompts served from
    the cache were where they clustered (crew#312). A split is now shown the
    project record, the map of every file and what it defines, and the files
-   its epic names in full — the same shape the Developer and QA are shown.
+   its epic names in full — the same shape QA is shown.
    It can ask for more (`need_files`, twice, the same limit); asking past
    that fails the split rather than returning an empty one. There are no
    editing rules in its view, because the Business Analyst decides what a
    story is, it doesn't edit code. Refinement's own threshold is 60,000
-   characters, lower than the Developer's 160,000: a live split of a small
+   characters, lower than the 160,000 above which any repository is
+   focused: a live split of a small
    epic came to about 34,000 characters against a repository of 159,000, and
    split into four stories without asking.
 
@@ -830,13 +734,13 @@ prompt describing what the agent could not see.
 
 **The project's record comes first.** Where a project has a record
 (`.crew/project.yaml`, crew#111), the Product Owner and Business Analyst in
-refinement, the Developer in delivery, and QA are shown it ahead of the code:
+refinement, the Developer's session, and QA are shown it ahead of the code:
 its purpose and scope, what a release is, the bar for done, what agents must
 not touch, its guidelines, and the Architect's design. A record that exists
 but can't be read stops delivery on that card, and is reported in refinement,
-never worked around in silence. Delivery also refuses, before writing, any
-change to a never-touch path or to the record itself, and any change to CI
-that stops a design check running or lets it pass regardless (crew#131).
+never worked around in silence. The gates at `done` also send back any change
+to a never-touch path or to the record itself, and any change to CI that stops
+a design check running or lets it pass regardless (crew#131).
 
 **What this does not license.** Constraints that bound what a model *writes*
 are a different thing and stay: a file-size validator, a generation token
@@ -1018,12 +922,10 @@ the wording here.
    **A digest can't be invented.** The Developer's sandbox has no network
    (§14), so nothing tells it what a registry holds now — a story to pin one
    can only be answered by inventing it, and an invented digest reads as
-   plausible until CI fails with "manifest unknown" (crew#364). A Dockerfile
-   change is shown each `FROM image:tag`'s real digest, resolved anonymously
-   from the registry outside the sandbox; one it pins that the registry
-   doesn't have for that image is refused before anything is written, the
-   feedback naming the real one, the way an unsafe CI workflow is (§19.2).
-   Resolved once per tick and shown only to work that touches the image.
+   plausible until CI fails with "manifest unknown" (crew#364). A digest the
+   branch pins that the registry doesn't have for that image, resolved
+   anonymously outside the sandbox, sends it back from the gates at `done`,
+   the finding naming the real one, the way an unsafe CI workflow is (§19.2).
 
 9. **A release can be run again.** Running the release for a version again
    completes whatever that version is missing (its tag, its Release, its image

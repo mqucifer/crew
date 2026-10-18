@@ -1,7 +1,7 @@
 # 24. A step's code comes from a graph, then by asking
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (to be built as Part C of `docs/plans/context-record-build.md`; crew#584 lands in it)
+- **Status:** Accepted (to be built as Part C of `docs/plans/context-record-build.md`; crew#584 lands in it). For the Developer, a session's hints and lookups replaced the read tool and the ceilings (ADR 0032, built by crew#778).
 
 ## Context
 
@@ -16,6 +16,11 @@ shape without naming the new keys: 1 of 3 for mqucifer/sprint-metrics#529 and 0 
 mqucifer/sprint-metrics#507 (crew#584). The four empty answers came at 95k to 181k
 prompt tokens.
 
+The review of the Developer's first answers (crew#778, 2026-10-17) found the gap this
+left. In 10 of 12 failed first answers, the file or fact the failure needed wasn't
+shown. A test the coverage map found ranked 211th when the list keeps 15. A file over
+about 20k characters couldn't be had whole through either `read_file` or `need_files`.
+
 ## Decision
 
 Sponsor, 2026-10-10 (D4 of the plan).
@@ -27,9 +32,9 @@ Sponsor, 2026-10-10 (D4 of the plan).
 - **The split's pinning tests come from the map,** not from text matching: the tests
   covering the files and definitions the epic and its rows name, each declared by a
   story as kept or changed (ADR 0023).
-- **What the graph misses is read by a tool inside the call** (ADR 0025): the Developer
-  and the split read a file and continue, instead of returning `need_files` and being
-  re-prompted. `need_files` stays as the last resort.
+- **What the graph misses is read by a tool inside the call** (ADR 0025): the split
+  reads a file and continues, instead of returning `need_files` and being re-prompted.
+  `need_files` stays as the last resort, for the split and QA.
 - **A small scout model is kept as a re-ranker option,** the two-stage pattern from
   information retrieval, for when the graph's candidates exceed the ceiling. It is built
   only if the replay after the graph shows that gap. It need not be the crew's main
@@ -41,6 +46,15 @@ Sponsor, 2026-10-10 (D4 of the plan).
   mqucifer/sprint-metrics#551's stories had to change (crew#612). Giving the sandbox
   a project's services, such as its database, is crew#614.
 - **No retrieval index.** It adds a system with nothing to test it against.
+- **For the Developer, the graph gives hints and the session looks up the rest** (the
+  Sponsor, 2026-10-17, crew#778 decisions 2 and 4; ADR 0032).
+  - A session starts with the graph's picks as paths, each with why it was picked, and
+    no bodies.
+  - The Developer finds the rest with `find` (a definition with its callers and
+    importers, from the graph), `tests_for` (the coverage map) and `search`, and reads
+    windows of files with `view`. `find` and `tests_for` are Python only to start.
+  - The read tool, `need_files` and the reading ceilings stay for refinement and QA.
+    The Developer has none of them (crew#778, Stage E).
 
 **The standards.** Test impact analysis (Rothermel and Harrold's regression test
 selection; pytest-testmon and Ekstazi in practice); a dependency graph from static
@@ -58,6 +72,8 @@ analysis; tool use, also called function calling; two-stage retrieval.
   story and prompt size, decides whether the scout is needed.
 - crew#584 is built as the split's declaration from the map, with the delivery pass of
   ADR 0023.
+- The Developer's session still starts with the tests its story declares, always
+  shown (ADR 0032, decision 4).
 
 ## Changelog
 
@@ -80,3 +96,9 @@ analysis; tool use, also called function calling; two-stage retrieval.
   the same code in 33k less.
 - **2026-10-13:** the coverage map follows the language, not the image: a Python part in
   a project with its own sandbox image gets a map too (crew#690, ADR 0030; Sponsor).
+- **2026-10-17:** for the Developer, the graph's picks become a session's hints, and
+  `find`, `tests_for`, `search` and `view` replace the read tool, `need_files` and the
+  ceilings (ADR 0032, decisions 2 and 4; the Sponsor, on crew#778). Decided, not built.
+- **2026-10-18:** built for the Developer. Delivery runs as a session only, and the
+  Developer's `read_file`, `need_files` and reading ceilings are deleted; the split and
+  QA keep theirs (crew#778, Stage E; the Sponsor's no-fallback decision).

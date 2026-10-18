@@ -1,4 +1,4 @@
-"""The Developer is shown what a registry holds, and an invented digest is refused (#364).
+"""An invented digest is sent back, naming what the registry holds (#364).
 
 sprint-metrics#310, "pin the base image by digest", pinned
 sha256:0e03e071…6a7b8c9d0e twice. The sandbox has no network, so the digest
@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileWrite, Implementation
 from crew_org.tools import base_images, bounds
 from crew_org.tools.base_images import base_images as froms
-from crew_org.tools.base_images import invented, parse, section
+from crew_org.tools.base_images import invented, parse
 
 REAL = "sha256:" + "f7" * 32
 FAKE = "sha256:" + "0e" * 32
@@ -48,22 +47,6 @@ def test_an_earlier_stage_and_scratch_are_not_base_images():
     assert [r.shown for r in froms(dockerfile)] == ["python:3.12-slim"]
 
 
-def test_the_developer_is_shown_each_base_image_digest(tmp_path, registry):
-    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
-    text = section(tmp_path)
-    assert f"`python:3.12-slim` → `{REAL}`" in text
-    assert "can't look these up yourself" in text
-
-
-def test_a_registry_that_cant_be_read_is_said_not_hidden(tmp_path):
-    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
-    assert "couldn't be read" in section(tmp_path)
-
-
-def test_no_dockerfile_means_nothing_is_looked_up(tmp_path, registry):
-    assert section(tmp_path) == "" and registry == []
-
-
 def test_an_invented_digest_is_refused_and_the_real_one_named(registry):
     [why] = invented("Dockerfile", f"FROM python:3.12-slim@{FAKE}\n")
     assert "doesn't have" in why and REAL in why
@@ -78,40 +61,31 @@ def test_one_that_cant_be_checked_is_refused_not_passed():
     assert "couldn't be checked" in why
 
 
-def test_the_guard_refuses_a_change_pinning_an_invented_digest(tmp_path, registry):
-    change = Implementation(
-        summary="pin",
-        new_files=[FileWrite(path="Dockerfile", content=f"FROM python:3.12-slim@{FAKE}\n")],
+def gates(dockerfile: str) -> list[str]:
+    """What the gates at `done` find in a branch that changes the Dockerfile (crew#778)."""
+    return bounds.judged(
+        ["Dockerfile"], None, workflows=({}, {}), dockerfiles={"Dockerfile": dockerfile}
     )
-    reasons = bounds.out_of_bounds(tmp_path, change, None)
-    assert any("doesn't have" in r for r in reasons)
 
 
-def test_a_dockerfile_with_no_digest_costs_no_lookup(tmp_path, registry):
-    change = Implementation(
-        summary="user", new_files=[FileWrite(path="Dockerfile", content="FROM python:3.12-slim\n")]
-    )
-    assert bounds.out_of_bounds(tmp_path, change, None) == [] and registry == []
+def test_the_gates_send_back_a_branch_pinning_an_invented_digest(registry):
+    assert any("doesn't have" in r for r in gates(f"FROM python:3.12-slim@{FAKE}\n"))
 
 
-# --- once a tick, and only for work about the image ---------------------------------------------
+def test_a_dockerfile_with_no_digest_costs_no_lookup(registry):
+    assert gates("FROM python:3.12-slim\n") == [] and registry == []
 
 
-def test_a_tag_is_read_once_a_tick(tmp_path, registry):
-    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
-    section(tmp_path)
-    section(tmp_path)
+# --- once a tick ----------------------------------------------------------------------------------
+
+
+def test_a_tag_is_read_once_a_tick(registry):
+    invented("Dockerfile", f"FROM python:3.12-slim@{REAL}\n")
     invented("Dockerfile", f"FROM python:3.12-slim@{REAL}\n")
     assert registry.count(("docker.io", "library/python", "3.12-slim")) == 1
 
 
-def test_a_registry_that_couldnt_be_read_is_asked_again(tmp_path):
-    (tmp_path / "Dockerfile").write_text("FROM python:3.12-slim\n")
-    assert "couldn't be read" in section(tmp_path)
+def test_a_registry_that_couldnt_be_read_is_asked_again():
+    [why] = invented("Dockerfile", f"FROM python:3.12-slim@{FAKE}\n")
+    assert "couldn't be checked" in why
     assert ("docker.io", "library/python", "3.12-slim") not in base_images._READ
-
-
-def test_only_work_about_the_image_is_shown_it():
-    assert base_images.concerns("Pin the Dockerfile base image by digest")
-    assert base_images.concerns("Add a non-root user to the container image")
-    assert not base_images.concerns("Document --schema in docs/usage.md")

@@ -17,15 +17,22 @@ change the crew as needs change."
   rules. The crew's rules never refer to it.
 - Influence runs one way: the crew may be modelled on Claude's standards, by a
   deliberate change through a PR.
-- **Technical choice (Claude, costly to reverse):** escalations run
-  `claude -p --safe-mode`, so no CLAUDE.md, hook or skill from the repo reaches
-  the crew. `--bare` would do the same but authenticates only by API key,
-  which 0004 forbids.
+- The crew's agents call the model through the crew's own call layer (ADR 0025),
+  never Claude Code, so no CLAUDE.md, hook or skill from the repo reaches them.
 
 ## Consequences
 
 - Either set of rules can change without the other.
-- Escalations also don't see a delivery repo's own CLAUDE.md. Giving a project's
-  instructions to escalations would need a new ADR.
-- Proven live on 2026-10-02: a normal `claude -p` answered from a canary
+- The crew's agents don't see a delivery repo's own CLAUDE.md either.
+- While escalation ran Claude Code, it ran `claude -p --safe-mode` for the same
+  reason, proven live on 2026-10-02: a normal `claude -p` answered from a canary
   CLAUDE.md, and the safe-mode run didn't see it (crew#460).
+
+## Changelog
+
+- **2026-10-17:** escalation retires when the Developer's session is built (ADR 0032,
+  decision 9; the Sponsor, on crew#778). Decided, not built. The `--safe-mode` choice
+  stands until then, and then has nothing to apply to. The two sets of rules stay
+  independent.
+- **2026-10-18:** escalation is deleted (crew#778, Stage E), and the `--safe-mode`
+  choice with it. Nothing in the crew runs Claude Code.
