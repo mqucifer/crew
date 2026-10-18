@@ -25,7 +25,7 @@ The evidence (`var/notes/first-pass-evidence.md`, `var/notes/778-context-selecti
 | 5 | **Guards sorted by when they apply.** Workspace (the container enforces it), feedback (a tool reply), a gate on the diff at `done`, or retired. The sort is mqucifer/crew#788: of the Developer's 170 rules, 56 retired, 40 gates, 28 feedback, 11 workspace, 35 that fit none. |
 | 6 | **Stories declare the behaviour they change,** mostly through the acceptance criteria. The Developer finds and changes the tests that pin it and declares them in `done`; the gate checks that against the diff. The contract ruling (crew#584) moves to the gate, only on a disagreement. Test-first (Discussion 665) waits on the session's results. |
 | 7 | **The code's shape: no change for now.** Strain (crew#192) stays; whether struggling files should trigger it is decided from session records. |
-| 8 | **Measures.** The first-attempt rate stays: an attempt is a submission at `done`, judged by review and QA. The sprint measures model time and tokens per story. Everything the session does is tracked as new measures. |
+| 8 | **Measures.** The first-attempt rate stays: an attempt is the branch handed to review and QA, and the gate's returns before them are gate rounds (corrected by the Sponsor, 2026-10-18; ADR 0032). The sprint measures model time and tokens per story. Everything the session does is tracked as new measures. |
 | 9 | **No escalation to a stronger model.** A stuck session goes back to the Business Analyst who wrote the story, with its evidence; an undecided choice goes to the Sponsor. The escalation measure becomes the rate of stories returned. Claude Code escalation retires with the build. |
 
 ## Proposed here, for the Sponsor to review
@@ -99,6 +99,8 @@ Done (crew#778, Stage E): the one-call Developer, its steps and code in blocks, 
 
 - The session's events summarised per story.
 - The Sponsor's sprint-metrics Goal for the first-attempt rate as redefined, model time and tokens per story, and the rate of stories returned to the Business Analyst.
+
+Built in delivery-history 1.6.0 (crew#778, Stage F): the session's events by names and counts, `analysis.deliveries` per story, and the feed's attempts for a session story. The Goal's inputs and wanted answers are drafted for the Sponsor.
 
 ## What this doesn't decide
 

@@ -72,7 +72,10 @@ The crew publishes data about how it works as **packages**, like reports
 every move, attempt, model call and merge, up to its date, sprint-metrics'
 answers for each sprint, as it computed them, and the crew's own analysis of
 them: what changed each sprint, what needed attention at its end, and each
-story's pattern. The crew's code writes that analysis from fixed
+story's pattern. Since 1.6.0 it carries the Developer's sessions (crew#778) by
+their names and counts, never their paths, commands or words, and each story's
+deliveries in them: its sessions, the times it reached review, the gate's rounds
+before that, what it cost and how it ended. The crew's code writes that analysis from fixed
 sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 

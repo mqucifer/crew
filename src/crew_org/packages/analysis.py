@@ -19,6 +19,8 @@ Three parts, as crew-presentation's design reference shows them (crew#521):
   skip the Sponsor's gate (crew#192, crew#335).
 - **a story's pattern:** one per story or bug, the facts behind it, and what it
   cost.
+- **a story's deliveries in Developer sessions** (crew#778): one from its first
+  session to its outcome, with what its sessions cost and how they ended.
 """
 
 from __future__ import annotations
@@ -77,7 +79,9 @@ def analyse(
                 decided=_decided(sprint, events, cards, zone),
             )
         )
-    return dh.Analysis(sprints=out, stories=_stories(events, cards))
+    return dh.Analysis(
+        sprints=out, stories=_stories(events, cards), deliveries=_deliveries(events, cards)
+    )
 
 
 # --- what changed --------------------------------------------------------------------
@@ -290,7 +294,12 @@ def _story(card: dh.Card, events: list[dh.Event], fixes: list[dh.PullMerged]) ->
     if not superseded:
         done = [m.at for m in moves if m.to_column == columns.DONE]
         delivered = min(done) if done else card.closed if card.closed_as == "completed" else None
-    trouble = [a.at for a in attempts] + [b.at for b in blocks]
+    # A story delivered in sessions misses when review or QA returns it, or it goes
+    # back to the Business Analyst. The gate's returns before review don't count: the
+    # Developer is still working (the Sponsor, 2026-10-18, crew#778).
+    in_sessions = any(_in_session(e) for e in events)
+    returns = [e.at for e in events if in_sessions and _returned(e)]
+    trouble = [a.at for a in attempts] + [b.at for b in blocks] + returns
     me = dh.CardRef(repo=card.repo, number=card.number)
     crew_fixes = [
         dh.PullRef(repo=f.repo, number=f.number)
@@ -326,13 +335,14 @@ def _story(card: dh.Card, events: list[dh.Event], fixes: list[dh.PullMerged]) ->
             prompt_tokens=sum(c.prompt_tokens or 0 for c in calls),
             completion_tokens=sum(c.completion_tokens or 0 for c in calls),
             reasoning_tokens=sum(c.reasoning_tokens or 0 for c in calls),
+            cached_tokens=sum(c.cached_tokens or 0 for c in calls),
             model_seconds=round(sum(c.seconds or 0.0 for c in calls), 1),
         )
     )
     return dh.StoryPattern(
         card=dh.CardRef(repo=card.repo, number=card.number),
         pattern=pattern,
-        misses=len(attempts),
+        misses=len(attempts) + len(returns),
         blocks=len(blocks),
         escalations=escalations,
         crew_fixes=crew_fixes,
@@ -344,7 +354,7 @@ def _story(card: dh.Card, events: list[dh.Event], fixes: list[dh.PullMerged]) ->
             else None
         ),
         cost=cost,
-        text=_story_text(pattern, len(attempts), len(blocks), crew_fixes, repeated),
+        text=_story_text(pattern, len(attempts) + len(returns), len(blocks), crew_fixes, repeated),
     )
 
 
@@ -380,6 +390,170 @@ def _story_text(
     if repeated and repeated.count >= REPEATS:
         text += f" It was refused {repeated.count} times with the same reason."
     return text
+
+
+# --- a story's deliveries in Developer sessions (crew#778) --------------------------------
+
+
+def _in_session(e: dh.Event) -> bool:
+    """A session's start or end: the story was delivered in sessions, whichever was lost."""
+    return isinstance(e, dh.SessionStarted | dh.SessionEnded)
+
+
+def _returned(e: dh.Event) -> bool:
+    """A return by review or QA, or to the Business Analyst: a miss for a session's story."""
+    return isinstance(e, dh.Returned) or (
+        isinstance(e, dh.WorkFinished) and e.verdict in ("changes_requested", "returned")
+    )
+
+
+def _handed_on(move: dh.CardMoved) -> bool:
+    """The branch handed to review and QA: into Reviewing, or into QAing from elsewhere,
+    as a story already done goes."""
+    return move.to_column == columns.REVIEWING or (
+        move.to_column == columns.QAING and move.from_column != columns.REVIEWING
+    )
+
+
+def _deliveries(events: list[dh.Event], cards: list[dh.Card]) -> list[dh.Delivery]:
+    by_card: dict[tuple[str, int], list[dh.Event]] = {}
+    for e in events:
+        ref = getattr(e, "card", None)
+        if isinstance(ref, dh.CardRef):
+            by_card.setdefault((ref.repo, ref.number), []).append(e)
+    out = []
+    for card in cards:
+        mine = by_card.get((card.repo, card.number)) or []
+        if card.type in DELIVERED and any(_in_session(e) for e in mine):
+            out += _story_deliveries(dh.CardRef(repo=card.repo, number=card.number), mine)
+    return out
+
+
+def _story_deliveries(ref: dh.CardRef, events: list[dh.Event]) -> list[dh.Delivery]:
+    """Each delivery: from a session starting with none under way, to its outcome.
+
+    The records can lack an end or a start: a crash mid-session, or a line lost. Each
+    gap is named on its delivery and the rest is counted, never guessed (the Sponsor,
+    2026-10-18): a session with no end, then a move or another session, was
+    interrupted; one with nothing after it may still be running, and stays open.
+    """
+    out: list[dh.Delivery] = []
+    now: dict[str, Any] | None = None
+    last: dh.SessionEnded | None = None
+    since_return = running = moved_since = False
+
+    def begin(at: datetime) -> dict[str, Any]:
+        found: dict[str, Any] = dict.fromkeys(_COUNTS, 0)
+        found.update(started=at, rules=set(), gaps=[], first_green_run=None)
+        found.update(model_seconds=0.0, returned_because=None)
+        return found
+
+    def close(outcome: str, at: datetime | None) -> None:
+        nonlocal now, running
+        if now is None:
+            return
+        if running:
+            now["gaps"].append("session_not_ended")
+            running = False
+        rules = sorted(now.pop("rules"))
+        out.append(
+            dh.Delivery(
+                card=ref,
+                number=len(out) + 1,
+                ended=at,
+                outcome=outcome,  # type: ignore[arg-type]
+                gate_rules=rules,
+                stop=last.stop if last else None,
+                blocked_on=last.blocked_on if last else None,
+                ceiling=last.ceiling if last else None,
+                since_action=last.since_action if last else None,
+                most_views=last.most_views if last else None,
+                edits_since_run=last.edits_since_run if last else None,
+                empty_lookups=last.empty_lookups if last else None,
+                **now,
+            )
+        )
+        now = None
+
+    for e in sorted(events, key=lambda e: e.at):
+        if isinstance(e, dh.SessionStarted):
+            if now is None:
+                now, last, since_return = begin(e.at), None, False
+            elif running:
+                now["gaps"].append("session_not_ended")
+                now["resumes"] += 1
+            elif last is not None and last.how == "interrupted":
+                now["resumes"] += 1
+            elif since_return:
+                now["rework_rounds"] += 1
+            now["sessions"] += 1
+            since_return, running, moved_since = False, True, False
+            continue
+        if isinstance(e, dh.SessionEnded):
+            if now is None or not running:
+                now = now or begin(e.at)
+                now["gaps"].append("session_not_started")
+                now["sessions"] += 1
+            last, running = e, False
+            now["model_calls"] += e.model_calls or 0
+            now["model_seconds"] = round(now["model_seconds"] + (e.model_seconds or 0.0), 1)
+            for tokens in ("prompt_tokens", "cached_tokens", "completion_tokens"):
+                now[tokens] += getattr(e, tokens) or 0
+            now["reasoning_tokens"] += e.reasoning_tokens or 0
+            if e.how == "blocked" and e.blocked_on == "choice":
+                close("blocked", e.at)
+            continue
+        if now is None:
+            continue
+        if isinstance(e, dh.CardMoved | dh.Returned | dh.GateChecked):
+            moved_since = moved_since or running
+        if isinstance(e, dh.ToolCall) and e.tool == "run" and e.result in ("passed", "failed"):
+            now["runs"] += 1
+            if e.run == "suite" and e.result == "passed" and now["first_green_run"] is None:
+                now["first_green_run"] = now["runs"]
+        elif isinstance(e, dh.GateChecked):
+            if not e.passed:
+                now["gate_rounds"] += 1
+                now["rules"] |= set(e.rules)
+                since_return = True
+        elif isinstance(e, dh.CardMoved):
+            if _handed_on(e):
+                now["submissions"] += 1
+            elif e.to_column == columns.DONE:
+                close("done", e.at)
+            elif e.to_column == columns.BLOCKED and last is not None and last.how == "blocked":
+                close("blocked", e.at)
+        elif isinstance(e, dh.Returned):
+            now["returned_because"] = e.reason
+            close("returned", e.at)
+        elif _returned(e):
+            now["review_returns"] += 1
+            since_return = True
+    if now is not None:
+        if running:
+            close("interrupted" if moved_since else "open", None)
+        elif last is not None and last.how == "interrupted":
+            close("interrupted", last.at)
+        else:
+            close("open", None)
+    return out
+
+
+# A delivery's counts, each from 0.
+_COUNTS = (
+    "sessions",
+    "submissions",
+    "gate_rounds",
+    "review_returns",
+    "rework_rounds",
+    "resumes",
+    "model_calls",
+    "prompt_tokens",
+    "cached_tokens",
+    "completion_tokens",
+    "reasoning_tokens",
+    "runs",
+)
 
 
 # --- wording and time ----------------------------------------------------------------------

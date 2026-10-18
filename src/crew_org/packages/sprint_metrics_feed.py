@@ -18,6 +18,13 @@ What a story's events become:
 - moved to Done: `finished`, carrying how many attempts it took, and the class and
   role of its first miss: why it didn't land first time.
 
+A story delivered in Developer sessions (crew#778) counts its attempts as the times
+its branch was handed to review and QA (the Sponsor, 2026-10-18), since escalation's
+attempts stop with escalation: `finished` carries that count, and each return by
+review or QA is an `attempt_failed`, class `REVIEW` or `QA` with the role that
+returned it. The gate's returns before review aren't attempts. Stories from before
+sessions are sent as they always were.
+
 A story closed as not planned was superseded, not finished: its move to Done is
 sent as `superseded` (sprint-metrics 1.3.0), with `because`, the reason its epic
 was split again. One with no reason recorded is left out and counted, never
@@ -36,7 +43,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from crew_org import columns
-from crew_org.packages.delivery_history import Card, DeliveryHistory, PeriodEvents
+from crew_org.flows.attempts import QA, REVIEW
+from crew_org.packages.delivery_history import REVIEWERS, Card, DeliveryHistory, PeriodEvents
 from crew_org.work_types import DELIVERED
 
 API_VERSION = "1"
@@ -56,7 +64,14 @@ class Feed:
 
 def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
     """The history as sprint-metrics' sprint definitions and board events."""
+    periods = list(periods)
     cards = {(c.repo, c.number): c for c in history.cards}
+    in_sessions = {
+        (e.card.repo, e.card.number)
+        for period in periods
+        for e in period.events
+        if e.kind in ("session_started", "session_ended")
+    }
     left_out: Counter[str] = Counter()
     sprints = [
         {
@@ -71,7 +86,9 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
     for period in periods:
         for event in period.events:
             ref = getattr(event, "card", None)
-            if event.kind in ("model_call", "work_started", "work_finished", "pull_merged"):
+            if event.kind in ("model_call", "work_started", "pull_merged"):
+                continue
+            if event.kind == "work_finished" and not _review_return(event):
                 continue
             if period.sprint is None:
                 left_out["between sprints"] += 1
@@ -91,10 +108,14 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
     events: list[dict[str, Any]] = []
     misses: dict[tuple[str, int], list[Any]] = {}
     blocks: dict[tuple[str, int], list[Any]] = {}
+    handed: Counter[tuple[str, int]] = Counter()
     for sprint, event in stories:
         key = (event.card.repo, event.card.number)
         card = cards[key]
-        kind = _kind(event)
+        sessions = key in in_sessions
+        if sessions and _handed_on(event):
+            handed[key] += 1
+        kind = _kind(event, sessions)
         if kind is None:
             continue
         if kind == "blocked":
@@ -114,25 +135,58 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
             body["because"] = card.superseded_because
         if kind == "attempt_failed":
             misses.setdefault(key, []).append(event)
-            body["attempt_number"] = event.number or len(misses[key])
-            body["failure_class"] = event.failure_class
+            if sessions:
+                body["attempt_number"] = max(handed[key], 1)
+            else:
+                body["attempt_number"] = event.number or len(misses[key])
+            body["failure_class"] = _failure_class(event)
             if event.role:
                 body["failure_role"] = event.role
         if kind == "finished":
             missed = misses.get(key, [])
-            body["card"]["attempts"] = 1 + len(missed)
+            body["card"]["attempts"] = max(handed[key], 1) if sessions else 1 + len(missed)
             if missed:
-                body["card"]["failure_class"] = missed[0].failure_class
+                body["card"]["failure_class"] = _failure_class(missed[0])
                 if missed[0].role:
                     body["card"]["failure_role"] = missed[0].role
         events.append(body)
     return Feed(sprints=sprints, events=events, left_out=left_out)
 
 
-def _kind(event: Any) -> str | None:
-    """The sprint-metrics event type a delivery-history event becomes, if any."""
+def _review_return(event: Any) -> bool:
+    return bool(
+        event.kind == "work_finished" and event.verdict in ("changes_requested", "returned")
+    )
+
+
+def _handed_on(event: Any) -> bool:
+    """The branch handed to review and QA: into Reviewing, or into QAing from elsewhere."""
+    return bool(
+        event.kind == "card_moved"
+        and (
+            event.to_column == columns.REVIEWING
+            or (event.to_column == columns.QAING and event.from_column != columns.REVIEWING)
+        )
+    )
+
+
+def _failure_class(event: Any) -> str:
+    """An attempt's class: escalation's, or for a session's story, who returned it."""
     if event.kind == "attempt":
-        return "attempt_failed"
+        return str(event.failure_class)
+    return REVIEW if event.role in REVIEWERS else QA
+
+
+def _kind(event: Any, sessions: bool = False) -> str | None:
+    """The sprint-metrics event type a delivery-history event becomes, if any.
+
+    A story delivered in sessions misses on review's and QA's returns, never on
+    escalation's attempts.
+    """
+    if event.kind == "attempt":
+        return None if sessions else "attempt_failed"
+    if event.kind == "work_finished":
+        return "attempt_failed" if sessions and _review_return(event) else None
     if event.kind == "escalated":
         return "escalated"
     if event.kind == "blocked":
