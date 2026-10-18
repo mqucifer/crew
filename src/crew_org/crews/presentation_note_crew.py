@@ -165,6 +165,36 @@ def render(note: PresentationNote) -> str:
     return "\n".join(lines)
 
 
+def opening(*, goal: str, epic: str, stories: str, siblings: str = "") -> dict[str, str]:
+    """The UX Designer's note as a session's start (crew#807). The repository it was
+    shown whole, 376k characters for sprint-metrics#660, is read through the tools.
+
+    The Goal's other epics come with their records: shown none, the note for
+    crew-presentation#124 asked for "0.5 days" four seconds after its sibling's note
+    asked for hours and minutes (`var/notes/refinement-path-analysis.md`).
+    """
+    from crew_org.crews.panel_crew import sponsors_words  # noqa: PLC0415
+
+    return {
+        "step": "## Your step: the presentation note\n\n"
+        "This epic changes what a reader sees, and its stories are split. You write its "
+        "presentation note: who reads the output and the question they bring to it, a sample "
+        "of the finished output with realistic data, and for every story criteria about what "
+        "the reader sees, in Given/When/Then, each asserting something a test can observe in "
+        "the output. Your criteria are added to the stories' own: never restate, weaken or "
+        "drop one. A story's scope is the Business Analyst's, and the tools and formats are "
+        "the Architect's.",
+        "goal": f"## The Goal this epic serves\n\n{sponsors_words(goal)}" if goal else "",
+        "siblings": (
+            f"## The other epics under this Goal, with their records\n\n{siblings}"
+            if siblings
+            else ""
+        ),
+        "epic": f"## The epic\n\n{epic}",
+        "stories": f"## Its stories, in the order they are built\n\n{stories}",
+    }
+
+
 def write_note(
     *, goal: str, epic: str, stories: str, project: str, repository: str, feedback: str = ""
 ) -> PresentationNote:

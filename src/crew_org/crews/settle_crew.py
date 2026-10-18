@@ -415,6 +415,68 @@ def describe(
     )
 
 
+def _shared(context: PanelContext, *, decisions: bool = True) -> dict[str, str]:
+    """What a settle reads the notes or questions against, in the order it reads them."""
+    from crew_org.crews.panel_crew import _decided, goal_part, siblings_text  # noqa: PLC0415
+
+    siblings = siblings_text(context)
+    return {
+        "goal": goal_part(context),
+        "decisions": context.decisions if decisions and _decided(context.decisions) else "",
+        "project_log": context.project_log,
+        "siblings": (
+            f"## The other epics under this Goal, with their records\n\n{siblings}"
+            if siblings
+            else ""
+        ),
+        "epic": f"## The epic ({context.epic_ref})\n\n{context.epic}",
+    }
+
+
+def opening(context: PanelContext, panel: PanelResult, *, reply: str = "") -> dict[str, str]:
+    """The Product Owner's settle as a session's start (crew#807): its step and scope
+    first, the notes after what they are read against."""
+    notes = "\n\n".join(f"N{n} ({role}): {text}" for n, role, text in numbered(panel))
+    return {
+        "step": "## Your step: settle the panel's notes into the epic's record\n\n"
+        "Four roles read this epic before it is split and raised the notes below. What you "
+        "settle becomes the epic's record, which the split and every later step read; the "
+        "epic's own text is the Sponsor's and stays as it is. Settle each note, in the "
+        "fewest words:\n" + _SETTLE_EACH,
+        **_shared(context),
+        "notes": f"## The panel's notes\n\n{notes or '(none)'}",
+        "reply": f"## The Sponsor's answer to your question\n\n{reply}" if reply else "",
+    }
+
+
+# How each note is settled: the one-call task's words, which the session's step keeps.
+_SETTLE_EACH = (
+    "- **A row** when you can decide it. If the Goal, the project's record, a Sponsor "
+    "decision, the project's decision log, a sibling's conclusion or the code answers it, "
+    "say what is decided and what follows, and name the source. If none does, decide it "
+    "yourself, as the product owner does for the team: set `own_call`, say why, and quote "
+    "the Goal's own words that the decision stays within. It is recorded as your call. It "
+    "must not contradict the Goal or a Sponsor decision. Your own calls are for what the "
+    "product does. A note a member marked for the Architect is a design question (a path, "
+    "a response shape, a parameter): it is an open question for the design note, unless a "
+    "source settles it.\n"
+    "- **An open question** when it is a design question. Say who settles it: the "
+    "Architect, next and before the split, when the stories' criteria depend on the answer "
+    "(a key, a path, a response shape); or the implementer, when any reasonable choice "
+    "will do and nothing a test or a reviewer checks depends on it.\n"
+    "- **For infra** when a member marked it infra: it is about the deployed runtime "
+    "(where it runs, real addresses and secrets, provisioning, backups), which the project "
+    "doesn't build. List what infra has to provide, in a few words. It is not a row, and "
+    "no story waits on it.\n"
+    "- **A dismissal** when it isn't needed: already settled, wholly inside another epic, "
+    "or wrong. Say why.\n"
+    "Every note gets one of the four, and a row may answer several. Ask the Sponsor one "
+    "question, with no conclusion, only when you can't tell which way the Goal points, so "
+    "that any call you made might contradict it. Don't ask what you can decide, and don't "
+    "restate the epic."
+)
+
+
 def settle(
     context: PanelContext, panel: PanelResult, *, reply: str = "", feedback: str = ""
 ) -> Settlement:
@@ -560,6 +622,27 @@ def describe_design(
         "question by its ID, once. Say what is decided, "
         "what follows for the stories, and what you based it on."
     )
+
+
+def design_opening(context: PanelContext, *, record: str, questions: str) -> dict[str, str]:
+    """The Architect's design settle as a session's start (crew#807). The code it was
+    shown, focused on the questions, is read through the tools instead."""
+    return {
+        "step": "## Your step: settle the record's design questions before the split\n\n"
+        "The Product Owner settled the panel's notes into the epic's record below and left "
+        "these design questions to you. Settle each one now, before the epic is split into "
+        "stories, so their criteria are written against your answer: name the key, the path, "
+        "the response shape or the parameter exactly, as the code has it or as it will be. "
+        "Each answer is your own call as the Architect, within the Goal and the record's "
+        "binding rows, and it becomes a binding row the stories follow. Where another epic's "
+        "record already decides the same thing, answer with its decision and name its row "
+        "as your source. Answer every question by its ID, once. Say what is decided, what "
+        "follows for the stories, and what you based it on. The stories and their criteria "
+        "are the Business Analyst's, after you.",
+        **_shared(context, decisions=False),
+        "record": record,
+        "questions": f"## The questions the record leaves for you\n\n{questions}",
+    }
 
 
 def settle_design(

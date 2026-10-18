@@ -21,6 +21,7 @@ They don't see each other's notes. Who settles a note is the member's call too
 from __future__ import annotations
 
 import contextvars
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Literal
@@ -167,6 +168,56 @@ def describe(context: PanelContext, role: str) -> str:
         "Write every issue or pull request as owner/repo#number, as given above, never as a "
         "bare number."
     )
+
+
+# The Goal template's own last line, which is the crew's, not the Sponsor's words.
+_GOAL_FOOTER = re.compile(r"\n-{3,}\s*\n\s*_Set by the Product Sponsor\..*?_\s*$", re.S)
+
+
+def sponsors_words(goal: str) -> str:
+    """A Goal's text without its template's footer (crew#807's prompt review)."""
+    return _GOAL_FOOTER.sub("", goal).rstrip()
+
+
+def goal_part(context: PanelContext) -> str:
+    return f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{sponsors_words(context.goal)}"
+
+
+def siblings_text(context: PanelContext) -> str:
+    return "\n\n".join(f"### {s.ref} ({s.state})\n\n{s.text}" for s in context.siblings)
+
+
+def opening(context: PanelContext, role: str) -> dict[str, str]:
+    """A member's session start, before the project, map and hints (crew#807): its
+    step and scope first, then what it reads the epic against."""
+    title = load_agents()[role]["role"]
+    siblings = siblings_text(context)
+    return {
+        "step": f"## Your step: the refinement panel, as the {title}\n\n"
+        "This epic is about to be split into stories. Before it is, four roles each read "
+        "it once, for what they own, and the Product Owner settles what they raise into "
+        f"the epic's record. You are the {title}. {FOCUS[role]}\n\n"
+        "Name each problem in your area that should be settled before the split: "
+        "something the epic gets wrong, leaves out or contradicts, against the Goal, the "
+        "project's record, the Sponsor's decisions, the project's decision log, the other "
+        "epics or the code. Quote its source.\n\n"
+        f"{SCOPE}\n\n"
+        'If there is nothing in your area to add, say so: "nothing to add" is a complete '
+        "answer, and better than a note that isn't needed. Don't restate the epic, propose "
+        "stories or a design, or note things outside your area; the other roles cover theirs. "
+        "Write every issue or pull request as owner/repo#number, never as a bare number.",
+        "goal": goal_part(context),
+        "decisions": context.decisions if _decided(context.decisions) else "",
+        "project_log": context.project_log,
+        "siblings": f"## The other epics under this Goal\n\n{siblings}" if siblings else "",
+        "epic": f"## The epic ({context.epic_ref})\n\n{context.epic}",
+    }
+
+
+def _decided(decisions: str) -> bool:
+    """The decisions block holds a decision, or says where it couldn't look, not only
+    its heading (`decisions.render`)."""
+    return "\n## " in decisions or "Not searched" in decisions
 
 
 def review(context: PanelContext, role: str) -> PanelAnswer:

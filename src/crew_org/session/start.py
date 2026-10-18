@@ -129,14 +129,15 @@ def declared_tests(root: Path, story: str) -> tuple[list[str], str]:
     return ids, "\n\n".join(shown)
 
 
-def hints(root: Path, story: str, coverage: Any) -> list[str]:
-    """The graph's picks: each path with why it was picked."""
+def hints(root: Path, story: str, coverage: Any, *, named_in: str = "the story") -> list[str]:
+    """The graph's picks: each path with why it was picked, in what `named_in` names:
+    the story, or a refinement step's epic (crew#807)."""
     chosen, _ = select_files(root, story)
     why: dict[str, str] = {}
     for rel in chosen:
         name = Path(rel).name
         if rel in story or (name != "__init__.py" and name in story):
-            why[rel] = "named in the story"
+            why[rel] = f"named in {named_in}"
     for rel in chosen:
         if rel in why:
             continue
@@ -154,9 +155,9 @@ def hints(root: Path, story: str, coverage: Any) -> list[str]:
                 if n.split(".")[0] in words
             ]
             if names:
-                why[rel] = f"defines `{names[0]}`, which the story names"
+                why[rel] = f"defines `{names[0]}`, which {named_in} names"
                 continue
-        why[rel] = "named in the story's words"
+        why[rel] = f"named in {named_in}'s words"
     code = [c for c in chosen if c.endswith(".py") and not _is_test(Path(c))]
     for rel in _close_to(root, code, set(chosen), coverage):
         if rel in why:
