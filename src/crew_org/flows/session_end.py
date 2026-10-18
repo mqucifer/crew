@@ -14,9 +14,9 @@ A session ends one of three ways (decision 3):
 - **interrupted:** a failed call or a lost workspace, nothing about the story. It
   resumes from the last checkpoint (P3), and isn't routed here.
 
-Review and QA aren't moved here: delivery commits, pushes and opens the pull
-request first, as it does today. A route that moves a card can be shown without
-being taken (`dry_run`), so the first one is read before a story takes it.
+A return or a block is made here, through today's paths. Review, QA and a new
+session aren't: delivery commits, pushes and opens the pull request first, or
+starts the session, as it does today.
 """
 
 from __future__ import annotations
@@ -44,7 +44,6 @@ from crew_org.tools.workspace import CheckResult, check
 REVIEW = "review"
 QA = "qa"
 SESSION = "session"
-RULING = "ruling"
 REFINEMENT = "refinement"
 BLOCKED_FOR_A_PERSON = "blocked"
 
@@ -52,7 +51,6 @@ BLOCKED_FOR_A_PERSON = "blocked"
 _MISSING = {
     "file": "a file it couldn't see",
     "fact": "a fact the story doesn't give",
-    "stop": "being stopped",
 }
 _STOPS = {
     "no_progress": "no progress: the same first error after 3 runs, with edits between",
@@ -79,7 +77,7 @@ class Ending(Protocol):
 
 @dataclass
 class Route:
-    """Where an ending sends the story, and what was written, or would be."""
+    """Where an ending sends the story, and what was written on the way."""
 
     to: str
     rule: str
@@ -87,9 +85,9 @@ class Route:
     comment: str = ""
     # A new session's start, in place of the hints (P2).
     start: str = ""
+    # For review: the pull request's sections of the merged tests the branch changes.
+    sections: list[str] = field(default_factory=list)
     verdict: gates.Verdict | None = None
-    # What it did to the board and the issues, or would do, in words.
-    actions: list[str] = field(default_factory=list)
 
 
 def route(
@@ -104,15 +102,12 @@ def route(
     issues: IssueClient,
     sink: EventSink,
     run_checks: Callable[[Path], CheckResult] = check,
-    dry_run: bool = False,
 ) -> Route:
-    """Where `ending` sends the story, and, unless `dry_run`, the move that takes it there."""
+    """Where `ending` sends the story; a return or a block is made on the way."""
     if ending.how == "interrupted":
         raise ValueError(f"an interrupted session resumes (P3), it isn't routed: {ending.why}")
     if ending.how == "blocked":
-        return _blocked(
-            ending, card=card, repo=repo, board=board, issues=issues, sink=sink, dry_run=dry_run
-        )
+        return _blocked(ending, card=card, repo=repo, board=board, issues=issues, sink=sink)
     number = card.number or 0
 
     def note(text: str) -> None:
@@ -146,9 +141,8 @@ def route(
             board=board,
             issues=issues,
             sink=sink,
-            dry_run=dry_run,
         )
-    return Route(REVIEW, "decision.delivery.outcome", verdict=verdict)
+    return _to_review(verdict)
 
 
 def rework_start(findings: list[gates.Finding], said: dict[str, Any]) -> str:
@@ -177,6 +171,12 @@ def last_done(said: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _to_review(verdict: gates.Verdict) -> Route:
+    return Route(
+        REVIEW, "decision.delivery.outcome", sections=gates.pr_sections(verdict), verdict=verdict
+    )
+
+
 def _ruled(
     ending: Ending,
     verdict: gates.Verdict,
@@ -187,7 +187,6 @@ def _ruled(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
-    dry_run: bool,
 ) -> Route:
     """The Business Analyst rules on merged tests changed where the story says they stay.
 
@@ -199,16 +198,6 @@ def _ruled(
         test: f"changed by the Developer, who says: {why or 'no reason given'}"
         for test, why in verdict.disagree.items()
     }
-    if dry_run:
-        return Route(
-            RULING,
-            Rule.RETURN_CONTRACT_RULING,
-            verdict=verdict,
-            actions=[
-                "ask the Business Analyst to rule on "
-                + ", ".join(f"`{t}`" for t in sorted(changed))
-            ],
-        )
     ruling = delivery.rule_on_contract(
         issues,
         sink,
@@ -221,7 +210,7 @@ def _ruled(
     if ruling is not None and ruling.decision == "amend":
         verdict.declared.update(verdict.disagree)
         verdict.disagree = {}
-        return Route(REVIEW, "decision.delivery.outcome", verdict=verdict)
+        return _to_review(verdict)
     if ruling is not None and ruling.decision == "repair":
         finding = gates.Finding(
             "check.gates.the_business_analyst_ruled_that",
@@ -257,7 +246,6 @@ def _ruled(
         board=board,
         issues=issues,
         sink=sink,
-        dry_run=False,
         verdict=verdict,
     )
 
@@ -270,7 +258,6 @@ def _blocked(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
-    dry_run: bool,
 ) -> Route:
     """A `blocked` session, or a stopped one, to the Business Analyst or the Sponsor."""
     kind = ending.said.get("kind") or ""
@@ -288,7 +275,6 @@ def _blocked(
             board=board,
             issues=issues,
             sink=sink,
-            dry_run=dry_run,
         )
     number = card.number or 0
     ended = _STOPS.get(ending.stop, ending.stop) if kind == "stop" else _MISSING.get(kind, kind)
@@ -310,7 +296,6 @@ def _blocked(
         board=board,
         issues=issues,
         sink=sink,
-        dry_run=dry_run,
         kind=kind,
         stop=ending.stop,
     )
@@ -369,32 +354,15 @@ def _return(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
-    dry_run: bool,
     verdict: gates.Verdict | None = None,
     **detail: Any,
 ) -> Route:
-    """Back to the Business Analyst by the path a story takes back to refinement (#189)."""
-    number = card.number or 0
-    if card.parent is None:
-        # No epic to split again: blocked for a person, with the same evidence, as today.
-        return _blocked_for_a_person(
-            card,
-            repo=repo,
-            comment=comment.replace(STORY_PROBLEM_MARKER + "\n", ""),
-            rule=Rule.SESSION_NO_EPIC,
-            board=board,
-            issues=issues,
-            sink=sink,
-            dry_run=dry_run,
-        )
-    actions = [
-        f"#{number} and its unbuilt siblings to Ready, out of the sprint",
-        f"epic #{card.parent} labelled `needs:rework`, with the comment",
-        f"`{EventKind.STORY_RETURNED}` with reason `{reason}`",
-    ]
-    if dry_run:
-        return Route(REFINEMENT, rule, comment=comment, verdict=verdict, actions=actions)
-    returned = return_to_refinement(
+    """Back to the Business Analyst by the path a story takes back to refinement (#189).
+
+    A story with no epic has nothing to be split again: it's blocked for a person,
+    with the same evidence, as today.
+    """
+    if card.parent is not None and return_to_refinement(
         board,
         issues,
         sink,
@@ -404,20 +372,18 @@ def _return(
         comment=comment,
         reason=reason,
         **detail,
+    ):
+        held(rule, repo=card.repo or repo, card=card.number)
+        return Route(REFINEMENT, rule, comment=comment, verdict=verdict)
+    return _blocked_for_a_person(
+        card,
+        repo=repo,
+        comment=comment.replace(STORY_PROBLEM_MARKER + "\n", ""),
+        rule=Rule.SESSION_NO_EPIC,
+        board=board,
+        issues=issues,
+        sink=sink,
     )
-    if not returned:
-        return _blocked_for_a_person(
-            card,
-            repo=repo,
-            comment=comment.replace(STORY_PROBLEM_MARKER + "\n", ""),
-            rule=Rule.SESSION_NO_EPIC,
-            board=board,
-            issues=issues,
-            sink=sink,
-            dry_run=False,
-        )
-    held(rule, repo=card.repo or repo, card=number)
-    return Route(REFINEMENT, rule, comment=comment, verdict=verdict, actions=actions)
 
 
 def _blocked_for_a_person(
@@ -429,27 +395,24 @@ def _blocked_for_a_person(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
-    dry_run: bool,
 ) -> Route:
     """Blocked, labelled and said why: how a decision for a person reaches them today."""
     number = card.number or 0
-    actions = [f"#{number} to {BLOCKED}, labelled `blocked`", f"the comment on #{number}"]
-    if not dry_run:
-        move_card(
-            board,
-            sink,
-            item_id=card.item_id,
-            to=BLOCKED,
-            by="Developer",
-            card=number,
-            frm=card.status,
-            summary=comment.splitlines()[0][:80],
-            kind=EventKind.CARD_BLOCKED,
-            rule=rule,
-        )
-        artifacts.label(issues, sink, repo=repo, number=number, by="Developer", add=["blocked"])
-        artifacts.comment(issues, sink, repo=repo, number=number, body=comment, by="Developer")
-    return Route(BLOCKED_FOR_A_PERSON, rule, comment=comment, actions=actions)
+    move_card(
+        board,
+        sink,
+        item_id=card.item_id,
+        to=BLOCKED,
+        by="Developer",
+        card=number,
+        frm=card.status,
+        summary=comment.splitlines()[0][:80],
+        kind=EventKind.CARD_BLOCKED,
+        rule=rule,
+    )
+    artifacts.label(issues, sink, repo=repo, number=number, by="Developer", add=["blocked"])
+    artifacts.comment(issues, sink, repo=repo, number=number, body=comment, by="Developer")
+    return Route(BLOCKED_FOR_A_PERSON, rule, comment=comment)
 
 
 def _quoted(text: str) -> str:

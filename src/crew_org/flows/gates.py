@@ -156,6 +156,29 @@ def at_done(
     return verdict
 
 
+# The pull request's section of changed merged tests the story doesn't name (decision 6).
+QUESTIONS_HEADING = "## For the Code Reviewer: merged tests changed that the story doesn't name"
+
+
+def pr_sections(verdict: Verdict) -> list[str]:
+    """The merged tests the branch changes, in the pull request's sections (#316).
+
+    Declared and named by the story, under the heading a rework reads back; the
+    Code Reviewer's questions; and the skeleton's placeholders it replaced.
+    """
+    lines: list[str] = []
+    if verdict.declared:
+        lines += ["", delivery.DECLARED_HEADING, ""]
+        lines += [f"- `{key}`: {why}" for key, why in sorted(verdict.declared.items())]
+    if verdict.questions:
+        lines += ["", QUESTIONS_HEADING, ""]
+        lines += [f"- `{key}`: {asked}" for key, asked in sorted(verdict.questions.items())]
+    if verdict.placeholders:
+        lines += ["", delivery.PLACEHOLDERS_HEADING, ""]
+        lines += [f"- `{key}`" for key in verdict.placeholders]
+    return lines
+
+
 def changed_tests(worktree: Path, merged: regression.Merged, paths: list[str]) -> dict[str, str]:
     """Each merged test the branch changes, `path::name` -> "changed" or "removed".
 
@@ -317,7 +340,7 @@ def _reproduced(
 
 def _is_test(key: str) -> bool:
     path = key.partition("::")[0]
-    return profile_for(path).is_test_path(path)
+    return bool(profile_for(path).is_test_path(path))
 
 
 def _as_key(test: str) -> str:

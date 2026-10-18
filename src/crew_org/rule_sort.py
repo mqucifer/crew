@@ -144,6 +144,12 @@ SORTED: dict[str, tuple[str, str]] = {
     "guard.protected": (GATE, "protected paths, policy at `done`"),
     "guard.workflow_permission": (GATE, "workflow files, policy at `done`"),
     "guard.no_change": (GATE, "`done` with an empty diff"),
+    "check.gates.the_branch_changes_nothing": (GATE, "`done` with an empty diff, at `done`"),
+    "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
+    "check.gates.the_business_analyst_ruled_that": (
+        GATE,
+        "the contract ruling, at `done`, when declaration and story disagree",
+    ),
     "guard.not_reproduced": (GATE, "a bug's tests reproduce it, at `done`"),
     "guard.overwrite": (FEEDBACK, "rewriting whole files: write_file's reply"),
     "gate.ci_before_review": (GATE, "CI green before review"),
