@@ -549,3 +549,14 @@ def test_a_session_end_missing_its_counts_says_none_not_zero():
         None,
     )
     assert end.criteria == 0
+
+
+def test_the_packages_return_reasons_are_the_crews_and_its_rule_ids_fit_the_gates():
+    """A reason or a rule id the package doesn't know is left out, so they're held together."""
+    from typing import get_args
+
+    from crew_org import rules
+
+    assert set(get_args(dh.ReturnReason)) == set(rules.RETURN_RULES)
+    for rule in ("guard.bounds.out_of_bounds", "check.gates.the_branch_changes_nothing"):
+        assert dh._RULE_ID.fullmatch(rule), rule
