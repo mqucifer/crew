@@ -764,12 +764,25 @@ def declared_contract(body: str) -> set[str]:
     Empty unless the line declares a contract change: an opt-in story promises
     the merged tests keep passing, so nothing of theirs may go.
     """
+    line = _existing_tests_line(body)
+    if not declares_a_change(body):
+        return set()
+    return set(_DECLARED.findall(line))
+
+
+def declares_a_change(body: str) -> bool:
+    """Does the story's **Existing tests** line say it changes merged tests? (crew#778)"""
+    line = _existing_tests_line(body)
+    return "contract change" in line or "changes what they assert" in line
+
+
+def _existing_tests_line(body: str) -> str:
     from crew_org.flows.board_flow import (  # noqa: PLC0415
         EXISTING_TESTS,
         EXISTING_TESTS_BEFORE_311,
     )
 
-    line = next(
+    return next(
         (
             ln
             for ln in body.splitlines()
@@ -777,9 +790,6 @@ def declared_contract(body: str) -> set[str]:
         ),
         "",
     )
-    if "contract change" not in line and "changes what they assert" not in line:
-        return set()
-    return set(_DECLARED.findall(line))
 
 
 # The pull request's sections naming merged tests it lets go, read back on a rework.
@@ -1815,13 +1825,19 @@ def deliver_story(
     return outcome
 
 
-def workflows_not_permitted(implementation, permissions: dict[str, str] | None = None) -> str:
-    """Why a workflow change can't be pushed, or "" if it can or we can't tell (#279)."""
+def workflows_not_permitted(
+    implementation, permissions: dict[str, str] | None = None, *, paths: list[str] | None = None
+) -> str:
+    """Why a workflow change can't be pushed, or "" if it can or we can't tell (#279).
+
+    `paths`, in place of an answer's, are what a branch's diff changes (crew#778).
+    """
     from crew_org.auth import app_permissions  # noqa: PLC0415
     from crew_org.tools import ci_guard  # noqa: PLC0415
 
     held = app_permissions() if permissions is None else permissions
-    changed = [p for p in bounds.touched(implementation) if ci_guard.is_workflow(p)]
+    touched = bounds.touched(implementation) if paths is None else paths
+    changed = [p for p in touched if ci_guard.is_workflow(p)]
     if not changed or not held or held.get("workflows") == "write":
         return ""
     return says("check.delivery.workflows_not_permitted", files=", ".join(changed))

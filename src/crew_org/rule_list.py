@@ -64,6 +64,7 @@ GROUPS = {
     "guard": "A guard on a change sends it back",
     "edit": "An edit can't be applied, and why is sent back",
     "tool": "A session's tool refuses a call, and says why in its reply",
+    "gate": "A gate at `done` sends a session's branch back",
     "repair": "The crew changes the work itself, and records it",
     "skip": "The crew holds work back, said only in words",
     "decision": "The tick decides a card's handling, found by the decision-point audit",
@@ -2064,6 +2065,48 @@ def _link(checks: list[Entry], told: list[Entry]) -> list[Entry]:
     return unlinked
 
 
+# The gates at `done`, and where a Developer session's ending goes (crew#778, ADR 0032).
+_GATES = ("crew_org.flows.gates", "crew_org.flows.session_end")
+
+
+def _gate_rules(found: list[Entry]) -> list[Entry]:
+    """Each declared rule a gate at `done` sends a session's branch back by (crew#778).
+
+    The gates run today's checks on the branch's diff, so most of their rules are
+    listed already, and gain the gate as a place they're checked. A rule only the
+    gates have is listed here, its message its declaration's.
+    """
+    listed = {entry.id: entry for entry in found}
+    out: dict[str, Entry] = {}
+    developer = role_names().get("developer", "Developer")
+    for source in sources():
+        if source.module not in _GATES:
+            continue
+        parents = _parents(source.tree)
+        for node in ast.walk(source.tree):
+            rule = _refused_by(node)
+            if rule is None:
+                continue
+            where = f"{source.path}:{_qualname(node, parents)}"
+            entry = listed.get(rule) or out.get(rule)
+            if entry is None:
+                messages = _declared(rule)
+                spec = rulebook.catalog().get(rule)
+                entry = out[rule] = Entry(
+                    rule,
+                    "gate",
+                    where,
+                    (spec.description if spec else "") or (messages[0] if messages else rule),
+                    roles={developer},
+                    origin={"crew#778"},
+                    messages=messages,
+                    named={rule},
+                    text=" ".join(messages),
+                )
+            entry.checked.add(where)
+    return list(out.values())
+
+
 @cache
 def entries() -> tuple[Entry, ...]:
     """Every rule a role meets, in the order the page lists them."""
@@ -2081,6 +2124,7 @@ def entries() -> tuple[Entry, ...]:
         + _guard_rules()
         + _tool_rules()
     )
+    checks += _gate_rules(checks)
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)
     declared = rulebook.catalog()

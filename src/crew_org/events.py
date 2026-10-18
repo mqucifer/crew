@@ -62,6 +62,9 @@ class EventKind(StrEnum):
     SESSION_TURN = "session.turn"
     SESSION_COMPACTED = "session.compacted"
     SESSION_ENDED = "session.ended"
+    # The gates' verdict on a session's branch at `done`: whether it passed, and the
+    # rules of what sent it back.
+    GATE_CHECKED = "gate.checked"
 
     # A merged change being undone. Each carries the pull request reverted,
     # the card it belonged to and why, so the audit trail can answer all three.
