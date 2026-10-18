@@ -89,7 +89,7 @@ Then the four parts every refinement session's start ends with (below). The repo
 
 ## The refinement panel (four members)
 
-`panel_crew.opening`, the start of each member's session, which `panel_crew.review` runs; `panel_crew.run_panel` runs the four in turn (crew#440, crew#807).
+`panel_crew.opening`, the start of each member's session, which `panel_crew.review` runs; `panel_crew.run_panel` runs the four at once, and records each one's model time while they run (crew#440, crew#807).
 
 | Part | From | Why |
 |---|---|---|

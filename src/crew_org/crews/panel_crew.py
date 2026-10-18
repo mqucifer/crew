@@ -13,20 +13,23 @@ the test's three changes:
 - each member reviews the epic in front of it. How it fits a sibling is theirs
   to raise; a problem wholly inside a sibling, or in a delivered one, is not.
 
-Each member is its own session over the code with the same context, one at a time
-(crew#807, P1). They don't see each other's notes. Who settles a note is the
-member's call too (`settled_by`), so the settle step only has to read them.
+Each member is its own session over the code with the same context, and the four run
+at once (the Sponsor, crew#807). They don't see each other's notes. Who settles a note
+is the member's call too (`settled_by`), so the settle step only has to read them.
 """
 
 from __future__ import annotations
 
+import contextvars
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from crew_org.events import attributed
+from crew_org.events import EventKind, attributed, record
 from crew_org.permissions import load_agents
 from crew_org.rulebook import refuse
 from crew_org.session import steps
@@ -207,10 +210,19 @@ STEPS = {
 }
 
 
-def review(context: PanelContext, role: str, reading: steps.Reading | None = None) -> PanelAnswer:
+def review(
+    context: PanelContext,
+    role: str,
+    reading: steps.Reading | None = None,
+    on_end: Any = None,
+) -> PanelAnswer:
     """One member's read of the epic, in a session over the code at `reading`."""
     answer: PanelAnswer = steps.run(
-        STEPS[role], opening(context, role), reading, about=f"{context.epic}\n\n{context.goal}"
+        STEPS[role],
+        opening(context, role),
+        reading,
+        about=f"{context.epic}\n\n{context.goal}",
+        on_end=on_end,
     )
     return answer
 
@@ -220,16 +232,55 @@ def run_panel(
     roles: tuple[str, ...] = ROLES,
     reading: steps.Reading | None = None,
 ) -> PanelResult:
-    """Each member in turn, one session at a time (P1). One failing doesn't lose the
-    others' notes."""
+    """All members at once: they read independently, and the settle waits for all of
+    them (the Sponsor, crew#807). One failing doesn't lose the others' notes.
+
+    Each member's model time while they all ran, and what the Spark served across
+    them, are recorded on one event: a first measure of several sessions at once
+    (mqucifer/crew#790).
+    """
+    measured: dict[str, dict[str, Any]] = {}
+
+    def measure(role: str) -> Any:
+        def ended(session: Any, ending: Any) -> None:
+            measured[role] = {
+                "how": ending.how,
+                "model_calls": session.calls,
+                "model_s": round(session.model_s, 1),
+                "completion_tokens": int(session.usage.get("completion_tokens", 0)),
+            }
+
+        return ended
+
+    def one(role: str) -> PanelAnswer:
+        # The caller attributes the card and repo; each member adds its own purpose.
+        answer: PanelAnswer = attributed(
+            lambda: review(context, role, reading, on_end=measure(role)), purpose=f"panel {role}"
+        )()
+        return answer
+
     answers: dict[str, PanelAnswer] = {}
     failed: dict[str, str] = {}
-    for role in roles:
-        try:
-            # The caller attributes the card and repo; each member adds its own purpose.
-            answers[role] = attributed(
-                lambda r=role: review(context, r, reading), purpose=f"panel {role}"
-            )()
-        except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
-            failed[role] = f"{type(exc).__name__}: {exc}"[:300]
+    began = time.monotonic()
+    with ThreadPoolExecutor(max_workers=len(roles)) as pool:
+        # Each thread runs in its own copy of this context, so its calls are
+        # attributed to the tick's span and card.
+        futures = {role: pool.submit(contextvars.copy_context().run, one, role) for role in roles}
+        for role, future in futures.items():
+            try:
+                answers[role] = future.result()
+            except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
+                failed[role] = f"{type(exc).__name__}: {exc}"[:300]
+    wall = time.monotonic() - began
+    served = sum(m["completion_tokens"] for m in measured.values())
+    record(
+        EventKind.NOTE,
+        f"panel: {len(roles)} members at once, {wall / 60:.1f} minutes",
+        step="panel",
+        members=measured,
+        failed=sorted(failed),
+        wall_s=round(wall, 1),
+        completion_tokens=served,
+        tokens_per_s=round(served / wall, 1) if wall else None,
+    )
     return PanelResult(answers, failed)

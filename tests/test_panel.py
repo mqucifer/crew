@@ -7,6 +7,8 @@ because a mock is what hid crew#294.
 
 from __future__ import annotations
 
+import threading
+
 import httpx
 import pytest
 from pydantic import ValidationError
@@ -150,26 +152,60 @@ def test_a_context_without_siblings_or_decisions_still_reads():
 # --- the four at once ----------------------------------------------------------------------
 
 
-def test_the_four_members_run_one_at_a_time_in_order(monkeypatch):
-    """One session at a time, as the Developer's (crew#807, P1)."""
-    running, seen = [], []
+def test_the_four_members_run_at_the_same_time(monkeypatch):
+    """They read independently, and the settle waits for all four (the Sponsor, crew#807)."""
+    # Each waits for the other three: this only passes if all four are in flight together.
+    barrier = threading.Barrier(len(ROLES), timeout=10)
+    seen = []
 
-    def review(ctx, role, reading=None):
-        assert not running, "a member started while another ran"
-        running.append(role)
+    def review(ctx, role, reading=None, on_end=None):
+        barrier.wait()
         seen.append(role)
-        running.pop()
         return PanelAnswer(nothing_to_add=True)
 
     monkeypatch.setattr(panel_crew, "review", review)
     result = run_panel(context())
-    assert seen == list(ROLES)
+    assert sorted(seen) == sorted(ROLES)
     assert list(result.answers) == list(ROLES)
     assert result.failed == {}
 
 
+def test_each_members_model_time_under_load_and_the_throughput_are_recorded(monkeypatch):
+    """A first measure of several sessions at once (mqucifer/crew#790)."""
+    from types import SimpleNamespace
+
+    from crew_org import events
+    from crew_org.events import EventKind, EventSink
+
+    found = []
+    sink = EventSink(None)
+    sink.subscribe(found.append)
+    events.reset_bridge()
+    events._TARGETS.append((sink, None))
+
+    def review(ctx, role, reading=None, on_end=None):
+        session = SimpleNamespace(calls=3, model_s=60.0, usage={"completion_tokens": 600})
+        on_end(session, SimpleNamespace(how="done"))
+        return PanelAnswer(nothing_to_add=True)
+
+    monkeypatch.setattr(panel_crew, "review", review)
+    try:
+        run_panel(context())
+    finally:
+        events.reset_bridge()
+    [note] = [e for e in found if e.kind == EventKind.NOTE and e.detail.get("step") == "panel"]
+    assert set(note.detail["members"]) == set(ROLES)
+    assert note.detail["members"]["architect"] == {
+        "how": "done",
+        "model_calls": 3,
+        "model_s": 60.0,
+        "completion_tokens": 600,
+    }
+    assert note.detail["completion_tokens"] == 2400 and note.detail["wall_s"] >= 0
+
+
 def test_a_member_that_fails_does_not_lose_the_others_notes(monkeypatch):
-    def review(ctx, role, reading=None):
+    def review(ctx, role, reading=None, on_end=None):
         if role == "qa_engineer":
             raise RuntimeError("the model returned nothing")
         return PanelAnswer(nothing_to_add=False, notes=[note(problem=f"from {role}")])
@@ -195,11 +231,11 @@ def test_each_member_is_its_own_session_with_its_role_text(monkeypatch):
         lambda step, parts, reading, **kw: ran.append(step) or PanelAnswer(nothing_to_add=True),
     )
     run_panel(context(), reading="the checkout")
-    assert [(s.name, s.role, s.step) for s in ran] == [
+    assert sorted((s.name, s.role, s.step or "") for s in ran) == [
         ("panel architect", "architect", "refinement"),
-        ("panel ux_designer", "ux_designer", None),
+        ("panel devops_engineer", "devops_engineer", ""),
         ("panel qa_engineer", "qa_engineer", "panel"),
-        ("panel devops_engineer", "devops_engineer", None),
+        ("panel ux_designer", "ux_designer", ""),
     ]
     assert all(s.form is PanelAnswer for s in ran)
 

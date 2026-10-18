@@ -20,7 +20,7 @@ ADR 0032's session, one conversation of tool calls that ends with `done`, had ju
 The Sponsor, on crew#807 (2026-10-18), with the operator's calls inside those decisions.
 
 **1. Each step that states facts about code works in a session:**
-- the panel: Architect, UX Designer, QA and DevOps, one at a time (ADR 0032's P1);
+- the panel: Architect, UX Designer, QA and DevOps, all four at once. They read independently, and the settle waits for all four. ADR 0032's P1 ran one session at a time for a container per session, and refinement holds none. Each member's model time while all four run, and the Spark's throughput, are recorded on one event, a first measure for mqucifer/crew#790;
 - the Product Owner's decomposition and settle;
 - the Architect's design settle;
 - the Business Analyst's split, and its repair of criteria the check refuses;
@@ -90,4 +90,5 @@ The events are the Developer's, each naming its step. A step's answer goes on th
 
 ## Changelog
 
-- **2026-10-18:** decided and built (crew#807). The Sponsor decided the sessions and the git tool, reviewed each step's opening messages before the build, and chose the role text, the constitution's absence, the stops and one panel member at a time. They also set the criteria check, its repair and `already_holds` into the build, and the wording in decision 6. The operator's calls on crew#807: the versioning pointer, and `already_delivered`'s `seen_at`.
+- **2026-10-18:** decided and built (crew#807). The Sponsor decided the sessions and the git tool, reviewed each step's opening messages before the build, and chose the role text, the constitution's absence and the stops. They also set the criteria check, its repair and `already_holds` into the build, and the wording in decision 6. The operator's calls on crew#807: the versioning pointer, and `already_delivered`'s `seen_at`.
+- **2026-10-18:** the panel's four members run at once again (the Sponsor, on crew#807): they read independently by design, and the settle waits for all four. "One at a time" had come from the Developer's P1, whose reason was a container per session. Each member's model time under load and the Spark's throughput are recorded, for mqucifer/crew#790.

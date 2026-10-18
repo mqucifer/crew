@@ -1707,7 +1707,7 @@ def panel(
 ) -> None:
     """Run the refinement panel on an epic: Architect, UX Designer, QA and DevOps (crew#440).
 
-    Each reads the epic once, one after another, in a session over the code at the
+    Each reads the epic once, all four at once, in a session over the code at the
     default branch (crew#807), against its Goal, the project's record, the Sponsor's
     decisions and its sibling epics. Nothing is written to GitHub without --post.
     """
