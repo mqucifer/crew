@@ -96,9 +96,7 @@ def siblings_of(issues: IssueClient, repo: str, goal: int, epic: int) -> list[Si
     return found
 
 
-def gather(
-    issues: IssueClient, repo: str, epic: int, *, project: str, search: Iterable[str]
-) -> PanelContext:
+def gather(issues: IssueClient, repo: str, epic: int, *, search: Iterable[str]) -> PanelContext:
     """What the panel is shown for `epic`. `search` is where decisions are looked for."""
     card = issues.get(repo, epic)
     goal = _parent(card)
@@ -110,7 +108,6 @@ def gather(
     return PanelContext(
         goal_ref=f"{ref}#{goal}",
         goal=f"{parent.get('title', '')}\n\n{(parent.get('body') or '').strip()}".strip(),
-        project=project,
         decisions=render_decisions(collected, goal=f"{ref}#{goal}"),
         epic_ref=f"{ref}#{epic}",
         epic=_text(card),

@@ -51,7 +51,6 @@ def check_each(
     check: Callable[..., CriteriaCheck],
     proposal: StoryProposal,
     *,
-    code_for: Callable[[str], str],
     only: list[Story] | None = None,
     **shown: Any,
 ) -> CriteriaCheck:
@@ -59,9 +58,9 @@ def check_each(
 
     Checked all at once, the criteria check thought a median of 12.6k tokens to write
     641 characters, at the edge where answers come back empty (the context review,
-    C5). Each call is shown one story, with the split's other stories and the planned
-    ones to check it against, the record, and the code its own text names. A conflict
-    between two stories can be found from both sides; the repair rewrites both.
+    C5). Each session is shown one story, with the split's other stories and the planned
+    ones to check it against, and the record, and reads the code it needs (crew#807). A
+    conflict between two stories can be found from both sides; the repair rewrites both.
 
     `only` checks just those stories, each still against all the others: after a
     repair, a story nobody changed can't have a new conflict except with a repaired
@@ -75,7 +74,7 @@ def check_each(
             continue
         mine = render_stories([story])
         rest = render_stories([s for s in proposal.stories if s is not story])
-        found = check(stories=mine, siblings=rest, repository=code_for(mine), **shown)
+        found = check(stories=mine, siblings=rest, **shown)
         conflicts += found.conflicts
     return CriteriaCheck(conflicts=_once(conflicts))
 

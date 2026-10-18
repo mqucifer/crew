@@ -10,22 +10,21 @@ reviewer has to notice later.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
 from crew_org.config import load_org
-from crew_org.crews.asks import FileAsk
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     CONTEXT_CHARS,
     DECISION_CHARS,
     aim,
 )
-from crew_org.rulebook import refuse
-from crew_org.tools.repo_context import READ_MIN_CHARS, READING_CHAR_CEILING
-from crew_org.tools.repo_read import Reader
+from crew_org.rulebook import Refusal, refuse
+from crew_org.session import steps
 
 # Modified Fibonacci, per constitution §6, and the most a story may be: org.yaml's
 # `estimation`, the one source the story check reads (crew#756). Nothing larger
@@ -246,13 +245,32 @@ class SkeletonEpic(EpicProposal):
 
 
 class AlreadyDelivered(BaseModel):
-    """A story this epic would need that the project has already delivered (#220)."""
+    """A story this epic would need that the project already has (#220): delivered by a
+    story, or always there in the code (crew#807: sprint-metrics#663's schema never had
+    the `maximum` its story removed)."""
 
     title: str = Field(description="The story you would otherwise have written")
-    by: int = Field(
-        description="The story that already does it, delivered or already planned, by number"
+    by: int | None = Field(
+        default=None,
+        description=(
+            "The story that already does it, delivered or already planned, by number. "
+            "None when no story did: the code always has"
+        ),
+    )
+    seen_at: str = Field(
+        default="",
+        description=(
+            "When no story delivered it: where the code at main already does it, a path and "
+            "definition with the line"
+        ),
     )
     why: str = Field(description="Which of its outcomes covers this story's criteria")
+
+    @model_validator(mode="after")
+    def _by_or_seen_at(self) -> AlreadyDelivered:
+        if self.by is None and not self.seen_at.strip():
+            refuse("form.AlreadyDelivered.by_or_seen_at")
+        return self
 
 
 class Accounted(BaseModel):
@@ -343,24 +361,10 @@ class StoryProposal(BaseModel):
             "Sponsor, and no story shows them: shown, they'd have to be computed or guessed"
         ),
     )
-    need_files: list[FileAsk] = Field(
-        default_factory=list,
-        description=(
-            "Only if you can't split this epic without seeing a file the map above only "
-            "names, and couldn't read it with `read_file`: its path, and in a line why. "
-            "You're asked again with it shown in full; leave the stories empty then. Empty "
-            "otherwise."
-        ),
-    )
-
-    @property
-    def asks(self) -> bool:
-        """It asked to see files first (#231): not a split, and not applied."""
-        return bool(self.need_files) and not self.stories and not self.already_delivered
 
     @model_validator(mode="after")
     def _not_empty(self) -> StoryProposal:
-        if not self.stories and not self.already_delivered and not self.need_files:
+        if not self.stories and not self.already_delivered:
             refuse("form.StoryProposal.not_empty")
         return self
 
@@ -564,62 +568,92 @@ REWORK = (
 def propose_epics(
     goal: str,
     *,
-    repository: str = "",
+    goal_ref: str = "",
     feedback: str = "",
     delivered: str = "",
     skeleton: bool = False,
+    reading: steps.Reading | None = None,
 ) -> EpicProposal:
-    """Product Owner only: a goal becomes a set of epics.
+    """Product Owner only: a goal becomes a set of epics, in a session over the code.
 
-    `repository` is the code the goal is about. A role deciding what should
-    exist works better for knowing what already does — and the alternative is
-    a decomposition of a product the model is imagining. A `skeleton` Goal is
-    one epic (ADR 0030): it has one outcome, so there is nothing to decompose.
+    A role deciding what should exist works better for knowing what already does,
+    and the alternative is a decomposition of a product the model is imagining: it
+    reads the code it needs (crew#807). A `skeleton` Goal is one epic (ADR 0030): it
+    has one outcome, so there is nothing to decompose.
     """
-    repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
-    sent_back = REWORK.format(feedback=feedback) if feedback else ""
-    if skeleton:
-        ask = (
-            "This goal is the project's walking skeleton. It has one outcome, so propose "
-            "exactly one epic that delivers it, and nothing the goal's outcome doesn't "
-            "need: the project's pages, features and behaviour belong to its own Goals.\n\n"
-            "State what a developer could do once that epic alone has landed."
-        )
-    else:
-        ask = (
-            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
-            "Decompose by outcome, never by architectural layer. "
-            "Order them so the most valuable is deliverable first.\n\n"
-            "For each epic, state what a user could do with that epic alone, without "
-            "the others. If you cannot say, it is not a separate epic — merge it. "
-            "A goal that comes back as a single epic has not been decomposed."
-        )
-    return calls.ask(
-        "product_owner",
-        [
-            calls.Part(
-                "task",
-                repo_block
-                + _delivered_block(delivered, "an epic whose outcome these already deliver")
-                + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
-                + sent_back
-                + ask,
-            )
-        ],
+    return _decomposed(
         SkeletonEpic if skeleton else EpicProposal,
-        expected="A set of epics, each with a title, outcome and rationale.",
+        decompose_opening(goal, goal_ref=goal_ref, feedback=feedback, skeleton=skeleton),
+        goal,
+        delivered,
+        reading,
     )
 
 
+def _decomposed(
+    form: type[EpicProposal],
+    parts: dict[str, str],
+    goal: str,
+    delivered: str,
+    reading: steps.Reading | None,
+) -> Any:
+    shown, notes = steps.delivered_section(delivered, "an epic whose outcome these already deliver")
+    step = steps.Step(
+        "decompose",
+        "product_owner",
+        form,
+        "the epics, each with its outcome and why it stands alone, in order.",
+        "the Goal",
+    )
+    return steps.run(step, {**parts, "delivered": shown}, reading, about=goal, notes=notes)
+
+
+def propose_missing_epics(
+    goal: str,
+    *,
+    lacking: str,
+    goal_ref: str = "",
+    delivered: str = "",
+    reading: steps.Reading | None = None,
+) -> MissingEpics:
+    """Product Owner only: the epics a Goal with epics under way still lacks (crew#429).
+
+    `lacking` is the Goal's epics already and what the Sponsor said is missing.
+    Nothing it already has is closed or replaced; this only adds beside them.
+    """
+    found: MissingEpics = _decomposed(
+        MissingEpics,
+        decompose_opening(goal, goal_ref=goal_ref, lacking=lacking),
+        goal,
+        delivered,
+        reading,
+    )
+    return found
+
+
 def decompose_opening(
-    goal: str, *, goal_ref: str, feedback: str = "", skeleton: bool = False
+    goal: str,
+    *,
+    goal_ref: str,
+    feedback: str = "",
+    skeleton: bool = False,
+    lacking: str = "",
 ) -> dict[str, str]:
     """The Product Owner's decomposition as a session's start (crew#807). The
     repository it was shown whole, 572k characters for sprint-metrics#650, is read
     through the tools; what's delivered is a note (`steps.delivered_section`)."""
     from crew_org.crews.panel_crew import sponsors_words  # noqa: PLC0415
 
-    if skeleton:
+    if lacking:
+        ask = (
+            "Propose epics only for what the Sponsor says the goal lacks, and nothing else, "
+            "however useful it would be: anything more is a new decision for the Sponsor. As "
+            f"few as that takes, one is fine, at most {MAX_EPICS}. Each delivers something "
+            "none of the goal's epics already delivers. Decompose by outcome, never by "
+            "architectural layer. For each epic, state what a user could do with that epic "
+            "alone."
+        )
+    elif skeleton:
         ask = (
             "This goal is the project's walking skeleton. It has one outcome, so propose "
             "exactly one epic that delivers it, and nothing the goal's outcome doesn't "
@@ -640,40 +674,9 @@ def decompose_opening(
         "Sponsor approves or rejects each one. The stories, their criteria and estimates "
         "are the Business Analyst's, after approval, and a design is the Architect's. " + ask,
         "goal": f"## The Goal ({goal_ref}), set by the Sponsor\n\n{sponsors_words(goal)}",
+        "lacking": lacking,
         "sent_back": REWORK.format(feedback=feedback).strip() if feedback else "",
     }
-
-
-def propose_missing_epics(
-    goal: str, *, lacking: str, repository: str = "", delivered: str = ""
-) -> MissingEpics:
-    """Product Owner only: the epics a Goal with epics under way still lacks (crew#429).
-
-    `lacking` is the Goal's epics already and what the Sponsor said is missing.
-    Nothing it already has is closed or replaced; this only adds beside them.
-    """
-    repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
-    found = calls.ask(
-        "product_owner",
-        [
-            calls.Part(
-                "task",
-                repo_block
-                + _delivered_block(delivered, "an epic whose outcome these already deliver")
-                + f"The Product Sponsor has set this goal:\n\n{goal}\n\n"
-                + f"{lacking}\n\n"
-                + "Propose epics only for what the Sponsor says the goal lacks, and nothing "
-                "else, however useful it would be: anything more is a new decision for the "
-                f"Sponsor. As few as that takes, one is fine, at most {MAX_EPICS}. Each delivers "
-                "something none of the goal's epics already delivers. Decompose by outcome, "
-                "never by architectural layer.\n\n"
-                "For each epic, state what a user could do with that epic alone.",
-            )
-        ],
-        MissingEpics,
-        expected="The missing epics, each with a title, outcome and rationale.",
-    )
-    return found
 
 
 class Hold(BaseModel):
@@ -736,7 +739,8 @@ def check_delivered(
     """
     if numbers is None:
         return
-    unknown = sorted({d.by for d in proposal.already_delivered} - numbers - set(planned))
+    named = {d.by for d in proposal.already_delivered if d.by is not None}
+    unknown = sorted(named - numbers - set(planned))
     if unknown:
         refuse(
             "check.refinement_crew.check",
@@ -755,25 +759,35 @@ def _delivered_block(delivered: str, instead: str) -> str:
     )
 
 
+SPLIT = steps.Step(
+    "split",
+    "business_analyst",
+    StoryProposal,
+    "the stories, in delivery order, with what the record and the project already account for.",
+    "the epic and its record",
+)
+
+
 def split_epic(
     title: str,
     context: str = "",
     *,
-    repository: str = "",
+    epic_ref: str = "",
     feedback: str = "",
     delivered: str = "",
     delivered_numbers: set[int] | None = None,
-    pinning: str = "",
     superseded: list[tuple[int, str]] | None = None,
     planned: str = "",
     planned_numbers: set[int] | None = None,
     conclusion: str = "",
     project_log: str = "",
     siblings: str = "",
-    reader: Reader | None = None,
     provided: frozenset[str] = frozenset(),
+    follows: Callable[[StoryProposal], list[str]] | None = None,
+    reading: steps.Reading | None = None,
 ) -> StoryProposal:
-    """Business Analyst only: an epic becomes INVEST-sized stories.
+    """Business Analyst only: an epic becomes INVEST-sized stories, in a session over the
+    code (crew#807).
 
     Takes the epic's title and whatever context the card carries, rather than an
     Epic model. By the time an epic is being split the Sponsor has approved it,
@@ -781,106 +795,42 @@ def split_epic(
     exist — no longer apply and reconstructing one just to satisfy them would be
     inventing data.
 
-    With `reader` (crew#583, step C4), a file shown only by name is read inside the
-    call instead of asked for in `need_files`; what it reads shares one ceiling with
-    the rest of the prompt. A split that names a story the project hasn't delivered,
-    or drops a superseded one, is refused and asked for again with why (ADR 0025).
+    `done` refuses a split that names a story the project hasn't delivered, drops a
+    superseded one, shows a field its package doesn't carry, or leaves a row of the
+    record unfollowed (`follows`), and the session answers it.
     """
-    # Stable first: the repository is identical between every split in a pass,
-    # where the epic is not, so it goes ahead of it and the cached prefix holds.
-    repo_block = f"## The repository as it stands\n\n{repository}\n\n" if repository else ""
-    sent_back = REWORK.format(feedback=feedback) if feedback else ""
-    shown = calls.Part(
-        "task",
-        repo_block
-        + (f"{pinning}\n\n" if pinning else "")
-        + (
-            "## The stories this split replaces\n\n"
-            + "\n".join(f"- #{n} {title}" for n, title in superseded)
-            + "\n\nAccount for every one in `accounted`: rewritten here (name the new "
-            "story), already delivered (name the story), or dropped (say why). None may "
-            "be left out.\n\n"
-            if superseded
-            else ""
-        )
-        + _delivered_block(
-            delivered,
-            "a story these already deliver: list it in `already_delivered`, with the "
-            "story that did it",
-        )
-        + (
-            "## Stories other epics already plan, not yet built\n\n"
-            f"{planned}\n\n"
-            "Don't write these again. A story they cover goes in `already_delivered`, "
-            "naming the planned story; a story that needs one names it in `builds_on`.\n\n"
-            if planned
-            else ""
-        )
-        + (f"{project_log}\n\n" if project_log else "")
-        + (
-            "## The other epics under this Goal, with their records\n\n"
-            f"{siblings}\n\n"
-            "What they decided holds here too: a story doesn't contradict a binding row "
-            "of theirs (crew#611).\n\n"
-            if siblings
-            else ""
-        )
-        + (
-            f"## The epic's conclusion\n\n{conclusion}\n\n"
-            "Four roles read this epic and the Product Owner settled what they raised, "
-            "before this split. Its rows are decided: a story may not contradict one, and "
-            "each story names the rows it follows in `follows`. The Architect settled the "
-            "design questions before this split, as rows. A question still open (Q) is "
-            "left to whoever builds it: no story's criterion settles it or waits for it, "
-            "unless the epic's own text says so. A row (R) that no "
-            "story follows goes in `not_for_stories`, with why. Open questions (Q) and "
-            "items for infra (I) need no entry: no story takes them on. A merged test the "
-            "record lists as changed (C) is named in the Existing tests line of the "
-            "story that changes it, as a contract change, or listed in `tests_dropped` "
-            "with why.\n\n"
-            if conclusion
-            else ""
-        )
-        + sent_back
-        + "Split this epic into stories.\n\n"
-        f"Epic: {title}\n\n{context}\n\n"
-        "Each story must satisfy INVEST and carry acceptance criteria a test can be "
-        "written from directly. Split by workflow step, by business rule, or by "
-        "happy-path-then-edge-cases — never by layer.\n\n"
-        "A story that changes what a user sees (a flag, an output format, a command, "
-        "a default) carries a criterion naming its documentation change: which doc, "
-        "which section, and what it says. The project's record names where its user "
-        "docs live. A story that changes nothing a user sees needs no such criterion. "
-        "A criterion about what a doc says is judged by reading the doc, not by a "
-        "test: say what the reader learns there, not strings it must contain.\n\n"
-        "Order them so that each story can be built on the ones before it. Your "
-        "order is the order they will be delivered in, one at a time: a story "
-        "that extends another must come after it, or it will be written against "
-        "a codebase that does not contain the thing it extends.\n\n"
-        "Write criteria against what the code above actually has. A criterion "
-        "asking for data the product does not carry cannot be satisfied by any "
-        "implementation, and the story will be delivered as something that passes "
-        "its tests and does nothing.",
-    )
 
     def check(proposal: StoryProposal) -> None:
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
         check_accounted(proposal, superseded or [])
         check_provided(proposal, provided)
+        if follows is not None and (found := follows(proposal)):
+            raise Refusal(" ".join(found), rule="check.conclusion.problems")
 
-    room = max(READING_CHAR_CEILING - len(shown.text), 0)
-    if reader is not None:
-        reader.reset(room)
-    if room < READ_MIN_CHARS:
-        reader = None
-    return calls.ask(
-        "business_analyst",
-        [shown],
-        StoryProposal,
-        expected="Stories with acceptance criteria and estimates.",
-        check=check,
-        tools=[reader.tool()] if reader is not None else None,
+    shown, notes = steps.delivered_section(
+        delivered,
+        "a story these already deliver: list it in `already_delivered`, with the story that did it",
     )
+    parts = split_opening(
+        title,
+        context,
+        epic_ref=epic_ref,
+        feedback=feedback,
+        superseded=superseded,
+        planned=planned,
+        conclusion=conclusion,
+        project_log=project_log,
+        siblings=siblings,
+    )
+    proposal: StoryProposal = steps.run(
+        SPLIT,
+        {**parts, "delivered": shown},
+        reading,
+        about=f"{title}\n\n{context}\n\n{conclusion}",
+        check=check,
+        notes=notes,
+    )
+    return proposal
 
 
 def split_opening(
@@ -919,9 +869,11 @@ def split_opening(
         "Order them so that each story can be built on the ones before it. A story that "
         "extends another must come after it, or it will be written against a codebase that "
         "does not contain the thing it extends.\n\n"
-        "Write criteria against what the code has, looked up, not remembered. A criterion "
-        "asking for data the product does not carry cannot be satisfied by any "
-        "implementation, and a criterion its code already meets asks for nothing.",
+        "Look up what the code does today, then write each criterion as the behaviour the "
+        "epic asks for; where that differs from today, the story says so. A criterion asking "
+        "for data the product does not carry cannot be satisfied by any implementation. A "
+        "story whose criteria the code already meets asks for nothing: list it in "
+        "`already_delivered`.",
         "epic": f"## The epic ({epic_ref}): {title}\n\n{context}",
         "conclusion": (
             f"## The epic's record\n\n{conclusion}\n\n"
@@ -1036,52 +988,85 @@ class CriteriaRepair(BaseModel):
     )
 
 
+REPAIR = steps.Step(
+    "repair",
+    "business_analyst",
+    CriteriaRepair,
+    "the repaired stories' criteria, each story once.",
+    "the stories",
+)
+
+
 def repair_criteria(
     title: str,
     context: str = "",
     *,
+    epic_ref: str = "",
     flagged: str,
     others: str,
     conflicts: str,
-    repository: str = "",
     conclusion: str = "",
     project_log: str = "",
+    reading: steps.Reading | None = None,
 ) -> CriteriaRepair:
-    """Business Analyst only: rewrite the criteria the check refused, and nothing else.
+    """Business Analyst only: rewrite the criteria the check refused, and nothing else, in
+    a session over the code (crew#807).
 
     A whole re-split rewrote every story, and every rewrite could slip in a fresh
     mistake: on sprint-metrics#406 each split fixed the conflict it was told of and
     made a new one elsewhere (crew#440). The stories that passed stay as they were.
     """
-    repair = calls.ask(
-        "business_analyst",
-        [
-            calls.Part(
-                "task",
-                (f"## The repository as it stands\n\n{repository}\n\n" if repository else "")
-                + (f"{project_log}\n\n" if project_log else "")
-                + (f"## The epic's conclusion\n\n{conclusion}\n\n" if conclusion else "")
-                + f"## The epic\n\n{title}\n\n{context}\n\n"
-                + f"## The other stories of this split, which stay as they are\n\n{others}\n\n"
-                + f"## The stories to repair\n\n{flagged}\n\n"
-                + f"## Why their criteria can't all pass\n\n{conflicts}\n\n"
-                "Rewrite the acceptance criteria of the stories to repair, so that every "
-                "criterion can pass alongside the other stories, the project's code and the "
-                "epic's conclusion. Change only what the conflicts need; keep every criterion "
-                "they don't touch word for word. Where a conflict is a merged test the epic "
-                "means to change, keep the criterion and declare the test instead: set the "
-                "story's Existing tests to 'contract change: ' and the tests it updates. "
-                "Check each criterion's expected values "
-                "against its own inputs: a number the stated data can't produce can't pass. "
-                "Where the epic doesn't say which outcome it wants, leave the case out rather "
-                "than guess. Return each story to repair once, with its title exactly as given "
-                "and all of its criteria.",
-            )
-        ],
-        CriteriaRepair,
-        expected="The repaired stories' criteria.",
+    repair: CriteriaRepair = steps.run(
+        REPAIR,
+        repair_opening(
+            title,
+            context,
+            epic_ref=epic_ref,
+            flagged=flagged,
+            others=others,
+            conflicts=conflicts,
+            conclusion=conclusion,
+            project_log=project_log,
+        ),
+        reading,
+        about=f"{flagged}\n\n{conflicts}",
     )
     return repair
+
+
+def repair_opening(
+    title: str,
+    context: str = "",
+    *,
+    epic_ref: str = "",
+    flagged: str,
+    others: str,
+    conflicts: str,
+    conclusion: str = "",
+    project_log: str = "",
+) -> dict[str, str]:
+    """The Business Analyst's repair as a session's start (crew#807). The code it was
+    shown, focused on the epic, is read through the tools."""
+    return {
+        "step": "## Your step: repair the criteria the check refused\n\n"
+        "QA checked this split's criteria before any story exists, and found the conflicts "
+        "below. Rewrite the acceptance criteria of the stories to repair, so that every "
+        "criterion can pass alongside the other stories, the project's code and the epic's "
+        "record. Change only what the conflicts need; keep every criterion they don't touch "
+        "word for word. Where a conflict is a merged test the epic means to change, keep the "
+        "criterion and declare the test instead: set the story's Existing tests to "
+        "'contract change: ' and the tests it updates. Check each criterion's expected "
+        "values against its own inputs: a number the stated data can't produce can't pass. "
+        "Where the epic doesn't say which outcome it wants, leave the case out rather than "
+        "guess. Return each story to repair once, with its title exactly as given and all "
+        "of its criteria. The other stories stay as they are.",
+        "epic": f"## The epic{f' ({epic_ref})' if epic_ref else ''}: {title}\n\n{context}",
+        "conclusion": f"## The epic's record\n\n{conclusion}" if conclusion else "",
+        "project_log": project_log,
+        "others": f"## The other stories of this split, which stay as they are\n\n{others}",
+        "flagged": f"## The stories to repair\n\n{flagged}",
+        "conflicts": f"## Why their criteria can't all pass\n\n{conflicts}",
+    }
 
 
 def check_accounted(proposal: StoryProposal, superseded: list[tuple[int, str]]) -> None:

@@ -33,13 +33,17 @@ from crew_org.session import signals
 from crew_org.session.conversation import COMPACT_AT, QUIET_LIMIT, Ending, Session
 from crew_org.session.git import OUTPUT_CHARS
 from crew_org.session.reading import ReadTools
-from crew_org.session.signals import READING_CALLS
+from crew_org.session.signals import Signals
 from crew_org.session.start import hints, project_map
 from crew_org.session.tools import SPECS, VIEW_LINES, _spec
 
 # One step's model time, set high to start (the Sponsor, crew#807): about three times the
 # longest refinement step the log holds, a split's 43 minutes on 2026-10-15.
 BACKSTOP_S = 2 * 60 * 60
+# Calls in a row with no edit and no run, which for a step that never edits or runs is
+# every call: the Sponsor's 100, not the Developer's 60 (crew#807). 50 views of one file
+# are the Developer's.
+READING_CALLS = 100
 QUIET = "Call a tool to go on, or `done` with your answer."
 REFUSED_DONE = (
     "`done` was refused, and the session goes on. Fix each of these, then call `done` again."
@@ -78,34 +82,32 @@ def reading_specs(head: str) -> list[dict[str, Any]]:
     return specs
 
 
-CITE = (
-    "Where your answer states a fact about the code, it says where you saw it: a path "
-    "and line (`src/x.py:42`), a test (`tests/test_x.py::test_y`) or a commit, so the "
-    "next step can check it with `view`."
-)
+def cite(head: str) -> str:
+    """How an answer cites the code (the Sponsor, crew#807): a path and definition first,
+    since line numbers drift as stories land, with the line as at main's commit."""
+    return (
+        "Where your answer states a fact about the code, it says where you saw it: a path "
+        "and definition first, with the line as at main's commit, such as "
+        f"`src/sprint_metrics/thresholds.py` `_flag` (line 117 at {head[:7]}); a test, "
+        "`path::name`; or a commit. The next step checks it with `view`."
+    )
 
 
-def done_spec(form: type[BaseModel], said: str, *, without: tuple[str, ...] = ()) -> dict[str, Any]:
+def done_spec(form: type[BaseModel], said: str, *, head: str) -> dict[str, Any]:
     """`done` as a step's answer form: its fields, each with the rules that check it.
 
     The rules are told where `calls.form_text` tells them in a one-call form (ADR 0031,
-    policy 2), in the description of the field they check. `without` drops fields the
-    session has no use for, such as the split's `need_files`: the session reads a file
-    itself.
+    policy 2), in the description of the field they check. `head` is the commit the
+    step reads, for how it cites the code.
     """
     schema = form.model_json_schema()
-    for name in without:
-        schema["properties"].pop(name, None)
-        if name in schema.get("required", []):
-            schema["required"].remove(name)
     title = str(schema.get("title", form.__name__))
     _tell(schema, title, whole=False)
     for name, model in (schema.get("$defs") or {}).items():
         _tell(model, name)
     # The form's own rules, which check it whole, are said with what it is.
-    description = " ".join(
-        [f"Your answer, which ends the session: {said}", *rulebook.told(title).get("", []), CITE]
-    )
+    told = rulebook.told(title).get("", [])
+    description = " ".join([f"Your answer, which ends the session: {said}", *told, cite(head)])
     return {
         "type": "function",
         "function": {"name": "done", "description": description, "parameters": _untitled(schema)},
@@ -167,8 +169,8 @@ nothing here changes or runs it.
 at most, or one Python definition by name), or a note this start names. `search` finds \
 text across the repository and the notes. `find` and `tests_for` are Python only. `git` \
 runs one git command that reads, such as `log` or `blame`.
-- **What the Goal, an epic, a note or a row says about the code** can be out of date or \
-wrong. Check it in the code before you rely on it.
+- What the Goal, an epic, a note or a row says the code *does today* can be out of date \
+or wrong: check it in the code. What they *decide* is binding.
 - **Tool output** stays in the conversation whole, unless it grows very long.
 - **`done`** is your answer, in its form. If it's refused, the reply says why: fix that \
 and call `done` again.
@@ -215,12 +217,13 @@ def project_section(root: Path) -> str:
     )
 
 
-def delivered_section(delivered: str, count: int, instead: str) -> tuple[str, dict[str, str]]:
+def delivered_section(delivered: str, instead: str) -> tuple[str, dict[str, str]]:
     """What the project has delivered, as a note to search: 205k characters for
     sprint-metrics on 2026-10-18, most of the split's 283k-character prompt on
     sprint-metrics#660."""
     if not delivered:
         return "", {}
+    count = sum(line.startswith("- #") for line in delivered.splitlines())
     return (
         "## What this project has already delivered\n\n"
         f"`{DELIVERED_NOTE}`: {count} stories, each its title and what its criteria "
@@ -306,7 +309,6 @@ class Step:
     said: str
     named_in: str
     step: str | None = None
-    without: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -400,7 +402,7 @@ def run(
         limits={
             "backstop_s": BACKSTOP_S,
             "compact_at": COMPACT_AT,
-            "reading_calls": signals.READING_CALLS,
+            "reading_calls": READING_CALLS,
             "views_of_one_file": signals.VIEWS_OF_ONE_FILE,
             "quiet_limit": QUIET_LIMIT,
         },
@@ -415,8 +417,9 @@ def run(
         role=step.role,
         step=step.step,
         name=step.name,
-        specs=[*reading_specs(reading.head), done_spec(step.form, step.said, without=step.without)],
+        specs=[*reading_specs(reading.head), done_spec(step.form, step.said, head=reading.head)],
         endings=("done",),
+        watch=Signals(reading_calls=READING_CALLS),
         quiet=QUIET,
         refused_done=REFUSED_DONE,
     )

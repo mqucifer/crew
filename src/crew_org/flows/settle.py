@@ -19,21 +19,12 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import ValidationError
-
 from crew_org.crews.panel_crew import PanelContext, PanelResult
 from crew_org.crews.settle_crew import (
     Conclusion,
     DesignSettlement,
     Row,
     Settlement,
-    Unsettled,
-    check_covers,
-    check_design_covers,
-    check_design_cut,
-    check_grounded,
-    check_not_cut,
-    check_product_calls,
     numbered,
     settle,
     settle_design,
@@ -41,7 +32,7 @@ from crew_org.crews.settle_crew import (
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows import record as record_flow
-from crew_org.llm import reraise_if_down
+from crew_org.session import steps
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 
 CONCLUSION_HEADER = record_flow.HEADER
@@ -54,9 +45,6 @@ NEEDS_HUMAN = "needs:human"
 # caught up yet; the revisit phase, which has the clone and the approving
 # identity, writes them and takes the label off once they've merged.
 TO_LOG_LABEL = "decision:to-log"
-# A conclusion the schema or the coverage check refuses is asked for again, told why.
-ATTEMPTS = 3
-
 _BARE = re.compile(r"(?<![\w/#])#(\d+)\b")
 
 
@@ -196,61 +184,20 @@ def propose(
     *,
     card: int,
     repo: str,
-    sink: EventSink | None = None,
+    reading: steps.Reading | None = None,
 ) -> Settlement:
-    """The Product Owner's settlement, asked for again if it is refused.
+    """The Product Owner's settlement, from one session over the code (crew#807).
 
-    Each refusal is written to the event log with its reason: a retry costs minutes,
-    and without the reason nobody can tell what the model keeps getting wrong.
+    A conclusion its checks refuse is answered in the session, each refusal recorded
+    on its call's event by its rule; a session that stops fails the settle.
     """
-    count = len(numbered(panel))
-    feedback = ""
-    refusals: list[str] = []
-    for attempt in range(ATTEMPTS):
-        try:
-            settlement: Settlement = attributed(settle, card=card, repo=repo, attempt=attempt + 1)(
-                context, panel, reply=reply, feedback=feedback
-            )
-            check_not_cut(settlement)
-            check_grounded(settlement, context.goal)
-            check_product_calls(settlement, panel)
-            check_covers(settlement, count)
-            return settlement
-        except (ValidationError, Unsettled, ValueError) as exc:
-            reraise_if_down(exc)
-            reason = str(exc)[:600]
-            refusals.append(reason)
-            feedback = every_refusal(refusals)
-            if sink is not None:
-                sink.note(
-                    EventKind.NOTE,
-                    f"#{card} conclusion refused, attempt {attempt + 1} of {ATTEMPTS}: "
-                    f"{reason[:160]}",
-                    card=card,
-                    attempt=attempt + 1,
-                    reason=reason,
-                    # The rule that refused it, when a declared one did (ADR 0031).
-                    **({"rules": [rule]} if (rule := getattr(exc, "rule", "")) else {}),
-                )
-    raise SettleFailed(f"the conclusion was refused {ATTEMPTS} times: {refusals[-1]}")
-
-
-def every_refusal(refusals: list[str]) -> str:
-    """The latest refusal, then the earlier ones, each once.
-
-    Shown only the latest, a retry fixed it by undoing the one before: an own call
-    refused as the Architect's became an open question, cut off at its length, then
-    an own call again, until the attempts ran out (crew#742).
-    """
-    latest, *earlier = dict.fromkeys(reversed(refusals))
-    if not earlier:
-        return latest
-    return (
-        latest
-        + "\n\nRefused earlier in this answer too. Each still applies, so fix this "
-        + "without bringing one back:\n"
-        + "\n".join(f"- {r}" for r in earlier)
-    )
+    try:
+        settlement: Settlement = attributed(settle, card=card, repo=repo)(
+            context, panel, reply=reply, reading=reading
+        )
+    except steps.StepStopped as exc:
+        raise SettleFailed(f"the conclusion wasn't given: {exc}") from exc
+    return settlement
 
 
 def _write(
@@ -291,6 +238,7 @@ def settle_epic(
     context: PanelContext,
     panel: PanelResult,
     known: set[str] | None = None,
+    reading: steps.Reading | None = None,
 ) -> Settled:
     """Settle an epic's panel notes into its body, or ask the Sponsor one question.
 
@@ -324,7 +272,7 @@ def settle_epic(
     if asked and not reply:
         return Settled(Outcome.WAITING)
 
-    settlement = propose(context, panel, reply, card=epic, repo=repo, sink=sink)
+    settlement = propose(context, panel, reply, card=epic, repo=repo, reading=reading)
     if settlement.conclusion is None:
         question = settlement.sponsor_question
         artifacts.comment(
@@ -412,39 +360,18 @@ def propose_design(
     record: str,
     questions: str,
     asked: list[str],
-    code: str,
     card: int,
     repo: str,
-    sink: EventSink | None = None,
+    reading: steps.Reading | None = None,
 ) -> DesignSettlement:
-    """The Architect's answers, asked for again with every reason when refused."""
-    feedback = ""
-    refusals: list[str] = []
-    for attempt in range(ATTEMPTS):
-        try:
-            answer: DesignSettlement = attributed(
-                settle_design, card=card, repo=repo, attempt=attempt + 1
-            )(context, record=record, questions=questions, code=code, feedback=feedback)
-            check_design_cut(answer)
-            check_design_covers(answer, asked)
-            return answer
-        except (ValidationError, Unsettled, ValueError) as exc:
-            reraise_if_down(exc)
-            reason = str(exc)[:600]
-            refusals.append(reason)
-            feedback = every_refusal(refusals)
-            if sink is not None:
-                sink.note(
-                    EventKind.NOTE,
-                    f"#{card} design questions refused, attempt {attempt + 1} of {ATTEMPTS}: "
-                    f"{reason[:160]}",
-                    card=card,
-                    attempt=attempt + 1,
-                    reason=reason,
-                    # The rule that refused it, when a declared one did (ADR 0031).
-                    **({"rules": [rule]} if (rule := getattr(exc, "rule", "")) else {}),
-                )
-    raise SettleFailed(f"the Architect's answers were refused {ATTEMPTS} times: {refusals[-1]}")
+    """The Architect's answers, from one session over the code (crew#807)."""
+    try:
+        answer: DesignSettlement = attributed(settle_design, card=card, repo=repo)(
+            context, record=record, questions=questions, asked=asked, reading=reading
+        )
+    except steps.StepStopped as exc:
+        raise SettleFailed(f"the Architect's answers weren't given: {exc}") from exc
+    return answer
 
 
 def settle_design_questions(
@@ -454,7 +381,7 @@ def settle_design_questions(
     repo: str,
     epic: int,
     context: PanelContext,
-    code: str = "",
+    reading: steps.Reading | None = None,
 ) -> Settled:
     """The Architect settles the record's design questions before the split (ADR 0018).
 
@@ -488,10 +415,9 @@ def settle_design_questions(
             record=text,
             questions=table,
             asked=ids,
-            code=code,
             card=epic,
             repo=repo,
-            sink=sink,
+            reading=reading,
         )
     except SettleFailed as exc:
         artifacts.comment(

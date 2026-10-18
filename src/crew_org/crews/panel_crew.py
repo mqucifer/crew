@@ -13,25 +13,23 @@ the test's three changes:
 - each member reviews the epic in front of it. How it fits a sibling is theirs
   to raise; a problem wholly inside a sibling, or in a delivered one, is not.
 
-Each member is its own call with the same context, and the four run at once.
-They don't see each other's notes. Who settles a note is the member's call too
-(`settled_by`), so the settle step only has to read them.
+Each member is its own session over the code with the same context, one at a time
+(crew#807, P1). They don't see each other's notes. Who settles a note is the
+member's call too (`settled_by`), so the settle step only has to read them.
 """
 
 from __future__ import annotations
 
-import contextvars
 import re
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from crew_org import calls
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
 from crew_org.rulebook import refuse
+from crew_org.session import steps
 
 # What each member reads the epic for: the area it owns, and nothing about what
 # to find. The last two carry the checks for the blind spots the test found.
@@ -40,7 +38,8 @@ FOCUS = {
         "You own coherence: the data shapes, interfaces and decisions in this epic that "
         "would be expensive to reverse, and whether they fit the rest of the Goal.\n"
         "A change to a published version or format is classified by the project's "
-        "versioning rule in the Sponsor's decisions: say whether it is MAJOR, MINOR or "
+        "versioning rule in the project's decision log or record: say whether it is MAJOR, "
+        "MINOR or "
         "PATCH under that rule, and quote it. If the epic needs code that a sibling epic "
         "builds, name the sibling and what it has to provide."
     ),
@@ -128,7 +127,6 @@ class PanelContext:
 
     goal_ref: str
     goal: str
-    project: str
     decisions: str
     epic_ref: str
     epic: str
@@ -142,32 +140,6 @@ class PanelResult:
     answers: dict[str, PanelAnswer]
     # A member whose call failed: its role and why. The others' notes still stand.
     failed: dict[str, str]
-
-
-def describe(context: PanelContext, role: str) -> str:
-    title = load_agents()[role]["role"]
-    siblings = "\n\n".join(f"### {s.ref} ({s.state})\n\n{s.text}" for s in context.siblings)
-    return (
-        f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
-        + (f"{context.project}\n\n" if context.project else "")
-        + (f"{context.decisions}\n\n" if context.decisions else "")
-        + (f"{context.project_log}\n\n" if context.project_log else "")
-        + (f"## The other epics under this Goal\n\n{siblings}\n\n" if siblings else "")
-        + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
-        "## Your task\n\n"
-        "This epic is about to be split into stories. Before it is, four roles each read "
-        f"it once, for what they own. You are the {title}. {FOCUS[role]}\n\n"
-        "Name each problem in your area that should be settled before the split: "
-        "something the epic gets wrong, leaves out or contradicts, against the Goal, the "
-        "project's record, the Sponsor's decisions, the project's decision log or the other "
-        "epics. Quote its source.\n\n"
-        f"{SCOPE}\n\n"
-        'If there is nothing in your area to add, say so: "nothing to add" is a complete '
-        "answer, and better than a note that isn't needed. Don't restate the epic, propose "
-        "stories or a design, or note things outside your area; the other roles cover theirs.\n\n"
-        "Write every issue or pull request as owner/repo#number, as given above, never as a "
-        "bare number."
-    )
 
 
 # The Goal template's own last line, which is the crew's, not the Sponsor's words.
@@ -220,34 +192,44 @@ def _decided(decisions: str) -> bool:
     return "\n## " in decisions or "Not searched" in decisions
 
 
-def review(context: PanelContext, role: str) -> PanelAnswer:
-    """One member's read of the epic."""
-    answer = calls.ask(
+# The members' own role text in refinement, where one has it (crew#807).
+ROLE_TEXT = {"architect": "refinement", "qa_engineer": "panel"}
+STEPS = {
+    role: steps.Step(
+        f"panel {role}",
         role,
-        [calls.Part("task", describe(context, role))],
         PanelAnswer,
-        expected="Your notes on this epic, or nothing to add.",
+        "your notes on this epic, or nothing to add.",
+        "the epic",
+        step=ROLE_TEXT.get(role),
+    )
+    for role in FOCUS
+}
+
+
+def review(context: PanelContext, role: str, reading: steps.Reading | None = None) -> PanelAnswer:
+    """One member's read of the epic, in a session over the code at `reading`."""
+    answer: PanelAnswer = steps.run(
+        STEPS[role], opening(context, role), reading, about=f"{context.epic}\n\n{context.goal}"
     )
     return answer
 
 
-def run_panel(context: PanelContext, roles: tuple[str, ...] = ROLES) -> PanelResult:
-    """All members at once. One failing doesn't lose the others' notes."""
-
-    def one(role: str) -> PanelAnswer:
-        # The caller attributes the card and repo; each member adds its own purpose.
-        answer: PanelAnswer = attributed(lambda: review(context, role), purpose=f"panel {role}")()
-        return answer
-
+def run_panel(
+    context: PanelContext,
+    roles: tuple[str, ...] = ROLES,
+    reading: steps.Reading | None = None,
+) -> PanelResult:
+    """Each member in turn, one session at a time (P1). One failing doesn't lose the
+    others' notes."""
     answers: dict[str, PanelAnswer] = {}
     failed: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=len(roles)) as pool:
-        # Each thread runs in its own copy of this context, so its call is
-        # attributed to the tick's span and card.
-        futures = {role: pool.submit(contextvars.copy_context().run, one, role) for role in roles}
-        for role, future in futures.items():
-            try:
-                answers[role] = future.result()
-            except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
-                failed[role] = f"{type(exc).__name__}: {exc}"[:300]
+    for role in roles:
+        try:
+            # The caller attributes the card and repo; each member adds its own purpose.
+            answers[role] = attributed(
+                lambda r=role: review(context, r, reading), purpose=f"panel {role}"
+            )()
+        except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
+            failed[role] = f"{type(exc).__name__}: {exc}"[:300]
     return PanelResult(answers, failed)

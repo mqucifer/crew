@@ -29,6 +29,10 @@ VIEWS_OF_ONE_FILE = 50
 
 @dataclass
 class Signals:
+    # The ceilings: the Developer's, unless a session sets its own, as refinement's
+    # reading steps do (crew#807).
+    reading_calls: int = field(default_factory=lambda: READING_CALLS)
+    views_of_one_file: int = field(default_factory=lambda: VIEWS_OF_ONE_FILE)
     since_action: int = 0
     views: dict[str, int] = field(default_factory=dict)
     edits_since_run: int = 0
@@ -72,9 +76,9 @@ class Signals:
 
     def ceiling(self) -> dict[str, Any] | None:
         """The ceiling reached, with its value, or None."""
-        if self.since_action >= READING_CALLS:
+        if self.since_action >= self.reading_calls:
             return {"ceiling": "reading", "calls": self.since_action}
         path, views = max(self.views.items(), key=lambda kv: kv[1], default=("", 0))
-        if views >= VIEWS_OF_ONE_FILE:
+        if views >= self.views_of_one_file:
             return {"ceiling": "re_viewing", "file": path, "views": views}
         return None

@@ -5,6 +5,7 @@ and a failure on one card does not abandon the rest."""
 from __future__ import annotations
 
 from crew_org.config import load_org
+from crew_org.crews.criteria_crew import CriteriaCheck
 from crew_org.crews.refinement_crew import Epic, EpicProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import board_flow
@@ -607,70 +608,95 @@ def test_an_approved_epic_stops_asking_for_a_decision(monkeypatch):
 # --- refinement sees the code --------------------------------------------
 
 
-def test_refinement_is_shown_the_code_it_is_deciding_about(monkeypatch, tmp_path):
-    """crew#6 was split into three stories addressed to "the audit trail entry"
-    with no way to know the board already had an empty Owner Agent field. A
-    Business Analyst that cannot see the product writes criteria against one it
-    is imagining."""
+def _checkout(tmp_path):
+    """A git checkout of the default branch, as `Workspace.at_main` makes one."""
+    import subprocess
+
     (tmp_path / "src").mkdir()
-    (tmp_path / "src/mod.py").write_text("def already_here():\n    SENTINEL = 1\n    return 1\n")
+    (tmp_path / "src/mod.py").write_text("def already_here():\n    return 1\n")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(tmp_path)]
+    subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "first"], check=True)
+    head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True)
+    return head.stdout.strip()
+
+
+def test_refinement_reads_the_code_through_one_checkout_at_main(monkeypatch, tmp_path):
+    """crew#6 was split into three stories addressed to "the audit trail entry" with no
+    way to know the board already had an empty Owner Agent field. Each step now reads
+    the code in its own session, over one checkout a tick makes per repository
+    (crew#807), not a copy of the repository in its prompt."""
+    head = _checkout(tmp_path)
+    made = []
 
     class FakeWorkspace:
         def for_repo(self, repo):
             return self
 
-        def current(self):
+        def at_main(self):
+            made.append(1)
             return tmp_path
 
-    shown = {}
+    def no_map(root, repo):
+        raise RuntimeError("no map in a test")
 
-    def spy(title, context="", *, repository="", feedback="", **_kw):
-        shown["repository"] = repository
+    seen = {}
+
+    def proposer(goal, **kw):
+        seen["decompose"] = kw["reading"]
+        return PROPOSAL
+
+    def spy(title, context="", **kw):
+        seen["split"] = kw["reading"]
         return SPLIT
 
-    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda g, **kw: PROPOSAL)
+    monkeypatch.setattr("crew_org.tools.coverage_map.build", no_map)
+    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", proposer)
     monkeypatch.setattr("crew_org.flows.board_flow.split_epic", spy)
+    monkeypatch.setattr("crew_org.flows.board_flow.check_criteria", lambda **_: CriteriaCheck())
     tick(
-        FakeBoard([epic_card(3)]),
+        FakeBoard([card(1), epic_card(3)]),
         FakeIssues(),
         EventSink(None),
         default_repo="sprint-metrics",
         ws=FakeWorkspace(),
     )
-
-    assert "already_here" in shown["repository"], "the signature index"
-    assert "SENTINEL" in shown["repository"], "and the bodies"
-    assert "Target an existing definition" not in shown["repository"], (
-        "refinement is not editing; rules for a job it is not doing are noise"
-    )
+    assert seen["decompose"] is seen["split"], "one checkout for the tick's steps"
+    assert (seen["split"].root, seen["split"].head) == (tmp_path, head)
+    assert seen["split"].coverage is None and made == [1]
 
 
-def test_a_repository_it_cannot_read_does_not_stop_refinement(monkeypatch):
-    """Working blind is worse than seeing the code and better than not refining
-    at all, so the miss is reported rather than fatal."""
+def test_a_checkout_that_cant_be_made_is_said_and_its_steps_get_none(monkeypatch):
+    """A step with no checkout fails as one with no model would (`steps.NoCheckout`)."""
 
     class BrokenWorkspace:
         def for_repo(self, repo):
             return self
 
-        def current(self):
+        def at_main(self):
             raise RuntimeError("no such remote")
 
+    seen = {}
+
+    def spy(title, context="", **kw):
+        seen["reading"] = kw["reading"]
+        return SPLIT
+
     monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda g, **kw: PROPOSAL)
-    monkeypatch.setattr("crew_org.flows.board_flow.split_epic", lambda t, c="", **kw: SPLIT)
+    monkeypatch.setattr("crew_org.flows.board_flow.split_epic", spy)
     sink = EventSink(None)
-    seen = []
-    sink.subscribe(seen.append)
-    result = tick(
+    notes = []
+    sink.subscribe(notes.append)
+    tick(
         FakeBoard([epic_card(3)]),
         FakeIssues(),
         sink,
         default_repo="sprint-metrics",
         ws=BrokenWorkspace(),
     )
-
-    assert result.stories_created, "the split still happened"
-    assert any("without its code" in e.summary for e in seen), "and it said so"
+    assert seen["reading"] is None
+    assert any("no checkout to read: no such remote" in e.summary for e in notes)
 
 
 # --- the Sponsor can send work back --------------------------------------
@@ -832,82 +858,13 @@ def test_no_sponsor_configured_keeps_the_old_behaviour():
     assert unauthored_goals(cards) == [], "nothing to report when nothing is configured"
 
 
-# --- #231: the Business Analyst's own view of the repository -------------------------------
+# --- #231: what the split reads ---------------------------------------------------------
 
 
-def _big_repo(tmp_path):
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/report.py").write_text("def format_report():\n    HEALTH = 1\n    return 1\n")
-    (tmp_path / "src/other.py").write_text("def unrelated():\n    OTHER_BODY = 2\n    return 2\n")
-
-    class FakeWorkspace:
-        def for_repo(self, repo):
-            return self
-
-        def current(self):
-            return tmp_path
-
-    return FakeWorkspace()
-
-
-def _spying(monkeypatch, answers):
-    shown: list[str] = []
-
-    def spy(title, context="", *, repository="", feedback="", **_kw):
-        shown.append(repository)
-        return answers.pop(0)
-
-    monkeypatch.setattr("crew_org.flows.board_flow.propose_epics", lambda g, **kw: PROPOSAL)
-    monkeypatch.setattr("crew_org.flows.board_flow.split_epic", spy)
-    # Small enough to focus: the real threshold is 60k characters.
-    monkeypatch.setattr("crew_org.flows.board_flow.REFINE_FOCUS_ABOVE_CHARS", 10)
-    return shown
-
-
-def test_a_large_repository_is_focused_on_what_the_epic_names(monkeypatch, tmp_path):
-    """2026-09-30: every split was over 60k tokens with the whole repository."""
-    shown = _spying(monkeypatch, [SPLIT])
-    issues = FakeIssues()
-    issues.get = lambda repo, n: {"body": "Lead the report from `format_report` with a summary."}
-    tick(
-        FakeBoard([epic_card(3)]),
-        issues,
-        EventSink(None),
-        default_repo="sprint-metrics",
-        ws=_big_repo(tmp_path),
-    )
-    assert "HEALTH = 1" in shown[0], "the file the epic names, in full"
-    assert "OTHER_BODY" not in shown[0], "the rest only by name, on the map"
-    assert "unrelated" in shown[0]
-
-
-def test_it_may_ask_to_see_a_file_and_is_asked_again_with_it(monkeypatch, tmp_path):
-    asking = StoryProposal(epic_title="Epic 3", need_files=["src/other.py"])
-    shown = _spying(monkeypatch, [asking, SPLIT])
-    tick(
-        FakeBoard([epic_card(3)]),
-        FakeIssues(),
-        EventSink(None),
-        default_repo="sprint-metrics",
-        ws=_big_repo(tmp_path),
-    )
-    assert len(shown) == 2
-    assert "OTHER_BODY" not in shown[0] and "OTHER_BODY" in shown[1]
-
-
-def test_asking_past_the_limit_is_a_failed_split_not_an_empty_one(monkeypatch, tmp_path):
-    asking = [StoryProposal(epic_title="Epic 3", need_files=[f"src/{n}.py"]) for n in "abcd"]
-    _spying(monkeypatch, asking)
-    issues = FakeIssues()
-    result = tick(
-        FakeBoard([epic_card(3)]),
-        issues,
-        EventSink(None),
-        default_repo="sprint-metrics",
-        ws=_big_repo(tmp_path),
-    )
-    assert result.failed and "past the limit" in result.failed[0][1]
-    assert issues.created == [], "no stories written from an answer that only asked"
+def test_a_split_reads_files_in_its_session_and_never_asks_to_be_shown_them():
+    """`need_files` asked for files to be shown on a second call (#231). A session views
+    them itself (crew#807), so the form has no ask."""
+    assert "need_files" not in StoryProposal.model_fields
 
 
 # --- a project ready only for its skeleton (crew#690, ADR 0030) ------------

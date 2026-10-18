@@ -11,9 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.events import EventSink
 from crew_org.flows import acceptance
-from crew_org.flows.board_flow import RepoContext
 from crew_org.project import (
     RECORD_PATH,
     ProjectRecordError,
@@ -113,34 +111,22 @@ def test_the_brief_carries_purpose_scope_release_done_and_bounds(tmp_path):
 # --- 1: refinement is shown purpose and scope ------------------------------------------
 
 
-def test_refinement_is_shown_the_record_before_the_code(tmp_path):
-    class Clone:
-        def for_repo(self, repo):
-            return self
+def test_refinement_is_shown_the_record_as_the_whole_projects(tmp_path):
+    """A refinement step's start holds the record, said to be the project's, not the
+    step's scope; the code is read in the session (crew#807)."""
+    from crew_org.session import steps
 
-        def current(self):
-            return project(tmp_path)
-
-    shown = RepoContext(Clone(), EventSink(None)).for_repo("sprint-metrics")
-    assert shown.startswith("## What this project is for")
-    assert shown.index("**Purpose:**") < shown.index("### Files and what they define")
+    shown = steps.project_section(project(tmp_path))
+    assert shown.startswith("## The project\n\nFrom `.crew/project.yaml`, the whole project's")
+    assert "not this step's scope" in shown and "**Purpose:**" in shown
+    assert "Work here is judged against them" not in shown
 
 
 def test_refinement_goes_on_without_a_record_it_cannot_read(tmp_path):
-    notes = []
-    sink = EventSink(None)
-    sink.subscribe(notes.append)
+    from crew_org.session import steps
 
-    class Clone:
-        def for_repo(self, repo):
-            return self
-
-        def current(self):
-            return project(tmp_path, record="not: [a record")
-
-    shown = RepoContext(Clone(), sink).for_repo("sprint-metrics")
-    assert "### Files and what they define" in shown and "**Purpose:**" not in shown
-    assert any("without its record" in n.summary for n in notes)
+    shown = steps.project_section(project(tmp_path, record="not: [a record"))
+    assert shown == "## The project\n\n(no record)"
 
 
 # --- 2: delivery and QA are shown done and what not to touch ------------------------------

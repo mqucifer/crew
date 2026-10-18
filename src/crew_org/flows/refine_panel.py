@@ -25,6 +25,7 @@ from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
 from crew_org.llm import reraise_if_down
+from crew_org.session.steps import Reading
 from crew_org.tools.github_issues import IssueClient
 
 if TYPE_CHECKING:
@@ -43,16 +44,15 @@ def panel_step(
     epic: Card,
     repo: str,
     *,
-    project: str,
     search: list[str],
-    code: Callable[[str], str] = lambda _about: "",
+    reading: Callable[[], Reading | None] = lambda: None,
     unapproved: frozenset[int] = frozenset(),
 ) -> bool:
     """True when the epic's record is settled and it may be split now.
 
-    `code` is the repository as the split sees it, focused on what it is given:
-    the Architect reads it for the files its questions name. `unapproved` is the
-    sibling epics still waiting for the Sponsor's approval, which it never waits on.
+    `reading` gives the checkout the members, the settle and the Architect read in
+    their sessions (crew#807), made only when one runs. `unapproved` is the sibling
+    epics still waiting for the Sponsor's approval, which it never waits on.
     """
     number = epic.number or 0
     if not epic.parent:
@@ -62,7 +62,7 @@ def panel_step(
     context = None
     try:
         if not settle_flow.has_conclusion(issues.get(repo, number).get("body") or ""):
-            context = _gather(issues, sink, repo, number, project=project, search=where)
+            context = _gather(issues, sink, repo, number, search=where)
             notes = panel_flow.panel_on(issues, repo, number)
             if notes is None:
                 sink.emit(
@@ -74,7 +74,7 @@ def panel_step(
                         detail={"rule": "skip.refine_panel.waits_for_the_sponsors_answer_on"},
                     )
                 )
-                notes = attributed(run_panel, card=number, repo=repo)(context)
+                notes = attributed(run_panel, card=number, repo=repo)(context, reading=reading())
                 if not notes.answers:
                     raise PanelFailed("; ".join(f"{r}: {why}" for r, why in notes.failed.items()))
                 panel_flow.post(issues, repo, number, notes)
@@ -86,6 +86,7 @@ def panel_step(
                 context=context,
                 panel=notes,
                 known=set(where),
+                reading=reading(),
             )
             if settled.outcome is settle_flow.Outcome.WAITING:
                 held("skip.refine_panel.waits_for_the_sponsors_answer_on", repo=repo, card=number)
@@ -101,14 +102,14 @@ def panel_step(
                 held("skip.refine_panel.waits_for_to_be_split_it", repo=repo, card=number)
                 result.skipped.append((number, f"waits for #{first} to be split: it builds on it"))
                 return False
-            context = context or _gather(issues, sink, repo, number, project=project, search=where)
+            context = context or _gather(issues, sink, repo, number, search=where)
             designed = settle_flow.settle_design_questions(
                 issues,
                 sink,
                 repo=repo,
                 epic=number,
                 context=context,
-                code=code("\n".join(q.question for q in asked)),
+                reading=reading(),
             )
             if designed.outcome is settle_flow.Outcome.WAITING:
                 held("skip.refine_panel.waits_for_a_person_to_settle", repo=repo, card=number)
@@ -176,9 +177,9 @@ def _named(text: str, owner: str, repo: str) -> set[int]:
 
 
 def _gather(
-    issues: IssueClient, sink: EventSink, repo: str, number: int, *, project: str, search: list[str]
+    issues: IssueClient, sink: EventSink, repo: str, number: int, *, search: list[str]
 ) -> PanelContext:
-    context = panel_flow.gather(issues, repo, number, project=project, search=search)
+    context = panel_flow.gather(issues, repo, number, search=search)
     # Seen before it crowds the context (crew#468).
     sink.note(
         EventKind.NOTE,

@@ -1,12 +1,11 @@
 """The refinement panel (crew#440): what each member is shown, how the four run, and the comment.
 
-The model call itself (`review`) is replaced here; `crew panel` was run for real
-before the pull request, because a mock is what hid crew#294.
+Each member's session (`review`) is replaced here, and the session itself is tested
+in `test_refine_sessions.py`; `crew panel` was run for real before the pull request,
+because a mock is what hid crew#294.
 """
 
 from __future__ import annotations
-
-import threading
 
 import httpx
 import pytest
@@ -21,10 +20,11 @@ from crew_org.crews.panel_crew import (
     PanelNote,
     PanelResult,
     Sibling,
-    describe,
+    opening,
     run_panel,
 )
 from crew_org.flows import panel
+from crew_org.session import steps
 from crew_org.tools.github_issues import IssueClient, Trust
 
 TRUST = Trust(sponsor="mquarters", crew=frozenset({"mqucifer-crew[bot]"}), tools=frozenset())
@@ -45,8 +45,7 @@ def context(**overrides) -> PanelContext:
     params = dict(
         goal_ref="mqucifer/sprint-metrics#174",
         goal="GOAL TEXT",
-        project="## What this project is for\n\nPROJECT TEXT",
-        decisions="# The Sponsor's recorded decisions\n\nDECISIONS TEXT",
+        decisions="# The Sponsor's recorded decisions\n\n## sm#174: DECISIONS TEXT",
         epic_ref="mqucifer/sprint-metrics#406",
         epic="# Run as a service\n\nEPIC TEXT",
         siblings=[
@@ -79,12 +78,16 @@ def test_a_note_says_who_settles_it_and_only_from_the_three():
 # --- what a member is shown ----------------------------------------------------------------
 
 
+def describe(ctx: PanelContext, role: str) -> str:
+    """A member's own parts of its session's start, as it reads them."""
+    return "\n\n".join(p for p in opening(ctx, role).values() if p)
+
+
 @pytest.mark.parametrize("role", ROLES)
 def test_every_member_is_shown_the_same_context(role):
     text = describe(context(), role)
     for shown in (
         "GOAL TEXT",
-        "PROJECT TEXT",
         "DECISIONS TEXT",
         "EPIC TEXT",
         "SIBLING ONE",
@@ -139,7 +142,7 @@ def test_references_are_asked_for_in_full():
 
 
 def test_a_context_without_siblings_or_decisions_still_reads():
-    text = describe(context(siblings=[], decisions="", project=""), "qa_engineer")
+    text = describe(context(siblings=[], decisions=""), "qa_engineer")
     assert "other epics under this Goal" not in text
     assert "EPIC TEXT" in text
 
@@ -147,25 +150,26 @@ def test_a_context_without_siblings_or_decisions_still_reads():
 # --- the four at once ----------------------------------------------------------------------
 
 
-def test_the_four_members_run_at_the_same_time(monkeypatch):
-    # Each waits for the other three: this only passes if all four are in flight together.
-    barrier = threading.Barrier(len(ROLES), timeout=10)
-    seen = []
+def test_the_four_members_run_one_at_a_time_in_order(monkeypatch):
+    """One session at a time, as the Developer's (crew#807, P1)."""
+    running, seen = [], []
 
-    def review(ctx, role):
-        barrier.wait()
+    def review(ctx, role, reading=None):
+        assert not running, "a member started while another ran"
+        running.append(role)
         seen.append(role)
+        running.pop()
         return PanelAnswer(nothing_to_add=True)
 
     monkeypatch.setattr(panel_crew, "review", review)
     result = run_panel(context())
-    assert sorted(seen) == sorted(ROLES)
+    assert seen == list(ROLES)
     assert list(result.answers) == list(ROLES)
     assert result.failed == {}
 
 
 def test_a_member_that_fails_does_not_lose_the_others_notes(monkeypatch):
-    def review(ctx, role):
+    def review(ctx, role, reading=None):
         if role == "qa_engineer":
             raise RuntimeError("the model returned nothing")
         return PanelAnswer(nothing_to_add=False, notes=[note(problem=f"from {role}")])
@@ -176,13 +180,28 @@ def test_a_member_that_fails_does_not_lose_the_others_notes(monkeypatch):
     assert result.failed == {"qa_engineer": "RuntimeError: the model returned nothing"}
 
 
-def test_a_member_whose_model_gave_no_structured_answer_is_a_failure_not_a_none(monkeypatch):
-    from crew_org import calls
+def test_a_member_with_no_checkout_to_read_fails_rather_than_answering_blind():
+    result = run_panel(context(), roles=("qa_engineer",))
+    assert result.answers == {}
+    assert result.failed["qa_engineer"].startswith("NoCheckout")
 
-    empty = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
-    monkeypatch.setattr(calls, "stream", lambda body, **_: empty)
-    with pytest.raises(calls.Refused, match="the answer was empty"):
-        panel_crew.review(context(), "qa_engineer")
+
+def test_each_member_is_its_own_session_with_its_role_text(monkeypatch):
+    """The Architect and QA read with their refinement role text (crew#807)."""
+    ran = []
+    monkeypatch.setattr(
+        steps,
+        "run",
+        lambda step, parts, reading, **kw: ran.append(step) or PanelAnswer(nothing_to_add=True),
+    )
+    run_panel(context(), reading="the checkout")
+    assert [(s.name, s.role, s.step) for s in ran] == [
+        ("panel architect", "architect", "refinement"),
+        ("panel ux_designer", "ux_designer", None),
+        ("panel qa_engineer", "qa_engineer", "panel"),
+        ("panel devops_engineer", "devops_engineer", None),
+    ]
+    assert all(s.form is PanelAnswer for s in ran)
 
 
 # --- the comment ---------------------------------------------------------------------------
@@ -274,12 +293,11 @@ def goal_with_epics():
 
 def test_the_context_is_the_goal_the_epic_and_its_live_siblings():
     by, children = goal_with_epics()
-    ctx = panel.gather(github(by, children), "sprint-metrics", 406, project="THE RECORD", search=[])
+    ctx = panel.gather(github(by, children), "sprint-metrics", 406, search=[])
     assert ctx.goal_ref == "mqucifer/sprint-metrics#174"
     assert "THE GOAL BODY" in ctx.goal and "Goal: a service" in ctx.goal
     assert ctx.epic_ref == "mqucifer/sprint-metrics#406"
     assert ctx.epic == "# Run as a service\n\nTHE EPIC"
-    assert ctx.project == "THE RECORD"
     assert "The Sponsor's recorded decisions" in ctx.decisions
     assert [(s.ref, s.state) for s in ctx.siblings] == [
         ("mqucifer/sprint-metrics#186", "delivered"),
@@ -289,7 +307,7 @@ def test_the_context_is_the_goal_the_epic_and_its_live_siblings():
 
 def test_a_superseded_epic_and_the_epic_itself_are_not_among_its_siblings():
     by, children = goal_with_epics()
-    ctx = panel.gather(github(by, children), "sprint-metrics", 406, project="", search=[])
+    ctx = panel.gather(github(by, children), "sprint-metrics", 406, search=[])
     refs = [s.ref for s in ctx.siblings]
     assert "mqucifer/sprint-metrics#184" not in refs
     assert "mqucifer/sprint-metrics#406" not in refs
@@ -298,7 +316,7 @@ def test_a_superseded_epic_and_the_epic_itself_are_not_among_its_siblings():
 
 def test_the_approval_footer_is_not_part_of_what_a_member_reads():
     by, children = goal_with_epics()
-    ctx = panel.gather(github(by, children), "sprint-metrics", 406, project="", search=[])
+    ctx = panel.gather(github(by, children), "sprint-metrics", 406, search=[])
     assert "Proposed by the Product Owner" not in ctx.epic
     assert all("Proposed by the Product Owner" not in s.text for s in ctx.siblings)
 
@@ -307,7 +325,7 @@ def test_an_epic_with_no_parent_has_no_goal_to_be_read_against():
     by, children = goal_with_epics()
     by[406] = issue(406, body="THE EPIC")
     with pytest.raises(panel.NotUnderAGoal):
-        panel.gather(github(by, children), "sprint-metrics", 406, project="", search=[])
+        panel.gather(github(by, children), "sprint-metrics", 406, search=[])
 
 
 # --- posting -------------------------------------------------------------------------------

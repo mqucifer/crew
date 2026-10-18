@@ -8,8 +8,9 @@ the Developer builds to them, the Code Reviewer reads them, and QA proves them
 with tests, all through the paths that already read a story's criteria.
 
 Until the note exists, planning holds the epic's stories back, as it does for
-a design note (#155). A note that can't cover every story after a retry blocks
-the epic for a person, with the reason.
+a design note (#155). The note is written in a session over the code (crew#807),
+and `done` refuses one that doesn't cover every story. One that can't be written,
+or a session that stops, blocks the epic for a person, with the reason.
 """
 
 from __future__ import annotations
@@ -29,15 +30,14 @@ from crew_org.flows.board_flow import (
     STORY_SPLIT_MARKER,
 )
 from crew_org.llm import reraise_if_down
-from crew_org.project import ProjectRecordError, brief, read_record
-from crew_org.rulebook import says
+from crew_org.rulebook import Refusal, says
+from crew_org.session.steps import StepStopped
 from crew_org.tools.github_project import Card
 
 NOTE_MARKER = "<!-- crew:presentation-note -->"
 # In a story's body, where the UX Designer's criteria begin. Read back so a
 # story is never given them twice.
 CRITERIA_MARKER = "<!-- crew:ux-criteria -->"
-ATTEMPTS = 2
 BY = "UX Designer"
 EPIC_TYPE = "Epic"
 
@@ -174,15 +174,17 @@ def with_reader_criteria(body: str, criteria: list[Any], line: Callable[..., lis
 def coverage(note: Any, stories: list[dict]) -> list[str]:
     """What's wrong with the note's reach: stories it misses or doesn't know."""
     wanted = {s["number"] for s in stories}
+    # A story whose reader criteria all hold at main already is covered (crew#807).
+    holds = {h.story for h in getattr(note, "already_holds", [])}
     given = [s.story for s in note.stories]
     twice = sorted({n for n in given if given.count(n) > 1})
     problems = [
         says("check.presentation_notes.coverage", "missing", n=n)
-        for n in sorted(wanted - set(given))
+        for n in sorted(wanted - set(given) - holds)
     ]
     problems += [
         says("check.presentation_notes.coverage", "unknown", n=n)
-        for n in sorted(set(given) - wanted)
+        for n in sorted((set(given) | holds) - wanted)
     ]
     problems += [says("check.presentation_notes.coverage", "twice", n=n) for n in twice]
     return problems
@@ -201,9 +203,11 @@ def write_notes(
     line: Callable[..., list[str]],
 ) -> PresentationNotes:
     """Write the note for every `needs:ux` epic whose stories are split, and add its criteria."""
-    from crew_org.tools.repo_context import repository_context  # noqa: PLC0415
+    from crew_org.flows import panel as panel_flow  # noqa: PLC0415
+    from crew_org.flows.board_flow import RepoContext  # noqa: PLC0415
 
     result = PresentationNotes()
+    context = RepoContext(ws, sink)
     for epic in cards:
         repo = epic.repo or default_repo
         number = epic.number or 0
@@ -214,22 +218,27 @@ def write_notes(
         if not stories:
             continue  # nothing split yet, or everything built: no reader left to write for
         try:
-            clone = ws.for_repo(repo).current()
-            try:
-                record = read_record(clone)
-            except ProjectRecordError:
-                record = None
             goal = ""
             if epic.parent:
                 g = issues.get(repo, epic.parent)
-                goal = f"#{epic.parent} {g.get('title') or ''}\n\n{g.get('body') or ''}"
+                goal = f"{g.get('title') or ''}\n\n{g.get('body') or ''}"
+            siblings = (
+                "\n\n".join(
+                    f"### {s.ref} ({s.state})\n\n{s.text}"
+                    for s in panel_flow.siblings_of(issues, repo, epic.parent, number)
+                )
+                if epic.parent
+                else ""
+            )
             outcome = attributed(_write_one, card=number, repo=repo)(
                 write=write,
                 stories=sorted(stories, key=lambda s: s["number"]),
+                goal_ref=f"{issues.owner}/{repo}#{epic.parent}" if epic.parent else "",
                 goal=goal,
-                epic=f"#{number} {epic.title}\n\n{issues.get(repo, number).get('body') or ''}",
-                project=brief(record) if record else "",
-                repository=repository_context(clone),
+                epic_ref=f"{issues.owner}/{repo}#{number}",
+                epic=panel_flow._with_record(issues.get(repo, number)),
+                siblings=siblings,
+                reading=context.reading_for(repo),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -283,26 +292,24 @@ def write_notes(
     return result
 
 
-def _write_one(*, write, stories, goal, epic, project, repository):
+def _write_one(*, write, stories, **shown):
     """The note, or (why it couldn't be written,) for a person."""
     story_text = "\n\n".join(
         f"### #{s['number']} {s['title']}\n\n{s.get('body') or ''}" for s in stories
     )
-    feedback = ""
-    problems: list[str] = []
-    for _attempt in range(ATTEMPTS):
-        note = write(
-            goal=goal,
-            epic=epic,
-            stories=story_text,
-            project=project,
-            repository=repository,
-            feedback=feedback,
-        )
+
+    def check(note: Any) -> None:
+        # A note that says what's beyond its reach covers nothing; the epic waits for
+        # a person instead.
         if note.beyond_reach:
-            return (f"The UX Designer could not resolve: {note.beyond_reach}",)
-        problems = coverage(note, stories)
-        if not problems:
-            return note
-        feedback = "\n".join(f"- {p}" for p in problems)
-    return ("It didn't cover the epic's stories after a retry: " + "; ".join(problems),)
+            return
+        if problems := coverage(note, stories):
+            raise Refusal(" ".join(problems), rule="check.presentation_notes.coverage")
+
+    try:
+        note = write(stories=story_text, check=check, **shown)
+    except StepStopped as exc:
+        return (f"The UX Designer's session stopped: {exc}",)
+    if note.beyond_reach:
+        return (f"The UX Designer could not resolve: {note.beyond_reach}",)
+    return note

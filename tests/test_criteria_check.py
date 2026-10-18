@@ -230,7 +230,7 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
     edge (the context review, C5); one story per call (crew#583, step D3)."""
     from crew_org.flows.criteria_check import check_each
 
-    seen, focused = [], []
+    seen = []
 
     def check(**shown):
         seen.append(shown)
@@ -238,11 +238,7 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
             return ON_CYCLE_TIME
         return CriteriaCheck()
 
-    def code_for(text):
-        focused.append(text.split("\n", 1)[0])
-        return f"code for {text.split(chr(10), 1)[0]}"
-
-    found = check_each(check, SPLIT, code_for=code_for, conclusion="R1", goal="G")
+    found = check_each(check, SPLIT, conclusion="R1", goal="G", reading="THE CHECKOUT")
     titles = [s.title for s in SPLIT.stories]
     assert [s["stories"].split("\n", 1)[0] for s in seen] == [f"### {t}" for t in titles]
     assert all(s["conclusion"] == "R1" and s["goal"] == "G" for s in seen)
@@ -250,7 +246,8 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
         others = [t for t in titles if t != title]
         assert all(f"### {t}" in shown["siblings"] for t in others)
         assert f"### {title}" not in shown["siblings"]
-        assert shown["repository"] == f"code for ### {title}"
+        # The code is read in each story's session, over the tick's checkout (crew#807).
+        assert shown["reading"] == "THE CHECKOUT" and "repository" not in shown
     assert found.conflicts == ON_CYCLE_TIME.conflicts
 
 
@@ -307,7 +304,7 @@ def test_a_story_conflicting_with_one_test_is_reported_once():
             ]
         )
 
-    found = criteria_check.check_each(check, SPLIT, code_for=lambda _t: "")
+    found = criteria_check.check_each(check, SPLIT)
     assert [c.against for c in found.conflicts] == [
         "test_sprint_keys (tests/test_service.py)",
         "test_enum_exact in tests/test_service.py",

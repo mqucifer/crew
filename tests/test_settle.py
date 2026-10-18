@@ -1,7 +1,8 @@
 """The settle step (crew#440): the panel's notes become the epic's conclusion.
 
-The model call (`settle`) is replaced here; `crew settle` was run for real before the
-pull request.
+The session (`settle`) is replaced here, and its checks at `done` are tested by what
+it hands the session; the session itself is in `test_refine_sessions.py`. `crew settle`
+was run for real before the pull request.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ from crew_org.crews.settle_crew import (
     DECISION_CHARS,
     GOAL_QUOTE_CHARS,
     INFRA_CHARS,
-    QUESTION_CHARS,
     Conclusion,
     Dismissal,
     ForInfra,
@@ -31,14 +31,16 @@ from crew_org.crews.settle_crew import (
     check_grounded,
     check_not_cut,
     check_product_calls,
-    describe,
     note_owners,
     numbered,
+    opening,
 )
 from crew_org.events import EventSink
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record
 from crew_org.flows import settle as flow
+from crew_org.session import steps
+from crew_org.session.conversation import Ending
 from crew_org.tools.github_issues import IssueClient, Trust
 
 TRUST = Trust(
@@ -85,10 +87,20 @@ def context() -> PanelContext:
     return PanelContext(
         goal_ref="mqucifer/sprint-metrics#174",
         goal="GOAL",
-        project="",
-        decisions="DECISIONS",
+        decisions="# The Sponsor's recorded decisions\n\n## sm#174: DECISIONS",
         epic_ref="mqucifer/sprint-metrics#406",
         epic=APPROVED,
+    )
+
+
+def describe(ctx: PanelContext, pnl: PanelResult, *, reply: str = "") -> str:
+    """The settle's own parts of its session's start, as it reads them."""
+    return "\n\n".join(p for p in opening(ctx, pnl, reply=reply).values() if p)
+
+
+def stopped() -> steps.StepStopped:
+    return steps.StepStopped(
+        "settle", Ending("blocked", {"missing": "100 calls with no edit and no run"}, "ceiling")
     )
 
 
@@ -190,13 +202,12 @@ def test_a_question_for_the_sponsor_needs_no_coverage():
     check_covers(Settlement(sponsor_question="Which?"), 5)
 
 
-def test_the_task_numbers_the_notes_and_carries_a_reply_and_the_last_refusal():
-    text = describe(
-        context(), panel(1, 0, 1, 0), reply="Keep it after a restart.", feedback="No row for N2."
-    )
+def test_the_start_numbers_the_notes_and_carries_the_sponsors_reply():
+    text = describe(context(), panel(1, 0, 1, 0), reply="Keep it after a restart.")
     assert "N1 (architect)" in text and "N2 (qa_engineer)" in text
-    assert "Keep it after a restart." in text and "No row for N2." in text
+    assert "Keep it after a restart." in text
     assert "GOAL" in text and "DECISIONS" in text and "The approved text." in text
+    assert text.startswith("## Your step: settle the panel's notes")
 
 
 # --- the table the epic carries -------------------------------------------------------------
@@ -522,9 +533,12 @@ def run(gh: Github, monkeypatch, *settlements, notes=None):
     calls: list[dict] = []
     queue = list(settlements)
 
-    def fake(ctx, pnl, *, reply="", feedback=""):
-        calls.append({"reply": reply, "feedback": feedback})
-        return queue.pop(0)
+    def fake(ctx, pnl, *, reply="", reading=None):
+        calls.append({"reply": reply})
+        found = queue.pop(0)
+        if isinstance(found, Exception):
+            raise found
+        return found
 
     monkeypatch.setattr(flow, "settle", fake)
     events: list = []
@@ -559,126 +573,45 @@ def test_an_epic_that_already_has_a_conclusion_is_left_alone(monkeypatch):
     assert calls == [] and gh.writes == []
 
 
-def test_a_refused_conclusion_is_asked_for_again_with_the_reason(monkeypatch):
-    gh = Github()
-    short = Settlement(conclusion=Conclusion(rows=[row(settles=[1])]))
-    result, calls, _ = run(gh, monkeypatch, short, good())
-    assert result.outcome is flow.Outcome.WRITTEN
-    assert calls[0]["feedback"] == ""
-    assert "No row, question or dismissal for N2" in calls[1]["feedback"]
+def checks_handed_to_the_session(monkeypatch, pnl=None):
+    """The check `settle` hands its session, which `done` runs on every answer."""
+    from crew_org.crews import settle_crew
+
+    handed = {}
+
+    def run(step, parts, reading, *, about, check=None, **_):
+        handed.update(step=step, check=check, parts=parts)
+        return good()
+
+    monkeypatch.setattr(steps, "run", run)
+    settle_crew.settle(context(), pnl or panel(1, 0, 1, 0))
+    return handed
 
 
-def test_a_cut_cell_is_asked_for_again_with_the_reason(monkeypatch):
-    gh = Github()
-    cut = Settlement(
-        conclusion=Conclusion(rows=[row(settles=[1, 2], consequences="x" * CONSEQUENCES_CHARS)])
-    )
-    result, calls, _ = run(gh, monkeypatch, cut, good())
-    assert result.outcome is flow.Outcome.WRITTEN
-    assert "cut off: row 1 consequences" in calls[1]["feedback"]
+def test_a_refused_conclusion_is_refused_at_done_in_the_session(monkeypatch):
+    """Each of the checks a retry was told of is `done`'s own now (crew#807)."""
+    handed = checks_handed_to_the_session(monkeypatch)
+    assert handed["step"].name == "settle" and handed["step"].step == "settle"
+    check = handed["check"]
+    with pytest.raises(Unsettled, match="No row, question or dismissal for N2"):
+        check(Settlement(conclusion=Conclusion(rows=[row(settles=[1])])))
+    cut = Settlement(conclusion=Conclusion(rows=[row(settles=[1, 2], consequences="x" * 140)]))
+    with pytest.raises(Unsettled, match="cut off: row 1 consequences"):
+        check(cut)
+    made_up = Settlement(conclusion=Conclusion(rows=[own("never said", settles=[1, 2])]))
+    with pytest.raises(Unsettled, match="isn't in the Goal"):
+        check(made_up)
+    check(good())
 
 
-def test_an_own_call_that_quotes_wording_the_goal_lacks_is_asked_for_again(monkeypatch):
-    gh = Github()
-    made_up = Settlement(conclusion=Conclusion(rows=[own("made up wording", settles=[1, 2])]))
-    grounded = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
-    result, calls, _ = run(gh, monkeypatch, made_up, grounded)
-    assert result.outcome is flow.Outcome.WRITTEN
-    assert "isn't in the Goal" in calls[1]["feedback"]
-    assert 'Product Owner\'s call, within the Goal: "GOAL"' in gh.body
-
-
-def test_each_refusal_is_in_the_event_log_with_its_reason(monkeypatch):
-    gh = Github()
-    short = Settlement(conclusion=Conclusion(rows=[row(settles=[1])]))
-    _, _, events = run(gh, monkeypatch, short, good())
-    refused = [e for e in events if "conclusion refused" in e.summary]
-    assert len(refused) == 1
-    assert "attempt 1 of 3" in refused[0].summary and "N2" in refused[0].summary
-    assert "No row, question or dismissal for N2" in refused[0].detail["reason"]
-    assert refused[0].detail["rules"] == ["check.settle_crew.check_covers"], "by name (ADR 0031)"
-
-
-def test_an_own_call_on_a_design_question_is_asked_for_again_as_an_open_question(monkeypatch):
-    gh = Github()
-    design = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
-    fixed = Settlement(
-        conclusion=Conclusion(
-            rows=[own("GOAL", settles=[1])],
-            open=[
-                OpenQuestion(
-                    question="Which response shape?",
-                    impact="The API",
-                    settled_by="architect",
-                    settles=[2],
-                )
-            ],
-        )
-    )
+def test_an_own_call_on_a_design_question_is_refused_at_done(monkeypatch):
     two = PanelResult(
-        {
-            "qa_engineer": PanelAnswer(
-                nothing_to_add=False,
-                notes=[note("a product choice", "product_owner"), note("a shape", "architect")],
-            )
-        },
+        {"architect": PanelAnswer(nothing_to_add=False, notes=[note("a path", "architect")])},
         {},
     )
-    result, calls, _ = run(gh, monkeypatch, design, fixed, notes=two)
-    assert result.outcome is flow.Outcome.WRITTEN
-    assert "marked for the Architect" in calls[1]["feedback"]
-    assert "| Q1 | Which response shape?" in gh.body
-
-
-def test_a_retry_is_shown_every_refusal_so_far_not_only_the_last(monkeypatch):
-    # crew-presentation 118: an own call refused as the Architect's became an open
-    # question, cut off at its length, then an own call again (crew#742).
-    gh = Github()
-    design = Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1, 2])]))
-    cut = Settlement(
-        conclusion=Conclusion(
-            rows=[own("GOAL", settles=[1])],
-            open=[
-                OpenQuestion(
-                    question="x" * QUESTION_CHARS,
-                    impact="The API",
-                    settled_by="architect",
-                    settles=[2],
-                )
-            ],
-        )
-    )
-    fixed = Settlement(
-        conclusion=Conclusion(
-            rows=[own("GOAL", settles=[1])],
-            open=[
-                OpenQuestion(
-                    question="Which shape?", impact="The API", settled_by="architect", settles=[2]
-                )
-            ],
-        )
-    )
-    two = PanelResult(
-        {
-            "qa_engineer": PanelAnswer(
-                nothing_to_add=False,
-                notes=[note("a product choice", "product_owner"), note("a shape", "architect")],
-            )
-        },
-        {},
-    )
-    result, calls, events = run(gh, monkeypatch, design, cut, fixed, notes=two)
-    assert result.outcome is flow.Outcome.WRITTEN
-    assert calls[2]["feedback"].startswith("These cells reached their length limit")
-    assert "marked for the Architect" in calls[2]["feedback"]
-    # The log keeps each attempt's own reason.
-    reasons = [e.detail["reason"] for e in events if "conclusion refused" in e.summary]
-    assert "marked for the Architect" not in reasons[1]
-
-
-def test_the_same_refusal_twice_is_shown_once():
-    assert flow.every_refusal(["a", "a"]) == "a"
-    assert flow.every_refusal(["a", "b", "a"]).count("- ") == 1
+    check = checks_handed_to_the_session(monkeypatch, two)["check"]
+    with pytest.raises(Unsettled, match="marked for the Architect"):
+        check(Settlement(conclusion=Conclusion(rows=[own("GOAL", settles=[1])])))
 
 
 def test_every_limited_cell_tells_the_model_its_limit():
@@ -696,11 +629,10 @@ def test_every_limited_cell_tells_the_model_its_limit():
     assert silent == []
 
 
-def test_a_conclusion_refused_every_time_fails_and_writes_nothing(monkeypatch):
+def test_a_settle_whose_session_stops_fails_and_writes_nothing(monkeypatch):
     gh = Github()
-    short = Settlement(conclusion=Conclusion(rows=[row(settles=[1])]))
-    with pytest.raises(flow.SettleFailed, match="refused 3 times"):
-        run(gh, monkeypatch, short, short, short)
+    with pytest.raises(flow.SettleFailed, match="wasn't given"):
+        run(gh, monkeypatch, stopped())
     assert gh.writes == []
 
 
@@ -708,7 +640,7 @@ def test_a_body_edited_while_the_model_was_thinking_is_not_overwritten(monkeypat
     gh = Github()
     queue = [good()]
 
-    def fake(ctx, pnl, *, reply="", feedback=""):
+    def fake(ctx, pnl, *, reply="", reading=None):
         gh.body = gh.body + "\n\nThe Sponsor added a line."
         return queue.pop(0)
 
@@ -892,20 +824,31 @@ def design(gh, monkeypatch, *answers):
 
     def fake(ctx, **kw):
         asked.append(kw)
-        return queue.pop(0)
+        found = queue.pop(0)
+        if isinstance(found, Exception):
+            raise found
+        return found
 
     monkeypatch.setattr(flow, "settle_design", fake)
     result = flow.settle_design_questions(
-        gh.client(), EventSink(None), repo="sprint-metrics", epic=406, context=context(), code="MAP"
+        gh.client(),
+        EventSink(None),
+        repo="sprint-metrics",
+        epic=406,
+        context=context(),
+        reading="THE CHECKOUT",
     )
     return result, asked
 
 
-def test_the_architect_is_shown_only_its_questions_with_the_record_and_the_code(monkeypatch):
+def test_the_architect_is_shown_only_its_questions_with_the_record_and_reads_the_code(
+    monkeypatch,
+):
     _, asked = design(Github(DESIGNED), monkeypatch, answered("Q1"))
     assert "| Q1 | JSON field names? |" in asked[0]["questions"]
     assert "Q2" not in asked[0]["questions"], "the implementer's question isn't the Architect's"
-    assert "| R1 |" in asked[0]["record"] and asked[0]["code"] == "MAP"
+    assert "| R1 |" in asked[0]["record"] and asked[0]["reading"] == "THE CHECKOUT"
+    assert asked[0]["asked"] == ["Q1"]
 
 
 def test_each_answer_becomes_a_binding_row_by_the_architect_that_replaces_its_question(
@@ -929,14 +872,26 @@ def test_the_change_is_posted_once_naming_the_question_it_settles(monkeypatch):
     assert "**R2** settles Q1" in note and "by the Architect" in note
 
 
-def test_a_question_left_out_is_asked_for_again_by_name(monkeypatch):
-    _, asked = design(Github(DESIGNED), monkeypatch, DesignSettlement(settled=[]), answered("Q1"))
-    assert "You didn't settle Q1" in asked[1]["feedback"]
+def test_a_question_left_out_is_refused_at_done_by_name(monkeypatch):
+    from crew_org.crews import settle_crew
+
+    handed = {}
+
+    def run(step, parts, reading, *, about, check=None, **_):
+        handed.update(step=step, check=check)
+        return answered("Q1")
+
+    monkeypatch.setattr(steps, "run", run)
+    settle_crew.settle_design(context(), record="R", questions="Q", asked=["Q1"])
+    assert (handed["step"].name, handed["step"].step) == ("design settle", "refinement")
+    with pytest.raises(Unsettled, match="You didn't settle Q1"):
+        handed["check"](DesignSettlement(settled=[]))
+    handed["check"](answered("Q1"))
 
 
 def test_a_question_never_settled_is_for_a_person_and_the_epic_waits(monkeypatch):
     gh = Github(DESIGNED)
-    result, _ = design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    result, _ = design(gh, monkeypatch, stopped())
     assert result.outcome is flow.Outcome.WAITING
     assert "needs:human" in gh.labels
     assert any(flow.DESIGN_QUESTION_MARKER in body for kind, body in gh.writes if kind == "comment")
@@ -953,14 +908,14 @@ def test_the_approval_gates_label_doesnt_hold_an_approved_epic(monkeypatch):
 
 def test_an_epic_waiting_on_the_architects_question_makes_no_call(monkeypatch):
     gh = Github(DESIGNED)
-    design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    design(gh, monkeypatch, stopped())
     result, asked = design(gh, monkeypatch)
     assert result.outcome is flow.Outcome.WAITING and asked == []
 
 
 def test_taking_the_label_off_has_the_architect_try_again(monkeypatch):
     gh = Github(DESIGNED)
-    design(gh, monkeypatch, *[DesignSettlement(settled=[])] * flow.ATTEMPTS)
+    design(gh, monkeypatch, stopped())
     gh.labels = []
     result, asked = design(gh, monkeypatch, answered("Q1"))
     assert result.outcome is flow.Outcome.WRITTEN and len(asked) == 1

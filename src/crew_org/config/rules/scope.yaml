@@ -141,6 +141,16 @@ form.Placement.epic_is_named:
     default: 'change {change} belongs to an epic: name it in `epic`'
   owner: Architect
   told_in: Placement.epic
+form.AlreadyDelivered.by_or_seen_at:
+  description: Refused unless it names the story that delivered it, or where the code at main already
+    does it.
+  messages:
+    default: name the story that delivered it in `by`, or, when no story did, where the code at main already
+      does it in `seen_at`
+  origin:
+  - crew#807
+  owner: Business Analyst
+  told_in: AlreadyDelivered
 form.Row.a_call_stays_within_the_goal:
   description: Refused if empty for your own call.
   messages:
@@ -164,7 +174,7 @@ form.Story.on_the_scale:
   owner: Business Analyst
   told_in: Story.points
 form.StoryProposal.not_empty:
-  description: Refused with no stories, unless everything is already delivered or it asks for files.
+  description: Refused with no stories, unless everything is already delivered.
   messages:
     default: an epic must decompose into at least one story
   owner: Business Analyst

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import httpx
 
-from crew_org.crews.settle_crew import describe_design
+from crew_org.crews.settle_crew import design_opening
 from crew_org.events import EventSink
 from crew_org.flows import goal_index, panel, refine_panel
 from crew_org.flows import record as record_flow
@@ -66,7 +66,7 @@ def goal_with_records():
 
 def test_a_siblings_record_is_shown_with_its_text():
     by, children = goal_with_records()
-    ctx = panel.gather(github(by, children), "sprint-metrics", 552, project="", search=[])
+    ctx = panel.gather(github(by, children), "sprint-metrics", 552, search=[])
     [store] = [s for s in ctx.siblings if s.ref.endswith("#551")]
     assert "THE STORE" in store.text and "because is sponsor or story" in store.text
     assert "Proposed by the Product Owner" not in store.text
@@ -74,14 +74,14 @@ def test_a_siblings_record_is_shown_with_its_text():
 
 def test_a_superseded_epic_carries_only_its_binding_rows():
     by, children = goal_with_records()
-    ctx = panel.gather(github(by, children), "sprint-metrics", 552, project="", search=[])
+    ctx = panel.gather(github(by, children), "sprint-metrics", 552, search=[])
     [old] = [s for s in ctx.siblings if s.ref.endswith("#540")]
     assert old.state == "superseded"
     assert "board_events holds them" in old.text and "OLD PLAN" not in old.text
 
 
 def test_the_architect_is_shown_the_other_epics_records():
-    shown = describe_design(context(), record="R", questions="Q1", code="")
+    shown = "\n\n".join(design_opening(context(), record="R", questions="Q1").values())
     assert "## The other epics under this Goal, with their records" in shown
     assert "answer with its decision and name its row" in shown
 
@@ -242,7 +242,6 @@ def test_the_waiting_epic_is_not_designed_and_says_why(monkeypatch):
         result,
         epic,
         "sprint-metrics",
-        project="",
         search=[],
     )
     assert not ok and asked == []

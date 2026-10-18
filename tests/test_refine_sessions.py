@@ -102,12 +102,12 @@ class Note(BaseModel):
 
 
 def test_done_is_the_form_with_its_rules_told_and_no_titles_but_a_field_named_title():
-    spec = steps.done_spec(StoryProposal, "the stories.", without=("need_files",))
+    spec = steps.done_spec(StoryProposal, "the stories.", head="aa78bf29b0fa")
     function = spec["function"]
     assert function["name"] == "done" and function["description"].startswith(
         "Your answer, which ends the session: the stories."
     )
-    assert "it says where you saw it: a path and line" in function["description"]
+    assert "`_flag` (line 117 at aa78bf2)" in function["description"]
     params = function["parameters"]
     assert "need_files" not in params["properties"] and "title" not in params
     story = params["$defs"]["Story"]

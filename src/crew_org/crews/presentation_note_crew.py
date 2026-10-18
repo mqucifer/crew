@@ -17,11 +17,12 @@ here, in code: whether it reads well stays with the Sponsor at review.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field, field_validator
 
-from crew_org import calls
 from crew_org.rulebook import refuse
+from crew_org.session import steps
 
 # Words that ask a reader to judge rather than a test to observe. Whole words,
 # so "clearly" is caught and "nuclear" isn't.
@@ -100,6 +101,21 @@ class StoryCriteria(BaseModel):
         return value
 
 
+class AlreadyHolds(BaseModel):
+    """A criterion about what the reader sees that the code meets at main (crew#807)."""
+
+    story: int = Field(description="The story's issue number")
+    criterion: str = Field(description="What the reader already sees, as a criterion would say it")
+    where: str = Field(description="Where you saw that the code at main already does it")
+
+    @field_validator("criterion", "where")
+    @classmethod
+    def _stated(cls, value: str) -> str:
+        if not value.strip():
+            refuse("form.ReaderCriterion.stated")
+        return value
+
+
 class PresentationNote(BaseModel):
     reader: str = Field(description="Who reads this output, and the question they bring to it")
     sample: str = Field(
@@ -108,7 +124,19 @@ class PresentationNote(BaseModel):
             "reader. A sample, not a template: real-looking values, no placeholders."
         )
     )
-    stories: list[StoryCriteria] = Field(description="One entry for every story still to build")
+    stories: list[StoryCriteria] = Field(
+        description=(
+            "Criteria for every story still to build, at least two each, unless all that "
+            "story's reader criteria already hold at main"
+        )
+    )
+    already_holds: list[AlreadyHolds] = Field(
+        default_factory=list,
+        description=(
+            "Criteria about what the reader sees that the code already meets at main, each "
+            "with where you saw it. They aren't added to a story as new work"
+        ),
+    )
     looked_at: list[str] = Field(description="What you read to write this: files, issues")
     beyond_reach: str | None = Field(
         None,
@@ -161,11 +189,16 @@ def render(note: PresentationNote) -> str:
         lines += [
             f"  - **Given** {c.given} **When** {c.when} **Then** {c.then}" for c in s.criteria
         ]
+    if note.already_holds:
+        lines += ["", "**Already holds at main** (not added to the stories)", ""]
+        lines += [f"- #{h.story}: {h.criterion} ({h.where})" for h in note.already_holds]
     lines += ["", "_Looked at: " + ", ".join(note.looked_at) + "_"]
     return "\n".join(lines)
 
 
-def opening(*, goal: str, epic: str, stories: str, siblings: str = "") -> dict[str, str]:
+def opening(
+    *, goal_ref: str, goal: str, epic_ref: str, epic: str, stories: str, siblings: str = ""
+) -> dict[str, str]:
     """The UX Designer's note as a session's start (crew#807). The repository it was
     shown whole, 376k characters for sprint-metrics#660, is read through the tools.
 
@@ -182,41 +215,62 @@ def opening(*, goal: str, epic: str, stories: str, siblings: str = "") -> dict[s
         "of the finished output with realistic data, and for every story criteria about what "
         "the reader sees, in Given/When/Then, each asserting something a test can observe in "
         "the output. Your criteria are added to the stories' own: never restate, weaken or "
-        "drop one. A story's scope is the Business Analyst's, and the tools and formats are "
-        "the Architect's.",
-        "goal": f"## The Goal this epic serves\n\n{sponsors_words(goal)}" if goal else "",
+        "drop one. One the code already meets at main goes in `already_holds`, with where you "
+        "saw it, not into a story as new work. A story's scope is the Business Analyst's, and "
+        "the tools and formats are the Architect's.",
+        "goal": (
+            f"## The Goal this epic serves ({goal_ref}), set by the Sponsor\n\n"
+            f"{sponsors_words(goal)}"
+            if goal
+            else ""
+        ),
         "siblings": (
             f"## The other epics under this Goal, with their records\n\n{siblings}"
             if siblings
             else ""
         ),
-        "epic": f"## The epic\n\n{epic}",
+        "epic": f"## The epic ({epic_ref})\n\n{epic}",
         "stories": f"## Its stories, in the order they are built\n\n{stories}",
     }
 
 
+NOTE = steps.Step(
+    "presentation note",
+    "ux_designer",
+    PresentationNote,
+    "who reads it, a sample of the output, and criteria for every story.",
+    "the epic and its stories",
+)
+
+
 def write_note(
-    *, goal: str, epic: str, stories: str, project: str, repository: str, feedback: str = ""
+    *,
+    goal_ref: str,
+    goal: str,
+    epic_ref: str,
+    epic: str,
+    stories: str,
+    siblings: str = "",
+    check: Callable[[PresentationNote], None] | None = None,
+    reading: steps.Reading | None = None,
 ) -> PresentationNote:
-    """The UX Designer's note for one epic."""
-    refused = f"## Your last note was refused\n\n{feedback}\n\n" if feedback else ""
-    return calls.ask(
-        "ux_designer",
-        [
-            calls.Part(
-                "task",
-                (f"{project}\n\n" if project else "")
-                + (f"## The Goal this epic serves\n\n{goal}\n\n" if goal else "")
-                + f"## The epic\n\n{epic}\n\n## Its stories, in the order they are built\n\n"
-                f"{stories}\n\n## The code as it stands\n\n{repository}\n\n{refused}"
-                "Write the presentation note for this epic. Say who reads its output and the "
-                "question they bring to it. Give a sample of the finished output with realistic "
-                "data. For every story, add criteria about what the reader sees, in "
-                "Given/When/Then, each asserting something a test can observe in the output.\n"
-                "Add to the stories' criteria; never restate, weaken or drop one. A story's "
-                "scope is the Business Analyst's, and the tools and formats are the Architect's.",
-            )
-        ],
-        PresentationNote,
-        expected="Who reads it, a sample of the output, and criteria per story.",
+    """The UX Designer's note for one epic, in a session over the code (crew#807).
+
+    `check` is the flow's: a note that leaves out a story, or names one the epic
+    doesn't have, is refused at `done`.
+    """
+    note: PresentationNote = steps.run(
+        NOTE,
+        opening(
+            goal_ref=goal_ref,
+            goal=goal,
+            epic_ref=epic_ref,
+            epic=epic,
+            stories=stories,
+            siblings=siblings,
+        ),
+        reading,
+        about=f"{epic}\n\n{stories}",
+        check=check,
     )
+    return note

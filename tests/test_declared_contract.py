@@ -10,9 +10,36 @@ gates at `done` read the line against what `done` declares (crew#778,
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
+from crew_org.crews.refinement_crew import AcceptanceCriterion, Story
 from crew_org.flows.board_flow import existing_tests_line, render_story_body
 from crew_org.flows.delivery import declared_contract
-from tests.test_pinning import story as split_story
+
+
+def split_story(**kw) -> Story:
+    criteria = [
+        AcceptanceCriterion(given="g", when="w", then="t"),
+        AcceptanceCriterion(given="g2", when="w2", then="error"),
+    ]
+    return Story(
+        title="Flag the table",
+        as_a="lead",
+        i_want="flags",
+        so_that="see breaches",
+        acceptance_criteria=criteria,
+        points=3,
+        **kw,
+    )
+
+
+def test_a_story_says_opt_in_or_contract_change_and_nothing_else():
+    """sprint-metrics#97 changed what 25 merged tests pinned and said neither (#189)."""
+    assert split_story(pinned_behaviour="opt-in: only with --thresholds").pinned_behaviour
+    assert split_story(pinned_behaviour="contract change: updates test_default_table_rows")
+    with pytest.raises(ValidationError, match="opt-in' or 'contract change"):
+        split_story(pinned_behaviour="probably fine")
 
 
 def test_stories_written_before_311_are_still_read():

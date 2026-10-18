@@ -37,32 +37,35 @@ def checked_tick(monkeypatch, checker, *proposals, issues=None):
 
 
 def described(monkeypatch, **kw) -> str:
+    """The check's own parts of its session's start, as it reads them (crew#807)."""
+    from crew_org.session import steps
+
     seen = {}
 
-    def ask(role, parts, answer, **_):
+    def run(step, parts, reading, **_):
         seen["parts"] = parts
         return CriteriaCheck()
 
-    monkeypatch.setattr(criteria_crew.calls, "ask", ask)
+    monkeypatch.setattr(steps, "run", run)
     criteria_crew.check_criteria(stories="### Query metrics\n1. Given x", **kw)
-    return criteria_crew.calls.task_text(seen["parts"], "")
+    return "\n\n".join(p for p in seen["parts"].values() if p)
 
 
 def test_the_conclusion_is_shown_to_the_check_before_the_stories(monkeypatch):
     text = described(monkeypatch, conclusion="## Refinement conclusion\n\n| R1 | accepted |")
     assert "decided before the split" in text and "| R1 | accepted |" in text
-    assert text.index("| R1 |") < text.index("## The proposed stories")
+    assert text.index("| R1 |") < text.index("## The story under check")
 
 
 def test_a_criterion_against_a_row_or_deciding_an_open_question_is_a_conflict(monkeypatch):
     text = described(monkeypatch, conclusion="C")
-    assert "a row of the epic's conclusion above" in text
+    assert "a row of the epic's record" in text
     assert "decides an open question (Q)" in text
 
 
 def test_an_epic_without_a_conclusion_is_checked_as_before(monkeypatch):
     text = described(monkeypatch)
-    assert "decided before the split" not in text and "conclusion" not in text.split("## Your")[0]
+    assert "decided before the split" not in text and "## The epic's record" not in text
 
 
 def test_a_conflict_can_name_a_row():
@@ -129,7 +132,7 @@ def test_the_check_is_shown_the_goal_and_the_projects_log_before_the_stories(mon
     )
     assert "## The Goal, set by the Sponsor" in text and "unblocked, finished" in text
     assert "five kinds of event" in text
-    assert text.index("five kinds of event") < text.index("## The proposed stories")
+    assert text.index("five kinds of event") < text.index("## The story under check")
 
 
 def test_restating_a_decision_is_not_deciding_an_open_question(monkeypatch):
@@ -165,6 +168,6 @@ def test_the_epics_decisions_reach_the_check_as_rows_of_its_record(monkeypatch):
     )
     text = described(monkeypatch, conclusion=record)
     assert "first_attempt_count" in text
-    assert text.index("first_attempt_count") < text.index("## The proposed stories")
+    assert text.index("first_attempt_count") < text.index("## The story under check")
     assert "Decided on this epic since it was sent back" not in text
     assert "a row of the record already says" in text

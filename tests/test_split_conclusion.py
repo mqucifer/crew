@@ -172,11 +172,11 @@ def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=N
     calls = {"gather": [], "panel": 0, "post": 0, "settle": 0}
     context = SimpleNamespace(epic_ref="x", decisions="D", project_log="", siblings=[])
 
-    def gather(issues, repo, epic, *, project, search):
-        calls["gather"].append((project, search))
+    def gather(issues, repo, epic, *, search):
+        calls["gather"].append(search)
         return context
 
-    def run(ctx):
+    def run(ctx, reading=None):
         calls["panel"] += 1
         return SimpleNamespace(answers={"architect": object()}, failed={})
 
@@ -195,7 +195,7 @@ def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=N
     return calls
 
 
-def step(issues=None, epic=None, project="THE RECORD", search=("crew", "sprint-metrics")):
+def step(issues=None, epic=None, search=("crew", "sprint-metrics")):
     result = SimpleNamespace(failed=[], skipped=[])
     ok = refine_panel.panel_step(
         issues or Gh(),
@@ -203,7 +203,6 @@ def step(issues=None, epic=None, project="THE RECORD", search=("crew", "sprint-m
         result,
         epic or Epic(),
         "sprint-metrics",
-        project=project,
         search=list(search),
     )
     return ok, result
@@ -231,7 +230,7 @@ def test_the_panel_runs_posts_and_is_settled_before_the_split(monkeypatch):
 def test_the_epics_own_repository_is_searched_first_for_the_decisions(monkeypatch):
     calls = stub(monkeypatch)
     step(search=["crew", "infra"])
-    assert calls["gather"] == [("THE RECORD", ["sprint-metrics", "crew", "infra"])]
+    assert calls["gather"] == [["sprint-metrics", "crew", "infra"]]
     assert calls["known"] == {"sprint-metrics", "crew", "infra"}
 
 
@@ -253,7 +252,9 @@ def test_a_panel_no_member_of_answered_stops_the_split_and_says_why(monkeypatch)
     monkeypatch.setattr(
         refine_panel,
         "run_panel",
-        lambda ctx: SimpleNamespace(answers={}, failed={"architect": "TimeoutError: slow"}),
+        lambda ctx, reading=None: SimpleNamespace(
+            answers={}, failed={"architect": "TimeoutError: slow"}
+        ),
     )
     ok, result = step()
     assert not ok and calls["settle"] == 0
@@ -293,7 +294,10 @@ def run_tick(monkeypatch, *proposals, org_panel=False, issues=None):
 
     def split(title, context="", **kw):
         asked.append((context, kw))
-        return queue.pop(0)
+        found = queue.pop(0)
+        if isinstance(found, Exception):
+            raise found
+        return found
 
     monkeypatch.setattr(board_flow, "split_epic", split)
     monkeypatch.setattr(board_flow, "propose_epics", lambda g, **kw: None)
@@ -335,19 +339,25 @@ def test_a_story_that_follows_nothing_says_nothing_of_rows(monkeypatch):
     assert "Follows the epic's" not in {i["title"]: i["body"] for i in issues.created}["B"]
 
 
-def test_a_row_no_story_follows_is_split_again_once_with_it_named(monkeypatch):
+def test_a_row_no_story_follows_is_refused_at_done_with_it_named(monkeypatch):
+    """Refused in the split's session, not by a second split (crew#807)."""
     missing = proposal(story("A", "R1", "R2"))
     fixed = proposal(story("A", "R1", "R2"), story("B", "R3"))
-    result, asked, _ = run_tick(monkeypatch, missing, fixed)
-    assert len(asked) == 2 and "No story follows R3" in asked[1][1]["feedback"]
-    assert len(result.stories_created) == 2
+    result, asked, _ = run_tick(monkeypatch, fixed)
+    follows = asked[0][1]["follows"]
+    assert any("No story follows R3" in f for f in follows(missing))
+    assert follows(fixed) == []
+    assert len(asked) == 1 and len(result.stories_created) == 2
 
 
-def test_a_row_that_is_still_not_followed_fails_the_split_and_creates_nothing(monkeypatch):
-    missing = proposal(story("A", "R1", "R2"))
-    result, asked, issues = run_tick(monkeypatch, missing, missing)
-    assert len(asked) == 2 and result.stories_created == [] and issues.created == []
-    assert "doesn't fit the epic's conclusion" in result.failed[0][1]
+def test_a_split_whose_session_stops_fails_and_creates_nothing(monkeypatch):
+    from crew_org.session import steps
+    from crew_org.session.conversation import Ending
+
+    stopped = steps.StepStopped("split", Ending("blocked", {"missing": "100 calls"}, "ceiling"))
+    result, asked, issues = run_tick(monkeypatch, stopped)
+    assert result.stories_created == [] and issues.created == []
+    assert "split's session stopped (ceiling)" in result.failed[0][1]
 
 
 def test_a_row_named_as_not_for_stories_needs_no_second_split(monkeypatch):
@@ -386,8 +396,8 @@ def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repos
 ):
     seen = {}
 
-    def panel_step(issues, sink, result, epic, repo, *, project, search, code, unapproved):
-        seen.update(repo=repo, search=search, code=code)
+    def panel_step(issues, sink, result, epic, repo, *, search, reading, unapproved):
+        seen.update(repo=repo, search=search, reading=reading)
         return True
 
     monkeypatch.setattr(board_flow, "panel_step", panel_step)
