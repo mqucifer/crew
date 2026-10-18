@@ -58,6 +58,10 @@ class DeliveryOutcome:
     # A story the gates found already done (#221): each criterion with the code
     # that meets it and the test that proves it.
     already_done: list = field(default_factory=list)
+    # The files the project's own fixers changed before the checks at `done`, and each
+    # allowed unsafe fix (crew#758): in the diff, and named for review and QA.
+    autofixed: list[str] = field(default_factory=list)
+    unsafe_fixes: list[str] = field(default_factory=list)
     # Where a session's ending already moved the card (crew#778): back to refinement,
     # or blocked for a person. Only the clean-up is left.
     routed: str | None = None
@@ -840,6 +844,7 @@ def _deliver_and_move(
         )
         result.interrupted.append(card.number or 0)
         return
+    assert outcome is not None, "delivered, or blocked by the error, unless interrupted"
 
     if outcome.routed:
         # The session's ending took it back to refinement, or blocked it for a

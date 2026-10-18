@@ -61,6 +61,10 @@ class Rule(StrEnum):
     """The story's workspace container didn't start, or its setup failed (crew#778)."""
     ROUND_TRIPS_NO_EPIC = "delivery.round_trips_no_epic"
     """The gates kept returning it, and it has no epic to be split again: for a person."""
+    ROUTE_FAILED = "delivery.route_failed"
+    """Where a session's ending sends the story couldn't be settled: blocked for a person."""
+    PULL_REQUEST_FAILED = "delivery.pull_request_failed"
+    """The branch was pushed, and its pull request couldn't be opened."""
 
     # --- gates ---
     CI_BEFORE_REVIEW = "gate.ci_before_review"

@@ -1546,3 +1546,7 @@ flows.session_delivery._land:end:95a1ac18:
   at: flows/session_delivery.py:_land
   if: reached.to == session_end.QA
   rule: decision.delivery.outcome
+flows.session_delivery._record_autofix:end:bb7da915:
+  at: flows/session_delivery.py:_record_autofix
+  if: not (fixed or reverted or unsafe)
+  not_a_rule: 'records what the fixers changed, when they changed anything: no decision'

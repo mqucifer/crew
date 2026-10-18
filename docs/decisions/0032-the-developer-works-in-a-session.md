@@ -156,9 +156,9 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 | The start (4) | Yes | Built with the session. Its story section is the card's title and body, with the epic's decided rows and design note, each part measured (the operator, on crew#778) |
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Built (Stage B, mqucifer/crew#796). The deliver phase holds one per story, for its sessions and the gates at `done` |
 | The rule sort (5) | Yes | Applied in Stage E: the retired rules left the catalog, except 12 other roles still meet. `rule_sort.py` holds what's left (crew#788), and nothing in the tick reads it |
-| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798), and run at every `done` (Stage D part 2). The mid-attempt ruling is deleted with the one-call Developer (Stage E) |
+| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798). The deliver phase runs them at every `done`, in the story's workspace container. The mid-attempt ruling is deleted with the one-call Developer (Stage E) |
 | Measures (8) | Yes | As before, until the Sponsor's Goal in sprint-metrics |
-| No escalation (9) | Yes | Nothing escalates, and the escalation code is deleted (Stage E). The retro and `crew export` count stories returned to the Business Analyst |
+| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and the deliver phase runs it. Nothing escalates, and the escalation code is deleted (Stage E). The retro and `crew export` count stories returned to the Business Analyst |
 | P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P3 are built in the deliver phase: one session at a time, a new session for rework, and checkpoints committed after each green run, never pushed, resumed after an interruption. P4 is as before |
 
 ## Consequences

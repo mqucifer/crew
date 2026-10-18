@@ -55,6 +55,8 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
 | `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
+| `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
+| `delivery.pull_request_failed` | The branch was pushed, and its pull request couldn't be opened. |
 | `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. |
 | `gate.review_changes_requested` | The Code Reviewer or DevOps Engineer requested changes. |
 | `gate.qa_unproven` | QA found criteria the work doesn't prove. |
