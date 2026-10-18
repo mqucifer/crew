@@ -25,10 +25,11 @@ until then: the Sponsor, 2026-10-08.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -37,7 +38,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.5.1"
+SCHEMA_VERSION = "1.6.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -138,12 +139,20 @@ class WorkStarted(_Part):
     role: str
 
 
+Verdict = Literal["approved", "changes_requested", "accepted", "returned"]
+
+
 class WorkFinished(_Part):
     kind: Literal["work_finished"] = "work_finished"
     at: datetime
     card: CardRef | None
     pull: PullRef | None
     role: str
+    verdict: Verdict | None = Field(
+        default=None,
+        description="A review's or QA's verdict: approved or changes requested, accepted "
+        "or returned. None for other work.",
+    )
 
 
 Decision = Literal["retry_local", "return_to_refinement", "file_prompt_defect", "escalate", "block"]
@@ -155,6 +164,11 @@ class Attempt(_Part):
     `reason` is present only when one of the crew's own checks wrote it with
     nothing but names filled in (ADR 0020); otherwise the failure class stands
     alone.
+
+    Escalation's policy decides these, so they end with escalation (ADR 0032, Stage
+    E): earlier sprints keep theirs, and later ones have none. A story delivered in
+    Developer sessions misses on review's and QA's returns instead (`verdict` on
+    `work_finished`), and its deliveries are in the analysis.
     """
 
     kind: Literal["attempt"] = "attempt"
@@ -175,7 +189,12 @@ class Blocked(_Part):
 
 
 class Escalated(_Part):
-    """An attempt sent to the escalation model, which the sprint's budget pays for."""
+    """An attempt sent to the escalation model, which the sprint's budget pays for.
+
+    Escalation retires with ADR 0032 (Stage E): earlier sprints keep these, and later
+    ones have none. A stuck story goes back to the Business Analyst instead
+    (`returned`).
+    """
 
     kind: Literal["escalated"] = "escalated"
     at: datetime
@@ -195,6 +214,9 @@ class ModelCall(_Part):
     prompt_tokens: int | None
     completion_tokens: int | None
     reasoning_tokens: int | None
+    cached_tokens: int | None = Field(
+        default=None, description="Of its prompt tokens, those the server's prefix cache held."
+    )
     seconds: float | None
     failed: bool
 
@@ -219,8 +241,176 @@ class PullMerged(_Part):
     )
 
 
+# --- the Developer's session (crew#778, ADR 0032): what it did, by names and counts ------
+
+# The session's tools (decision 2), and the caller's step after a run.
+Tool = Literal[
+    "view",
+    "search",
+    "find",
+    "tests_for",
+    "replace_text",
+    "replace_definition",
+    "write_file",
+    "run",
+    "done",
+    "blocked",
+    "after_run",
+]
+Stop = Literal["no_progress", "backstop", "ceiling", "no_tool_call"]
+ToolResult = Literal["ok", "refused", "failed", "passed", "error", "end"]
+How = Literal["done", "blocked", "interrupted"]
+BlockedOn = Literal["file", "fact", "choice", "stop"]
+
+
+class SessionStarted(_Part):
+    """A Developer session starting on a story: the size of each part of its start."""
+
+    kind: Literal["session_started"] = "session_started"
+    at: datetime
+    card: CardRef
+    start_chars: dict[str, int] = Field(
+        description="Each part's size in characters, and `total`: story, declared_tests, "
+        "project, map, hints or instead_of_hints, rules."
+    )
+    rework: bool = Field(
+        description="It started from the branch's history, such as the gates' or review's "
+        "findings or a checkpoint, in place of the hints: a rework round or a resume."
+    )
+
+
+class SessionTurn(_Part):
+    """The signals after one model call of a session, recorded on every call."""
+
+    kind: Literal["session_turn"] = "session_turn"
+    at: datetime
+    card: CardRef
+    turn: int = Field(description="The model call's number in its session, from 1.")
+    tool_calls: int | None = Field(description="Each count is None if it wasn't recorded.")
+    since_action: int | None = Field(
+        description="Model calls in a row with no edit applied and no run."
+    )
+    most_views: int | None = Field(description="The most views of one file since its last edit.")
+    edits_since_run: int | None
+    empty_lookups: int | None = Field(description="This call's lookups that found nothing.")
+    reasoning_tokens: int | None
+    model_seconds: float | None = Field(description="The session's model time so far.")
+
+
+class ToolCall(_Part):
+    """One tool call of a session: which tool, how it went, and its sizes. Never its
+    arguments or its reply, a path, a pattern or a command."""
+
+    kind: Literal["tool_call"] = "tool_call"
+    at: datetime
+    card: CardRef
+    turn: int
+    tool: Tool | None = Field(description="None for a tool there isn't, which it named.")
+    result: ToolResult
+    rule: str | None = Field(description="The declared rule a refusal was by (ADR 0031).")
+    found_nothing: bool = Field(description="A lookup that found no file, definition or hit.")
+    argument_chars: int | None
+    reply_chars: int | None
+    seconds: float | None
+    run: Literal["tests", "suite", "lint"] | None = Field(description="What a run ran.")
+    exit_codes: list[int] | None = Field(description="A run's commands' exit codes, in order.")
+
+
+class SessionCompacted(_Part):
+    """A session's history compacted, once, before a prompt would pass its limit."""
+
+    kind: Literal["session_compacted"] = "session_compacted"
+    at: datetime
+    card: CardRef
+    turn: int = Field(description="The call it was compacted before.")
+    estimated_tokens: int | None
+    turns_masked: int | None = Field(description="Tool replies shrunk to their one line.")
+
+
+class SessionEnded(_Part):
+    """How a session ended, what it cost, and its signals at the end."""
+
+    kind: Literal["session_ended"] = "session_ended"
+    at: datetime
+    card: CardRef
+    how: How
+    blocked_on: BlockedOn | None = Field(
+        description="What a blocked session lacked: a file, a fact, a choice, or `stop`."
+    )
+    stop: Stop | None = Field(description="What stopped it, when it didn't end itself.")
+    ceiling: Literal["reading", "re_viewing"] | None = Field(
+        description="The ceiling a `ceiling` stop reached."
+    )
+    why: Literal["call_failed", "workspace_gone"] | None = Field(description="What interrupted it.")
+    model_calls: int | None = Field(description="Each count is None if it wasn't recorded.")
+    model_seconds: float | None
+    prompt_tokens: int | None
+    cached_tokens: int | None
+    completion_tokens: int | None
+    reasoning_tokens: int | None
+    edits: int | None
+    runs: int | None
+    criteria: int | None = Field(description="At `done`, the criteria it named a test for.")
+    changed_tests: int | None = Field(description="At `done`, the merged tests it changed.")
+    since_action: int | None = Field(description="Its signals at the end; None if unrecorded.")
+    most_views: int | None
+    edits_since_run: int | None
+    empty_lookups: int | None = Field(description="The session's lookups that found nothing.")
+
+
+class GateChecked(_Part):
+    """The crew's gate on a session's branch at `done`, before review (ADR 0032).
+
+    A gate's return is the Developer still working, not an attempt (the Sponsor,
+    2026-10-18, crew#778): its findings are named by their rules, never their text.
+    """
+
+    kind: Literal["gate_checked"] = "gate_checked"
+    at: datetime
+    card: CardRef
+    passed: bool
+    rules: list[str] = Field(description="The declared rules its findings were by (ADR 0031).")
+    already_done: bool = Field(
+        description="The branch had nothing to change: the story goes to QA with an empty diff."
+    )
+
+
+ReturnReason = Literal[
+    "gate round trips",
+    "pinned tests",
+    "review conflicts with a criterion",
+    "session blocked",
+    "contract ruling",
+]
+
+
+class Returned(_Part):
+    """A story sent back to refinement, to the Business Analyst who wrote it (ADR 0032)."""
+
+    kind: Literal["returned"] = "returned"
+    at: datetime
+    card: CardRef
+    reason: ReturnReason
+    blocked_on: BlockedOn | None = Field(description="For a blocked session, what it lacked.")
+    stop: Stop | None = Field(description="For a stopped session, what stopped it.")
+
+
 Event = Annotated[
-    CardMoved | WorkStarted | WorkFinished | Attempt | Blocked | Escalated | ModelCall | PullMerged,
+    CardMoved
+    | WorkStarted
+    | WorkFinished
+    | Attempt
+    | Blocked
+    | Escalated
+    | ModelCall
+    | PullMerged
+    | SessionStarted
+    | SessionTurn
+    | ToolCall
+    | SessionCompacted
+    | SessionEnded
+    | GateChecked
+    | Returned,
     Field(discriminator="kind"),
 ]
 
@@ -317,6 +507,9 @@ class StoryCost(_Part):
     prompt_tokens: int
     completion_tokens: int
     reasoning_tokens: int
+    cached_tokens: int = Field(
+        default=0, description="Of its prompt tokens, those the server's prefix cache held."
+    )
     model_seconds: float = Field(description="Time spent in its model calls.")
 
 
@@ -333,9 +526,14 @@ class StoryPattern(_Part):
 
     card: CardRef
     pattern: Pattern
-    misses: int = Field(description="Attempts that didn't land.")
+    misses: int = Field(
+        description="Attempts that didn't land. For a story delivered in sessions, its "
+        "returns by review or QA, or to the Business Analyst; never the gate's before review."
+    )
     blocks: int = Field(description="Moves into Blocked.")
-    escalations: int
+    escalations: int = Field(
+        description="Times it was escalated: none in sprints after escalation retired (ADR 0032)."
+    )
     crew_fixes: list[PullRef] = Field(
         description="Fixes to the crew, from issues that cite it, that merged between its "
         "first miss and its delivery."
@@ -352,9 +550,68 @@ class StoryPattern(_Part):
     text: str = Field(description="The sentence the crew's code wrote from these values.")
 
 
+Gap = Literal["session_not_ended", "session_not_started"]
+
+
+class Delivery(_Part):
+    """One delivery of a story in Developer sessions, from its first session to its outcome.
+
+    Derived from the package's own events (crew#778, decision 8). An attempt is the
+    branch handed to review and QA (the Sponsor, 2026-10-18): `submissions` counts
+    them, and the gate's returns before review are `gate_rounds`, which don't spoil a
+    first attempt. Outcomes: `done` (moved to Done), `returned` (to the Business
+    Analyst), `blocked` (left for a person: a choice, or nowhere to return it),
+    `interrupted` (its last session was, and none followed), `open`.
+    """
+
+    card: CardRef
+    number: int = Field(description="Which delivery of the story this is, from 1.")
+    started: datetime
+    ended: datetime | None
+    outcome: Literal["done", "returned", "blocked", "interrupted", "open"]
+    sessions: int
+    submissions: int = Field(
+        description="Times its branch was handed to review and QA: a move into Reviewing, "
+        "or into QAing from anywhere else, as a story already done is."
+    )
+    gate_rounds: int = Field(description="Times the gate at `done` returned it before review.")
+    gate_rules: list[str] = Field(description="The rules the gate's returns were by.")
+    review_returns: int = Field(description="Returns by review or QA.")
+    rework_rounds: int = Field(
+        description="Sessions started after a return by the gate, review or QA (P2)."
+    )
+    resumes: int = Field(description="Sessions started after an interrupted one (P3).")
+    model_calls: int
+    model_seconds: float
+    prompt_tokens: int
+    cached_tokens: int
+    completion_tokens: int
+    reasoning_tokens: int
+    runs: int
+    first_green_run: int | None = Field(
+        description="Of its runs, from 1, the first whole suite that passed."
+    )
+    stop: Stop | None = Field(description="What stopped its last session, if anything did.")
+    blocked_on: BlockedOn | None
+    ceiling: Literal["reading", "re_viewing"] | None
+    since_action: int | None = Field(description="Its last session's signals at the end.")
+    most_views: int | None
+    edits_since_run: int | None
+    empty_lookups: int | None
+    returned_because: ReturnReason | None
+    gaps: list[Gap] = Field(
+        description="What its records lacked, built around: a session with no end (a "
+        "crash, or still running), or an end with no start. Nothing is guessed."
+    )
+
+
 class Analysis(_Part):
     sprints: list[SprintAnalysis] = Field(description="Every sprint started by the package's date.")
     stories: list[StoryPattern] = Field(description="Every story and bug with events.")
+    deliveries: list[Delivery] = Field(
+        default_factory=list,
+        description="Every delivery in Developer sessions, by story, oldest first.",
+    )
 
 
 class SprintMetrics(_Part):
@@ -418,6 +675,11 @@ class Manifest(_Part):
     events: int
     left_out: dict[str, int] = Field(
         description="Events the crew recorded but couldn't place, by why. None are guessed."
+    )
+    gaps: dict[str, int] = Field(
+        default_factory=dict,
+        description="What the crew's records lacked and the build went around, by what: "
+        "a session with no end, or an end with no start (`Delivery.gaps`).",
     )
 
 
@@ -629,11 +891,17 @@ def _event(
                     left_out.get("work: pull request unknown", 0) + 1
                 )
                 return None
+            if cls is WorkFinished:
+                return WorkFinished(
+                    at=at, card=reviewed[1], pull=reviewed[0], role=role, verdict=_verdict(detail)
+                )
             return cls(at=at, card=reviewed[1], pull=reviewed[0], role=role)
         ref = card() if isinstance(number, int) else None
         if isinstance(number, int) and ref is None:
             needs_card("work")
             return None
+        if cls is WorkFinished:
+            return WorkFinished(at=at, card=ref, pull=None, role=role, verdict=_verdict(detail))
         return cls(at=at, card=ref, pull=None, role=role)
     if kind == "escalation.decided":
         ref = needs_card("attempt")
@@ -679,10 +947,187 @@ def _event(
             prompt_tokens=_int(detail.get("prompt_tokens")),
             completion_tokens=_int(detail.get("completion_tokens")),
             reasoning_tokens=_int(detail.get("reasoning_tokens")),
+            cached_tokens=_int(detail.get("cached_tokens")),
             seconds=float(duration) if isinstance(duration, (int, float)) else None,
             failed=kind == "llm.failed",
         )
+    if kind in _SESSION_KINDS or (kind == "tool.finished" and "result" in detail):
+        ref = needs_card("session")
+        if ref is None:
+            return None
+        # A session can crash mid-write, or an older one lack a field: such an event is
+        # left out and counted, and the rest is built (the Sponsor, 2026-10-18).
+        try:
+            return _session_event(kind, at, ref, detail)
+        except (ValueError, TypeError):
+            left_out[f"{kind}: malformed"] = left_out.get(f"{kind}: malformed", 0) + 1
+            return None
+    if kind == "gate.checked":
+        ref = needs_card("gate")
+        if ref is None:
+            return None
+        if not isinstance(detail.get("passed"), bool):
+            left_out["gate.checked: malformed"] = left_out.get("gate.checked: malformed", 0) + 1
+            return None
+        rules = [
+            r for r in _list(detail.get("rules")) if isinstance(r, str) and _RULE_ID.fullmatch(r)
+        ]
+        return GateChecked(
+            at=at,
+            card=ref,
+            passed=detail["passed"],
+            rules=sorted(set(rules)),
+            already_done=detail.get("already_done") is True,
+        )
+    if kind == "story.returned":
+        ref = needs_card("returned")
+        reason = _one_of(detail.get("reason"), ReturnReason)
+        if ref is None or reason is None:
+            if ref is not None:
+                left_out["returned: reason unknown"] = (
+                    left_out.get("returned: reason unknown", 0) + 1
+                )
+            return None
+        return Returned(
+            at=at,
+            card=ref,
+            reason=reason,
+            blocked_on=_one_of(detail.get("kind"), BlockedOn),
+            stop=_one_of(detail.get("stop"), Stop),
+        )
     return None
+
+
+# The session's own kinds; its tool calls are `tool.finished` with a `result`, which a
+# step's read rounds don't write (ADR 0025), and its caller's failures `tool.failed`.
+_SESSION_KINDS = frozenset(
+    {"session.started", "session.turn", "session.compacted", "session.ended", "tool.failed"}
+)
+# A rule's id, as the catalog names it (ADR 0031): names and dots, nothing said.
+_RULE_ID = re.compile(r"[a-z][a-z0-9_]*(?:\.[A-Za-z0-9_]+)+")
+
+
+def _one_of(value: Any, allowed: Any) -> Any:
+    """`value` if it's one of a Literal's values, else None: a name, never free text."""
+    return value if isinstance(value, str) and value in get_args(allowed) else None
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _needed(value: Any) -> int:
+    """A count an event can't do without, such as its call's number."""
+    found = _int(value)
+    if found is None:
+        raise ValueError("a required count is missing")
+    return found
+
+
+def _seconds(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _verdict(detail: dict[str, Any]) -> Verdict | None:
+    """A review's or QA's verdict, from the flag its event carries."""
+    if isinstance(detail.get("approved"), bool):
+        return "approved" if detail["approved"] else "changes_requested"
+    if isinstance(detail.get("accepted"), bool):
+        return "accepted" if detail["accepted"] else "returned"
+    return None
+
+
+def _session_event(kind: str, at: datetime, ref: CardRef, detail: dict[str, Any]) -> Event:
+    """A session's event, by its names and counts only (crew#778, P5)."""
+    if kind == "session.started":
+        sizes = {k: v for k, v in _dict(detail.get("start_chars")).items() if _int(v) is not None}
+        return SessionStarted(
+            at=at, card=ref, start_chars=sizes, rework="instead_of_hints" in sizes
+        )
+    if kind == "session.turn":
+        return SessionTurn(
+            at=at,
+            card=ref,
+            turn=_needed(detail.get("turn")),
+            tool_calls=_int(detail.get("tool_calls")),
+            since_action=_int(detail.get("since_action")),
+            most_views=_int(detail.get("most_views")),
+            edits_since_run=_int(detail.get("edits_since_run")),
+            empty_lookups=_int(detail.get("empty_lookups")),
+            reasoning_tokens=_int(detail.get("reasoning_tokens")),
+            model_seconds=_seconds(detail.get("model_s")),
+        )
+    if kind == "session.compacted":
+        return SessionCompacted(
+            at=at,
+            card=ref,
+            turn=_needed(detail.get("turn")),
+            estimated_tokens=_int(detail.get("estimated_tokens")),
+            turns_masked=_int(detail.get("turns_masked")),
+        )
+    if kind == "session.ended":
+        said = _dict(detail.get("said"))
+        evidence = _dict(detail.get("evidence"))
+        signals = _dict(evidence.get("signals"))
+        stopped = _dict(evidence.get("stop"))
+        how = _one_of(detail.get("how"), How)
+        if how is None:
+            raise ValueError("a session's end says how it ended")
+        done = how == "done"
+        return SessionEnded(
+            at=at,
+            card=ref,
+            how=how,
+            blocked_on=_one_of(said.get("kind"), BlockedOn) if how == "blocked" else None,
+            stop=_one_of(detail.get("stop"), Stop),
+            ceiling=_one_of(stopped.get("ceiling"), Literal["reading", "re_viewing"]),
+            why=_one_of(detail.get("why"), Literal["call_failed", "workspace_gone"]),
+            model_calls=_int(detail.get("model_calls")),
+            model_seconds=_seconds(detail.get("model_s")),
+            prompt_tokens=_int(detail.get("prompt_tokens")),
+            cached_tokens=_int(detail.get("cached_tokens")),
+            completion_tokens=_int(detail.get("completion_tokens")),
+            reasoning_tokens=_int(detail.get("reasoning_tokens")),
+            edits=_int(detail.get("edits_applied")),
+            runs=_int(detail.get("test_runs")),
+            criteria=len(_list(said.get("criteria"))) if done else None,
+            changed_tests=len(_list(said.get("changed_tests"))) if done else None,
+            since_action=_int(signals.get("since_action")),
+            most_views=_int(signals.get("most_views")),
+            edits_since_run=_int(signals.get("edits_since_run")),
+            empty_lookups=_int(signals.get("empty_lookups_total")),
+        )
+    rule = detail.get("rule")
+    codes = [
+        code
+        for c in _list(detail.get("commands"))
+        if isinstance(c, dict) and (code := _int(c.get("code"))) is not None
+    ]
+    result: ToolResult | None = (
+        "error" if kind == "tool.failed" else _one_of(detail.get("result"), ToolResult)
+    )
+    if result is None:
+        raise ValueError("a tool call says how it went")
+    return ToolCall(
+        at=at,
+        card=ref,
+        turn=_needed(detail.get("turn")),
+        tool=_one_of(detail.get("tool"), Tool),
+        result=result,
+        rule=rule if isinstance(rule, str) and _RULE_ID.fullmatch(rule) else None,
+        found_nothing=detail.get("found_nothing") is True,
+        argument_chars=_int(detail.get("args_chars")),
+        reply_chars=_int(detail.get("reply_chars")),
+        seconds=_seconds(detail.get("duration_s")),
+        run=_one_of(detail.get("run"), Literal["tests", "suite", "lint"]),
+        exit_codes=codes if "commands" in detail else None,
+    )
 
 
 def _by(at: datetime, inputs: Inputs) -> bool:
@@ -892,6 +1337,7 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
         generated=inputs.generated,
         events=len(events),
         left_out=dict(sorted(left_out.items())),
+        gaps=dict(sorted(Counter(g for d in history.analysis.deliveries for g in d.gaps).items())),
     )
     return history, files, manifest
 

@@ -123,6 +123,120 @@ def _plain(minutes: float, kind: str, card: int) -> Raw:
     )
 
 
+def _session(minutes: float, kind: str, card: int, /, **detail: Any) -> Raw:
+    """A Developer session's event (crew#778), as the session records it."""
+    return (
+        "tick",
+        {
+            "at": _at(minutes),
+            "kind": kind,
+            "role": "Developer",
+            "card": card,
+            "detail": {"repo": SM, "for": "session", **detail},
+        },
+    )
+
+
+def _tool(
+    minutes: float, card: int, turn: int, tool: str, result: str = "ok", **detail: Any
+) -> Raw:
+    return _session(
+        minutes,
+        "tool.finished",
+        card,
+        tool=tool,
+        turn=turn,
+        result=result,
+        args_chars=60,
+        reply_chars=1800,
+        duration_s=0.3,
+        **detail,
+    )
+
+
+def _sessioned(
+    start: float, card: int, *, rework: bool = False, how: str = "done", **ending: Any
+) -> list[Raw]:
+    """One session: its start, two calls' signals and tools, and its end."""
+    hints = "instead_of_hints" if rework else "hints"
+    sizes = {"story": 3200, "project": 5500, "map": 4300, hints: 800, "rules": 1400}
+    events = [
+        _session(start, "session.started", card, start_chars={**sizes, "total": 15200}),
+        _tool(start + 1, card, 1, "view"),
+        _tool(start + 1, card, 1, "search", found_nothing=True),
+        _session(
+            start + 1,
+            "session.turn",
+            card,
+            turn=1,
+            tool_calls=2,
+            since_action=1,
+            most_views=1,
+            edits_since_run=0,
+            empty_lookups=1,
+            reasoning_tokens=900,
+            model_s=12.0,
+        ),
+    ]
+    if how == "done":
+        events += [
+            _tool(start + 2, card, 2, "replace_text"),
+            _tool(
+                start + 3,
+                card,
+                2,
+                "run",
+                "passed",
+                run="suite",
+                commands=[{"code": 0}, {"code": 0}],
+            ),
+            _session(
+                start + 3,
+                "session.turn",
+                card,
+                turn=2,
+                tool_calls=2,
+                since_action=0,
+                most_views=1,
+                edits_since_run=0,
+                empty_lookups=0,
+                reasoning_tokens=1400,
+                model_s=30.0,
+            ),
+        ]
+    said = (
+        {"criteria": [{"criterion": "", "test": ""}] * 2, "changed_tests": [], "docs": ""}
+        if how == "done"
+        else {"missing": "", "kind": "stop"}
+    )
+    signals = {
+        "since_action": 0 if how == "done" else 60,
+        "most_views": 2,
+        "edits_since_run": 0,
+        "empty_lookups_total": 1,
+    }
+    events.append(
+        _session(
+            start + 4,
+            "session.ended",
+            card,
+            how=how,
+            said=said,
+            evidence={"signals": signals, **ending.pop("evidence", {})},
+            model_calls=2,
+            model_s=30.0,
+            edits_applied=1 if how == "done" else 0,
+            test_runs=1 if how == "done" else 0,
+            prompt_tokens=38000,
+            cached_tokens=34000,
+            completion_tokens=2600,
+            reasoning_tokens=2300,
+            **ending,
+        )
+    )
+    return events
+
+
 def _cites(minutes: float, issue: int, cards: list[str]) -> Raw:
     return (
         "tick",
@@ -241,6 +355,50 @@ def _events() -> list[Raw]:
         _call(226, 131, "Developer", "deliver", 42000, 4400, 3000, 180.0, "c131-0"),
         _refused(230, 131, 1, "SCOPE", "block"),
         _moved(230, 131, "In Progress", "Blocked"),
+        # The first stories in Developer sessions (crew#778). #136: the gate returns its
+        # first branch, review asks for a change, and it's back in review at the end.
+        _moved(240, 136, "Sprint Backlog", "In Progress"),
+        *_sessioned(241, 136),
+        _session(
+            246,
+            "gate.checked",
+            136,
+            passed=False,
+            rules=["contract.declared_tests"],
+            already_done=False,
+        ),
+        *_sessioned(247, 136, rework=True),
+        _session(249, "session.compacted", 136, turn=3, estimated_tokens=126000, turns_masked=14),
+        _session(252, "gate.checked", 136, passed=True, rules=[], already_done=False),
+        _moved(252, 136, "In Progress", "Reviewing"),
+        _work(255, None, "Code Reviewer", pr=140),
+        (
+            "tick",
+            {
+                "at": _at(258),
+                "kind": "agent.finished",
+                "role": "Code Reviewer",
+                "card": 136,
+                "detail": {"repo": SM, "pr": 140, "approved": False},
+            },
+        ),
+        _moved(258, 136, "Reviewing", "In Progress", role="Code Reviewer"),
+        *_sessioned(260, 136, rework=True),
+        _session(263, "tool.failed", 136, tool="after_run", turn=2),
+        _session(265, "gate.checked", 136, passed=True, rules=[], already_done=False),
+        _moved(265, 136, "In Progress", "Reviewing"),
+        # #132 reads for sixty calls with no edit and no run, and goes back to the
+        # Business Analyst who wrote it.
+        _moved(245, 132, "Sprint Backlog", "In Progress"),
+        *_sessioned(
+            246,
+            132,
+            how="blocked",
+            stop="ceiling",
+            evidence={"stop": {"ceiling": "reading", "calls": 60}},
+        ),
+        _session(251, "story.returned", 132, reason="session blocked", kind="stop", stop="ceiling"),
+        _moved(251, 132, "In Progress", "Ready"),
     ]
     return events
 
@@ -372,6 +530,8 @@ def _cards() -> list[Card]:
         story(130, "Move serve into serve.py", 123, s6, "Done", _when(200), not_planned=True),
         story(131, "Move the CLI into cli.py", 123, s6, "Blocked"),
         story(133, "Add the package's entry point", 124, s6, "Done", _when(213)),
+        story(132, "Serve the trend from the package", 124, s6, "Ready"),
+        story(136, "Read the sprint from the service's query", 124, s6, "Reviewing"),
     ]
 
 
@@ -413,6 +573,15 @@ def _pulls() -> dict[str, list[dict[str, Any]]]:
             _pull(137, "refactor: threshold logic in thresholds.py", 145, [(SM, 127)]),
             _pull(138, "refactor: the report in report.py", 173, [(SM, 128)]),
             _pull(139, "feat: the package's entry point", 213, [(SM, 133)]),
+            {
+                "number": 140,
+                "title": "feat: read the sprint from the service's query",
+                "created_at": _at(252),
+                "merged_at": None,
+                "closed_at": None,
+                "closes": [(SM, 136)],
+                "closes_labels": [],
+            },
         ],
         "crew": [
             _pull(

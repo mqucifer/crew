@@ -405,6 +405,7 @@ def test_a_session_works_by_tools_until_done_and_records_every_call(root, seen):
     assert (search["found_nothing"], search["looked_for"]) == (True, "nothing-here")
     run = tools_seen[3].detail
     assert [c["code"] for c in run["commands"]] == [0, 0] and run["result"] == "passed"
+    assert run["run"] == "suite"
     turns = [e.detail for e in kinds(seen, EventKind.SESSION_TURN)]
     assert [t["since_action"] for t in turns] == [1, 0, 0, 1]
     assert turns[0]["empty_lookups"] == 1 and turns[2]["reasoning_tokens"] == 300
