@@ -146,6 +146,7 @@ def replay(name: str, backstop_s: float | None = None, context: str = "cut") -> 
                 "first_green_suite_run": green[0] if green else None,
                 "context": context,
                 "compacted": session.compacted or None,
+                "troubles": session.troubles,
             }
         )
         if ending.get("how") == "done":

@@ -212,20 +212,27 @@ def test_the_whole_rule_keeps_replies_until_one_compaction(repo: Path) -> None:
         _calls(("done", {"criteria": [], "docs": "none", "summary": "s"})),
     ]
     sent: list[dict[str, Any]] = []
+    s: session_mod.Session
 
     def send(body: dict[str, Any]) -> dict[str, Any]:
         sent.append(body)
-        reply = script[len(sent) - 1]
-        # The third prompt is past the limit.
-        return {**reply, "usage": {"prompt_tokens": 50 if len(sent) < 3 else 500}}
+        if len(sent) == 3:
+            # The next prompt is estimated past the limit, so it's compacted before it's sent.
+            s.compact_at = 1
+        return {**script[len(sent) - 1], "usage": {"prompt_tokens": 100}}
 
-    s = session_mod.Session(
-        Tools(repo, FakeHeld()), "system", "start", send=send, context="whole", compact_at=400
-    )
+    s = session_mod.Session(Tools(repo, FakeHeld()), "system", "start", send=send, context="whole")
     s.run()
     third = [m["content"] for m in sent[2]["messages"] if m["role"] == "tool"]
     assert not any(t.startswith("(older)") for t in third)
-    assert s.compacted == {"call": 3, "prompt_tokens": 500, "cut": 1}
+    assert s.compacted["before_call"] == 4 and s.compacted["cut"] == 1
     fourth = [m["content"] for m in sent[3]["messages"] if m["role"] == "tool"]
     # The first view of the file is the one cut; the newer view and the search stay.
     assert fourth[0].startswith("(older)") and not fourth[1].startswith("(older)")
+
+
+def test_an_empty_answer_is_recorded_with_its_prompt_size(repo: Path) -> None:
+    empty = {"choices": [{"message": {"content": ""}}], "usage": {"prompt_tokens": 7}}
+    s = session_mod.Session(Tools(repo, FakeHeld()), "system", "start", send=lambda b: empty)
+    s.run()
+    assert s.troubles[0] == {"call": 1, "kind": "empty", "prompt_tokens": 7}
