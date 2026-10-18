@@ -91,6 +91,8 @@ def main() -> None:
     story = args.story.read_text(encoding="utf-8")
     (out / "story.md").write_text(story, encoding="utf-8")
     root = worktree(args.repo, args.base, out)
+    if reason := conversation.unfit(root):
+        raise SystemExit(reason)
     checks = toolchain(root)
     try:
         cov = coverage_map.build(root, args.repo, store=args.coverage)

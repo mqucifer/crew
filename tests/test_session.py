@@ -414,9 +414,9 @@ def test_the_history_is_compacted_once_when_a_prompt_would_pass_the_limit(root, 
 
 
 def test_a_worktree_with_a_host_made_venv_is_refused(root):
+    assert conversation.unfit(root) is None
     (root / ".venv").mkdir()
-    with pytest.raises(conversation.Unfit, match="crew#780"):
-        conversation.session(root, "story", Fake(), CHECKS)
+    assert "crew#780" in (conversation.unfit(root) or "")
 
 
 def test_telemetry_gets_the_sessions_counts_never_its_paths_or_text():

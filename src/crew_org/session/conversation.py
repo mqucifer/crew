@@ -49,10 +49,6 @@ QUIET = "Call a tool to go on, or `done` or `blocked`."
 COMPACT_AT = 125_000
 
 
-class Unfit(RuntimeError):
-    """The worktree can't be worked on as it is."""
-
-
 @dataclass
 class Ending:
     how: str  # "done", "blocked" or "interrupted"
@@ -294,11 +290,8 @@ def session(
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
 
-    Refuses a worktree with a `.venv` the host made: the container would run it
-    (crew#780). `about` goes on the `session.started` event, such as the base commit.
+    `about` goes on the `session.started` event, such as the base commit.
     """
-    if (worktree / ".venv").exists():
-        raise Unfit(f"{worktree} has a .venv the host made (crew#780)")
     opening, sizes, notes = start(worktree, story, coverage)
     tools = Tools(worktree, workspace, toolchain, coverage, notes)
     record(
@@ -316,6 +309,17 @@ def session(
         **about,
     )
     return Session(tools, system_text(ROLE), opening, send=send)
+
+
+def unfit(worktree: Path) -> str | None:
+    """Why a worktree can't be given a workspace as it is, or None. Asked before setup.
+
+    A `.venv` there before setup is the host's, and the container would run it
+    (crew#780). After setup, one is the container's own.
+    """
+    if (worktree / ".venv").exists():
+        return f"{worktree} has a .venv the host made (crew#780)"
+    return None
 
 
 def _role() -> str:
