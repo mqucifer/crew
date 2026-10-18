@@ -229,7 +229,7 @@ def write_notes(
                 goal=goal,
                 epic=f"#{number} {epic.title}\n\n{issues.get(repo, number).get('body') or ''}",
                 project=brief(record) if record else "",
-                repository=repository_context(clone, editing=False),
+                repository=repository_context(clone),
             )
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)

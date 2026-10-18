@@ -11,7 +11,6 @@ from datetime import date
 import pytest
 
 import crew_org.flows.close as close_mod
-from crew_org.escalation import EscalationLedger
 from crew_org.events import EventSink
 from crew_org.flows.close import close_sprint
 from crew_org.flows.merge import Landed, Landing
@@ -118,7 +117,6 @@ def close(board, issues, tmp_path):
         board,
         issues,
         EventSink(None),
-        EscalationLedger(tmp_path / "escalations.jsonl"),
         sprint=SPRINT,
         repo="sprint-metrics",
         sleep=lambda _s: None,

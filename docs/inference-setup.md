@@ -1,9 +1,9 @@
 # Inference setup
 
 Primary backend is the DGX Spark serving **Qwen3.8-27B under SGLang**, fronted
-by a LiteLLM proxy. Escalation runs through headless Claude Code on an existing
-subscription — there is deliberately **no `ANTHROPIC_API_KEY`** anywhere in this
-project, so escalation cannot incur metered API charges.
+by a LiteLLM proxy, and every model call goes through it. There is deliberately
+**no `ANTHROPIC_API_KEY`** anywhere in this project, so nothing can incur metered
+API charges.
 
 The serving stack itself is a separate project — see
 [`reference/sglang-serving.md`](reference/sglang-serving.md) for the resolved
@@ -174,13 +174,9 @@ restart. Retention is 30 days.
 whether the proxy reached SGLang at all, and the SGLang log on the Spark
 (`~/sglang-start-*.log`) shows whether the model server answered.
 
-## 4. Escalation path
+## 4. No escalation path
 
-Escalation shells out to `claude -p` inside an isolated git worktree. It uses
-your Claude subscription's OAuth credentials, so it cannot bill beyond what you
-already pay. Hitting a usage limit parks the card as `Blocked` with
-`escalation:rate-limited` and ends the tick gracefully — it never retries in a
-loop.
-
-Escalation is budgeted and classified; `SCHEMA` and `SCOPE` failures may never
-escalate. See §9 of [the constitution](ways-of-working.md).
+Nothing escalates to a stronger model (ADR 0032, decision 9; ADRs 0004 and 0005).
+A story the Developer's session can't finish goes back to the Business Analyst
+with its evidence, or to the Sponsor for a choice. See §9 of
+[the constitution](ways-of-working.md).

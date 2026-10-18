@@ -95,37 +95,6 @@ config.org.sandbox.mode:
 config.org.trust.crew:
 config.org.trust.sponsor:
 config.org.trust.tools:
-form.FileEdit.stays_in_the_repository:
-  description: Refused if not a Python file.
-  messages:
-    not_python: '{path} isn''t a Python file, so it has no definitions to edit by name; change it with
-      a text edit, quoting the text it replaces'
-  origin:
-  - crew#744
-  owner: Developer
-  told_in: FileEdit.path
-form.Move.stays_in_the_repository:
-  description: Refused if a file isn't Python.
-  messages:
-    not_python: '{path} isn''t a Python file; only Python definitions move'
-  owner: Developer
-  told_in: Move
-form.path.stays_in_the_repository:
-  cases:
-  - form.FileWrite.stays_in_the_repository
-  - form.TextEdit.stays_in_the_repository
-  - form.CriterionTest.stays_in_the_repository
-  - form.PlannedFile.in_the_repository
-  - form.Implementation.deleted_stay_in_the_repository
-  description: Refused if a path is empty, outside the repo, or in .git.
-  messages:
-    empty: path is empty
-    escapes: '{path} escapes the repository. Paths must be relative and must not contain ''..''.'
-    git: refusing to write inside .git
-  origin:
-  - crew#204
-  owner: Developer
-  told_in: FileWrite.path, FileEdit.path, TextEdit.path, CriterionTest.path, PlannedFile.path, Move, Implementation.deleted_files
 guard.bounds.out_of_bounds:
   messages:
     default: 'This change goes outside what the project allows:
@@ -147,9 +116,6 @@ session.path:
     skipped: '`{path}` is in a folder the session doesn''t {verb}.'
   origin:
   - crew#778
-  owner: Developer
-told.delivery_crew.the_repository_below_may_show_some:
-  guidance: true
   owner: Developer
 told.deploy_review_crew.block_the_change_when_what_it:
   guidance: true

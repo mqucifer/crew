@@ -62,7 +62,7 @@ issue.cites ─► cards (repo#n)        a fix's merge commit ─► the first t
 | How a Developer session went, call by call (crew#778) | `jq -c 'select(.card == 662 and (.kind \| startswith("session.")))' var/events/*.jsonl` |
 | A session's tool calls: what each did, and the rule behind each refusal | `jq -r 'select(.card == 662 and .kind == "tool.finished" and .detail.turn) \| [.detail.turn, .detail.tool, .detail.target, .detail.result, .detail.rule // ""] \| @tsv' var/events/*.jsonl` |
 | In Grafana, one run's events | `{service_name="crew"} \| run="RUN"` |
-| In Grafana, one rule's events | `{service_name="crew"} \| rule="escalation.budget"` |
+| In Grafana, one rule's events | `{service_name="crew"} \| rule="story.session_blocked"` |
 | In Grafana, a run's events by kind and rule (instant query) | `sum by (failure_kind, rule) (count_over_time({service_name="crew"} \| run="RUN" [6h]))` |
 | In Grafana, what one commit's ticks did | `{service_name="crew"} \| commit="COMMIT"` |
 | In Grafana, a tick's own log lines | `{service_name="crew"} \| crew_tick="TICK"` |

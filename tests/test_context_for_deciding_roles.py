@@ -24,13 +24,8 @@ def project(tmp_path: Path) -> Path:
 
 
 def test_a_deciding_role_sees_source_in_full_and_tests_by_name(tmp_path: Path):
-    shown = repository_context(project(tmp_path), editing=False)
+    shown = repository_context(project(tmp_path))
     assert "BODY_MARK" in shown, "source in full"
     assert "test_json_has_a_version" in shown, "tests named in the index"
     assert "ASSERTION_MARK" not in shown, "but not their bodies"
     assert "Test files are shown above by the tests they define" in shown
-
-
-def test_the_developer_still_sees_the_tests_whole(tmp_path: Path):
-    shown = repository_context(project(tmp_path), editing=True)
-    assert "ASSERTION_MARK" in shown and "shown above by the tests" not in shown

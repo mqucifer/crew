@@ -1,7 +1,7 @@
 # 31. Every rule a role meets is declared once, by category
 
 - **Date:** 2026-10-17
-- **Status:** Accepted (built by crew#756 part 3, with the answer-shape category moved first; each other category moves in its own cleanup). The Developer's rules are also sorted by when they apply in its session: the table is built (crew#788), and what it sorts them into is decided and not built (ADR 0032).
+- **Status:** Accepted (built by crew#756 part 3, with the answer-shape category moved first; each other category moves in its own cleanup). The Developer's rules are also sorted by when they apply in its session (crew#788, ADR 0032), and the sort is applied: its retired rules left the catalog in crew#778's Stage E.
 
 ## Context
 
@@ -52,13 +52,13 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
 - **The starting guidance label isn't a decision.** The 266 lines are labelled guidance because nothing checks them today, not because anyone decided they should stay. Each is decided in its category's cleanup: given a check, kept as guidance, or cut.
 - **Retirement is flagged at the retro, never automatic** (the operator, 2026-10-17). A rule that can fire and hasn't in the last 10 sprints is a candidate to retire, and the five that fire most are shown as "a missing tool?". Both come from `crew rules --events`.
 - **The structure lands in stages** (the operator, 2026-10-17). Part 3 adds the declaration, the catalog, the tests both ways, the budget, and `refuse()` with generated form descriptions, and moves answer_shape end to end. Each other category moves to `refuse()` in its own cleanup PR, where its messages are reviewed anyway. `rulebook.MIGRATED` names the categories that have moved; the second policy is tested for those.
-- **The Developer's rules are also sorted by when they apply in its session** (the Sponsor, 2026-10-17, crew#778 decision 5; ADR 0032). This is decided and not built. There are four kinds:
+- **The Developer's rules are also sorted by when they apply in its session** (the Sponsor, 2026-10-17, crew#778 decision 5; ADR 0032). There are four kinds:
   - **workspace:** the container enforces it. It's kept in the catalog as config, with nothing told and no refusals;
   - **feedback:** a tool reply, never a discarded answer or a counted failure;
   - **gate:** a check on the diff at `done`;
   - **retired:** a rule that exists only because an answer had to be complete in one shot.
 
-  `rule_sort.py` is that table (crew#788), and a test holds it, so a new rule the Developer meets must be sorted. Of 170, 11 are workspace, 28 feedback, 40 gates and 56 retired. 35 fit none of the four, each with why. Nothing in the tick reads it until the session is built, and the retired rules leave in the build's Stage E.
+  `rule_sort.py` is that table (crew#788), and a test holds it, so a new rule the Developer meets must be sorted. Of the 170 sorted on 2026-10-17, 56 were retired. Stage E (crew#778) applied the sort: 44 retired rules left the catalog, with the one-call copies of the others, whose rules live on in the session's tools, the gates at `done` and the container. The 12 retired rules that stay are ones other roles still meet (`SHARED`). The table now holds 71: 8 workspace, 19 feedback, 32 gates and those 12, and 20 that fit none of the four, each with why. Nothing in the tick reads it.
 - **New rules are frozen while part 3 is built** (the Sponsor, 2026-10-17). No PR adds a rule, except a fix for a live incident that the operator OKs. The freeze ends when part 3 merges.
 
 ## Consequences
@@ -72,7 +72,7 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
 - **The prompts of the forms that carry a migrated rule change,** and only those: each rule's description is added to the field or form it checks. When answer_shape moved, 20 forms changed and 126 renderings stayed byte for byte the same.
 - **The Sponsor reviews by category, not by row.** Each category's summary covers: rules by kind, both policy gaps, fires, refused hours and roles.
 - **The cleanup is category by category,** each one deciding check, guidance or cut for its told-only rules and giving each rule one owner.
-- **Some lines are unplaced.** 24 told lines fit no one category: the onboarding interview, the Developer's instructions for reading files, and §16 of the ways of working. They're declared in `unplaced.yaml` until a cleanup places them.
+- **Some lines are unplaced.** Some told lines fit no one category, such as the onboarding interview and §16 of the ways of working. They're declared in `unplaced.yaml` until a cleanup places them. The Developer's instructions for reading files were among them, and went with its reading in Stage E.
 
 ## Changelog
 
@@ -81,3 +81,4 @@ Linters face the same problem at a larger scale, with hundreds of rules contribu
 - **2026-10-17, flow's cleanup:** merged rules as `cases`, every decision counted by its rule, and constitution passages told to some roles only. The Sponsor decided each on flow's review, recorded on crew#756; flow went from 174 rules to 120.
 - **2026-10-17, the migration's end:** every category refuses through `refuse()` and is told in its form: evidence, scope, guards, edits, contracts and guidance moved one at a time (mqucifer/crew#782 to the guidance PR), with obvious merges as `cases`, each rule told once per form, and the lean-prompt cap at 65% of a form's schema (the Sponsor, on crew#756). A check that refuses nothing a role chose is declared `exempt` with why. Merges that need design wait for crew#778.
 - **2026-10-17, the session's sort:** the Developer's rules are also sorted by when they apply in its session: workspace, feedback, gate at `done`, or retired. The table is `rule_sort.py` (crew#788). The Sponsor decided the four kinds on crew#778, decision 5 (ADR 0032). Decided, not built.
+- **2026-10-18, Stage E:** the sort is applied (crew#778, the Sponsor's no-fallback decision). 44 retired rules left the catalog and the one-call copies of the rest went with the one-call Developer; 12 retired rules stay for the roles that still meet them. The Developer's guidance budget is 0 and the Senior Engineer's 8, since their lines on one-call and stepped delivery went too.

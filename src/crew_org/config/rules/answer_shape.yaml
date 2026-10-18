@@ -7,36 +7,11 @@ call.check_not_cut_at_a_quote:
   origin:
   - crew#618
   - sprint-metrics#555
-call.join_blocks:
-  messages:
-    not_a_name: '`{key}` holds {value}, which isn''t a block''s name: blocks are named b1, b2 and so on,
-      and the blocks written are {written}. Put the name of the block holding its code in `{key}`'
-    unwritten: '`{key}` names block {name}, which isn''t written after the JSON: write it between @@@
-      {bare} @@@ and @@@ end @@@'
-  origin:
-  - ADR 0024
-  - ADR 0025
-  - ADR 0026
-  - crew#583
-  - crew#734
-  - sprint-metrics#529
 call.schema:
   cases:
   - §5.2
   origin:
   - ADR 0025
-call.split_blocks:
-  messages:
-    outside: 'text after the JSON outside any block: {line}. Write each block between its @@@ name @@@
-      line and @@@ end @@@'
-    twice: 'block {name} is written twice: write each block once'
-    unclosed: 'block {name} has no @@@ end @@@ line: close every block'
-  origin:
-  - ADR 0024
-  - ADR 0025
-  - ADR 0026
-  - crew#583
-  - sprint-metrics#529
 call.the_answer_ran_on_as:
   messages:
     default: 'the answer ran on as whitespace after this, so a string closed early or a list or object
@@ -48,9 +23,6 @@ call.the_answer_ran_on_as:
 call.the_answer_was_empty_you:
   messages:
     default: 'the answer was empty: you stopped before writing it. Think less and write the whole answer'
-call.the_json_before_the_blocks:
-  messages:
-    default: 'the JSON before the blocks isn''t valid JSON: {error}'
 check.settle_crew.check_covers:
   description: Refused unless every note, N1 to the last, is answered, and nothing answers a note that
     isn't there.
@@ -156,7 +128,6 @@ config.const.settle_crew.INFRA_CHARS:
 config.const.settle_crew.QUESTION_CHARS:
 config.const.settle_crew.REASON_CHARS:
 config.const.settle_crew.SOURCE_CHARS:
-config.const.stepped.MAX_FILES:
 form.Conclusion.says_something:
   description: Refused if it has no rows, open questions, items for infra or dismissals.
   messages:
@@ -193,28 +164,12 @@ form.PanelAnswer.one_or_the_other:
     no_notes: 'no notes: give at least one, or say nothing to add'
     with_notes: 'nothing_to_add with notes: give notes, or nothing to add'
   told_in: PanelAnswer
-form.PlannedFile.says_what:
-  description: Refused if it doesn't say what changes.
-  messages:
-    default: say what changes in this file
-  owner: Developer
-  told_in: PlannedFile.intent
 form.PresentationNote.has_a_sample:
   description: Refused if empty.
   messages:
     default: the note carries a sample of the finished output
   owner: UX Designer
   told_in: PresentationNote.sample
-form.ProcessDefect.is_a_change:
-  cases:
-  - told.retro_crew.a_larger_escalation_budget_is_never
-  - told.scrum_master.never_propose_a_larger_escalation_budget
-  description: Refused if it asks for a larger escalation budget.
-  messages:
-    default: a larger escalation budget is not a process improvement. Escalation rate is a symptom of
-      task design; name the design change instead.
-  owner: Scrum Master
-  told_in: ProcessDefect.change
 form.ProcessDefect.short:
   description: Refused if it runs over its length limit.
   messages:

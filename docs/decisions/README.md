@@ -34,8 +34,8 @@ decision was first made.
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | 2026-10-02 | Accepted (the process now lives in this README) |
 | [0002](0002-the-board-is-the-orchestrator.md) | The board is the orchestrator | 2026-09-18 | Accepted |
 | [0003](0003-the-sponsors-gates.md) | The Sponsor's gates | 2026-09-18 | Accepted |
-| [0004](0004-escalation-runs-on-the-subscription.md) | Escalation runs on the subscription, never an API key | 2026-09-18 | Accepted (escalation retires with ADR 0032, not built) |
-| [0005](0005-escalation-is-not-a-crutch.md) | Escalation is rationed, not a crutch | 2026-09-18 | Accepted (escalation retires with ADR 0032, not built) |
+| [0004](0004-escalation-runs-on-the-subscription.md) | Never an Anthropic API key | 2026-09-18 | Accepted (escalation deleted, ADR 0032) |
+| [0005](0005-escalation-is-not-a-crutch.md) | Nothing escalates: a story that can't be done goes back | 2026-09-18 | Accepted (built, ADR 0032) |
 | [0006](0006-generated-code-runs-sandboxed.md) | Generated code runs sandboxed | 2026-09-18 | Accepted (the Developer's workspace per story in ADR 0032, not built) |
 | [0007](0007-all-model-traffic-through-the-proxy.md) | All model traffic goes through the proxy | 2026-09-23 | Accepted |
 | [0008](0008-the-crew-repo-is-off-the-board.md) | The crew repo is off the board | 2026-09-23 | Accepted |
@@ -53,13 +53,13 @@ decision was first made.
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source, and the consumer reviews what it receives | 2026-10-07 | Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the consumer's review planned for M10) |
 | [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
-| [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan; the ruling's move to the gate in ADR 0032, not built) |
-| [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it; changed for the Developer by ADR 0032, not built) |
-| [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first; changed for the Developer by ADR 0032: its session's calls built, `calls.converse`) |
-| [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (built for the Developer, crew#626; changed for the Developer by ADR 0032, not built) |
+| [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan; the ruling at the gate, ADR 0032) |
+| [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it; changed for the Developer by ADR 0032, built) |
+| [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first; changed for the Developer by ADR 0032: its session's calls through `calls.converse`, its one-call forms deleted) |
+| [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (no step answers in blocks since ADR 0032's Stage E) |
 | [0027](0027-collaborators-file-bugs.md) | Collaborators file bugs, and the Product Owner may propose a Goal | 2026-10-12 | Accepted (bugs built by crew#407; proposed Goals planned for M10) |
 | [0028](0028-a-sprint-closes-itself-when-its-time-is-up.md) | A sprint closes itself when its time is up | 2026-10-12 | Accepted |
 | [0029](0029-the-plan-lives-in-the-crew-roadmap.md) | The plan lives in the Crew roadmap project | 2026-10-12 | Accepted |
 | [0030](0030-a-new-project-starts-from-a-walking-skeleton.md) | A new project starts from an alpha Claude builds | 2026-10-13 | Accepted (the skeleton path built by crew#690; the handover check to be built by crew#757) |
-| [0031](0031-every-rule-a-role-meets-is-declared-once.md) | Every rule a role meets is declared once, by category | 2026-10-17 | Accepted (built by crew#756 part 3, answer_shape first; each other category in its cleanup; the session's sort in ADR 0032, not built) |
-| [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (the session built beside delivery, Stage C; delivery, retiring and measures to build, Stages D to F of `docs/plans/developer-session.md`) |
+| [0031](0031-every-rule-a-role-meets-is-declared-once.md) | Every rule a role meets is declared once, by category | 2026-10-17 | Accepted (built by crew#756 part 3, answer_shape first; each other category in its cleanup; the session's sort applied, ADR 0032) |
+| [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |

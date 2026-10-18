@@ -1,7 +1,7 @@
 # 32. The Developer works in a session
 
 - **Date:** 2026-10-17
-- **Status:** Accepted, partly built. Every part below is decided. The deliver phase runs the Developer as a session in the story's workspace container (Stages B to D of `docs/plans/developer-session.md`). The one-call Developer of ADRs 0024 to 0026, and escalation (ADRs 0004 and 0005), stay in the code unused until Stage E removes them. The rule sort (crew#788) is read by nothing in the tick.
+- **Status:** Accepted, built but for the measures. Every part below is decided. The deliver phase runs the Developer as a session in the story's workspace container (Stages B to D of `docs/plans/developer-session.md`), and nothing else: the one-call Developer of ADRs 0024 to 0026 and escalation (ADRs 0004 and 0005) are deleted (Stage E). The measures are Stage F. The rule sort (crew#788) is read by nothing in the tick.
 
 ## Context
 
@@ -125,7 +125,7 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 - A stuck session goes back to the Business Analyst who wrote the story, with its evidence: the last failure, what the Developer said was missing, and what it tried. An undecided choice goes to the Sponsor.
 - The Sponsor's reason: escalation "has been hiding problems", and the escalated Claude sessions gave little to learn from.
 - The escalation measure becomes the rate of stories returned to the Business Analyst.
-- Claude Code escalation (`tools/claude_code.py`, `crew_org.escalation` and the per-sprint budget) retires with the build (ADRs 0004 and 0005).
+- Claude Code escalation (`tools/claude_code.py`, `crew_org.escalation`, the ledger and the per-sprint budget) is deleted (Stage E; ADRs 0004 and 0005). The retro and `crew export` count the stories returned to the Business Analyst instead.
 
 **How sessions fit the tick (P1 to P6):**
 - **P1, one session at a time.** The deliver phase starts a session and runs it to its end, one at a time to start, so the Spark serves one session's calls. The backstop bounds a tick's deliver phase. Parallel sessions (the In Progress limit is 3) wait until the records show the Spark's headroom (mqucifer/crew#790).
@@ -155,22 +155,22 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 | How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Built with the session: its endings, the ceilings at 60 and 50, and the replay's masking as its one compaction. The 2-hour backstop is one budget per delivery of a story, shared by its sessions (the operator, on crew#778) |
 | The start (4) | Yes | Built with the session. Its story section is the card's title and body, with the epic's decided rows and design note, each part measured (the operator, on crew#778) |
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Built (Stage B, mqucifer/crew#796). The deliver phase holds one per story, for its sessions and the gates at `done` |
-| The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
-| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798). The deliver phase runs them at every `done`, in the story's workspace container |
+| The rule sort (5) | Yes | Applied in Stage E: the retired rules left the catalog, except 12 other roles still meet. `rule_sort.py` holds what's left (crew#788), and nothing in the tick reads it |
+| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798). The deliver phase runs them at every `done`, in the story's workspace container. The mid-attempt ruling is deleted with the one-call Developer (Stage E) |
 | Measures (8) | Yes | delivery-history 1.6.0 carries the session, by names and counts, and each story's deliveries in it (Stage F). sprint-metrics' feed counts a session story's attempts as the times it was handed to review. The sprint measures wait for the Sponsor's Goal in sprint-metrics |
-| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and the deliver phase runs it. The Developer no longer escalates; the code stays, unused, until Stage E |
+| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and the deliver phase runs it. Nothing escalates, and the escalation code is deleted (Stage E). The retro and `crew export` count stories returned to the Business Analyst |
 | P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P3 are built in the deliver phase: one session at a time, a new session for rework, and checkpoints committed after each green run, never pushed, resumed after an interruption. P4 is as before |
 
 ## Consequences
 
 - **It's built in stages** (`docs/plans/developer-session.md`): B the workspace, C the session, D delivery, E retiring what it replaces, F measures. Every stage that calls a model or GitHub runs once for real through LiteLLM before its PR.
-- **Stage E retires:**
-  - the Developer's retired rules (crew#788);
-  - the answer forms and refusals the session replaces;
-  - Claude Code escalation and its budget;
+- **Stage E retired** (crew#778):
+  - the Developer's retired rules (crew#788), 44 of them, keeping 12 other roles meet;
+  - the answer forms and refusals the session replaces, the code in blocks, and the one-call Developer with its steps;
+  - Claude Code escalation, its ledger and its budget;
   - the Developer's reading ceilings, which stay for refinement and QA.
 
-  The guidance budgets come down to what remains.
+  The guidance budgets came down to what remains: the Developer's to 0, the Senior Engineer's to 8.
 - **The ADRs it changes,** each with a changelog line:
   - 0004 and 0005: no escalation;
   - 0006: the workspace container;
@@ -202,3 +202,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
   - an empty diff at `done` takes today's already-done path (mqucifer/crew#221).
 - **2026-10-18:** the deliver phase runs the Developer as a session (Stage D part 2): P1 to P3, one 2-hour budget per delivery, and the gates at `done` in the story's workspace container. The Sponsor: no switch back to the one-call Developer, whose code stays unused until Stage E (on crew#778). Checkpoints aren't pushed, so a rework never moves the head under review.
 - **2026-10-18:** decision 8's attempt corrected (the Sponsor, on crew#778): an attempt is the branch handed to review and QA, not a submission at `done`. The gate's returns before review are gate rounds. The measures reach delivery-history (Stage F): each story's deliveries in sessions, and the session's events by names and counts. Escalation's fields stay in the package for the sprints before it retired.
+- **2026-10-18:** Stage E: the one-call Developer, its answer forms, steps and code in blocks, its reading, Claude Code escalation and the Developer's retired rules are deleted (crew#778; the Sponsor's no-fallback decision). A story with no epic, past the round-trip limit, is blocked for a person instead of going round review and rework without end. ADRs 0004, 0005, 0013, 0020, 0023, 0024, 0025, 0026 and 0031 say so.

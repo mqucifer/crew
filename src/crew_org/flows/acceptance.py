@@ -19,7 +19,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
@@ -539,13 +539,22 @@ def _with_unguarded(checks: str, worktree: Path) -> str:
     return "\n\n".join(part for part in (checks, notice) if part)
 
 
+# What a person reads, not what runs: judged by reading it (§7.1, crew#324).
+DOC_SUFFIXES = (".md", ".rst", ".txt")
+
+
+def is_doc(path: str) -> bool:
+    """A documentation file: prose, outside the tests."""
+    pure = PurePosixPath(path)
+    return pure.suffix.lower() in DOC_SUFFIXES and "tests" not in pure.parts
+
+
 def ci_only(worktree: Path) -> bool:
     """The branch changes CI workflows, and at most the docs that describe them (crew#333).
 
     A deploy workflow comes with a README note on how the site deploys
     (crew-presentation#74); the Code Reviewer reads both.
     """
-    from crew_org.crews.delivery_crew import is_doc  # noqa: PLC0415
     from crew_org.tools.ci_guard import is_workflow  # noqa: PLC0415
 
     changed = changed_paths(worktree)
@@ -563,8 +572,6 @@ def collect_docs(worktree: Path) -> str:
     QA reads it. Only documentation files the branch changed since it left the
     default branch; a doc that doesn't fit is named rather than cut.
     """
-    from crew_org.crews.delivery_crew import is_doc  # noqa: PLC0415
-
     changed = changed_paths(worktree)
     parts: list[str] = []
     left_out: list[str] = []

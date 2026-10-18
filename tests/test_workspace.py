@@ -1,14 +1,13 @@
-"""Applying and checking an implementation. The guards matter because this code
-writes files the model chose and then executes them."""
+"""Checking a worktree: the project's lint and tests, run where the model's code can't
+reach the crew. The guards matter because this executes code the model wrote."""
 
 from __future__ import annotations
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileWrite
 from crew_org.tools import workspace
 from crew_org.tools.sandbox import Mode, Sandbox
-from crew_org.tools.workspace import CheckResult, CommandResult, apply, check
+from crew_org.tools.workspace import CheckResult, CommandResult, check
 
 # These exercise the runner itself — argument handling, timeouts, output caps —
 # so they run on the host deliberately. Spinning up a container per assertion
@@ -19,34 +18,6 @@ HOST = Sandbox(mode=Mode.OFF)
 
 def run(worktree, command, **kwargs):
     return workspace.run(worktree, command, sandbox=HOST, **kwargs)
-
-
-def test_files_are_written_into_the_worktree(tmp_path):
-    written = apply(tmp_path, [FileWrite(path="src/pkg/mod.py", content="x = 1\n")])
-    assert written == ["src/pkg/mod.py"]
-    assert (tmp_path / "src/pkg/mod.py").read_text() == "x = 1\n"
-
-
-def test_nested_directories_are_created(tmp_path):
-    apply(tmp_path, [FileWrite(path="a/b/c/d.py", content="y\n")])
-    assert (tmp_path / "a/b/c/d.py").exists()
-
-
-def test_an_existing_file_is_replaced_in_full(tmp_path):
-    (tmp_path / "f.py").write_text("old and much longer\n")
-    apply(tmp_path, [FileWrite(path="f.py", content="new\n")])
-    assert (tmp_path / "f.py").read_text() == "new\n"
-
-
-def test_a_symlinked_escape_is_refused(tmp_path):
-    """The schema blocks '..' in a path, but a symlink can still point outside.
-    Containment is re-checked after resolution because the cost of being wrong
-    is writing outside the repository."""
-    outside = tmp_path.parent / "outside"
-    outside.mkdir(exist_ok=True)
-    (tmp_path / "link").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(ValueError, match="outside the worktree"):
-        apply(tmp_path, [FileWrite(path="link/escaped.py", content="x\n")])
 
 
 # --- running -------------------------------------------------------------
@@ -344,23 +315,3 @@ def test_an_allowed_unsafe_fix_is_applied_and_recorded_and_no_other(tmp_path, mo
 
 def test_every_allowed_unsafe_fix_says_why():
     assert workspace.UNSAFE_FIXES and all(len(why) > 40 for why in workspace.UNSAFE_FIXES.values())
-
-
-def test_the_attempts_record_and_pull_request_name_what_the_fixers_changed():
-    from crew_org.events import EventKind, EventSink
-    from crew_org.flows.delivery import DeliveryOutcome, _pr_body, _record_autofix
-    from tests.test_delivery_flow import IMPL, story
-
-    seen = []
-    sink = EventSink(None)
-    sink.subscribe(seen.append)
-    outcome = DeliveryOutcome(card=6)
-    fixed = CheckResult(
-        results=[], fixed=["src/a.py"], reverted=["src/b.py"], unsafe=["SIM102 src/a.py:4"]
-    )
-    _record_autofix(fixed, outcome, sink, 6)
-    (event,) = [e for e in seen if e.kind is EventKind.AUTOFIX_APPLIED]
-    assert event.detail["rules"] == ["SIM102"] and event.detail["reverted"] == ["src/b.py"]
-    body = _pr_body(story(), IMPL, outcome)
-    assert "## Fixed by the project's own tools before the checks" in body
-    assert "- `src/a.py`" in body and "unsafe fix `SIM102` at `src/a.py:4`" in body

@@ -15,7 +15,6 @@ from pathlib import Path
 
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
-from crew_org.escalation import EscalationLedger
 from crew_org.events import EventKind, EventSink, attributed, held
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
@@ -246,7 +245,6 @@ def close_sprint(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
-    ledger: EscalationLedger,
     *,
     sprint: str,
     repo: str,
@@ -375,23 +373,6 @@ def close_sprint(
         # The standup's own answer, so the two can't disagree (#175).
         result.aging_blocked = aging_blocked(cards, rules, events_dir, now or datetime.now(UTC))
 
-    # Report the outcome alongside the failure. Without it an escalation reads
-    # as an unresolved failure and the retro concludes the story was shipped
-    # broken — which is what happened the first time this ran.
-    outcomes = ledger.outcomes(sprint)
-    seen: set[int] = set()
-    lines = []
-    for entry in ledger.entries(sprint):
-        if entry.card in seen:
-            continue
-        seen.add(entry.card)
-        ended = outcomes.get(entry.card) or "outcome not recorded"
-        lines.append(
-            f"#{entry.card} {entry.failure_class} after {entry.local_attempts} local "
-            f"attempts — escalation {ended}. Trigger: {entry.detail[:100]}"
-        )
-    escalations = "\n".join(lines)
-
     # One retro per sprint. A close run again finds the one it wrote rather
     # than paying for a second retro and filing every defect twice.
     # A preview is written even when a retro exists: comparing a new retro with
@@ -438,17 +419,17 @@ def close_sprint(
     returned = {ch.card for ch in chains}
     went_back = [c for c in ours if c.number in returned and c.sprint != sprint]
     # Why work didn't land first time (#157), read from the same event log.
+    reported = [c for c in ours if c.sprint == sprint] + went_back
     report = sprint_report(
         sprint,
-        [c for c in ours if c.sprint == sprint] + went_back,
+        reported,
         read_attempts(events_dir, *(window or (None, None))) if events_dir is not None else [],
-        ledger.spent(sprint),
+        len(returned & {c.number for c in reported}),
     )
     try:
         result.retro = attributed(write_retro, sprint=sprint, purpose="retro")(
             sprint,
             board_summary(board.cards(), sprint),
-            escalations,
             delivery_repos=delivery_repos,
             standups=standups,
             known=known_text,

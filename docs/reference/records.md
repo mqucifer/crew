@@ -49,32 +49,14 @@ The record's summary says it for a person; the rule is what a count reads.
 
 | Rule | Meaning |
 |---|---|
-| `schema.local_repair` | A refused answer, retried with the refusal shown, up to the local limit. |
-| `schema.persisted` | Refused past the local limit: a prompt or schema defect, filed, never escalated. |
-| `scope.return` | The story is the problem, not the code: returned to refinement. |
-| `verify.local_repair` | Lint or tests failed, repaired locally before any escalation. |
-| `regression.local_repair` | It changed a contract merged code depends on; retried with the contracts named. |
-| `regression.persisted` | It kept changing contracts after being told which to keep: blocked for a person. |
-| `escalation.budget` | Eligible for escalation, with the sprint's budget spent: blocked. |
-| `escalation.allowed` | Escalated to Claude, within the sprint's budget. |
-| `escalation.unresolved` | Escalated, and still failing afterwards: blocked. |
-| `escalation.usage_limit` | The escalation hit the subscription's usage limit: parked, not failed. |
 | `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. |
 | `delivery.record_unreadable` | The project's record can't be read, so its rules are unknown. |
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
+| `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
 | `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
 | `delivery.pull_request_failed` | The branch was pushed, and its pull request couldn't be opened. |
-| `edit.local_repair` | Its edits couldn't be applied, retried with why shown, up to the local limit. |
-| `guard.local_repair` | A guard refused the change, retried with what it refused shown. |
-| `guard.overwrite` | It kept rewriting existing files whole instead of editing them. |
-| `guard.not_reproduced` | A bug's tests kept passing, or being skipped, against the code as merged. |
-| `guard.protected` | It kept changing what the project protects. |
-| `guard.workflow_permission` | It changes a workflow the crew has no permission to push. |
-| `guard.no_change` | The implementation produced no change. |
-| `edit.not_applied` | Its edits couldn't be applied, past the local limit. |
-| `gate.reviewer_and_developer_disagree` | Answered without a change and sent back again: for a person to settle. |
 | `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. |
 | `gate.review_changes_requested` | The Code Reviewer or DevOps Engineer requested changes. |
 | `gate.qa_unproven` | QA found criteria the work doesn't prove. |

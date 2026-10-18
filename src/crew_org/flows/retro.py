@@ -449,8 +449,8 @@ def _file_recurring(
     """File each recurring cause once, with its count and cards as evidence.
 
     A cause already open as a finding is cited, not filed again. A recurring
-    parse failure is filed as a prompt or schema defect: the escalation policy
-    already reads a persistent SCHEMA failure that way.
+    parse failure is filed as a prompt or schema defect: a defect in what the model
+    is asked for, not bad luck.
     """
     known = list(board_cards)
     causes = [c for c in recurring if c.recurring]

@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 import yaml
 
 import crew_org.flows.close as close_mod
 from crew_org.config import load_org
 from crew_org.crews.retro_crew import Retro
-from crew_org.escalation import EscalationLedger
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import standup as standup_mod
 from crew_org.flows.close import close_sprint
@@ -263,12 +261,7 @@ class CloseBoard:
         return []
 
 
-@pytest.fixture
-def ledger(tmp_path):
-    return EscalationLedger(tmp_path / "escalations.jsonl")
-
-
-def test_the_retro_reads_the_standups_and_closes_them(monkeypatch, ledger):
+def test_the_retro_reads_the_standups_and_closes_them(monkeypatch):
     """The model analyses the sprint's standups at the retro, as the Sponsor asked."""
     given = {}
 
@@ -283,7 +276,6 @@ def test_the_retro_reads_the_standups_and_closes_them(monkeypatch, ledger):
         CloseBoard(),
         issues,
         EventSink(None),
-        ledger,
         sprint=SPRINT,
         repo="sprint-metrics",
         crew_repo=CREW,

@@ -28,7 +28,7 @@ def load_org(path: Path | None = None) -> dict[str, Any]:
 
 def _validate(org: dict[str, Any]) -> None:
     """Fail loudly at startup rather than mid-sprint."""
-    required = ("board", "wip_limits", "sprint", "design", "estimation", "execution", "escalation")
+    required = ("board", "wip_limits", "sprint", "design", "estimation")
     for key in required:
         if key not in org:
             raise ValueError(f"org.yaml is missing required section: {key!r}")
@@ -78,12 +78,6 @@ def _validate(org: dict[str, Any]) -> None:
         raise ValueError(
             f"sandbox.mode must be 'required' or 'off', got {mode!r}. "
             "An unrecognised value would be treated as neither."
-        )
-
-    overlap = set(org["escalation"]["never_escalate"]) & set(org["escalation"]["may_escalate"])
-    if overlap:
-        raise ValueError(
-            f"escalation classes cannot be both never_escalate and may_escalate: {sorted(overlap)}"
         )
 
 

@@ -1,10 +1,11 @@
-"""The Developer sees the files its work names, and asks for more (#231).
+"""A step is shown the files its work names, and reads the rest (#231).
 
 sprint-metrics#268's prompt was ~100k tokens, over half of it the whole test
 suite, for a story that needed ~25k. Empty answers only happen on long prompts
 (#312): none under 50k tokens in 99 calls; the same 100k prompt came back empty
 on every serving setup tried. Focused on what the story names, #268's
-repository part drops from ~91k to ~15k tokens.
+repository part drops from ~91k to ~15k tokens. The split reads this way; the
+Developer's session starts from a map instead (crew#778).
 """
 
 from __future__ import annotations
@@ -13,19 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileWrite, FirstAttempt, FirstOrDone, Implementation
-from crew_org.events import EventKind
-from crew_org.flows import delivery
 from crew_org.tools import repo_context
 from crew_org.tools.repo_context import focused_context, repository_context, select_files
-from tests.test_delivery_flow import (  # noqa: F401
-    FakeIssues,
-    FakeWorkspace,
-    green,
-    harness,
-    red,
-    story,
-)
 
 PKG = "src/sprint_metrics"
 
@@ -110,7 +100,7 @@ def test_a_small_repository_shows_its_code_wherever_it_sits(repo: Path):
     source = text.split("### Current source", 1)[1]
     assert "`build.py`" in source and "# crew:placeholder" in source
     assert "`tools/setup.py`" in source and "return 1" in source
-    assert source.index("`tools/setup.py`") < source.index("`tests/"), "code before tests"
+    assert "def test_table" not in source, "tests by name only, in the map"
 
 
 def test_a_large_one_shows_the_map_and_the_named_files(repo: Path):
@@ -120,7 +110,7 @@ def test_a_large_one_shows_the_map_and_the_named_files(repo: Path):
     assert "serve_metrics" in text, "every signature stays in the map"
     assert "def calculate_cycle_time(cards):\n    return 0" in text, "the named file in full"
     assert "def test_serve():" not in text, "an unnamed file's body is left out"
-    assert "`need_files`" in text
+    assert "read it with `read_file`" in text
     assert focus.shown == [f"{PKG}/metrics.py", "tests/test_metrics.py"]
 
 
@@ -130,214 +120,21 @@ def test_the_threshold_is_read_when_called(repo: Path, monkeypatch):
     assert focus.focused
 
 
-# --- asking ----------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone, Implementation])
-def test_an_answer_that_only_asks_is_valid(answer):
-    kwargs = {"criteria_tests": []} if answer is not Implementation else {}
-    asked = answer(summary="Need to see it first", need_files=["docs/metrics.md"], **kwargs)
-    assert asked.asks and asked.changes_nothing
-
-
-def test_an_answer_that_neither_asks_nor_changes_anything_is_still_refused():
-    with pytest.raises(ValueError, match="must create a file or edit one"):
-        Implementation(summary="nothing")
-
-
-def _asking_delivery(harness, monkeypatch, tmp_path, answers):  # noqa: F811
-    """A large-enough repository, and a Developer that answers in turn with `answers`."""
-
-    def seeded_open(self, branch, *, resume=False):
-        self.resumed = False
-        path = tmp_path / branch.replace("/", "__")
-        (path / "docs").mkdir(parents=True, exist_ok=True)
-        (path / "docs/metrics.md").write_text("# Metrics\nCycle time counts completed cards.\n")
-        (path / "README.md").write_text("# x\n")
-        return path
-
-    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    result, _, _, _, calls, seen = harness(
-        checks=[green()], implement=lambda n: answers[min(n, len(answers)) - 1]
-    )
-    return result, calls, seen
-
-
-ASK = FirstAttempt(
-    summary="need the metrics doc", criteria_tests=[], need_files=["docs/metrics.md"]
-)
-WORK = FirstAttempt(
-    summary="done",
-    criteria_tests=[],
-    new_files=[FileWrite(path="tests/test_x.py", content="def test_x():\n    assert True\n")],
-)
-
-
-def test_asking_shows_the_file_next_time_and_is_not_a_failure(harness, monkeypatch, tmp_path):  # noqa: F811
-    result, calls, seen = _asking_delivery(harness, monkeypatch, tmp_path, [ASK, WORK])
-    assert calls["implement"] == 2
-    assert "Cycle time counts completed cards." in calls["context"][1]
-    assert "Cycle time counts completed cards." not in calls["context"][0]
-    assert not [e for e in seen if e.kind == EventKind.ESCALATION_DECIDED], "no failure counted"
-    assert any("asked to see docs/metrics.md" in (e.summary or "") for e in seen)
-    assert result.delivered
-
-
-def test_asking_forever_is_capped_and_told_to_work(harness, monkeypatch, tmp_path):  # noqa: F811
-    never = FirstAttempt(
-        summary="more", criteria_tests=[], need_files=["docs/metrics.md", "nope.md"]
-    )
-    _, calls, _ = _asking_delivery(harness, monkeypatch, tmp_path, [never, never, WORK])
-    assert calls["implement"] == 3
-    assert "nope.md" in calls["feedback"][2] and "leave `need_files` empty" in calls["feedback"][2]
-
-
-ASK_README = FirstAttempt(summary="need the readme", criteria_tests=[], need_files=["README.md"])
-
-
-def test_a_file_it_hasnt_seen_is_shown_however_often_it_has_asked(harness, monkeypatch, tmp_path):  # noqa: F811
-    """sprint-metrics#529 (2026-10-09): its third ask, for the one file its change
-    needed, was refused as past a limit of two asks, three times over."""
-    _, calls, seen = _asking_delivery(harness, monkeypatch, tmp_path, [ASK, ASK, ASK_README, WORK])
-    assert calls["implement"] == 4
-    shown = [e.detail["asked"] for e in seen if e.kind == EventKind.FILES_SHOWN]
-    assert shown[-1] == ["docs/metrics.md", "README.md"]
-
-
-def test_past_the_files_limit_it_is_told_which_were_not_shown(harness, monkeypatch, tmp_path):  # noqa: F811
-    """ "You've been shown what you asked for", said of a file it hadn't been shown,
-    drew the same ask again."""
-    monkeypatch.setattr(delivery, "ASKED_FILES_LIMIT", 1)
-    _, calls, _ = _asking_delivery(harness, monkeypatch, tmp_path, [ASK, ASK_README, WORK])
-    told = calls["feedback"][2]
-    assert "Not shown: README.md" in told and "shown what you asked for" not in told
-
-
-def test_each_attempt_records_its_context_size(harness, monkeypatch, tmp_path):  # noqa: F811
-    _, _, seen = _asking_delivery(harness, monkeypatch, tmp_path, [WORK])
-    sizes = [e for e in seen if (e.summary or "").startswith("#6 context:")]
-    assert sizes and sizes[0].detail["focused"] is True
-
-
 # --- reading inside the call (crew#583, step C4) ------------------------------------------------
 
 
-def test_with_the_read_tool_it_is_told_to_read_and_shown_less(repo: Path):
-    text, focus = focused_context(
-        repo, about="Round `calculate_cycle_time`.", above=10, reading=True, ceiling=10
-    )
+def test_a_lower_ceiling_leaves_room_to_read(repo: Path):
+    text, focus = focused_context(repo, about="Round `calculate_cycle_time`.", above=10, ceiling=10)
     assert "read it with `read_file`" in text and "`need_files`" not in text
     assert focus.shown == [] and focus.omitted == [f"{PKG}/metrics.py", "tests/test_metrics.py"]
 
 
-def test_with_the_read_tool_an_asked_file_keeps_to_the_ceiling(repairing: Path, monkeypatch):
+def test_an_asked_file_keeps_to_the_ceiling(repo: Path, monkeypatch):
     """Shown past it, asks grew mqucifer/sprint-metrics#567's prompt to 82k tokens."""
     monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
-    _, focus = focused_context(
-        repairing,
-        about="Round it.",
-        extra=["docs/usage.md"],
-        written=[f"{PKG}/serve.py"],
-        above=0,
-        reading=True,
-    )
-    assert focus.shown == [f"{PKG}/serve.py"], "what it wrote, still"
+    _, focus = focused_context(repo, about="Round it.", extra=["docs/usage.md"], above=0)
+    assert focus.shown == []
     assert focus.omitted[0] == "docs/usage.md", "what it asked for, first in line"
-
-
-def test_a_focused_delivery_reads_inside_the_call_and_says_what_it_read(
-    harness,  # noqa: F811
-    monkeypatch,
-    tmp_path,
-):
-    def reads_then_works(n, *, read):
-        assert read is not None and read.name == "read_file"
-        assert "Cycle time counts completed cards." in read.run({"path": "docs/metrics.md"})
-        return WORK
-
-    def seeded_open(self, branch, *, resume=False):
-        self.resumed = False
-        path = tmp_path / branch.replace("/", "__")
-        (path / "docs").mkdir(parents=True, exist_ok=True)
-        (path / "docs/metrics.md").write_text("# Metrics\nCycle time counts completed cards.\n")
-        return path
-
-    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    result, _, _, _, calls, seen = harness(checks=[green()], implement=reads_then_works)
-    assert result.delivered and calls["implement"] == 1, "read, not asked for"
-    assert [e.detail["read"] for e in seen if (e.summary or "").startswith("#6 read")] == [
-        ["docs/metrics.md"]
-    ]
-
-
-def test_an_answer_that_works_and_asks_is_applied_and_shown_the_file_next(
-    harness,  # noqa: F811
-    monkeypatch,
-    tmp_path,
-):
-    """crew#591: mqucifer/sprint-metrics#567's repair fixed the code and asked to see the
-    docs. Not applied, its fix would have been thrown away for the part it couldn't see."""
-    from crew_org.crews.delivery_crew import FileEdit  # noqa: PLC0415
-
-    work_and_ask = FirstAttempt(
-        summary="the work, and one more file",
-        criteria_tests=[],
-        new_files=[FileWrite(path="tests/test_x.py", content="def test_x():\n    assert True\n")],
-        edits=[FileEdit(path="src/m.py", operation="add", target="f", source="def f():\n    pass")],
-        need_files=["docs/metrics.md"],
-    )
-
-    def seeded_open(self, branch, *, resume=False):
-        self.resumed = False
-        path = tmp_path / branch.replace("/", "__")
-        (path / "docs").mkdir(parents=True, exist_ok=True)
-        (path / "src").mkdir(exist_ok=True)
-        (path / "docs/metrics.md").write_text("# Metrics\n")
-        (path / "src/m.py").write_text("def g():\n    pass\n")
-        return path
-
-    applied: list = []
-    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    _, _, _, _, calls, seen = harness(
-        checks=[red("1 failed"), green()],
-        implement=lambda n: work_and_ask if n == 1 else WORK,
-        apply=lambda w, impl: applied.append(impl) or [],
-    )
-    assert applied[0] is work_and_ask, "its work is applied"
-    shown = [e.detail for e in seen if e.kind == EventKind.FILES_SHOWN]
-    assert "docs/metrics.md" in shown[1]["asked"], "and the next attempt is shown the file"
-
-
-def test_empty_answers_after_an_ask_go_in_steps(harness, monkeypatch, tmp_path):  # noqa: F811
-    """mqucifer/sprint-metrics#567 asked for files, then answered empty ten times:
-    steps were tried only after a first attempt, and its first attempt had asked."""
-    from crew_org import calls as call_layer  # noqa: PLC0415
-
-    def answers(n):
-        if n == 2:
-            raise call_layer.Refused("the answer was empty", 2, empty=True)
-        return ASK if n == 1 else WORK
-
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    result, _, _, _, calls, seen = harness(checks=[green()], implement=answers)
-    assert any("the next attempt goes in steps" in (e.summary or "") for e in seen)
-    assert result.delivered
-
-
-def test_empty_answers_once_work_is_written_are_repaired_not_planned_again(harness):  # noqa: F811
-    from crew_org import calls as call_layer  # noqa: PLC0415
-
-    def answers(n):
-        if n == 2:
-            raise call_layer.Refused("the answer was empty", 2, empty=True)
-        return WORK
-
-    result, _, _, _, _, seen = harness(checks=[red("1 failed"), green()], implement=answers)
-    assert not any("goes in steps" in (e.summary or "") for e in seen)
-    assert result.delivered
 
 
 # --- named in prose (sprint-metrics#281) -------------------------------------------------------
@@ -417,13 +214,7 @@ def test_text_is_known_by_name_as_well_as_suffix():
     assert not repo_context.is_text(Path("logo.png"))
 
 
-# --- a repair's ceiling (crew#591) -------------------------------------------------------------
-
-# A test report whose traceback passes through a file no failing test imports.
-REPORT = (
-    "src/sprint_metrics/serve.py:2: in serve_metrics\n"
-    "FAILED tests/test_metrics.py::test_cycle - assert 1 == 0\n"
-)
+# --- what a test imports (crew#591) ---------------------------------------------------------
 
 
 @pytest.fixture
@@ -436,105 +227,9 @@ def repairing(repo: Path) -> Path:
     return repo
 
 
-def _sizes(repo: Path, *rels: str) -> int:
-    return sum(len((repo / r).read_text().strip()) for r in rels)
-
-
 def test_the_code_a_failing_test_imports_is_found(repairing: Path):
     found = repo_context.imported_files(repairing, "tests/test_metrics.py")
     assert found == [f"{PKG}/metrics.py", f"{PKG}/report.py"]
-
-
-def test_a_repair_under_the_ceiling_shows_everything_it_names(repairing: Path):
-    _, focus = focused_context(
-        repairing, about="Round it.", failing=["tests/test_metrics.py"], report=REPORT, above=0
-    )
-    assert f"{PKG}/serve.py" in focus.shown and not focus.omitted
-
-
-def test_over_the_ceiling_what_only_the_report_names_is_left_out_and_named(
-    repairing: Path, monkeypatch
-):
-    """sprint-metrics#537's VERIFY repair was shown all 25 files its report named,
-    479,252 characters, and came back empty after 885 s."""
-    index = len(repository_context(repairing, bodies=False))
-    needed = ["tests/test_metrics.py", f"{PKG}/metrics.py", f"{PKG}/report.py"]
-    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", index + _sizes(repairing, *needed))
-    text, focus = focused_context(
-        repairing, about="Round it.", failing=["tests/test_metrics.py"], report=REPORT, above=0
-    )
-    assert focus.shown == needed, "the failing test, then the code it imports"
-    assert f"{PKG}/serve.py" in focus.omitted and f"{PKG}/serve.py" not in focus.shown
-    assert "def serve_metrics(port):\n    return None" not in text
-    assert "not shown, to keep this prompt short enough to answer: " in text
-    assert f"`{PKG}/serve.py`" in text and "`need_files`" in text
-
-
-def test_what_it_asked_for_and_wrote_is_shown_past_the_ceiling(repairing: Path, monkeypatch):
-    """Withheld, they would be asked for again and again: the asks are capped, these aren't
-    otherwise reachable."""
-    monkeypatch.setattr(repo_context, "FOCUSED_CHAR_CEILING", 1)
-    _, focus = focused_context(
-        repairing,
-        about="Round it.",
-        extra=["docs/usage.md"],
-        written=[f"{PKG}/serve.py", "tests/not_written_yet.py"],
-        failing=["tests/test_metrics.py"],
-        report=REPORT,
-        above=0,
-    )
-    assert focus.shown == ["docs/usage.md", f"{PKG}/serve.py"]
-    assert focus.omitted[0] == "tests/test_metrics.py", "the failing test is next in line"
-
-
-FIX = FirstAttempt(
-    summary="fixed",
-    criteria_tests=[],
-    new_files=[FileWrite(path="tests/test_y.py", content="def test_y():\n    assert True\n")],
-)
-
-
-def test_a_repair_records_what_it_left_out(harness, monkeypatch, tmp_path):  # noqa: F811
-    """The Developer is shown what it wrote and the failing tests first, and the
-    `files.shown` event names what didn't fit."""
-
-    def seeded_open(self, branch, *, resume=False):
-        self.resumed = False
-        path = tmp_path / branch.replace("/", "__")
-        (path / PKG).mkdir(parents=True, exist_ok=True)
-        (path / "tests").mkdir(exist_ok=True)
-        (path / f"{PKG}/metrics.py").write_text("def calculate_cycle_time(cards):\n    return 1\n")
-        (path / f"{PKG}/serve.py").write_text("def serve_metrics(port):\n    return None\n")
-        (path / "tests/test_metrics.py").write_text(
-            "from sprint_metrics.metrics import calculate_cycle_time\n\n\n"
-            "def test_cycle():\n    assert calculate_cycle_time([]) == 0\n"
-        )
-        return path
-
-    def write(worktree, impl):
-        for f in impl.new_files:
-            (worktree / f.path).write_text(f.content)
-        return []
-
-    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    monkeypatch.setattr(repo_context, "READ_FIRST_CHAR_CEILING", 1)
-    report = (
-        "src/sprint_metrics/serve.py:2: in serve_metrics\n"
-        "FAILED tests/test_metrics.py::test_cycle - assert 1 == 0\n"
-    )
-    _, _, _, _, calls, seen = harness(
-        checks=[red(report), green()], implement=lambda n: WORK if n == 1 else FIX, apply=write
-    )
-    assert calls["implement"] == 2
-    repair = [e for e in seen if e.kind == EventKind.FILES_SHOWN][1]
-    assert repair.detail["shown"] == ["tests/test_x.py"], "what it wrote"
-    assert repair.detail["omitted"] == [
-        "tests/test_metrics.py",
-        f"{PKG}/metrics.py",
-        f"{PKG}/serve.py",
-    ]
-    assert "3 left out" in repair.summary
 
 
 # --- the graph: imports shown, importers and covering tests named (crew#583, C3) ------------
@@ -574,56 +269,20 @@ def test_the_named_codes_own_imports_are_shown_with_it(graph: Path, monkeypatch)
     assert f"{PKG}/card.py" in focus.shown
 
 
-def test_what_imports_it_and_the_tests_that_run_it_are_named_not_shown(graph, monkeypatch):
-    monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
-    text, focus = focused_context(graph, about=f"Change {PKG}/metrics.py", coverage=Map())
-    close = text.split("Close to this work", 1)[1].split("Every other file", 1)[0]
-    assert f"`{PKG}/report.py`" in close and f"{PKG}/report.py" not in focus.shown
-    # Recorded too, for each read's note (crew#778): named, not shown.
-    assert focus.selected(f"{PKG}/report.py") == "left_out"
-    assert close.index("tests/test_schema.py::test_keys") < close.index(
-        "tests/test_report.py::test_table"
-    ), "the most specific test first"
-
-
 def test_without_a_map_only_the_importers_are_named(graph, monkeypatch):
     monkeypatch.setattr(repo_context, "FOCUS_ABOVE_CHARS", 10)
     text, _ = focused_context(graph, about=f"Change {PKG}/metrics.py")
     assert "tests/test_schema.py::test_keys" not in text and f"`{PKG}/report.py`" in text
 
 
-def test_a_repair_sees_only_what_it_changed_of_a_large_written_file(repo: Path, monkeypatch):
-    """crew#591: sprint-metrics#567's repair was shown 251,860 characters."""
-    big = f"{PKG}/metrics.py"
-    (repo / big).write_text(
-        "import os\n\n\ndef calculate_cycle_time(cards):\n    return 0\n\n\n"
-        + "".join(f"def other_{i}():\n    return {i}\n\n\n" for i in range(800))
-    )
-    text, focus = focused_context(
-        repo,
-        about="x",
-        written=[big],
-        above=10,
-        reading=True,
-        changed={big: ["calculate_cycle_time"]},
-    )
-    assert big in focus.shown and "def calculate_cycle_time(cards):" in text
-    assert focus.selected(big) == "part", "shown as what it changed, recorded so (crew#778)"
-    assert "def other_5():" not in text and "Read any other by name." in text
-    whole, _ = focused_context(repo, about="x", written=[big], above=10, reading=True)
-    assert "def other_5():" in whole, "without what it changed, the file is shown whole"
-
-
-def test_with_the_read_tool_a_far_test_file_is_listed_in_brief(repo: Path):
+def test_a_far_test_file_is_listed_in_brief(repo: Path):
     """Lean prompts, L1: test names were 80% of sprint-metrics#567's map."""
     (repo / "tests/test_serve.py").write_text(
         "def run_it(tmp_path):\n    return 1\n\n\n"
         + "".join(f"def test_case_{i}():\n    assert True\n\n\n" for i in range(40))
     )
-    brief, _ = focused_context(repo, about="Round `calculate_cycle_time`.", above=10, reading=True)
+    brief, _ = focused_context(repo, about="Round `calculate_cycle_time`.", above=10)
     assert "`tests/test_serve.py` — 40 tests, read any by name; helpers: run_it(tmp_path)" in brief
     assert "test_case_7" not in brief
     assert "def calculate_cycle_time" in brief and "test_cycle" in brief, "near tests stay whole"
     assert "serve_metrics(port)" in brief, "source files keep their signatures"
-    whole, _ = focused_context(repo, about="Round `calculate_cycle_time`.", above=10)
-    assert "test_case_7" in whole, "without the read tool, the map is as it was"

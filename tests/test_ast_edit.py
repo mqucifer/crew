@@ -1,4 +1,4 @@
-"""Editing by name.
+"""Replacing by name: the session's `replace_definition`.
 
 The point of this format is that the model reproduces nothing: it names a
 definition and supplies the new source. Everything it does not name is
@@ -15,9 +15,7 @@ import pytest
 from crew_org.tools.ast_edit import (
     Edit,
     EditError,
-    Operation,
     apply_edit,
-    apply_edits,
 )
 
 SOURCE = '''"""A module."""
@@ -56,9 +54,7 @@ def parses(source: str) -> bool:
 
 
 def test_replacing_a_function_leaves_everything_else_alone():
-    out = apply_edit(
-        SOURCE, Edit(Operation.REPLACE, "existing", "def existing(cards):\n    return 0")
-    )
+    out = apply_edit(SOURCE, Edit("existing", "def existing(cards):\n    return 0"))
     assert "return 0" in out
     assert "class Card" in out and "VERSION = 1" in out
     assert parses(out)
@@ -66,97 +62,31 @@ def test_replacing_a_function_leaves_everything_else_alone():
 
 def test_replacing_something_that_does_not_exist_says_what_does():
     with pytest.raises(EditError, match="no definition named"):
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "absent", "def absent():\n    pass"))
+        apply_edit(SOURCE, Edit("absent", "def absent():\n    pass"))
 
 
 def test_the_error_lists_the_available_names():
     with pytest.raises(EditError) as exc:
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "absent", "x = 1"))
+        apply_edit(SOURCE, Edit("absent", "x = 1"))
     assert "existing" in str(exc.value)
 
 
 def test_replacing_with_nothing_is_refused():
     """Silently emptying a definition is how code disappears."""
-    with pytest.raises(EditError, match="use delete"):
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "existing", "   \n"))
+    with pytest.raises(EditError, match="use `replace_text`"):
+        apply_edit(SOURCE, Edit("existing", "   \n"))
 
 
 # --- add -----------------------------------------------------------------
 
 
-def test_adding_a_name_that_exists_is_refused():
-    with pytest.raises(EditError, match="already exists"):
-        apply_edit(SOURCE, Edit(Operation.ADD, "existing", "def existing():\n    pass"))
-
-
-def test_adding_a_definition_already_there_as_sent_changes_nothing():
-    """The same `add` sent twice in one answer is done once (crew#735)."""
-    once = apply_edit(SOURCE, Edit(Operation.ADD, "fresh", "def fresh():\n    pass"))
-    assert apply_edit(once, Edit(Operation.ADD, "fresh", "def fresh():\n    pass\n")) == once
-
-
-def test_a_criterion_test_that_exists_by_the_time_it_is_added_replaces_it():
-    edit = Edit(Operation.ADD, "existing", "def existing():\n    return 2", replaces_existing=True)
-    after = apply_edit(SOURCE, edit)
-    assert after.count("def existing") == 1 and "return 2" in after
-
-
-def test_adding_a_method_to_a_missing_class_is_refused():
-    with pytest.raises(EditError, match="no class named"):
-        apply_edit(SOURCE, Edit(Operation.ADD_METHOD, "Absent.thing", "def thing(self):\n    pass"))
-
-
 # --- imports -------------------------------------------------------------
-
-
-def test_an_import_lands_after_the_existing_imports():
-    out = apply_edit(SOURCE, Edit(Operation.ADD_IMPORT, "date", "from datetime import date"))
-    lines = out.splitlines()
-    assert lines.index("from datetime import date") > lines.index("import json")
-    assert parses(out)
-
-
-def test_adding_an_import_twice_is_not_an_error():
-    once = apply_edit(SOURCE, Edit(Operation.ADD_IMPORT, "json", "import json"))
-    assert once.count("import json") == 1
-
-
-def test_an_import_into_a_file_with_none_lands_after_the_docstring():
-    source = '"""Doc."""\n\n\ndef f():\n    return 1\n'
-    out = apply_edit(source, Edit(Operation.ADD_IMPORT, "os", "import os"))
-    assert parses(out)
-    assert out.index("import os") > out.index('"""Doc."""')
-
-
-def test_an_empty_import_is_refused():
-    with pytest.raises(EditError, match="needs the import statement"):
-        apply_edit(SOURCE, Edit(Operation.ADD_IMPORT, "x", "  "))
 
 
 # --- delete --------------------------------------------------------------
 
 
 # --- sequences -----------------------------------------------------------
-
-
-def test_spans_do_not_go_stale_between_edits():
-    """The file is re-parsed per edit, so an earlier splice cannot shift a later one."""
-    out = apply_edits(
-        SOURCE,
-        [
-            Edit(Operation.ADD_IMPORT, "os", "import os"),
-            Edit(Operation.ADD_IMPORT, "sys", "import sys"),
-            Edit(Operation.REPLACE, "Card.age", "def age(self):\n    return 7"),
-        ],
-    )
-    assert parses(out)
-    assert "return 7" in out
-
-
-def test_a_failing_edit_does_not_corrupt_the_file():
-    with pytest.raises(EditError):
-        apply_edits(SOURCE, [Edit(Operation.REPLACE, "absent", "def absent():\n    pass")])
-    assert parses(SOURCE)
 
 
 # --- a constant with a type annotation is addressable too -----------------------------------------
@@ -171,67 +101,11 @@ def calculate_flags(cards):
 """
 
 
-def test_an_annotated_constant_can_be_deleted_by_name():
-    """sprint-metrics#127 was told `DEFAULT_THRESHOLDS` didn't exist."""
-    from crew_org.tools.ast_edit import Edit, Operation, apply_edits
-
-    after = apply_edits(ANNOTATED, [Edit(operation=Operation.DELETE, target="DEFAULT_THRESHOLDS")])
-    assert "DEFAULT_THRESHOLDS:" not in after and "def calculate_flags" in after
-
-
 def test_an_annotated_constant_can_be_replaced_by_name():
-    from crew_org.tools.ast_edit import Edit, Operation, apply_edits
 
     source = 'DEFAULT_THRESHOLDS: dict[str, float] = {"cycle_time": 3.0}'
-    after = apply_edits(
-        ANNOTATED, [Edit(operation=Operation.REPLACE, target="DEFAULT_THRESHOLDS", source=source)]
-    )
+    after = apply_edit(ANNOTATED, Edit(target="DEFAULT_THRESHOLDS", source=source))
     assert '{"cycle_time": 3.0}' in after and '"cycle_time": 5.0' not in after
 
 
 # --- an added definition goes before the file's __main__ block (crew#497) ----------------------
-
-# sprint-metrics' `_docs_gen.py`, cut down: the registry calls the new generator by
-# name, and the guard runs `main()` as soon as `python -m` reaches it.
-DOCS_GEN = """import sys
-
-GENERATORS = {}
-
-
-def main():
-    return _generate_service_content()
-
-
-# Run as a module: python -m sprint_metrics._docs_gen
-if __name__ == "__main__":
-    sys.exit(main())
-"""
-
-ADDED = "def _generate_service_content():\n    return 0\n"
-
-
-def test_an_added_definition_goes_before_the_main_guard():
-    out = apply_edit(DOCS_GEN, Edit(Operation.ADD, "_generate_service_content", ADDED))
-    assert out.index("def _generate_service_content") < out.index("# Run as a module")
-    assert out.index("# Run as a module") < out.index('if __name__ == "__main__":')
-    ast.parse(out)
-
-
-def test_run_as_a_script_the_added_definition_exists_when_main_runs():
-    """sprint-metrics#434 and #443: `python -m` raised NameError before the fix."""
-    out = apply_edit(DOCS_GEN, Edit(Operation.ADD, "_generate_service_content", ADDED))
-    with pytest.raises(SystemExit) as exited:
-        exec(compile(out, "_docs_gen.py", "exec"), {"__name__": "__main__"})  # noqa: S102
-    assert exited.value.code == 0
-
-
-def test_the_guard_is_found_either_way_round():
-    source = 'def main():\n    pass\n\n\nif "__main__" == __name__:\n    main()\n'
-    out = apply_edit(source, Edit(Operation.ADD, "helper", "def helper():\n    pass\n"))
-    assert out.index("def helper") < out.index('if "__main__" == __name__')
-
-
-def test_without_a_main_guard_an_added_definition_goes_at_the_end():
-    source = 'def main():\n    pass\n\n\nif __name__ == "other":\n    main()\n'
-    out = apply_edit(source, Edit(Operation.ADD, "helper", "def helper():\n    pass\n"))
-    assert out.rstrip().endswith("pass") and out.index('"other"') < out.index("def helper")

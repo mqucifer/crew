@@ -3,7 +3,8 @@
 The Architect's first refactor, sprint-metrics#123, splits one module by
 concern. Its first story moved `Card` and `parse_card` into `card.py`, and the
 contract check refused it twice as "removed entirely": it read one file at a
-time, so a move looked like a deletion.
+time, so a move looked like a deletion. The gate at `done` reads the whole branch
+(crew#778).
 """
 
 from __future__ import annotations
@@ -12,13 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileEdit, FileWrite, Implementation
 from crew_org.tools.regression import (
     REMOVED,
-    broken_contracts,
     describe_contracts,
+    draft_breaks,
+    merged_base,
     without_moves,
 )
+from tests.test_regression import Ed, change, git
 
 PKG = "src/sprint_metrics"
 OLD = f"{PKG}/crew_performance.py"
@@ -51,12 +53,9 @@ def calculate_throughput(cards):
 )
 
 
-def impl(**parts) -> Implementation:
-    return Implementation(summary="Move card handling into card.py", **parts)
-
-
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
+    """The module merged on main, and a story branch off it."""
     (tmp_path / PKG).mkdir(parents=True)
     (tmp_path / OLD).write_text(MODULE)
     (tmp_path / PKG / "__init__.py").write_text(
@@ -66,42 +65,53 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "tests/test_cards.py").write_text(
         "from sprint_metrics.crew_performance import Card\n\n\ndef test_card():\n    Card('x')\n"
     )
+    git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-qm", "merged")
+    git(tmp_path, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    git(tmp_path, "checkout", "-qb", "feat/125")
     return tmp_path
 
 
-def delete(name: str, path: str = OLD) -> FileEdit:
-    return FileEdit(path=path, operation="delete", target=name)
+def delete(name: str, path: str = OLD) -> Ed:
+    return Ed(path, "delete", name)
 
 
-def import_back(source: str, path: str = OLD) -> FileEdit:
-    return FileEdit(path=path, operation="add_import", target="card", source=source)
+def import_back(statement: str, path: str = OLD) -> Ed:
+    return Ed(path, "import", "", statement)
 
 
-def check(repo: Path, implementation: Implementation) -> dict:
-    broken = broken_contracts(repo, implementation.all_edits)
-    return without_moves(repo, implementation, broken)
+def check(repo: Path, *edits: Ed) -> dict:
+    """The contract gate's findings once `edits` are on the branch, moves excused."""
+    for ed in edits:
+        if ed.operation == "import":
+            path = repo / ed.path
+            path.write_text(ed.source + "\n" + path.read_text())
+        elif ed.operation == "write":
+            (repo / ed.path).write_text(ed.source)
+        else:
+            change(repo, ed)
+    merged = merged_base(repo)
+    return without_moves(repo, draft_breaks(repo, merged), merged)
 
 
-def moved_to_card(*extra: FileEdit, card: str = CARD) -> Implementation:
-    return impl(
-        new_files=[FileWrite(path=f"{PKG}/card.py", content=card)],
-        edits=[delete("Card"), delete("parse_card"), *extra],
-    )
+def moved_to_card(*extra: Ed, card: str = CARD) -> list[Ed]:
+    return [Ed(f"{PKG}/card.py", "write", "", card), delete("Card"), delete("parse_card"), *extra]
 
 
 def test_a_definition_moved_and_imported_back_is_kept(repo: Path):
     """What sprint-metrics#125 should have been allowed to do."""
-    implementation = moved_to_card(import_back("from sprint_metrics.card import Card, parse_card"))
-    assert check(repo, implementation) == {}
+    edits = moved_to_card(import_back("from sprint_metrics.card import Card, parse_card"))
+    assert check(repo, *edits) == {}
 
 
 def test_a_relative_import_back_counts_too(repo: Path):
-    assert check(repo, moved_to_card(import_back("from .card import Card, parse_card"))) == {}
+    assert check(repo, *moved_to_card(import_back("from .card import Card, parse_card"))) == {}
 
 
 def test_a_move_the_old_module_doesnt_import_back_is_still_a_removal(repo: Path):
     """The test file still imports Card from the old module; it would break."""
-    broken = check(repo, moved_to_card())
+    broken = check(repo, *moved_to_card())
     assert set(broken) == {f"{OLD}::Card", f"{OLD}::parse_card"}
     now = broken[f"{OLD}::Card"][1]
     assert now.startswith(REMOVED) and "doesn't import it back" in now
@@ -111,14 +121,14 @@ def test_a_move_the_old_module_doesnt_import_back_is_still_a_removal(repo: Path)
 
 def test_moving_is_no_way_round_keeping_a_shape(repo: Path):
     reshaped = CARD.replace("    started: str | None = None\n", "")
-    implementation = moved_to_card(
+    edits = moved_to_card(
         import_back("from sprint_metrics.card import Card, parse_card"), card=reshaped
     )
-    assert set(check(repo, implementation)) == {f"{OLD}::Card"}
+    assert set(check(repo, *edits)) == {f"{OLD}::Card"}
 
 
 def test_a_real_removal_is_still_refused(repo: Path):
-    broken = check(repo, impl(edits=[delete("calculate_throughput")]))
+    broken = check(repo, delete("calculate_throughput"))
     (now,) = [now for _was, now in broken.values()]
     assert now.startswith(REMOVED) and "no other module defines `calculate_throughput`" in now
     assert set(broken) == {f"{OLD}::calculate_throughput"}
@@ -130,7 +140,7 @@ def test_a_name_still_asked_of_the_old_module_is_a_removal(repo: Path):
         "from .card import Card, parse_card\nfrom .crew_performance import calculate_throughput\n"
     )
     (repo / PKG / "card.py").write_text(CARD)
-    assert f"{OLD}::Card" in check(repo, impl(edits=[delete("Card")]))
+    assert f"{OLD}::Card" in check(repo, delete("Card"))
 
 
 def test_importing_the_old_module_whole_keeps_every_name_it_had(repo: Path):
@@ -140,7 +150,7 @@ def test_importing_the_old_module_whole_keeps_every_name_it_had(repo: Path):
     )
     (repo / PKG / "__init__.py").write_text("from .card import Card, parse_card\n")
     (repo / PKG / "card.py").write_text(CARD)
-    assert f"{OLD}::Card" in check(repo, impl(edits=[delete("Card")]))
+    assert f"{OLD}::Card" in check(repo, delete("Card"))
 
 
 def test_the_package_rehoming_it_is_enough_once_nobody_asks_the_old_module(repo: Path):
@@ -152,16 +162,10 @@ def test_the_package_rehoming_it_is_enough_once_nobody_asks_the_old_module(repo:
         "from .card import Card, parse_card\nfrom .crew_performance import calculate_throughput\n"
     )
     (repo / PKG / "card.py").write_text(CARD)
-    implementation = impl(edits=[delete("Card"), delete("parse_card")])
-    assert check(repo, implementation) == {}
+    assert check(repo, delete("Card"), delete("parse_card")) == {}
 
 
-def test_a_change_that_wont_apply_leaves_the_removals_standing(repo: Path):
-    implementation = moved_to_card(delete("no_such_thing"))
-    assert set(check(repo, implementation)) == {f"{OLD}::Card", f"{OLD}::parse_card"}
-
-
-def test_the_developer_is_told_how_to_move_a_definition():
+def test_the_finding_says_how_to_move_a_definition():
     text = describe_contracts({f"{OLD}::Card": ("class() dataclass {created}", REMOVED)})
     assert "Moving a definition to another module is fine" in text
     assert "import it back" in text and "Never keep both copies" in text
@@ -172,65 +176,10 @@ def test_a_signature_change_says_nothing_about_moving():
     assert "Moving a definition" not in text
 
 
-def test_the_move_is_judged_on_a_copy_and_the_worktree_is_untouched(repo: Path):
-    check(repo, moved_to_card(import_back("from .card import Card, parse_card")))
-    assert (repo / OLD).read_text() == MODULE and not (repo / PKG / "card.py").exists()
-
-
-# --- the shapes sprint-metrics#125 actually sent -------------------------------------------------
-
-
-def test_a_class_and_each_of_its_methods_deleted_is_one_move(repo: Path):
-    """#125 deleted `Card`, then `Card.is_completed`, and was refused for both."""
-    implementation = moved_to_card(
-        delete("Card.is_completed"),
-        import_back("from sprint_metrics.card import Card, parse_card"),
-    )
-    assert check(repo, implementation) == {}
-
-
 def test_a_method_deleted_from_a_class_that_stays_is_still_a_removal(repo: Path):
-    broken = check(repo, impl(edits=[delete("Card.is_completed")]))
-    assert set(broken) == {f"{OLD}::Card.is_completed"}
-
-
-def test_a_quoted_deletion_a_named_delete_already_made_is_done(repo: Path):
-    """#125 also quoted `@dataclass(frozen=True)` for deletion after deleting `Card` by name."""
-    from crew_org.crews.delivery_crew import TextEdit
-    from crew_org.tools.workspace import apply_implementation
-
-    implementation = moved_to_card(
-        import_back("from sprint_metrics.card import Card, parse_card"),
-    )
-    implementation.text_edits = [
-        TextEdit(path=OLD, find="@dataclass(frozen=True)\nclass Card:\n", replace="")
-    ]
-    apply_implementation(repo, implementation)
-    assert "class Card" not in (repo / OLD).read_text()
-
-
-def test_a_quoted_change_to_text_that_is_gone_is_still_refused(repo: Path):
-    from crew_org.crews.delivery_crew import TextEdit
-    from crew_org.tools.ast_edit import EditError
-    from crew_org.tools.workspace import apply_implementation
-
-    implementation = moved_to_card(import_back("from .card import Card, parse_card"))
-    implementation.text_edits = [
-        TextEdit(path=OLD, find="@dataclass(frozen=True)\n", replace="@dataclass\n")
-    ]
-    # A change by quoting is matched against the file as shown, before the move
-    # (crew#734), where the quote is `Card`'s own decorator, changed by name.
-    with pytest.raises(EditError, match="reaches into `Card`"):
-        apply_implementation(repo, implementation)
-
-
-def test_naming_a_files_entry_block_points_at_text_edits():
-    """#133 aimed at `__main__` and `__init__` by name, three times."""
-    from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits
-
-    main = 'import sys\n\nfrom x import main\n\nif __name__ == "__main__":\n    sys.exit(main())\n'
-    with pytest.raises(EditError, match="quote the lines in `text_edits`"):
-        apply_edits(main, [Edit(operation=Operation.REPLACE, target="__main__", source="x")])
+    broken = check(repo, delete("Card.is_completed"))
+    assert set(broken) == {f"{OLD}::Card"}
+    assert "is_completed" in broken[f"{OLD}::Card"][1]
 
 
 # --- a refused move says which step is missing (sprint-metrics#127) ---------------------------
@@ -239,20 +188,12 @@ def test_naming_a_files_entry_block_points_at_text_edits():
 def test_a_move_whose_shape_changed_says_how(repo: Path):
     reshaped = CARD.replace("    started: str | None = None\n", "")
     broken = check(
-        repo,
-        moved_to_card(import_back("from .card import Card, parse_card"), card=reshaped),
+        repo, *moved_to_card(import_back("from .card import Card, parse_card"), card=reshaped)
     )
     now = broken[f"{OLD}::Card"][1]
     assert f"`{PKG}/card.py` defines `Card`, but it" in now and "fields" in now
 
 
-def test_a_change_that_wont_apply_says_so_instead_of_only_removed(repo: Path):
-    """#127 was refused three times as "removed entirely"; an edit error would be hidden."""
-    broken = check(repo, moved_to_card(delete("no_such_thing")))
-    now = broken[f"{OLD}::Card"][1]
-    assert "the change doesn't apply" in now and "no_such_thing" in now
-
-
-def test_the_developer_sees_the_reason(repo: Path):
-    text = describe_contracts(check(repo, moved_to_card()))
+def test_the_finding_gives_the_reason(repo: Path):
+    text = describe_contracts(check(repo, *moved_to_card()))
     assert "doesn't import it back" in text and "Moving a definition" in text

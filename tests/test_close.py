@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from crew_org.escalation import EscalationLedger
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.close import close_sprint
 from crew_org.process import ProcessRules
@@ -112,19 +111,13 @@ def no_retro(monkeypatch):
     monkeypatch.setattr(close_mod, "write_retro", lambda *a, **k: None)
 
 
-@pytest.fixture
-def ledger(tmp_path):
-    return EscalationLedger(tmp_path / "escalations.jsonl")
-
-
-def run(issues, ledger, cards=None):
+def run(issues, cards=None):
     board = FakeBoard(cards or [card(6)])
     return (
         close_sprint(
             board,
             issues,
             EventSink(None),
-            ledger,
             sprint=SPRINT,
             repo="sprint-metrics",
         ),
@@ -132,45 +125,45 @@ def run(issues, ledger, cards=None):
     )
 
 
-def test_an_approved_story_is_merged_and_done(ledger):
+def test_an_approved_story_is_merged_and_done():
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED")
-    result, board = run(issues, ledger)
+    result, board = run(issues)
     assert issues.merged == [100]
     assert result.merged == [6]
     assert ("C6", "Done") in board.moves
 
 
-def test_a_story_whose_checks_are_still_running_keeps_the_sprint_open(ledger):
+def test_a_story_whose_checks_are_still_running_keeps_the_sprint_open():
     """Nothing merges without its checks, where GitHub doesn't enforce them (#335)."""
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED")
     issues.head_checks = [{"name": "lint", "status": "queued", "conclusion": None}]
-    result, board = run(issues, ledger)
+    result, board = run(issues)
     assert issues.merged == []
     assert result.checking == [(6, "checks still running: lint")]
     assert not result.complete
 
 
-def test_a_story_nobody_approved_waits_on_the_sponsor(ledger):
+def test_a_story_nobody_approved_waits_on_the_sponsor():
     issues = FakeIssues(reviews=[{"state": "COMMENTED"}], decision="REVIEW_REQUIRED")
-    result, _ = run(issues, ledger)
+    result, _ = run(issues)
     assert result.awaiting_approval == [(6, 100)]
     assert result.unapprovable == []
 
 
-def test_an_approval_github_will_not_count_is_not_the_sponsors_to_give(ledger):
+def test_an_approval_github_will_not_count_is_not_the_sponsors_to_give():
     """The reviewing identity approved it and protection still says
     REVIEW_REQUIRED. Reporting that as "waiting on your approval" sends the
     Sponsor to approve a pull request that is already approved."""
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="REVIEW_REQUIRED")
-    result, _ = run(issues, ledger)
+    result, _ = run(issues)
     assert issues.merged == []
     assert result.unapprovable == [(6, 100)]
     assert result.awaiting_approval == []
 
 
-def test_a_sprint_holding_an_uncountable_approval_is_not_complete(ledger):
+def test_a_sprint_holding_an_uncountable_approval_is_not_complete():
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="REVIEW_REQUIRED")
-    result, _ = run(issues, ledger)
+    result, _ = run(issues)
     assert not result.complete
 
 
@@ -205,13 +198,12 @@ def blocked_log(tmp_path, card_number: int, days: int):
     return tmp_path
 
 
-def close_with_log(issues, ledger, events_dir, cards):
+def close_with_log(issues, events_dir, cards):
     board = FakeBoard(cards)
     return close_sprint(
         board,
         issues,
         EventSink(None),
-        ledger,
         sprint=SPRINT,
         repo="sprint-metrics",
         rules=ProcessRules.from_config(AGING_ORG),
@@ -220,38 +212,38 @@ def close_with_log(issues, ledger, events_dir, cards):
     )
 
 
-def test_a_card_blocked_past_the_threshold_is_raised(ledger, tmp_path):
+def test_a_card_blocked_past_the_threshold_is_raised(tmp_path):
     """§12 says these are raised at sprint review, blocked_aging_days is
     configured with a comment saying exactly that, and `aging_blocked` has
     always been able to answer which. Nothing joined them, so on 2026-09-19 a
     card blocked most of a day went unmentioned."""
     stuck = card(12, status=BLOCKED)
     result = close_with_log(
-        FakeIssues(reviews=[], decision=None), ledger, blocked_log(tmp_path, 12, 4), [stuck]
+        FakeIssues(reviews=[], decision=None), blocked_log(tmp_path, 12, 4), [stuck]
     )
     assert result.aging_blocked == [("#12", 4)]
 
 
-def test_a_card_blocked_yesterday_is_not_raised(ledger, tmp_path):
+def test_a_card_blocked_yesterday_is_not_raised(tmp_path):
     stuck = card(12, status=BLOCKED)
     result = close_with_log(
-        FakeIssues(reviews=[], decision=None), ledger, blocked_log(tmp_path, 12, 1), [stuck]
+        FakeIssues(reviews=[], decision=None), blocked_log(tmp_path, 12, 1), [stuck]
     )
     assert result.aging_blocked == []
 
 
-def test_a_close_given_no_log_raises_nothing(ledger):
+def test_a_close_given_no_log_raises_nothing():
     """Without the rules and the log, the raise cannot happen at all. A caller
     that only wants the merge still gets one."""
-    result, _ = run(FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED"), ledger)
+    result, _ = run(FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED"))
     assert result.aging_blocked == []
 
 
-def test_a_story_behind_main_is_brought_up_to_date_at_close(ledger):
+def test_a_story_behind_main_is_brought_up_to_date_at_close():
     """#116: the same 405 as the tick, on the Sponsor's own gate."""
     issues = FakeIssues(reviews=[{"state": "APPROVED"}], decision="APPROVED")
     issues.detail = {"mergeable_state": "behind", "mergeable": True, "head": {"sha": "c0ffee"}}
-    result, board = run(issues, ledger)
+    result, board = run(issues)
     assert issues.merged == [] and issues.updated == [100]
     assert result.updating == [(6, 100)]
     assert not result.complete, "a story still to land is not a finished sprint"

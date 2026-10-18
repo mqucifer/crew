@@ -95,7 +95,7 @@ def tick(
     """
     org = load_org()
     sink = _sink(demo)
-    view = LiveView(org["board"]["columns"], budget=org["sprint"]["escalation_budget"])
+    view = LiveView(org["board"]["columns"])
 
     if demo:
         with attach(sink, view):
@@ -123,7 +123,6 @@ def tick(
     # rather than surfacing a connection error from deep inside an agent.
     from crew_org.auth import REVIEW_APP_PREFIX, token_source
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger, EscalationPolicy
     from crew_org.flows import loop
     from crew_org.git_ops import Workspace
     from crew_org.llm import health
@@ -224,8 +223,6 @@ def tick(
         ws=ws,
         sandbox=sandbox,
         rules=ProcessRules.from_config(org),
-        policy=EscalationPolicy.from_config(org),
-        ledger=EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         org=org,
         repo=default_repo,
         repos=allowed,
@@ -468,8 +465,8 @@ def _render_tick(result) -> None:
 def _synthetic_tick(sink: EventSink) -> None:
     """A representative tick, used to exercise the view without inference.
 
-    Deliberately includes a VERIFY failure that repairs locally and a CAPABILITY
-    failure that escalates, so the escalation panel is exercised too.
+    Deliberately includes a session's failing run that it fixes, and a story its
+    session sends back to the Business Analyst.
     """
 
     def emit(kind: EventKind, summary: str, role: str | None = None, card: int | None = None, **d):
@@ -512,7 +509,6 @@ def _synthetic_tick(sink: EventSink) -> None:
     emit(EventKind.AGENT_STARTED, "implement cycle-time metric", "Developer", 7)
     emit(EventKind.TOOL_STARTED, "pytest", "Developer", 7)
     emit(EventKind.TOOL_FAILED, "2 failed", "Developer", 7)
-    emit(EventKind.ESCALATION_DECIDED, "VERIFY attempt 1/2 — repairing locally", "Developer", 7)
     emit(EventKind.TOOL_STARTED, "pytest", "Developer", 7)
     emit(EventKind.TOOL_FINISHED, "18 passed", "Developer", 7)
     emit(EventKind.AGENT_FINISHED, "PR #31 opened", "Developer", 7)
@@ -524,16 +520,8 @@ def _synthetic_tick(sink: EventSink) -> None:
         **{"from": "In Progress", "to": "QAing"},
     )
 
-    emit(EventKind.AGENT_STARTED, "design pagination strategy", "Architect", 9)
-    emit(EventKind.ESCALATION_DECIDED, "CAPABILITY — justified, 1/3 of budget", "Architect", 9)
-    emit(
-        EventKind.ESCALATED,
-        "cross-cutting GraphQL pagination",
-        "Architect",
-        9,
-        failure_class="CAPABILITY",
-    )
-    emit(EventKind.AGENT_FINISHED, "design note attached", "Architect", 9)
+    emit(EventKind.AGENT_STARTED, "implement pagination", "Developer", 9)
+    emit(EventKind.STORY_RETURNED, "session blocked: the page size isn't given", "Developer", 9)
 
     emit(EventKind.CARD_BLOCKED, "awaiting Sponsor epic approval", "Scrum Master", 3)
     emit(EventKind.TICK_FINISHED, "board stable — 2 cards at human gate")
@@ -1115,7 +1103,6 @@ def deliver(
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger, EscalationPolicy
     from crew_org.flows.delivery import deliver as run_delivery
     from crew_org.git_ops import Workspace
     from crew_org.llm import health
@@ -1150,15 +1137,13 @@ def deliver(
     console.print(f"[dim]acting as {escape(identity)} · sandbox {box.mode} · {sprint}[/]")
 
     sink = EventSink(VAR / "events" / "deliver.jsonl")
-    view = LiveView(org["board"]["columns"], budget=org["sprint"]["escalation_budget"])
+    view = LiveView(org["board"]["columns"])
     with attach(sink, view):
         result = run_delivery(
             board,
             issues,
             sink,
             ProcessRules.from_config(org),
-            EscalationPolicy.from_config(org),
-            EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
             ws,
             sprint=sprint,
             repo=repo,
@@ -2060,14 +2045,13 @@ def export(
 
     Which stories landed on their first attempt, what the others took (each
     retry's failure class, role and first error line), the causes across them,
-    and the sprint's escalations from the ledger. Nothing is sent anywhere: it
+    and how many went back to the Business Analyst. Nothing is sent anywhere: it
     writes one JSON file.
     """
     import json
 
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger
     from crew_org.flows.attempts import read_attempts, retries_text, sprint_report
     from crew_org.tools.github_project import ProjectClient
     from crew_org.work_types import DELIVERED
@@ -2089,7 +2073,7 @@ def export(
         sprint,
         stories,
         read_attempts(VAR / "events", *(window or (None, None))),
-        EscalationLedger(VAR / "ledger" / "escalations.jsonl").spent(sprint),
+        len(returned & {c.number for c in stories}),
     )
     from crew_org.flows.model_calls import read_model_calls
 
@@ -2100,7 +2084,7 @@ def export(
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     console.print(escape(retries_text(report)))
     console.print(
-        f"[dim]{report['escalations']} escalations · {len(report['model_calls'])} model calls"
+        f"[dim]{report['returned']} returned · {len(report['model_calls'])} model calls"
         f" · written to {path}[/]"
     )
 
@@ -2249,7 +2233,6 @@ def sprint_retro(
 
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.escalation import EscalationLedger
     from crew_org.flows.close import close_sprint
     from crew_org.llm import health
     from crew_org.process import ProcessRules
@@ -2274,7 +2257,6 @@ def sprint_retro(
             board,
             IssueClient(token, owner),
             EventSink(None),
-            EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
             sprint=sprint,
             repo=repo,
             merge=False,
@@ -2372,7 +2354,6 @@ def _close_and_report(
 ) -> None:
     """Close `sprint` and print its report: `crew sprint close`, and a tick at a
     sprint's end (ADR 0028)."""
-    from crew_org.escalation import EscalationLedger  # noqa: PLC0415
     from crew_org.events import forward_calls_to  # noqa: PLC0415
     from crew_org.flows.close import close_sprint  # noqa: PLC0415
     from crew_org.process import ProcessRules  # noqa: PLC0415
@@ -2384,7 +2365,6 @@ def _close_and_report(
         board,
         issues,
         close_sink,
-        EscalationLedger(VAR / "ledger" / "escalations.jsonl"),
         sprint=sprint,
         repo=repo,
         merge=merge,

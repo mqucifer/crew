@@ -36,11 +36,3 @@ def test_a_role_the_crews_code_escalates_for_carries_no_escalation_policy(key):
 def test_the_developer_carries_no_branch_or_commit_conventions():
     """The crew names the branch, commits and opens the pull request."""
     assert 8 not in system_sections("developer")
-
-
-def test_text_edits_says_what_the_instructions_use_it_for():
-    """The field said "not Python" while the instructions used it for a Python file's imports."""
-    from crew_org.crews.delivery_crew import Implementation
-
-    said = Implementation.model_fields["text_edits"].description or ""
-    assert "outside any function or class" in said and "imports" in said

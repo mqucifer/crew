@@ -91,7 +91,6 @@ def _tests_in_brief(signatures: dict[str, str]) -> str:
 def repository_context(
     worktree: Path,
     *,
-    editing: bool = True,
     bodies: bool = True,
     near: Iterable[str] | None = None,
 ) -> str:
@@ -118,11 +117,6 @@ def repository_context(
     shown. The signature line it did get, `main(argv: Sequence[str] | None =
     None) -> int`, carries none of that. Cache hits are cheaper than a story
     that never lands.
-
-    `editing=False` leaves out the rules about how to address a definition and
-    what may not be reshaped. Refinement reads this to decide what work should
-    exist; it is not editing anything, and instructions for a job it is not
-    doing are noise competing with the ones it must follow.
 
     `near` is for a call that can read (lean-prompts plan, L1): a test file not in it
     is one line, how many tests it holds and its helpers by signature, since any test
@@ -159,20 +153,6 @@ def repository_context(
         else:
             lines.append(f"- `{rel}`")
 
-    if editing:
-        lines += [
-            "",
-            "Target an existing definition by the names above. `Class.method` for a "
-            "method. A file is not a definition: to change what a package exports, "
-            "edit `__all__`, not `__init__`.",
-            "",
-            "The signatures above are what merged code already calls. Changing a "
-            "public one is refused — not as a matter of taste, but because callers "
-            "you are not editing would break. Everything else is yours: bodies, "
-            "private helpers, module internals, and new definitions of whatever "
-            "shape the story needs. Design it the way it should be designed.",
-        ]
-
     for name in CONTEXT_FILES:
         target = worktree / name
         if target.exists():
@@ -208,8 +188,8 @@ def repository_context(
         # A role deciding what to build needs the code, and the tests only by
         # name, which the index above lists. On the Architect's design note for
         # sprint-metrics#59, test bodies were 123k of a 225k-character prompt
-        # (#230). The Developer, which edits tests, still sees them whole.
-        if not editing and _is_test(rel):
+        # (#230).
+        if _is_test(rel):
             tests_named_only = True
             continue
         body = target.read_text(encoding="utf-8", errors="ignore")
@@ -234,13 +214,13 @@ def repository_context(
     return "\n".join(lines)
 
 
-# Above this, the Developer is shown a focused context rather than everything
-# (#231). Everything was right for the 17k-character pilot; at sprint-metrics'
-# ~400k characters (#268: ~100k tokens, over half of it the whole test suite)
-# it's mostly noise, and long prompts are where the model answers nothing
-# (#312: none under 50k tokens in 99 calls, 62% empty over 90k served warm).
-# ~40k tokens: small repositories keep the full view, whose reasons (#9, #11,
-# #140) are cheapest to honour there.
+# Above this, a repository is shown focused rather than whole (#231). Everything
+# was right for the 17k-character pilot; at sprint-metrics' ~400k characters
+# (#268: ~100k tokens, over half of it the whole test suite) it's mostly noise,
+# and long prompts are where the model answers nothing (#312: none under 50k
+# tokens in 99 calls, 62% empty over 90k served warm). ~40k tokens: small
+# repositories keep the full view, whose reasons (#9, #11, #140) are cheapest to
+# honour there.
 FOCUS_ABOVE_CHARS = 160_000
 _BACKTICKED = re.compile(r"`([A-Za-z_][\w.]*)(?:\(\))?`")
 _CALLED = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\(")
@@ -287,11 +267,8 @@ READING_CHAR_CEILING = 175_000
 # own: it had nothing left, thought 17k tokens before its first read, and every read
 # was refused.
 READ_ROOM_CHARS = 40_000
-# A Python file larger than this is read one definition at a time (crew#583, C4), and
-# a repair is shown only the definitions its last answer changed in it (crew#591).
-# The first real call spent 43k of its 74k characters on one whole `report.py`;
-# mqucifer/sprint-metrics#567's repair was shown all of a 111k-character test file
-# it had added to.
+# A Python file larger than this is read one definition at a time (crew#583, C4).
+# The first real call spent 43k of its 74k characters on one whole `report.py`.
 WHOLE_FILE_CHARS = 12_000
 # Less room than this, and the tool isn't offered: a read it can't make still costs
 # the thinking that decided to make it.
@@ -315,8 +292,9 @@ class Focus:
     # Chosen, and named rather than shown, because the ceiling was reached (crew#591).
     omitted: list[str] = field(default_factory=list)
     chars: int = 0
-    # Shown as the definitions an answer changed, not whole (crew#591), and named as
-    # close to the work but not shown: importers and the tests that run it (ADR 0024).
+    # Shown in part, not whole: QA's large test files, by the tests the work touches
+    # (lean-prompts plan, L4). And named as close to the work but not shown: the files
+    # that import it (ADR 0024).
     partial: list[str] = field(default_factory=list)
     close: list[str] = field(default_factory=list)
     unshown: list[str] = field(default_factory=list)
@@ -489,78 +467,49 @@ def focused_context(
     *,
     about: str,
     extra: Iterable[str] = (),
-    written: Iterable[str] = (),
-    failing: Iterable[str] = (),
-    report: str = "",
     above: int | None = None,
-    editing: bool = True,
-    coverage: Any = None,
     ceiling: int | None = None,
-    reading: bool = False,
-    changed: dict[str, list[str]] | None = None,
 ) -> tuple[str, Focus]:
     """The repository for a piece of work: all of it when small, the named part when not (#231).
 
-    The named part has a ceiling, FOCUSED_CHAR_CEILING (crew#591), filled in
-    order of need: what the Developer asked for (`extra`) and what it just
-    wrote (`written`), which are always shown; the failing tests' files
-    (`failing`) and the code they import; what `about` names; and last, what
-    only the test `report` names, whose tracebacks pass through everything.
-    What doesn't fit is named, so it can be asked for.
-
-    `editing` is False for a role that decides rather than edits (refinement):
-    the rules for editing by name are noise to it.
+    For a step with the read tool (crew#583, step C4), the split: the named part
+    has a ceiling, `ceiling` (FOCUSED_CHAR_CEILING by default, crew#591), lower to
+    leave room to read, filled in order of need: what it asked for (`extra`), then
+    what `about` names. What doesn't fit is named, so it can be read.
 
     The graph (crew#583, step C3, ADR 0024): the named source files' own imports
     are shown with them, and what is close to the work is named, not shown: the
-    files that import it, and with `coverage` (the project's coverage map) the
-    merged tests that run its definitions. On epic 468 the named files alone
-    covered none of the 23 files the Developer then asked for; showing the whole
-    graph covered 12 at five times the size, past where answers come back empty.
-
-    `reading` is for a call with the read tool (step C4): what isn't shown is read,
-    not asked for, and `ceiling` is lower to leave room for it. `changed` names, by
-    file, the definitions the last applied answer changed: a written file too large to
-    read whole is shown as those alone, with its imports (crew#591).
+    files that import it. On epic 468 the named files alone covered none of the 23
+    files the Developer then asked for; showing the whole graph covered 12 at five
+    times the size, past where answers come back empty.
     """
-    full = repository_context(worktree, editing=editing)
+    full = repository_context(worktree)
     if len(full) <= (FOCUS_ABOVE_CHARS if above is None else above):
         return full, Focus(focused=False, chars=len(full))
 
     extra = [a.strip().removeprefix("./") for a in extra]
     chosen, unknown = select_files(worktree, about, extra)
     existing = {str(p.relative_to(worktree)) for p in _files(worktree)}
-    # What it wrote is always shown. What it asked for too, unless it can read:
-    # then an ask is a file it found too large to read, and shown past the ceiling
-    # it grows the prompt back to where answers come back empty (crew#583, C4).
-    kept = [r for r in [*([] if reading else extra), *written] if r in existing]
-    asked_first = [r for r in extra if r in existing and r not in kept] if reading else []
-    exercised = [r for r in failing if r in existing]
-    exercised += [i for r in exercised for i in imported_files(worktree, r)]
-    reported = sorted(set(select_files(worktree, report)[0]) - set(chosen)) if report else []
-    # Code before tests in each: a test file is often the largest thing chosen
+    # An ask is a file it found too large to read: first in line, and kept to the
+    # ceiling, since past it the prompt grows back to where answers come back empty
+    # (crew#583, C4).
+    asked_first = [r for r in extra if r in existing]
+    # Code before tests: a test file is often the largest thing chosen
     # (sprint-metrics' test_service.py is 160k characters), and it's chosen as
     # a pair, not because the work named it.
     rest = sorted(chosen, key=lambda r: _is_test(Path(r)))
     named_code = [r for r in rest if r.endswith(".py") and not _is_test(Path(r))]
     their_imports = [i for r in named_code for i in imported_files(worktree, r)]
-    reported.sort(key=lambda r: _is_test(Path(r)))
-    order = list(dict.fromkeys([*kept, *asked_first, *exercised, *rest, *their_imports, *reported]))
-    close = _close_to(worktree, named_code, set(order), coverage)
+    order = list(dict.fromkeys([*asked_first, *rest, *their_imports]))
+    close = _close_to(worktree, named_code, set(order), None)
 
-    # With the read tool, a test file far from the work is listed in brief (L1).
-    index = repository_context(
-        worktree,
-        editing=editing,
-        bodies=False,
-        near=[*order, *close] if reading else None,
-    )
+    # A test file far from the work is listed in brief (L1).
+    index = repository_context(worktree, bodies=False, near=[*order, *close])
     lines = [index, "", "### The files this work names, in full", ""]
     budget = (FOCUSED_CHAR_CEILING if ceiling is None else ceiling) - len(index)
     shown: list[str] = []
     unshown: list[str] = []
     omitted: list[str] = []
-    partial: list[str] = []
     for rel in order:
         path = worktree / rel
         if path.suffix == ".py":
@@ -576,17 +525,12 @@ def focused_context(
             shown.append(rel)
             continue  # already shown in full above
         body = path.read_text(encoding="utf-8", errors="ignore").strip()
-        part = bool(reading and changed and rel in changed and len(body) > WHOLE_FILE_CHARS)
-        if part and changed:
-            body = changed_only(body, changed[rel])
-        if len(body) > budget and rel not in kept:
+        if len(body) > budget:
             omitted.append(rel)
             continue
         budget -= len(body)
         lines += [f"`{rel}`", "", f"```{fence}", body, "```", ""]
         shown.append(rel)
-        if part:
-            partial.append(rel)
     if unshown:
         lines += [
             "Not shown, because they aren't text: "
@@ -601,11 +545,10 @@ def focused_context(
             + ".",
             "",
         ]
-    get = "Read" if reading else "Ask for"
     if close:
         lines += [
             "Close to this work, and not shown: the files that import what it names, and "
-            f"the merged tests that run its definitions, the most specific first. {get} "
+            "the merged tests that run its definitions, the most specific first. Read "
             "one if the work needs it: a test here may pin behaviour the work changes.",
             "",
             *(f"- `{c}`" for c in close),
@@ -613,12 +556,8 @@ def focused_context(
         ]
     lines += [
         "Every other file is listed above by name and what it defines, and not shown in "
-        "full. If the work needs one you can't see, don't guess at it: "
-        + (
-            "read it with `read_file`, the whole file or one definition by name."
-            if reading
-            else "name it in `need_files` and you'll be asked again with it shown."
-        ),
+        "full. If the work needs one you can't see, don't guess at it: read it with "
+        "`read_file`, the whole file or one definition by name.",
         "",
     ]
     text = "\n".join(lines)
@@ -630,7 +569,6 @@ def focused_context(
         unknown=unknown,
         omitted=omitted,
         chars=len(text),
-        partial=partial,
         close=close,
         unshown=unshown,
     )
@@ -670,37 +608,3 @@ def _is_test(rel: Path) -> bool:
     from crew_org.profiles import profile_for  # noqa: PLC0415
 
     return profile_for(rel.as_posix()).is_test_path(rel.as_posix())
-
-
-def changed_only(source: str, names: Iterable[str]) -> str:
-    """A large written file as a repair needs it: its imports and the definitions changed.
-
-    The rest is in the map and read by name. A name the file doesn't define (an import's
-    label, a definition since deleted) is skipped; the source is returned whole when the
-    file doesn't parse or none of the names is found.
-    """
-    from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
-
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return source
-    lines = source.splitlines()
-    found = definitions(source)
-
-    def span(node: ast.stmt) -> str:
-        start = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])
-        return "\n".join(lines[start - 1 : node.end_lineno or node.lineno])
-
-    picked = [span(found[n]) for n in dict.fromkeys(names) if n in found]
-    if not picked:
-        return source
-    imports = [span(n) for n in tree.body if isinstance(n, ast.Import | ast.ImportFrom)]
-    return "\n\n".join(
-        [
-            *(["\n".join(imports)] if imports else []),
-            *picked,
-            "# Only the definitions your last answer changed are shown, and the imports. Read "
-            "any other by name.",
-        ]
-    )

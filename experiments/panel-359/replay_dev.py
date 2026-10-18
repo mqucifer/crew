@@ -92,6 +92,7 @@ def one(card: int, n: int, story: str, sha: str, lens: str, sandbox) -> dict:
 
 def _attempt(card: int, n: int, story: str, sha: str, lens: str, sandbox) -> dict:
     from crew_org.crews.delivery_crew import implement_story
+
     from crew_org.events import attributed
     from crew_org.flows.delivery import ASK_LIMIT, declared_contract, workflows_not_permitted
     from crew_org.project import brief, read_record

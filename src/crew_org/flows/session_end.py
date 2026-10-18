@@ -269,7 +269,7 @@ def _blocked(
             "the work, on a choice no one has made:\n\n"
             f"{_quoted(ending.said.get('missing') or '')}\n\n{evidence(ending)}"
         )
-        return _blocked_for_a_person(
+        return blocked_for_a_person(
             card,
             repo=repo,
             comment=comment,
@@ -377,7 +377,7 @@ def _return(
     ):
         held(rule, repo=card.repo or repo, card=card.number)
         return Route(REFINEMENT, rule, comment=comment, verdict=verdict)
-    return _blocked_for_a_person(
+    return blocked_for_a_person(
         card,
         repo=repo,
         comment=comment.replace(STORY_PROBLEM_MARKER + "\n", ""),
@@ -388,7 +388,7 @@ def _return(
     )
 
 
-def _blocked_for_a_person(
+def blocked_for_a_person(
     card: Card,
     *,
     repo: str,

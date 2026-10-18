@@ -38,8 +38,6 @@ _KIND_STYLE = {
     EventKind.TOOL_FAILED: "red",
     EventKind.LLM_CALL_FAILED: "red",
     EventKind.CARD_BLOCKED: "yellow",
-    EventKind.ESCALATED: "magenta",
-    EventKind.ESCALATION_DECIDED: "magenta",
     EventKind.CARD_MOVED: "green",
     EventKind.TASK_COMPLETED: "green",
     EventKind.STORY_RETURNED: "cyan",
@@ -64,15 +62,13 @@ class ActiveAgent:
 class LiveView:
     """Mutable render state, updated one event at a time."""
 
-    def __init__(self, columns: list[str], *, budget: int, tail: int = 12) -> None:
+    def __init__(self, columns: list[str], *, tail: int = 12) -> None:
         self.columns = columns
-        self.budget = budget
         self.tick = 0
         self.sprint = "—"
         self.started = time.monotonic()
         self.board: dict[str, int] = dict.fromkeys(columns, 0)
         self.blocked = 0
-        self.escalations: list[str] = []
         self.active: dict[str, ActiveAgent] = {}
         self.events: deque[CrewEvent] = deque(maxlen=tail)
 
@@ -105,11 +101,6 @@ class LiveView:
         elif event.kind is EventKind.CARD_BLOCKED:
             self.blocked += 1
 
-        elif event.kind is EventKind.ESCALATED:
-            self.escalations.append(
-                f"#{event.card} {event.detail.get('failure_class', '?')} — {event.summary}"
-            )
-
         if event.kind in _ACTIVITY_START and event.role:
             self.active[event.role] = ActiveAgent(event.role, event.card, event.summary)
         elif event.kind in _ACTIVITY_END and event.role:
@@ -128,7 +119,6 @@ class LiveView:
             self._header(),
             self._swimlanes(),
             self._agents(),
-            self._escalations(),
             self._log(),
         )
 
@@ -173,21 +163,6 @@ class LiveView:
                 f"{agent.elapsed:4.1f}s",
             )
         return Panel(table, title="agents", border_style="green", padding=(0, 1))
-
-    def _escalations(self) -> RenderableType:
-        spent = len(self.escalations)
-        style = "red" if spent >= self.budget else "magenta"
-        body: RenderableType
-        if not self.escalations:
-            body = Text("none", style="dim")
-        else:
-            body = Text("\n".join(self.escalations[-4:]))
-        return Panel(
-            body,
-            title=f"escalation  {spent}/{self.budget}",
-            border_style=style,
-            padding=(0, 1),
-        )
 
     def _log(self) -> RenderableType:
         lines = Text()

@@ -54,7 +54,6 @@ def test_the_guard_and_review_now_also_see_suffix_named_tests():
 
 def test_a_test_is_found_by_its_definition():
     source = "import x\n\nasync def test_reports_health(tmp_path):\n    assert 1\n"
-    assert PYTHON.defines_test(source, "test_reports_health")
     assert PYTHON.test_exists(source, "test_reports_health")
     assert not PYTHON.test_exists(source, "test_reports")
     assert PYTHON.tests_defined(source) == ["test_reports_health"]
@@ -77,11 +76,6 @@ def test_a_module_is_paired_with_its_test_module():
     assert PYTHON.paired_test("src/sprint_metrics/report.py") == "tests/test_report.py"
     assert PYTHON.paired_test("tests/test_report.py") is None
     assert PYTHON.paired_test("docs/usage.md") is None
-
-
-def test_only_python_tests_get_fixtures_declared():
-    js = "test('x', async ({ page }) => {})"
-    assert PYTHON.prepare_test("tests/page.spec.js", js) == js
 
 
 def test_every_file_is_python_s_until_parts_are_declared():
