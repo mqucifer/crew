@@ -118,15 +118,6 @@ config.const.tools.VIEW_LINES:
   - crew#778
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:
-told.delivery_crew.if_you_need_one_in_full:
-  guidance: true
-  owner: Developer
-told.delivery_crew.if_you_need_one_to_do:
-  guidance: true
-  owner: Developer
-told.delivery_crew.only_if_you_cant_read_it:
-  guidance: true
-  owner: Developer
 told.form.DoneAnswers.bar:
   guidance: true
   owner: Product Owner
@@ -163,6 +154,17 @@ told.product_owner.onboarding.the_optional_answers_matter_too_what:
 told.product_owner.onboarding.the_record_is_read_by_roles:
   guidance: true
   owner: Product Owner (onboarding)
+§16 a_failing_run_is_reported_grouped:
+  guidance: true
+  origin:
+  - crew#591
+  - sprint-metrics#567
+§16 a_focused_context_has_a_ceiling:
+  guidance: true
+  origin:
+  - crew#591
+  - sprint-metrics#537
+  - sprint-metrics#567
 §16 qa_is_shown_the_tests_the:
   guidance: true
   origin:
@@ -176,20 +178,11 @@ told.product_owner.onboarding.the_record_is_read_by_roles:
   origin:
   - crew#231
   - crew#312
-§16 the_developer_sees_the_files_its:
-  guidance: true
-  origin:
-  - crew#231
-  - sprint-metrics#281
 §16 the_projects_record_comes_first:
   guidance: true
   origin:
   - crew#111
   - crew#131
-§16 what_it_reads_shares_one_ceiling:
-  guidance: true
-  origin:
-  - sprint-metrics#567
 §16 what_this_does_not_license:
   guidance: true
 §16 why_this_is_a_rule_and:

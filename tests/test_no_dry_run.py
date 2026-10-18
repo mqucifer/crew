@@ -22,6 +22,7 @@ import inspect
 from pathlib import Path
 
 from crew_org.flows import delivery, loop, merge
+from crew_org.flows.session_delivery import deliver_by_session
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "crew_org"
 
@@ -31,7 +32,7 @@ ALLOWED = {"cli.py": "crew sprint start --dry-run shows the plan and spends noth
 
 
 def test_no_delivery_entry_point_takes_a_dry_run():
-    for fn in (delivery.deliver, delivery.deliver_story, merge.merge_approved, loop.run):
+    for fn in (delivery.deliver, deliver_by_session, merge.merge_approved, loop.run):
         params = inspect.signature(fn).parameters
         assert "dry_run" not in params, f"{fn.__qualname__} still takes dry_run"
 

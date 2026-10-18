@@ -7,23 +7,12 @@ for in particular still claims no author (#22).
 
 from __future__ import annotations
 
-from crew_org.crews.delivery_crew import FileWrite, Implementation
 from crew_org.crews.review_crew import Finding, ReviewVerdict
-from crew_org.flows.delivery import DeliveryOutcome, _pr_body
 from crew_org.flows.design import DESIGN
 from crew_org.flows.onboard import ONBOARDING
 from crew_org.flows.record_pr import propose
 from crew_org.flows.review import render_review
 from crew_org.project import parse
-from crew_org.tools.review_evidence import checks_section
-from tests.test_delivery_flow import (  # noqa: F401
-    IMPL,
-    _returned_card,
-    green,
-    harness,
-    refused,
-    story,
-)
 from tests.test_onboard import FakeIssues, FakeWorkspace
 from tests.test_revert import (
     FakeIssues as RevertIssues,
@@ -67,22 +56,6 @@ def test_a_review_is_signed_by_the_code_reviewer():
     )
     assert signed_by(render_review(approve), "Code Reviewer")
     assert signed_by(render_review(reject), "Code Reviewer")
-
-
-def test_a_story_pull_request_is_signed_by_the_developer_after_its_verification():
-    body = _pr_body(story(), IMPL, DeliveryOutcome(card=6))
-    assert signed_by(body, "Developer")
-    # The Code Reviewer is shown the Verification section; the signature isn't in it.
-    assert "Developer" not in checks_section([], body)
-
-
-def test_a_rework_comment_is_signed_by_the_developer(harness, refused):  # noqa: F811
-    fix = Implementation(summary="fixed", new_files=[FileWrite(path="a.py", content="x\n")])
-    _, _, issues, _, _, _ = harness(
-        checks=[green()], cards=[_returned_card("In Progress")], implement=lambda n: fix
-    )
-    (rework,) = [body for _, body in issues.comments_ if "**Re-worked.**" in body]
-    assert signed_by(rework, "Developer")
 
 
 def test_an_onboarding_record_pull_request_is_signed_by_the_product_owner(tmp_path):

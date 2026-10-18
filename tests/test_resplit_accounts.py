@@ -152,9 +152,10 @@ def test_an_epic_without_a_record_gets_no_test_rows():
 
 
 def test_a_story_problems_pinned_tests_become_rows_the_re_split_must_account_for():
+    """As the contract ruling's return lists them (crew#778): each test and why."""
     issues = Issues(WITH_RECORD)
     card = Card(item_id="S", number=529, title="Keys in /sprint", parent=468)
-    comment = story_problem.evidence(card, {SCHEMA_TEST: "assert 11 == 15"}, 2)
+    comment = f"The merged tests it changed:\n\n- `{SCHEMA_TEST}`: assert 11 == 15\n"
     story_problem.record_pinned(
         issues, EventSink(None), repo="sprint-metrics", epic=468, card=card, comment=comment
     )

@@ -38,14 +38,15 @@ def test_a_refusal_is_matched_by_its_form_and_field_before_its_text():
             event(
                 "llm.refused",
                 {
-                    "output_schema": "FirstAttempt:abc",
-                    "reason": "text_edits.0: Value error, the edit to 'x.md' changes nothing",
+                    "output_schema": "QAVerdict:abc",
+                    "reason": "criteria.0.evidence: Value error, name the test that proves this "
+                    "criterion, or say specifically what is missing",
                     "duration_s": 3600,
                 },
             )
         ]
     )
-    fired = report.fired["form.TextEdit.changes_something"]
+    fired = report.fired["form.CriterionVerdict.is_specific"]
     assert fired.events == 1
     assert fired.matched == {rule_report.BY_NAME: 1}
     assert fired.seconds == 3600
@@ -67,27 +68,19 @@ def test_a_missing_field_is_the_schema_and_an_empty_answer_the_call_layers():
 
 def test_crewais_validation_errors_are_read_by_form_and_field():
     error = (
-        "1 validation error for Implementation\ntext_edits.1.path\n  Value error, "
-        "'src/a.py' is Python: change it with `edits`, addressed by name, not by quoting "
-        "its text [type=value_error, input_value='src/a.py', input_type=str]"
+        "1 validation error for QAVerdict\ncriteria.0.evidence\n  Value error, name the test "
+        "that proves this criterion, or say specifically what is missing. 'Tested' is not "
+        "evidence. [type=value_error, input_value='tested', input_type=str]"
     )
     report = rule_report.count(
         [event("escalation.decided", {"failure_class": "SCHEMA", "error": error})]
     )
-    assert report.fired["form.path.stays_in_the_repository"].matched == {rule_report.BY_NAME: 1}
+    assert report.fired["form.CriterionVerdict.is_specific"].matched == {rule_report.BY_NAME: 1}
 
 
-def test_a_rule_and_a_guard_are_matched_by_the_names_the_event_records():
-    report = rule_report.count(
-        [
-            event(
-                "escalation.decided",
-                {"rule": "guard.local_repair", "failure_class": "OVERWRITE", "paths": ["a.py"]},
-            )
-        ]
-    )
-    assert report.fired["repair.local"].events == 1
-    assert report.fired["guard.overwrite.overwrites_existing"].events == 1
+def test_a_rule_is_matched_by_the_name_the_event_records():
+    report = rule_report.count([event("card.blocked", {"rule": "delivery.push_failed"})])
+    assert report.fired["delivery.push_failed"].matched == {rule_report.BY_NAME: 1}
 
 
 def test_cards_are_counted_with_their_repository_and_an_unknown_one_stays_unknown():
@@ -141,14 +134,14 @@ def test_a_second_report_shows_only_rows_that_changed():
 
 
 def test_a_rule_a_refusal_names_twice_counts_once_with_its_time():
-    reason = (
-        "text_edits.0: Value error, the edit to 'a.md' changes nothing; "
-        "text_edits.1: Value error, the edit to 'b.md' changes nothing"
+    said = (
+        "Value error, name the test that proves this criterion, or say specifically what is missing"
     )
+    reason = f"criteria.0.evidence: {said}; criteria.1.evidence: {said}"
     report = rule_report.count(
-        [event("llm.refused", {"output_schema": "Rework:x", "reason": reason, "duration_s": 60})]
+        [event("llm.refused", {"output_schema": "QAVerdict:x", "reason": reason, "duration_s": 60})]
     )
-    fired = report.fired["form.TextEdit.changes_something"]
+    fired = report.fired["form.CriterionVerdict.is_specific"]
     assert (fired.events, fired.seconds) == (1, 60)
 
 

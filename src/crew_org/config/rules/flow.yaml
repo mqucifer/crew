@@ -3,15 +3,12 @@ check.review.with_deploy:
 config.ask_limits:
   cases:
   - config.const.board_flow.ANALYST_ASK_LIMIT
-  - config.const.delivery.ASKED_FILES_LIMIT
-  description: 'How much a role may ask for: the Business Analyst''s questions, and the files a delivery
-    adds by asking.'
+  description: 'How much a role may ask for: the Business Analyst''s questions.'
   origin:
   - crew#231
   - sprint-metrics#529
 config.attempts:
   cases:
-  - config.org.execution.local_repair_attempts
   - config.const.backlog_order.ATTEMPTS
   - config.const.settle.ATTEMPTS
   - config.const.board_flow.ANSWER_ATTEMPTS
@@ -31,7 +28,6 @@ config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS:
   origin:
   - crew#231
   - crew#62
-config.const.claude_code.DEFAULT_TIMEOUT:
 config.const.loop.MAX_PASSES:
 config.const.loop.QUEUE_POLL:
 config.const.loop.QUEUE_WAIT:
@@ -41,18 +37,14 @@ config.const.merge.SETTLE_TRIES:
   origin:
   - crew#302
 config.const.merge.SETTLE_WAIT:
-config.const.story_problem.SHOWN:
 config.const.strain.REVISIT_CONFLICTS:
 config.org.board.blocked_column:
 config.org.board.columns:
 config.org.board.human_gates:
 config.org.delivery.repos:
-config.org.escalation.may_escalate:
-config.org.escalation.never_escalate:
 config.org.refinement.panel:
 config.org.sprint.blocked_aging_days:
 config.org.sprint.capacity_points:
-config.org.sprint.escalation_budget:
 config.org.sprint.timezone:
 config.org.wip_limits:
 decision.acceptance.ci_only:
@@ -104,7 +96,6 @@ decision.close.carry_over:
 decision.delivery.interrupted:
 decision.delivery.limit:
 decision.delivery.outcome:
-decision.delivery.rate_limited:
 decision.delivery.reconcile_orphans:
 decision.delivery.rework:
   origin:
@@ -198,16 +189,12 @@ delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
+delivery.round_trips_no_epic:
+  origin:
+  - crew#778
 delivery.workspace_unready:
   origin:
   - crew#778
-escalation.policy:
-  cases:
-  - escalation.allowed
-  - escalation.budget
-  - escalation.unresolved
-  - escalation.usage_limit
-  description: A failure is escalated to Claude only within the sprint's budget, and its outcome is recorded.
 gate.ci_before_review:
   cases:
   - skip.review.ci_failed_on_its_head
@@ -217,12 +204,6 @@ gate.ci_before_review:
 gate.criteria_cannot_all_pass:
 gate.qa_unproven:
 gate.review_changes_requested:
-gate.reviewer_and_developer_disagree:
-guard.no_change:
-guard.not_reproduced:
-guard.overwrite:
-guard.protected:
-guard.workflow_permission:
 hold.waits_for_earlier_work:
   cases:
   - hold.sibling
@@ -239,21 +220,6 @@ hold.wip:
   origin:
   - crew#33
   - crew#34
-repair.gave_up:
-  cases:
-  - schema.persisted
-  - regression.persisted
-  - edit.not_applied
-  description: 'Local repair gave up: the attempt still fails after the attempts allowed.'
-repair.local:
-  cases:
-  - schema.local_repair
-  - verify.local_repair
-  - edit.local_repair
-  - guard.local_repair
-  - regression.local_repair
-  description: A refused or failed attempt is repaired locally, within the attempts allowed, before it's
-    escalated.
 session.choice:
 session.no_epic:
 skip.board_flow.a_goal_written_by_not_the:
@@ -289,7 +255,6 @@ skip.waits_for_the_sponsors_answer:
 story.contract_ruling:
 story.return_to_refinement:
   cases:
-  - scope.return
   - story.pinned_tests
   - story.gate_round_trips
   - story.review_conflicts_with_criterion
@@ -320,12 +285,3 @@ told.review_crew.do_not_re_litigate_a_point:
 §5.6:
   guidance: true
   owner: Business Analyst
-§9 a_short_plan_first:
-  guidance: true
-  owner: Senior Engineer
-§9 the_pieces_are_merged_into_one:
-  guidance: true
-  owner: Senior Engineer
-§9 then_one_small_answer_per_file:
-  guidance: true
-  owner: Senior Engineer

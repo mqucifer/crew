@@ -25,11 +25,8 @@ class PythonProfile:
     """Python with pytest: every rule the crew had, in one place."""
 
     name = "python"
-    # Edits by definition name, and the regression guard, read Python's syntax
-    # tree (tools/ast_edit.py, tools/regression.py).
-    edit_by_name = True
+    # The regression guard reads Python's syntax tree (tools/regression.py).
     guarded = True
-    test_file_hint = "name it tests/test_*.py"
 
     def is_test_file(self, path: str) -> bool:
         """Named as a test file: `test_*` or `*_test.py`."""
@@ -45,10 +42,6 @@ class PythonProfile:
             or path == "tests"
             or self.is_test_file(path)
         )
-
-    def defines_test(self, source: str, name: str) -> bool:
-        """Does this source define the test? As written by the Developer."""
-        return re.search(rf"def {re.escape(name)}\b", source) is not None
 
     def test_exists(self, text: str, name: str) -> bool:
         """Is this test defined in the file's text? As cited for evidence."""
@@ -67,14 +60,6 @@ class PythonProfile:
     def tests_defined(self, text: str) -> list[str]:
         """The tests a file defines."""
         return _TEST_DEF.findall(text)
-
-    def prepare_test(self, path: str, source: str) -> str:
-        """A test's source with the fixtures it uses declared (#196)."""
-        if not path.endswith(".py"):
-            return source
-        from crew_org.tools.fixtures import declare_fixtures  # noqa: PLC0415
-
-        return declare_fixtures(source)
 
     def definitions(self, source: str) -> dict[str, str]:
         """What a file defines, name to signature, for the map."""
@@ -101,31 +86,21 @@ class GenericProfile:
     """A part in a language the crew has no deeper tools for (#404).
 
     Tests are the part's declared test files, named by their titles, as in
-    `test("the health summary is first", ...)`. There's no edit-by-name and no
-    regression guard: edits are whole files or exact find-and-replace, and the
+    `test("the health summary is first", ...)`. There's no regression guard: the
     Code Reviewer and QA are told a change had no guard.
     """
 
-    edit_by_name = False
     guarded = False
 
     def __init__(self, language: str, tests: list[str]):
         self.name = language
         self._tests = list(tests)
-        self.test_file_hint = (
-            "name it to match this part's test files: " + ", ".join(f"`{t}`" for t in tests)
-            if tests
-            else "this part declares no test files"
-        )
 
     def is_test_file(self, path: str) -> bool:
         return any(PurePosixPath(path).match(glob) or _glob(path, glob) for glob in self._tests)
 
     def is_test_path(self, path: str) -> bool:
         return self.is_test_file(path)
-
-    def defines_test(self, source: str, name: str) -> bool:
-        return name in self.tests_defined(source)
 
     def test_exists(self, text: str, name: str) -> bool:
         return name in self.tests_defined(text)
@@ -140,9 +115,6 @@ class GenericProfile:
 
     def tests_defined(self, text: str) -> list[str]:
         return [m.group(2) for m in _TITLE.finditer(text)]
-
-    def prepare_test(self, path: str, source: str) -> str:
-        return source
 
     def definitions(self, source: str) -> dict[str, str]:
         return {}

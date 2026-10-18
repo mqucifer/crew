@@ -1,11 +1,13 @@
 """Why work doesn't land first time: the crew's retries, counted (#157).
 
-Every retry is an `escalation.decided` event carrying its failure class and what
-went wrong. A pull request's body kept only the total, and nothing added them
-up. This reads the events back, turns each failure into a cause that can be
-counted (the same mistake reads the same whatever file or name it hit), and
-reports a sprint's stories: which landed first time, what the others took, and
-the causes that recur.
+Every retry of the one-call Developer was an `escalation.decided` event carrying
+its failure class and what went wrong; review's and QA's returns are their own
+events, and a Developer session's runs are its own records (crew#778). A pull
+request's body kept only the total, and nothing added them up. This reads the
+events back, turns each failure into a cause that can be counted (the same
+mistake reads the same whatever file or name it hit), and reports a sprint's
+stories: which landed first time, what the others took, and the causes that
+recur.
 
 The data is the crew's, because only the crew has it. The metric is
 sprint-metrics' (Goal sprint-metrics#87), which reads what `crew export` writes.
@@ -42,8 +44,7 @@ CARDS_OWN = frozenset({CARD_OWN, UNPROVEN})
 REVIEW = "REVIEW"
 QA = "QA"
 
-# A parse failure is a defect in what the model is asked for (the escalation
-# policy's own reading of a persistent SCHEMA failure), not bad luck.
+# A parse failure is a defect in what the model is asked for, not bad luck.
 PROMPT_CLASSES = frozenset({"SCHEMA"})
 
 _QUOTED = re.compile(r"`[^`]*`|'[^']*'|\"[^\"]*\"")

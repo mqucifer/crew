@@ -1,8 +1,8 @@
-"""Whether an implementation stays inside what the project's record allows (#131).
+"""Whether a branch stays inside what the project's record allows (#131).
 
-Checked before anything is written, like the overwrite and contract checks: a
-change to a protected path, or one that stops CI enforcing a check, is refused
-with the path or the check named, and the Developer is told why.
+Checked by the gates at `done` (crew#778), like the contract check: a change to a
+protected path, or one that stops CI enforcing a check, sends the branch back with
+the path or the check named, and the next session is told why.
 """
 
 from __future__ import annotations
@@ -16,37 +16,10 @@ from crew_org.tools import ci_guard
 from crew_org.tools.regression import Merged
 
 
-def touched(implementation) -> list[str]:
-    """Every path an implementation would write, in the order it names them."""
-    paths = [f.path for f in implementation.new_files]
-    paths += [e.path for e in implementation.all_edits]
-    paths += [t.path for t in implementation.text_edits]
-    paths += list(getattr(implementation, "deleted_files", []))
-    for move in getattr(implementation, "moves", []):
-        paths += [move.from_path, move.to_path]
-    return list(dict.fromkeys(paths))
-
-
-def out_of_bounds(worktree: Path, implementation, record: ProjectRecord | None) -> list[str]:
-    """Why this implementation may not be applied, one line per reason. Empty if it may."""
-    from crew_org.tools import base_images  # noqa: PLC0415
-
-    paths = touched(implementation)
-    workflows = (
-        _workflows(worktree, implementation)
-        if any(ci_guard.is_workflow(p) for p in paths)
-        else ({}, {})
-    )
-    dockerfiles = _after(
-        worktree, implementation, [p for p in paths if base_images.is_dockerfile(p)]
-    )
-    return judged(paths, record, workflows=workflows, dockerfiles=dockerfiles)
-
-
 def on_diff(
     worktree: Path, merged: Merged, paths: list[str], record: ProjectRecord | None
 ) -> list[str]:
-    """The same judgement, of a branch's diff against what's merged (crew#778, ADR 0032).
+    """Why the branch's diff against what's merged is out of bounds (crew#778, ADR 0032).
 
     A session's edits are already in the worktree, so each path as it stands is
     its after, and the merged commit is its before.
@@ -132,22 +105,6 @@ def judged(
     return reasons
 
 
-def _after(worktree: Path, implementation, paths: list[str]) -> dict[str, str]:
-    """What each of `paths` would hold once the change is applied."""
-    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
-    from crew_org.tools.workspace import plan_text_edits  # noqa: PLC0415
-
-    if not paths:
-        return {}
-    after = {f.path: f.content for f in implementation.new_files if f.path in paths}
-    try:
-        planned = plan_text_edits(worktree, implementation.text_edits)
-    except EditError:
-        planned = {}  # applying reports it; this check judges only what would apply
-    after.update({p: t for p, t in planned.items() if p in paths})
-    return after
-
-
 def _workflows_now(worktree: Path) -> dict[str, str]:
     """Every workflow file as the worktree holds it."""
     root = worktree.resolve()
@@ -158,20 +115,3 @@ def _workflows_now(worktree: Path) -> dict[str, str]:
         str(path.relative_to(root)): path.read_text(encoding="utf-8")
         for path in sorted(folder.glob("*.y*ml"))
     }
-
-
-def _workflows(worktree: Path, implementation) -> tuple[dict[str, str], dict[str, str]]:
-    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
-    from crew_org.tools.workspace import plan_text_edits  # noqa: PLC0415
-
-    before = _workflows_now(worktree)
-    after = dict(before)
-    after.update(
-        {f.path: f.content for f in implementation.new_files if ci_guard.is_workflow(f.path)}
-    )
-    try:
-        planned = plan_text_edits(worktree, implementation.text_edits)
-    except EditError:
-        planned = {}  # applying reports it; this check judges only what would apply
-    after.update({p: t for p, t in planned.items() if ci_guard.is_workflow(p)})
-    return before, after

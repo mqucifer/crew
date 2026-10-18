@@ -1,10 +1,9 @@
-"""Detecting when an implementation destroys work that already exists.
+"""Detecting when a branch destroys work that already exists.
 
-The Developer returns whole files, which is what makes its output easy to
-validate and repair. The cost is that touching an existing file means rewriting
-it, and a model asked to "add throughput" will happily redesign the module it
-is adding to — discarding functions that other stories, and other tests, depend
-on.
+A model asked to "add throughput" will happily redesign the module it is adding
+to, discarding functions that other stories, and other tests, depend on. The
+gates at `done` read the branch against what's merged (crew#778), as every one
+of these checks does.
 
 Observed on story #7: it rewrote story #6's merged module from scratch, renamed
 its public functions, and implemented three future stories along the way. The
@@ -20,7 +19,6 @@ from __future__ import annotations
 import ast
 import contextlib
 import textwrap
-from collections.abc import Callable
 from pathlib import Path
 
 # How a contract reads when its definition is deleted. A move reads the same
@@ -98,38 +96,6 @@ def _parse_text(text: str | None) -> ast.Module | None:
         return ast.parse(text)
     except (SyntaxError, ValueError):
         return None
-
-
-def overwrites_existing(worktree: Path, new_files: list) -> list[str]:
-    """New files that would overwrite something already there.
-
-    Writing an existing path as a "new file" is a whole-file rewrite by another
-    name — the exact thing editing by name exists to prevent — so it is refused
-    rather than merged. Except a walking skeleton's placeholder, which exists to
-    be replaced. crew-presentation's stories reached for a whole rewrite of one
-    twice: `build.py` (story 73) and `tests/test_tokens.py` (story 84), whose
-    rewrite through a text edit was refused after a 30-minute answer (crew#690,
-    ADR 0030). Its replacement drops the marker, or the real file it
-    becomes could be rewritten whole by every story after it.
-    """
-    from crew_org.flows.skeleton import marked  # noqa: PLC0415
-
-    return [
-        f.path
-        for f in new_files
-        if (worktree / f.path).exists()
-        and (not is_placeholder(worktree / f.path) or marked(f.content))
-    ]
-
-
-def is_placeholder(path: Path) -> bool:
-    """Whether a file is a walking skeleton's placeholder, marked `crew:placeholder`."""
-    from crew_org.flows.skeleton import marked  # noqa: PLC0415
-
-    try:
-        return marked(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        return False
 
 
 # --- what a replacement may not change -----------------------------------
@@ -213,96 +179,9 @@ def signature_of(node: ast.stmt) -> str | None:
     return None
 
 
-def _first_definition(source: str) -> ast.stmt | None:
-    """The definition an edit carries, parsed on its own.
-
-    An edit's source arrives at whatever indentation it had in the file, so it
-    is dedented before parsing — a method replacement is otherwise a syntax
-    error rather than a definition.
-    """
-    try:
-        tree = ast.parse(textwrap.dedent(source))
-    except SyntaxError:
-        return None
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            return node
-    return None
-
-
-def broken_contracts(
-    worktree: Path, edits: list, merged: Merged | None = None
-) -> dict[str, tuple[str, str]]:
-    """Edits that would change or remove a contract other code depends on.
-
-    Keyed by `path::target`, valued by what the signature was and what it would
-    become — the two strings are the whole explanation, so the message written
-    from them needs no further reasoning.
-
-    A replacement that leaves the signature alone is not reported, however much
-    of the body it rewrites. That is the point: stories are made of body edits,
-    and a check that refused those would refuse everything.
-    """
-    from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
-
-    found: dict[str, tuple[str, str]] = {}
-    cache: dict[str, dict[str, ast.stmt]] = {}
-
-    for edit in edits:
-        operation = str(getattr(edit, "operation", ""))
-        if operation not in {"replace", "delete"} or not edit.path.endswith(".py"):
-            continue
-        # A private helper is the author's business — nothing outside the module
-        # can depend on it, and refusing to let a story reshape its own internals
-        # is the kind of constraint that blocks correct work. `__init__` is the
-        # exception: it is private in name only, and it is the constructor.
-        leaf = edit.target.rpartition(".")[2]
-        if leaf.startswith("_") and leaf != "__init__":
-            continue
-
-        if edit.path not in cache:
-            # As merged: a definition only this story's draft added is its own
-            # to change or delete (sprint-metrics#126).
-            text = _before(worktree, edit.path, merged)
-            if text is None:
-                continue
-            try:
-                cache[edit.path] = definitions(text)
-            except SyntaxError:
-                continue
-
-        old_node = cache[edit.path].get(edit.target)
-        if old_node is None:
-            # Naming something that is not there is a different failure, and
-            # the edit machinery already reports it as one.
-            continue
-        was = signature_of(old_node)
-        if was is None:
-            continue
-
-        key = f"{edit.path}::{edit.target}"
-        if operation == "delete":
-            found[key] = (was, REMOVED)
-            continue
-
-        new_node = _first_definition(edit.source)
-        if new_node is None:
-            continue
-        broke = contract_break(old_node, new_node)
-        if broke is not None:
-            found[key] = (was, broke)
-
-    return found
-
-
-def _is_test_path(path: str) -> bool:
-    from crew_org.profiles import profile_for  # noqa: PLC0415
-
-    return profile_for(path).is_test_path(path)
-
-
-def describe_contracts(broken: dict[str, tuple[str, str]], merged: Merged | None = None) -> str:
-    """What the Developer is told. Written so the repair is obvious."""
+def describe_contracts(broken: dict[str, tuple[str, str]]) -> str:
+    """What the gates tell the next session about merged code it broke. Written so the
+    repair is obvious."""
     lines = [
         "This changes what existing code promises its callers. Other stories "
         "have already been merged against these signatures and their tests "
@@ -324,27 +203,6 @@ def describe_contracts(broken: dict[str, tuple[str, str]], merged: Merged | None
         "field it already has, in the order it has them. If you need a new "
         "field, append it with a default.",
     ]
-    # A merged test is deleted only by retiring it (#274): the refusal says how.
-    if any(_is_test_path(key.split("::", 1)[0]) for key in broken):
-        lines += [
-            "",
-            "A merged test isn't deleted by removing it. If this story deliberately ends "
-            "what a test above pins, list it in `retired_tests`, with what the story ends, "
-            "and the crew deletes it for you. If the story only changes what it asserts "
-            "(a renamed label, a new key), keep the test and update its assertion.",
-        ]
-        restore = removed_tests_source(broken, merged)
-        if restore:
-            # On a repair the deletion is already in the files, so the test isn't
-            # in anything the Developer is shown: sprint-metrics#200 was asked to
-            # restore code it had never seen, three times (#316).
-            lines += [
-                "",
-                "The removed tests, as merged. To keep one, add it back with an `add` "
-                "edit from this source, changing only what the story changes:",
-                "",
-                restore,
-            ]
     if any(broke.startswith(REMOVED) for _was, broke in broken.values()):
         lines += [
             "",
@@ -358,12 +216,17 @@ def describe_contracts(broken: dict[str, tuple[str, str]], merged: Merged | None
     return "\n".join(lines)
 
 
-# Generous, not a budget (§16): a test is short, and a repair needs all of it.
+# Generous, not a budget (§16): a test is short, and putting one back needs all of it.
 RESTORE_CHAR_CEILING = 20_000
 
 
-def removed_tests_source(broken: dict[str, tuple[str, str]], merged: Merged | None) -> str:
-    """Each merged test the change removes, in full, from the merged base (#316)."""
+def merged_tests_source(tests: list[str], merged: Merged | None) -> str:
+    """Each of `tests` (`path::name`, a method as `Class.name`) in full, as merged (#316).
+
+    A session has no git, and the merged version is what a changed or removed test is
+    put back to: sprint-metrics#200 was asked to restore code it had never seen,
+    three times. Python only; another language's tests are left out.
+    """
     if merged is None:
         return ""
     from crew_org.tools.ast_edit import definitions  # noqa: PLC0415
@@ -371,9 +234,9 @@ def removed_tests_source(broken: dict[str, tuple[str, str]], merged: Merged | No
     blocks: list[str] = []
     budget, left_out = RESTORE_CHAR_CEILING, []
     texts: dict[str, str | None] = {}
-    for key, (_was, broke) in sorted(broken.items()):
+    for key in sorted(tests):
         path, _, target = key.partition("::")
-        if not (_is_test_path(path) and broke.startswith(REMOVED)):
+        if not (path.endswith(".py") and target):
             continue
         if path not in texts:
             texts[path] = merged.text(path)
@@ -395,7 +258,7 @@ def removed_tests_source(broken: dict[str, tuple[str, str]], merged: Merged | No
         blocks += [f"`{target}` in `{path}`:", "```python", source, "```"]
     if left_out:
         blocks.append(
-            "Also removed, and not shown because they did not fit: " + ", ".join(left_out)
+            "Also changed, and not shown because they did not fit: " + ", ".join(left_out)
         )
     return "\n".join(blocks)
 
@@ -560,24 +423,18 @@ def contract_break(old: ast.stmt, new: ast.stmt) -> str | None:
 
 def without_moves(
     worktree: Path,
-    implementation,
     broken: dict[str, tuple[str, str]],
     merged: Merged | None = None,
 ) -> dict[str, tuple[str, str]]:
     """`broken`, less the removals that are really moves.
 
-    A top-level definition deleted from module A is kept when, once the change
-    is applied, a definition of the same name and a compatible shape exists in
-    another module B, and either A still binds the name by importing it from
-    B, or nothing in the repository asks A for the name any more and A's
-    package binds it from B. Judged on a scratch copy with the change applied, because
-    a move is spread across files: the new module, the deletion, the import.
+    A top-level definition deleted from module A is kept when, on the branch, a
+    definition of the same name and a compatible shape exists in another module B,
+    and either A still binds the name by importing it from B, or nothing in the
+    repository asks A for the name any more and A's package binds it from B. Judged
+    across the whole branch, because a move is spread across files: the new module,
+    the deletion, the import.
     """
-    import shutil  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
-    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
-
     removals = {
         key: value
         for key, value in broken.items()
@@ -585,26 +442,12 @@ def without_moves(
     }
     if not removals:
         return broken
-    with tempfile.TemporaryDirectory() as scratch:
-        after = Path(scratch) / "after"
-        shutil.copytree(worktree, after, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
-        try:
-            apply_implementation(after, implementation)
-        except Exception as exc:  # noqa: BLE001
-            # It won't apply, so nothing here can show a move. Say so: reported
-            # only as "removed entirely", the edit error that is the real fault
-            # was never seen.
-            why = f"the change doesn't apply, so it couldn't be checked as a move: {exc}"
-            return {
-                key: (value[0], f"{REMOVED}; {why}") if key in removals else value
-                for key, value in broken.items()
-            }
-        modules = _modules(after)
-        before = {
-            path: _parse_text(_before(worktree, path, merged))
-            for path in {k.partition("::")[0] for k in removals}
-        }
-        why = {key: _moved(key, before, modules) for key in removals}
+    modules = _modules(worktree)
+    before = {
+        path: _parse_text(_before(worktree, path, merged))
+        for path in {k.partition("::")[0] for k in removals}
+    }
+    why = {key: _moved(key, before, modules) for key in removals}
     kept = {key for key, reason in why.items() if not reason}
     # A method goes where its class went: `Card.is_completed` removed with
     # `Card`, and `Card` moved whole, is part of that move. The class's own
@@ -632,13 +475,19 @@ def _parse(path: Path) -> ast.Module | None:
 
 def _modules(root: Path) -> dict[str, ast.Module]:
     """Every parseable Python file under `root`, by repository-relative path."""
+    import os  # noqa: PLC0415
+
     found: dict[str, ast.Module] = {}
-    for path in root.rglob("*.py"):
-        if _SKIP & set(path.relative_to(root).parts):
-            continue
-        tree = _parse(path)
-        if tree is not None:
-            found[path.relative_to(root).as_posix()] = tree
+    # Pruned as it walks: a branch's worktree holds its .venv and node_modules.
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in _SKIP]
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = Path(here) / name
+            tree = _parse(path)
+            if tree is not None:
+                found[path.relative_to(root).as_posix()] = tree
     return found
 
 
@@ -767,55 +616,28 @@ def _moved(key: str, before: dict[str, ast.Module | None], after: dict[str, ast.
 # file still asked, or how to keep the name and satisfy lint.
 
 
-def lost_names(
-    worktree: Path,
-    implementation,
-    merged: Merged | None = None,
-    on_skip: Callable[[str], None] | None = None,
-) -> dict[str, tuple[str, str]]:
+def lost_names(worktree: Path, merged: Merged | None = None) -> dict[str, tuple[str, str]]:
     """Names a changed module stops providing that another file still imports from it.
 
-    Covers what `broken_contracts` doesn't: a name the module imported and
-    passed along, or a constant it assigned. Keyed `path::name` like a broken
-    contract, valued (what it was, what goes wrong). Judged with the change
-    applied to a scratch copy; a change that won't apply reports nothing here,
-    since `without_moves` already says so.
+    Covers what `draft_breaks` doesn't: a name the module imported and passed
+    along, or a constant it assigned. Keyed `path::name` like a broken contract,
+    valued (what it was, what goes wrong). Judged on the branch against what's
+    merged; with nothing merged to compare, nothing is lost.
     """
-    import shutil  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
-    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
-
-    changed = {e.path for e in implementation.all_edits if e.path.endswith(".py")} | {
-        t.path for t in implementation.text_edits if t.path.endswith(".py")
-    }
-    changed |= {p for p in getattr(implementation, "deleted_files", []) if p.endswith(".py")}
-    changed |= {m.from_path for m in getattr(implementation, "moves", [])}
-    if merged is not None:
-        # Including what an earlier attempt changed: its damage still counts.
-        changed |= merged.changed()
+    if merged is None:
+        return {}
+    changed = merged.changed()
     before = {path: _parse_text(_before(worktree, path, merged)) for path in changed}
     before = {path: tree for path, tree in before.items() if tree is not None}
     if not before:
         return {}
     changed = set(before)
-    with tempfile.TemporaryDirectory() as scratch:
-        after_root = Path(scratch) / "after"
-        shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
-        try:
-            apply_implementation(after_root, implementation)
-        except Exception as exc:  # noqa: BLE001
-            # Said out loud: returning nothing reads as "nothing lost", and
-            # sprint-metrics#129 went through with a broken import that way.
-            if on_skip is not None:
-                on_skip(f"couldn't check what the change stops providing: {exc}")
-            return {}
-        after = _modules(after_root)
+    after = _modules(worktree)
     # The changed files too, deleted ones included: an import naming a deleted
     # module must resolve to it, or whoever still asks it is never seen.
     files = set(after) | changed
-    # A module this story deletes can't keep a re-export (#273).
-    deleting = set(getattr(implementation, "deleted_files", []))
+    # A module the branch deletes can't keep a re-export (#273).
+    deleting = {path for path in changed if not (worktree / path).exists()}
     found: dict[str, tuple[str, str]] = {}
     for path in sorted(changed):
         old = before.get(path)
@@ -940,45 +762,21 @@ def _provided(tree: ast.Module) -> set[str]:
     return names
 
 
-def draft_breaks(
-    worktree: Path,
-    implementation,
-    merged: Merged | None,
-    on_skip: Callable[[str], None] | None = None,
-) -> dict[str, tuple[str, str]]:
-    """Merged definitions an earlier attempt already broke, and this one leaves broken.
+def draft_breaks(worktree: Path, merged: Merged | None) -> dict[str, tuple[str, str]]:
+    """Merged definitions the branch deletes or reshapes: the contract check (§15).
 
-    `broken_contracts` reads this attempt's edits; a definition the draft
-    deleted or reshaped before it isn't in them, so it was never reported.
-    Keyed and valued like a broken contract, and judged like one: a removal
-    here is still a move if `without_moves` finds its new home.
+    A session's edits are drafts already in the worktree (crew#778), so the
+    branch is judged whole against what's merged; a deleted module's every
+    definition is judged, as a move or a removal. Keyed `path::name`, valued
+    (what it was, what goes wrong). A removal here is still a move if
+    `without_moves` finds its new home.
     """
-    import shutil  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
-    from crew_org.tools.workspace import apply_implementation  # noqa: PLC0415
-
     if merged is None:
         return {}
-    # What earlier attempts changed, and what this one deletes outright: a
-    # deleted module's every definition is judged, as a move or a removal.
-    paths = merged.changed() | {
-        p for p in getattr(implementation, "deleted_files", []) if p.endswith(".py")
-    }
+    paths = merged.changed()
     if not paths:
         return {}
-    with tempfile.TemporaryDirectory() as scratch:
-        after_root = Path(scratch) / "after"
-        shutil.copytree(worktree, after_root, ignore=shutil.ignore_patterns(*_SKIP), symlinks=True)
-        try:
-            apply_implementation(after_root, implementation)
-        except Exception as exc:  # noqa: BLE001
-            # Said out loud: returning nothing reads as "nothing lost", and
-            # sprint-metrics#129 went through with a broken import that way.
-            if on_skip is not None:
-                on_skip(f"couldn't check what the change stops providing: {exc}")
-            return {}
-        after = _modules(after_root)
+    after = _modules(worktree)
     found: dict[str, tuple[str, str]] = {}
     for path in sorted(paths):
         old_tree = _parse_text(merged.text(path))
@@ -1000,14 +798,6 @@ def draft_breaks(
     return found
 
 
-def without_retired(
-    broken: dict[str, tuple[str, str]], implementation
-) -> dict[str, tuple[str, str]]:
-    """`broken`, less the merged tests this story declares it retires (§15)."""
-    retired = {f"{t.path}::{t.test}" for t in getattr(implementation, "retired_tests", [])}
-    return {key: value for key, value in broken.items() if key not in retired}
-
-
 def without_placeholders(
     worktree: Path, broken: dict[str, tuple[str, str]], merged: Merged | None
 ) -> tuple[dict[str, tuple[str, str]], list[str]]:
@@ -1024,42 +814,4 @@ def without_placeholders(
     excused = sorted(
         key for key in broken if marked(_before(worktree, key.partition("::")[0], merged) or "")
     )
-    return {k: v for k, v in broken.items() if k not in excused}, excused
-
-
-def _declares(declared: set[str], key: str) -> bool:
-    """Whether a story's declared contract change names this test, or its file."""
-    path, _, target = key.partition("::")
-    if not _is_test_path(path):
-        return False
-    names = {target, target.split(".")[0], target.rpartition(".")[2]}
-    for entry in declared:
-        where, _, test = entry.partition("::")
-        if not where.endswith(".py"):
-            if entry in names:
-                return True
-            continue
-        if not (path == where or path.endswith(f"/{where}")):
-            continue
-        if not test or test in names:
-            return True
-    return False
-
-
-def without_declared(
-    broken: dict[str, tuple[str, str]], declared: set[str]
-) -> tuple[dict[str, tuple[str, str]], list[str]]:
-    """`broken`, less the merged tests the story's declared contract change names (#316).
-
-    The Business Analyst writes `contract change: <the tests it updates>` when a
-    story changes what merged tests assert, and the Code Reviewer sees it in the
-    story. Until #316 nothing here read it, so the story that declared it was
-    refused like one that hadn't: sprint-metrics's docs redesign ends by
-    removing `tests/test_readme.py`, declared, and would have blocked as #200
-    did. Only tests, and only those named; a removal nobody declared is still
-    refused. Also returns what it excused, for the pull request.
-    """
-    if not declared:
-        return broken, []
-    excused = sorted(key for key in broken if _declares(declared, key))
     return {k: v for k, v in broken.items() if k not in excused}, excused

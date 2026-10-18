@@ -1,35 +1,25 @@
-"""The delivery loop is where escalation discipline either holds or does not.
+"""The deliver phase around the Developer's session: what it claims, holds and moves.
 
-These tests exercise the loop rather than the policy in isolation: the policy
-was always right in a unit test; what matters is that the loop asks it before
-reaching for a stronger model.
+The session itself is faked here (`session_delivery.deliver_by_session`): its own
+tests are `test_session_delivery.py`. What's tested is the phase every Developer runs
+inside: the WIP limit, the holds, the allow-list, the healing of a stranded card,
+what a blocked card keeps, and a returned story claimed again (crew#778, ADR 0032).
 """
 
 from __future__ import annotations
 
-import inspect
-
 import pytest
 
-from crew_org.crews.delivery_crew import FileEdit, FileWrite, Implementation
-from crew_org.escalation import EscalationLedger, EscalationPolicy, FailureClass
 from crew_org.events import EventKind, EventSink
-from crew_org.flows import delivery
-from crew_org.git_ops import MergeConflict
+from crew_org.flows import delivery, session_delivery
+from crew_org.flows.delivery import DeliveryOutcome
+from crew_org.git_ops import MergeConflict, branch_name
 from crew_org.process import ProcessRules
-from crew_org.tools.claude_code import EscalationResult, Outcome
 from crew_org.tools.github_issues import QueueState
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult
 
 SPRINT = "S1"
-IMPL = Implementation(
-    summary="Adds cycle time",
-    new_files=[
-        FileWrite(path="src/m.py", content="def cycle():\n    return 1\n"),
-        FileWrite(path="tests/test_m.py", content="def test_cycle():\n    assert True\n"),
-    ],
-)
 
 
 def story(number: int = 6) -> Card:
@@ -200,83 +190,53 @@ class FakeWorkspace:
         self.events.append("close")
         self.closed += 1
 
+    def forget(self, branch):
+        self.forgotten = [*getattr(self, "forgotten", []), branch]
+
+
+def opened(card: Card, *, ws, issues, rework: bool = False) -> DeliveryOutcome:
+    """A session that reached `done` and passed the gates: pushed, and opened for review."""
+    branch = branch_name(card.number or 0, card.title)
+    ws.push(force=not rework)
+    live = issues.pull_for_branch(card.repo, branch)
+    number = (
+        live["number"]
+        if live
+        else issues.create_pull(card.repo, title=card.title, head=branch, base="main", body="")[
+            "number"
+        ]
+    )
+    return DeliveryOutcome(card=card.number or 0, branch=branch, pr=number, attempts=1, ended=True)
+
+
+def blocked(why: str = "the session was stopped: no progress"):
+    """A delivery its session couldn't finish, for a person."""
+
+    def developer(card: Card, **_) -> DeliveryOutcome:
+        branch = branch_name(card.number or 0, card.title)
+        return DeliveryOutcome(
+            card=card.number or 0, branch=branch, blocked_reason=why, attempts=1, ended=True
+        )
+
+    return developer
+
 
 @pytest.fixture
 def harness(tmp_path, monkeypatch):
-    """Everything the loop needs, with the model and the shell faked out."""
-    calls = {
-        "implement": 0,
-        "escalate": 0,
-        "feedback": [],
-        "context": [],
-        "prior": [],
-        "returned": [],
-    }
+    """Everything the deliver phase needs, with the Developer's session faked out."""
+    calls: dict = {"delivered": []}
 
-    def make(
-        *,
-        checks,
-        implement=None,
-        escalate_result=None,
-        cards=None,
-        apply=None,
-        limit=None,
-        repos=None,
-    ):
+    def make(*, developer=None, cards=None, limit=None, repos=None):
         board = FakeBoard(cards or [story()])
         issues = FakeIssues()
         ws = FakeWorkspace(tmp_path)
-        sequence = list(checks)
 
-        def fake_implement(
-            story_text,
-            *,
-            context,
-            feedback="",
-            prior="",
-            returned=False,
-            may_be_done=False,
-            read=None,
-        ):
-            calls["implement"] += 1
-            calls.setdefault("may_be_done", []).append(may_be_done)
-            calls["feedback"].append(feedback)
-            calls["context"].append(context)
-            calls["prior"].append(prior)
-            calls["returned"].append(returned)
-            calls.setdefault("read", []).append(read)
-            if implement:
-                # An answer that reads takes the read tool too (crew#583, step C4).
-                if "read" in inspect.signature(implement).parameters:
-                    return implement(calls["implement"], read=read)
-                return implement(calls["implement"])
-            return IMPL
+        def fake(card, *, ws, rework=False, **_):
+            calls["delivered"].append((card.number, rework))
+            ws.open(branch_name(card.number or 0, card.title), resume=rework)
+            return (developer or opened)(card, ws=ws, issues=issues, rework=rework)
 
-        def fake_escalate(worktree, prompt, **kw):
-            calls["escalate"] += 1
-            return escalate_result or EscalationResult(outcome=Outcome.COMPLETED, detail="fixed")
-
-        # The one-call Developer these tests cover, kept until Stage E removes both.
-        monkeypatch.setattr(delivery, "developer", lambda: delivery.deliver_story)
-        monkeypatch.setattr(delivery, "implement_story", fake_implement)
-        # The stepped second attempt (#276) answers through the same fake, so no
-        # test here reaches a real model through the plan or the per-file calls.
-        monkeypatch.setattr(
-            delivery,
-            "_deliver_in_steps",
-            lambda story_text, **kw: fake_implement(
-                story_text, context=kw.get("header", ""), feedback=kw.get("why", "")
-            ),
-        )
-        applying = apply or (lambda w, impl: [])
-        monkeypatch.setattr(
-            delivery.workspace,
-            "apply_implementation",
-            lambda w, impl, **_: applying(w, impl),
-        )
-        monkeypatch.setattr(delivery.workspace, "check", lambda w: sequence.pop(0))
-        monkeypatch.setattr(delivery.claude_code, "escalate", fake_escalate)
-
+        monkeypatch.setattr(session_delivery, "deliver_by_session", fake)
         sink = EventSink(None)
         seen = []
         sink.subscribe(seen.append)
@@ -287,20 +247,13 @@ def harness(tmp_path, monkeypatch):
                 "human_gates": [],
             },
             "wip_limits": {"In Progress": 3},
-            "sprint": {"blocked_aging_days": 3, "escalation_budget": 3},
-            "execution": {"local_repair_attempts": 2},
-            "escalation": {
-                "never_escalate": ["SCHEMA", "SCOPE", "REGRESSION"],  # as org.yaml
-                "may_escalate": ["VERIFY", "CAPABILITY"],
-            },
+            "sprint": {"blocked_aging_days": 3},
         }
         result = delivery.deliver(
             board,
             issues,
             sink,
             ProcessRules.from_config(org),
-            EscalationPolicy.from_config(org),
-            EscalationLedger(tmp_path / "ledger.jsonl"),
             ws,
             sprint=SPRINT,
             repo="sprint-metrics",
@@ -312,98 +265,30 @@ def harness(tmp_path, monkeypatch):
     return make
 
 
-# --- the happy path ------------------------------------------------------
+# --- a delivered story -----------------------------------------------------
 
 
-def test_a_green_first_attempt_opens_a_pull_request(harness):
-    result, board, issues, ws, calls, _ = harness(checks=[green()])
+def test_a_delivered_story_goes_to_review_with_its_pull_request(harness):
+    result, board, _, ws, calls, _ = harness()
     assert len(result.delivered) == 1
     assert result.delivered[0].pr == 101
-    assert calls["escalate"] == 0
+    assert calls["delivered"] == [(6, False)]
     assert ws.pushed == 1
     assert ("S6", "Reviewing") in board.moves
 
 
 def test_the_card_moves_through_in_progress_first(harness):
-    _, board, _, _, _, _ = harness(checks=[green()])
+    _, board, _, _, _, _ = harness()
     assert [m[1] for m in board.moves] == ["In Progress", "Reviewing"]
 
 
-# --- escalation discipline ----------------------------------------------
-
-
-def test_a_verify_failure_repairs_locally_before_escalating(harness):
-    """Two local attempts are the contract, and the repair sees the failure."""
-    result, _, _, _, calls, _ = harness(checks=[red("1 failed"), red("1 failed"), green()])
-    assert calls["implement"] == 3
-    assert calls["escalate"] == 0
-    assert result.delivered[0].attempts == 2
-    assert "1 failed" in calls["feedback"][1]
-
-
-def test_escalation_happens_only_after_local_repair_is_exhausted(harness):
-    result, _, _, _, calls, seen = harness(checks=[red(), red(), red(), green()])
-    assert calls["escalate"] == 1
-    assert result.delivered[0].escalated
-    kinds = [e.kind for e in seen]
-    assert EventKind.ESCALATED in kinds
-
-
-def test_a_schema_failure_never_escalates(harness):
-    """The model could not produce a valid implementation. That is a prompt
-    defect — escalating would hide it."""
-
-    def always_invalid(attempt):
-        raise ValueError("no test file")
-
-    result, _, issues, _, calls, _ = harness(checks=[], implement=always_invalid)
-    assert calls["escalate"] == 0
-    assert len(result.blocked) == 1
-    assert "prompt" in result.blocked[0].blocked_reason.lower()
-
-
-def test_an_escalation_is_recorded_in_the_ledger(tmp_path, harness):
-    harness(checks=[red(), red(), red(), green()])
-    ledger = EscalationLedger(tmp_path / "ledger.jsonl")
-    entries = ledger.entries(SPRINT)
-    # The escalation, then its outcome — append-only, so both survive.
-    assert len(entries) == 2
-    assert ledger.outcomes(SPRINT) == {6: "resolved — lint and tests pass"}
-    assert ledger.spent(SPRINT) == 1
-    assert entries[0].failure_class is FailureClass.VERIFY
-    # The initial attempt plus two repairs — the retro reads this to judge
-    # whether escalation is buying anything.
-    assert entries[0].local_attempts == 3
-
-
-# --- rate limits ---------------------------------------------------------
-
-
-def test_a_usage_limit_parks_the_card_and_stops_the_run(harness):
-    """Not a failure: the subscription said come back later."""
-    limited = EscalationResult(outcome=Outcome.RATE_LIMITED, detail="usage limit reached")
-    cards = [story(6), story(7)]
-    result, board, issues, _, calls, _ = harness(
-        checks=[red(), red(), red()], escalate_result=limited, cards=cards
-    )
-    assert result.rate_limited
-    assert len(result.blocked) == 1
-    # The second story is never started.
-    assert calls["implement"] == 3
-    assert ("S6", "Blocked") in board.moves
-
-
-# --- failure handling ----------------------------------------------------
-
-
 def test_a_story_that_cannot_be_finished_is_blocked_and_labelled(harness):
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="still broken")
-    result, board, issues, _, _, _ = harness(
-        checks=[red(), red(), red(), red()], escalate_result=failed
-    )
+    result, board, issues, _, _, _ = harness(developer=blocked())
     assert len(result.blocked) == 1
     assert (6, "blocked") in issues.labels
     assert ("S6", "Blocked") in board.moves
+    (said,) = [body for number, body in issues.comments_ if number == 6]
+    assert "no progress" in said and "Sessions: 1." in said
 
 
 def test_the_wip_limit_stops_the_loop(harness):
@@ -419,55 +304,45 @@ def test_the_wip_limit_stops_the_loop(harness):
         )
         for i in range(3)
     ]
-    result, board, _, _, calls, seen = harness(checks=[green()], cards=[story(), *busy])
+    result, board, _, _, calls, seen = harness(cards=[story(), *busy])
     assert result.delivered == []
-    assert calls["implement"] == 0
+    assert calls["delivered"] == []
     assert any("WIP limit" in e.summary for e in seen)
 
 
 def test_the_worktree_is_always_closed(harness):
     """Even when delivery fails, the worktree must not be left behind."""
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="broken")
-    _, _, _, ws, _, _ = harness(checks=[red(), red(), red(), red()], escalate_result=failed)
+    _, _, _, ws, _, _ = harness(developer=blocked())
     assert ws.closed == 1
+
+
+def test_an_ended_delivery_forgets_its_branch_s_checkpoints(harness):
+    """Only an interrupted session leaves its checkpoint for the next pass (P3)."""
+    _, _, _, ws, _, _ = harness(developer=blocked())
+    assert ws.forgotten == ["feat/6-show-metric-6"]
 
 
 # --- keeping the evidence of a failure -----------------------------------
 
 
 def test_a_blocked_card_keeps_the_diff_that_failed(harness):
-    """Nothing is committed or pushed until verification passes, so the worktree
-    is the only copy of what the Developer wrote. Losing it means the card
-    blocks with no record of why."""
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="broken")
-    result, _, _, _, _, _ = harness(checks=[red(), red(), red(), red()], escalate_result=failed)
+    """The worktree is the only copy of what the Developer wrote until it's pushed.
+    Losing it means the card blocks with no record of why."""
+    result, _, _, _, _, _ = harness(developer=blocked())
     assert result.blocked[0].rejected_diff is not None
     assert "what the model wrote" in result.blocked[0].rejected_diff
 
 
 def test_the_evidence_is_read_before_the_worktree_is_removed(harness):
     """Ordering is the whole fix: a diff taken after close reads nothing."""
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="broken")
-    _, _, _, ws, _, _ = harness(checks=[red(), red(), red(), red()], escalate_result=failed)
+    _, _, _, ws, _, _ = harness(developer=blocked())
     assert ws.events == ["diff", "close"]
-
-
-def test_a_blocked_card_keeps_the_whole_failure_report_not_an_extract(harness):
-    """A pytest run with thirteen failures does not fit in the 400 characters
-    the event log carries, and the part naming the defect is rarely the front."""
-    long_output = "\n".join(f"FAILED tests/test_m.py::test_{i}" for i in range(80))
-    failed = EscalationResult(outcome=Outcome.FAILED, detail="broken")
-    result, _, _, _, _, _ = harness(checks=[red(long_output)] * 4, escalate_result=failed)
-    detail = result.blocked[0].failure_detail
-    assert detail is not None
-    assert len(detail) > 400
-    assert "test_79" in detail
 
 
 def test_a_card_that_succeeds_keeps_no_rejected_diff(harness):
     """`rejected_diff` means a failure. Setting it on success would make `ok`
     and the evidence disagree about what happened."""
-    result, _, _, _, _, _ = harness(checks=[green()])
+    result, _, _, _, _, _ = harness()
     assert result.delivered[0].rejected_diff is None
 
 
@@ -476,20 +351,15 @@ def test_the_worktree_closed_is_the_one_that_was_opened(harness):
     the parent would leak the worktree and close one that never existed."""
     card = story()
     card.repo = "sprint-metrics"
-    _, _, _, ws, _, _ = harness(checks=[green()], cards=[card])
+    _, _, _, ws, _, _ = harness(cards=[card])
     assert ws.repos_asked == ["sprint-metrics"]
     assert ws.closed == 1
 
 
-# --- dry run -------------------------------------------------------------
-
-
 def test_the_limit_caps_how_many_stories_are_attempted(harness):
-    result, _, _, _, calls, _ = harness(
-        checks=[green(), green()], cards=[story(6), story(7)], limit=1
-    )
+    result, _, _, _, calls, _ = harness(cards=[story(6), story(7)], limit=1)
     assert len(result.delivered) == 1
-    assert calls["implement"] == 1
+    assert len(calls["delivered"]) == 1
 
 
 # --- healing an interrupted run -----------------------------------------
@@ -509,10 +379,10 @@ def in_progress(number: int, title: str = "Show metric") -> Card:
     )
 
 
-def test_a_card_stranded_in_progress_returns_to_the_backlog(harness, monkeypatch):
+def test_a_card_stranded_in_progress_returns_to_the_backlog(harness):
     """A tick can be killed mid-story. The board is the state, so the next pass
     heals it rather than assuming it was left tidy."""
-    result, board, _, _, calls, _ = harness(checks=[green()], cards=[in_progress(6)])
+    result, board, _, _, _, _ = harness(cards=[in_progress(6)])
     assert result.recovered == [6]
     assert ("S6", "Sprint Backlog") in board.moves
 
@@ -525,123 +395,27 @@ def test_a_stranded_card_with_an_open_pull_request_goes_to_review(harness, monke
         lambda self, repo: [{"number": 42, "head": {"ref": "feat/6-show-metric-6"}}],
         raising=False,
     )
-    result, board, _, _, _, _ = harness(checks=[green()], cards=[in_progress(6)])
+    result, board, _, _, _, _ = harness(cards=[in_progress(6)])
     assert result.recovered == []
     assert ("S6", "Reviewing") in board.moves
 
 
 def test_healing_does_not_touch_cards_that_are_where_they_belong(harness):
-    result, board, _, _, _, _ = harness(checks=[green()], cards=[story(6)])
+    result, _, _, _, _, _ = harness(cards=[story(6)])
     assert result.recovered == []
 
 
-def test_a_failure_event_records_why_not_only_what(harness):
-    """Recording the disposition without the reason says what happened and not
-    why — which is the half a retro actually needs."""
-    _, _, _, _, _, seen = harness(checks=[red("2 failed in test_metrics.py"), green()])
-    decided = next(e for e in seen if e.kind == EventKind.ESCALATION_DECIDED)
-    assert decided.detail["failure_class"] == "VERIFY"
-    assert "2 failed in test_metrics.py" in decided.detail["output"]
-    assert decided.detail["reason"]
-    assert decided.detail["failing_commands"] == ["pytest"]
+def test_healing_an_interrupted_run_claims_nothing(harness):
+    """Orphan reconciliation moves a card nobody decided to move. Attributing
+    that to a role is a guess, and a wrong owner is worse than none."""
+    stranded = story(6).model_copy(update={"status": "In Progress"})
+    _, board, _, _, _, seen = harness(cards=[stranded])
 
-
-# --- the repair must see its own work -----------------------------------
-
-
-def test_the_first_attempt_is_shown_the_bodies_too(tmp_path):
-    """Story #11 rewrote a function it had only ever seen the signature of, and
-    was refused for breaking behaviour that lives in the body. Names say what to
-    target; only the body says what the code currently promises."""
-    from crew_org.tools.repo_context import repository_context
-
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/mod.py").write_text(
-        "def calculate_throughput(c):\n    SENTINEL = 1\n    return SENTINEL\n"
-    )
-    context = repository_context(tmp_path)
-    assert "calculate_throughput" in context
-    assert "SENTINEL" in context
-
-
-def test_methods_are_shown_qualified(tmp_path):
-    """The model has to know that a method is addressed as Class.method."""
-    from crew_org.tools.repo_context import repository_context
-
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/mod.py").write_text("class Card:\n    def age(self):\n        return 0\n")
-    assert "Card.age" in repository_context(tmp_path)
-
-
-def test_the_context_warns_against_targeting_a_file(tmp_path):
-    """Story #8 tried to edit a definition called __init__ in __init__.py."""
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/__init__.py").write_text('__all__ = ["f"]\n')
-    from crew_org.tools.repo_context import repository_context
-
-    assert "__all__" in repository_context(tmp_path)
-    assert "not `__init__`" in repository_context(tmp_path)
-
-
-def test_a_repair_is_shown_the_current_file_contents(tmp_path):
-    """Regression: repairs were given the pre-implementation listing, so they
-    were fixing code they could not read — two attempts failed identically
-    before escalation was reached."""
-    from crew_org.tools.repo_context import repository_context
-
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/mod.py").write_text("SENTINEL = 1\n")
-    (tmp_path / "tests").mkdir()
-    (tmp_path / "tests/test_mod.py").write_text("ASSERTION = 2\n")
-    context = repository_context(tmp_path)
-    assert "SENTINEL" in context
-    assert "ASSERTION" in context
-
-
-def test_a_tree_that_does_not_fit_drops_whole_files_and_names_them(tmp_path):
-    """The ceiling is a guard, not a budget. A file cut mid-function is worse
-    than a file left out, because nothing in it marks where it stopped — so an
-    omitted file is omitted entirely, and the Developer is told it exists."""
-    from crew_org.tools import repo_context
-
-    ceiling = repo_context.CONTEXT_CHAR_CEILING
-    (tmp_path / "src").mkdir()
-    # Sized off the ceiling rather than a fixed number, so raising the guard
-    # does not quietly stop this from testing the guard.
-    filler = "x = 1\n" * (ceiling // 60)
-    for i in range(40):
-        (tmp_path / f"src/mod{i}.py").write_text(f"MARKER_{i} = 1\n" + filler)
-    context = repo_context.repository_context(tmp_path)
-
-    assert len(context) < ceiling * 2
-    shown = [i for i in range(40) if f"MARKER_{i} = 1" in context]
-    assert shown, "nothing was shown at all"
-    for i in range(40):
-        # Every file is either shown whole or named as missing. Never half.
-        whole = f"`src/mod{i}.py`\n\n```python\nMARKER_{i} = 1" in context
-        named_missing = "not shown, because the tree did not fit" in context.lower() and (
-            i not in shown
-        )
-        assert whole or named_missing, f"src/mod{i}.py was neither shown whole nor named"
-
-
-def test_context_is_recomputed_on_every_attempt(harness):
-    """Stale context is what made repairs non-convergent: a repair given the
-    pre-implementation listing is fixing code it cannot read."""
-
-    def apply(worktree, implementation):
-        # Stand in for the first attempt landing in the worktree. Both passes
-        # are shown the source now, so recomputation has to be proved by what
-        # the source says rather than by whether it is there at all.
-        (worktree / "src").mkdir(parents=True, exist_ok=True)
-        (worktree / "src/written.py").write_text("FIRST_ATTEMPT = 1\n")
-        return []
-
-    _, _, _, _, calls, _ = harness(checks=[red(), green()], apply=apply)
-    assert len(calls["context"]) == 2
-    # The first pass has nothing written yet; the repair is shown what exists.
-    assert "FIRST_ATTEMPT" not in calls["context"][0]
-    assert "FIRST_ATTEMPT" in calls["context"][1]
+    assert ("S6", "Sprint Backlog") in board.moves
+    assert board.owners == [], "no role stranded it, so no role claims it"
+    moved = [e for e in seen if e.kind is EventKind.CARD_MOVED and e.role is None]
+    assert moved, "still reported, just not attributed"
+    assert moved[0].detail["from"] == "In Progress"
 
 
 def test_a_story_that_could_not_be_landed_says_why(harness):
@@ -649,72 +423,10 @@ def test_a_story_that_could_not_be_landed_says_why(harness):
     the result dropped it on the floor: a run that silently skipped every merge
     looked exactly like a run with nothing to merge."""
     approved = story(6).model_copy(update={"status": "Merging"})
-    result, *_ = harness(checks=[green()], cards=[approved, story(7)])
+    result, *_ = harness(cards=[approved, story(7)])
 
     assert result.landed == []
     assert result.unmergeable == [(6, "no open pull request")]
-
-
-# --- a card that comes back carries what was said about it ----------------
-
-
-def test_a_redelivered_story_carries_both_verdicts(harness, monkeypatch):
-    """They judge different things — the diff and the behaviour — and a card can
-    be returned by one while the other was content. Returning a card for a named
-    defect and implementing it again knowing nothing about that defect is how a
-    story is returned twice for the same reason."""
-    from crew_org.flows import delivery as delivery_mod
-
-    monkeypatch.setattr(
-        delivery_mod,
-        "prior_verdicts",
-        lambda *a, **k: "## QA — not accepted\n\n---\n\nchanges requested: flaky sleep",
-    )
-    _, _, _, _, calls, _ = harness(checks=[green()], cards=[story(6)])
-
-    assert "QA — not accepted" in calls["prior"][0]
-    assert "flaky sleep" in calls["prior"][0]
-
-
-def test_a_first_delivery_carries_nothing(harness):
-    """A card being delivered for the first time has no verdicts, and must not
-    be told it has."""
-    _, _, _, _, calls, _ = harness(checks=[green()], cards=[story(6)])
-
-    assert calls["prior"] == [""]
-
-
-def test_a_verdict_that_cannot_be_read_does_not_lose_the_delivery(harness, monkeypatch):
-    """Best effort: losing a delivery because a comment could not be fetched is
-    worse than delivering without the context."""
-    from crew_org.flows import delivery as delivery_mod
-
-    def broken(*a, **k):
-        raise RuntimeError("github is down")
-
-    monkeypatch.setattr(delivery_mod.IssueClient, "comments", broken, raising=False)
-    result, _, _, _, calls, _ = harness(checks=[green()], cards=[story(6)])
-
-    assert len(result.delivered) == 1
-    assert calls["prior"] == [""]
-
-
-def test_a_failed_push_keeps_what_the_attempt_learned(harness, monkeypatch):
-    """The handler built a fresh DeliveryOutcome, throwing away the one that
-    knew about the repairs and the diff, so a card that had retried twice
-    blocked saying "Attempts: 0". #10's defect in a path #10 did not cover."""
-
-    def refuse(self, *, force=False):
-        raise RuntimeError("failed to push some refs")
-
-    monkeypatch.setattr(FakeWorkspace, "push", refuse)
-    result, _, _, _, _, _ = harness(checks=[red(), green()], cards=[story(6)])
-
-    assert len(result.blocked) == 1
-    blocked = result.blocked[0]
-    assert blocked.attempts == 1, "the repair it took is still on the outcome"
-    assert "could not push" in (blocked.blocked_reason or "")
-    assert blocked.rejected_diff is not None, "and the evidence survived"
 
 
 def test_a_push_github_s_side_failed_is_tried_again_not_blocked(harness, monkeypatch):
@@ -731,36 +443,23 @@ def test_a_push_github_s_side_failed_is_tried_again_not_blocked(harness, monkeyp
         )
 
     monkeypatch.setattr(FakeWorkspace, "push", stumble)
-    result, _, issues, _, _, _ = harness(checks=[green()], cards=[story(6)])
+    result, _, issues, _, _, _ = harness(cards=[story(6)])
 
     assert result.blocked == [], "GitHub interrupted it; the story didn't fail"
+    assert result.interrupted == [6]
     assert any(INTERRUPTED_MARKER in body for _, body in issues.comments_)
 
 
-# --- a second attempt can land ------------------------------------------
+def test_a_session_its_workspace_interrupted_is_tried_again_not_blocked(harness):
+    """A lost container or a failed model call isn't the story's (crew#778, P3)."""
 
+    def lost(card, **_):
+        raise session_delivery.SessionInterrupted("the workspace container", "it went")
 
-def test_a_delivery_overwrites_its_own_dead_branch(harness):
-    """`open()` resets the branch to origin/HEAD, so a second attempt's history
-    no longer descends from the first attempt's remote branch and the push is
-    rejected as a non-fast-forward. Story #31 burned two repair attempts and
-    twelve minutes before hitting exactly that."""
-    _, _, _, ws, _, _ = harness(checks=[green()], cards=[story(6)])
-
-    assert ws.forced is True, "the lease is the safety, not the absence of force"
-
-
-def test_an_open_pull_request_stops_the_overwrite(harness, monkeypatch):
-    """Force-pushing under a review in progress would destroy the diff the
-    Reviewer is judging."""
-    monkeypatch.setattr(
-        FakeIssues, "landable", {"feat/6-show-metric-6": {"number": 101}}, raising=False
-    )
-    result, _, _, ws, _, _ = harness(checks=[green()], cards=[story(6)])
-
-    assert ws.pushed == 0, "nothing pushed"
-    assert result.blocked, "the card blocked"
-    assert "still open" in (result.blocked[0].blocked_reason or "")
+    result, board, issues, _, _, _ = harness(developer=lost)
+    assert result.blocked == [] and result.interrupted == [6]
+    assert ("S6", "Blocked") not in board.moves
+    assert any("Interrupted by the workspace container" in body for _, body in issues.comments_)
 
 
 # --- one story at a time within an epic ----------------------------------
@@ -775,7 +474,7 @@ def test_a_story_waits_for_its_earlier_sibling(harness):
     whose story was "handle unavailable data at the scrape endpoint", was
     claimed 100 seconds later, could not see scrape.py, and built a second
     server in another module. Both passed their own tests."""
-    result, board, _, _, _, _ = harness(checks=[green()], cards=[sibling(6), sibling(7)])
+    result, board, _, _, _, _ = harness(cards=[sibling(6), sibling(7)])
 
     assert [n for n, _ in result.waiting_on_a_sibling] == [7]
     assert result.waiting_on_a_sibling[0][1] == 6, "and it says which story it waits for"
@@ -785,12 +484,12 @@ def test_a_story_waits_for_its_earlier_sibling(harness):
 def test_a_hold_names_the_cards_repository(harness, monkeypatch):
     """crew#756: every hold note named a card and no repository, so a count by card
     couldn't tell sprint-metrics#7 from crew-presentation#7 (crew#752's class)."""
-    result, _, _, _, _, seen = harness(checks=[green()], cards=[sibling(6), sibling(7)])
+    result, _, _, _, _, seen = harness(cards=[sibling(6), sibling(7)])
     (held,) = [e for e in seen if e.detail.get("rule") == "hold.sibling"]
     assert (held.detail["card"], held.detail["repo"]) == (7, "sprint-metrics")
 
     monkeypatch.setattr(delivery, "held_by_what_it_builds_on", lambda cards, card, body: story(5))
-    result, _, _, _, _, seen = harness(checks=[green()], cards=[story(8)])
+    result, _, _, _, _, seen = harness(cards=[story(8)])
     (held,) = [e for e in seen if e.detail.get("rule") == "hold.builds_on"]
     assert (held.detail["card"], held.detail["repo"]) == (8, "sprint-metrics")
 
@@ -799,7 +498,7 @@ def test_a_landed_sibling_does_not_hold_anything(harness):
     """Landed means Done or closed — an open pull request is not in anyone's
     base, but a merged one is."""
     done = sibling(6, status="Done")
-    result, board, _, _, _, _ = harness(checks=[green()], cards=[done, sibling(7)])
+    result, board, _, _, _, _ = harness(cards=[done, sibling(7)])
 
     assert result.waiting_on_a_sibling == []
     assert ("S7", "In Progress") in board.moves
@@ -808,9 +507,7 @@ def test_a_landed_sibling_does_not_hold_anything(harness):
 def test_stories_from_different_epics_run_side_by_side(harness):
     """Epics are decomposed by outcome precisely so they do not touch the same
     code. That concurrency is the point and stays."""
-    result, board, _, _, _, _ = harness(
-        checks=[green(), green()], cards=[sibling(6, parent=100), sibling(7, parent=200)]
-    )
+    result, board, _, _, _, _ = harness(cards=[sibling(6, parent=100), sibling(7, parent=200)])
 
     assert result.waiting_on_a_sibling == []
     assert len([m for m in board.moves if m[1] == "In Progress"]) == 2
@@ -819,7 +516,7 @@ def test_stories_from_different_epics_run_side_by_side(harness):
 def test_a_story_with_no_epic_is_not_held(harness):
     """A card filed by hand has no parent and nothing to wait for."""
     orphan = story(7).model_copy(update={"parent": None})
-    result, _, _, _, _, _ = harness(checks=[green()], cards=[orphan])
+    result, _, _, _, _, _ = harness(cards=[orphan])
 
     assert result.waiting_on_a_sibling == []
     assert len(result.delivered) == 1
@@ -829,7 +526,7 @@ def test_the_limit_counts_claims_not_candidates(harness):
     """A held story is not an attempt. Counting it against --limit would mean a
     tick that claimed nothing because the first candidate was waiting."""
     result, board, _, _, _, _ = harness(
-        checks=[green()], cards=[sibling(6, parent=100), sibling(7, parent=100)], limit=1
+        cards=[sibling(6, parent=100), sibling(7, parent=100)], limit=1
     )
 
     assert len(result.delivered) == 1
@@ -842,75 +539,9 @@ def test_the_limit_counts_claims_not_candidates(harness):
 def test_the_developer_owns_the_card_it_claimed(harness):
     """The board has always had an Owner Agent field and nothing wrote it, so
     every card said a machine had acted and not which role."""
-    _, board, _, _, _, _ = harness(checks=[green()])
+    _, board, _, _, _, _ = harness()
 
     assert ("S6", "Developer") in board.owners
-
-
-def test_healing_an_interrupted_run_claims_nothing(harness, monkeypatch):
-    """Orphan reconciliation moves a card nobody decided to move. Attributing
-    that to a role is a guess, and a wrong owner is worse than none."""
-    stranded = story(6).model_copy(update={"status": "In Progress"})
-    _, board, _, _, _, seen = harness(checks=[green()], cards=[stranded])
-
-    assert ("S6", "Sprint Backlog") in board.moves
-    assert board.owners == [], "no role stranded it, so no role claims it"
-    moved = [e for e in seen if e.kind is EventKind.CARD_MOVED and e.role is None]
-    assert moved, "still reported, just not attributed"
-    assert moved[0].detail["from"] == "In Progress"
-
-
-# --- the regression guard in the loop -----------------------------------
-
-
-OVERWRITING = Implementation(
-    summary="Rewrites the module",
-    new_files=[
-        FileWrite(path="src/m.py", content="def only_the_new_thing():\n    return 1\n"),
-        FileWrite(path="tests/test_m.py", content="def test_x():\n    assert True\n"),
-    ],
-)
-
-
-def test_writing_over_an_existing_file_is_refused(harness, monkeypatch, tmp_path):
-    """A 'new file' that already exists is a whole-file rewrite by another name."""
-
-    def seeded_open(self, branch, *, resume=False):
-        self.resumed = False
-        path = tmp_path / branch.replace("/", "__")
-        (path / "src").mkdir(parents=True, exist_ok=True)
-        (path / "src/m.py").write_text("def already_merged():\n    return 0\n")
-        (path / "tests").mkdir(parents=True, exist_ok=True)
-        (path / "tests/test_m.py").write_text("def test_old():\n    assert True\n")
-        return path
-
-    monkeypatch.setattr(FakeWorkspace, "open", seeded_open, raising=False)
-
-    editing = Implementation(
-        summary="Adds throughput alongside what is there",
-        edits=[
-            FileEdit(
-                path="src/m.py",
-                operation="add",
-                target="throughput",
-                source="def throughput():\n    return 1",
-            ),
-            FileEdit(
-                path="tests/test_m.py",
-                operation="add",
-                target="test_throughput",
-                source="def test_throughput():\n    assert True",
-            ),
-        ],
-    )
-    result, _, _, _, calls, seen = harness(
-        checks=[green()], implement=lambda n: OVERWRITING if n == 1 else editing
-    )
-    assert calls["implement"] == 2
-    assert result.delivered
-    decided = [e for e in seen if e.kind == EventKind.ESCALATION_DECIDED]
-    assert decided[0].detail["failure_class"] == "OVERWRITE"
-    assert "src/m.py" in decided[0].detail["paths"]
 
 
 # --- which repositories the crew may work in ----------------------------
@@ -933,27 +564,23 @@ def other_repo_story(number: int = 20, repo: str = "crew") -> Card:
 def test_a_card_outside_the_allow_list_is_never_claimed(harness):
     """It belongs on the board — refined, prioritised, visible — but it is not
     the crew's to implement."""
-    result, board, _, _, calls, _ = harness(
-        checks=[green()], cards=[other_repo_story()], repos={"sprint-metrics"}
-    )
-    assert calls["implement"] == 0
+    result, board, _, _, calls, _ = harness(cards=[other_repo_story()], repos={"sprint-metrics"})
+    assert calls["delivered"] == []
     assert board.moves == []
     assert result.not_ours == [20]
 
 
 def test_cards_inside_the_allow_list_are_worked(harness):
-    result, _, _, _, calls, _ = harness(
-        checks=[green()], cards=[story(6)], repos={"sprint-metrics"}
-    )
-    assert calls["implement"] == 1
+    result, _, _, _, calls, _ = harness(cards=[story(6)], repos={"sprint-metrics"})
+    assert len(calls["delivered"]) == 1
     assert result.not_ours == []
 
 
 def test_a_mixed_sprint_works_only_what_it_may(harness):
     result, _, _, _, calls, _ = harness(
-        checks=[green()], cards=[other_repo_story(20), story(6)], repos={"sprint-metrics"}
+        cards=[other_repo_story(20), story(6)], repos={"sprint-metrics"}
     )
-    assert calls["implement"] == 1
+    assert len(calls["delivered"]) == 1
     assert result.delivered[0].card == 6
     assert result.not_ours == [20]
 
@@ -961,39 +588,15 @@ def test_a_mixed_sprint_works_only_what_it_may(harness):
 def test_work_happens_in_the_cards_own_repository(harness):
     """A global default would implement a card belonging to one repo inside
     another, silently."""
-    _, _, _, ws, _, _ = harness(checks=[green()], cards=[story(6)])
+    _, _, _, ws, _, _ = harness(cards=[story(6)])
     assert ws.repos_asked == ["sprint-metrics"]
 
 
 def test_without_an_allow_list_nothing_is_excluded(harness):
     """Absent configuration should not silently stop the crew working."""
-    result, _, _, _, calls, _ = harness(checks=[green()], cards=[story(6)])
-    assert calls["implement"] == 1
+    result, _, _, _, calls, _ = harness(cards=[story(6)])
+    assert len(calls["delivered"]) == 1
     assert result.not_ours == []
-
-
-def test_a_fumbled_name_does_not_spend_the_budget_for_real_failures(harness):
-    """Story #8: two invented definition names left the first genuine test
-    failure with nothing in hand, so it escalated immediately."""
-    from crew_org.tools.ast_edit import EditError
-
-    calls = {"n": 0}
-
-    def sometimes_unapplicable(worktree, implementation):
-        calls["n"] += 1
-        if calls["n"] <= 2:
-            raise EditError("no definition named 'invented'")
-        return []
-
-    # Two edit failures, then one test failure, then green.
-    result, _, _, _, _, seen = harness(checks=[red(), green()], apply=sometimes_unapplicable)
-
-    edits = [e for e in seen if e.detail.get("failure_class") == "EDIT"]
-    verifies = [e for e in seen if e.detail.get("failure_class") == "VERIFY"]
-    assert len(edits) == 2
-    # The VERIFY failure still gets a repair rather than escalating on arrival.
-    assert verifies and "retry_local" in verifies[0].summary
-    assert result.delivered
 
 
 # --- a story the reviewer sent back --------------------------------------
@@ -1040,228 +643,17 @@ def test_a_story_stuck_in_reviewing_is_re_worked_with_no_board_surgery(harness, 
     """sprint-metrics#31 exactly as it sits: Reviewing, open PR #67, changes
     requested. It ping-ponged In Progress <-> Reviewing and nothing ever
     addressed the findings."""
-    result, board, issues, _, _, _ = harness(checks=[green()], cards=[_returned_card("Reviewing")])
+    result, board, _, _, calls, _ = harness(cards=[_returned_card("Reviewing")])
     assert result.reworked == [31]
+    assert calls["delivered"] == [(31, True)], "a new session, told it's a rework (P2)"
     assert ("S31", "In Progress") in board.moves
     assert ("S31", "Reviewing") in board.moves[board.moves.index(("S31", "In Progress")) :]
 
 
-def test_the_repair_updates_the_open_pull_request(harness, refused):
-    """The open-pull-request guard exists to stop a re-delivery overwriting a
-    diff under review. For a repair, updating it is the intent — and a second
-    pull request from the same branch is not possible anyway."""
-    result, _, issues, ws, _, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
+def test_a_rework_updates_the_open_pull_request(harness, refused):
+    """A second pull request from the same branch is not possible, and the review
+    it answers is on the one that's open."""
+    result, _, issues, ws, _, _ = harness(cards=[_returned_card("In Progress")])
     assert issues.prs == []
     assert result.delivered[0].pr == 67
     assert ws.forced is False
-
-
-def test_the_repair_is_announced_on_the_pull_request(harness, refused):
-    _result, _board, issues, _, _, _ = harness(
-        checks=[green()], cards=[_returned_card("In Progress")]
-    )
-    assert any("crew:rework" in body for _n, body in issues.comments_)
-
-
-def test_the_repair_builds_on_the_work_it_is_repairing(harness, refused):
-    _result, _board, _issues, ws, _, _ = harness(
-        checks=[green()], cards=[_returned_card("In Progress")]
-    )
-    assert ws.resumed is True
-
-
-# --- resume only live rework, and bring it up to date (#119) --------------------
-
-
-def test_a_branch_whose_pull_request_was_closed_starts_from_main(harness, monkeypatch):
-    """sprint-metrics #32: a four-day-old branch from a closed PR, resumed on a
-    base cut before its sibling #31 landed. It produced no change and blocked."""
-    monkeypatch.setattr(FakeWorkspace, "unfinished", True, raising=False)
-    result, _, _, ws, _, _ = harness(checks=[green()])
-    assert ws.resumed is False
-    assert "catch_up" not in ws.events
-    assert result.delivered and ws.forced is True, "the dead branch is overwritten, with lease"
-
-
-def test_live_rework_is_resumed_and_brought_up_to_date_first(harness, refused):
-    """An open pull request returned by review: its feedback is about this code,
-    so it is resumed, but on top of what has landed since."""
-    result, _, _, ws, _, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
-    assert ws.resumed is True
-    assert "catch_up" in ws.events
-    assert result.delivered[0].pr == 67 and ws.forced is False
-
-
-def test_a_returned_branch_that_conflicts_with_main_is_rebuilt_not_blocked(
-    harness, refused, monkeypatch
-):
-    """#158: sprint-metrics#73 was blocked here before its Developer saw the review."""
-    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
-    result, _, issues, ws, calls, seen = harness(
-        checks=[green()], cards=[_returned_card("In Progress")]
-    )
-
-    assert calls["implement"] == 1 and not result.blocked
-    assert ws.resumed is False, "rebuilt from main, not on the conflicting branch"
-    prior = calls["prior"][0]
-    assert "## Why you are starting again" in prior and "crew_performance.py" in prior
-    assert "not in the repository below" in prior, "told its previous attempt isn't there"
-    assert ws.forced is True, "the rebuilt branch replaces the refused one, with a lease"
-    assert result.delivered[0].pr == refused["number"], "the same pull request, updated"
-    comments = [body for _, body in issues.comments_]
-    (comment,) = [c for c in comments if "Re-worked" in c]
-    assert "Rebuilt from main" in comment and "crew_performance.py" in comment
-    assert any("rebuilt from main" in e.summary for e in seen)
-
-
-def test_a_resumed_branch_nobody_returned_that_conflicts_still_blocks(
-    harness, refused, monkeypatch
-):
-    """Only returned work is rebuilt: anything else keeps its history, and a person decides."""
-    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
-    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("Sprint Backlog")])
-    assert not result.delivered and ws.pushed == 0
-    assert calls["implement"] == 0
-    reason = result.blocked[0].blocked_reason
-    assert "conflicts with main" in reason and "crew_performance.py" in reason
-
-
-def test_an_approved_pr_returned_at_merge_is_rebuilt_on_main(harness, refused, monkeypatch):
-    """Decided 2026-09-25: an approved PR that conflicts at merge is the crew's to rebuild."""
-    from crew_org.flows.merge import REBUILD_MARKER
-
-    monkeypatch.setattr(FakeIssues, "pull_reviews", lambda self, repo, n: [], raising=False)
-    monkeypatch.setattr(
-        FakeIssues,
-        "comments",
-        lambda self, repo, n: [{"body": REBUILD_MARKER.format(head=REFUSED_HEAD)}],
-        raising=False,
-    )
-    monkeypatch.setattr(FakeWorkspace, "conflict", ["src/sprint_metrics/crew_performance.py"])
-    result, _, _, ws, calls, _ = harness(checks=[green()], cards=[_returned_card("In Progress")])
-
-    assert calls["returned"] == [True], "claimed as work sent back"
-    assert "While your previous attempt waited to land" in calls["prior"][0]
-    assert ws.forced is True and result.delivered[0].pr == refused["number"]
-
-
-# --- a story problem goes back to refinement (#189) ------------------------------
-
-
-PINNED = "FAILED tests/test_table.py::test_default_table_rows - AssertionError: rows changed"
-
-
-class MergedTable:
-    def changed(self):
-        return set()
-
-    def text(self, path):
-        return (
-            "def test_default_table_rows():\n    ...\n" if path == "tests/test_table.py" else None
-        )
-
-
-TABLE_TEST = "tests/test_table.py::test_default_table_rows"
-
-
-def ruled(monkeypatch, ruling):
-    """The Business Analyst's ruling on undeclared merged failures, stood in (crew#584, A5)."""
-    asked = []
-
-    def rule(issues, sink, *, card, repo, story, rows, failures):
-        asked.append(failures)
-        return ruling
-
-    monkeypatch.setattr(delivery, "rule_on_contract", rule)
-    return asked
-
-
-def test_the_first_undeclared_merged_failure_the_analyst_returns_sends_it_back(
-    harness, monkeypatch
-):
-    """sprint-metrics#97 and #529: every attempt broke the merged tests, and it blocked.
-
-    Sent back on the first failure now, by the Business Analyst's ruling, not after
-    the same tests broke twice."""
-    from crew_org.crews.contract_crew import ContractRuling
-
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    asked = ruled(
-        monkeypatch,
-        ContractRuling(decision="return", why="No criterion asks to change the default rows."),
-    )
-    child = story()
-    child.parent = 54
-    result, board, issues, _, calls, seen = harness(checks=[red(PINNED), green()], cards=[child])
-    assert calls["implement"] == 1, "sent back at once, not repaired"
-    assert asked == [{TABLE_TEST: "AssertionError: rows changed"}]
-    assert calls["escalate"] == 0 and result.blocked == []
-    assert result.returned == [(6, 54)]
-    assert ("S6", "Ready") in board.moves and ("S6", "cleared Sprint") in board.moves
-    epic_comments = [body for n, body in issues.comments_ if n == 54]
-    assert any("test_default_table_rows" in b and "No criterion asks" in b for b in epic_comments)
-    assert (54, "needs:rework") in issues.labels
-    decided = [e for e in seen if e.kind is EventKind.ESCALATION_DECIDED]
-    assert decided[-1].detail["failure_class"] == FailureClass.SCOPE
-
-
-def test_an_amended_contract_is_told_to_the_developer_who_repairs_it(harness, monkeypatch):
-    from crew_org.crews.contract_crew import ContractRuling
-
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    asked = ruled(
-        monkeypatch,
-        ContractRuling(
-            decision="amend",
-            tests=[TABLE_TEST],
-            asserts="the default table has the new points column",
-            why="Criterion 2 adds a points column to the default table.",
-        ),
-    )
-    result, _, _, _, calls, _ = harness(checks=[red(PINNED), red(PINNED), green()])
-    assert len(asked) == 1, "one ruling per delivery: the tests are declared now"
-    assert calls["implement"] == 3 and result.returned == [] and result.delivered
-    assert "amended this story's contract" in calls["feedback"][1]
-    assert "the default table has the new points column" in calls["feedback"][1]
-
-
-def test_a_change_that_broke_merged_tests_the_story_doesnt_change_is_repaired(harness, monkeypatch):
-    """crew-presentation#78: the page build crashed and failed six of another story's
-    tests. The ruling said the code broke them, and the only answer it had sent the whole
-    epic back to be split again after one attempt."""
-    from crew_org.crews.contract_crew import ContractRuling
-
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    asked = ruled(
-        monkeypatch,
-        ContractRuling(decision="repair", why="No criterion touches the default rows."),
-    )
-    child = story()
-    child.parent = 54
-    result, _, issues, _, calls, seen = harness(
-        checks=[red(PINNED), red(PINNED), green()], cards=[child]
-    )
-    assert len(asked) == 1, "ruled once; the same tests breaking again is still a repair"
-    assert calls["implement"] == 3 and result.returned == [] and result.delivered
-    assert "doesn't change `tests/test_table.py::test_default_table_rows`" in calls["feedback"][1]
-    assert "Fix it so they pass as they are" in calls["feedback"][2]
-    assert (54, "needs:rework") not in issues.labels
-    classes = [e.detail["failure_class"] for e in seen if e.kind is EventKind.ESCALATION_DECIDED]
-    assert FailureClass.SCOPE not in classes
-
-
-def test_without_a_ruling_the_story_goes_back(harness, monkeypatch):
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    ruled(monkeypatch, None)
-    child = story()
-    child.parent = 54
-    result, _, _, _, calls, _ = harness(checks=[red(PINNED), green()], cards=[child])
-    assert calls["implement"] == 1 and result.returned == [(6, 54)]
-
-
-def test_failures_that_are_not_merged_tests_are_repaired_as_usual(harness, monkeypatch):
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda w: MergedTable())
-    asked = ruled(monkeypatch, None)
-    result, _, _, _, calls, _ = harness(checks=[red("1 failed"), red("2 failed"), green()])
-    assert calls["implement"] == 3 and result.returned == [] and result.delivered
-    assert asked == []

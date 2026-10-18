@@ -334,7 +334,7 @@ def test_the_phase_counts_a_routed_story_without_moving_it_again(monkeypatch):
     from crew_org.flows import delivery
 
     routed = delivery.DeliveryOutcome(card=662, branch=BRANCH, routed="refinement", ended=True)
-    monkeypatch.setattr(delivery, "developer", lambda: lambda *a, **k: routed)
+    monkeypatch.setattr(session_delivery, "deliver_by_session", lambda *a, **k: routed)
     forgotten = []
     ws = SimpleNamespace(
         for_repo=lambda repo: ws,
@@ -349,8 +349,6 @@ def test_the_phase_counts_a_routed_story_without_moving_it_again(monkeypatch):
         issues=None,
         sink=EventSink(None),
         ws=ws,
-        policy=None,
-        ledger=None,
         result=result,
         counts=counts,
         sprint="Sprint 30",

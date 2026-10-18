@@ -1,12 +1,12 @@
 """When an epic gets a design note.
 
-The Architect is the role a local 27B model performs worst at, and the one most
-likely to exhaust the sprint's escalation budget. Rather than let every epic
-pull design work through that bottleneck, design is rationed: only epics above a
-complexity threshold get a design note.
+The Architect is the role a local 27B model performs worst at. Rather than let
+every epic pull design work through that bottleneck, design is rationed: only
+epics above a complexity threshold get a design note.
 
 The tradeoff is explicit. Skipping design on a small epic risks a developer
-inventing an approach; requiring it on every epic guarantees budget pressure.
+inventing an approach; requiring it on every epic spends the Architect on work
+that doesn't need it.
 The thresholds in config/org.yaml are the dial between those.
 """
 

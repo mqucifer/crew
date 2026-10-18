@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 from crew_org import profiles
-from crew_org.crews.delivery_crew import CriterionTest, FirstAttempt
 from crew_org.flows.delivery import names_a_test
 from crew_org.project import Part
 from crew_org.tools.review_evidence import unguarded_section
@@ -51,36 +49,12 @@ def test_a_generic_part_s_tests_are_its_declared_files_found_by_title():
     assert js.is_test_file("site/tests/page.spec.js")
     assert not js.is_test_file("site/app.js")
     assert js.tests_defined(SPEC) == ["the health summary is the first section"]
-    assert not js.edit_by_name and not js.guarded
+    assert not js.guarded
 
 
 def test_python_files_in_a_mixed_project_keep_their_tools():
     python = profiles.profile_for("src/sprint_metrics/report.py")
-    assert python.edit_by_name and python.guarded
-
-
-def test_a_criterion_test_in_a_generic_part_names_its_title_and_is_written_as_a_file():
-    c = CriterionTest(
-        criterion="the health summary is first",
-        path="site/tests/page.spec.js",
-        test="the health summary is the first section",
-    )
-    answer = FirstAttempt(
-        summary="Put the health summary first.",
-        criteria_tests=[c],
-        new_files=[{"path": "site/tests/page.spec.js", "content": SPEC}],
-    )
-    assert answer.all_edits == [], "not added by name: it's in new_files"
-
-
-def test_a_generic_criterion_test_must_be_in_a_test_file():
-    with pytest.raises(ValidationError, match="isn't a test file"):
-        CriterionTest(criterion="x", path="site/app.js", test="the health summary")
-
-
-def test_a_python_criterion_test_still_needs_its_source():
-    with pytest.raises(ValidationError, match="has no source"):
-        CriterionTest(criterion="x", path="tests/test_report.py", test="test_health_first")
+    assert python.guarded
 
 
 def test_delivery_finds_a_generic_test_by_its_title(tmp_path):

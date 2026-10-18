@@ -156,7 +156,7 @@ ANALYST_ASK_LIMIT = 2
 REFINE_FOCUS_ABOVE_CHARS = 60_000
 # A story held in refinement only because Ready was full. The label is what
 # tells it apart from a story that genuinely needs refining — one filed by
-# hand, or returned by escalation — so the pass that lets it in when Ready
+# hand, or returned from delivery — so the pass that lets it in when Ready
 # drains touches nothing else.
 HELD_FOR_ROOM = "held:wip"
 
@@ -1281,9 +1281,7 @@ class RepoContext:
         if repo not in self._cache:
             try:
                 clone = self._ws.for_repo(repo).current()
-                self._cache[repo] = self._record(repo, clone) + repository_context(
-                    clone, editing=False
-                )
+                self._cache[repo] = self._record(repo, clone) + repository_context(clone)
             except Exception as exc:  # noqa: BLE001
                 self._sink.note(
                     EventKind.NOTE,
@@ -1339,11 +1337,9 @@ class RepoContext:
                 clone,
                 about=about,
                 extra=extra,
-                editing=False,
                 above=REFINE_FOCUS_ABOVE_CHARS,
                 # Sized from the rest of the split's prompt, so it has room to read.
                 ceiling=repo_context.shown_ceiling(beside),
-                reading=True,
             )
             return self._record(repo, clone) + text, focus
         except Exception as exc:  # noqa: BLE001

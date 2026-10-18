@@ -113,21 +113,3 @@ class _Answer:
 class _Sink:
     def note(self, *a, **kw) -> None:
         pass
-
-
-def test_delivery_checks_only_a_bug(monkeypatch, tmp_path):
-    from crew_org.flows import delivery
-    from crew_org.tools.github_project import Card
-
-    monkeypatch.setattr(delivery.regression, "merged_base", lambda _w: Merged(tmp_path, "abc"))
-    monkeypatch.setattr(
-        delivery.reproduction,
-        "reproduces",
-        lambda *a, **kw: Reproduction(passed=["test_calc.py::test_doubles"]),
-    )
-    story = Card(item_id="S", number=1, work_type="Story")
-    bug = Card(item_id="B", number=2, work_type="Bug")
-    assert delivery.not_reproduced(story, tmp_path, _Answer(), _Sink()) == ""
-    assert "none of the tests reproduces the bug" in delivery.not_reproduced(
-        bug, tmp_path, _Answer(), _Sink()
-    )

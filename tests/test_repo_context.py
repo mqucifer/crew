@@ -18,7 +18,7 @@ def test_what_setup_installed_or_fetched_is_not_the_project(tmp_path):
 
     names = [p.relative_to(tmp_path).as_posix() for p in project_files(tmp_path)]
     assert names == [".gitignore", "build.py", "new_story.py"]
-    assert "site.py" not in repository_context(tmp_path, editing=False)
+    assert "site.py" not in repository_context(tmp_path)
 
 
 def test_without_git_the_known_folders_are_still_skipped(tmp_path):

@@ -28,20 +28,6 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "crew_org"
 EXEMPT = {
     "bridged_sinks": "test-only: asserts model calls are forwarded to a sink",
     "reset_bridge": "test-only: the global bus handler cannot be unregistered",
-    # The one-call Developer, unused since the deliver phase runs sessions (crew#778).
-    # Stage E removes it, with its tests, which reach it through `delivery.developer`.
-    **dict.fromkeys(
-        (
-            "deliver_story",
-            "carried_retirements",
-            "changed_definitions",
-            "ci_evidence_problems",
-            "escalation_prompt",
-            "not_reproduced",
-            "prior_context",
-        ),
-        "the one-call Developer's, kept unused until Stage E removes it (crew#778)",
-    ),
 }
 
 
@@ -51,7 +37,7 @@ def _module_functions() -> dict[Path, dict[str, ast.FunctionDef]]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         # Private functions are in the graph but never reported: a public
         # function called only by a private one is reachable, and leaving them
-        # out made `deliver_story` look dead because `_work_one_card` calls it.
+        # out made a public function only a private one calls look dead.
         out[path] = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     return out
 

@@ -13,7 +13,7 @@ A rule is one of seven kinds:
   returns, blocks or holds;
 - **form:** a validator on an answer's form, which refuses the answer (or, in a
   few, repairs it without saying);
-- **call:** the call layer's refusals, for every form (empty, runaway, blocks);
+- **call:** the call layer's refusals, for every form (empty, runaway, cut at a quote);
 - **check:** a step's own check, or a flow's, whose finding is sent back to the
   role as the reason it's asked again;
 - **guard:** a check on a change in delivery, whose failure class is recorded
@@ -319,6 +319,20 @@ def _refused_by(node: ast.AST) -> str | None:
     first = node.args[0]
     if (
         name in ("refuse", "says")
+        and isinstance(first, ast.Constant)
+        and isinstance(first.value, str)
+    ):
+        return first.value
+    return None
+
+
+def _found_by(node: ast.AST) -> str | None:
+    """The rule a gate's `Finding("<id>", ...)` names (crew#778)."""
+    if not (isinstance(node, ast.Call) and node.args and isinstance(node.func, ast.Name)):
+        return None
+    first = node.args[0]
+    if (
+        node.func.id == "Finding"
         and isinstance(first, ast.Constant)
         and isinstance(first.value, str)
     ):
@@ -765,8 +779,6 @@ def _check_rules() -> list[Entry]:
 _CALL_LAYER = (
     ("crew_org.calls", "ask"),
     ("crew_org.calls", "_runaway"),
-    ("crew_org.calls", "split_blocks"),
-    ("crew_org.calls", "join_blocks"),
     ("crew_org.cut_text", "check_not_cut_at_a_quote"),
 )
 
@@ -1325,13 +1337,10 @@ def _repairs() -> list[Entry]:
     Each is on the attempt's record, and none is refused or sent back:
     - a project's fixers, `AUTOFIX`, with what they change outside the attempt's
       files undone (crew#758);
-    - each allowed unsafe fix, a key of a `*_FIXES` dict, with why it may run;
-    - each looser match an edit or a block name is taken by, recorded as its
-      `fallback` (crew#734).
+    - each allowed unsafe fix, a key of a `*_FIXES` dict, with why it may run.
     """
     out: dict[str, Entry] = {}
     for source in sources():
-        parents = _parents(source.tree)
         for node in source.tree.body:
             if not (isinstance(node, ast.Assign | ast.AnnAssign)):
                 continue
@@ -1369,58 +1378,7 @@ def _repairs() -> list[Entry]:
                         repairs=True,
                         text=why + " " + comments,
                     )
-        for found in ast.walk(source.tree):
-            if not isinstance(found, ast.Dict):
-                continue
-            for key, value in zip(found.keys, found.values, strict=False):
-                if not (isinstance(key, ast.Constant) and key.value == "fallback"):
-                    continue
-                fn = _enclosing(found, parents, ast.FunctionDef)
-                for name in _fallback_names(value, fn, source):
-                    rule_id = f"repair.fallback.{name}"
-                    where = f"{source.path}:{fn.name if fn else '<module>'}"
-                    doc = ""
-                    if fn is not None:
-                        called = [f for c in _calls_in(fn) if (f := _helper(c, source.tree))]
-                        doc = " ".join(ast.get_docstring(f[0]) or "" for f in called)
-                    out.setdefault(
-                        rule_id,
-                        Entry(
-                            rule_id,
-                            "repair",
-                            where,
-                            f"an edit or a block taken by the looser match `{name}`",
-                            checked={where},
-                            origin=refs(
-                                _comments_above(source.lines, found.lineno)
-                                + " "
-                                + (ast.get_docstring(fn) or "" if fn else "")
-                                + " "
-                                + doc
-                            ),
-                            repairs=True,
-                            text=name,
-                        ),
-                    )
     return list(out.values())
-
-
-def _fallback_names(value: ast.expr, fn: Any, source: Source) -> list[str]:
-    """The names a `fallback` is recorded as: given there, or returned by what it calls."""
-    if isinstance(value, ast.Constant) and isinstance(value.value, str):
-        return [value.value]
-    if fn is None:
-        return []
-    names = []
-    for call in _calls_in(fn):
-        helper = _helper(call, source.tree)
-        if helper is None:
-            continue
-        for ret in (n for n in ast.walk(helper[0]) if isinstance(n, ast.Return)):
-            last = ret.value.elts[-1] if isinstance(ret.value, ast.Tuple) else None
-            if isinstance(last, ast.Constant) and isinstance(last.value, str):
-                names.append(last.value)
-    return names
 
 
 def _skips() -> list[Entry]:
@@ -1679,35 +1637,51 @@ def _tool_rules() -> list[Entry]:
 
     A refusal is the tool's reply, and the session goes on: never a discarded answer
     or a counted failure (decision 5's feedback). Its message is its declaration's.
+    Refusals a tool reaches in the crew's own helpers count as its own: the edit
+    applier `replace_definition` calls refuses an edit it can't apply.
     """
     out: dict[str, Entry] = {}
     developer = role_names().get("developer", "Developer")
+    for source, node, parents in _session_nodes():
+        rule = _refused_by(node)
+        if rule is None:
+            continue
+        where = f"{source.path}:{_qualname(node, parents)}"
+        entry = out.get(rule)
+        if entry is None:
+            messages = _declared(rule)
+            spec = rulebook.catalog().get(rule)
+            entry = out[rule] = Entry(
+                rule,
+                "tool",
+                where,
+                (spec.description if spec else "") or (messages[0] if messages else rule),
+                roles={developer},
+                origin={"crew#778", *(spec.origin if spec else ())},
+                messages=messages,
+                named={rule},
+                text=" ".join(messages),
+            )
+        entry.checked.add(where)
+    return list(out.values())
+
+
+def _session_nodes() -> Iterator[tuple[Source, ast.AST, dict[ast.AST, ast.AST]]]:
+    """Every node of the session's modules, and of the crew functions they call directly."""
+    seen: set[tuple[str, str]] = set()
     for source in sources():
         if not source.module.startswith(_SESSION):
             continue
         parents = _parents(source.tree)
-        for node in ast.walk(source.tree):
-            rule = _refused_by(node)
-            if rule is None:
-                continue
-            where = f"{source.path}:{_qualname(node, parents)}"
-            entry = out.get(rule)
-            if entry is None:
-                messages = _declared(rule)
-                spec = rulebook.catalog().get(rule)
-                entry = out[rule] = Entry(
-                    rule,
-                    "tool",
-                    where,
-                    (spec.description if spec else "") or (messages[0] if messages else rule),
-                    roles={developer},
-                    origin={"crew#778"},
-                    messages=messages,
-                    named={rule},
-                    text=" ".join(messages),
-                )
-            entry.checked.add(where)
-    return list(out.values())
+        yield from ((source, node, parents) for node in ast.walk(source.tree))
+        for fn in (n for n in ast.walk(source.tree) if isinstance(n, ast.FunctionDef)):
+            for reached, callee in _reached(source, fn, depth=1):
+                key = (reached.module, callee.name)
+                if reached.module.startswith(_SESSION) or key in seen:
+                    continue
+                seen.add(key)
+                there = _parents(reached.tree)
+                yield from ((reached, node, there) for node in ast.walk(callee))
 
 
 def _decided_rules() -> list[Entry]:
@@ -2074,7 +2048,8 @@ def _gate_rules(found: list[Entry]) -> list[Entry]:
 
     The gates run today's checks on the branch's diff, so most of their rules are
     listed already, and gain the gate as a place they're checked. A rule only the
-    gates have is listed here, its message its declaration's.
+    gates have is listed here, its message its declaration's. A finding the gates
+    word themselves, `Finding("<id>", ...)`, names its rule as well as a `says` does.
     """
     listed = {entry.id: entry for entry in found}
     out: dict[str, Entry] = {}
@@ -2084,7 +2059,7 @@ def _gate_rules(found: list[Entry]) -> list[Entry]:
             continue
         parents = _parents(source.tree)
         for node in ast.walk(source.tree):
-            rule = _refused_by(node)
+            rule = _refused_by(node) or _found_by(node)
             if rule is None:
                 continue
             where = f"{source.path}:{_qualname(node, parents)}"
@@ -2098,7 +2073,7 @@ def _gate_rules(found: list[Entry]) -> list[Entry]:
                     where,
                     (spec.description if spec else "") or (messages[0] if messages else rule),
                     roles={developer},
-                    origin={"crew#778"},
+                    origin={"crew#778", *(spec.origin if spec else ())},
                     messages=messages,
                     named={rule},
                     text=" ".join(messages),
@@ -2192,20 +2167,13 @@ CATEGORIES = rulebook.CATEGORIES
 _EVIDENCE_FORMS = frozenset(
     [
         "AcceptanceCriterion",
-        "CriterionMet",
-        "CriterionTest",
         "CriterionVerdict",
-        "ExistingProof",
-        "FirstAttempt",
-        "FirstOrDone",
         "QAVerdict",
         "ReaderCriterion",
         "StoryCriteria",
         "Triage",
     ]
 )
-# The forms that carry a change to the files.
-_EDIT_FORMS = frozenset(["FileEdit", "FileWrite", "Implementation", "Move", "TextEdit"])
 # The forms that decide what work there is, and where it belongs.
 _SCOPE_FORMS = frozenset(
     [
@@ -2214,8 +2182,6 @@ _SCOPE_FORMS = frozenset(
         "EpicProposal",
         "MissingEpics",
         "Placement",
-        "Plan",
-        "PlannedFile",
         "SkeletonEpic",
         "StoryProposal",
     ]
@@ -2274,7 +2240,6 @@ _TOLD_SITES = {
     "agents.yaml:business_analyst": "evidence",
     "agents.yaml:business_analyst.bug_triage": "evidence",
     "agents.yaml:code_reviewer": "guidance",
-    "agents.yaml:developer": "scope",
     "agents.yaml:devops_engineer": "guards",
     "agents.yaml:product_owner": "scope",
     "agents.yaml:qa_engineer": "evidence",
@@ -2285,9 +2250,6 @@ _TOLD_SITES = {
     "bug_triage_crew": "scope",
     "contract_crew": "contracts",
     "criteria_crew": "evidence",
-    "delivery_crew:STANDING_INSTRUCTIONS": "edits",
-    "delivery_crew:implement_story": "scope",
-    "delivery_crew:Rework": "evidence",
     "deploy_review_crew": "guards",
     "design_crew:DesignProposal": "guards",
     "design_crew:propose_design": "guards",
@@ -2371,7 +2333,7 @@ PLACEMENT: list[tuple[str, str, Any]] = [
         "merged code and tests other work relies on, and a story's declared changes to them (§15)",
         lambda e: (
             e.failure_class in ("REGRESSION", "SCOPE")
-            or e.form in ("ContractRuling", "RetiredTest")
+            or e.form == "ContractRuling"
             or "contract" in _name(e)
             or _file(e) == "src/crew_org/flows/record.py"
         ),
@@ -2404,7 +2366,6 @@ PLACEMENT: list[tuple[str, str, Any]] = [
             and _SHAPE_WORDS.search(_name(e)) is not None
         ),
     ),
-    ("edits", "the forms that carry a change", lambda e: e.form in _EDIT_FORMS),
     (
         "scope",
         "what work there is, and where it belongs",
@@ -2415,9 +2376,8 @@ PLACEMENT: list[tuple[str, str, Any]] = [
             in (
                 "src/crew_org/flows/conclusion.py",
                 "src/crew_org/flows/backlog_order.py",
-                "src/crew_org/crews/stepped.py",
             )
-            or _name(e) in ("deliver_in_steps", "check_grounded", "check_product_calls", "check")
+            or _name(e) in ("check_grounded", "check_product_calls", "check")
         ),
     ),
     (
@@ -2445,14 +2405,10 @@ _CONFIG_PLACES = {
     "config.org.refinement.": "flow",
     "config.org.delivery.": "flow",
     "config.org.sandbox.": "guards",
-    "config.org.execution.": "flow",
-    "config.org.escalation.": "flow",
     "config.org.trust.": "guards",
     "config.const.calls.": "answer_shape",
     "config.const.cut_text.": "answer_shape",
     "config.const.llm.": "answer_shape",
-    "config.const.escalation.": "flow",
-    "config.const.claude_code.": "flow",
     "config.const.delivery.": "flow",
     "config.const.merge.": "flow",
     "config.const.board_flow.": "flow",
@@ -2471,7 +2427,6 @@ _CONFIG_PLACES = {
     "config.const.workspace.": "edits",
     "config.const.regression.": "edits",
     "config.const.pinning.": "edits",
-    "config.const.delivery_crew.": "edits",
     "config.const.sandbox.": "guards",
     "config.const.container.": "guards",
     "config.const.base_images.": "guards",
@@ -2482,7 +2437,6 @@ _CONFIG_PLACES = {
     "config.const.delivered.": "scope",
     "config.const.settle_crew.": "answer_shape",
     "config.const.retro_crew.": "answer_shape",
-    "config.const.stepped.": "answer_shape",
 }
 _AGENT_PLACES = {
     "llm": "answer_shape",

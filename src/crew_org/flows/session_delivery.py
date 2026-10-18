@@ -89,13 +89,8 @@ def deliver_by_session(
     repo: str,
     default_branch: str,
     rework: bool = False,
-    **_today: Any,
 ) -> DeliveryOutcome:
-    """Take one story to a pull request by Developer sessions, or to where they end it.
-
-    The keyword arguments only today's one-call Developer reads (its escalation
-    policy and ledger) are accepted and unused.
-    """
+    """Take one story to a pull request by Developer sessions, or to where they end it."""
     from crew_org.flows import session_end  # noqa: PLC0415
 
     number = card.number or 0
