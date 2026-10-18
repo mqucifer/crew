@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from crew_org.tools import workspace
@@ -303,3 +304,47 @@ def test_check_gives_each_command_the_file_s_environment(tmp_path, monkeypatch):
     )
     assert workspace.check(root, sandbox=Sandbox(mode=Mode.REQUIRED)).ok
     assert seen == [{"CI": "1"}, {"CI": "1"}]
+
+
+# --- in a session's workspace container (crew#778, Stage D) --------------------
+
+
+class Held:
+    """A session's container: what ran in it, each answered with success."""
+
+    def __init__(self) -> None:
+        self.ran: list[list[str]] = []
+
+    def exec(self, command, timeout=0):
+        self.ran.append(list(command))
+        return CommandResult(command=" ".join(command), code=0, output="")
+
+
+def test_in_a_held_container_the_fixers_and_checks_run_there_and_setup_doesn_t(
+    tmp_path, monkeypatch
+):
+    """Setup ran when the container started; running it again would need a network."""
+    design = f"  sandbox_image: {PLAYWRIGHT}\n  setup: npm ci\n  checks:\n  - npx playwright test\n"
+    design += "  autofix:\n  - npx prettier --write .\n"
+    monkeypatch.setattr(workspace, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    held = Held()
+    assert workspace.check(project(tmp_path, design), held=held).ok
+    assert held.ran == [["npx", "prettier", "--write", "."], ["npx", "playwright", "test"]]
+
+
+def test_what_a_session_touched_counts_its_committed_checkpoints(tmp_path):
+    """A fixer's change to a file committed at a checkpoint is the work's, not undone."""
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "b.py").write_text("y = 1\n")
+    subprocess.run([*git, "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run([*git, "commit", "-qm", "base"], cwd=tmp_path, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout.strip()
+    (tmp_path / "a.py").write_text("x = 2\n")
+    subprocess.run([*git, "commit", "-qam", "checkpoint(1): run tests passed"], cwd=tmp_path)
+    (tmp_path / "c.py").write_text("z = 1\n")
+    assert workspace._changed(tmp_path) == {"c.py"}
+    assert workspace._changed(tmp_path, base) == {"a.py", "c.py"}

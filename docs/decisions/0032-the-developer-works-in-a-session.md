@@ -1,7 +1,7 @@
 # 32. The Developer works in a session
 
 - **Date:** 2026-10-17
-- **Status:** Accepted, partly built. Every part below is decided, and none of it runs in a tick yet. The session is built beside delivery (Stage C, `crew_org/session/`, mqucifer/crew#797): until Stage D of `docs/plans/developer-session.md` wires it in, the Developer answers in one call as ADRs 0024 to 0026 say, and escalation stands (ADRs 0004 and 0005). The rule sort (crew#788) is read by nothing in the tick.
+- **Status:** Accepted, partly built. Every part below is decided. The deliver phase runs the Developer as a session in the story's workspace container (Stages B to D of `docs/plans/developer-session.md`). The one-call Developer of ADRs 0024 to 0026, and escalation (ADRs 0004 and 0005), stay in the code unused until Stage E removes them. The rule sort (crew#788) is read by nothing in the tick.
 
 ## Context
 
@@ -151,15 +151,15 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 
 | Part | Decided | True now |
 |---|---|---|
-| The session and its tools (1, 2) | Yes, with pass 3's tools | Built in `crew_org/session/` (Stage C, mqucifer/crew#797), run only by `scripts/run_session.py`. In a tick, the Developer answers in one call with `read_file` and `need_files` (ADRs 0024, 0025), its code in blocks (ADR 0026) |
-| How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Built with the session: its endings, the ceilings at 60 and 50, and the replay's masking as its one compaction. In a tick: attempt limits, repairs and escalation |
-| The start (4) | Yes | Built with the session. In a tick: a prompt of about 50k characters, and the reading ceilings |
-| The workspace (4b) | Yes, with `devcontainer.json` as its one source | Each check is its own container (ADR 0006). The replay's held container is a prototype |
+| The session and its tools (1, 2) | Yes, with pass 3's tools | Built in `crew_org/session/` (Stage C, mqucifer/crew#797). The deliver phase runs it for every story (`flows/session_delivery.py`, Stage D) |
+| How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Built with the session: its endings, the ceilings at 60 and 50, and the replay's masking as its one compaction. The 2-hour backstop is one budget per delivery of a story, shared by its sessions (the operator, on crew#778) |
+| The start (4) | Yes | Built with the session. Its story section is the card's title and body, with the epic's decided rows and design note, each part measured (the operator, on crew#778) |
+| The workspace (4b) | Yes, with `devcontainer.json` as its one source | Built (Stage B, mqucifer/crew#796). The deliver phase holds one per story, for its sessions and the gates at `done` |
 | The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
-| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798), and nothing in a tick runs them yet. In a tick, the ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
+| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798). The deliver phase runs them at every `done`, in the story's workspace container |
 | Measures (8) | Yes | As before, until the Sponsor's Goal in sprint-metrics |
-| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and nothing in a tick runs it yet. Escalation is in the code. Ticks are paused until Stage D's first story |
-| P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P4 are Stage D's |
+| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and the deliver phase runs it. The Developer no longer escalates; the code stays, unused, until Stage E |
+| P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P3 are built in the deliver phase: one session at a time, a new session for rework, and checkpoints committed after each green run, never pushed, resumed after an interruption. P4 is as before |
 
 ## Consequences
 
@@ -200,3 +200,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
   - one a line saying the story changes tests doesn't name is a question for review;
   - a line saying the tests stay unchanged, while `done` changed some, is the disagreement the Business Analyst rules on;
   - an empty diff at `done` takes today's already-done path (mqucifer/crew#221).
+- **2026-10-18:** the deliver phase runs the Developer as a session (Stage D part 2): P1 to P3, one 2-hour budget per delivery, and the gates at `done` in the story's workspace container. The Sponsor: no switch back to the one-call Developer, whose code stays unused until Stage E (on crew#778). Checkpoints aren't pushed, so a rework never moves the head under review.
