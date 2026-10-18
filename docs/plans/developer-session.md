@@ -93,6 +93,8 @@ Part 1, the gates at `done` and where an ending goes, is built in `flows/gates.p
 - The reading ceilings for the Developer (they stay for refinement and QA).
 - The guidance budgets lowered to what remains.
 
+Done (crew#778, Stage E): the one-call Developer, its steps and code in blocks, its reading, escalation with its ledger and budget, and 44 retired rules are deleted; 12 retired rules stay for the roles that still meet them. The Developer's guidance budget is 0. The retro and `crew export` count stories returned to the Business Analyst, and a story with no epic past the round-trip limit is blocked for a person.
+
 ### Stage F: measures
 
 - The session's events summarised per story.

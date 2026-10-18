@@ -173,7 +173,7 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 
 | Part | From | Why |
 |---|---|---|
-| What the board says, the standups, the escalation ledger | the board, the event log | What happened in the sprint |
+| What the board says, and the standups | the board, the event log | What happened in the sprint |
 | Why work didn't land first time | the event log | The causes, by fingerprint |
 | Stories that went back, and what was decided for each | `loops.from_comments` | Each answer paired with its own story's return, from the record (step A6) |
 | Known and closed crew issues | the crew repository | What's already filed |

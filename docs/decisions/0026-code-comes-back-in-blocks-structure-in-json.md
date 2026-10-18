@@ -1,7 +1,7 @@
 # 26. Code comes back in blocks, its structure in JSON
 
 - **Date:** 2026-10-11
-- **Status:** Accepted (built for the Developer and its steps, crew#626). The Developer's session puts its code in tool arguments instead: decided and not built (ADR 0032).
+- **Status:** Accepted, and no step answers in blocks now. The Developer's session puts its code in its tools' arguments (ADR 0032), and the blocks were deleted with the one-call Developer (crew#778, Stage E). A step that writes code in an answer form again answers in blocks, as decided below.
 
 ## Context
 
@@ -39,8 +39,8 @@ Sponsor, 2026-10-11: **option A.**
 - **The crew joins them before anything reads the answer.** The forms' checks, the guards and the downstream roles see the same joined answer they see today. A block named but missing, or a block no field names, is a refusal with that reason (ADR 0025).
 - **Edits by name stay as decided on 2026-09-18.** Only where the code sits changes, not how an edit addresses it.
 - **The server holds the shape.** The two-part answer is held to its own grammar (EBNF, through LiteLLM to SGLang): JSON with bounded whitespace, then at most 60 blocks of plain lines. Measured when built: without a grammar, the model went on reading after its reading rounds, writing tool calls as text, and three answers in four came back empty.
-- **The Developer first,** and its steps (`crews/stepped.py`). Other steps that write code or quote it (QA quoting criteria, the Architect's design note) follow only if their slips are measured.
-- **The Developer's session puts its code in its edit tools' arguments** (the Sponsor, 2026-10-17, crew#778 decision 1; ADR 0032). This is decided and not built. When it's built, the Developer no longer answers in blocks, and no other step uses them today.
+- **The Developer first,** and its steps. Other steps that write code or quote it (QA quoting criteria, the Architect's design note) follow only if their slips are measured.
+- **The Developer's session puts its code in its edit tools' arguments** (the Sponsor, 2026-10-17, crew#778 decision 1; ADR 0032). The Developer no longer answers in blocks, and no other step does: `calls.ask(..., blocks=...)` and its grammar are deleted (crew#778, Stage E).
 
 **The standard.** Structured output for control and plain text for content, the edit-block format coding agents such as Aider use, with the crew's own validation on the joined result.
 
@@ -49,7 +49,7 @@ Sponsor, 2026-10-11: **option A.**
 - The call layer gains a two-part answer: what it asks for, how it splits and joins it, and the refusals for a missing or unnamed block. One real call through LiteLLM proves it before the PR.
 - The Developer's forms describe their code fields as naming a block. The schema's prompt copy (plan step L3) shrinks with them.
 - The test of the change: mqucifer/sprint-metrics#567's logged requests replayed in the new form, with no quote slips in 10 runs where 3 in 6 slipped, and fewer tokens written.
-- crew-presentation's web code (HTML, CSS, JavaScript) is all quotes and today changes by whole-file and quoted edits inside JSON strings. It gains the most.
+- crew-presentation's web code (HTML, CSS, JavaScript) is all quotes. It changes through the session's `write_file` and `replace_text`, whose arguments kept code exact in the probe.
 
 ## Changelog
 
@@ -74,3 +74,7 @@ Sponsor, 2026-10-11: **option A.**
 - **2026-10-17:** the Developer's session will put its code in tool arguments, after the
   probe kept 18 of 18 exact (ADR 0032, decision 1; the Sponsor, on crew#778). Decided,
   not built.
+- **2026-10-18:** built: delivery runs only the session, and the blocks (the two-part
+  answer, its grammar, `delivery_crew.CODE_FIELDS` and the loose block-name match) are
+  deleted with the one-call Developer (crew#778, Stage E; the Sponsor's no-fallback
+  decision). No other step used them.

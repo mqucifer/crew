@@ -1,7 +1,7 @@
 # 23. The epic's record is the crew's memory
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (to be built by crew#583 as Part A of `docs/plans/context-record-build.md`; the ruling's move to the gate at `done` is decided and not built, ADR 0032)
+- **Status:** Accepted (to be built by crew#583 as Part A of `docs/plans/context-record-build.md`; the ruling runs at the gate at `done`, ADR 0032)
 
 ## Context
 
@@ -45,13 +45,11 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
   words, so nothing is rewritten on the way in. A reply that never became a row is a
   loss in the proof.
 - **The merged tests an epic changes are rows too,** declared by the split from the
-  coverage map (ADR 0024) or by a story problem. During delivery, on the first failure
-  of a merged test a story didn't declare, one focused Business Analyst pass amends the
-  story's declaration or returns it, as a recorded change, or rules that the code broke
-  the test and has it repaired, with no change to the record. When the Developer's
-  session is built, this ruling moves to the gate at `done`. It then runs only when
-  the merged tests the Developer declares changed and the story's criteria disagree
-  (ADR 0032, decision 6; decided, not built).
+  coverage map (ADR 0024) or by a story problem. During delivery, at the gate at
+  `done`, when the merged tests the Developer changed and the story's declaration
+  disagree, one focused Business Analyst pass amends the story's declaration or returns
+  it, as a recorded change, or rules that the code broke the test and has it put back,
+  with no change to the record (ADR 0032, decision 6).
 - **Every step's context is built in one place.** Each step has a manifest of its parts
   in `docs/reference/context.md`, a test checks the code against it, and each call's
   event records the parts and their sizes.
@@ -108,3 +106,5 @@ its docs against its code.
 - **2026-10-17:** the Business Analyst's ruling moves to the gate at `done` once the
   Developer's session is built, and runs only on a disagreement between declaration and
   criteria (ADR 0032, decision 6; the Sponsor, on crew#778). Decided, not built.
+- **2026-10-18:** built: the ruling runs at `done` (crew#778, Stage D), and the
+  mid-attempt ruling went with the one-call Developer (Stage E).

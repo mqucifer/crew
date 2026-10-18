@@ -142,9 +142,9 @@ the constitution.
 ## Inference
 
 Primary backend is a local DGX Spark serving Qwen3.8-27B under SGLang, fronted
-by a LiteLLM proxy. Escalation for genuinely hard problems runs through headless
-Claude Code (`claude -p`) on an existing subscription — **no `ANTHROPIC_API_KEY`
-is configured, by design**, so escalation cannot incur metered API charges.
+by a LiteLLM proxy. Every model call goes through it, and **no `ANTHROPIC_API_KEY`
+is configured, by design**, so nothing can incur metered API charges.
 
-Escalation is budgeted and classified: schema and scope failures may never
-escalate. See §9 of the constitution.
+Nothing escalates to a stronger model. A story the Developer can't finish goes
+back to the Business Analyst who wrote it, with its evidence, or to the Sponsor
+for a choice nobody has made. See §9 of the constitution.

@@ -1,8 +1,8 @@
-# 5. Escalation is rationed, not a crutch
+# 5. Nothing escalates: a story that can't be done goes back
 
 - **Date:** 2026-09-18
-- **Status:** Accepted. When the Developer's session is built, nothing escalates
-  (ADR 0032, decision 9); until then the rationing below stands.
+- **Status:** Accepted. Nothing escalates (ADR 0032, decision 9); the rationing this
+  decision first set was deleted with escalation (crew#778, Stage E).
 
 ## Context
 
@@ -15,22 +15,17 @@ the escalated Claude sessions gave little to learn from (crew#778, decision 9).
 
 ## Decision
 
-Every local failure is classified before anything escalates. `SCHEMA` and
-`SCOPE` never escalate. Only `VERIFY`, after bounded repairs, and a justified
-`CAPABILITY` may escalate, within a fixed budget per sprint. The policy is
-written up in `docs/ways-of-working.md`, "Escalation policy".
-
-**When the Developer's session is built, nothing escalates** (ADR 0032; decided,
-not built). A stuck session (`blocked`, no progress, a ceiling or the backstop)
-goes back to the Business Analyst who wrote the story, with its evidence. An
-undecided choice goes to the Sponsor.
+**Nothing escalates.** A stuck session (`blocked`, no progress, a ceiling or the
+backstop) goes back to the Business Analyst who wrote the story, with its evidence.
+An undecided choice goes to the Sponsor. A story with no epic to split it again is
+blocked for a person. The constitution's §9 says where each failure goes.
 
 ## Consequences
 
-- The escalation rate is a health metric. The retro turns an overrun into
-  process-defect issues, never into more budget. When the session is built, the
-  measure becomes the rate of stories returned to the Business Analyst. It reaches
-  sprint-metrics through a Goal from the Sponsor.
+- The rate of stories returned to the Business Analyst is the health measure
+  escalation's rate was. The retro and `crew export` count it, and the retro turns a
+  high rate into process-defect issues. It reaches sprint-metrics through a Goal from
+  the Sponsor.
 - A failure that escalation would hide becomes a crew issue instead.
 
 ## Changelog
@@ -38,3 +33,7 @@ undecided choice goes to the Sponsor.
 - **2026-10-17:** nothing escalates once the Developer's session is built, and the
   measure becomes the rate of stories returned to the Business Analyst (ADR 0032,
   decision 9; the Sponsor, on crew#778). Decided, not built.
+- **2026-10-18:** built (crew#778, Stage E). The failure classes, the escalation
+  policy, the per-sprint budget and the ledger are deleted, and the retro counts the
+  stories returned to the Business Analyst. The title was "Escalation is rationed, not
+  a crutch".

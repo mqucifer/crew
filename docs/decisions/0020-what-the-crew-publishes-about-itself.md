@@ -50,6 +50,9 @@ answer, review text or its reasoning; a secret.
 - The replay can say why a step refused when one of the crew's checks wrote the
   reason. A refusal whose reason a model wrote shows as refused, with its failure
   class.
+- A check the crew deletes still accounts for the reasons it wrote. Its templates are
+  kept in `packages/retired_reasons.json`, read with the code's, so a past sprint's
+  refusals stay published when it's pushed again.
 - Telemetry keeps its own, narrower allow-list for Grafana (ADR 0010). It carries no
   titles.
 - A Goal or a project record says nothing about what the crew may publish. Each
@@ -61,3 +64,9 @@ answer, review text or its reasoning; a secret.
   crew-presentation's Goals (crew#518).
 - 2026-10-07: The context names the `delivery-history` package, released on the crew's
   repository, in place of snapshot pull requests (crew#521).
+- 2026-10-18: Retired reasons are kept. Deleting the one-call Developer (crew#778,
+  Stage E) removed 842 of the templates its past refusals were matched against, so
+  their reasons would have been withheld on the next push. The templates removed from
+  the code are kept in `packages/retired_reasons.json`, generated from main before the
+  deletion; a reason from neither the code nor that list is still left out (the
+  operator, on crew#778).

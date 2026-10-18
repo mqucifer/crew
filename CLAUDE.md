@@ -2,8 +2,9 @@
 
 How Claude builds, proves and lands changes here. These are Claude's rules,
 not the crew's: the crew agents have their own, and the two change
-independently. The crew's escalations run `claude -p --safe-mode`, so this
-file never reaches them. Change it by pull request, like any other file.
+independently. The crew's agents call the model through the crew's own call
+layer, never Claude Code, so this file never reaches them. Change it by pull
+request, like any other file.
 
 ## Starting work
 - **Work comes from the plan:** the current milestones' items in the Crew
@@ -95,8 +96,8 @@ file never reaches them. Change it by pull request, like any other file.
   Changelog.
 
 ## Never
-- **An Anthropic API key, anywhere.** Escalation runs on the subscription
-  through `claude -p`. A key bills separately. *Blocked by `scripts/pre-commit`.*
+- **An Anthropic API key, anywhere.** Claude's work here runs on the
+  subscription. A key bills separately. *Blocked by `scripts/pre-commit`.*
 - **Model traffic around the proxy.** Everything goes via LiteLLM :4000, and
   nothing probes SGLang on the Spark directly.
 - **Unvetted generated code run outside the sandbox.** Released crew-built

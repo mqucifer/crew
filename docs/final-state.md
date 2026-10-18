@@ -280,8 +280,9 @@ trigger fires is a capability that exists on paper.
 - **A second place the crew can be measured from.** The crew computes its own
   metrics; the pilot may present them. Making the crew's self-knowledge depend
   on the repository it practises on breaks it exactly when it is most needed.
-- **Escalation as a substitute for task design.** It stays budgeted,
-  classified, and forbidden as an answer to a poorly written story.
+- **Escalation as a substitute for task design.** Nothing escalates to a
+  stronger model (ADR 0032): a story that can't be finished goes back to the
+  Business Analyst who wrote it, with its evidence.
 - **A rehearsal of the real process.** Work lands and is reverted; it is not
   previewed. Anything that cannot be safely landed is a missing capability, not
   a reason for a dry mode.
