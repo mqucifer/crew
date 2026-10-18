@@ -90,13 +90,16 @@ class Held:
         self.network = done.returncode != 0
         return Result("network disconnect", done.returncode, (done.stdout + done.stderr).strip())
 
-    def exec(self, command: list[str], timeout: int = workspace.DEFAULT_TIMEOUT) -> Result:
-        """Run one command inside, as the worktree's owner, from /work."""
+    def exec(
+        self, command: list[str], timeout: int = workspace.DEFAULT_TIMEOUT, stdin: str | None = None
+    ) -> Result:
+        """Run one command inside, as the worktree's owner, from /work, with `stdin` if given."""
         import time  # noqa: PLC0415
 
         argv = [
             self.sandbox.engine,
             "exec",
+            *(["-i"] if stdin is not None else []),
             "--user",
             f"{os.getuid()}:{os.getgid()}",
             "-w",
@@ -106,7 +109,9 @@ class Held:
         ]
         began = time.monotonic()
         try:
-            done = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+            done = subprocess.run(
+                argv, input=stdin, capture_output=True, text=True, timeout=timeout
+            )
         except subprocess.TimeoutExpired:
             return Result(" ".join(command), -1, f"no output within {timeout}s", timeout)
         return Result(
