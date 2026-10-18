@@ -1,7 +1,8 @@
 # 4. Escalation runs on the subscription, never an API key
 
 - **Date:** 2026-09-18
-- **Status:** Accepted
+- **Status:** Accepted. Escalation retires when the Developer's session is built
+  (ADR 0032, decision 9); until then it runs as below.
 
 ## Context
 
@@ -17,6 +18,11 @@ API key is metered pay-as-you-go.
 - `ANTHROPIC_API_KEY` is never set anywhere in the project.
 - A metered API path would need a new ADR, with prepaid credits, auto-reload
   off and a Console spend limit.
+- **Escalation retires with the Developer's session** (the Sponsor, 2026-10-17,
+  crew#778 decision 9; ADR 0032). This is decided and not built. A stuck session
+  goes back to the Business Analyst instead, and `tools/claude_code.py` and the
+  escalation budget leave in the build's Stage E. Decision 9 doesn't change the
+  rule against an API key.
 
 ## Consequences
 
@@ -25,3 +31,9 @@ API key is metered pay-as-you-go.
 - The key is stripped from escalation's environment and blocked by
   `scripts/pre-commit`. `--bare` mode is ruled out because it authenticates
   only by API key (see 0013).
+
+## Changelog
+
+- **2026-10-17:** escalation retires when the Developer's session is built (ADR 0032,
+  decision 9; the Sponsor, on crew#778). Decided, not built: until then, escalation
+  runs as above.

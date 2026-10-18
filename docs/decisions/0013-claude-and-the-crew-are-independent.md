@@ -29,3 +29,10 @@ change the crew as needs change."
   instructions to escalations would need a new ADR.
 - Proven live on 2026-10-02: a normal `claude -p` answered from a canary
   CLAUDE.md, and the safe-mode run didn't see it (crew#460).
+
+## Changelog
+
+- **2026-10-17:** escalation retires when the Developer's session is built (ADR 0032,
+  decision 9; the Sponsor, on crew#778). Decided, not built. The `--safe-mode` choice
+  stands until then, and then has nothing to apply to. The two sets of rules stay
+  independent.
