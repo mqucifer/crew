@@ -63,6 +63,7 @@ GROUPS = {
     "check": "A flow's own check sends the answer back",
     "guard": "A guard on a change sends it back",
     "edit": "An edit can't be applied, and why is sent back",
+    "tool": "A session's tool refuses a call, and says why in its reply",
     "repair": "The crew changes the work itself, and records it",
     "skip": "The crew holds work back, said only in words",
     "decision": "The tick decides a card's handling, found by the decision-point audit",
@@ -1520,8 +1521,9 @@ def _decisions() -> list[Entry]:
 ORG = PACKAGE / "config" / "org.yaml"
 # Agents' settings that change what a role does or may do.
 _AGENT_SETTINGS = ("llm", "llm_params", "can", "constitution")
-# Modules whose numeric constants set the tick's behaviour: its flows, crews and tools.
-_CONFIG_MODULES = ("crew_org.flows.", "crew_org.crews.", "crew_org.tools.")
+# Modules whose numeric constants set the tick's behaviour: its flows, crews and tools,
+# and the Developer's session (crew#778).
+_CONFIG_MODULES = ("crew_org.flows.", "crew_org.crews.", "crew_org.tools.", "crew_org.session.")
 _CONFIG_EXTRA = ("crew_org.calls", "crew_org.cut_text", "crew_org.escalation", "crew_org.llm")
 
 
@@ -1664,6 +1666,46 @@ def _guard_rules() -> list[Entry]:
                 text=comments + " " + " ".join(messages),
                 sections=_cited_sections(comments),
             )
+    return list(out.values())
+
+
+# The Developer's session (crew#778): its tools refuse a call in their reply.
+_SESSION = "crew_org.session."
+
+
+def _tool_rules() -> list[Entry]:
+    """Each declared rule a session's tool refuses a call by, said in its reply.
+
+    A refusal is the tool's reply, and the session goes on: never a discarded answer
+    or a counted failure (decision 5's feedback). Its message is its declaration's.
+    """
+    out: dict[str, Entry] = {}
+    developer = role_names().get("developer", "Developer")
+    for source in sources():
+        if not source.module.startswith(_SESSION):
+            continue
+        parents = _parents(source.tree)
+        for node in ast.walk(source.tree):
+            rule = _refused_by(node)
+            if rule is None:
+                continue
+            where = f"{source.path}:{_qualname(node, parents)}"
+            entry = out.get(rule)
+            if entry is None:
+                messages = _declared(rule)
+                spec = rulebook.catalog().get(rule)
+                entry = out[rule] = Entry(
+                    rule,
+                    "tool",
+                    where,
+                    (spec.description if spec else "") or (messages[0] if messages else rule),
+                    roles={developer},
+                    origin={"crew#778"},
+                    messages=messages,
+                    named={rule},
+                    text=" ".join(messages),
+                )
+            entry.checked.add(where)
     return list(out.values())
 
 
@@ -2037,6 +2079,7 @@ def entries() -> tuple[Entry, ...]:
         + _decisions()
         + _config()
         + _guard_rules()
+        + _tool_rules()
     )
     told = _told_fields(checks) + _told_prompts() + _told_constitution() + _told_agents()
     told = _link(checks, told)

@@ -84,6 +84,26 @@ DETAIL = frozenset(
         "stopped",
         "path",
         "github_remaining",
+        # The Developer's session (crew#778, P5): counts and sizes per tool call, the
+        # signals after each model call, and the session's totals. Never a path, a
+        # command, a pattern or what `done` and `blocked` said.
+        "turn",
+        "tool_calls",
+        "args_chars",
+        "reply_chars",
+        "ran_s",
+        "found_nothing",
+        "since_action",
+        "most_views",
+        "edits_since_run",
+        "empty_lookups",
+        "empty_lookups_total",
+        "model_s",
+        "compacted",
+        "model_calls",
+        "edits_applied",
+        "test_runs",
+        "start_chars",
     }
 )
 
