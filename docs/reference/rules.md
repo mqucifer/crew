@@ -17,8 +17,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 11 |
-| A gate at `done` sends a session's branch back | 9 |
+| A session's tool refuses a call, and says why in its reply | 12 |
+| A gate at `done` sends a session's branch back | 8 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
@@ -161,6 +161,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
+| `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/tools.py:check_arguments` | Developer | — | src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
 | `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |
@@ -178,7 +179,6 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `check.delivery.lint_or_tests_failed`<br>Sent back with the report if lint or the tests fail once it's applied. | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778 |
-| `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:at_done` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:at_done | crew#217<br>crew#221<br>crew#778 |
 | `check.delivery.workflows_not_permitted`<br>A `.github/workflows` change is blocked while the GitHub App lacks `workflows: write`. | guards | `src/crew_org/flows/gates.py:at_done` | Developer | §19.2 (both cite crew#279; in §19) | src/crew_org/flows/gates.py:at_done | crew#279<br>crew#778 |
 | `check.gates.the_branch_changes_nothing`<br>At `done`, a branch that changes nothing goes on only if an existing test proves each criterion and the checks pass, as an already-done story does (crew#221). | evidence | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#221<br>crew#778 |
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |

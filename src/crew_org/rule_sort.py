@@ -61,7 +61,10 @@ SORTED: dict[str, tuple[str, str]] = {
         GATE,
         "verify on the whole branch at `done`; `run` during the session is feedback",
     ),
-    "check.delivery.these_named_tests_dont_exist": (GATE, "named tests exist, at `done`"),
+    "check.delivery.these_named_tests_dont_exist": (
+        FEEDBACK,
+        "named tests exist: `done` checks it, as its reply (the Sponsor, crew#778)",
+    ),
     "check.delivery.workflows_not_permitted": (GATE, "workflow files, policy at `done`"),
     "guard.bounds.out_of_bounds": (GATE, "protected paths and CI weakened, on the diff"),
     "guard.regression.broken_contracts": (GATE, "merged code removed or reshaped, on the diff"),

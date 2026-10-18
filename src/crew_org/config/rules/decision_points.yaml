@@ -706,9 +706,9 @@ flows.gates._tests_in:filter:16ec752a:
   at: flows/gates.py:_tests_in
   if: 'isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and name.rpartition(''.'')[2].startswith(''test'')'
   not_a_rule: 'picks a module''s test functions out: no decision'
-flows.gates.at_done:end:2825a647:
+flows.gates.at_done:end:114f16e2:
   at: flows/gates.py:at_done
-  if: 'proven and verdict.check.ok'
+  if: 'named and all(named) and verdict.check.ok'
   rule: check.gates.the_branch_changes_nothing
 flows.gates.at_done:filter:cbd17a84:
   at: flows/gates.py:at_done

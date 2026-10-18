@@ -41,8 +41,9 @@ check.delivery.these_named_tests_dont_exist:
   messages:
     default: 'these named tests don''t exist in the repository: {tests}. Name existing tests, or write
       the test in `criteria_tests`.'
-    done: 'these tests `done` names don''t exist in the repository: {tests}. Name the test that proves
-      each criterion, or write it.'
+    done: 'No test by these names exists: {tests}. If no test proves the criterion yet, write one and
+      run it. If one exists under another name, name that. To look, `search` for `def test_` in its file,
+      or ask `tests_for` the definition.'
   origin:
   - crew#217
   - crew#221

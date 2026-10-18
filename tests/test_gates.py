@@ -215,10 +215,9 @@ def test_every_finding_goes_back_together(repo):
         run_checks=red,
     )
     assert [f.rule for f in verdict.findings] == [
-        "check.delivery.these_named_tests_dont_exist",
         "check.gates.these_merged_tests_changed",
         "check.delivery.lint_or_tests_failed",
-    ]
+    ], "that the named tests exist is `done`'s own check, not the gate's"
     assert "test_rate_of_nothing" in verdict.findings[-1].says, "the report, each cause once"
 
 
@@ -264,3 +263,15 @@ def test_the_pull_request_lists_the_declared_tests_apart_from_the_questions(repo
     assert gates.QUESTIONS_HEADING in text
     listed = re.findall(r"^- `([^`\s]+\.py::[\w.]+)`", text.split(gates.QUESTIONS_HEADING)[0], re.M)
     assert listed == [f"{TESTS}::test_rate_is_capped"]
+
+
+def test_done_checks_the_tests_it_names_exist_and_says_write_one_first(repo):
+    """The Sponsor's one check inside `done` (crew#778): a fact, not a judgement."""
+    invented = done(criteria=[{"criterion": "200", "test": f"{TESTS}::test_rate_exceeds_100"}])
+    [missing] = gates.missing_named_tests(repo, invented)
+    assert missing.rule == "check.delivery.these_named_tests_dont_exist"
+    assert missing.says.startswith(
+        f"No test by these names exists: `{TESTS}::test_rate_exceeds_100`. If no test proves"
+        " the criterion yet, write one and run it."
+    )
+    assert gates.missing_named_tests(repo, done()) == []
