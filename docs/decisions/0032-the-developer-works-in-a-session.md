@@ -115,7 +115,7 @@ Test-first (Discussion 665) waits on how well the session works.
 **7. The code's shape: no change for now.** Strain (crew#192) stays. Whether files a session struggles with should also trigger it is decided from session records.
 
 **8. Measures.**
-- The first-attempt rate stays. An attempt is a submission at `done`, and a first attempt is a story accepted by review and QA on its first submission.
+- The first-attempt rate stays. An attempt is the branch handed to review and QA, and a first attempt is a story accepted by review and QA the first time it reaches them ([the Sponsor, 2026-10-18](https://github.com/mqucifer/crew/issues/778#issuecomment-6250605453)). A return by the crew's own gate at `done` is the Developer still working, as a CI run failing before a pull request opens is: it's counted apart, as a gate round with its rules' ids, and doesn't spoil the first attempt.
 - The sprint measures the model time and tokens per story, across roles.
 - Everything a session does is tracked as new measures, but not as sprint headlines.
 
@@ -157,7 +157,7 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Each check is its own container (ADR 0006). The replay's held container is a prototype |
 | The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
 | Stories and the contract ruling (6) | Yes | The ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
-| Measures (8) | Yes | As before, until the Sponsor's Goal in sprint-metrics |
+| Measures (8) | Yes | delivery-history 1.6.0 carries the session, by names and counts, and each story's deliveries in it (Stage F). sprint-metrics' feed counts a session story's attempts as the times it was handed to review. The sprint measures wait for the Sponsor's Goal in sprint-metrics |
 | No escalation (9) | Yes | Escalation is in the code. Ticks are paused until Stage D's first story |
 | P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P4 are Stage D's |
 
@@ -195,3 +195,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 - **2026-10-17:** decided. Decisions 1 to 9 and 4b are the Sponsor's, on crew#778.
 - **2026-10-18:** after the replay (Stage R), on crew#778. The Sponsor decided the parse guard and the whole history with one compaction near 125k. They accepted the report, with pass 3's tools as the build's start, and replaced its proposed stops with high ceilings, no nudges, and every signal recorded. They also made `devcontainer.json` the workspace's one source, read as a subset under the crew's hardening. The Sponsor approved P1 to P6 with the plan (mqucifer/crew#789). Written as this ADR in Stage A.
 - **2026-10-18:** the session is built, beside delivery (Stage C, mqucifer/crew#797): `crew_org/session/`, its calls through `calls.converse`. A reply that calls no tool gets one line back, and 3 in a row end it as `blocked` (the operator's call, on crew#778). The compaction is the replay's masking, its form a later experiment (mqucifer/crew#790). One real session, on mqucifer/sprint-metrics#662, reached `done` with the gate green in 5.3 model minutes.
+- **2026-10-18:** decision 8's attempt corrected (the Sponsor, on crew#778): an attempt is the branch handed to review and QA, not a submission at `done`. The gate's returns before review are gate rounds. The measures reach delivery-history (Stage F): each story's deliveries in sessions, and the session's events by names and counts. Escalation's fields stay in the package for the sprints before it retired.
