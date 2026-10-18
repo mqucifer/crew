@@ -1,7 +1,7 @@
 # 6. Generated code runs sandboxed
 
 - **Date:** 2026-09-18
-- **Status:** Accepted (the Developer's workspace container per story is decided and not built, ADR 0032)
+- **Status:** Accepted
 
 ## Context
 
@@ -19,8 +19,8 @@ a given for all projects honestly."
   worktree has its own home directory inside it, ignored by git and removed with the
   worktree, so what the dependency step installs is there for the checks in any
   language. Downloads are shared through one cache mount (ADR 0030).
-- **The Developer's session will hold one container per story** (the Sponsor,
-  2026-10-17, crew#778 decision 4b; ADR 0032). This is decided and not built. The
+- **The Developer's session holds one container per story** (the Sponsor,
+  2026-10-17, crew#778 decision 4b; ADR 0032; `tools/container.py`). The
   project defines it on the Development Container specification (`devcontainer.json`),
   the one source of its image and setup (the Sponsor, 2026-10-18). The crew reads only
   the image, the setup command and the environment from it, and always applies the
@@ -28,8 +28,8 @@ a given for all projects honestly."
   `mounts`, `privileged`, features and host commands are not honoured. The worktree is
   mounted, setup runs once with network, and then the session runs
   with none, under the hardening above. It's removed at the session's end and
-  cleaned up after a crash. It changes only the Developer's session. Until it's
-  built, each command is its own container.
+  cleaned up after a crash. The gates at `done` run in it too. Every other check is
+  still its own container.
 - **Fail loudly:** no container engine means the check fails. There is never a
   silent fallback to the host.
 - **Refined 2026-09-26:** released, reviewed software the crew built (such as
@@ -55,3 +55,5 @@ a given for all projects honestly."
 - 2026-10-18: the worktree's `.git` is mounted read-only. Code run inside could
   otherwise write a hook or a config that git runs on the host at the crew's next
   commit (crew#788's first hard call, crew#778).
+- 2026-10-18: built. The deliver phase holds each story's workspace container for its
+  sessions and the gates at `done` (crew#778, Stages B and D).
