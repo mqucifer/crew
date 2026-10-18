@@ -22,13 +22,13 @@ HINTS = 15
 _TEST_ID = re.compile(r"(tests/[\w/]+\.py)(?:::([\w\[\]-]+(?:::[\w\[\]-]+)?))?")
 _TEST_NAME = re.compile(r"\b(test_\w+)\b")
 
-RULES = f"""\
+RULES = """\
 ## How this session works
 
 You work on the story by calling tools, one or more per turn, until you call `done` or
 `blocked`. Nothing is shown to you that you didn't ask for, beyond this start.
 
-- **See and find:** `view` shows part of a file with line numbers ({VIEW_LINES} lines \
+- **See and find:** `view` shows part of a file with line numbers ({view_lines} lines \
 at most, or one Python definition by name). `search` finds text, `.package/` included. \
 `find` and `tests_for` are Python only.
 - **Change:** `replace_text`, `replace_definition` and `write_file` apply at once to \
@@ -36,9 +36,7 @@ your branch; each says whether the file still parses and lints. Change only what
 story needs.
 - **Check:** `run` runs the tests you name, the project's whole checks (`suite`), or \
 lint, in the project's container, which has no network. It's feedback, not the verdict.
-- **Older tool output** is cut to one line once a newer one of its kind arrives; the \
-latest view and the latest run stay whole. View again what you need again.
-- **`done`** is for when the work is finished and you've seen the checks pass. Its \
+{context}- **`done`** is for when the work is finished and you've seen the checks pass. Its \
 description says what the crew checks on your branch after it.
 - **`blocked`** is for when the work can't be finished from what's here: a file that \
 isn't in the repository, a fact the story doesn't give, or a choice nobody has made. Say \
@@ -46,6 +44,14 @@ which, in your own words; it goes back to whoever wrote the story.
 - There's no shell, git or network. The session ends if the same first error in the \
 same test comes back on 3 runs with edits between, or after 2 hours of model time.
 """
+
+
+# What the rules say about older tool output, for each context rule (pass 1, pass 2).
+CONTEXT = {
+    "cut": "- **Older tool output** is cut to one line once a newer one of its kind arrives; "
+    "the latest view and the latest run stay whole. View again what you need again.\n",
+    "whole": "- **Tool output** stays in the conversation whole, unless it grows very long.\n",
+}
 
 
 def _size(n: int) -> str:
@@ -184,7 +190,9 @@ def how_it_works(record: Any, root: Path) -> tuple[str, dict[str, str]]:
     return text, notes
 
 
-def start(root: Path, story: str, coverage: Any) -> tuple[str, dict[str, int], dict[str, str]]:
+def start(
+    root: Path, story: str, coverage: Any, context: str = "cut"
+) -> tuple[str, dict[str, int], dict[str, str]]:
     """The start, each part's size in characters, and the notes it names."""
     try:
         record = read_record(root)
@@ -202,7 +210,7 @@ def start(root: Path, story: str, coverage: Any) -> tuple[str, dict[str, int], d
         + project_map(root),
         "hints": "## Likely relevant, as hints (paths only; view what you need)\n\n"
         + ("\n".join(hints(root, story, coverage)) or "- (none)"),
-        "rules": RULES,
+        "rules": RULES.format(view_lines=VIEW_LINES, context=CONTEXT[context]),
     }
     sizes = {k: len(v) for k, v in parts.items()}
     sizes["total"] = sum(sizes.values())

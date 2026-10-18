@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -101,6 +102,9 @@ def test_runs_without_edits_between_are_not_no_progress(repo: Path) -> None:
     assert not tools.no_progress()
 
 
+_ids = itertools.count()
+
+
 def _calls(*made: tuple[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "choices": [
@@ -109,10 +113,10 @@ def _calls(*made: tuple[str, dict[str, Any]]) -> dict[str, Any]:
                     "content": "",
                     "tool_calls": [
                         {
-                            "id": f"c{i}-{name}",
+                            "id": f"c{next(_ids)}-{name}",
                             "function": {"name": name, "arguments": json.dumps(a)},
                         }
-                        for i, (name, a) in enumerate(made)
+                        for name, a in made
                     ],
                 },
                 "finish_reason": "tool_calls",
@@ -198,3 +202,30 @@ def test_the_story_is_the_text_before_the_first_attempt(
     )
     text = cases.story(cases.CASES["sprint-metrics-596"])
     assert text == "# T\n\nas attempted"
+
+
+def test_the_whole_rule_keeps_replies_until_one_compaction(repo: Path) -> None:
+    script = [
+        _calls(("view", {"path": "src/calc.py"})),
+        _calls(("view", {"path": "src/calc.py", "from_line": 4})),
+        _calls(("search", {"text": "rate"})),
+        _calls(("done", {"criteria": [], "docs": "none", "summary": "s"})),
+    ]
+    sent: list[dict[str, Any]] = []
+
+    def send(body: dict[str, Any]) -> dict[str, Any]:
+        sent.append(body)
+        reply = script[len(sent) - 1]
+        # The third prompt is past the limit.
+        return {**reply, "usage": {"prompt_tokens": 50 if len(sent) < 3 else 500}}
+
+    s = session_mod.Session(
+        Tools(repo, FakeHeld()), "system", "start", send=send, context="whole", compact_at=400
+    )
+    s.run()
+    third = [m["content"] for m in sent[2]["messages"] if m["role"] == "tool"]
+    assert not any(t.startswith("(older)") for t in third)
+    assert s.compacted == {"call": 3, "prompt_tokens": 500, "cut": 1}
+    fourth = [m["content"] for m in sent[3]["messages"] if m["role"] == "tool"]
+    # The first view of the file is the one cut; the newer view and the search stay.
+    assert fourth[0].startswith("(older)") and not fourth[1].startswith("(older)")

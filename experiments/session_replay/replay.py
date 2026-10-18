@@ -80,9 +80,11 @@ def diff(root: Path, base: str) -> str:
     ).stdout
 
 
-def replay(name: str, backstop_s: float | None = None) -> dict[str, Any]:
+def replay(name: str, backstop_s: float | None = None, context: str = "cut") -> dict[str, Any]:
     case = CASES[name]
-    run = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    # Pass 2 (the "whole" context rule) is told apart by its runs' names.
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    run = stamp if context == "cut" else f"p2-{stamp}"
     out = RUNS / name / run
     out.mkdir(parents=True, exist_ok=True)
     text = story(case)
@@ -94,7 +96,7 @@ def replay(name: str, backstop_s: float | None = None) -> dict[str, Any]:
         (out / "result.json").write_text(json.dumps(result, indent=1))
         return result
     cov = coverage(case, root)
-    opening, sizes, notes = start(root, text, cov)
+    opening, sizes, notes = start(root, text, cov, context)
     (out / "start.md").write_text(opening, encoding="utf-8")
     result["start_chars"] = sizes
     held = Held(root, name)
@@ -124,7 +126,7 @@ def replay(name: str, backstop_s: float | None = None) -> dict[str, Any]:
             )
             log.flush()
 
-        session = Session(tools, system(), opening, log=write)
+        session = Session(tools, system(), opening, log=write, context=context)
         if backstop_s is not None:
             session.backstop_s = backstop_s
         ending = session.run()
@@ -142,6 +144,8 @@ def replay(name: str, backstop_s: float | None = None) -> dict[str, Any]:
                 "runs": tools.runs,
                 "developer_last_run": last,
                 "first_green_suite_run": green[0] if green else None,
+                "context": context,
+                "compacted": session.compacted or None,
             }
         )
         if ending.get("how") == "done":
@@ -161,8 +165,10 @@ def replay(name: str, backstop_s: float | None = None) -> dict[str, Any]:
 def main() -> None:
     sweep()
     try:
-        for name in sys.argv[1:] or list(CASES):
-            r = replay(name)
+        args = sys.argv[1:]
+        context = "whole" if "--whole" in args else "cut"
+        for name in [a for a in args if a != "--whole"] or list(CASES):
+            r = replay(name, context=context)
             u = r.get("usage", {})
             g = r.get("gate_at_done", {}).get("green")
             print(

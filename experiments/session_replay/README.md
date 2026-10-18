@@ -7,6 +7,12 @@ stories took? The plan is `docs/plans/developer-session.md`; the results are in
 
     uv run python experiments/session_replay/replay.py sprint-metrics-662
     uv run python experiments/session_replay/replay.py        # every case, one at a time
+    uv run python experiments/session_replay/replay.py --whole sprint-metrics-662
+
+`--whole` is pass 2's context rule: every tool reply stays whole, and the conversation
+is compacted once, all at once, if a prompt reaches 100k tokens. Without it (pass 1),
+older output shrinks to one line as newer output of its kind arrives. Pass 2's runs are
+named `p2-<time>`.
 
 Needs Docker and LiteLLM on :4000. Writes to `runs/<case>/<run>/`, which git ignores:
 `start.md` (what the session started with), `transcript.jsonl` (each call and tool
