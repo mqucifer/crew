@@ -139,8 +139,10 @@ guard.bounds.out_of_bounds:
       `|| true`, no `continue-on-error`.'
   owner: Developer
 session.path:
-  description: A tool reads and writes only the worktree, never the crew's own folders or what tools make.
+  description: A tool reads and writes only the worktree, never the crew's own folders or what tools make,
+    and never through a symbolic link that leads out of it.
   messages:
+    link: '`{path}` is a symbolic link: edit the file it leads to instead.'
     outside: '`{path}` isn''t a path in the repository: give it relative to its root.'
     skipped: '`{path}` is in a folder the session doesn''t {verb}.'
   origin:
