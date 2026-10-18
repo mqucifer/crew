@@ -267,7 +267,7 @@ def test_a_failed_sync_stops_before_linting(tmp_path, monkeypatch):
     """Running tests against unresolved dependencies produces noise, not signal."""
     calls: list[list[str]] = []
 
-    def fake_run(worktree, command, *, sandbox=None, network=False, timeout=0):
+    def fake_run(worktree, command, *, sandbox=None, network=False, timeout=0, env=None):
         calls.append(command)
         return CommandResult(command=" ".join(command), code=1, output="lock conflict")
 
@@ -291,7 +291,7 @@ def test_dependency_resolution_is_the_only_networked_step(tmp_path, monkeypatch)
     """Generated code must not reach anything while it executes."""
     seen: list[tuple[list[str], bool]] = []
 
-    def fake_run(worktree, command, *, sandbox=None, network=False, timeout=0):
+    def fake_run(worktree, command, *, sandbox=None, network=False, timeout=0, env=None):
         seen.append((command, network))
         return CommandResult(command=" ".join(command), code=0, output="")
 

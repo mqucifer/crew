@@ -1,6 +1,6 @@
 # The Developer works in a session: plan
 
-**Status:** proposed, for the Sponsor's review. It comes from the design discussion on mqucifer/crew#778 (2026-10-17), decisions 1 to 9. The replay (Stage R) runs first, and its results drive the ADRs (Stage A). Nothing past Stage R is built until the Sponsor has read those results.
+**Status:** accepted (mqucifer/crew#789, 2026-10-18). It comes from the design discussion on mqucifer/crew#778 (2026-10-17), decisions 1 to 9. Stage R is done, and the Sponsor has read its results (`var/notes/778/replay.md`). Stage A is ADR 0032, which holds the decisions, P1 to P6 and what the replay changed; where this plan and the ADR differ, the ADR is current.
 
 ## Why
 

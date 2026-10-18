@@ -84,6 +84,9 @@ config.agents.senior_engineer.can:
 config.agents.ux_designer.can:
   owner: UX Designer
 config.const.base_images.TIMEOUT:
+config.const.container.GRACE:
+config.const.container.LIFETIME:
+config.const.container.SETUP_TIMEOUT:
 config.const.sandbox.DEFAULT_TIMEOUT:
 config.const.sandbox.PROBE_TIMEOUT:
 config.org.sandbox.engine:

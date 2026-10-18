@@ -66,6 +66,10 @@ MEMORY = "2g"
 CPUS = "2"
 PIDS = "512"
 
+# The variables the crew sets in every container. A project's own environment
+# (its devcontainer.json) never replaces them.
+OWN_ENV = frozenset({"HOME", "PATH", "UV_CACHE_DIR", "XDG_CACHE_HOME"})
+
 
 class Mode(StrEnum):
     REQUIRED = "required"
@@ -130,19 +134,41 @@ class Sandbox:
         return _image_path(self.engine, self.image)
 
     def command(
-        self, worktree: Path, inner: list[str], *, network: bool, path: str | None = None
+        self,
+        worktree: Path,
+        inner: list[str],
+        *,
+        network: bool,
+        path: str | None = None,
+        env: dict[str, str] | None = None,
+        held: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> list[str]:
         """Build the container invocation for one command.
 
         `path` is the image's own PATH. Given it, what setup installed under the
-        home (`.local/bin`, as pip's user installs put it) is found first.
+        home (`.local/bin`, as pip's user installs put it) is found first. `env` is
+        the project's own environment; the crew's variables (`OWN_ENV`) win.
+
+        `held` names a container held for a session (`tools/container.py`): it
+        starts detached under that name, with an init process to reap what tests
+        leave behind, and is still removed when `inner` ends.
         """
         home = f"/work/{HOME_DIR}"
         found = ["-e", f"PATH={home}/.local/bin:{path}"] if path else []
+        own = [f for k, v in (env or {}).items() if k not in OWN_ENV for f in ("-e", f"{k}={v}")]
+        hold = ["-d", "--name", held, "--init"] if held else []
+        hold += [f for k, v in (labels or {}).items() for f in ("--label", f"{k}={v}")]
+        # Read-only: code run here could otherwise write a hook or a config that
+        # git runs on the host at the crew's next commit (crew#788). A worktree's
+        # `.git` is a file naming its git directory, which isn't mounted at all.
+        git = worktree.resolve() / ".git"
+        guard = ["--mount", f"type=bind,src={git},dst=/work/.git,readonly"] if git.exists() else []
         return [
             self.engine,
             "run",
             "--rm",
+            *hold,
             # No network for anything but dependency resolution.
             "--network",
             "bridge" if network else "none",
@@ -168,10 +194,12 @@ class Sandbox:
             "no-new-privileges",
             "-v",
             f"{worktree.resolve()}:/work",
+            *guard,
             "-v",
             f"{self.cache_dir}:/cache",
             "-w",
             "/work",
+            *own,
             "-e",
             "UV_CACHE_DIR=/cache",
             "-e",
