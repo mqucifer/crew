@@ -25,7 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
-from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edit, definitions
+from crew_org.tools.ast_edit import Edit, EditError, apply_edit, definitions
 
 # Never read or written: the crew's own folders and what tools make.
 SKIPPED = {
@@ -658,7 +658,7 @@ class Tools:
             )
         before = target.read_text(encoding="utf-8")
         try:
-            changed = apply_edit(before, Edit(Operation.REPLACE, name, source))
+            changed = apply_edit(before, Edit(name, source))
         except EditError as exc:
             names = ", ".join(list(definitions(before))[:40])
             return Reply(
