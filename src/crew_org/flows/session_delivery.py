@@ -153,17 +153,22 @@ def deliver_by_session(
 
     unfit = conversation.unfit(worktree)
     if unfit:
-        return _unready(outcome, unfit)
+        return _unready(outcome, Rule.WORKSPACE_UNREADY, unfit)
     held = Held(worktree, f"{repo}-{number}")
     try:
         started = held.start()
         if not started.ok:
-            return _unready(outcome, f"the workspace didn't start: {started.output[-500:]}")
+            return _unready(
+                outcome,
+                Rule.WORKSPACE_UNREADY,
+                f"the workspace didn't start: {started.output[-500:]}",
+            )
         setup = held.setup()
         if setup is not None and not setup.ok:
-            return _unready(
-                outcome, f"$ {setup.command}\n(exit {setup.code})\n{setup.output[-1500:]}"
-            )
+            # As a failed setup is reported today, so a design's fault is still found
+            # as one (crew#690).
+            ran = f"$ {setup.command}\n(exit {setup.code})\n{setup.output[-1500:]}"
+            return _unready(outcome, Rule.WORKSPACE_UNREADY, ran)
         reached = _sessions(
             card,
             story=story,
@@ -519,8 +524,8 @@ def checkpointed(ws: Workspace, sink: EventSink, number: int) -> Any:
     return after_run
 
 
-def _unready(outcome: DeliveryOutcome, why: str) -> DeliveryOutcome:
-    outcome.blocked_rule = Rule.WORKSPACE_UNREADY
+def _unready(outcome: DeliveryOutcome, rule: Rule, why: str) -> DeliveryOutcome:
+    outcome.blocked_rule = rule
     outcome.blocked_reason = f"the story's workspace isn't ready: {why}"
     outcome.ended = True
     return outcome

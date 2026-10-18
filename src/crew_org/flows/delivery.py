@@ -2157,6 +2157,17 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     return True
 
 
+def developer() -> Any:
+    """Who delivers a story: a session of tool calls (crew#778, ADR 0032).
+
+    `deliver_story`, the one-call Developer, is kept, unused, until Stage E removes
+    it with its tests, which reach it through this.
+    """
+    from crew_org.flows.session_delivery import deliver_by_session  # noqa: PLC0415
+
+    return deliver_by_session
+
+
 def _work_one_card(card: Card, **kwargs: Any) -> None:
     """`_deliver_and_move`, as one Developer run: its records share the run's id (crew#449)."""
     with log.run(
@@ -2204,14 +2215,10 @@ def _deliver_and_move(
     ):
         counts[IN_PROGRESS] -= 1
         return
-    # The Developer is a session of tool calls (crew#778, ADR 0032). `deliver_story`,
-    # the one-call Developer, stays until Stage E removes it with what it needs.
-    from crew_org.flows.session_delivery import deliver_by_session  # noqa: PLC0415
-
     outcome = None
     interrupted: str | None = None
     try:
-        outcome = deliver_by_session(
+        outcome = developer()(
             card,
             board=board,
             issues=issues,

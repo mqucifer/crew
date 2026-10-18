@@ -63,6 +63,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.record_unreadable` | The project's record can't be read, so its rules are unknown. |
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
+| `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
 | `edit.local_repair` | Its edits couldn't be applied, retried with why shown, up to the local limit. |
 | `guard.local_repair` | A guard refused the change, retried with what it refused shown. |
 | `guard.overwrite` | It kept rewriting existing files whole instead of editing them. |
@@ -79,6 +80,10 @@ The record's summary says it for a person; the rule is what a count reads.
 | `story.gate_round_trips` | The gates kept returning it. |
 | `story.pinned_tests` | It keeps breaking merged tests it didn't write. |
 | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids. |
+| `story.session_blocked` | Its Developer session ended blocked on a missing file or fact, or was stopped. |
+| `story.contract_ruling` | At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed. |
+| `session.choice` | Its session ended blocked on a choice no one has made: for the Sponsor. |
+| `session.no_epic` | Its session ended blocked, and it has no epic to be split again: for a person. |
 | `hold.sibling` | It waits for an earlier story in the same epic. |
 | `hold.builds_on` | It waits for a story it builds on. |
 | `hold.wip_limit` | The next column is at its limit. |
