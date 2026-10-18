@@ -1,7 +1,7 @@
 # 25. The crew makes its own model calls
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first)
+- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first). The Developer's calls become one session: decided and not built (ADR 0032).
 
 ## Context
 
@@ -65,6 +65,15 @@ Sponsor, 2026-10-10 (D5 and D6 of the plan).
 - **A framework is reconsidered only if** a step needs orchestration the board cannot
   hold, or a call pattern the SDK does not provide. The module is the layer a framework
   would wrap, so one adopted later would sit on it, not replace it.
+- **The Developer's calls become one session** (the Sponsor, 2026-10-17 and 2026-10-18,
+  crew#778; ADR 0032). This is decided and not built.
+  - Its tool calls run until it calls `done` or `blocked`, or a stop ends it. There's
+    no round limit and no final answer in a form: `done` is itself a tool call, with a
+    short structured statement.
+  - A refusal is a tool reply the session acts on, not a re-ask of a whole answer.
+  - Every reply stays in the conversation. The conversation is compacted once, only
+    before a prompt would pass 125k tokens.
+  - The other steps keep their rounds, then an answer in their form.
 
 **The standard.** Structured output with schema validation and a re-ask carrying the
 error, the pattern the Instructor library made common; tool use through the
@@ -130,3 +139,7 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   field with its type and description (lean-prompts plan, L3); the server still holds
   the answer to the full JSON Schema. The Developer's copy went from 13.2k characters to
   6.9k.
+- **2026-10-17:** the Developer's calls become one session of tool calls, ended by `done`,
+  `blocked` or a stop, with its history kept whole (ADR 0032; the Sponsor, on crew#778,
+  the context rule on 2026-10-18). Decided, not built: until then, its six rounds and its
+  answer form stand.
