@@ -19,7 +19,7 @@ import pytest
 from crew_org.flows import handover, onboard
 from crew_org.flows.readiness import CREW, SPONSOR, Missing, Readiness
 from crew_org.project import RECORD_PATH, Part, parse
-from crew_org.tools.workspace import CommandResult
+from crew_org.tools.container import Result
 
 RECORD = """version: 2
 intent:
@@ -277,18 +277,114 @@ def test_a_test_file_past_where_qa_sees_all_of_it_is_named(tmp_path):
     assert any("split by concern `tests/test_render.py`" in r for r in found.reported)
 
 
+# --- the workspace's devcontainer.json (crew#778) -----------------------------------
+
+PINNED = "mcr.microsoft.com/playwright/python:v1.52.0-noble@sha256:" + "a" * 64
+
+
+@pytest.fixture
+def registry(monkeypatch):
+    """Every pinned image is found in its registry, without asking it."""
+    from crew_org.tools import base_images
+
+    monkeypatch.setattr(base_images, "lookup", lambda host, name, digest: object())
+
+
+def with_file(tmp_path, text, **kw):
+    return check(tmp_path, {".devcontainer/devcontainer.json": text}, **kw)
+
+
+def test_without_the_file_the_design_is_the_workspace_and_nothing_is_flagged(tmp_path):
+    assert "devcontainer" not in whats(check(tmp_path))
+
+
+def test_the_file_and_the_design_naming_the_setup_is_two_sources(tmp_path, registry):
+    """The Sponsor, 2026-10-18: devcontainer.json is the one source."""
+    found = with_file(tmp_path, f'{{"image": "{PINNED}", "postCreateCommand": ["uv", "sync"]}}')
+    assert (
+        "design: it names its setup, and `.devcontainer/devcontainer.json` is their one "
+        "source; `crew design site --reason` (the crew)"
+    ) in whats(found)
+
+
+def test_a_file_that_is_the_one_source_is_clean(tmp_path, registry):
+    found = with_file(
+        tmp_path, f'{{"image": "{PINNED}", "postCreateCommand": ["uv", "sync"]}}', setup="null"
+    )
+    assert "devcontainer" not in whats(found)
+
+
+def test_each_field_the_crew_doesn_t_honour_is_named(tmp_path, registry):
+    found = with_file(
+        tmp_path,
+        f'{{"image": "{PINNED}", "runArgs": ["--privileged"], "initializeCommand": ["x"]}}',
+        setup="null",
+    )
+    assert (
+        "`.devcontainer/devcontainer.json`: `runArgs` isn't honoured (the crew sets the "
+        "container's flags); remove it (Claude, the alpha's builder)"
+    ) in whats(found)
+    assert "`initializeCommand` isn't honoured (it runs on the host)" in whats(found)
+
+
+def test_the_file_s_image_follows_the_image_rule(tmp_path):
+    found = with_file(tmp_path, '{"image": "node:22"}', setup="null")
+    assert "`.devcontainer/devcontainer.json`: the sandbox image `node:22` isn't pinned" in whats(
+        found
+    )
+
+
+def test_the_file_s_image_stands_for_the_design_s_in_its_rules(tmp_path, registry):
+    """A design with a JavaScript part needs its own image: the file names it."""
+    root, record = repository(
+        tmp_path, {".devcontainer/devcontainer.json": f'{{"image": "{PINNED}"}}'}, setup="null"
+    )
+    record.design.parts = [Part(path="site/js/", language="javascript", tests=[])]
+    assert handover.design_rules("site", record) != []
+    assert handover.design_rules("site", record, image=PINNED) == []
+
+
 # --- setup, in the sandbox -----------------------------------------------------------
 
 
-def setup_found(tmp_path, monkeypatch, does):
-    """The handover's setup run, its sandbox run replaced by `does` on the copy."""
-    import crew_org.tools.workspace as workspace
+class Workspace:
+    """A session's workspace, its setup replaced by `does` on the copy."""
 
-    def run(worktree, command, **kw):
-        does(worktree)
-        return CommandResult(command=" ".join(command), code=0, output="")
+    does = staticmethod(lambda copy: None)
+    started = 0
+    stopped = 0
+    ran: list[list[str]] = []
+    fails = ""
 
-    monkeypatch.setattr(workspace, "run", run)
+    def __init__(self, worktree, name, sandbox=None):
+        self.worktree = worktree
+
+    def start(self):
+        Workspace.started += 1
+        return Result("start", 1 if self.fails == "start" else 0, "no such image")
+
+    def setup(self):
+        Workspace.does(self.worktree)
+        return Result("uv sync", 1 if self.fails == "setup" else 0, "no network")
+
+    def exec(self, command):
+        Workspace.ran.append(command)
+        return Result(" ".join(command), 0, "")
+
+    def stop(self):
+        Workspace.stopped += 1
+
+
+def setup_found(tmp_path, monkeypatch, does, *, fails=""):
+    """The handover's setup run, its workspace replaced by `Workspace`."""
+    import crew_org.tools.container as container
+
+    monkeypatch.setattr(Workspace, "does", staticmethod(does))
+    monkeypatch.setattr(Workspace, "fails", fails)
+    monkeypatch.setattr(Workspace, "started", 0)
+    monkeypatch.setattr(Workspace, "stopped", 0)
+    monkeypatch.setattr(Workspace, "ran", [])
+    monkeypatch.setattr(container, "Held", Workspace)
     root, record = repository(tmp_path)
     return handover.setup_leaves(root, record, object(), handover.CLAUDE)
 
@@ -298,6 +394,19 @@ def test_setup_that_re_locks_and_leaves_the_tree_clean_passes(tmp_path, monkeypa
         (copy / "uv.lock").write_text("version = 1\n")
 
     assert setup_found(tmp_path, monkeypatch, relocks) == []
+    # As a session's workspace: started, set up, a command run in it, and removed.
+    assert Workspace.started == 1 and Workspace.ran == [["true"]] and Workspace.stopped == 1
+
+
+def test_a_workspace_that_doesn_t_start_is_missing(tmp_path, monkeypatch):
+    found = setup_found(tmp_path, monkeypatch, lambda copy: None, fails="start")
+    assert [m.what for m in found] == ["the workspace doesn't start: no such image"]
+    assert Workspace.stopped == 1
+
+
+def test_setup_that_fails_in_the_workspace_is_missing(tmp_path, monkeypatch):
+    found = setup_found(tmp_path, monkeypatch, lambda copy: None, fails="setup")
+    assert [m.what for m in found] == ["setup fails: no network"]
 
 
 def test_setup_that_doesn_t_write_the_lockfile_can_t_re_lock(tmp_path, monkeypatch):

@@ -46,7 +46,7 @@ from crew_org.flows.readiness import CREW, SPONSOR, Missing
 from crew_org.flows.skeleton import PLACEHOLDER, marked
 from crew_org.flows.template import wanted
 from crew_org.project import CREW_FILES, ProjectRecord, is_protected
-from crew_org.tools import ci_guard
+from crew_org.tools import ci_guard, devcontainer
 from crew_org.tools.repo_context import (
     FOCUS_ABOVE_CHARS,
     WHOLE_FILE_CHARS,
@@ -108,7 +108,9 @@ def check(
     builder = CLAUDE if alpha else CREW
     files = [p.relative_to(root).as_posix() for p in project_files(root)]
     found = Handover(unchecked=list(BY_HAND))
-    found.missing += design_rules(repo, record)
+    defined = devcontainer.read(root)
+    found.missing += design_rules(repo, record, image=defined.image if defined else None)
+    found.missing += workspace_file(repo, record, defined, builder)
     found.missing += structure(repo, root, record, files)
     found.missing += documented(root, record, builder)
     found.missing += followed(root, record, builder)
@@ -130,11 +132,12 @@ def check(
 # --- the record and design ------------------------------------------------------------
 
 
-def design_rules(repo: str, record: ProjectRecord) -> list[Missing]:
+def design_rules(repo: str, record: ProjectRecord, *, image: str | None = None) -> list[Missing]:
     """`crew design`'s rules, on a design it may not have written (R1).
 
     A design written by hand otherwise met only the lockfile's presence at level 2
-    and the shell refusal at run time.
+    and the shell refusal at run time. `image` is the one the project's
+    devcontainer.json names, which stands for the design's (`workspace_file`).
     """
     design = record.design
     if design is None:
@@ -143,20 +146,65 @@ def design_rules(repo: str, record: ProjectRecord) -> list[Missing]:
     def choice(value: str | None) -> Any:
         return SimpleNamespace(value=value) if value else None
 
+    own = design.sandbox_image or image
     proposal = SimpleNamespace(
-        lockfile=choice(design.lockfile or (None if design.sandbox_image else "uv.lock")),
+        lockfile=choice(design.lockfile or (None if own else "uv.lock")),
         setup=choice(design.setup),
         checks=[choice(c) for c in design.checks],
         autofix=[choice(c) for c in design.autofix],
-        sandbox_image=choice(design.sandbox_image),
+        sandbox_image=choice(own),
         parts=design.parts,
     )
     reasons = [*unlocked(proposal), *shelled(proposal), *needs_an_image(proposal)]
-    reasons += image_problems(proposal.sandbox_image)
-    if design.lockfile is None and not design.sandbox_image:
+    reasons += image_problems(choice(design.sandbox_image))
+    if design.lockfile is None and not own:
         # Assumed to be uv's, and checked as that, until the design says so (ADR 0030).
         reasons.append("the design doesn't name its lockfile in `lockfile`")
     return [Missing(f"design: {r}; `crew design {repo} --reason`", CREW) for r in reasons]
+
+
+def workspace_file(
+    repo: str, record: ProjectRecord, defined: devcontainer.Definition | None, builder: str
+) -> list[Missing]:
+    """The project's devcontainer.json, as the crew reads it (crew#778).
+
+    Without one, the design's image and setup are the workspace's, and there's
+    nothing to check here. With one: what stops it being used; each field the crew
+    doesn't honour, since a file asking for what it doesn't get misleads whoever
+    reads it; the image rule; and one source, so the design names neither the
+    image nor the setup (the Sponsor, 2026-10-18).
+    """
+    if defined is None:
+        return []
+    path = defined.path
+    found = [Missing(problem, builder) for problem in defined.problems]
+    found += [
+        Missing(f"`{path}`: `{name}` isn't honoured ({why}); remove it", builder)
+        for name, why in defined.not_honoured.items()
+    ]
+    if defined.image:
+        found += [
+            Missing(f"`{path}`: {reason}", builder)
+            for reason in image_problems(SimpleNamespace(value=defined.image))
+        ]
+    design = record.design
+    twice = [
+        what
+        for what, given in (
+            ("sandbox image", design.sandbox_image if design else None),
+            ("setup", design.setup if design else None),
+        )
+        if given
+    ]
+    if twice:
+        found.append(
+            Missing(
+                f"design: it names its {' and '.join(twice)}, and `{path}` is their one source; "
+                f"`crew design {repo} --reason`",
+                CREW,
+            )
+        )
+    return found
 
 
 def structure(repo: str, root: Path, record: ProjectRecord, files: list[str]) -> list[Missing]:
@@ -446,17 +494,16 @@ def setup_leaves(root: Path, record: ProjectRecord, sandbox: Any, builder: str) 
     A story that changes a dependency can't write a lock: crew-presentation#66
     blocked twice (crew#712). What setup installs or fetches outside ignored paths
     reached every view, and a 1 MB view broke the model's context (crew#711).
-    Run on a copy, without the lockfile, so setup has to write it.
+    Run on a copy, without the lockfile, so setup has to write it. Run as a
+    session's workspace (crew#778): its container starts with no network, setup
+    runs with one, and then a command runs in the container.
     """
-    from dataclasses import replace  # noqa: PLC0415
-
-    from crew_org.tools.workspace import run, toolchain  # noqa: PLC0415
+    from crew_org.tools.container import Held  # noqa: PLC0415
+    from crew_org.tools.workspace import toolchain  # noqa: PLC0415
 
     design = record.design
-    lockfile = (design.lockfile if design else None) or (
-        None if design and design.sandbox_image else "uv.lock"
-    )
     copy = Path(tempfile.mkdtemp(prefix="handover-", dir=root.parent))
+    held = None
     try:
         subprocess.run(["git", "clone", "--quiet", str(root), str(copy)], check=True)
         subprocess.run(
@@ -465,13 +512,20 @@ def setup_leaves(root: Path, record: ProjectRecord, sandbox: Any, builder: str) 
         tools = toolchain(copy)
         if tools.problem or not tools.setup:
             return [Missing(f"setup can't run: {tools.problem or 'the design names none'}", CREW)]
+        lockfile = (design.lockfile if design else None) or (None if tools.image else "uv.lock")
         if lockfile:
             (copy / lockfile).unlink(missing_ok=True)
-        if tools.image:
-            sandbox = replace(sandbox, image=tools.image)
-        result = run(copy, tools.setup, sandbox=sandbox, network=True)
-        if not result.ok:
-            return [Missing(f"setup fails: {result.output.strip()[-500:]}", builder)]
+        held = Held(copy, copy.name, sandbox=sandbox)
+        started = held.start()
+        if not started.ok:
+            return [Missing(f"the workspace doesn't start: {started.output[-500:]}", builder)]
+        result = held.setup()
+        if result is None or not result.ok:
+            said = result.output[-500:] if result else "nothing ran"
+            return [Missing(f"setup fails: {said}", builder)]
+        answered = held.exec(["true"])
+        if not answered.ok:
+            return [Missing(f"the workspace runs nothing after setup: {answered.output}", builder)]
         found = []
         if lockfile and not (copy / lockfile).is_file():
             found.append(
@@ -500,6 +554,8 @@ def setup_leaves(root: Path, record: ProjectRecord, sandbox: Any, builder: str) 
             )
         return found
     finally:
+        if held is not None:
+            held.stop()
         shutil.rmtree(copy, ignore_errors=True)
 
 

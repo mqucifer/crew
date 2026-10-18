@@ -188,3 +188,32 @@ def test_the_architect_is_told_how_commands_run(monkeypatch):
     with pytest.raises(Stop):
         propose_design(project="A site.", repository="")
     assert HOW_IT_RUNS in seen["description"]
+
+
+# --- the project's environment, `.git`, and a held container (crew#778) ---
+
+
+def test_the_project_s_environment_never_replaces_the_crew_s(box):
+    a = box.command(
+        Path("/tmp/wt"), ["true"], network=False, env={"LANG": "C.UTF-8", "HOME": "/root"}
+    )
+    assert "LANG=C.UTF-8" in a
+    assert "HOME=/root" not in a and "HOME=/work/.crew-home" in a
+
+
+def test_git_is_mounted_read_only_over_the_worktree_s(box, tmp_path):
+    """Code run inside could otherwise write a hook that git runs on the host."""
+    (tmp_path / ".git").mkdir()
+    a = box.command(tmp_path, ["true"], network=False)
+    mount = a[a.index("--mount") + 1]
+    assert mount == f"type=bind,src={tmp_path.resolve() / '.git'},dst=/work/.git,readonly"
+    assert a.index(f"{tmp_path.resolve()}:/work") < a.index("--mount"), "over the worktree"
+
+
+def test_without_git_nothing_more_is_mounted(box, tmp_path):
+    assert "--mount" not in box.command(tmp_path, ["true"], network=False)
+
+
+def test_a_command_isn_t_held_unless_asked(box):
+    a = argv(box)
+    assert "-d" not in a and "--name" not in a and "--init" not in a and "--label" not in a

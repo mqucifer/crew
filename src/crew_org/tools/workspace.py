@@ -529,13 +529,15 @@ def run(
     sandbox: Sandbox | None = None,
     network: bool = False,
     timeout: int = DEFAULT_TIMEOUT,
+    env: dict[str, str] | None = None,
 ) -> CommandResult:
     """Run one command against the worktree.
 
     With a sandbox in `required` mode the command runs inside a container; the
     host is never a fallback. Credentials are stripped either way, because the
     host path exists only as an explicit opt-in and still must not hand a
-    repository token to code the model wrote.
+    repository token to code the model wrote. `env` is the project's own
+    environment, given to the container.
     """
     sandbox = sandbox or Sandbox()
     printable = " ".join(command)
@@ -545,7 +547,9 @@ def run(
         if blocked:
             return CommandResult(command=printable, code=126, output=blocked)
         prepare_home(worktree)
-        argv = sandbox.command(worktree, command, network=network, path=sandbox.search_path())
+        argv = sandbox.command(
+            worktree, command, network=network, path=sandbox.search_path(), env=env
+        )
         cwd = None
     else:
         argv = command
@@ -633,32 +637,44 @@ class Toolchain:
     # Whether any part is Python's: the coverage map follows the language, not
     # the image (crew#690, ADR 0030). No parts named means the whole project is.
     python: bool = True
+    # The project's own environment, from its devcontainer.json.
+    env: dict[str, str] = field(default_factory=dict)
 
 
 def toolchain(worktree: Path) -> Toolchain:
     """The project's own sandbox image, setup, autofix and checks, or today's defaults.
 
-    A design that names its own image gets only what it names: the Python
-    defaults (uv, ruff) would fail in any other image. A design that names none
+    The image, setup and environment come from the project's devcontainer.json,
+    their one source (`tools/devcontainer.py`), and from its design when it has
+    no file. A project that names its own image gets only what it names: the
+    Python defaults (uv, ruff) would fail in any other image. One that names none
     keeps them, so sprint-metrics is checked exactly as before.
     """
     import shlex  # noqa: PLC0415
 
     from crew_org.project import ProjectRecordError, read_record  # noqa: PLC0415
+    from crew_org.tools import devcontainer  # noqa: PLC0415
 
     try:
         record = read_record(worktree)
     except ProjectRecordError:
         record = None
     design = record.design if record is not None else None
-    image = design.sandbox_image if design is not None else None
+    defined = devcontainer.read(worktree)
+    if defined is not None:
+        image, named = defined.image, f"image in `{defined.path}`"
+    else:
+        image = design.sandbox_image if design is not None else None
+        named = "design's sandbox image"
     own = bool(image)
     verify = (
         tuple(shlex.split(c) for c in design.checks)
         if design is not None and design.checks
         else (() if own else VERIFY)
     )
-    if design is not None and design.setup:
+    if defined is not None:
+        setup = defined.setup
+    elif design is not None and design.setup:
         setup = shlex.split(design.setup)
     else:
         setup = None if own else SETUP
@@ -667,17 +683,29 @@ def toolchain(worktree: Path) -> Toolchain:
     else:
         autofix = () if own else AUTOFIX
     problem = None
-    if own and "@sha256:" not in image:
+    if defined is not None and defined.problems:
+        problem = "; ".join(defined.problems)
+    elif own and "@sha256:" not in image:
         # The image rule (§19): what runs is pinned, never a tag that can move.
-        problem = f"the design's sandbox image `{image}` isn't pinned by digest (name@sha256:...)"
+        problem = f"the {named} `{image}` isn't pinned by digest (name@sha256:...)"
     elif own and not verify:
-        problem = "the design names its own sandbox image but no checks to run in it"
+        problem = (
+            f"`{defined.path}` names its own image, but the design names no checks to run in it"
+            if defined is not None
+            else "the design names its own sandbox image but no checks to run in it"
+        )
     elif design is not None and (shelled := _shelled(design)):
         problem = shelled
     parts = design.parts if design is not None else []
     python = not parts or any(p.language.strip().lower() == "python" for p in parts)
     return Toolchain(
-        image=image, setup=setup, autofix=autofix, verify=verify, problem=problem, python=python
+        image=image,
+        setup=setup,
+        autofix=autofix,
+        verify=verify,
+        problem=problem,
+        python=python,
+        env=dict(defined.env) if defined is not None else {},
     )
 
 
@@ -722,9 +750,10 @@ def check(
         return CheckResult(results=[CommandResult(command="design", code=2, output=tools.problem)])
     if tools.image:
         sandbox = replace(sandbox, image=tools.image)
+    given: dict[str, Any] = {"timeout": timeout, "env": tools.env}
     results = []
     if tools.setup:
-        results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, timeout=timeout))
+        results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, **given))
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
@@ -737,7 +766,7 @@ def check(
         for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
-            run(worktree, command, sandbox=sandbox, network=False, timeout=timeout)
+            run(worktree, command, sandbox=sandbox, network=False, **given)
         if touched is not None:
             fixed = [p for p, text in kept.items() if _read(worktree / p) != text]
             # A fixer runs over the whole project, but the attempt answers for what
@@ -747,7 +776,7 @@ def check(
             if reverted:
                 _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
-            results.append(run(worktree, command, sandbox=sandbox, network=False, timeout=timeout))
+            results.append(run(worktree, command, sandbox=sandbox, network=False, **given))
     return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
 
 

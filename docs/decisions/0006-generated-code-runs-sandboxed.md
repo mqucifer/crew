@@ -13,7 +13,8 @@ a given for all projects honestly."
 
 - Code a model has just written, and nobody has vetted, runs in a container:
   no network during tests, capabilities dropped, a non-root user, a read-only
-  root filesystem, and memory and PID limits (`tools/sandbox.py`).
+  root filesystem, the worktree's `.git` read-only, and memory and PID limits
+  (`tools/sandbox.py`).
 - **Each command is its own container,** and only the worktree carries over. Each
   worktree has its own home directory inside it, ignored by git and removed with the
   worktree, so what the dependency step installs is there for the checks in any
@@ -34,3 +35,6 @@ a given for all projects honestly."
 - 2026-10-13: each worktree has its own home inside it. What setup installed under the
   container's home was gone before the checks ran, so a project with its own image
   couldn't keep its dependencies (crew#690, ADR 0030; Sponsor).
+- 2026-10-18: the worktree's `.git` is mounted read-only. Code run inside could
+  otherwise write a hook or a config that git runs on the host at the crew's next
+  commit (crew#788's first hard call, crew#778).
