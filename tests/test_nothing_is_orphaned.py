@@ -28,9 +28,20 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "crew_org"
 EXEMPT = {
     "bridged_sinks": "test-only: asserts model calls are forwarded to a sink",
     "reset_bridge": "test-only: the global bus handler cannot be unregistered",
-    # Stage C of crew#778 builds the session beside delivery: until Stage D's deliver
-    # phase calls it before a workspace's setup, `scripts/run_session.py` does.
-    "unfit": "the session's check before setup; delivery calls it from Stage D (crew#778)",
+    # The one-call Developer, unused since the deliver phase runs sessions (crew#778).
+    # Stage E removes it, with its tests, which reach it through `delivery.developer`.
+    **dict.fromkeys(
+        (
+            "deliver_story",
+            "carried_retirements",
+            "changed_definitions",
+            "ci_evidence_problems",
+            "escalation_prompt",
+            "not_reproduced",
+            "prior_context",
+        ),
+        "the one-call Developer's, kept unused until Stage E removes it (crew#778)",
+    ),
 }
 
 

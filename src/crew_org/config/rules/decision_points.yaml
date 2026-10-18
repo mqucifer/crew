@@ -1600,3 +1600,27 @@ work_types.open_in:filter:5de9924e:
   at: work_types.py:open_in
   if: c.status == status and c.work_type in DELIVERED and (c.state != 'CLOSED') and (r
   rule: decision.phase_cards
+flows.delivery._deliver_and_move:result:blocked:c9e55b6b:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed
+  not_a_rule: counts the move a session's route made, which names its rule (session_end.route)
+flows.delivery._deliver_and_move:result:returned:6fdee389:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed == 'refinement'
+  not_a_rule: counts the return a session's route made, which names its rule (session_end.route)
+flows.session_delivery._sessions:end:48e04cd8:
+  at: flows/session_delivery.py:_sessions
+  if: routed.to != session_end.SESSION
+  not_a_rule: carries where session_end.route sent the story, which names its rule
+flows.session_delivery._land:end:a76f3d63:
+  at: flows/session_delivery.py:_land
+  if: reached.to not in (session_end.REVIEW, session_end.QA)
+  not_a_rule: the route already moved the card and named its rule; only clean-up is left
+flows.session_delivery._land:end:95a1ac18:
+  at: flows/session_delivery.py:_land
+  if: reached.to == session_end.QA
+  rule: decision.delivery.outcome
+flows.session_delivery._record_autofix:end:bb7da915:
+  at: flows/session_delivery.py:_record_autofix
+  if: not (fixed or reverted or unsafe)
+  not_a_rule: 'records what the fixers changed, when they changed anything: no decision'

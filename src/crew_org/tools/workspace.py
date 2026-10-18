@@ -12,6 +12,7 @@ import ast
 import os
 import subprocess
 import textwrap
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -723,7 +724,12 @@ def _shelled(design: Design) -> str | None:
 
 
 def check(
-    worktree: Path, *, sandbox: Sandbox | None = None, timeout: int = DEFAULT_TIMEOUT
+    worktree: Path,
+    *,
+    sandbox: Sandbox | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    held: Any = None,
+    since: str | None = None,
 ) -> CheckResult:
     """Format what a formatter owns, then lint and test what is left.
 
@@ -741,6 +747,11 @@ def check(
 
     Only the dependency step is given a network. Everything after it runs with
     none at all, so generated code cannot reach anything while it executes.
+
+    `held` is a session's workspace container (`tools/container.py`): its setup
+    ran when it started, so the fixers and checks run in it, and nothing else
+    does (crew#778). `since` is the commit the work started from: a session
+    commits its checkpoints, so what it touched is read against that, not HEAD.
     """
     sandbox = sandbox or Sandbox()
     tools = toolchain(worktree)
@@ -751,37 +762,44 @@ def check(
     if tools.image:
         sandbox = replace(sandbox, image=tools.image)
     given: dict[str, Any] = {"timeout": timeout, "env": tools.env}
+
+    def do(command: list[str], network: bool = False) -> CommandResult:
+        if held is None:
+            return run(worktree, command, sandbox=sandbox, network=network, **given)
+        done = held.exec(command, timeout=timeout)
+        return CommandResult(command=done.command, code=done.code, output=done.output)
+
     results = []
-    if tools.setup:
-        results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, **given))
+    if tools.setup and held is None:
+        results.append(do(tools.setup, network=True))
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
     if all(r.ok for r in results):
-        touched = _changed(worktree)
+        touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
         if touched is not None and tools.autofix == AUTOFIX:
             # Before the formatter, which then formats what the fix wrote.
-            unsafe = _unsafe_fixes(worktree, touched, sandbox=sandbox, timeout=timeout)
+            unsafe = _unsafe_fixes(worktree, touched, do)
         for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
-            run(worktree, command, sandbox=sandbox, network=False, **given)
+            do(command)
         if touched is not None:
             fixed = [p for p, text in kept.items() if _read(worktree / p) != text]
             # A fixer runs over the whole project, but the attempt answers for what
             # it changed: a fix elsewhere would land unreviewed in its pull request.
             # Undone, its finding is reported by the checks like any other.
-            reverted = sorted((_changed(worktree) or set()) - touched)
+            reverted = sorted((_changed(worktree, since) or set()) - touched)
             if reverted:
                 _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
-            results.append(run(worktree, command, sandbox=sandbox, network=False, **given))
+            results.append(do(command))
     return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
 
 
 def _unsafe_fixes(
-    worktree: Path, touched: set[str], *, sandbox: Sandbox, timeout: int
+    worktree: Path, touched: set[str], do: Callable[[list[str]], CommandResult]
 ) -> list[str]:
     """Apply the allowed unsafe fixes (`UNSAFE_FIXES`) the project's lint reports.
 
@@ -794,13 +812,7 @@ def _unsafe_fixes(
     files = sorted(p for p in touched if p.endswith(".py") and (worktree / p).is_file())
     if not files:
         return []
-    found = run(
-        worktree,
-        ["uv", "run", "ruff", "check", "--output-format", "json", *files],
-        sandbox=sandbox,
-        network=False,
-        timeout=timeout,
-    )
+    found = do(["uv", "run", "ruff", "check", "--output-format", "json", *files])
     listed = found.output[found.output.find("[") : found.output.rfind("]") + 1]
     try:
         findings = json.loads(listed) if listed else []
@@ -822,21 +834,26 @@ def _unsafe_fixes(
     codes = sorted({a.split()[0] for a in applied})
     paths = sorted({a.split()[1].rsplit(":", 1)[0] for a in applied})
     was = {p: _read(worktree / p) for p in paths}
-    run(
-        worktree,
+    do(
         ["uv", "run", "ruff", "check", "--fix-only", "--unsafe-fixes"]
-        + ["--select", ",".join(codes), *paths],
-        sandbox=sandbox,
-        network=False,
-        timeout=timeout,
+        + ["--select", ",".join(codes), *paths]
     )
     # On the record only where the file did change: a fix that didn't run isn't one.
     changed = {p for p in paths if _read(worktree / p) != was[p]}
     return [a for a in applied if a.split()[1].rsplit(":", 1)[0] in changed]
 
 
-def _changed(worktree: Path) -> set[str] | None:
-    """The files changed or new in the worktree, as git sees it. None outside git."""
+def _changed(worktree: Path, since: str | None = None) -> set[str] | None:
+    """The files changed or new in the worktree, as git sees it. None outside git.
+
+    `since` counts what's committed after that commit as changed too.
+    """
+    if since is not None:
+        diffed = _git(worktree, "diff", "--name-only", "-z", since)
+        new = _git(worktree, "ls-files", "--others", "--exclude-standard", "-z")
+        if diffed is None or new is None:
+            return None
+        return {p for p in (diffed + new).split("\0") if p}
     listed = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     if listed is None:
         return None

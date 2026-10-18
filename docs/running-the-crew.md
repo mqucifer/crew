@@ -88,7 +88,7 @@ flowchart TD
 | refine | Inbox (Goals), Needs Refinement | Product Owner proposes epics; Business Analyst splits approved epics into stories. A project whose design is being revisited has its epics wait, except technical ones. With `refinement.panel` on in `org.yaml` (crew#440; turn it off and epics are split as before), an approved epic under a Goal is first read by the refinement panel and settled into a conclusion in its body (`crew panel`, `crew settle`); the split then reads that conclusion | new issues, cards to Inbox and Ready |
 | design | epics labelled `needs:design` | Architect writes the epic's design note; Code Reviewer checks it (crew#155) | a comment on the epic |
 | admit | Ready | Fills the sprint from approved epics in priority order until capacity | cards to Sprint Backlog |
-| deliver | Merging, then Sprint Backlog | Merges what is approved, then claims and implements the next story | merges, branches, pull requests |
+| deliver | Merging, then Sprint Backlog | Merges what is approved, then claims the next story and runs Developer sessions on it, one at a time, in its workspace container (ADR 0032) | merges, branches, pull requests |
 
 **A failing phase does not end the pass.** Later phases act on the cards they can, and the failure is reported beside what did happen — a tick that aborts on the first error leaves the board partway through a state nobody chose.
 
