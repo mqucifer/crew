@@ -1,7 +1,7 @@
 # 25. The crew makes its own model calls
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first). The Developer's calls become one session: decided and not built (ADR 0032).
+- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first). The Developer's calls become one session (ADR 0032): built as `converse`, and not yet run by delivery.
 
 ## Context
 
@@ -66,7 +66,7 @@ Sponsor, 2026-10-10 (D5 and D6 of the plan).
   hold, or a call pattern the SDK does not provide. The module is the layer a framework
   would wrap, so one adopted later would sit on it, not replace it.
 - **The Developer's calls become one session** (the Sponsor, 2026-10-17 and 2026-10-18,
-  crew#778; ADR 0032). This is decided and not built.
+  crew#778; ADR 0032). Built as `calls.converse`; delivery runs it from Stage D.
   - Its tool calls run until it calls `done` or `blocked`, or a stop ends it. There's
     no round limit and no final answer in a form: `done` is itself a tool call, with a
     short structured statement.
@@ -143,3 +143,7 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   `blocked` or a stop, with its history kept whole (ADR 0032; the Sponsor, on crew#778,
   the context rule on 2026-10-18). Decided, not built: until then, its six rounds and its
   answer form stand.
+- **2026-10-18:** `calls.converse`: one call of a conversation the caller keeps, with tools
+  and no answer form, made and recorded as every call is (crew#778, Stage C,
+  mqucifer/crew#797). The Developer's session makes its calls through it. Until delivery
+  runs the session (Stage D), the Developer's six rounds and its answer form stand.
