@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from crew_org.session.tools import EDITS, Reply
+from crew_org.session.tools import Reply, edited
 
 
 @dataclass(frozen=True)
@@ -63,9 +63,10 @@ def compact(history: list[Any]) -> list[Any]:
         path = str(turn.reply.detail.get("path", ""))
         if turn.name == "view" and turn.reply.kind == "ok":
             latest_view[path] = i
-        elif turn.name in EDITS:
+        else:
             # A changed file's earlier view is stale.
-            latest_view.pop(path, None)
+            for each in edited(turn.name, turn.reply):
+                latest_view.pop(each, None)
     kept |= set(latest_view.values())
     runs = [i for i in turns if history[i].name == "run"]
     if runs:

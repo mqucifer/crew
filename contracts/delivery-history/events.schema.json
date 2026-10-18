@@ -1235,6 +1235,7 @@
                 "replace_definition",
                 "write_file",
                 "run",
+                "git",
                 "done",
                 "blocked",
                 "after_run"

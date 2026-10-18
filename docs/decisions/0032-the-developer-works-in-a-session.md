@@ -37,6 +37,7 @@ The Sponsor, on crew#778: decisions 1 to 9 and 4b on 2026-10-17. Then, on 2026-1
 | `replace_definition(path, name, source)` | Replaces a Python definition or method, by name |
 | `write_file(path, content, overwrite)` | Writes a whole file; an existing one only with `overwrite` |
 | `run(what, tests)` | Runs in the workspace: named tests, the project's whole checks, or the checks' own lint. It's feedback, not a verdict, and its reply leads with the first error |
+| `git(command)` | One real git command line, run by the crew on the host. `status`, `diff`, `log`, `show`, `blame` and `grep` read. `restore --source=<ref> -- <paths>` is an edit: each file as it is at the ref, through the edit tools' own write, or deleted where the ref doesn't have it. The story's base is the ref `base` |
 | `done` | Names the test that proves each criterion, the merged tests changed and why, and the docs updated. It checks first that the tests it names exist: a failure is a reply, and the session writes the test or names the right one. Its description says what the gate returns a branch for |
 | `blocked(missing, kind)` | Says what's missing: a file, a fact the story doesn't give, or a choice no one has made |
 
@@ -46,7 +47,15 @@ Every tool:
 - **replies to an edit with the edited lines, numbered, with 4 lines either side,** and only the lint findings the edit added, from the checks' own lint;
 - **doesn't apply an edit that would stop a Python file parsing** ([the Sponsor, 2026-10-18](https://github.com/mqucifer/crew/issues/778#issuecomment-6245222608)). The reply shows the parse error, the lines as they would have been and the original lines, and the session tries again.
 
-There's no shell, git, commit or network.
+There's no shell, commit or network. The session's git reads history and restores files, and nothing else ([the Sponsor, 2026-10-18](https://github.com/mqucifer/crew/issues/778#issuecomment-6251077522), in [the shape of a real git command line](https://github.com/mqucifer/crew/issues/778#issuecomment-6251088059)). On every call, the crew:
+- **runs it with no shell:** the line is split as a shell would split it, and its words are run;
+- **refuses every other command, and any option before the command,** with the allowed list;
+- **refuses each option that writes, reads outside the repository or runs a program,** with every abbreviation git accepts: `--output`, `--ext-diff`, `--textconv`, `--no-index` and a `diff` path outside the repository, `--show-signature` and `%G` formats, `-O`, grep's `-f` and `--open-files-in-pager`, blame's `--contents`, `--ignore-revs-file` and `-S`, `--pathspec-from-file`, `--help`, the submodule options, and `--git-dir`, `--work-tree` and `--exec-path`;
+- **turns off** hooks, fsmonitor, the pager, signatures, transports, colour, and external diff and text-conversion drivers, and leaves submodules alone;
+- **runs git in an environment built from nothing:** no system, global or environment config, and a home that doesn't exist;
+- **points git at the git directory the clone records for the worktree,** never one inside the worktree, where the session's code could write a config or hooks. The container already sees `.git` read-only (crew#788).
+
+`base` is `refs/base`, which the crew sets to the commit `merged_base` finds before each call. The clone's worktrees share it, which holds while one session runs at a time (P1).
 
 **3. How a session ends.**
 - **`done`:** the gates take over (decisions 5 and 6), then review and QA.
@@ -152,7 +161,7 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 
 | Part | Decided | True now |
 |---|---|---|
-| The session and its tools (1, 2) | Yes, with pass 3's tools | Built in `crew_org/session/` (Stage C, mqucifer/crew#797). The deliver phase runs it for every story (`flows/session_delivery.py`, Stage D) |
+| The session and its tools (1, 2) | Yes, with pass 3's tools, and a git tool that reads and restores (the Sponsor, 2026-10-18) | Built in `crew_org/session/` (Stage C, mqucifer/crew#797). The deliver phase runs it for every story (`flows/session_delivery.py`, Stage D). The git tool is `session/git.py` |
 | How a session ends, and its context (3) | Yes. The ceilings' numbers are for the Sponsor's review here | Built with the session: its endings, the ceilings at 60 and 50, and the replay's masking as its one compaction. The 3-hour backstop is one budget per delivery of a story, shared by its sessions (the operator and the Sponsor, on crew#778) |
 | The start (4) | Yes | Built with the session. Its story section is the card's title and body, with the epic's decided rows and design note, each part measured (the operator, on crew#778) |
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Built (Stage B, mqucifer/crew#796). The deliver phase holds one per story, for its sessions and the gates at `done` |
@@ -206,3 +215,4 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 - **2026-10-18:** Stage E: the one-call Developer, its answer forms, steps and code in blocks, its reading, Claude Code escalation and the Developer's retired rules are deleted (crew#778; the Sponsor's no-fallback decision). A story with no epic, past the round-trip limit, is blocked for a person instead of going round review and rework without end. ADRs 0004, 0005, 0013, 0020, 0023, 0024, 0025, 0026 and 0031 say so.
 - **2026-10-18:** `done` checks that the tests it names exist, and nothing more (the Sponsor, on crew#778). The real run on mqucifer/sprint-metrics#662 found 5 of the 10 tests its `done` named didn't exist, although `done`'s description already asked for a test per criterion. A failure is a reply in the same session, not a failure or an attempt, and it leads with writing the test: on #662 no proving test existed under any name. The gate's own copy of the check goes. Whether a test proves its criterion stays with QA.
 - **2026-10-18:** the backstop is 3 hours, from 2, and the workspace container lives 4 hours, from 3 ([the Sponsor](https://github.com/mqucifer/crew/issues/778#issuecomment-6253145768)). On mqucifer/sprint-metrics#662 the 2 hours stopped a green session about two calls short of `done`, and its work was dropped with the clone's branch. Work that leaves for a rewrite (`blocked`, a stop, or the contract ruling) is now kept on a `crew/kept/` branch with no pull request, and the note links it and says what happened in plain words. Resuming from kept work, and choosing between a resume and a rewrite, come later.
+- **2026-10-18:** the session has git, which reads history and restores files, and nothing else ([the Sponsor](https://github.com/mqucifer/crew/issues/778#issuecomment-6251077522), changing decision 2's "no git"). It's one `git(command)` tool taking a real git command line, the shape the model was trained on ([the Sponsor](https://github.com/mqucifer/crew/issues/778#issuecomment-6251088059)). The crew runs it on the host, with what it adds and refuses on every call in decision 2. `restore` is an edit. The story's base is the ref `base` (mqucifer/crew#808). One live session on mqucifer/sprint-metrics#662 used it twice without being asked, `git log` to orient and `git diff base` before `done`. It reached `done` with the gate green in 4.3 model minutes.

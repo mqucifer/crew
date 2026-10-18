@@ -307,7 +307,7 @@ def _declared_tests(
             f"declared changed in `done`, and the diff doesn't change it. `done` says: {why[entry]}"
         )
     if undeclared:
-        # A session has no git: what it would put back is shown, as merged (#316).
+        # What it would put back is shown, as merged, so it needn't look for it (#316).
         shown = regression.merged_tests_source(list(undeclared), merged)
         verdict.findings.append(
             Finding(

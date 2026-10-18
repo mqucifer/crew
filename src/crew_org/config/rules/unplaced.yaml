@@ -28,6 +28,12 @@ config.const.diagnose.MAX_COMMENT:
 config.const.diagnose.MAX_EVENTS:
 config.const.diagnose.PER_TICK:
 config.const.diagnosis_crew.MAX_FILES:
+config.const.git.OUTPUT_CHARS:
+  origin:
+  - crew#778
+config.const.git.TIMEOUT:
+  origin:
+  - crew#778
 config.const.github_http.ATTEMPTS:
 config.const.github_http.FIRST_BACKOFF:
 config.const.github_http.MAX_WAIT:

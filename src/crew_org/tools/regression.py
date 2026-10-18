@@ -223,9 +223,9 @@ RESTORE_CHAR_CEILING = 20_000
 def merged_tests_source(tests: list[str], merged: Merged | None) -> str:
     """Each of `tests` (`path::name`, a method as `Class.name`) in full, as merged (#316).
 
-    A session has no git, and the merged version is what a changed or removed test is
-    put back to: sprint-metrics#200 was asked to restore code it had never seen,
-    three times. Python only; another language's tests are left out.
+    The merged version is what a changed or removed test is put back to, shown whole so
+    the session needn't look for it: sprint-metrics#200 was asked to restore code it had
+    never seen, three times. Python only; another language's tests are left out.
     """
     if merged is None:
         return ""

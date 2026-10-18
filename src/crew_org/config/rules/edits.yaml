@@ -64,6 +64,22 @@ session.replace_text:
   origin:
   - crew#778
   owner: Developer
+session.restore:
+  description: '`git restore` takes `--source=<ref>` and files, and writes text files in the branch only.'
+  messages:
+    folder: '`{path}` is a folder, at `{ref}` or in your branch: name the files in it.'
+    link: '`{path}` is a symbolic link or a submodule at `{ref}`: the session writes files only.'
+    neither: '`{path}` is neither at `{ref}` nor in your branch.'
+    no_paths: 'Name the files to restore: `git restore --source={ref} -- <paths>`.'
+    no_ref: '`{ref}` isn''t a commit here: {said}'
+    no_source: '`git restore` here takes `--source=<ref>`, such as `--source=base` or `--source=HEAD`,
+      and the files: `git restore --source=base -- <paths>`.'
+    not_text: '`{path}` isn''t text at `{ref}`: the session writes text files only.'
+    option: '`git restore` doesn''t take `{option}` here: it writes the files in your branch, never the
+      index. It takes `--source=<ref>` and the files.'
+  origin:
+  - crew#778
+  owner: Developer
 session.write_file:
   description: '`write_file` rewrites an existing file only when told to overwrite it.'
   messages:
