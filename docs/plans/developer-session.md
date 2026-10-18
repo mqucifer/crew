@@ -37,7 +37,7 @@ The evidence (`var/notes/first-pass-evidence.md`, `var/notes/778-context-selecti
 | P3 | **Commits and recovery** | The crew commits the branch after every green `run` (a checkpoint) and at `done`. A session interrupted by a crash or a stopped tick resumes as a new session from the last checkpoint, told what the previous one's last `done` or `run` said. |
 | P4 | **QA and review** | Unchanged at first: they judge the final diff and the `done` statement. QA gets the session's tools (and may run the tests itself) as a later step, when the Developer's session is proven. |
 | P5 | **The session's records** | Every tool call is an event: tool, path and name where there is one, result kind, sizes, duration, and the rule behind a refusal. Every `run` records its commands, exit codes and first failure. The measures in decision 8 are computed from these. Nothing goes to telemetry beyond counts (ADR 0010). |
-| P6 | **Projects that aren't Python** | `view`, `search`, `replace_text`, `write_file` and `run` work for any language from the start. `find` and `tests_for` are Python first; JavaScript (crew-presentation's replay) follows when a project needs it. |
+| P6 | **Projects that aren't Python** | `find` and `tests_for` are **Python only** to start, and the tools' descriptions say so. For every other language the Developer uses plain `search` (a text search across the repository). `view`, `search`, `replace_text`, `write_file` and `run` work for any language. |
 
 ## Stages
 
