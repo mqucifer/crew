@@ -294,6 +294,28 @@ class Workspace:
         _run(["checkout", "--force", f"origin/{default}"], cwd=self.clone, token=self.token)
         return self.clone
 
+    def at_main(self) -> Path:
+        """A worktree of the default branch as it is now, for refinement's sessions to read.
+
+        One per repository, shared by the tick's refinement steps (the Sponsor, crew#807).
+        A worktree, not the clone: the session's `git` runs on the git directory a
+        worktree's `.git` names (`session.git.git_dir`). Nothing writes to it, and each
+        call puts it back at the default branch's tip.
+        """
+        self._ensure_clone()
+        tip = f"origin/{self._default_branch()}"
+        path = (WORKTREES / f"main__{self.repo}").resolve()
+        _run(["worktree", "prune"], cwd=self.clone)
+        if (path / ".git").is_file():
+            _run(["checkout", "--detach", "--force", tip], cwd=path)
+            _run(["clean", "-fdx", "--quiet"], cwd=path)
+        else:
+            if path.exists():
+                shutil.rmtree(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _run(["worktree", "add", "--detach", str(path), tip], cwd=self.clone)
+        return path
+
     def unfinished_work_on(self, branch: str) -> bool:
         """Does `origin/<branch>` hold work that `origin/HEAD` does not?
 

@@ -47,6 +47,11 @@ ROLE = "developer"
 BACKSTOP_S = 3 * 60 * 60
 QUIET_LIMIT = 3
 QUIET = "Call a tool to go on, or `done` or `blocked`."
+# What a refusal of `done` by its own checks begins with.
+REFUSED_DONE = (
+    "`done` checked your branch, and the session goes on. Answer each of these, then call "
+    "`done` again."
+)
 # A prompt this size or larger is compacted first, once (the Sponsor's 125k): the window
 # is 262,144 tokens, about 196k once 65,536 of output is kept. Pass 3's largest was 115k.
 COMPACT_AT = 125_000
@@ -95,6 +100,15 @@ class Session:
     check_done: Callable[[dict[str, Any]], list[Any]] | None = None
     backstop_s: float = BACKSTOP_S
     compact_at: int = COMPACT_AT
+    # Who the session is and what it may call: the Developer's, unless a refinement
+    # step's session says its own (crew#807). `name` is that step, on each event.
+    role: str = ROLE
+    step: str | None = None
+    name: str = ""
+    specs: list[dict[str, Any]] = field(default_factory=lambda: SPECS)
+    endings: tuple[str, ...] = ENDINGS
+    quiet: str = QUIET
+    refused_done: str = REFUSED_DONE
     model_s: float = 0.0
     calls: int = 0
     usage: Counter[str] = field(default_factory=Counter)
@@ -120,7 +134,14 @@ class Session:
                 break
             sent = self._messages()
             try:
-                answered = converse(ROLE, sent, SPECS, send=self.send, turn=self.calls + 1)
+                answered = converse(
+                    self.role,
+                    sent,
+                    self.specs,
+                    step=self.step,
+                    send=self.send,
+                    turn=self.calls + 1,
+                )
             except Exception as exc:  # noqa: BLE001 - a failed call interrupts, never blames
                 ending = Ending(
                     "interrupted",
@@ -153,7 +174,7 @@ class Session:
                 record(
                     EventKind.SESSION_COMPACTED,
                     f"compacted before call {self.calls + 1}: {masked} replies masked",
-                    role=_role(),
+                    **self._who(),
                     chars_after=_chars(sent),
                     **self.compacted,
                 )
@@ -178,7 +199,7 @@ class Session:
                     f"{QUIET_LIMIT} replies in a row called no tool",
                     {"replies": list(self._quiet)},
                 )
-            self.history.append({"role": "user", "content": QUIET})
+            self.history.append({"role": "user", "content": self.quiet})
             return None
         self._quiet = []
         self.history.append({"role": "assistant", "content": content, "tool_calls": made})
@@ -197,11 +218,11 @@ class Session:
             if not isinstance(args, dict):
                 self._trouble("malformed", answered.usage, tool=name)
             began = time.monotonic()
-            if name in ENDINGS and ending is None:
+            if name in self.endings and ending is None:
                 try:
-                    check_arguments(name, args)
+                    check_arguments(name, args, self._accepted)
                     statement = dict(args)
-                    if name == "done":
+                    if name == "done" and "changed_tests" in self._accepted[name]["properties"]:
                         statement.setdefault("changed_tests", [])
                     refused = self._refused_done(statement) if name == "done" else None
                     if refused is not None:
@@ -270,7 +291,7 @@ class Session:
             record(
                 EventKind.TOOL_FAILED,
                 f"done's own checks: {said_why}",
-                role=_role(),
+                **self._who(),
                 tool="check_done",
                 turn=self.calls,
                 error=said_why,
@@ -279,8 +300,7 @@ class Session:
         if not findings:
             return None
         return Reply(
-            "`done` checked your branch, and the session goes on. Answer each of these, "
-            "then call `done` again.\n\n"
+            f"{self.refused_done}\n\n"
             + "\n\n".join(f"{i}. {f.says.strip()}" for i, f in enumerate(findings, 1)),
             "refused",
             f"done: refused by its own checks ({len(findings)})",
@@ -301,13 +321,25 @@ class Session:
             record(
                 EventKind.TOOL_FAILED,
                 f"after a run: {said}",
-                role=_role(),
+                **self._who(),
                 tool="after_run",
                 turn=self.calls,
                 error=said,
             )
 
+    @property
+    def _accepted(self) -> dict[str, Any]:
+        """What each of this session's tools takes."""
+        return {s["function"]["name"]: s["function"]["parameters"] for s in self.specs}
+
     # --- the records --------------------------------------------------------------------
+    def _named(self) -> dict[str, Any]:
+        """The refinement step a session is, for its events (crew#807)."""
+        return {"step": self.name} if self.name else {}
+
+    def _who(self) -> dict[str, Any]:
+        return {"role": _role(self.role, self.step), **self._named()}
+
     def _tool(self, name: str, args: Any, raw: str, reply: Reply, seconds: float) -> None:
         """One tool call as an event: names and sizes, with what a run ran and how it went."""
         detail: dict[str, Any] = {
@@ -338,14 +370,14 @@ class Session:
                     "ran_s": run["seconds"],
                 }
             )
-        record(EventKind.TOOL_FINISHED, reply.summary, role=_role(), **detail)
+        record(EventKind.TOOL_FINISHED, reply.summary, **self._who(), **detail)
 
     def _turn(self, replies: list[tuple[str, Reply]], usage: dict[str, int]) -> None:
         seen = self.watch.after(replies, usage)
         record(
             EventKind.SESSION_TURN,
             f"call {self.calls}: {len(replies)} tool calls",
-            role=_role(),
+            **self._who(),
             turn=self.calls,
             tool_calls=len(replies),
             model_s=round(self.model_s, 1),
@@ -401,11 +433,11 @@ class Session:
         record(
             EventKind.SESSION_ENDED,
             f"{ending.how}{f' ({ending.stop or ending.why})' if ending.stop or ending.why else ''}",
-            role=_role(),
+            **self._who(),
             how=ending.how,
             stop=ending.stop,
             why=ending.why,
-            said=ending.said,
+            said=ending.said if not self.name else shape(ending.said),
             evidence=ending.evidence,
             model_calls=self.calls,
             model_s=round(self.model_s, 1),
@@ -483,8 +515,20 @@ def unfit(worktree: Path) -> str | None:
     return None
 
 
-def _role() -> str:
-    return str(role_spec(ROLE)["role"])
+def shape(said: Any) -> Any:
+    """A refinement step's answer by its fields' names and sizes: a list's length, a
+    text's characters. Its words stay out of the log, as a story's do (ADR 0010)."""
+    if isinstance(said, dict):
+        return {k: shape(v) for k, v in said.items()}
+    if isinstance(said, list):
+        return len(said)
+    if isinstance(said, str):
+        return len(said)
+    return said
+
+
+def _role(key: str = ROLE, step: str | None = None) -> str:
+    return str(role_spec(key, step)["role"])
 
 
 def _chars(messages: list[dict[str, Any]]) -> int:

@@ -117,6 +117,8 @@ session.git:
     not_allowed: '`git {command}` isn''t run here: the session''s git reads and restores, and the crew
       commits. It runs {allowed}.'
     option: '`{option}` isn''t taken: it {why}. Nothing was run.'
+    read_only: '`git {command}` isn''t run here: this step reads, and changes nothing. It runs
+      {allowed}.'
     shell: 'There''s no shell: {operators} would be a shell''s. Run one git command; its whole output
       comes back.'
     unparsed: 'The command line can''t be split into words: {error}.'

@@ -63,6 +63,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Rule
+from crew_org.session.steps import NoCheckout, Reading
 from crew_org.tools import repo_context
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
@@ -1274,6 +1275,35 @@ class RepoContext:
         self._ws = ws
         self._sink = sink
         self._cache: dict[str, str] = {}
+        self._reading: dict[str, Reading | None] = {}
+
+    def reading_for(self, repo: str) -> Reading | None:
+        """The checkout refinement's sessions read, made once per tick (crew#807): the
+        default branch's tip, with its coverage map when there is one. None, said why,
+        when it can't be made: a step then fails, as one with no model would."""
+        if self._ws is None:
+            return None
+        if repo not in self._reading:
+            from crew_org.tools.coverage_map import build  # noqa: PLC0415
+
+            try:
+                root = self._ws.for_repo(repo).at_main()
+            except Exception as exc:  # noqa: BLE001 - said, and the steps fail with it
+                self._sink.note(EventKind.NOTE, f"{repo}: no checkout to read: {exc}"[:160])
+                self._reading[repo] = None
+                return None
+            try:
+                coverage = build(root, repo)
+            except Exception as exc:  # noqa: BLE001 - `tests_for` says there's no map
+                reraise_if_down(exc)
+                self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:160])
+                coverage = None
+            try:
+                self._reading[repo] = Reading.at(root, repo, coverage)
+            except NoCheckout as exc:
+                self._sink.note(EventKind.NOTE, f"{repo}: {exc}"[:160])
+                self._reading[repo] = None
+        return self._reading[repo]
 
     def for_repo(self, repo: str) -> str:
         if self._ws is None:

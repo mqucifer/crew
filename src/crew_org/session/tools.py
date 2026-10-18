@@ -298,11 +298,15 @@ class Missing(Refusal):
     """A lookup refused for what isn't there: a file, a folder, a definition, a map."""
 
 
-def check_arguments(name: str, args: Any) -> None:
-    """Refuse a call whose arguments aren't an object, or that the tool doesn't take."""
-    spec = ACCEPTED.get(name)
+def check_arguments(name: str, args: Any, accepted: dict[str, Any] | None = None) -> None:
+    """Refuse a call whose arguments aren't an object, or that the tool doesn't take.
+
+    `accepted` is what each of the session's tools takes, the Developer's by default.
+    """
+    accepted = ACCEPTED if accepted is None else accepted
+    spec = accepted.get(name)
     if spec is None:
-        refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
+        refuse("session.arguments", "no_tool", tool=name, tools=", ".join(accepted))
     if not isinstance(args, dict):
         refuse("session.arguments", "not_an_object", tool=name)
     takes = ", ".join(f"`{a}`" for a in spec["properties"])
@@ -384,6 +388,8 @@ class Tools:
         # An edit that stops a Python file parsing isn't applied: the Sponsor's decision
         # on crew#778 (SWE-agent's measured guardrail). Off only to compare.
         self.parse_guard = parse_guard
+        # Whether a search with no path searches the notes too (crew#807).
+        self.search_notes = False
         self.edited: list[str] = []
         self.read: list[str] = []
         self.runs: list[dict[str, Any]] = []
@@ -543,23 +549,37 @@ class Tools:
     def search(self, pattern: str, path: str | None = None) -> Reply:
         if not pattern:
             refuse("session.search", "empty")
+        note = path.strip() if path and path.strip() in self.notes else ""
         under = ""
-        if path:
+        if path and not note:
             target, under = self._path(path)
             if not target.exists():
                 refuse("session.search", "no_path", kind=Missing, path=path)
-        files = self._files(under)
+        files = [] if note else self._files(under)
+        # The notes the start names: one that `path` names, or all of them in a session
+        # that searches its notes with the repository, as a refinement step does (crew#807).
+        notes = (
+            {note: self.notes[note]}
+            if note
+            else self.notes
+            if self.search_notes and not under
+            else {}
+        )
+
+        def grep(match: Any) -> list[tuple[str, int, str]]:
+            return self._grep(files, match) + _grep_notes(notes, match)
+
         how = "as a pattern"
         try:
-            hits = self._grep(files, re.compile(pattern).search)
+            hits = grep(re.compile(pattern).search)
             if not hits:
-                plain = self._grep(files, lambda line: pattern in line)
+                plain = grep(lambda line: pattern in line)
                 if plain:
                     hits, how = plain, "as plain text (as a pattern it found nothing)"
         except re.error:
-            hits = self._grep(files, lambda line: pattern in line)
+            hits = grep(lambda line: pattern in line)
             how = "as plain text (it isn't a valid pattern)"
-        where = f" in `{under}`" if under else ""
+        where = f" in `{under or note}`" if under or note else ""
         head = f"{len(hits)} lines{where} match `{pattern}`, {how}"
         if len(hits) <= SEARCH_HITS:
             body: list[str] = []
@@ -992,6 +1012,16 @@ class Tools:
             return Reply(
                 f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"
             )
+
+
+def _grep_notes(notes: dict[str, str], match: Any) -> list[tuple[str, int, str]]:
+    """`_grep`'s hits, in the notes a start names, by their names."""
+    return [
+        (name, n, line.strip()[:200])
+        for name, text in notes.items()
+        for n, line in enumerate(text.splitlines(), 1)
+        if match(line)
+    ]
 
 
 def _parses(source: str) -> bool:

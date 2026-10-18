@@ -16,23 +16,34 @@ loop, its tools and its records are the Developer's (`conversation`, `tools`).
 from __future__ import annotations
 
 import copy
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from crew_org import rulebook
 from crew_org.calls import role_spec
+from crew_org.cut_text import check_not_cut_at_a_quote
+from crew_org.events import EventKind, record
 from crew_org.project import RECORD_PATH, ProjectRecordError, brief, read_record
+from crew_org.session import signals
+from crew_org.session.conversation import COMPACT_AT, QUIET_LIMIT, Ending, Session
 from crew_org.session.git import OUTPUT_CHARS
+from crew_org.session.reading import ReadTools
 from crew_org.session.signals import READING_CALLS
 from crew_org.session.start import hints, project_map
 from crew_org.session.tools import SPECS, VIEW_LINES, _spec
 
-# One step's model time, start high (the Sponsor, crew#778): about three times the
+# One step's model time, set high to start (the Sponsor, crew#807): about three times the
 # longest refinement step the log holds, a split's 43 minutes on 2026-10-15.
 BACKSTOP_S = 2 * 60 * 60
+QUIET = "Call a tool to go on, or `done` with your answer."
+REFUSED_DONE = (
+    "`done` was refused, and the session goes on. Fix each of these, then call `done` again."
+)
 NOTES = "@notes/"
 DELIVERED_NOTE = f"{NOTES}delivered.md"
 
@@ -258,3 +269,160 @@ def start(
     sizes = {k: len(v) for k, v in whole.items()}
     sizes["total"] = sum(sizes.values())
     return Start("\n\n".join(whole.values()), sizes, dict(notes or {}))
+
+
+@dataclass(frozen=True)
+class Reading:
+    """What a step reads: one checkout of the default branch, which a tick's refinement
+    steps share (the Sponsor, crew#807), at `head`, and its coverage map, or None."""
+
+    root: Path
+    repo: str
+    head: str
+    coverage: Any = None
+
+    @classmethod
+    def at(cls, root: Path, repo: str, coverage: Any = None) -> Reading:
+        found = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
+        )
+        if found.returncode != 0:
+            raise NoCheckout(f"{root} has no commit to read: {found.stderr.strip()[:200]}")
+        return cls(root, repo, found.stdout.strip(), coverage)
+
+
+class NoCheckout(RuntimeError):
+    """There's no checkout of the project for a step to read: it can't be worked."""
+
+
+@dataclass(frozen=True)
+class Step:
+    """One refinement step as a session: who works it, its answer form, and what its
+    hints are picked from, as they say it ("the epic")."""
+
+    name: str
+    role: str
+    form: type[BaseModel]
+    said: str
+    named_in: str
+    step: str | None = None
+    without: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Finding:
+    """One thing `done`'s checks refused, by its rule when a declared one refused it."""
+
+    rule: str
+    says: str
+
+
+class StepStopped(RuntimeError):
+    """A step's session ended without its answer: a stop, or replies that called no tool.
+
+    Its caller handles it as a call refused every time: the member failed, the settle
+    or split failed, the design questions go to a person.
+    """
+
+    def __init__(self, step: str, ending: Ending) -> None:
+        missing = str(ending.said.get("missing") or ending.why or ending.how)
+        super().__init__(f"{step}'s session stopped ({ending.stop or ending.why}): {missing}")
+        self.ending = ending
+
+
+def own_checks(
+    form: type[BaseModel], check: Callable[[Any], None] | None = None
+) -> Callable[[dict[str, Any]], list[Finding]]:
+    """`done`'s checks for a step: its form, then the step's own rules on the answer.
+
+    What a one-call step was refused for and asked again (ADR 0025) is a reply in the
+    session instead, and the session goes on to answer it (ADR 0032, decision 5).
+    """
+
+    def checked(said: dict[str, Any]) -> list[Finding]:
+        try:
+            found = form.model_validate(said)
+            check_not_cut_at_a_quote(found)
+            if check is not None:
+                check(found)
+        except ValidationError as exc:
+            return [_finding(e) for e in exc.errors()[:10]]
+        except ValueError as exc:
+            return [Finding(str(getattr(exc, "rule", "")), str(exc))]
+        return []
+
+    return checked
+
+
+def _finding(error: Any) -> Finding:
+    where = ".".join(str(p) for p in error["loc"]) or "the answer"
+    refused = (error.get("ctx") or {}).get("error")
+    return Finding(
+        refused.rule if isinstance(refused, rulebook.Refusal) else "", f"{where}: {error['msg']}"
+    )
+
+
+def run(
+    step: Step,
+    parts: dict[str, str],
+    reading: Reading | None,
+    *,
+    about: str,
+    check: Callable[[Any], None] | None = None,
+    notes: dict[str, str] | None = None,
+    send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> Any:
+    """The step's answer, from a session over `reading`, or `StepStopped`.
+
+    A model call that fails is raised as it was, for the caller to handle as it handles
+    any (a server that's down). With no checkout to read, the step can't be worked.
+    """
+    if reading is None:
+        raise NoCheckout(f"{step.name}: there's no checkout of the project to read")
+    begun = start(
+        parts,
+        reading.root,
+        repo=reading.repo,
+        head=reading.head,
+        about=about,
+        named_in=step.named_in,
+        coverage=reading.coverage,
+        notes=notes,
+    )
+    who = str(role_spec(step.role, step.step)["role"])
+    record(
+        EventKind.SESSION_STARTED,
+        f"{step.name}: {begun.sizes['total']} characters to start",
+        role=who,
+        step=step.name,
+        start_chars=begun.sizes,
+        head=reading.head,
+        limits={
+            "backstop_s": BACKSTOP_S,
+            "compact_at": COMPACT_AT,
+            "reading_calls": signals.READING_CALLS,
+            "views_of_one_file": signals.VIEWS_OF_ONE_FILE,
+            "quiet_limit": QUIET_LIMIT,
+        },
+    )
+    session = Session(
+        ReadTools(reading.root, reading.coverage, begun.notes),
+        system_text(step.role, step.step),
+        begun.text,
+        send=send,
+        check_done=own_checks(step.form, check),
+        backstop_s=BACKSTOP_S,
+        role=step.role,
+        step=step.step,
+        name=step.name,
+        specs=[*reading_specs(reading.head), done_spec(step.form, step.said, without=step.without)],
+        endings=("done",),
+        quiet=QUIET,
+        refused_done=REFUSED_DONE,
+    )
+    ending = session.run()
+    if ending.how == "done":
+        return step.form.model_validate(ending.said)
+    if ending.error is not None:
+        raise ending.error
+    raise StepStopped(step.name, ending)
