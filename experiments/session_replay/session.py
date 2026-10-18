@@ -49,8 +49,16 @@ class Session:
     calls: int = 0
     used: dict[str, int] = field(default_factory=dict)
     ending: dict[str, Any] = field(default_factory=dict)
+    # How older tool output is kept: "cut", each reply shrinks to its line once a newer
+    # one of its kind arrives (pass 1); or "whole", every reply stays whole and the
+    # conversation is compacted once, all at once, if a prompt reaches `compact_at`
+    # tokens (pass 2: a cut rewrites the prefix SGLang has cached).
+    context: str = "cut"
+    compact_at: int = 100_000
+    compacted: dict[str, Any] = field(default_factory=dict)
     _history: list[Any] = field(default_factory=list)  # assistant messages and Turns
     _latest: set[str] = field(default_factory=set)  # the newest turn's call ids
+    _frozen: set[int] = field(default_factory=set)  # turns cut by the one compaction
 
     def _body(self) -> dict[str, Any]:
         spec = role_spec("developer")
@@ -64,7 +72,41 @@ class Session:
         }
 
     def messages(self) -> list[dict[str, Any]]:
-        """The conversation as it's sent, older tool output cut to its line."""
+        """The conversation as it's sent, older tool output cut by the context rule."""
+        if self.context == "whole":
+            return self._sent(lambda i: i not in self._frozen)
+        kept = self._kept()
+        return self._sent(lambda i: i in kept)
+
+    def _sent(self, whole: Callable[[int], bool]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = [
+            {"role": "system", "content": self.system},
+            {"role": "user", "content": self.start},
+        ]
+        index = 0
+        for item in self._history:
+            if isinstance(item, Turn):
+                text = item.reply.text if whole(index) else f"(older) {item.reply.summary}"
+                out.append({"role": "tool", "tool_call_id": item.call_id, "content": text})
+                index += 1
+            else:
+                out.append(item)
+        return out
+
+    def _compact(self, prompt_tokens: int) -> None:
+        """Once, all at once: every reply the cut rule wouldn't keep shrinks to its line."""
+        kept = self._kept()
+        turns = sum(isinstance(t, Turn) for t in self._history)
+        self._frozen = set(range(turns)) - kept
+        self.compacted = {
+            "call": self.calls,
+            "prompt_tokens": prompt_tokens,
+            "cut": len(self._frozen),
+        }
+        self.log({"compacted": self.compacted})
+
+    def _kept(self) -> set[int]:
+        """The replies the cut rule keeps whole: each file's latest view, the latest run."""
         turns = [t for t in self._history if isinstance(t, Turn)]
         kept: set[int] = set()
         latest_view: dict[str, int] = {}
@@ -81,19 +123,7 @@ class Session:
         # The latest turn's replies are whole: the model hasn't seen them yet.
         last = [i for i, t in enumerate(turns) if t.call_id in self._latest]
         kept |= set(last)
-        out: list[dict[str, Any]] = [
-            {"role": "system", "content": self.system},
-            {"role": "user", "content": self.start},
-        ]
-        index = 0
-        for item in self._history:
-            if isinstance(item, Turn):
-                text = item.reply.text if index in kept else f"(older) {item.reply.summary}"
-                out.append({"role": "tool", "tool_call_id": item.call_id, "content": text})
-                index += 1
-            else:
-                out.append(item)
-        return out
+        return kept
 
     def run(self) -> dict[str, Any]:
         sender = self.send or (lambda body: post(body, timeout=3600))
@@ -115,6 +145,12 @@ class Session:
             usage = _usage(data)
             for k, v in usage.items():
                 self.usage[k] = self.usage.get(k, 0) + v
+            if (
+                self.context == "whole"
+                and not self.compacted
+                and usage.get("prompt_tokens", 0) >= self.compact_at
+            ):
+                self._compact(usage["prompt_tokens"])
             choice = (data.get("choices") or [{}])[0]
             message = choice.get("message") or {}
             made = message.get("tool_calls") or []
