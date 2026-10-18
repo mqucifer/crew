@@ -312,3 +312,59 @@ def test_a_forgotten_checkpoint_isn_t_resumed(monkeypatch, tmp_path):
     tree = ws.open(branch)
     assert not (tree / "work.py").exists() and not ws.resumed
     ws.close()
+
+
+# --- the token stays out of argv (crew#778) ------------------------------------------
+
+TOKEN = "ghs_not-a-real-token-0123456789"
+
+
+def test_no_git_call_carries_the_token_in_its_argv(monkeypatch, tmp_path):
+    """`ps` shows every user each process's argv: the token goes to git in its environment."""
+    import subprocess
+
+    from crew_org import git_ops
+
+    ws = _real_workspace(monkeypatch, tmp_path)
+    ws._token = TOKEN
+    calls: list[tuple[list[str], dict[str, str]]] = []
+    real = subprocess.run
+
+    def recording(args, **kw):
+        calls.append((list(args), dict(kw.get("env") or {})))
+        return real(args, **kw)
+
+    monkeypatch.setattr(git_ops.subprocess, "run", recording)
+    ws.current()
+    tree = ws.open("feat/1-a-story")
+    (tree / "work.py").write_text("done = True\n")
+    ws.commit("checkpoint(1): run tests passed")
+    ws.push(force=True)
+    (tree / "more.py").write_text("more = True\n")
+    assert ws.keep("crew/kept/1-20261018-1900", base="origin/HEAD", message="stopped(1): edits")
+    git_ops._run(["ls-remote", str(tmp_path / "origin.git")], token=TOKEN)
+    ws.close()
+
+    header = git_ops._auth_header(TOKEN)
+    assert calls
+    for argv, _ in calls:
+        said = " ".join(argv)
+        assert TOKEN not in said and header.split()[-1] not in said, argv
+    networked = [env for argv, env in calls if {"fetch", "push", "ls-remote"} & set(argv)]
+    assert len(networked) >= 4 and all(header in env.values() for env in networked)
+
+
+def test_git_reads_the_token_from_its_environment_after_any_config_already_there(
+    monkeypatch, tmp_path
+):
+    """On whatever git runs it: `GIT_CONFIG_COUNT` needs 2.31 or later."""
+    from crew_org import git_ops
+
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.name")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "someone")
+    run = git_ops._run
+    assert run(["config", "--get", "http.extraheader"], cwd=tmp_path, token=TOKEN) == (
+        git_ops._auth_header(TOKEN)
+    )
+    assert run(["config", "--get", "user.name"], cwd=tmp_path, token=TOKEN) == "someone"

@@ -168,29 +168,39 @@ def _auth_header(token: str) -> str:
     return f"Authorization: Basic {encoded}"
 
 
-def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) -> str:
-    """Run git, with credentials supplied per-command.
+def _auth_env(token: str) -> dict[str, str]:
+    """The token as git config in git's environment: `http.extraheader`, after any set.
 
-    The token is passed with -c http.extraheader rather than embedded in the
-    remote URL, so it is never written into .git/config where it would outlive
-    its hour and end up in a backup.
+    Not in argv, where `ps` shows it to every user of the machine (crew#778): a
+    process's environment is readable only by its own user and root. Not in the
+    remote URL either, where it would be written into .git/config and outlive its
+    hour in a backup. And not through a credential helper: git on a Mac names
+    osxkeychain in its own config, and a successful push would store the token there.
+    `GIT_CONFIG_COUNT` needs git 2.31 or later.
     """
     import os  # noqa: PLC0415
 
-    command = ["git"]
-    if token:
-        command += ["-c", f"http.extraheader={_auth_header(token)}"]
-    command += args
+    n = int(os.environ.get("GIT_CONFIG_COUNT") or 0)
+    return {
+        "GIT_CONFIG_COUNT": str(n + 1),
+        f"GIT_CONFIG_KEY_{n}": "http.extraheader",
+        f"GIT_CONFIG_VALUE_{n}": _auth_header(token),
+    }
+
+
+def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) -> str:
+    """Run git, with credentials supplied per-command, in its environment (`_auth_env`)."""
+    import os  # noqa: PLC0415
 
     result = subprocess.run(
-        command,
+        ["git", *args],
         cwd=cwd,
         capture_output=True,
         text=True,
-        env={**os.environ, **NO_PROMPT},
+        env={**os.environ, **NO_PROMPT, **(_auth_env(token) if token else {})},
     )
     if result.returncode != 0:
-        # Never echo the command: it carries the credential.
+        # git's own words only: never the environment, which carries the credential.
         raise GitError(f"git {args[0]} failed: {result.stderr.strip()[:300]}")
     return result.stdout.strip()
 
