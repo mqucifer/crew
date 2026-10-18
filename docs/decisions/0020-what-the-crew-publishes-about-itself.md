@@ -65,7 +65,7 @@ answer, review text or its reasoning; a secret.
 - 2026-10-07: The context names the `delivery-history` package, released on the crew's
   repository, in place of snapshot pull requests (crew#521).
 - 2026-10-18: Retired reasons are kept. Deleting the one-call Developer (crew#778,
-  Stage E) removed 842 of the templates its past refusals were matched against, so
+  Stage E) removed 866 of the templates its past refusals were matched against, so
   their reasons would have been withheld on the next push. The templates removed from
   the code are kept in `packages/retired_reasons.json`, generated from main before the
   deletion; a reason from neither the code nor that list is still left out (the

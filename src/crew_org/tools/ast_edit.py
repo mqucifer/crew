@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from enum import StrEnum
 
 from crew_org.rulebook import Refusal, refuse
 
@@ -35,14 +34,10 @@ class EditError(Refusal):
     """An edit that cannot be applied, described so the model can fix it."""
 
 
-class Operation(StrEnum):
-    REPLACE = "replace"
-    """Replace an existing top-level definition or method, by name."""
-
-
 @dataclass(frozen=True)
 class Edit:
-    operation: Operation
+    """Replace an existing top-level definition or method, by name."""
+
     target: str
     source: str = ""
 

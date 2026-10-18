@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.tools.ast_edit import Edit, Operation, apply_edit, definitions
+from crew_org.tools.ast_edit import Edit, apply_edit, definitions
 from crew_org.tools.regression import (
     describe_contracts,
     draft_breaks,
@@ -139,7 +139,7 @@ def change(root: Path, ed: Ed) -> None:
     path = root / ed.path
     text = path.read_text() if path.exists() else ""
     if ed.operation == "replace":
-        text = apply_edit(text, Edit(Operation.REPLACE, ed.target, ed.source))
+        text = apply_edit(text, Edit(ed.target, ed.source))
     elif ed.operation == "delete":
         node = definitions(text)[ed.target]
         start = min([node.lineno, *(d.lineno for d in getattr(node, "decorator_list", []))])

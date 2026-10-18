@@ -15,7 +15,6 @@ import pytest
 from crew_org.tools.ast_edit import (
     Edit,
     EditError,
-    Operation,
     apply_edit,
 )
 
@@ -55,9 +54,7 @@ def parses(source: str) -> bool:
 
 
 def test_replacing_a_function_leaves_everything_else_alone():
-    out = apply_edit(
-        SOURCE, Edit(Operation.REPLACE, "existing", "def existing(cards):\n    return 0")
-    )
+    out = apply_edit(SOURCE, Edit("existing", "def existing(cards):\n    return 0"))
     assert "return 0" in out
     assert "class Card" in out and "VERSION = 1" in out
     assert parses(out)
@@ -65,19 +62,19 @@ def test_replacing_a_function_leaves_everything_else_alone():
 
 def test_replacing_something_that_does_not_exist_says_what_does():
     with pytest.raises(EditError, match="no definition named"):
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "absent", "def absent():\n    pass"))
+        apply_edit(SOURCE, Edit("absent", "def absent():\n    pass"))
 
 
 def test_the_error_lists_the_available_names():
     with pytest.raises(EditError) as exc:
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "absent", "x = 1"))
+        apply_edit(SOURCE, Edit("absent", "x = 1"))
     assert "existing" in str(exc.value)
 
 
 def test_replacing_with_nothing_is_refused():
     """Silently emptying a definition is how code disappears."""
     with pytest.raises(EditError, match="use `replace_text`"):
-        apply_edit(SOURCE, Edit(Operation.REPLACE, "existing", "   \n"))
+        apply_edit(SOURCE, Edit("existing", "   \n"))
 
 
 # --- add -----------------------------------------------------------------
@@ -107,9 +104,7 @@ def calculate_flags(cards):
 def test_an_annotated_constant_can_be_replaced_by_name():
 
     source = 'DEFAULT_THRESHOLDS: dict[str, float] = {"cycle_time": 3.0}'
-    after = apply_edit(
-        ANNOTATED, Edit(operation=Operation.REPLACE, target="DEFAULT_THRESHOLDS", source=source)
-    )
+    after = apply_edit(ANNOTATED, Edit(target="DEFAULT_THRESHOLDS", source=source))
     assert '{"cycle_time": 3.0}' in after and '"cycle_time": 5.0' not in after
 
 

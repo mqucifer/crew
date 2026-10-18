@@ -31,7 +31,7 @@ from typing import Any, NoReturn
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
 from crew_org.rulebook import Refusal, refuse
 from crew_org.session.container import GONE, Gone, Workspace
-from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edit, definitions
+from crew_org.tools.ast_edit import Edit, EditError, apply_edit, definitions
 
 # Never read or written: the crew's own folders and what tools make.
 SKIPPED = {
@@ -736,7 +736,7 @@ class Tools:
             refuse("session.replace_definition", "not_python", path=rel)
         before = self._text(target, path)
         try:
-            changed = apply_edit(before, Edit(Operation.REPLACE, name, source))
+            changed = apply_edit(before, Edit(name, source))
         except EditError as exc:
             # The edit's own rule, with what the file defines.
             names = ", ".join(list(definitions(before))[:40])
