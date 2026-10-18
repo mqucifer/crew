@@ -6,7 +6,7 @@ is stopped. A stop ends it as `blocked`, with the session's evidence, for the Bu
 Analyst (decision 9):
 
 - `no_progress`: the same first error in the same test after 3 runs with edits between;
-- `backstop`: 2 hours of model time;
+- `backstop`: 3 hours of model time, one budget for a delivery's sessions;
 - `ceiling` (`signals`): 60 calls with no edit and no run, or 50 views of one file with
   no edit between;
 - `no_tool_call`: 3 replies in a row that call no tool. Each gets one line back, since
@@ -42,12 +42,16 @@ from crew_org.session.start import start, system_text
 from crew_org.session.tools import ENDINGS, SPECS, Reply, Tools, check_arguments, target_of
 
 ROLE = "developer"
-BACKSTOP_S = 2 * 60 * 60
+# One delivery's model time, shared by its sessions: the Sponsor's 3 hours, from 2, after
+# sprint-metrics#662's stop (crew#778, 2026-10-18).
+BACKSTOP_S = 3 * 60 * 60
 QUIET_LIMIT = 3
 QUIET = "Call a tool to go on, or `done` or `blocked`."
 # A prompt this size or larger is compacted first, once (the Sponsor's 125k): the window
 # is 262,144 tokens, about 196k once 65,536 of output is kept. Pass 3's largest was 115k.
 COMPACT_AT = 125_000
+# How much of the session's last text its return note quotes (crew#778).
+LAST_WORDS = 600
 
 
 @dataclass
@@ -63,7 +67,9 @@ class Ending:
       error's text, and `error` the exception, for the caller to handle as it handles
       any (a server that's down).
 
-    `evidence`, on each: the last failure, what it tried, and the signals.
+    `evidence`, on each: the last run and the last failure, what it tried, the signals,
+    and its last words, the last text it wrote, for the return note only: the package
+    and telemetry leave them out.
     """
 
     how: str  # "done", "blocked" or "interrupted"
@@ -357,10 +363,15 @@ class Session:
         return Ending("blocked", said, stop, evidence=self._evidence(seen))
 
     def _evidence(self, stop: dict[str, Any] | None = None) -> dict[str, Any]:
-        """The last failure, what the session tried, and its signals; and what stopped it."""
+        """The last run and failure, what the session tried, its signals and its last
+        words; and what stopped it."""
         runs = self.tools.runs
+        last = runs[-1] if runs else None
         return {
-            "last_failure": runs[-1] if runs and not runs[-1]["ok"] else None,
+            "last_run": (
+                {k: last[k] for k in ("what", "ok", "first_error", "failing")} if last else None
+            ),
+            "last_failure": last if last and not last["ok"] else None,
             "tried": {
                 "runs": len(runs),
                 "files_read": sorted({r.split(":", 1)[0] for r in self.tools.read}),
@@ -368,8 +379,23 @@ class Session:
                 "tools_used": dict(self.used),
             },
             "signals": self.watch.now(),
+            "last_words": self._last_words(),
             **({"stop": stop} if stop else {}),
         }
+
+    def _last_words(self) -> str:
+        """The last text the session wrote, its end kept when it's long."""
+        said = next(
+            (
+                str(m.get("content") or "").strip()
+                for m in reversed(self.history)
+                if isinstance(m, dict)
+                and m.get("role") == "assistant"
+                and str(m.get("content") or "").strip()
+            ),
+            "",
+        )
+        return said if len(said) <= LAST_WORDS else "…" + said[-LAST_WORDS:].lstrip()
 
     def _ended(self, ending: Ending) -> None:
         record(

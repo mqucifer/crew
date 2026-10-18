@@ -21,6 +21,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from crew_org.tokens import Token, current
@@ -75,6 +76,11 @@ def branch_name(issue: int, summary: str, *, kind: str = "feat") -> str:
     return name
 
 
+def kept_name(issue: int, at: datetime) -> str:
+    """The branch a delivery's work is kept on: `crew/kept/<issue>-<yyyymmdd-hhmm>`, UTC."""
+    return f"{KEPT}{issue}-{at.astimezone(UTC):%Y%m%d-%H%M}"
+
+
 def validate_branch_name(branch: str) -> None:
     """Check a branch follows the convention, and is not protected."""
     assert_writable(branch)
@@ -102,6 +108,9 @@ CHECKPOINT = "checkpoint("
 # The trailer on the commit a session makes at `done`: a checkpoint too, so a delivery
 # whose gates, push or pull request didn't finish resumes from it.
 DONE_TRAILER = "Crew-Checkpoint: done"
+# Where a delivery that leaves for a rewrite keeps its work (crew#778): a branch of
+# its own, never the story's or a pull request's, so no review's head moves.
+KEPT = "crew/kept/"
 
 # git waits forever on a prompt; fail instead.
 NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "never"}
@@ -325,6 +334,45 @@ class Workspace:
         except GitError:
             return message
         return None
+
+    def keep(self, name: str, *, base: str, message: str) -> str | None:
+        """Push the open worktree, as it stands, to a new branch `name`; its commit.
+
+        Edits since the worktree's last commit go in one more commit, `message`, made
+        on `name` alone: the worktree's own branch stays at its last checkpoint. A
+        plain push of a new name, never forced. None when the work is no different
+        from `base`, and nothing is pushed. The clone's copy of `name` goes once the
+        push is made; a push that fails leaves it there, with the work.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        assert_writable(name)
+        _run(["add", "-A"], cwd=self.path)
+        tree = _run(["write-tree"], cwd=self.path)
+        if tree == _run(["rev-parse", f"{base}^{{tree}}"], cwd=self.path):
+            return None
+        sha = _run(["rev-parse", "HEAD"], cwd=self.path)
+        if tree != _run(["rev-parse", "HEAD^{tree}"], cwd=self.path):
+            sha = _run(
+                [
+                    "-c",
+                    f"user.name={self.identity.name}",
+                    "-c",
+                    f"user.email={self.identity.email}",
+                    "commit-tree",
+                    tree,
+                    "-p",
+                    sha,
+                    "-m",
+                    message,
+                ],
+                cwd=self.path,
+            )
+        _run(["branch", name, sha], cwd=self.path)
+        _run(["push", "origin", f"refs/heads/{name}"], cwd=self.path, token=self.token)
+        with contextlib.suppress(GitError):
+            _run(["branch", "-D", name], cwd=self.path)
+        return sha
 
     def forget(self, branch: str) -> None:
         """Drop the clone's own copy of `branch`, and any checkpoint on it, once closed."""

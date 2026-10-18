@@ -454,8 +454,33 @@ def test_the_same_first_error_after_three_runs_with_edits_between_stops_it(root)
     assert (ending.how, ending.stop, ending.said["kind"]) == ("blocked", "no_progress", "stop")
     assert "`tests/test_app.py::test_f` after 3 runs" in ending.said["missing"]
     assert ending.evidence["last_failure"]["failing"] == ["tests/test_app.py::test_f"]
+    assert ending.evidence["last_run"] == {
+        "what": "tests",
+        "ok": False,
+        "first_error": ending.evidence["last_failure"]["first_error"],
+        "failing": ["tests/test_app.py::test_f"],
+    }
     assert ending.evidence["tried"]["files_edited"] == ["src/app.py"]
     assert ending.evidence["signals"]["edits_since_run"] == 0
+
+
+def test_an_ending_carries_the_last_run_green_and_the_end_of_its_last_words(root):
+    """crew#778: the return note says the last run was green, and what it last said."""
+    long = "I'll check the docs. " * 40 + "Now the suite, one final time:"
+    run = said(("run", {"what": "suite"}), content=long)
+    quiet = said(("blocked", {"missing": "the rate's cap", "kind": "fact"}), content="")
+    _, ending = run_session(root, Proxy(run, quiet))
+    assert ending.how == "blocked"
+    assert ending.evidence["last_run"] == {
+        "what": "suite",
+        "ok": True,
+        "first_error": "",
+        "failing": [],
+    }
+    assert ending.evidence["last_failure"] is None
+    words = ending.evidence["last_words"]
+    assert words.endswith("Now the suite, one final time:"), "the last text, not an empty one"
+    assert words.startswith("…") and len(words) <= conversation.LAST_WORDS + 1
 
 
 def test_reading_without_acting_stops_at_its_ceiling(root, monkeypatch):

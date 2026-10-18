@@ -3,7 +3,7 @@
 The Sponsor, reviewing the replay (2026-10-18): no nudges, every signal recorded on
 every call, and ceilings high to start, brought down from real stories. Each ceiling
 is about three times the largest value a successful replay reached; reasoning and
-edits without a run have none, since the 2-hour backstop and the gate at `done` cover
+edits without a run have none, since the 3-hour backstop and the gate at `done` cover
 them.
 
 - calls since the last edit or run (reading without acting: crew-presentation#124

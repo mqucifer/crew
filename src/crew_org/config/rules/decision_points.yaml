@@ -1272,10 +1272,18 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.session_end._merged_tests:end:7f2ee007:
+  at: flows/session_end.py:_merged_tests
+  if: not tests
+  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.session_end._ruled:end:e3655272:
   at: flows/session_end.py:_ruled
   if: 'ruling is not None and ruling.decision == ''amend'''
   rule: story.contract_ruling
+flows.session_end.returned_note:end:a74b0b72:
+  at: flows/session_end.py:returned_note
+  if: kind != 'stop'
+  not_a_rule: 'a report or a render: a `blocked` note keeps the session''s own words'
 flows.session_end.route:end:24369425:
   at: flows/session_end.py:route
   if: 'verdict.already_done'
@@ -1538,6 +1546,10 @@ flows.session_delivery._sessions:end:48e04cd8:
   at: flows/session_delivery.py:_sessions
   if: routed.to != session_end.SESSION
   not_a_rule: carries where session_end.route sent the story, which names its rule
+flows.session_delivery._keep:end:25eb436e:
+  at: flows/session_delivery.py:_keep
+  if: sha is None
+  not_a_rule: nothing to keep, so nothing is pushed; the route moves the card, and the note says so
 flows.session_delivery._land:end:a76f3d63:
   at: flows/session_delivery.py:_land
   if: reached.to not in (session_end.REVIEW, session_end.QA)

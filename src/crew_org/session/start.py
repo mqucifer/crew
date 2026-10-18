@@ -45,7 +45,7 @@ description says what the crew checks on your branch after it.
 isn't in the repository, a fact the story doesn't give, or a choice nobody has made. Say \
 which, in your own words; it goes back to whoever wrote the story.
 - There's no shell, git or network. The session ends if the same first error in the \
-same test comes back on 3 runs with edits between, or after 2 hours of model time.
+same test comes back on 3 runs with edits between, or after 3 hours of model time.
 """
 
 

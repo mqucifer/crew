@@ -290,9 +290,9 @@ and nothing is left In Progress with nobody to act:
 
 | How it fails | Where it goes |
 |---|---|
-| The Developer's session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with the session's evidence: the last failure, what was missing in its words, and what it tried |
+| The Developer's session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with its work kept on a `crew/kept/` branch and the session's evidence in plain words: why it ended, its last run, the gate's earlier findings, the files and merged tests it changed, a stop's last words, and a line for the rewrite when the evidence points at the story |
 | `blocked` on a choice no one has made | Blocked, for the Sponsor |
-| The gates at `done` find something | A new session with every finding, within the delivery's two hours of model time; past them, back to the Business Analyst |
+| The gates at `done` find something | A new session with every finding, within the delivery's three hours of model time; past them, back to the Business Analyst |
 | Review or QA return it | A new session; after three round trips, back to the Business Analyst |
 | A model call fails, or the workspace is lost | Resumed from the last checkpoint on the next pass; three in a row, blocked for a person |
 | The workspace won't start or set up, the project's record can't be read, or the push fails | Blocked for a person, with the reason |
@@ -480,7 +480,7 @@ with the network; the session's container then starts with none, under every
 protection in the table, with an init process, and runs each command with
 `docker exec` under a timeout. Clean-up has three layers: it's removed at the
 session's end; a tick's start removes those whose crew process has gone; and one
-the crew forgets ends itself after 3 hours, past the 2-hour backstop, and is
+the crew forgets ends itself after 4 hours, past the 3-hour backstop, and is
 removed. `crew ready <project> --setup` starts the project's workspace this way.
 <!-- /told to -->
 

@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
-| A setting that changes what the tick does | 184 |
+| A setting that changes what the tick does | 186 |
 | Told, and not checked by anything above | 169 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 102 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 27 |
-| Unplaced | | 77 |
+| Unplaced | | 79 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -50,7 +50,7 @@ section; one no line holds for is unplaced, never guessed.
 | `delivery.conflict_with_main`<br>The branch conflicts with main: resolving it is for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | — | — |
 | `delivery.open_pull_request`<br>A pull request is still open on the branch; re-delivering would overwrite it. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:deliver_by_session | — |
 | `delivery.pull_request_failed`<br>The branch was pushed, and its pull request couldn't be opened. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land | — |
-| `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land | crew#10 |
+| `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | crew#10 |
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | — |
 | `delivery.round_trips_no_epic`<br>The gates kept returning it, and it has no epic to be split again: for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:_gates_disagree | crew#778 |
 | `delivery.route_failed`<br>Where a session's ending sends the story couldn't be settled: blocked for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | — |
@@ -332,10 +332,11 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.ci.MAX_JOBS`<br>MAX_JOBS = 3 | evidence | `src/crew_org/flows/ci.py:MAX_JOBS` | — | — | src/crew_org/flows/ci.py:MAX_JOBS | — |
 | `config.const.container.GONE`<br>A container that's gone answers every command with this code: Docker's own for "the engine failed, not the command", which the held container also returns when it finds its container missing. | — | `src/crew_org/session/container.py:GONE` | — | — | src/crew_org/session/container.py:GONE | crew#778 |
 | `config.const.container.GRACE`<br>How long a command has to stop after its timeout, before it's killed. | guards | `src/crew_org/tools/container.py:GRACE` | — | — | src/crew_org/tools/container.py:GRACE | — |
-| `config.const.container.LIFETIME`<br>How long a container keeps itself alive. | guards | `src/crew_org/tools/container.py:LIFETIME` | — | — | src/crew_org/tools/container.py:LIFETIME | — |
+| `config.const.container.LIFETIME`<br>How long a container keeps itself alive. | guards | `src/crew_org/tools/container.py:LIFETIME` | — | — | src/crew_org/tools/container.py:LIFETIME | crew#778 |
 | `config.const.container.SETUP_TIMEOUT`<br>Setup fetches and installs, so it gets longer than a test run. | guards | `src/crew_org/tools/container.py:SETUP_TIMEOUT` | — | — | src/crew_org/tools/container.py:SETUP_TIMEOUT | — |
-| `config.const.conversation.BACKSTOP_S`<br>BACKSTOP_S = 7200 | — | `src/crew_org/session/conversation.py:BACKSTOP_S` | — | — | src/crew_org/session/conversation.py:BACKSTOP_S | crew#778 |
+| `config.const.conversation.BACKSTOP_S`<br>One delivery's model time, shared by its sessions: the Sponsor's 3 hours, from 2, after sprint-metrics#662's stop (crew#778, 2026-10-18). | — | `src/crew_org/session/conversation.py:BACKSTOP_S` | — | — | src/crew_org/session/conversation.py:BACKSTOP_S | crew#778<br>sprint-metrics#662 |
 | `config.const.conversation.COMPACT_AT`<br>A prompt this size or larger is compacted first, once (the Sponsor's 125k): the window is 262,144 tokens, about 196k once 65,536 of output is kept. | — | `src/crew_org/session/conversation.py:COMPACT_AT` | — | — | src/crew_org/session/conversation.py:COMPACT_AT | crew#778 |
+| `config.const.conversation.LAST_WORDS`<br>How much of the session's last text its return note quotes (crew#778). | — | `src/crew_org/session/conversation.py:LAST_WORDS` | — | — | src/crew_org/session/conversation.py:LAST_WORDS | crew#778 |
 | `config.const.conversation.QUIET_LIMIT`<br>QUIET_LIMIT = 3 | — | `src/crew_org/session/conversation.py:QUIET_LIMIT` | — | — | src/crew_org/session/conversation.py:QUIET_LIMIT | crew#778 |
 | `config.const.coverage_map.TIMEOUT`<br>The whole suite under coverage, which is slower than a plain run. | — | `src/crew_org/tools/coverage_map.py:TIMEOUT` | — | — | src/crew_org/tools/coverage_map.py:TIMEOUT | — |
 | `config.const.criteria_check.CRITERIA_LIMIT`<br>CRITERIA_LIMIT = 2000 | evidence | `src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:CRITERIA_LIMIT | — |
@@ -397,6 +398,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.review_evidence.MAX_IMPORTED_CHARS`<br>The code a diff leans on can be large; this is a guard, not a budget (§16). | evidence | `src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS` | — | — | src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS | — |
 | `config.const.sandbox.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 300 | guards | `src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT | — |
 | `config.const.sandbox.PROBE_TIMEOUT`<br>PROBE_TIMEOUT = 15 | guards | `src/crew_org/tools/sandbox.py:PROBE_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:PROBE_TIMEOUT | — |
+| `config.const.session_end.FINDING_CHARS`<br>How much of a gate's finding the note quotes: its first paragraph, cut to this (crew#778). | — | `src/crew_org/flows/session_end.py:FINDING_CHARS` | — | — | src/crew_org/flows/session_end.py:FINDING_CHARS | crew#778 |
 | `config.const.settle_crew.ASK_CHARS`<br>ASK_CHARS = 300 | answer_shape | `src/crew_org/crews/settle_crew.py:ASK_CHARS` | — | — | src/crew_org/crews/settle_crew.py:ASK_CHARS | — |
 | `config.const.settle_crew.CONSEQUENCES_CHARS`<br>CONSEQUENCES_CHARS = 140 | answer_shape | `src/crew_org/crews/settle_crew.py:CONSEQUENCES_CHARS` | — | — | src/crew_org/crews/settle_crew.py:CONSEQUENCES_CHARS | — |
 | `config.const.settle_crew.CONTEXT_CHARS`<br>Cell limits. | answer_shape | `src/crew_org/crews/settle_crew.py:CONTEXT_CHARS` | — | — | src/crew_org/crews/settle_crew.py:CONTEXT_CHARS | crew#440 |

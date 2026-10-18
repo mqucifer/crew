@@ -220,9 +220,9 @@ Nothing escalates to a stronger model (ADR 0032, decision 9). A Developer sessio
 
 | How it fails | Where it goes |
 | --- | --- |
-| The session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with the session's evidence |
+| The session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with the session's evidence. Its work is kept on a `crew/kept/<story>-<when>` branch, with no pull request, and the note on the epic links it |
 | `blocked` on a choice no one has made | Blocked, for you |
-| The gates at `done` find something | A new session with every finding, within the delivery's two hours of model time; past them, back to the Business Analyst |
+| The gates at `done` find something | A new session with every finding, within the delivery's three hours of model time; past them, back to the Business Analyst |
 | Review or QA return it | A new session; after three round trips, back to the Business Analyst |
 | A model call fails, or the workspace is lost | Resumed from the last checkpoint on the next pass; three in a row, blocked for a person |
 | The workspace won't start or set up, the project's record can't be read, or the push fails | Blocked for a person, with the reason |
