@@ -7,6 +7,18 @@ config.const.attempts.REPAIR_REPORT_CHARS:
   origin:
   - crew#591
   - sprint-metrics#567
+config.const.container.GONE:
+  origin:
+  - crew#778
+config.const.conversation.BACKSTOP_S:
+  origin:
+  - crew#778
+config.const.conversation.COMPACT_AT:
+  origin:
+  - crew#778
+config.const.conversation.QUIET_LIMIT:
+  origin:
+  - crew#778
 config.const.coverage_map.TIMEOUT:
 config.const.diagnose.MAX_CHARS:
 config.const.diagnose.MAX_COMMENT:
@@ -58,8 +70,52 @@ config.const.repo_context.WHOLE_FILE_CHARS:
   - crew#591
   - sprint-metrics#567
 config.const.retro.MAX_KNOWN_CHARS:
+config.const.signals.READING_CALLS:
+  origin:
+  - crew#778
+  - crew-presentation#124
+config.const.signals.VIEWS_OF_ONE_FILE:
+  origin:
+  - crew#778
+  - crew-presentation#124
 config.const.stack.TIMEOUT:
 config.const.standup.MAX_STANDUP_CHARS:
+config.const.start.HINTS:
+  origin:
+  - crew#778
+config.const.tools.EDIT_CONTEXT:
+  origin:
+  - crew#778
+config.const.tools.EDIT_LINES:
+  origin:
+  - crew#778
+config.const.tools.FIND_HITS:
+  origin:
+  - crew#778
+config.const.tools.LINT_TIMEOUT:
+  origin:
+  - crew#778
+config.const.tools.NEAR_CONTEXT:
+  origin:
+  - crew#778
+config.const.tools.NEAR_RATIO:
+  origin:
+  - crew#778
+config.const.tools.RUN_TIMEOUT:
+  origin:
+  - crew#778
+config.const.tools.SEARCH_FILES:
+  origin:
+  - crew#778
+config.const.tools.SEARCH_HITS:
+  origin:
+  - crew#778
+config.const.tools.VIEW_CHARS:
+  origin:
+  - crew#778
+config.const.tools.VIEW_LINES:
+  origin:
+  - crew#778
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:
 told.delivery_crew.if_you_need_one_in_full:

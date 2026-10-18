@@ -818,6 +818,82 @@ def _use_tools(
     return [*messages, {"role": "user", "content": ANSWER_NOW}]
 
 
+@dataclass(frozen=True)
+class Answered:
+    """One call of a conversation: the model's message, why it stopped, its tokens, its time."""
+
+    message: dict[str, Any]
+    finish_reason: str | None
+    usage: dict[str, int]
+    seconds: float
+
+
+def converse(
+    role: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    *,
+    step: str | None = None,
+    send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    **detail: Any,
+) -> Answered:
+    """One call of a conversation the caller keeps, with tools and no answer form.
+
+    The Developer's session (crew#778) is many of these: the caller holds the history
+    and runs the tools, and the session ends with a tool call, not a form. Made and
+    recorded as every call is, so the crew's calls stay in one module (ADR 0025).
+    `detail` goes on the call's events, such as the session's call number. Not
+    streamed: a tool call is short, and the role's own timeout bounds the call.
+    """
+    spec = role_spec(role, step)
+    params = spec.get("llm_params") or {}
+    sender = send or partial(post, timeout=float(params.get("timeout", DEFAULT_TIMEOUT)))
+    body = {
+        "model": spec.get("llm", "crew-local"),
+        "messages": messages,
+        "max_tokens": params.get("max_tokens", DEFAULT_MAX_TOKENS),
+        "tools": tools,
+        "tool_choice": "auto",
+    }
+    call = {
+        "model": body["model"],
+        "call_id": str(uuid.uuid4()),
+        "prompt_hash": _fingerprint(str(messages[0].get("content") or "")) if messages else "",
+        **detail,
+    }
+    record(EventKind.LLM_CALL_STARTED, spec["role"], role=spec["role"], **call)
+    started = time.monotonic()
+    began = datetime.now(UTC)
+    try:
+        data = sender(body)
+    except Exception as exc:
+        record(
+            EventKind.LLM_CALL_FAILED,
+            spec["role"],
+            role=spec["role"],
+            error=f"{type(exc).__name__}: {exc}"[:400],
+            duration_s=round(time.monotonic() - started, 3),
+            **call,
+        )
+        raise
+    seconds = time.monotonic() - started
+    choice = (data.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    usage = _usage(data)
+    call.update(
+        {
+            "finish_reason": str(choice.get("finish_reason")),
+            "response_id": str(data.get("id", "")),
+            "duration_s": round(seconds, 3),
+            "tool_calls": len(message.get("tool_calls") or []),
+            **usage,
+        }
+    )
+    record(EventKind.LLM_CALL_FINISHED, spec["role"], role=spec["role"], **call)
+    _trace(began, call, spec["role"])
+    return Answered(message, choice.get("finish_reason"), usage, seconds)
+
+
 # Each set of rule ids a prompt gave, by its hash, already written in full by this
 # process: the next call that gives the same set carries only the hash (crew#778).
 _GIVEN_WRITTEN: set[str] = set()

@@ -236,6 +236,23 @@ guard.reproduce.check:
   origin:
   - crew#407
   owner: Developer
+session.run:
+  description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint
+    needs a lint among them.'
+  messages:
+    no_lint: 'This project''s checks have no lint: the `suite` is what the crew runs.'
+    no_pytest: 'This project''s checks name no pytest command: run the `suite`.'
+    no_tests: Name the tests (ids or files), or run the `suite`.
+  origin:
+  - crew#778
+  owner: Developer
+session.tests_for:
+  description: '`tests_for` needs the project''s coverage map, which is Python only.'
+  messages:
+    no_map: There's no coverage map for this project (it's Python only).
+  origin:
+  - crew#778
+  owner: Developer
 told.business_analyst.a_criterion_naming_a_table_a:
   guidance: true
   owner: Business Analyst

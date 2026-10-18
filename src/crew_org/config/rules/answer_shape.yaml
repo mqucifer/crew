@@ -278,6 +278,34 @@ form.row.an_id:
     default: name a row or question of the epic's record by its ID, like R3 or Q1
   owner: Product Owner
   told_in: AnswerRow.replaces, SponsorRow.replaces
+session.arguments:
+  description: A tool call names a tool there is, with an object of the arguments it takes and each one
+    it needs.
+  messages:
+    missing: '`{tool}` needs {missing}. It takes: {takes}. Nothing was done.'
+    no_tool: 'There''s no tool `{tool}`: use one of {tools}.'
+    not_an_object: '`{tool}`''s arguments aren''t a JSON object: call it again.'
+    unknown: '`{tool}` doesn''t take {unknown}. It takes: {takes}. Nothing was done.'
+  origin:
+  - crew#778
+  owner: Developer
+session.search:
+  description: '`search` is given a pattern, and a path there is.'
+  messages:
+    empty: Give the pattern to find.
+    no_path: 'There''s no file or folder `{path}`: the map lists every file.'
+  origin:
+  - crew#778
+  owner: Developer
+session.view:
+  description: '`view` shows a text file there is, or a definition it has.'
+  messages:
+    no_definition: '`{path}` defines no `{name}`.{names}'
+    no_file: There's no file `{path}`. The map lists every file; `search` finds text.
+    not_text: '`{path}` isn''t text.'
+  origin:
+  - crew#778
+  owner: Developer
 told.form.AnswerRow.decision:
   guidance: true
   owner: Product Owner
