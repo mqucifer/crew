@@ -1,16 +1,8 @@
 # When a card moves. Declared once each (crew#756, ADR 0031): change a rule here.
 check.review.with_deploy:
-config.ask_limits:
-  cases:
-  - config.const.board_flow.ANALYST_ASK_LIMIT
-  description: 'How much a role may ask for: the Business Analyst''s questions.'
-  origin:
-  - crew#231
-  - sprint-metrics#529
 config.attempts:
   cases:
   - config.const.backlog_order.ATTEMPTS
-  - config.const.settle.ATTEMPTS
   - config.const.board_flow.ANSWER_ATTEMPTS
   - config.const.merge.MAX_REBUILDS
   - config.const.delivery.INTERRUPTIONS_BEFORE_BLOCKING

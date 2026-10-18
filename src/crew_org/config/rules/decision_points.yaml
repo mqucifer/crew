@@ -255,10 +255,10 @@ flows.board_flow.refine_epics:skip:e1acdf1c:
   at: flows/board_flow.py:refine_epics
   if: settled != RESPLIT
   rule: decision.board_flow.rework_gate
-flows.board_flow.refine_epics:skip:f4e0ec9f:
+flows.board_flow.refine_epics:skip:feee95e9:
   at: flows/board_flow.py:refine_epics
-  if: panel_search is not None and (not panel_step(issues, sink, result, epic_card, repo, project=context.record_for(repo),
-    search=panel_search, code=partial(_focused
+  if: panel_search is not None and (not panel_step(issues, sink, result, epic_card, repo, search=panel_search,
+    reading=partial(context.reading_for, repo), unapproved=frozenset((c.number for c in cards if c.
   rule: decision.refine_panel.panel_step
 flows.board_flow.rework_gate:end:857c696b:
   at: flows/board_flow.py:rework_gate
@@ -911,14 +911,6 @@ flows.panel.siblings_of:skip:5d3a5c2b:
   at: flows/panel.py:siblings_of
   if: child['number'] == epic
   not_a_rule: chooses what a role is shown, not what happens to a card
-flows.presentation_notes._write_one:end:1c024681:
-  at: flows/presentation_notes.py:_write_one
-  if: note.beyond_reach
-  rule: decision.presentation_notes.write_notes
-flows.presentation_notes._write_one:end:7dae908b:
-  at: flows/presentation_notes.py:_write_one
-  if: not problems
-  rule: decision.presentation_notes.write_notes
 flows.presentation_notes.awaiting_presentation:filter:ce0198c8:
   at: flows/presentation_notes.py:awaiting_presentation
   if: needs_note(epic) and (not note_for(issues, epic.repo or default_repo, epic.number or 0))

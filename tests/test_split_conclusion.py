@@ -8,6 +8,7 @@ it when `refinement.panel` is on.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from crew_org.config import load_org
+from crew_org.crews import refinement_crew
 from crew_org.crews.refinement_crew import (
     AlreadyDelivered,
     RowNotForStories,
@@ -344,10 +346,20 @@ def test_a_row_no_story_follows_is_refused_at_done_with_it_named(monkeypatch):
     missing = proposal(story("A", "R1", "R2"))
     fixed = proposal(story("A", "R1", "R2"), story("B", "R3"))
     result, asked, _ = run_tick(monkeypatch, fixed)
-    follows = asked[0][1]["follows"]
-    assert any("No story follows R3" in f for f in follows(missing))
-    assert follows(fixed) == []
+    kw = asked[0][1]
+    assert list(kw["rows"]) == ["R1", "R2", "R3"]
+    assert any("No story follows R3" in f for f in flow.problems(missing, kw["rows"]))
+    assert flow.problems(fixed, kw["rows"]) == []
     assert len(asked) == 1 and len(result.stories_created) == 2
+
+
+def test_the_split_refuses_at_done_what_doesnt_follow_the_record(monkeypatch):
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
+        refinement_crew.split_epic("E", "body", rows=["R1", "R2", "R3"])
+    with pytest.raises(ValueError, match="No story follows R3"):
+        seen["check"](proposal(story("A", "R1", "R2")))
+    seen["check"](proposal(story("A", "R1", "R2"), story("B", "R3")))
 
 
 def test_a_split_whose_session_stops_fails_and_creates_nothing(monkeypatch):

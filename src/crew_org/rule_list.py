@@ -41,7 +41,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, get_args
 
 import yaml  # type: ignore[import-untyped]
@@ -466,6 +466,9 @@ class Ask:
     function: str
     forms: frozenset[type[BaseModel]]
     check: str | None
+    # A refinement step's session (crew#807): its own check is listed by the rules it
+    # refuses by (`_passed_check_rules`), not as one rule of its own.
+    session: bool = False
 
 
 def _is_ask(node: ast.AST) -> bool:
@@ -476,6 +479,47 @@ def _is_ask(node: ast.AST) -> bool:
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "calls"
     )
+
+
+def _is_session(node: ast.AST) -> bool:
+    """A refinement step's session (`steps.run`, crew#807): asked as `calls.ask` is."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "steps"
+    )
+
+
+def _session_steps(node: ast.Call, module: ModuleType, fn: ast.AST | None) -> list[Any]:
+    """The steps a session call may run: the module's step it names, each step of a
+    table of them, or one the asking function makes (`steps.Step(name, role, ...)`)."""
+    from crew_org.session.steps import Step  # noqa: PLC0415
+
+    first = node.args[0] if node.args else None
+    held = first.value if isinstance(first, ast.Subscript) else first
+    value = getattr(module, held.id, None) if isinstance(held, ast.Name) else None
+    if isinstance(value, Step):
+        return [value]
+    if isinstance(value, dict) and any(isinstance(v, Step) for v in value.values()):
+        return [v for v in value.values() if isinstance(v, Step)]
+    made = []
+    for sub in ast.walk(fn) if fn is not None else ():
+        if (
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Attribute)
+            and sub.func.attr == "Step"
+            and len(sub.args) > 1
+            and isinstance(sub.args[1], ast.Constant)
+        ):
+            form = (
+                getattr(module, sub.args[2].id, None)
+                if len(sub.args) > 2 and isinstance(sub.args[2], ast.Name)
+                else None
+            )
+            made.append(SimpleNamespace(role=sub.args[1].value, form=form))
+    return made
 
 
 @cache
@@ -489,7 +533,8 @@ def asks() -> tuple[Ask, ...]:
     roles = role_names()
     found: list[Ask] = []
     for source in sources():
-        if "calls.ask(" not in "\n".join(source.lines):
+        text = "\n".join(source.lines)
+        if "calls.ask(" not in text and "steps.run(" not in text:
             continue
         module = _module(source.module)
         parents = _parents(source.tree)
@@ -500,11 +545,18 @@ def asks() -> tuple[Ask, ...]:
                 if outer is not None:
                     callers.setdefault(node.func.id, set()).add(outer.name)
         for node in ast.walk(source.tree):
-            if not _is_ask(node):
+            if not (_is_ask(node) or _is_session(node)):
                 continue
             assert isinstance(node, ast.Call)
             first = node.args[0] if node.args else None
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            ran = (
+                _session_steps(node, module, _enclosing(node, parents, ast.FunctionDef))
+                if _is_session(node)
+                else []
+            )
+            if ran:
+                keys = sorted({s.role for s in ran if s.role in roles})
+            elif isinstance(first, ast.Constant) and isinstance(first.value, str):
                 keys = [first.value]
             else:
                 # A role passed in: every role the module names, as the panel's members.
@@ -525,7 +577,7 @@ def asks() -> tuple[Ask, ...]:
                     if fn is not None and name not in seen:
                         seen.add(name)
                         scope.append(fn)
-            forms = set()
+            forms = {s.form for s in ran if isinstance(s.form, type)}
             for name in seen:
                 fn = _functions(source.tree).get(name) or outer
                 for sub in ast.walk(fn):
@@ -545,6 +597,7 @@ def asks() -> tuple[Ask, ...]:
                     outer.name if outer is not None else "<module>",
                     frozenset(forms),
                     ast.unparse(check) if check is not None else None,
+                    _is_session(node),
                 )
                 for key in keys
             ]
@@ -745,6 +798,12 @@ def _check_rules() -> list[Entry]:
             else []
         )
         fn = nested[0] if nested else _functions(ask.source.tree).get(name)
+        # A check its caller passes in is the caller's, declared where it's written; a
+        # session's own check is listed by the rules it refuses by.
+        if fn is None and outer is not None and name in {a.arg for a in outer.args.kwonlyargs}:
+            continue
+        if ask.session and nested:
+            continue
         short = ask.source.module.rsplit(".", 1)[-1]
         rule_id = f"check.{short}.{name.lstrip('_')}"
         if rule_id not in out:
@@ -772,6 +831,96 @@ def _check_rules() -> list[Entry]:
                     sections=_cited_sections(doc + " " + comments),
                 )
         out[rule_id].roles.add(ask.role)
+    return list(out.values())
+
+
+def _passed_check_rules() -> list[Entry]:
+    """A step's own check, written beside it and passed to its session as `check=`
+    (crew#807): each rule it refuses by, its own or a function's it calls.
+
+    What a flow checked after an answer and sent back (`_fed_back_rules`) is now
+    `done`'s refusal in the session, so it's listed the same way, under the same ids.
+    """
+    out: dict[str, Entry] = {}
+    for source in sources():
+        if not source.module.startswith(("crew_org.crews.", "crew_org.flows.")):
+            continue
+        parents = _parents(source.tree)
+        for call in (n for n in ast.walk(source.tree) if isinstance(n, ast.Call)):
+            passed = next(
+                (
+                    k.value
+                    for k in call.keywords
+                    if k.arg == "check" and isinstance(k.value, ast.Name)
+                ),
+                None,
+            )
+            outer = _enclosing(call, parents, ast.FunctionDef)
+            if passed is None or outer is None:
+                continue
+            fn = next(
+                (
+                    n
+                    for n in ast.walk(outer)
+                    if isinstance(n, ast.FunctionDef) and n.name == passed.id and n is not outer
+                ),
+                None,
+            )
+            if fn is None:
+                continue
+            roles = (
+                {a.role for a in asks() if a.source is source and a.function == outer.name}
+                or _roles_near(source, outer)
+                # A flow that passes its check to a step handed in: who answers the
+                # form the check reads.
+                or set().union(
+                    *(
+                        answered().get(form, frozenset())
+                        for a in fn.args.args
+                        if isinstance(a.annotation, ast.Name)
+                        and isinstance(
+                            form := getattr(_module(source.module), a.annotation.id, None), type
+                        )
+                    )
+                )
+            )
+            for reached, callee in [(source, fn), *_reached(source, fn)]:
+                messages = _own_raises(callee, reached.tree)
+                named = _named(callee) | {
+                    k.value.value
+                    for r in (_refusal(n) for n in ast.walk(callee))
+                    if r is not None
+                    for k in r.keywords
+                    if k.arg == "rule"
+                    and isinstance(k.value, ast.Constant)
+                    and isinstance(k.value.value, str)
+                }
+                if not messages and not named:
+                    continue
+                where = f"{reached.path}:{callee.name}"
+                doc = ast.get_docstring(callee) or ""
+                comments = _comments_above(reached.lines, callee.lineno)
+                rule_id = (
+                    next(iter(named))
+                    if len(named) == 1
+                    else f"check.{_short(reached)}.{callee.name.lstrip('_')}"
+                )
+                entry = out.setdefault(
+                    rule_id,
+                    Entry(
+                        rule_id,
+                        "check",
+                        where,
+                        _first_sentence(doc) or _says(messages, callee.name),
+                        checked={where},
+                        origin=refs(doc + " " + comments),
+                        messages=messages,
+                        named=named,
+                        text=doc + " " + " ".join(messages),
+                        sections=_cited_sections(doc + " " + comments),
+                    ),
+                )
+                entry.roles |= roles
     return list(out.values())
 
 
@@ -1912,10 +2061,31 @@ def _told_prompts() -> list[Entry]:
         parents = _parents(source.tree)
         mine = [a for a in asks() if a.source is source]
         everyone = {a.role for a in mine}
+        # A session's start is written by a function its asking function calls, such as
+        # `split_opening` by `split_epic` (crew#807): its lines are that step's.
+        called = {
+            name: {
+                n.func.id
+                for n in ast.walk(fn)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            }
+            for name, fn in _functions(source.tree).items()
+        }
         for node, text in _prompt_texts(source):
             fn = _enclosing(node, parents, ast.FunctionDef)
             name = fn.name if fn is not None else _assigned_to(node, parents)
-            asked = {a.role for a in mine if fn is not None and a.function == fn.name}
+            asked = {
+                a.role
+                for a in mine
+                if fn is not None
+                and (
+                    a.function == fn.name
+                    or any(
+                        fn.name in called.get(near, set())
+                        for near in {a.function} | {g for g, c in called.items() if a.function in c}
+                    )
+                )
+            }
             for sentence in _sentences(text):
                 if not _RULE_WORDS.search(sentence) or len(sentence) < 25:
                     continue
@@ -2089,6 +2259,7 @@ def entries() -> tuple[Entry, ...]:
         _decided_rules()
         + _form_rules()
         + _check_rules()
+        + _passed_check_rules()
         + _call_rules()
         + _fed_back_rules()
         + _changed_answers()
@@ -2237,6 +2408,7 @@ _SECTIONS = {
 _TOLD_SITES = {
     "agents.yaml:architect": "scope",
     "agents.yaml:architect.design_placement": "scope",
+    "agents.yaml:architect.refinement": "scope",
     "agents.yaml:business_analyst": "evidence",
     "agents.yaml:business_analyst.bug_triage": "evidence",
     "agents.yaml:code_reviewer": "guidance",
@@ -2244,6 +2416,7 @@ _TOLD_SITES = {
     "agents.yaml:product_owner": "scope",
     "agents.yaml:qa_engineer": "evidence",
     "agents.yaml:qa_engineer.criteria_check": "evidence",
+    "agents.yaml:qa_engineer.panel": "evidence",
     "agents.yaml:scrum_master": "guidance",
     "agents.yaml:senior_engineer": "guidance",
     "agents.yaml:ux_designer": "scope",
@@ -2262,11 +2435,10 @@ _TOLD_SITES = {
     "refinement_crew:AnswerRow": "answer_shape",
     "refinement_crew:RepairedStory": "answer_shape",
     "refinement_crew:RowNotForStories": "answer_shape",
-    "refinement_crew:propose_epics": "scope",
-    "refinement_crew:propose_missing_epics": "scope",
+    "refinement_crew:decompose_opening": "scope",
     "refinement_crew:_delivered_block": "scope",
-    "refinement_crew:split_epic": "scope",
-    "refinement_crew:repair_criteria": "evidence",
+    "refinement_crew:split_opening": "scope",
+    "refinement_crew:repair_opening": "evidence",
     "retro_crew": "guidance",
     "review_crew": "flow",
     "settle_crew": "scope",

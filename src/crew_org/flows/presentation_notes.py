@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from crew_org.crews.presentation_note_crew import PresentationNote
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.board_flow import (
@@ -298,7 +299,7 @@ def _write_one(*, write, stories, **shown):
         f"### #{s['number']} {s['title']}\n\n{s.get('body') or ''}" for s in stories
     )
 
-    def check(note: Any) -> None:
+    def check(note: PresentationNote) -> None:
         # A note that says what's beyond its reach covers nothing; the epic waits for
         # a person instead.
         if note.beyond_reach:

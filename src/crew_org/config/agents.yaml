@@ -384,7 +384,8 @@ ux_designer:
   llm_params:
     max_tokens: 32768
   can: [write_presentation_note, write_acceptance_criteria, comment]
-  constitution: [3, 10]  # story format, audit trail
+  # No constitution: both its steps, the panel and the note, are sessions, which send
+  # none (crew#807). The note's form says what a criterion must state.
 
 devops_engineer:
   role: DevOps Engineer

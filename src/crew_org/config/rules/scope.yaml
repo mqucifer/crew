@@ -77,7 +77,6 @@ config.const.delivered.MAX_THEN:
 config.const.delivered.MAX_WHEN:
 config.const.design.ATTEMPTS:
 config.const.design_notes.ATTEMPTS:
-config.const.presentation_notes.ATTEMPTS:
 config.const.presentation_notes.OTHER_STORY_CHARS:
 config.const.refinement_crew.MAX_EPICS:
 config.const.refinement_crew.MIN_CRITERIA:
@@ -95,6 +94,16 @@ config.org.estimation.max_story_points:
 config.org.estimation.scale:
   origin:
   - crew#756
+form.AlreadyDelivered.by_or_seen_at:
+  description: Refused unless it names the story that delivered it, or where the code at main already
+    does it.
+  messages:
+    default: name the story that delivered it in `by`, or, when no story did, where the code at main already
+      does it in `seen_at`
+  origin:
+  - crew#807
+  owner: Business Analyst
+  told_in: AlreadyDelivered
 form.Change.work_is_said:
   description: Refused if empty when `needs_work` is true.
   messages:
@@ -141,16 +150,6 @@ form.Placement.epic_is_named:
     default: 'change {change} belongs to an epic: name it in `epic`'
   owner: Architect
   told_in: Placement.epic
-form.AlreadyDelivered.by_or_seen_at:
-  description: Refused unless it names the story that delivered it, or where the code at main already
-    does it.
-  messages:
-    default: name the story that delivered it in `by`, or, when no story did, where the code at main already
-      does it in `seen_at`
-  origin:
-  - crew#807
-  owner: Business Analyst
-  told_in: AlreadyDelivered
 form.Row.a_call_stays_within_the_goal:
   description: Refused if empty for your own call.
   messages:
@@ -241,9 +240,6 @@ told.refinement_crew.decompose_by_outcome_never_by_architectural:
   owner: Product Owner
 told.refinement_crew.each_story_and_the_outcomes_its:
   guidance: true
-told.refinement_crew.epic_each_story_must_satisfy_invest:
-  guidance: true
-  owner: Business Analyst
 told.refinement_crew.if_you_cannot_say_it_is:
   guidance: true
   owner: Product Owner
@@ -254,12 +250,6 @@ told.refinement_crew.its_rows_are_decided_a_story:
   guidance: true
   owner: Business Analyst
 told.refinement_crew.split_by_workflow_step_by_business:
-  guidance: true
-  owner: Business Analyst
-told.refinement_crew.the_product_sponsor_has_set_this:
-  guidance: true
-  owner: Product Owner
-told.refinement_crew.your_order_is_the_order_they:
   guidance: true
   owner: Business Analyst
 told.settle_crew.ask_the_sponsor_one_question_with:

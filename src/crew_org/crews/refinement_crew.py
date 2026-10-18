@@ -10,7 +10,7 @@ reviewer has to notice later.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -581,13 +581,14 @@ def propose_epics(
     reads the code it needs (crew#807). A `skeleton` Goal is one epic (ADR 0030): it
     has one outcome, so there is nothing to decompose.
     """
-    return _decomposed(
+    found: EpicProposal = _decomposed(
         SkeletonEpic if skeleton else EpicProposal,
         decompose_opening(goal, goal_ref=goal_ref, feedback=feedback, skeleton=skeleton),
         goal,
         delivered,
         reading,
     )
+    return found
 
 
 def _decomposed(
@@ -783,7 +784,8 @@ def split_epic(
     project_log: str = "",
     siblings: str = "",
     provided: frozenset[str] = frozenset(),
-    follows: Callable[[StoryProposal], list[str]] | None = None,
+    rows: Sequence[str] = (),
+    declared: Sequence[str] = (),
     reading: steps.Reading | None = None,
 ) -> StoryProposal:
     """Business Analyst only: an epic becomes INVEST-sized stories, in a session over the
@@ -796,16 +798,18 @@ def split_epic(
     inventing data.
 
     `done` refuses a split that names a story the project hasn't delivered, drops a
-    superseded one, shows a field its package doesn't carry, or leaves a row of the
-    record unfollowed (`follows`), and the session answers it.
+    superseded one, shows a field its package doesn't carry, or doesn't follow the
+    record: a binding row (`rows`) no story follows, or a merged test it changes
+    (`declared`) no story carries (crew#440). The session answers each.
     """
+    from crew_org.flows import conclusion as conclusion_flow  # noqa: PLC0415
 
     def check(proposal: StoryProposal) -> None:
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
         check_accounted(proposal, superseded or [])
         check_provided(proposal, provided)
-        if follows is not None and (found := follows(proposal)):
-            raise Refusal(" ".join(found), rule="check.conclusion.problems")
+        if found := conclusion_flow.problems(proposal, list(rows), declared):
+            raise Refusal(conclusion_flow.feedback(found), rule="check.conclusion.problems")
 
     shown, notes = steps.delivered_section(
         delivered,

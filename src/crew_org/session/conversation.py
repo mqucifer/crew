@@ -174,7 +174,8 @@ class Session:
                 record(
                     EventKind.SESSION_COMPACTED,
                     f"compacted before call {self.calls + 1}: {masked} replies masked",
-                    **self._who(),
+                    role=self._who(),
+                    **self._named(),
                     chars_after=_chars(sent),
                     **self.compacted,
                 )
@@ -291,7 +292,8 @@ class Session:
             record(
                 EventKind.TOOL_FAILED,
                 f"done's own checks: {said_why}",
-                **self._who(),
+                role=self._who(),
+                **self._named(),
                 tool="check_done",
                 turn=self.calls,
                 error=said_why,
@@ -321,7 +323,8 @@ class Session:
             record(
                 EventKind.TOOL_FAILED,
                 f"after a run: {said}",
-                **self._who(),
+                role=self._who(),
+                **self._named(),
                 tool="after_run",
                 turn=self.calls,
                 error=said,
@@ -337,8 +340,8 @@ class Session:
         """The refinement step a session is, for its events (crew#807)."""
         return {"step": self.name} if self.name else {}
 
-    def _who(self) -> dict[str, Any]:
-        return {"role": _role(self.role, self.step), **self._named()}
+    def _who(self) -> str:
+        return _role(self.role, self.step)
 
     def _tool(self, name: str, args: Any, raw: str, reply: Reply, seconds: float) -> None:
         """One tool call as an event: names and sizes, with what a run ran and how it went."""
@@ -370,14 +373,15 @@ class Session:
                     "ran_s": run["seconds"],
                 }
             )
-        record(EventKind.TOOL_FINISHED, reply.summary, **self._who(), **detail)
+        record(EventKind.TOOL_FINISHED, reply.summary, role=self._who(), **self._named(), **detail)
 
     def _turn(self, replies: list[tuple[str, Reply]], usage: dict[str, int]) -> None:
         seen = self.watch.after(replies, usage)
         record(
             EventKind.SESSION_TURN,
             f"call {self.calls}: {len(replies)} tool calls",
-            **self._who(),
+            role=self._who(),
+            **self._named(),
             turn=self.calls,
             tool_calls=len(replies),
             model_s=round(self.model_s, 1),
@@ -433,7 +437,8 @@ class Session:
         record(
             EventKind.SESSION_ENDED,
             f"{ending.how}{f' ({ending.stop or ending.why})' if ending.stop or ending.why else ''}",
-            **self._who(),
+            role=self._who(),
+            **self._named(),
             how=ending.how,
             stop=ending.stop,
             why=ending.why,

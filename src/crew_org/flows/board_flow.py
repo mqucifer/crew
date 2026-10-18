@@ -1711,7 +1711,8 @@ def refine_epics(
                     provided=context.provided_for(repo),
                     # Every settled row is followed by a story, or named as not for
                     # stories (crew#440): refused at `done`, in the session.
-                    follows=partial(conclusion_flow.problems, rows=rows, tests=declared),
+                    rows=rows,
+                    declared=declared,
                     reading=reading,
                 )
                 proposal = attributed(split_epic, card=number, repo=repo)(
