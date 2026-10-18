@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from crew_org.events import EventKind, EventSink
-from crew_org.flows import delivery
+from crew_org.flows import session_delivery
 from crew_org.flows.board_flow import tick
 from crew_org.flows.delivery import INTERRUPTED_MARKER, DeliveryResult, _work_one_card
 from crew_org.flows.design_notes import needs_note as needs_design_note
@@ -42,7 +42,7 @@ def test_no_stories_are_created_under_an_epic_that_closed_mid_split(monkeypatch)
 
 
 def test_a_blocked_card_records_one_block_event(monkeypatch):
-    monkeypatch.setattr(delivery, "deliver_story", lambda *a, **k: _unreadable_reply())
+    monkeypatch.setattr(session_delivery, "deliver_by_session", lambda *a, **k: _unreadable_reply())
     sink, seen = EventSink(None), []
     sink.subscribe(seen.append)
     issues = Issues(earlier=[INTERRUPTED_MARKER, INTERRUPTED_MARKER])
@@ -52,8 +52,6 @@ def test_a_blocked_card_records_one_block_event(monkeypatch):
         issues=issues,
         sink=sink,
         ws=Workspace(),
-        policy=None,
-        ledger=None,
         result=DeliveryResult(),
         counts={"In Progress": 1},
         sprint="Sprint 11",

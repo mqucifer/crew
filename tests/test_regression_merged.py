@@ -1,11 +1,11 @@
 """The guards protect what's merged, not a story's own draft.
 
-A failed attempt's changes stay in the worktree for the repair to build on.
-Judged against that draft, the guards went wrong both ways on the night of
-the split: sprint-metrics#126 couldn't delete a test its own first attempt had
-added, and #129's first attempt removed imports `__init__.py` needed, after
-which nothing was "lost" again and the tests failed without the guard saying
-why.
+A session's edits are drafts on the branch until `done`, and the gates judge the
+branch against what's merged (crew#778). Judged against a draft instead, the
+guards went wrong both ways on the night of the split: sprint-metrics#126
+couldn't delete a test its own first attempt had added, and #129's first attempt
+removed imports `__init__.py` needed, after which nothing was "lost" again and
+the tests failed without the guard saying why.
 """
 
 from __future__ import annotations
@@ -15,10 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from crew_org.crews.delivery_crew import FileEdit, Implementation
 from crew_org.tools.regression import (
     REMOVED,
-    broken_contracts,
     draft_breaks,
     lost_names,
     merged_base,
@@ -58,19 +56,6 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-# A change somewhere else: the repair doesn't touch the damaged file again.
-ANOTHER_TEST = FileEdit(
-    path="tests/test_metrics.py",
-    operation="add",
-    target="test_another",
-    source="def test_another():\n    pass\n",
-)
-
-
-def impl(**parts) -> Implementation:
-    return Implementation(summary="Repair the previous attempt", **parts)
-
-
 def test_the_merged_state_is_found_and_absent_outside_git(repo: Path, tmp_path_factory):
     assert merged_base(repo) is not None
     assert merged_base(tmp_path_factory.mktemp("plain")) is None
@@ -78,21 +63,19 @@ def test_the_merged_state_is_found_and_absent_outside_git(repo: Path, tmp_path_f
 
 def test_a_test_only_the_draft_added_may_be_deleted(repo: Path):
     """#126: its first attempt added `test_full_suite_passes`; the repair removed it."""
+    from tests.test_regression import Ed, change
+
     with (repo / "tests/test_metrics.py").open("a") as fh:
         fh.write("\n\ndef test_full_suite_passes():\n    pass\n")
-    delete = FileEdit(
-        path="tests/test_metrics.py", operation="delete", target="test_full_suite_passes"
-    )
-    merged = merged_base(repo)
-    assert broken_contracts(repo, [delete], merged) == {}
-    assert broken_contracts(repo, [delete]), "judged against the draft, it was refused"
+    change(repo, Ed("tests/test_metrics.py", "delete", "test_full_suite_passes"))
+    assert draft_breaks(repo, merged_base(repo)) == {}
 
 
 def test_a_merged_test_is_still_protected(repo: Path):
-    delete = FileEdit(path="tests/test_metrics.py", operation="delete", target="test_merged")
-    assert set(broken_contracts(repo, [delete], merged_base(repo))) == {
-        "tests/test_metrics.py::test_merged"
-    }
+    from tests.test_regression import Ed, change
+
+    change(repo, Ed("tests/test_metrics.py", "delete", "test_merged"))
+    assert set(draft_breaks(repo, merged_base(repo))) == {"tests/test_metrics.py::test_merged"}
 
 
 def test_an_import_the_draft_already_removed_is_still_lost(repo: Path):
@@ -103,17 +86,14 @@ def test_an_import_the_draft_already_removed_is_still_lost(repo: Path):
         .replace("from sprint_metrics.metrics import calculate_blocked_aging\n", "")
     )
     (repo / OLD).write_text(text)
-    elsewhere = ANOTHER_TEST
-    lost = lost_names(repo, impl(edits=[elsewhere]), merged_base(repo))
+    lost = lost_names(repo, merged_base(repo))
     assert set(lost) == {f"{OLD}::calculate_blocked_aging"}
-    assert lost_names(repo, impl(edits=[elsewhere])) == {}, "the draft hid it"
 
 
 def test_a_definition_the_draft_already_deleted_is_still_broken(repo: Path):
     text = (repo / OLD).read_text().replace("def throughput(cards):\n    return 0\n", "")
     (repo / OLD).write_text(text)
-    elsewhere = ANOTHER_TEST
-    broken = draft_breaks(repo, impl(edits=[elsewhere]), merged_base(repo))
+    broken = draft_breaks(repo, merged_base(repo))
     assert broken == {f"{OLD}::throughput": ("def(cards)", REMOVED)}
 
 
@@ -123,16 +103,5 @@ def test_a_draft_move_is_still_a_move(repo: Path):
     (repo / OLD).write_text("from sprint_metrics.flow import throughput\n" + text)
     (repo / PKG / "flow.py").write_text("def throughput(cards):\n    return 0\n")
     merged = merged_base(repo)
-    elsewhere = ANOTHER_TEST
-    implementation = impl(edits=[elsewhere])
-    broken = draft_breaks(repo, implementation, merged)
-    assert without_moves(repo, implementation, broken, merged) == {}
-
-
-def test_a_scratch_copy_that_wont_apply_is_said_out_loud(repo: Path):
-    """Returning nothing silently read as "nothing lost" (sprint-metrics#129)."""
-    heard: list[str] = []
-    bad = FileEdit(path=OLD, operation="delete", target="no_such_thing")
-    assert lost_names(repo, impl(edits=[bad]), merged_base(repo), heard.append) == {}
-    assert heard and "couldn't check what the change stops providing" in heard[0]
-    assert "no_such_thing" in heard[0]
+    broken = draft_breaks(repo, merged)
+    assert without_moves(repo, broken, merged) == {}

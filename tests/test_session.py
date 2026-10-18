@@ -8,6 +8,7 @@ session, through LiteLLM and in a held container, is in the pull request.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ import pytest
 
 from crew_org import calls, events, telemetry
 from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.rulebook import Refusal
 from crew_org.session import conversation, history, signals
 from crew_org.session.container import GONE, Gone
 from crew_org.session.history import Turn
@@ -124,6 +126,81 @@ def test_a_path_outside_the_worktree_is_refused(root):
     for given in ("../secrets", "/etc/passwd", ".git/config"):
         reply = tools(root).call("view", {"path": given})
         assert reply.rule == "session.path", given
+
+
+# --- symlinks: the tools run on the host (crew#778) -----------------------------------------
+
+
+@pytest.fixture
+def outside(tmp_path_factory):
+    """A folder beside the worktree, with a host file in it."""
+    there = tmp_path_factory.mktemp("outside")
+    (there / "secret.py").write_text("TOKEN = 'the host's'\n")
+    return there
+
+
+def test_a_link_to_a_folder_outside_is_refused_for_reading_and_writing(root, outside):
+    (root / "src" / "out").symlink_to(outside, target_is_directory=True)
+    t = tools(root)
+    for name, args in [
+        ("view", {"path": "src/out/secret.py"}),
+        ("search", {"pattern": "TOKEN", "path": "src/out"}),
+        ("write_file", {"path": "src/out/planted.py", "content": "x = 1\n"}),
+        ("replace_text", {"path": "src/out/secret.py", "old": "TOKEN = 'the host's'", "new": "y"}),
+        ("replace_definition", {"path": "src/out/secret.py", "name": "TOKEN", "source": "y"}),
+    ]:
+        assert t.call(name, args).rule == "session.path", name
+    assert not (outside / "planted.py").exists()
+    assert (outside / "secret.py").read_text() == "TOKEN = 'the host's'\n"
+
+
+def test_a_link_to_a_file_outside_is_refused_for_reading_and_writing(root, outside):
+    (root / "src" / "secret.py").symlink_to(outside / "secret.py")
+    t = tools(root)
+    assert t.call("view", {"path": "src/secret.py"}).rule == "session.path"
+    reply = t.call("write_file", {"path": "src/secret.py", "content": "x\n", "overwrite": True})
+    assert reply.rule == "session.path"
+    assert (outside / "secret.py").read_text() == "TOKEN = 'the host's'\n"
+
+
+def test_search_and_find_walk_past_links_without_following_them(root, outside):
+    (root / "src" / "out").symlink_to(outside, target_is_directory=True)
+    (root / "src" / "secret.py").symlink_to(outside / "secret.py")
+    t = tools(root)
+    assert t.call("search", {"pattern": "TOKEN"}).text.startswith("0 lines match")
+    assert "secret.py" not in t.call("find", {"name": "TOKEN"}).text
+
+
+def test_a_link_that_stays_inside_still_reads(root):
+    (root / "lib").symlink_to(root / "src", target_is_directory=True)
+    reply = tools(root).call("view", {"path": "lib/app.py"})
+    assert reply.kind != "refused" and "def f():" in reply.text
+
+
+def test_a_link_inside_is_still_not_edited_through(root):
+    (root / "src" / "alias.py").symlink_to(root / "src" / "app.py")
+    reply = tools(root).call(
+        "write_file", {"path": "src/alias.py", "content": "x\n", "overwrite": True}
+    )
+    assert reply.rule == "session.path" and "symbolic link" in reply.text
+    assert (root / "src" / "app.py").read_text() == APP
+
+
+def test_a_link_swapped_in_after_the_check_fails_the_open(root, outside):
+    """A process still running in the container can replace a folder with a link
+    between the check and the read or write: the open follows no link."""
+    t = tools(root)
+    real, _ = t._path("src/app.py")
+    (root / "src").rename(root / "src-moved")
+    (root / "src").symlink_to(outside, target_is_directory=True)
+    (outside / "app.py").write_text("HOST = 1\n")
+    with pytest.raises(Refusal) as refused:
+        t._read(real, "src/app.py")
+    assert refused.value.rule == "session.path"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    with pytest.raises(Refusal):
+        t._open(real, flags, "src/app.py")
+    assert (outside / "app.py").read_text() == "HOST = 1\n"
 
 
 def test_replace_text_takes_whole_lines_only(root):
@@ -328,6 +405,7 @@ def test_a_session_works_by_tools_until_done_and_records_every_call(root, seen):
     assert (search["found_nothing"], search["looked_for"]) == (True, "nothing-here")
     run = tools_seen[3].detail
     assert [c["code"] for c in run["commands"]] == [0, 0] and run["result"] == "passed"
+    assert run["run"] == "suite"
     turns = [e.detail for e in kinds(seen, EventKind.SESSION_TURN)]
     assert [t["since_action"] for t in turns] == [1, 0, 0, 1]
     assert turns[0]["empty_lookups"] == 1 and turns[2]["reasoning_tokens"] == 300

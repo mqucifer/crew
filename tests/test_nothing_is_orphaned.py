@@ -28,9 +28,6 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "crew_org"
 EXEMPT = {
     "bridged_sinks": "test-only: asserts model calls are forwarded to a sink",
     "reset_bridge": "test-only: the global bus handler cannot be unregistered",
-    # Stage C of crew#778 builds the session beside delivery: until Stage D's deliver
-    # phase calls it before a workspace's setup, `scripts/run_session.py` does.
-    "unfit": "the session's check before setup; delivery calls it from Stage D (crew#778)",
 }
 
 
@@ -40,7 +37,7 @@ def _module_functions() -> dict[Path, dict[str, ast.FunctionDef]]:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         # Private functions are in the graph but never reported: a public
         # function called only by a private one is reachable, and leaving them
-        # out made `deliver_story` look dead because `_work_one_card` calls it.
+        # out made a public function only a private one calls look dead.
         out[path] = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     return out
 

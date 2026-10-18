@@ -1,4 +1,4 @@
-"""Applying an implementation to a worktree, and checking it.
+"""Checking a worktree: the project's lint and tests, in its sandbox.
 
 Running the crew's output means executing model-generated code. The guards here
 are bounded blast radius, not a sandbox: an isolated worktree, a hard timeout, a
@@ -8,16 +8,13 @@ container — see docs/ways-of-working.md and the note in `check`.
 
 from __future__ import annotations
 
-import ast
 import os
 import subprocess
-import textwrap
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from crew_org.crews.delivery_crew import FileWrite, TextEdit
-from crew_org.rulebook import refuse
 from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
 
 if TYPE_CHECKING:
@@ -99,427 +96,6 @@ class CheckResult:
                 + report[-MAX_FAILURE_REPORT_CHARS:]
             )
         return report
-
-
-def apply_implementation(
-    worktree: Path, implementation, *, loose: list[dict[str, Any]] | None = None
-) -> list[str]:
-    """Write new files and apply edits to existing ones.
-
-    New files and edits are separate on purpose. A new file is written whole;
-    an existing file is only ever changed by name, so nothing the model did not
-    name can be touched. A quote matched only loosely is added to `loose`.
-    """
-    from crew_org.tools.ast_edit import Edit, EditError, Operation, apply_edits  # noqa: PLC0415
-
-    root = worktree.resolve()
-    written = apply(worktree, implementation.new_files)
-    # A quote is of the file as the Developer was shown it, so changes by quoting
-    # come before anything else changes it. crew-presentation#73 quoted its whole
-    # placeholder and added definitions by name, and the adds, landing before its
-    # `__main__` block, split the quote (crew#734). Quoted deletions come last,
-    # where one a named edit already made is done.
-    changes = [t for t in implementation.text_edits if t.replace]
-    deletions = [t for t in implementation.text_edits if not t.replace]
-    written += apply_text_edits(worktree, changes, loose=loose)
-    # Moves before edits: an edit to the new module can then address what moved in.
-    moves = getattr(implementation, "moves", [])
-    if moves:
-        from crew_org.tools.move_code import apply_moves  # noqa: PLC0415
-
-        written += apply_moves(root, moves)
-
-    by_path: dict[str, list[Edit]] = {}
-    tests = getattr(implementation, "criteria_edits", set())
-    for item in implementation.all_edits:
-        # A criterion's test the file already has is replaced, not added twice:
-        # sprint-metrics#93's repair sent its first attempt's tests again (#183).
-        # Judged as it's added: crew-presentation#79 wrote its test by renaming a
-        # placeholder's, and #119 named one test for four criteria (crew#735).
-        by_path.setdefault(item.path, []).append(
-            Edit(
-                operation=item.operation,
-                target=item.target,
-                source=item.source,
-                replaces_existing=(item.path, item.target) in tests,
-            )
-        )
-
-    # As each file read before its named edits: a quoted deletion of text a
-    # named delete already removed is already done (sprint-metrics#125).
-    before = {
-        t.path: (root / t.path).read_text(encoding="utf-8")
-        for t in deletions
-        if (root / t.path).is_file()
-    }
-    for path, edits in by_path.items():
-        target = (root / path).resolve()
-        if not target.is_relative_to(root):
-            refuse("edit.workspace.apply_implementation", "outside", path=repr(path))
-        if not target.exists():
-            refuse(
-                "edit.workspace.apply_implementation", "missing", kind=EditError, path=repr(path)
-            )
-        target.write_text(apply_edits(target.read_text(encoding="utf-8"), edits), encoding="utf-8")
-        written.append(path)
-
-    written += apply_text_edits(worktree, deletions, before=before, loose=loose)
-    # Retiring a test removes it: sprint-metrics#132 named three tests as
-    # retired and sent no delete for them, twice, and the one still importing
-    # the deleted module was one of them. What's retired is gone.
-    for retired in getattr(implementation, "retired_tests", []):
-        target = (root / retired.path).resolve()
-        if not target.is_relative_to(root) or not target.is_file():
-            continue  # its file deleted outright, or never there: nothing to remove
-        if _defines(target, retired.test):
-            text = target.read_text(encoding="utf-8")
-            target.write_text(
-                apply_edits(text, [Edit(operation=Operation.DELETE, target=retired.test)]),
-                encoding="utf-8",
-            )
-            if retired.path not in written:
-                written.append(retired.path)
-    for path in getattr(implementation, "deleted_files", []):
-        target = (root / path).resolve()
-        if not target.is_relative_to(root):
-            refuse("edit.workspace.apply_implementation", "outside", path=repr(path))
-        if not target.is_file():
-            refuse(
-                "edit.workspace.apply_implementation", "not_a_file", kind=EditError, path=repr(path)
-            )
-        target.unlink()
-        written.append(path)
-    return written
-
-
-def _defines(path: Path, name: str) -> bool:
-    """Does the file at `path` already define a top-level function called `name`?"""
-    import re  # noqa: PLC0415
-
-    if not path.exists():
-        return False
-    text = path.read_text(encoding="utf-8")
-    return re.search(rf"^(?:async\s+)?def {re.escape(name)}\b", text, re.MULTILINE) is not None
-
-
-def apply_text_edits(
-    worktree: Path,
-    text_edits: list,
-    *,
-    before: dict[str, str] | None = None,
-    loose: list[dict[str, Any]] | None = None,
-) -> list[str]:
-    """Apply quoted replacements to existing non-Python files (#140).
-
-    Every edit is checked before any file is written, so a quote that doesn't
-    match leaves every file as it was rather than half-changed. A quote must
-    occur exactly once: zero means it was not copied from the file, and more
-    than one means the edit doesn't say which it meant.
-    """
-    changed = plan_text_edits(worktree, text_edits, before=before, loose=loose)
-    root = worktree.resolve()
-    for path, text in changed.items():
-        (root / path).write_text(text, encoding="utf-8")
-    return list(changed)
-
-
-def plan_text_edits(
-    worktree: Path,
-    text_edits: list,
-    *,
-    before: dict[str, str] | None = None,
-    loose: list[dict[str, Any]] | None = None,
-) -> dict[str, str]:
-    """What each file quoted by `text_edits` would hold afterwards. Writes nothing.
-
-    Raises `EditError` for a quote that isn't in the file, or occurs twice.
-    `before` is each file as it was before the named edits: a deletion quoting
-    text that was there and that they already removed is skipped, not failed.
-    A quote matched only loosely (`_loose_match`) is added to `loose`, for the
-    attempt's record.
-    """
-    before = before or {}
-    from crew_org.flows.skeleton import marked  # noqa: PLC0415
-    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
-
-    root = worktree.resolve()
-    changed: dict[str, str] = {}
-    placeholders: set[str] = set()
-    rewritten: set[str] = set()
-    for item in text_edits:
-        target = (root / item.path).resolve()
-        if not target.is_relative_to(root):
-            refuse("edit.workspace.plan_text_edits", "outside", path=repr(item.path))
-        if item.path not in changed:
-            if not target.exists():
-                refuse(
-                    "edit.workspace.plan_text_edits",
-                    "missing",
-                    kind=EditError,
-                    path=repr(item.path),
-                )
-            changed[item.path] = target.read_text(encoding="utf-8")
-            if marked(changed[item.path]):
-                placeholders.add(item.path)
-        text = changed[item.path]
-        found = text.count(item.find) if item.find else 0
-        removed = not item.replace and item.find in before.get(item.path, "")
-        if item.find and found == 0 and not removed:
-            matched = _loose_match(text, item)
-            if matched is not None:
-                item, how = matched
-                found = 1
-                line = text.count("\n", 0, text.index(item.find)) + 1
-                if loose is not None:
-                    loose.append({"fallback": how, "path": item.path, "line": line})
-        if item.path.endswith(".py"):
-            try:
-                _outside_definitions(item, text)
-            except EditError:
-                # A walking skeleton's placeholder has no definitions anyone relies
-                # on: the story replacing it rewrites it (ADR 0030). crew-presentation
-                # stories 73 and 84 rewrote theirs by quoting, and were refused seven
-                # times for bringing in definitions (crew#731).
-                if item.path not in placeholders:
-                    raise
-                rewritten.add(item.path)
-        if not item.find:
-            joiner = "" if not text or text.endswith("\n") else "\n"
-            changed[item.path] = text + joiner + item.replace
-            continue
-        if found == 0 and not item.replace and item.find in before.get(item.path, ""):
-            continue  # removing what a named edit already removed
-        if found == 0:
-            refuse(
-                "edit.workspace.plan_text_edits",
-                "not_found",
-                kind=EditError,
-                path=repr(item.path),
-                quote=item.find[:300],
-            )
-        if found > 1:
-            refuse(
-                "edit.workspace.plan_text_edits",
-                "ambiguous",
-                kind=EditError,
-                count=found,
-                path=repr(item.path),
-                quote=item.find[:300],
-            )
-        changed[item.path] = text.replace(item.find, item.replace, 1)
-    for path in sorted(rewritten):
-        # Still marked, the real file it became could be rewritten by every later story.
-        if marked(changed[path]):
-            refuse("edit.workspace.plan_text_edits", "placeholder", kind=EditError, path=repr(path))
-    for path, text in changed.items():
-        if path.endswith(".py"):
-            try:
-                ast.parse(text)
-            except SyntaxError as exc:
-                refuse(
-                    "edit.workspace.plan_text_edits",
-                    "invalid",
-                    kind=EditError,
-                    path=repr(path),
-                    error=exc.msg,
-                    line=exc.lineno,
-                )
-    return changed
-
-
-def _loose_match(text: str, item: TextEdit) -> tuple[TextEdit, str] | None:
-    """The quote as the file has it, when only a known slip keeps it from matching.
-
-    Each fallback is taken only when it finds exactly one place, and the caller
-    records which one matched, so a looser match is never silent (crew#734):
-
-    - **quote.final_newline:** a block always ends with a newline (ADR 0026), so a quote
-      of part of a line came back with one the file doesn't have there.
-      crew-presentation stories 79 and 120 and sprint-metrics stories 589 and 657
-      were refused for it.
-    - **quote.indent:** the quote's lines, all at one other indent, in spaces.
-      sprint-metrics#604 quoted a schema's lines eight spaces deeper than they
-      are. The replacement moves by the same amount, its own indentation kept.
-    """
-    if item.find.endswith("\n") and text.count(item.find[:-1]) == 1:
-        replace = item.replace[:-1] if item.replace.endswith("\n") else item.replace
-        trimmed = item.model_copy(update={"find": item.find[:-1], "replace": replace})
-        return trimmed, "quote.final_newline"
-    shifted = _shifted(text, item.find, item.replace)
-    if shifted is not None:
-        find, replace = shifted
-        return item.model_copy(update={"find": find, "replace": replace}), "quote.indent"
-    return None
-
-
-def _shifted(text: str, find: str, replace: str) -> tuple[str, str] | None:
-    """`find` and `replace` moved to the one indent where the file has `find`'s lines."""
-    if "\t" in find or "\t" in replace:
-        return None
-    trailing = find.endswith("\n")
-    wanted = find[:-1].split("\n") if trailing else find.split("\n")
-    if not any(line.strip() for line in wanted):
-        return None
-    lines = text.split("\n")
-    found: list[tuple[int, int]] = []
-    for start in range(len(lines) - len(wanted) + 1):
-        shift = _one_shift(lines[start : start + len(wanted)], wanted)
-        if shift:
-            found.append((start, shift))
-    if len(found) != 1:
-        return None
-    start, shift = found[0]
-    moved = []
-    for line in replace.split("\n"):
-        if not line.strip():
-            moved.append(line)
-        elif shift > 0:
-            moved.append(" " * shift + line)
-        elif line.startswith(" " * -shift):
-            moved.append(line[-shift:])
-        else:
-            return None  # its own indentation can't be kept
-    window = "\n".join(lines[start : start + len(wanted)]) + ("\n" if trailing else "")
-    return window, "\n".join(moved)
-
-
-def _one_shift(lines: list[str], wanted: list[str]) -> int:
-    """How many spaces `lines` sit deeper than `wanted`, if every line agrees. 0 if not."""
-    shift: int | None = None
-    for line, want in zip(lines, wanted, strict=True):
-        if not want.strip():
-            if line.strip():
-                return 0
-            continue
-        if "\t" in line or line.lstrip(" ") != want.lstrip(" "):
-            return 0
-        this = (len(line) - len(line.lstrip(" "))) - (len(want) - len(want.lstrip(" ")))
-        if shift is None:
-            shift = this
-        elif this != shift:
-            return 0
-    return shift or 0
-
-
-def _outside_definitions(item, text: str) -> None:
-    """A text edit to Python may change module-level lines only (#204).
-
-    Imports, an `if __name__ == "__main__":` block, a docstring: a file's lines
-    outside any function or class, which have no name for `edits` to address.
-    sprint-metrics#133 could not repoint one import in `__main__.py` any other
-    way. A definition is still changed by name, where the contract check (§15)
-    sees it, so an edit reaching into one, or bringing one in, is refused.
-    """
-    from crew_org.tools.ast_edit import EditError  # noqa: PLC0415
-
-    how = (
-        f"Text edits to a Python file ({item.path!r}) are for its module-level lines: "
-        "imports, an `if __name__` block, the docstring. Change or add a function or "
-        "class with `edits`, by name."
-    )
-    try:
-        added = ast.parse(textwrap.dedent(item.replace)) if item.replace.strip() else None
-    except SyntaxError:
-        added = None  # a fragment; the whole file is parsed once every edit is in
-    if added is not None and any(
-        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
-        for node in ast.walk(added)
-    ):
-        refuse("edit.workspace.outside_definitions", "brings_in", kind=EditError, how=how)
-    # An empty `find` appends, so imports would land after the code that uses them:
-    # crew-presentation#73 did it three times and failed each on a NameError at
-    # line 10, with the imports at the end of the file (crew#690).
-    if (
-        not item.find
-        and added is not None
-        and any(isinstance(node, ast.Import | ast.ImportFrom) for node in added.body)
-    ):
-        refuse(
-            "edit.workspace.outside_definitions",
-            "appends_imports",
-            kind=EditError,
-            path=repr(item.path),
-        )
-    if not item.find or item.find not in text:
-        return  # an append, or a quote the caller reports as not in the file
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        return  # nothing to locate definitions in; the file is refused as a whole later
-    start = text.index(item.find)
-    first = text.count("\n", 0, start) + 1
-    # The quote's last line with text: a trailing newline ends a line, it doesn't
-    # reach into the next one (an import directly above a function was refused).
-    last = first + item.find.rstrip("\n").count("\n")
-    for node in tree.body:
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            continue
-        top = min([node.lineno, *(d.lineno for d in node.decorator_list)])
-        if first <= (node.end_lineno or node.lineno) and top <= last:
-            refuse(
-                "edit.workspace.outside_definitions",
-                "reaches_into",
-                kind=EditError,
-                name=node.name,
-                how=how,
-                replace=_as_a_replace(text, node, item, first, last),
-            )
-
-
-# The most of a definition a refusal shows back, ready to send as a `replace`.
-REPLACE_SHOWN_CHARS = 12_000
-
-
-def _as_a_replace(text: str, node: ast.stmt, item: TextEdit, first: int, last: int) -> str:
-    """The definition the quote reaches into, with the quoted change made, to send by name.
-
-    mqucifer/sprint-metrics#585 (2026-10-11) was blocked after three tries at changing
-    one cell of a large expected table inside a test with a quoted edit: the refusal
-    said what not to do, and copying out the whole test was what it kept avoiding. A
-    quote wholly inside one definition (a method, if it's inside one) comes back as
-    that definition with the change made; otherwise as it stands.
-    """
-    lines = text.splitlines()
-    target, name = node, node.name
-    if isinstance(node, ast.ClassDef):
-        for child in node.body:
-            if (
-                isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
-                and min([child.lineno, *(d.lineno for d in child.decorator_list)]) <= first
-                and last <= (child.end_lineno or child.lineno)
-            ):
-                target, name = child, f"{node.name}.{child.name}"
-    top = min([target.lineno, *(d.lineno for d in getattr(target, "decorator_list", []))])
-    end = target.end_lineno or target.lineno
-    source = "\n".join(lines[top - 1 : end])
-    inside = top <= first and last <= end and source.count(item.find) == 1
-    if inside:
-        source = source.replace(item.find, item.replace)
-    if len(source) > REPLACE_SHOWN_CHARS:
-        return f" Send `{name}` whole as a `replace` edit, with your change made in it."
-    said = "with your change made" if inside else "as it stands; make your change in it"
-    return (
-        f" Here is `{name}` {said}: send it back whole as a `replace` edit of `{name}`."
-        f"\n\n```python\n{source}\n```"
-    )
-
-
-def apply(worktree: Path, files: list[FileWrite]) -> list[str]:
-    """Write an implementation into the worktree. Returns the paths written.
-
-    Paths were validated at the schema boundary; this re-checks containment
-    because the cost of being wrong is writing outside the repository.
-    """
-    written: list[str] = []
-    root = worktree.resolve()
-    for item in files:
-        target = (root / item.path).resolve()
-        if not target.is_relative_to(root):
-            refuse("edit.workspace.apply", path=repr(item.path))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(item.content, encoding="utf-8")
-        written.append(item.path)
-    return written
 
 
 def run(
@@ -723,7 +299,12 @@ def _shelled(design: Design) -> str | None:
 
 
 def check(
-    worktree: Path, *, sandbox: Sandbox | None = None, timeout: int = DEFAULT_TIMEOUT
+    worktree: Path,
+    *,
+    sandbox: Sandbox | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    held: Any = None,
+    since: str | None = None,
 ) -> CheckResult:
     """Format what a formatter owns, then lint and test what is left.
 
@@ -741,6 +322,11 @@ def check(
 
     Only the dependency step is given a network. Everything after it runs with
     none at all, so generated code cannot reach anything while it executes.
+
+    `held` is a session's workspace container (`tools/container.py`): its setup
+    ran when it started, so the fixers and checks run in it, and nothing else
+    does (crew#778). `since` is the commit the work started from: a session
+    commits its checkpoints, so what it touched is read against that, not HEAD.
     """
     sandbox = sandbox or Sandbox()
     tools = toolchain(worktree)
@@ -751,37 +337,44 @@ def check(
     if tools.image:
         sandbox = replace(sandbox, image=tools.image)
     given: dict[str, Any] = {"timeout": timeout, "env": tools.env}
+
+    def do(command: list[str], network: bool = False) -> CommandResult:
+        if held is None:
+            return run(worktree, command, sandbox=sandbox, network=network, **given)
+        done = held.exec(command, timeout=timeout)
+        return CommandResult(command=done.command, code=done.code, output=done.output)
+
     results = []
-    if tools.setup:
-        results.append(run(worktree, tools.setup, sandbox=sandbox, network=True, **given))
+    if tools.setup and held is None:
+        results.append(do(tools.setup, network=True))
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
     if all(r.ok for r in results):
-        touched = _changed(worktree)
+        touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
         if touched is not None and tools.autofix == AUTOFIX:
             # Before the formatter, which then formats what the fix wrote.
-            unsafe = _unsafe_fixes(worktree, touched, sandbox=sandbox, timeout=timeout)
+            unsafe = _unsafe_fixes(worktree, touched, do)
         for command in tools.autofix:
             # Outcome ignored on purpose: whatever the autofix could not fix is
             # reported by the lint that follows, which is the verdict.
-            run(worktree, command, sandbox=sandbox, network=False, **given)
+            do(command)
         if touched is not None:
             fixed = [p for p, text in kept.items() if _read(worktree / p) != text]
             # A fixer runs over the whole project, but the attempt answers for what
             # it changed: a fix elsewhere would land unreviewed in its pull request.
             # Undone, its finding is reported by the checks like any other.
-            reverted = sorted((_changed(worktree) or set()) - touched)
+            reverted = sorted((_changed(worktree, since) or set()) - touched)
             if reverted:
                 _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
-            results.append(run(worktree, command, sandbox=sandbox, network=False, **given))
+            results.append(do(command))
     return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
 
 
 def _unsafe_fixes(
-    worktree: Path, touched: set[str], *, sandbox: Sandbox, timeout: int
+    worktree: Path, touched: set[str], do: Callable[[list[str]], CommandResult]
 ) -> list[str]:
     """Apply the allowed unsafe fixes (`UNSAFE_FIXES`) the project's lint reports.
 
@@ -794,13 +387,7 @@ def _unsafe_fixes(
     files = sorted(p for p in touched if p.endswith(".py") and (worktree / p).is_file())
     if not files:
         return []
-    found = run(
-        worktree,
-        ["uv", "run", "ruff", "check", "--output-format", "json", *files],
-        sandbox=sandbox,
-        network=False,
-        timeout=timeout,
-    )
+    found = do(["uv", "run", "ruff", "check", "--output-format", "json", *files])
     listed = found.output[found.output.find("[") : found.output.rfind("]") + 1]
     try:
         findings = json.loads(listed) if listed else []
@@ -822,21 +409,26 @@ def _unsafe_fixes(
     codes = sorted({a.split()[0] for a in applied})
     paths = sorted({a.split()[1].rsplit(":", 1)[0] for a in applied})
     was = {p: _read(worktree / p) for p in paths}
-    run(
-        worktree,
+    do(
         ["uv", "run", "ruff", "check", "--fix-only", "--unsafe-fixes"]
-        + ["--select", ",".join(codes), *paths],
-        sandbox=sandbox,
-        network=False,
-        timeout=timeout,
+        + ["--select", ",".join(codes), *paths]
     )
     # On the record only where the file did change: a fix that didn't run isn't one.
     changed = {p for p in paths if _read(worktree / p) != was[p]}
     return [a for a in applied if a.split()[1].rsplit(":", 1)[0] in changed]
 
 
-def _changed(worktree: Path) -> set[str] | None:
-    """The files changed or new in the worktree, as git sees it. None outside git."""
+def _changed(worktree: Path, since: str | None = None) -> set[str] | None:
+    """The files changed or new in the worktree, as git sees it. None outside git.
+
+    `since` counts what's committed after that commit as changed too.
+    """
+    if since is not None:
+        diffed = _git(worktree, "diff", "--name-only", "-z", since)
+        new = _git(worktree, "ls-files", "--others", "--exclude-standard", "-z")
+        if diffed is None or new is None:
+            return None
+        return {p for p in (diffed + new).split("\0") if p}
     listed = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     if listed is None:
         return None

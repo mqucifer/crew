@@ -10,8 +10,6 @@ names. A cut field ends where the quoted value would have begun: on a colon, or 
 a space.
 
 The check names each such field so the answer is asked for again with the reason.
-Fields that hold a file's text exactly as written (code, a YAML key that ends in a
-colon) are skipped: there a colon at the end is the text, not a cut.
 """
 
 from __future__ import annotations
@@ -23,25 +21,11 @@ from pydantic import BaseModel
 
 from crew_org.rulebook import refuse
 
-# (form, field) pairs whose value is a file's text, copied or written exactly.
-VERBATIM = frozenset(
-    {
-        ("FileWrite", "content"),
-        ("FileEdit", "target"),
-        ("FileEdit", "source"),
-        ("TextEdit", "find"),
-        ("TextEdit", "replace"),
-        ("CriterionTest", "source"),
-    }
-)
-
 
 def _strings(value: Any, where: str) -> Iterator[tuple[str, str]]:
     if isinstance(value, BaseModel):
-        form = type(value).__name__
         for name in type(value).model_fields:
-            if (form, name) not in VERBATIM:
-                yield from _strings(getattr(value, name), f"{where}.{name}" if where else name)
+            yield from _strings(getattr(value, name), f"{where}.{name}" if where else name)
     elif isinstance(value, list | tuple):
         for i, item in enumerate(value):
             yield from _strings(item, f"{where}[{i}]")

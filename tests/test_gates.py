@@ -8,13 +8,13 @@ and a bug's reproduction. Every finding goes back together.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from crew_org.flows import gates
-from crew_org.flows.delivery import _LISTED_TEST
 from crew_org.tools import reproduction
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult
@@ -118,13 +118,18 @@ def test_a_changed_test_done_doesnt_declare_goes_back(repo):
     uncap(repo)
     verdict = at_done(repo, done())
     assert [f.rule for f in verdict.findings] == ["check.gates.these_merged_tests_changed"]
-    assert f"`{TESTS}::test_rate_is_capped` (changed)" in verdict.findings[0].says
+    says = verdict.findings[0].says
+    assert f"`{TESTS}::test_rate_is_capped` (changed)" in says
+    # A session has no git, so the merged test it would put back is shown (#316).
+    assert "As merged:" in says and "assert rate(2, 1) == 100" in says
 
 
 def test_a_removed_test_is_a_change_too(repo):
     (repo / TESTS).write_text(MERGED_TESTS.split("\n\n\ndef test_rate_of_nothing")[0] + "\n")
     verdict = at_done(repo, done())
-    assert f"`{TESTS}::test_rate_of_nothing` (removed)" in verdict.findings[0].says
+    says = verdict.findings[0].says
+    assert f"`{TESTS}::test_rate_of_nothing` (removed)" in says
+    assert "def test_rate_of_nothing():\n    assert rate(0, 0) == 0" in says, "to put it back"
 
 
 def test_a_test_only_reformatted_hasnt_changed(repo):
@@ -249,16 +254,15 @@ def test_a_bugs_tests_must_fail_without_the_fix(repo, monkeypatch):
     assert [f.rule for f in verdict.findings] == ["guard.reproduce.check"]
 
 
-def test_the_pull_requests_sections_are_the_ones_a_rework_reads_back(repo):
+def test_the_pull_request_lists_the_declared_tests_apart_from_the_questions(repo):
     uncap(repo)
     verdict = at_done(repo, done((f"{TESTS}::test_rate_is_capped", "the cap is gone")))
     verdict.questions["tests/test_other.py::test_x"] = "a question"
     text = "\n".join(gates.pr_sections(verdict))
     assert "## Tests the story declares it changes" in text
     assert gates.QUESTIONS_HEADING in text
-    assert _LISTED_TEST.findall(text.split(gates.QUESTIONS_HEADING)[0]) == [
-        f"{TESTS}::test_rate_is_capped"
-    ]
+    listed = re.findall(r"^- `([^`\s]+\.py::[\w.]+)`", text.split(gates.QUESTIONS_HEADING)[0], re.M)
+    assert listed == [f"{TESTS}::test_rate_is_capped"]
 
 
 def test_done_checks_the_tests_it_names_exist_and_says_write_one_first(repo):

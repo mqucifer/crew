@@ -7,7 +7,6 @@ The real call, through LiteLLM, is in the pull request.
 from __future__ import annotations
 
 import json
-import re
 
 import httpx
 import pytest
@@ -349,168 +348,15 @@ def test_the_form_is_written_plainly_each_field_with_its_type_and_meaning():
 
     Raised from 60% to 65% of the schema by the Sponsor's decision on crew#756: each rule
     the form checks is told in it, once, and that took the form to 64.4%."""
-    from crew_org.crews.delivery_crew import FirstOrDone  # noqa: PLC0415
+    from crew_org.crews.qa_crew import QAVerdict  # noqa: PLC0415
 
-    schema = FirstOrDone.model_json_schema()
+    schema = QAVerdict.model_json_schema()
     text = calls.form_text(schema)
     assert len(text) < len(json.dumps(schema, indent=2)) * 0.65
-    assert "- `edits` (list of FileEdit): Changes to Python files that already exist" in text
-    assert "- `operation` (one of `replace`, `add`, `add_method`, `add_import`, `delete`)" in text
-    assert "**FileEdit**: One change to an existing file" in text
+    assert "- `criteria` (list of CriterionVerdict): One verdict per criterion" in text
+    assert "- `proven` (boolean): Is this criterion proven" in text
+    assert "**CriterionVerdict**" in text
     assert '"$ref"' not in text and '"title"' not in text
-
-
-# --- code in blocks after the JSON (ADR 0026) ------------------------------------------
-
-
-class Write(BaseModel):
-    path: str
-    source: str = ""
-
-
-class Change(BaseModel):
-    summary: str
-    writes: list[Write]
-
-
-CODE = (
-    "def test_json(run_command):\n    data = run_command()\n"
-    '    assert data["superseded_breakdown"] == {"sponsor": 0}}],"\n'
-)
-TWO_PARTS = (
-    '{"summary": "add it", "writes": [{"path": "tests/test_x.py", "source": "b1"}, '
-    '{"path": "src/x.py", "source": ""}]}\n\n'
-    "@@@ b1 @@@\n" + CODE + "@@@ end @@@\n"
-)
-
-
-def test_code_in_a_block_comes_back_exactly_as_written():
-    """sprint-metrics#567's slip, `{\\"sponsor\\": 0}}],"`, inside a block is just code."""
-    head, blocks = calls.split_blocks(TWO_PARTS)
-    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
-    assert joined["writes"][0]["source"] == CODE
-    assert joined["writes"][1]["source"] == "", "an empty code field stays empty"
-
-
-def test_a_block_in_a_fence_or_json_in_a_fence_is_unwrapped():
-    fenced = (
-        '```json\n{"summary": "s", "writes": [{"path": "p", "source": "b1"}]}\n```\n'
-        "@@@ b1 @@@\n```python\nx = 1\n```\n@@@ end @@@\n"
-    )
-    head, blocks = calls.split_blocks(fenced)
-    assert json.loads(head)["summary"] == "s" and blocks == {"b1": "x = 1\n"}
-
-
-@pytest.mark.parametrize(
-    ("text", "said"),
-    [
-        (
-            '{"summary": "s", "writes": [{"path": "p", "source": "b2"}]}',
-            "names block 'b2', which isn't written",
-        ),
-        ('{"summary": "s", "writes": []}\n@@@ b1 @@@\nx', "block 'b1' has no @@@ end @@@ line"),
-        (
-            '{"summary": "s", "writes": [{"path": "p", "source": "b1"}]}\n'
-            "@@@ b1 @@@\nx\n@@@ end @@@\nstray words\n",
-            "text after the JSON outside any block",
-        ),
-    ],
-)
-def test_a_missing_unused_or_unclosed_block_is_refused_with_why(text, said):
-    with pytest.raises(ValueError, match=re.escape(said)):
-        head, blocks = calls.split_blocks(text)
-        calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
-
-
-def test_an_answer_with_blocks_is_asked_without_the_grammar_and_joined():
-    proxy = Proxy(TWO_PARTS)
-    found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
-    assert found.writes[0].source == CODE
-    sent = proxy.sent[0]
-    assert "response_format" not in sent, "a JSON schema would forbid the blocks"
-    assert sent["extra_body"]["ebnf"] == calls.blocks_grammar(Change.model_json_schema())
-    prompt = sent["messages"][1]["content"]
-    assert "@@@ b1 @@@" in prompt and "- `source` (code, as a block)" in prompt
-
-
-def test_a_bad_json_part_is_refused_and_asked_again():
-    proxy = Proxy('{"summary": "s", "writes": [}\n', TWO_PARTS)
-    found = calls.ask("developer", PARTS, Change, send=proxy, blocks=frozenset({"source"}))
-    assert found.summary == "add it"
-    assert "isn't valid JSON" in proxy.sent[1]["messages"][-1]["content"]
-
-
-@pytest.mark.parametrize("named", ["b1", "@@b1", "@@@ b1 @@@", "block b1", "`b1`", " B1 "])
-def test_a_block_is_found_however_its_name_is_marked(named):
-    """The first real answer wrote "@@b1"; a field holding only a block's name isn't code."""
-    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
-    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
-    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
-    assert joined["writes"][0]["source"] == "x = 1\n"
-
-
-def test_code_that_merely_mentions_a_block_name_is_left_as_code():
-    data = {"source": "print('b1')"}
-    assert calls.join_blocks(data, {}, frozenset({"source"})) == data
-
-
-def test_a_block_no_field_names_is_left_out():
-    """Ask-only answers wrote an example block and were refused for it (2026-10-11)."""
-    head = '{"summary": "s", "writes": []}'
-    _, blocks = calls.split_blocks(f"{head}\n@@@ b0 @@@\nexample\n@@@ end @@@\n")
-    assert calls.join_blocks(json.loads(head), blocks, frozenset({"source"})) == json.loads(head)
-
-
-def test_the_grammar_bounds_the_number_of_blocks():
-    """Unbounded, two answers wrote the same block 4,994 and 6,464 times."""
-    assert "block{0,60}" in calls.BLOCKS_GRAMMAR
-
-
-def test_the_json_opens_with_the_forms_first_field_so_it_cant_be_empty():
-    """Answers came back as `{}`, refused as "summary: Field required", in the live tick."""
-    grammar = calls.blocks_grammar(Change.model_json_schema())
-    assert 'head ::= "{" ws "\\"summary\\"" ws ":" ws nonempty' in grammar
-    assert "root ::= head" in grammar and "nonempty ::=" in grammar
-
-    class Count(BaseModel):
-        count: int
-        source: str = ""
-
-    assert 'ws ":" ws value (' in calls.blocks_grammar(Count.model_json_schema())
-
-
-def test_a_code_field_pointing_at_no_block_says_which_blocks_are_written():
-    """`@@criteria_test_1@@` was taken as code and refused for not defining its test."""
-    head = '{"summary": "s", "writes": [{"path": "p", "source": "@@criteria_test_1@@"}]}'
-    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\ndef test_x(): pass\n@@@ end @@@\n")
-    with pytest.raises(ValueError, match="isn't a block's name.*written are b1"):
-        calls.join_blocks(json.loads(head), blocks, frozenset({"source"}))
-
-
-def test_code_that_merely_mentions_at_signs_is_still_code():
-    head = '{"summary": "s", "writes": [{"path": "p", "source": "@decorator"}]}'
-    joined = calls.join_blocks(json.loads(head), {}, frozenset({"source"}))
-    assert joined["writes"][0]["source"] == "@decorator"
-
-
-@pytest.mark.parametrize("named", ["f1", "b_url_for", "@@f1@@"])
-def test_a_block_written_under_another_name_is_found_and_recorded(named):
-    """sprint-metrics#626 wrote blocks f1 to f8; each name went in as the quote (crew#734)."""
-    bare = named.strip("@")
-    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": named}]})
-    _, blocks = calls.split_blocks(f"{head}\n@@@ {bare} @@@\nx = 1\n@@@ end @@@\n")
-    loose: list[dict] = []
-    joined = calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
-    assert joined["writes"][0]["source"] == "x = 1\n"
-    assert loose == [{"fallback": "block.name", "field": "source", "name": bare}]
-
-
-def test_a_block_named_b1_records_no_fallback():
-    head = json.dumps({"summary": "s", "writes": [{"path": "p", "source": "b1"}]})
-    _, blocks = calls.split_blocks(f"{head}\n@@@ b1 @@@\nx = 1\n@@@ end @@@\n")
-    loose: list[dict] = []
-    calls.join_blocks(json.loads(head), blocks, frozenset({"source"}), loose)
-    assert loose == []
 
 
 def test_a_refusal_by_a_declared_rule_is_recorded_with_its_name(seen):
@@ -569,16 +415,19 @@ def test_a_lookup_that_fails_leaves_the_call_unmarked_not_unmade(seen, monkeypat
     assert "given" not in started[0]
 
 
-def test_a_rule_is_told_once_in_a_form_however_many_fields_it_checks():
+def test_a_rule_is_told_once_in_a_form_however_many_fields_it_checks(monkeypatch):
     """The Sponsor, 2026-10-17 (crew#756): the path rule was told three times on the
     Developer's first-answer form, the named-test rule twice."""
-    from crew_org import rulebook  # noqa: PLC0415
-    from crew_org.crews.delivery_crew import FirstOrDone  # noqa: PLC0415
 
-    text = " ".join(calls.form_text(FirstOrDone.model_json_schema()).split())
-    path = rulebook.catalog()["form.path.stays_in_the_repository"].description
-    named = rulebook.catalog()["check.delivery.these_named_tests_dont_exist"].description
-    assert text.count(path) == 1 and text.count(named) == 1
+    class Two(BaseModel):
+        first: str
+        second: str
+
+    said = "Refused if it leaves the repository."
+    told = {"first": [said], "second": [said]}
+    monkeypatch.setattr(calls.rulebook, "told", lambda name: told if name == "Two" else {})
+    text = " ".join(calls.form_text(Two.model_json_schema()).split())
+    assert text.count(said) == 1
 
 
 def test_a_conversation_call_sends_the_tools_and_records_it_as_any_call(seen):

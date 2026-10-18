@@ -144,7 +144,6 @@ create_field "Work Type"   SINGLE_SELECT "Goal,Epic,Story,Task,Bug,Spike"
 create_field "Priority"    SINGLE_SELECT "P0,P1,P2,P3"
 create_field "Owner Agent" SINGLE_SELECT "Product Owner,Business Analyst,Architect,Developer,QA Engineer,Code Reviewer,Scrum Master"
 create_field "Points"      NUMBER
-create_field "Escalations" NUMBER
 
 # `gh project field-create` has no ITERATION option, but the GraphQL API does —
 # and updateProjectV2Field can configure the iteration periods too, so the whole
@@ -217,7 +216,6 @@ for repo in "$CREW_REPO" "$PILOT_REPO"; do
   add_label "$repo" "needs:design"    "C2E0C6" "Force an Architect design note"
   add_label "$repo" "no:design"       "E4E669" "Waive the Architect design note"
 done
-add_label "$CREW_REPO" "escalation:rate-limited" "C5DEF5" "Parked on a Claude usage limit"
 
 # --- branch protection ---------------------------------------------------
 # Agents never push to main. Everything lands through a reviewed PR.

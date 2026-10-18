@@ -9,7 +9,6 @@ import httpx
 import pytest
 
 from crew_org import llm
-from tests.test_delivery_flow import harness  # noqa: F401
 
 URL = "http://localhost:4000/v1"
 REQUEST = httpx.Request("GET", f"{URL}/models")

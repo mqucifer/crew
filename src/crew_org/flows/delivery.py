@@ -1,13 +1,10 @@
 """Delivery: a story in the sprint becomes a pull request.
 
-The loop is deliberately narrow. A Developer produces a typed implementation,
-it is written into an isolated worktree, and the worktree is linted and tested.
-If that fails, the failure is *classified* before anything else happens — which
-is what keeps escalation from becoming the easy path.
-
-Only VERIFY failures escalate, and only after local repair is exhausted. A
-SCHEMA failure means the prompt or schema is wrong and gets repaired locally; a
-SCOPE failure means the story was not ready and goes back to refinement.
+The deliver phase claims stories up to the WIP limit and hands each to a Developer
+session (`session_delivery`, ADR 0032), then moves the card on by where it ended:
+review, QA, back to refinement, or blocked for a person. Rework from review or QA
+is a new session. The helpers here are what the session's gates and the board's
+flow around it share.
 """
 
 from __future__ import annotations
@@ -15,49 +12,27 @@ from __future__ import annotations
 import contextlib
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from crew_org import log, profiles
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
-from crew_org.crews import asks as file_asks
-from crew_org.crews import epic_rows
-from crew_org.crews.delivery_crew import Implementation, implement_story
-from crew_org.escalation import (
-    Disposition,
-    EscalationDecision,
-    EscalationLedger,
-    EscalationPolicy,
-    EscalationRecord,
-    FailureClass,
-    LocalFailure,
-    utcnow,
-)
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, first_hold, held
 from crew_org.flows import artifacts, story_problem
-from crew_org.flows.acceptance import ALREADY_DONE_MARKER, EXISTING_PROOF_MARKER, qa_marker
+from crew_org.flows.acceptance import ALREADY_DONE_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
-from crew_org.flows.attempts import failing_tests, first_error, repair_report
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
-from crew_org.flows.conclusion import story_rows
-from crew_org.flows.history import ANSWERED_MARKER, latest_answer
 from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved, rebuild_files
 from crew_org.flows.moves import move_card
-from crew_org.flows.presentation_notes import story_notes
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.flows.siblings import unlanded_earlier_siblings
-from crew_org.git_ops import MergeConflict, Workspace, branch_name
+from crew_org.git_ops import Workspace, branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
-from crew_org.project import ProjectRecordError, brief, read_record
-from crew_org.rulebook import refuse, says
-from crew_org.rules import Kind, Rule
-from crew_org.tools import bounds, claude_code, regression, repo_context, reproduction, workspace
+from crew_org.rulebook import says
+from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
-from crew_org.tools.repo_context import SELECTION_TEXT_CHARS, focused_context
-from crew_org.tools.repo_read import Reader
-from crew_org.work_types import BUG, DELIVERED, open_in
+from crew_org.work_types import DELIVERED, open_in
 
 # Marks the comment a repair leaves on the pull request it updated, so the
 # thread says why a new commit appeared rather than leaving the reviewer to
@@ -73,58 +48,29 @@ class DeliveryOutcome:
     blocked_reason: str | None = None
     # Which rule blocked it, by name (crew#449): the reason above is for a person.
     blocked_rule: str | None = None
+    # Its sessions, each round after the gates included (crew#778).
     attempts: int = 0
-    # Counted per failure class: a mechanical mistake like naming a definition
-    # that does not exist should not spend the budget kept for real failures.
-    # Observed on story #8, where two invented names left the first genuine test
-    # failure with no repair left and it escalated immediately.
-    attempts_by_class: dict[str, int] = field(default_factory=dict)
-    escalated: bool = False
-    diff: str | None = None
-    # What the Developer actually wrote, kept when the card blocks. Deliberately
-    # not `diff`: that field means "verified work a dry run chose not to land",
-    # and `ok` is defined in terms of it. This is the opposite — the artifact of
-    # a failure, which would otherwise be deleted with the worktree.
+    # What the Developer actually wrote, kept when the card blocks: the artifact
+    # of a failure, which would otherwise be deleted with the worktree.
     rejected_diff: str | None = None
-    # The whole failure report, not the 400-character extract the event log
-    # carries. A pytest run with thirteen failures does not fit in 400
-    # characters, and the part that identifies the defect is rarely the front.
-    failure_detail: str | None = None
     # Where an unexpected error happened: the crew's last frames (#390).
     where: str | None = None
-    # A story whose failures are the story's (#189): the evidence for its epic.
-    returned: str | None = None
-    # Whether the Business Analyst has ruled on merged tests this story broke and
-    # didn't declare: once per delivery (crew#584, step A5).
-    contract_ruled: bool = False
-    # Its ruling was that the change broke them, not the story: repaired, not returned.
-    contract_repair: str = ""
-    # A first attempt that answered the story is already done (#221): each
-    # criterion with the code that meets it and the test that proves it.
+    # A story the gates found already done (#221): each criterion with the code
+    # that meets it and the test that proves it.
     already_done: list = field(default_factory=list)
-    # Criteria the Developer named existing tests for (#217), for QA.
-    proven_by_existing: list = field(default_factory=list)
-    # Merged tests the story's declared contract change let go (#316), for the
-    # Code Reviewer: the story said so, and the pull request says which.
-    contract_changed: list[str] = field(default_factory=list)
-    # Merged tests in a walking skeleton's placeholder files that the story
-    # replaces (crew#690), for the Code Reviewer the same way.
-    placeholders: list[str] = field(default_factory=list)
-    # The files the project's own fixers changed before VERIFY, and each allowed
-    # unsafe fix (crew#758): in the diff, and named for review and QA.
+    # The files the project's own fixers changed before the checks at `done`, and each
+    # allowed unsafe fix (crew#758): in the diff, and named for review and QA.
     autofixed: list[str] = field(default_factory=list)
     unsafe_fixes: list[str] = field(default_factory=list)
-
-    def seen(self, failure_class: str) -> int:
-        return self.attempts_by_class.get(failure_class, 0)
-
-    def count(self, failure_class: str) -> None:
-        self.attempts_by_class[failure_class] = self.seen(failure_class) + 1
-        self.attempts += 1
+    # Where a session's ending already moved the card (crew#778): back to refinement,
+    # or blocked for a person. Only the clean-up is left.
+    routed: str | None = None
+    # Its sessions ended, other than by an interruption: the clone's checkpoints go.
+    ended: bool = False
 
     @property
     def ok(self) -> bool:
-        return self.pr is not None or self.diff is not None or bool(self.already_done)
+        return self.pr is not None or bool(self.already_done)
 
     @property
     def landed(self) -> bool:
@@ -175,19 +121,6 @@ class DeliveryResult:
     waiting_on_files: list[tuple[int, int]] = field(default_factory=list)
     # Reverts landed this pass, and those that could not land yet (#83).
     reverts: RevertLanding = field(default_factory=RevertLanding)
-    rate_limited: bool = False
-
-
-def _local_rule(decision: EscalationDecision, retried: Rule, otherwise: Rule | None = None) -> Rule:
-    """The rule a guard's or an edit's decision names.
-
-    They reach the policy under another class (an edit as SCHEMA, a guard as
-    VERIFY or REGRESSION), so the policy's rule names that class. A local retry
-    was this guard's or edit's own; anything else keeps the policy's rule.
-    """
-    if decision.disposition is Disposition.RETRY_LOCAL:
-        return retried
-    return otherwise or decision.rule
 
 
 def awaiting_rework(
@@ -498,61 +431,6 @@ def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
     return f"PR #{number} is still open, and this story was sent back to be re-worked."
 
 
-def prior_context(
-    issues: IssueClient,
-    repo: str,
-    number: int,
-    branch: str,
-    *,
-    resumed: bool,
-    known: LinkedPull | None = None,
-) -> str:
-    """Everything a second attempt needs: what it did, what happened, and where that leaves it.
-
-    The three have to arrive together. A verdict on its own describes code, and
-    a Developer handed a verdict about code its worktree does not contain will
-    try to edit a file that is not there — sprint-metrics #31 spent an attempt
-    doing exactly that, was refused by the edit tool, and returned an empty
-    implementation rather than admit it could not see what it was being asked
-    about. Incomplete context was worse than none.
-
-    So `resumed` is stated rather than assumed. It is the difference between
-    "your previous work is in these files" and "it is not, and here is why".
-    """
-    verdicts = prior_verdicts(issues, repo, number, branch, known=known)
-    fate = previous_fate(issues, repo, branch)
-    if not (verdicts or fate):
-        return ""
-
-    parts: list[str] = []
-    if fate:
-        parts.append(f"## What happened to your previous attempt\n\n{fate}")
-    if verdicts:
-        parts.append(f"## What the gates said about it\n\n{verdicts}")
-    if resumed:
-        parts.append(
-            "## Where that leaves your files\n\n"
-            f"**Your previous attempt is already in the repository below**, on branch "
-            f"`{branch}`. You are continuing it, not starting again.\n\n"
-            "- Change what the verdicts above identified: a definition they say is wrong "
-            "with `replace`; one they say was removed with `add`, because it isn't in the "
-            "files any more. Leave everything the verdicts did not flag alone.\n"
-            "- Do not re-send work that is already there. `add` on a name already in the "
-            "listing is rejected.\n"
-            "- If the listing does not contain something a verdict mentions, say so rather "
-            "than inventing it."
-        )
-    else:
-        parts.append(
-            "## Where that leaves your files\n\n"
-            "**Your previous attempt is not in the repository below.** This branch starts "
-            "from the default branch, so anything the verdicts above describe has to be "
-            "written again. Treat them as what went wrong before, not as a description of "
-            "code you can edit."
-        )
-    return "\n\n".join(parts)
-
-
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
     """The first earlier story in this story's epic that has not landed yet.
 
@@ -567,90 +445,6 @@ def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
 
 # What a declared contract change names: `path.py::test`, `path.py`, or a bare test name.
 _DECLARED = re.compile(r"[\w/.-]+\.py(?:::[\w.]+)?|\btest_\w+")
-
-
-# How many files one delivery may have added by asking (#231). A file it hasn't
-# seen is shown whenever it asks; this bounds what asking adds to the prompt.
-# Counting asks instead refused sprint-metrics#529's third, for the one file its
-# change needed, three times over (2026-10-09).
-ASKED_FILES_LIMIT = 8
-
-
-def _deliver_in_steps(
-    story: str,
-    *,
-    worktree: Path,
-    header: str,
-    about: str,
-    why: str,
-    sink: EventSink,
-    number: int,
-    repo: str,
-    sprint: str,
-    attempt: int,
-) -> Implementation:
-    """A plan, then one small answer per file, merged into one ordinary answer (#276).
-
-    Each piece is shown the story, the plan, the file it writes in full, and
-    what the steps before it wrote. The merged answer goes through the same
-    guards, checks, review and QA as any other. A step's error fails the whole
-    attempt, as a one-shot answer's would.
-    """
-    from crew_org.crews import stepped  # noqa: PLC0415
-
-    context, _ = focused_context(worktree, about=about)
-    plan = attributed(stepped.plan_story, card=number, repo=repo, sprint=sprint, attempt=attempt)(
-        story, context=header + context, why=why
-    )
-    problems = stepped.check_plan(plan, worktree)
-    if problems:
-        refuse("check.delivery.deliver_in_steps", problems="; ".join(problems))
-    sink.note(
-        EventKind.NOTE,
-        f"#{number} planned {len(plan.files)} files: "
-        + ", ".join(f.path for f in plan.files)[:160],
-        card=number,
-        plan=[f.path for f in plan.files],
-        contracts=plan.contracts,
-    )
-    answers: list = []
-    for index, step in enumerate(plan.files):
-        extra = [step.path] if step.kind != "new" else []
-        step_context, focus = focused_context(
-            worktree, about=f"{story}\n\n{step.path}", extra=extra
-        )
-        earlier = "\n\n".join(stepped.describe(a) for a in answers)
-        answer = attributed(
-            stepped.implement_file, card=number, repo=repo, sprint=sprint, attempt=attempt
-        )(
-            story,
-            plan=plan,
-            step=index,
-            context=header + step_context,
-            earlier=earlier,
-            written=stepped.written_tests(answers),
-        )
-        sink.note(
-            EventKind.NOTE,
-            f"#{number} step {index + 1}/{len(plan.files)}: {step.path}",
-            card=number,
-            context_chars=focus.chars,
-        )
-        answers.append(answer)
-    return stepped.merge(plan, answers)
-
-
-def changed_definitions(implementation: Implementation) -> dict[str, list[str]]:
-    """By file, the definitions an applied answer changed: its edits, tests and moves.
-
-    A repair is shown these of a large written file, not all of it (crew#591).
-    """
-    found: dict[str, list[str]] = {}
-    for edit in implementation.all_edits:
-        found.setdefault(edit.path, []).append(edit.target)
-    for move in implementation.moves:
-        found.setdefault(move.to_path, []).append(move.name)
-    return found
 
 
 def coverage_for(ws: Any, repo: str, sink: EventSink, number: int) -> Any:
@@ -792,35 +586,10 @@ def _existing_tests_line(body: str) -> str:
     )
 
 
-# The pull request's sections naming merged tests it lets go, read back on a rework.
-RETIRED_HEADING = "## Tests retired"
+# The pull request's section naming merged tests the story declared it changes.
 DECLARED_HEADING = "## Tests the story declares it changes"
 # The skeleton's placeholders it replaced, marked `crew:placeholder` (crew#690).
 PLACEHOLDERS_HEADING = "## Skeleton placeholders it replaces"
-_LISTED_TEST = re.compile(r"^- `([^`\s]+\.py::[\w.]+)`", re.MULTILINE)
-
-
-def carried_retirements(issues: IssueClient, repo: str, pull: int) -> set[str]:
-    """The merged tests a story's open pull request already let go, by `path::test` (#316).
-
-    sprint-metrics#200's pull request retired five tests. Its review asked for
-    four back and let the fifth go; the rework restored four and, not listing
-    the fifth again, was refused for it by the regression guard three times:
-    the guard read only the rework's own retirements. The pull request's list
-    is the declaration the review read, so a rework keeps it.
-    """
-    try:
-        body = issues.pull(repo, pull).get("body") or ""
-    except Exception:  # noqa: BLE001
-        return set()
-    found: set[str] = set()
-    for heading in (RETIRED_HEADING, DECLARED_HEADING):
-        start = body.find(f"{heading}\n")
-        if start == -1:
-            continue
-        section = body[start + len(heading) :].split("\n## ", 1)[0]
-        found |= set(_LISTED_TEST.findall(section))
-    return found
 
 
 def held_by_what_it_builds_on(cards: list[Card], story: Card, body: str) -> Card | None:
@@ -854,1036 +623,19 @@ def not_ours(cards: list[Card], sprint: str, repos: set[str]) -> list[Card]:
     ]
 
 
-def escalation_prompt(story: str, failure: str) -> str:
-    return (
-        "You are finishing work a smaller model could not complete, in a git worktree.\n\n"
-        f"## The story\n\n{story}\n\n"
-        f"## What is failing\n\n```\n{failure}\n```\n\n"
-        "Fix the implementation so the tests and lint pass. Write the test that "
-        "expresses each acceptance criterion if it is missing. Stay inside the story's "
-        "scope — anything else you notice belongs in a new issue, not this change.\n"
-        "You can read and edit files, but not run commands: the crew runs the tests "
-        "and lint in its sandbox after you finish.\n"
-        "Do not commit or push; the crew handles that."
-    )
-
-
-def deliver_story(
-    card: Card,
-    *,
-    board: ProjectClient,
-    issues: IssueClient,
-    sink: EventSink,
-    ws: Workspace,
-    policy: EscalationPolicy,
-    ledger: EscalationLedger,
-    sprint: str,
-    repo: str,
-    default_branch: str,
-    rework: bool = False,
-) -> DeliveryOutcome:
-    """Take one story from Sprint Backlog to a pull request.
-
-    `rework` says the story is coming back from the Code Reviewer and there is
-    an open pull request to *update*. That inverts the open-pull-request guard
-    below: normally an open pull request means stop, because overwriting it
-    would destroy the diff a review is judging. Here updating it is the whole
-    point, and the new commit is what the reviewer asked for.
-
-    A dry run stops once the work is verified: the diff is captured and nothing
-    is committed, pushed or opened. It is the same code path as a real run up to
-    that point, so what it shows is what would land.
-    """
-    number = card.number or 0
-    outcome = DeliveryOutcome(card=number)
-    story_text = f"{card.title}\n\n{issues.get(repo, number).get('body') or ''}"
-
-    branch = branch_name(number, card.title)
-    outcome.branch = branch
-    # Resume only live rework: a branch whose pull request is still open, so a
-    # gate's feedback is answered on the code it was about. A branch whose pull
-    # request was closed, or never opened, is dead history, and its base can
-    # predate work this story depends on — sprint-metrics #32 was resumed on a
-    # four-day-old branch cut before its sibling #31 landed, and produced
-    # nothing (#119). That starts from current `main` instead.
-    live = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
-    # The merged tests this story may let go: what it declares, and on a rework
-    # what its pull request already retired, which the review has read (#316).
-    declared = declared_contract(story_text)
-    if live is not None:
-        declared |= carried_retirements(issues, repo, live["number"])
-    # Which merged tests run which code, on the base this story builds on (C3).
-    coverage = coverage_for(ws, repo, sink, number)
-    worktree = ws.open(branch, resume=live is not None)
-    # Set when a returned story's branch conflicted with main and it was rebuilt
-    # from main instead (#158): the conflicting paths, for the Developer and the PR.
-    rebuilt_over: list[str] | None = None
-    if getattr(ws, "resumed", False):
-        # Resumed, but `main` has moved since it was cut. Bring it up to date
-        # before the work, not after, so the Developer sees what has landed.
-        try:
-            ws.catch_up()
-        except MergeConflict as conflict:
-            paths = ", ".join(conflict.files) or "unknown files"
-            if not rework:
-                outcome.blocked_rule = Rule.CONFLICT_WITH_MAIN
-                outcome.blocked_reason = (
-                    f"`{branch}` conflicts with main in {paths}; "
-                    "resolving that is a decision for a person, not something to force"
-                )
-                return outcome
-            # Returned by a gate: the code is being rewritten anyway, so a
-            # conflict in it isn't a decision for a person. Rebuild on current
-            # main; the gate's findings carry over as the card's history.
-            # sprint-metrics#73 was blocked here before its Developer ever saw
-            # the review, because #70 had merged into the same lines (#158).
-            worktree = ws.open(branch, resume=False)
-            rebuilt_over = conflict.files or ["unknown files"]
-            # Structured, for the Architect's evidence (#192): which files keep
-            # colliding, on which project's cards.
-            sink.note(
-                EventKind.NOTE,
-                f"#{number} rebuilt from main: its branch conflicted in {paths}",
-                rebuilt=True,
-                repo=repo,
-                card=number,
-                paths=list(conflict.files),
-                rule="delivery.conflict_with_main",
-            )
-    # The project's own answers (#131). A record that exists but can't be read
-    # stops the card: its rules are unknown, and working on without them would
-    # be working on rules nobody chose.
-    try:
-        record = read_record(worktree)
-    except ProjectRecordError as exc:
-        outcome.blocked_rule = Rule.RECORD_UNREADABLE
-        outcome.blocked_reason = f"the project's record can't be read: {exc}"
-        return outcome
-    # Each file's profile comes from this project's parts, until the card is done (#404).
-    profiles.set_project(record)
-    # The notes for this story's epic, if it has them: the Architect's (#155)
-    # and the UX Designer's (#377).
-    note = story_notes(issues, card, repo)
-    # And only the rows of the epic's conclusion this story names (crew#440).
-    decided = story_rows(issues, card, repo)
-    sink.emit(
-        CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
-    )
-
-    feedback = ""
-    # What the gates said if this story has been round before. Read once: it is
-    # fixed for this delivery, where `feedback` changes on every attempt.
-    prior = prior_context(
-        issues,
-        repo,
-        number,
-        branch,
-        resumed=getattr(ws, "resumed", False),
-        known=card.open_pull_on(branch),
-    )
-    if rebuilt_over:
-        # Self-contained: it must read right even when no verdict could be found.
-        answering = " Answer every finding the gates gave it, above." if prior else ""
-        prior = (
-            (f"{prior}\n\n" if prior else "") + "## Why you are starting again\n\n"
-            "While your previous attempt waited to land, other work merged into the same "
-            "lines of "
-            + ", ".join(f"`{p}`" for p in rebuilt_over)
-            + ". Rather than merge the two, this story is rebuilt on current main: **your "
-            "previous attempt is not in the repository below.** Write it again against "
-            "the code as it is now." + answering
-        )
-    if prior:
-        carried = "on its previous work" if getattr(ws, "resumed", False) else "from a clean branch"
-        sink.note(EventKind.NOTE, f"#{number} is re-delivered {carried}")
-    implementation: Implementation | None = None
-    # The last answer applied to the worktree: what it wrote is shown again, always.
-    # Not the last answer: one that asked to see files isn't applied, and since the
-    # read tool (crew#583, C4) it can carry a whole story's work. Counted as written,
-    # mqucifer/sprint-metrics#567's re-ask was shown 286k characters (2026-10-11).
-    last_applied: Implementation | None = None
-    attempt = 0
-    # Files the Developer asked to see in full (#231).
-    asked: list[str] = []
-    # A first attempt with no usable answer is followed by one in steps (#276).
-    in_steps = False
-    stepped = False
-    # Set once an answer is applied: from then on the worktree holds this
-    # delivery's work, and a plan from the story would build it again.
-    applied = False
-    # Offered once per story (#221): an already-done answer QA refused isn't
-    # offered again, or the story would go round between the two.
-    may_be_done = not rework and not _answered_done(issues, repo, number)
-
-    # What the registries hold for the base images the Dockerfiles use: the
-    # sandbox can't look, so a pinned digest was invented without it (#364).
-    # Only for work about the image, and read once a tick (`base_images`).
-    from crew_org.tools import base_images  # noqa: PLC0415
-
-    images = ""
-
-    while True:
-        attempt += 1
-        # Recomputed every pass: a repair must see the files it just wrote, or
-        # it is fixing code it cannot read. Focused on what the work names
-        # when the repository is large (#231): the story, the gates' verdicts,
-        # the last failure, and what the Developer asked for. Under a ceiling,
-        # what it wrote and the failing tests come first, and what only a test
-        # report names comes last (crew#591): sprint-metrics#537's repair was
-        # shown every file its report's tracebacks passed through.
-        failing = list(dict.fromkeys(t["id"].split("::")[0] for t in failing_tests(feedback)))
-        report = feedback if failing else ""
-        about = "\n\n".join([story_text, prior, feedback])
-        header = f"# The design note for this story's epic\n\n{note}\n\n" if note else ""
-        header = (
-            epic_rows.block(
-                decided,
-                "These are decided for the epic. Build to them: don't contradict one, and "
-                "don't settle in code what the design note leaves open.",
-                level=1,
-            )
-            + header
-        )
-        if record is not None:
-            header = f"{brief(record)}\n\n{header}"
-        # The code is sized from everything else the call holds, so it keeps room to
-        # read (crew#591): the record, rows and note above the code put
-        # mqucifer/sprint-metrics#567's repair past the ceiling with nothing to read.
-        beside = sum(len(part) for part in (header, story_text, prior, feedback))
-        context, focus = focused_context(
-            worktree,
-            about="\n\n".join([story_text, prior, "" if failing else feedback]),
-            extra=asked,
-            written=bounds.touched(last_applied) if last_applied is not None else (),
-            failing=failing,
-            report=report,
-            coverage=coverage,
-            # Less shown, the rest read inside the call (crew#583, step C4).
-            ceiling=repo_context.shown_ceiling(beside),
-            reading=True,
-            changed=changed_definitions(last_applied) if last_applied is not None else None,
-        )
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.FILES_SHOWN,
-                role="Developer",
-                card=number,
-                summary=f"#{number} context: {focus.chars:,} chars"
-                + (f", {len(focus.shown)} files in full" if focus.focused else ", whole repository")
-                + (f", {len(focus.omitted)} left out" if focus.omitted else ""),
-                detail={
-                    "context_chars": focus.chars,
-                    "focused": focus.focused,
-                    "shown": focus.shown,
-                    "asked": focus.asked,
-                    "omitted": focus.omitted,
-                    # What the selection read to choose them (discussion 553). Local
-                    # only: it's the story, and telemetry never takes it (ADR 0010).
-                    "selection_text": about[:SELECTION_TEXT_CHARS],
-                },
-            )
-        )
-        if not images and (
-            base_images.concerns("\n\n".join([story_text, prior, feedback]))
-            or any(base_images.is_dockerfile(p) for p in focus.asked)
-        ):
-            try:
-                images = base_images.section(worktree)
-            except Exception:  # noqa: BLE001 - a context aid, never a blocker
-                images = ""
-        header += images
-        context = header + context
-        # Set once an answer arrives and validates: what fails after that is the
-        # answer's content, which a repair handles, not the answer's absence.
-        answered = False
-        try:
-            if in_steps:
-                in_steps = False
-                stepped = True
-                implementation = _deliver_in_steps(
-                    story_text,
-                    worktree=worktree,
-                    header=header,
-                    about="\n\n".join([story_text, prior, feedback]),
-                    why=feedback,
-                    sink=sink,
-                    number=number,
-                    repo=repo,
-                    sprint=sprint,
-                    attempt=attempt,
-                )
-            else:
-                # What it reads shares one ceiling with everything it was shown. A whole
-                # repository shown leaves nothing to read, and with too little room the
-                # tool isn't offered: a read it can't make still costs the thinking
-                # that chose it (mqucifer/sprint-metrics#567's repair, six rounds refused).
-                room = repo_context.READING_CHAR_CEILING - sum(
-                    len(part) for part in (context, story_text, prior, feedback)
-                )
-                reader = (
-                    Reader(worktree, budget=room, shown=focus.shown, focus=focus)
-                    if focus.focused and room >= repo_context.READ_MIN_CHARS
-                    else None
-                )
-                try:
-                    implementation = attributed(
-                        implement_story, card=number, repo=repo, sprint=sprint, attempt=attempt
-                    )(
-                        story_text,
-                        context=context,
-                        feedback=feedback,
-                        prior=prior,
-                        returned=rework,
-                        may_be_done=may_be_done,
-                        read=reader.tool() if reader is not None else None,
-                    )
-                finally:
-                    if reader is not None and reader.read:
-                        sink.note(
-                            EventKind.NOTE,
-                            f"#{number} read {', '.join(reader.read)[:200]}",
-                            card=number,
-                            read=reader.read,
-                        )
-            answered = True
-            _keep_proposal(sink, repo, number, implementation)
-            done_now = getattr(implementation, "already_done", None) or []
-            named = [met.test for met in done_now if met.test]
-            named += [
-                test
-                for proof in getattr(implementation, "proven_by_existing", None) or []
-                for test in proof.tests
-            ]
-            missing = [test for test in named if not names_a_test(worktree, test)]
-            # A workflow step as evidence, checked as a test is (#397).
-            unproven = ci_evidence_problems(
-                worktree,
-                issues,
-                repo,
-                default_branch,
-                [met.ci_step for met in done_now if met.ci_step],
-            )
-            if unproven:
-                refuse(
-                    "check.delivery.this_ci_evidence_doesnt_hold",
-                    unproven="; ".join(unproven),
-                    branch=default_branch,
-                )
-            if missing:
-                # Refused, naming each (#221, #217): evidence that doesn't
-                # exist is no evidence.
-                refuse(
-                    "check.delivery.these_named_tests_dont_exist",
-                    tests=", ".join(dict.fromkeys(missing)),
-                )
-        except Exception as exc:  # noqa: BLE001
-            reraise_if_down(exc)
-            _keep_refused(sink, repo, number, getattr(exc, "answers", ()))
-            # The model could not produce a valid implementation at all.
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.SCHEMA,
-                attempts=outcome.seen("EDIT"),
-                detail=str(exc)[:400],
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("EDIT")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"SCHEMA — {decision.disposition}",
-                    detail={
-                        "rule": decision.rule,
-                        # The reason is the whole diagnostic. Recording only the
-                        # disposition says what happened and not why, which is
-                        # exactly what a retro needs.
-                        "failure_class": FailureClass.SCHEMA,
-                        "attempt": outcome.attempts,
-                        "reason": decision.reason,
-                        "error": str(exc)[:600],
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = f"Your output did not validate:\n{exc}"
-                # One answer was too much to produce (#312): the next attempt plans
-                # the work and answers a file at a time (#276). Once per delivery,
-                # and only while nothing of it is written: after a first attempt, or
-                # after empty answers at any attempt before one applied
-                # (mqucifer/sprint-metrics#567 asked for files first, then went
-                # empty ten times, never in steps).
-                empty = getattr(exc, "empty", False)
-                if (
-                    (attempt == 1 or (empty and not applied))
-                    and not answered
-                    and not rework
-                    and not stepped
-                ):
-                    in_steps = True
-                    sink.note(
-                        EventKind.NOTE,
-                        f"#{number} no usable answer: the next attempt goes in steps",
-                        card=number,
-                    )
-                continue
-            outcome.blocked_rule = decision.rule
-            outcome.blocked_reason = decision.reason
-            return outcome
-
-        # It asked to see files (#231). Not a failure. An answer that only asks is
-        # asked again with them shown, up to ASKED_FILES_LIMIT files a delivery. One
-        # that also changes code is applied, and what it asked for is shown to the
-        # next attempt (crew#591): mqucifer/sprint-metrics#567's repair fixed the code
-        # and asked to see the docs, and its fix would have been thrown away.
-        if implementation.asks:
-            wanted = file_asks.paths(implementation.need_files)
-            fresh = [f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown]
-            exists = [f for f in fresh if (worktree / f).is_file()]
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.FILES_ASKED,
-                    role="Developer",
-                    card=number,
-                    summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
-                    # Each file's reason, kept local (discussion 553).
-                    detail={
-                        "need_files": wanted,
-                        "why": file_asks.reasons(implementation.need_files),
-                    },
-                )
-            )
-            added = exists[: max(ASKED_FILES_LIMIT - len(asked), 0)]
-            if not implementation.changes_nothing:
-                asked += added
-            elif added:
-                asked += added
-                continue
-            else:
-                missing = [f for f in fresh if f not in exists]
-                # Said as it is: "you've been shown what you asked for", said of a file
-                # past the limit, had it ask again for the same file.
-                rule = "check.delivery.do_the_work_now_with"
-                feedback = says(
-                    "check.delivery.do_the_work_now_with",
-                    missing=says(rule, "missing", files=", ".join(missing)) if missing else "",
-                    limited=says(rule, "limited", files=", ".join(exists), limit=ASKED_FILES_LIMIT)
-                    if exists
-                    else "",
-                    shown="" if fresh else says(rule, "shown"),
-                )
-                continue
-
-        # A "new file" that already exists is a whole-file rewrite wearing a
-        # different name, which is the thing editing by name exists to prevent.
-        overwrites = regression.overwrites_existing(worktree, implementation.new_files)
-        if overwrites:
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.VERIFY,
-                attempts=outcome.seen("OVERWRITE"),
-                detail=f"would overwrite existing files: {', '.join(overwrites)}",
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("OVERWRITE")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"OVERWRITE — {decision.disposition}",
-                    detail={
-                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
-                        "failure_class": "OVERWRITE",
-                        "paths": overwrites,
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = says(
-                    "guard.overwrite.overwrites_existing",
-                    files=", ".join(overwrites),
-                    not_applied=NOT_APPLIED,
-                )
-                continue
-            outcome.blocked_rule = Rule.GUARD_OVERWRITE
-            outcome.blocked_reason = f"kept rewriting existing files: {', '.join(overwrites)}"
-            return outcome
-
-        # The record's bounds, before anything is written: never-touch paths, the
-        # record itself, and CI that stops enforcing a design check. Never
-        # escalated, like a contract break: a stronger model would be spent
-        # getting past a rule the Sponsor set.
-        # A workflow change the app can't push (#279): GitHub refuses a push
-        # that touches .github/workflows without the `workflows` permission,
-        # and it would fail at the very end looking like a crew bug. Say so
-        # now. Blocked, not retried: no retry grants a permission.
-        missing = workflows_not_permitted(implementation)
-        if missing:
-            outcome.blocked_rule = Rule.GUARD_WORKFLOW_PERMISSION
-            outcome.blocked_reason = missing
-            return outcome
-
-        outside = bounds.out_of_bounds(worktree, implementation, record)
-        if outside:
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.REGRESSION,
-                attempts=outcome.seen("BOUNDS"),
-                detail="; ".join(outside)[:400],
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("BOUNDS")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"BOUNDS — {decision.disposition}",
-                    detail={
-                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
-                        "failure_class": "BOUNDS",
-                        "reasons": outside,
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = says(
-                    "guard.bounds.out_of_bounds",
-                    reasons="\n".join(f"- {reason}" for reason in outside),
-                    not_applied=NOT_APPLIED,
-                )
-                continue
-            outcome.failure_detail = "\n".join(outside)
-            outcome.blocked_rule = Rule.GUARD_PROTECTED
-            outcome.blocked_reason = f"kept changing what the project protects: {outside[0]}"
-            return outcome
-
-        # Checked before a single byte is written. A contract break is only
-        # visible as a wall of failing tests once it has been applied, and by
-        # then the model is repairing a symptom several steps from the cause —
-        # story #9 changed a return type to None and spent every attempt on the
-        # TypeError it produced three functions away.
-        # Judged against what's merged, not this story's draft: an earlier
-        # attempt's changes are the story's own, and its damage still counts.
-        merged = regression.merged_base(worktree)
-        broken = regression.broken_contracts(worktree, implementation.all_edits, merged)
-
-        def skipped(why: str) -> None:
-            sink.note(EventKind.NOTE, f"#{number} {why}"[:300], card=number)
-
-        broken = regression.draft_breaks(worktree, implementation, merged, skipped) | broken
-        # A definition moved to another module, and still reachable where
-        # callers look for it, isn't removed (#202).
-        broken = regression.without_moves(worktree, implementation, broken, merged)
-        # A name the module passes along, or a constant, that another file
-        # still imports from it (sprint-metrics#129).
-        broken |= regression.lost_names(worktree, implementation, merged, skipped)
-        # A merged test the story declares it retires, with why, may go: the
-        # pull request lists it for the Code Reviewer (sprint-metrics#132).
-        broken = regression.without_retired(broken, implementation)
-        # And one the story itself declares it changes (#316): named there, it's
-        # the story's job, not an accident.
-        broken, outcome.contract_changed = regression.without_declared(broken, declared)
-        # And a walking skeleton's placeholders, which the first stories replace (crew#690).
-        broken, outcome.placeholders = regression.without_placeholders(worktree, broken, merged)
-        if broken:
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.REGRESSION,
-                attempts=outcome.seen("REGRESSION"),
-                detail="; ".join(f"{k}: {was} -> {now}" for k, (was, now) in broken.items())[:400],
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("REGRESSION")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"REGRESSION — {decision.disposition}",
-                    detail={
-                        "rule": decision.rule,
-                        "failure_class": FailureClass.REGRESSION,
-                        "attempt": outcome.seen("REGRESSION"),
-                        "reason": decision.reason,
-                        "contracts": {k: list(v) for k, v in broken.items()},
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = regression.describe_contracts(broken, merged) + NOT_APPLIED
-                continue
-            outcome.failure_detail = regression.describe_contracts(broken, merged)
-            outcome.blocked_rule = decision.rule
-            outcome.blocked_reason = decision.reason
-            return outcome
-
-        try:
-            applied = True
-            last_applied = implementation
-            loose: list[dict[str, Any]] = []
-            workspace.apply_implementation(worktree, implementation, loose=loose)
-            for match in loose:
-                sink.emit(
-                    CrewEvent(
-                        kind=EventKind.EDIT_LOOSE_MATCH,
-                        role="Developer",
-                        card=number,
-                        summary=f"#{number} quote matched by {match['fallback']}: "
-                        f"{match['path']}:{match['line']}",
-                        detail=match,
-                    )
-                )
-            # Tests in a part that isn't Python are written as files: each one the
-            # answer names must be in them, by its title (#404).
-            unwritten = [
-                f"{c.path}::{c.test}"
-                for c in getattr(implementation, "criteria_tests", None) or []
-                if not profiles.profile_for(c.path).edit_by_name
-                and not names_a_test(worktree, f"{c.path}::{c.test}")
-            ]
-            if unwritten:
-                refuse("edit.delivery.these_tests_arent_in_their", tests=", ".join(unwritten))
-        except Exception as exc:  # noqa: BLE001
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.SCHEMA,
-                attempts=outcome.seen("EDIT"),
-                detail=str(exc)[:400],
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("EDIT")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"EDIT — {decision.disposition}",
-                    detail={
-                        "rule": _local_rule(
-                            decision, Rule.EDIT_LOCAL_REPAIR, Rule.EDIT_NOT_APPLIED
-                        ),
-                        "failure_class": "EDIT",
-                        "attempt": outcome.seen("EDIT"),
-                        "error": str(exc)[:400],
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = f"An edit could not be applied:\n\n{exc}"
-                continue
-            outcome.blocked_rule = Rule.EDIT_NOT_APPLIED
-            outcome.blocked_reason = f"edits could not be applied: {exc}"
-            return outcome
-
-        check = workspace.check(worktree)
-        _record_autofix(check, outcome, sink, number)
-        if check.ok:
-            # A bug's tests have to fail without the fix (crew#407, B3): a test that
-            # passes there, or is skipped, doesn't reproduce the bug.
-            unreproduced = not_reproduced(card, worktree, implementation, sink)
-            if not unreproduced:
-                break
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.VERIFY,
-                attempts=outcome.seen("REPRODUCE"),
-                detail=unreproduced[:400],
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            outcome.count("REPRODUCE")
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"REPRODUCE — {decision.disposition}",
-                    detail={
-                        "rule": _local_rule(decision, Rule.GUARD_LOCAL_REPAIR),
-                        "failure_class": "REPRODUCE",
-                        "attempt": outcome.seen("REPRODUCE"),
-                        "reason": unreproduced[:600],
-                    },
-                )
-            )
-            if decision.disposition is Disposition.RETRY_LOCAL:
-                feedback = says("guard.reproduce.check", why=unreproduced)
-                continue
-            outcome.blocked_rule = Rule.GUARD_NOT_REPRODUCED
-            outcome.blocked_reason = f"its tests don't reproduce the bug: {unreproduced}"
-            return outcome
-
-        # Merged tests, not this story's, that it breaks and doesn't declare: the
-        # story is changing behaviour other work pinned. On the first such failure
-        # the Business Analyst rules for this story alone: amend its contract, or
-        # return it (crew#584, step A5). More attempts won't fix a story (#189).
-        pinned = story_problem.pinned_failures(
-            check.failure_report, regression.merged_base(worktree), implementation
-        )
-        undeclared = {k: why for k, why in pinned.items() if not regression._declares(declared, k)}
-        amended = ""
-        ruling = None
-        if undeclared and not outcome.contract_ruled:
-            outcome.contract_ruled = True
-            ruling = rule_on_contract(
-                issues,
-                sink,
-                card=card,
-                repo=repo,
-                story=story_text,
-                rows=decided,
-                failures=undeclared,
-            )
-            if ruling is not None and ruling.decision == "repair":
-                outcome.contract_repair = (
-                    "The Business Analyst ruled that this story doesn't change "
-                    f"{', '.join(f'`{t}`' for t in sorted(undeclared))}: {ruling.why} Your "
-                    "change broke them. Fix it so they pass as they are, without changing "
-                    "them.\n\n"
-                )
-            if ruling is not None and ruling.decision == "amend":
-                declared |= set(ruling.tests)
-                story_text += f"\n\n{amended_line(ruling)}"
-                amended = (
-                    "The Business Analyst amended this story's contract: it now changes "
-                    f"{', '.join(f'`{t}`' for t in ruling.tests)}. After your change they must "
-                    f"assert: {ruling.asserts}. Update them in this story.\n\n"
-                )
-        # Repaired like any failing test, through the usual repairs and escalation.
-        if undeclared and not amended and not outcome.contract_repair:
-            failure = LocalFailure(
-                card=number,
-                role="Developer",
-                failure_class=FailureClass.SCOPE,
-                attempts=outcome.seen("VERIFY"),
-                detail="breaks merged tests it doesn't declare: "
-                + ", ".join(sorted(undeclared))[:300]
-                + (f"; the Business Analyst: {ruling.why}" if ruling is not None else ""),
-            )
-            decision = policy.decide(failure, spent=ledger.spent(sprint))
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATION_DECIDED,
-                    role="Developer",
-                    card=number,
-                    summary=f"SCOPE — {decision.disposition}",
-                    detail={
-                        "rule": decision.rule,
-                        "failure_class": FailureClass.SCOPE,
-                        # What happened to the work, which the class doesn't say.
-                        "failure_kind": Kind.TESTS_FAILED,
-                        "reason": decision.reason,
-                        "pinned": sorted(pinned),
-                        "first_error": first_error(check.failure_report),
-                    },
-                )
-            )
-            outcome.failure_detail = check.failure_report
-            outcome.blocked_rule = decision.rule
-            outcome.blocked_reason = decision.reason
-            if decision.disposition is Disposition.RETURN_TO_REFINEMENT:
-                outcome.returned = story_problem.evidence(
-                    card, undeclared, outcome.seen("VERIFY") + 1
-                ) + (f"\n\n**The Business Analyst:** {ruling.why}" if ruling is not None else "")
-            return outcome
-
-        failure = LocalFailure(
-            card=number,
-            role="Developer",
-            failure_class=FailureClass.VERIFY,
-            attempts=outcome.seen("VERIFY"),
-            detail=check.failure_report[:400],
-        )
-        decision = policy.decide(failure, spent=ledger.spent(sprint))
-        outcome.count("VERIFY")
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.ESCALATION_DECIDED,
-                role="Developer",
-                card=number,
-                summary=f"VERIFY — {decision.disposition}",
-                detail={
-                    "rule": decision.rule,
-                    "failure_class": FailureClass.VERIFY,
-                    "attempt": outcome.seen("VERIFY"),
-                    "reason": decision.reason,
-                    "failing_commands": [r.command for r in check.results if not r.ok],
-                    "output": check.failure_report[:600],
-                    # From the whole report: the 600 above stop before pytest's
-                    # summary, and the retro counts causes from this (#157).
-                    "first_error": first_error(check.failure_report),
-                    "failing_tests": failing_tests(check.failure_report),
-                },
-            )
-        )
-
-        if decision.disposition is Disposition.RETRY_LOCAL:
-            # Each cause once, every failing test named (crew#591): the whole report
-            # is for the escalation, which reads it with tools of its own.
-            repair = outcome.contract_repair if undeclared else ""
-            feedback = says(
-                "check.delivery.lint_or_tests_failed",
-                amended=amended,
-                repair=repair,
-                report=repair_report(check.failure_report),
-            )
-            continue
-
-        if decision.disposition is Disposition.ESCALATE:
-            ledger.record(
-                EscalationRecord(
-                    at=utcnow(),
-                    sprint=sprint,
-                    card=number,
-                    role="Developer",
-                    failure_class=FailureClass.VERIFY,
-                    local_attempts=outcome.seen("VERIFY"),
-                    justification=None,
-                    detail=check.failure_report[:400],
-                )
-            )
-            outcome.escalated = True
-            sink.emit(
-                CrewEvent(
-                    kind=EventKind.ESCALATED,
-                    role="Developer",
-                    card=number,
-                    summary="local repair exhausted",
-                    failure_class="VERIFY",
-                    detail={"rule": Rule.ESCALATION_ALLOWED},
-                )
-            )
-            result = claude_code.escalate(
-                worktree, escalation_prompt(story_text, check.failure_report)
-            )
-            if result.should_park:
-                # Not an outcome yet — the work is unfinished, not failed.
-                ledger.resolve(number, sprint, "parked on a usage limit")
-                outcome.blocked_rule = Rule.USAGE_LIMIT
-                outcome.blocked_reason = result.detail
-                return outcome
-            check = workspace.check(worktree)
-            _record_autofix(check, outcome, sink, number)
-            if check.ok:
-                ledger.resolve(number, sprint, "resolved — lint and tests pass")
-                break
-            ledger.resolve(number, sprint, "escalated but still failing")
-            outcome.failure_detail = check.failure_report
-            outcome.blocked_rule = Rule.ESCALATION_UNRESOLVED
-            outcome.blocked_reason = f"escalation did not resolve it: {check.failure_report[:200]}"
-            return outcome
-
-        outcome.failure_detail = check.failure_report
-        outcome.blocked_rule = decision.rule
-        outcome.blocked_reason = decision.reason
-        return outcome
-
-    # Returned work may answer that nothing needs to change, with evidence per
-    # finding (#161). The checks above ran on the branch as it stands, so the
-    # claim is verified before it is sent. It is committed empty: the pull
-    # request's head has to move, or the review it answers keeps applying.
-    satisfied = getattr(implementation, "already_satisfied", None) or []
-    done = [] if rework else getattr(implementation, "already_done", None) or []
-    answered = rework and implementation.changes_nothing and bool(satisfied)
-    if answered and live is not None:
-        before = latest_answer(issues, repo, live["number"])
-        if before:
-            # Answered with evidence once already, and sent back again: the gate
-            # and the Developer disagree, and another round would only repeat it.
-            gate, said = _what_sent_it_back(issues, repo, number, live["number"])
-            outcome.failure_detail = (
-                f"## What {gate} said\n\n{said}\n\n## The earlier answer\n\n{before}"
-            )
-            outcome.blocked_rule = Rule.GATES_DISAGREE
-            outcome.blocked_reason = (
-                f"PR #{live['number']} was answered without a change and sent back again: "
-                f"{gate} and the Developer disagree, which is for a person to settle"
-            )
-            return outcome
-    if not ws.commit(
-        (
-            f"chore({number}): answer the review, no change needed\n\n{implementation.summary}"
-            if answered
-            else f"chore({number}): already done, no change needed\n\n{implementation.summary}"
-            if done
-            else f"feat({number}): {card.title}\n\n{implementation.summary}\n\nCloses #{number}"
-        ),
-        allow_empty=answered or bool(done),
-    ):
-        outcome.blocked_rule = Rule.GUARD_NO_CHANGE
-        outcome.blocked_reason = "the implementation produced no change"
-        return outcome
-    # A branch left behind by an earlier attempt is the crew's own dead history:
-    # the pull request is closed, and `open()` already declared this worktree
-    # authoritative by resetting to origin/HEAD. Overwrite it. An *open* pull
-    # request is a different thing — force-pushing under a review in progress
-    # would destroy the context the Reviewer is judging — so that blocks
-    # instead, with the reason named.
-    open_pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
-    if open_pull is not None and not rework:
-        outcome.blocked_rule = Rule.OPEN_PULL_REQUEST
-        outcome.blocked_reason = (
-            f"PR #{open_pull['number']} is still open on `{branch}`. "
-            "Close it, or let that pull request finish; re-delivering would "
-            "overwrite the diff it is reviewing."
-        )
-        return outcome
-    try:
-        # A repair adds a commit on top of the branch it resumed, so it is a
-        # fast-forward and must not be forced: the history the reviewer read is
-        # the history it keeps, with the answer appended to it. A rebuild is the
-        # exception: it starts from main, so it replaces the branch, with a
-        # lease so only the crew's own refused attempt is overwritten.
-        ws.push(force=not rework or rebuilt_over is not None)
-    except Exception as exc:  # noqa: BLE001
-        from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
-
-        # GitHub's side failing isn't the story's (crew#444): it goes to the
-        # interruption path, tried again next pass and blocked only after a streak.
-        if transient_remote(exc):
-            raise
-        # Landing failed, not the work. Returning the outcome keeps what it
-        # already knows — how many repairs it took, the diff it produced — where
-        # letting this propagate discards all of it and the card blocks saying
-        # "Attempts: 0". That is #10's defect in a path #10 did not cover.
-        outcome.blocked_rule = Rule.PUSH_FAILED
-        outcome.blocked_reason = f"could not push `{branch}`: {exc}"[:400]
-        return outcome
-
-    if done:
-        # No pull request: there's no diff to review (#221). The branch is pushed
-        # so QA can check it out and run the named tests; QA decides.
-        outcome.already_done = list(done)
-        sink.emit(
-            CrewEvent(
-                kind=EventKind.AGENT_FINISHED,
-                role="Developer",
-                card=number,
-                summary=f"already done: {len(done)} criteria met by existing code",
-                detail={"rule": "decision.delivery.outcome"},
-            )
-        )
-        return outcome
-
-    if open_pull is not None:
-        # The push updated it. Opening a second pull request from the same
-        # branch is not possible and would not be wanted: the review thread,
-        # the findings and the card's history all hang off this one.
-        outcome.pr = open_pull["number"]
-        how = (
-            "**Answered without a change:** the code as it stands already satisfies "
-            "the findings. Lint and the full test suite pass on this head.\n\n"
-            + "\n".join(f"- **{s.finding}**: {s.evidence}" for s in satisfied)
-            if answered
-            else "Rebuilt from main: while this waited, other work merged into the same "
-            "lines of "
-            + ", ".join(f"`{p}`" for p in rebuilt_over)
-            + ", so the story was written again on current main rather than merged. "
-            "The branch was replaced; the findings above are what it answers."
-            if rebuilt_over
-            else "Pushed on top of the commit that was refused."
-        )
-        issues.comment(
-            repo,
-            open_pull["number"],
-            signed(
-                f"{REWORK_MARKER}\n{ANSWERED_MARKER}\n"
-                f"**Re-worked.** {implementation.summary}\n\n{how}"
-                if answered
-                else f"{REWORK_MARKER}\n**Re-worked.** {implementation.summary}\n\n"
-                f"{how} Lint and the full test suite pass."
-                + "\n".join(_let_go(implementation, outcome)),
-                "Developer",
-            ),
-        )
-    else:
-        pr = issues.create_pull(
-            repo,
-            title=card.title,
-            head=branch,
-            base=default_branch,
-            body=_pr_body(card, implementation, outcome),
-        )
-        outcome.pr = pr["number"]
-        outcome.proven_by_existing = list(getattr(implementation, "proven_by_existing", None) or [])
-    sink.emit(
-        CrewEvent(
-            kind=EventKind.AGENT_FINISHED,
-            role="Developer",
-            card=number,
-            summary=f"PR #{outcome.pr}",
-        )
-    )
-    return outcome
-
-
-def workflows_not_permitted(
-    implementation, permissions: dict[str, str] | None = None, *, paths: list[str] | None = None
-) -> str:
+def workflows_not_permitted(paths: list[str], permissions: dict[str, str] | None = None) -> str:
     """Why a workflow change can't be pushed, or "" if it can or we can't tell (#279).
 
-    `paths`, in place of an answer's, are what a branch's diff changes (crew#778).
+    `paths` are what the branch's diff changes (crew#778).
     """
     from crew_org.auth import app_permissions  # noqa: PLC0415
     from crew_org.tools import ci_guard  # noqa: PLC0415
 
     held = app_permissions() if permissions is None else permissions
-    touched = bounds.touched(implementation) if paths is None else paths
-    changed = [p for p in touched if ci_guard.is_workflow(p)]
+    changed = [p for p in paths if ci_guard.is_workflow(p)]
     if not changed or not held or held.get("workflows") == "write":
         return ""
     return says("check.delivery.workflows_not_permitted", files=", ".join(changed))
-
-
-def _answered_done(issues: IssueClient, repo: str, number: int) -> bool:
-    """Has this story been answered as already done before? Unknown counts as yes."""
-    try:
-        comments = issues.comments(repo, number)
-    except Exception:  # noqa: BLE001
-        return True
-    return any(ALREADY_DONE_MARKER in (c.get("body") or "") for c in comments)
-
-
-def not_reproduced(card: Card, worktree: Path, implementation: Any, sink: EventSink) -> str:
-    """Why a bug's criteria tests don't reproduce it, or "" (crew#407, B3).
-
-    Only a bug is checked, and only when the check can run: a story's tests show
-    new behaviour, which nothing had before, and a project without pytest is noted,
-    not refused.
-    """
-    if card.work_type != BUG:
-        return ""
-    tests = [(c.path, c.test) for c in getattr(implementation, "criteria_tests", None) or []]
-    merged = regression.merged_base(worktree)
-    if not tests or merged is None:
-        return ""
-    found = reproduction.reproduces(worktree, merged, tests)
-    if found.unchecked:
-        sink.note(
-            EventKind.NOTE,
-            f"reproduction not checked: {found.unchecked}"[:160],
-            card=card.number,
-            rule="guard.not_reproduced",
-        )
-        return ""
-    return found.refusal()
-
-
-def existing_proof_block(proven: list) -> str:
-    """The criteria existing tests prove, on the story, for QA (#217)."""
-    if not proven:
-        return ""
-    return f"\n\n{EXISTING_PROOF_MARKER}\n**Proven by existing tests:**\n" + "\n".join(
-        f"- {p.criterion}: " + ", ".join(f"`{t}`" for t in p.tests) for p in proven
-    )
 
 
 def names_a_test(worktree, test: str) -> bool:
@@ -1900,49 +652,9 @@ def names_a_test(worktree, test: str) -> bool:
     return profile.test_exists(target.read_text(encoding="utf-8", errors="ignore"), name)
 
 
-def ci_evidence_problems(
-    worktree: Path, issues: IssueClient, repo: str, branch: str, steps: list[str]
-) -> list[str]:
-    """What's wrong with each `workflow#step` offered as evidence, or nothing (#397).
-
-    The file exists, the step is in it, and that workflow's latest run on the
-    default branch passed. Only CI proves what a workflow does, so this is the
-    same bar QA holds a CI-only change to.
-    """
-    if not steps:
-        return []
-    problems: list[str] = []
-    try:
-        runs = issues.latest_runs(repo, branch)
-    except Exception as exc:  # noqa: BLE001
-        return [f"the default branch's runs couldn't be read ({exc})"]
-    for evidence in steps:
-        path, _, step = evidence.partition("#")
-        path, step = path.strip().removeprefix("./"), step.strip()
-        target = worktree / path
-        if not path.startswith(".github/workflows/") or not target.is_file():
-            problems.append(f"`{path}` isn't a workflow in the repository")
-            continue
-        if not step or f"name: {step}" not in target.read_text(encoding="utf-8", errors="ignore"):
-            problems.append(f"`{path}` has no step named `{step}`")
-            continue
-        run = runs.get(path)
-        if run is None or run.get("conclusion") != "success":
-            problems.append(
-                f"`{path}`'s latest run on `{branch}` "
-                + ("didn't pass" if run is not None else "hasn't run")
-            )
-    return problems
-
-
 def already_done_comment(done: list) -> str:
     """The Developer's evidence, on the story, for QA and for whoever reads it (#221)."""
-    rows = "\n".join(
-        f"| {m.criterion} | {m.code} | "
-        + (f"`{m.test}`" if m.test else f"CI: `{m.ci_step}`, passed on the default branch")
-        + " |"
-        for m in done
-    )
+    rows = "\n".join(f"| {m.criterion} | {m.code} | `{m.test}` |" for m in done)
     return (
         f"{ALREADY_DONE_MARKER}\n**Already done.** The code as it stands meets every acceptance "
         "criterion, so nothing was changed and no pull request was opened. Lint and the full "
@@ -1951,169 +663,15 @@ def already_done_comment(done: list) -> str:
     )
 
 
-# Said on every refusal made before anything is written. A repair is told to
-# send only what fixes the failure, so after a refusal the Developer sent only
-# the new piece and dropped the rest, taking it as already applied:
-# sprint-metrics#132's third attempt left out the `__init__.py` change its
-# first two had carried, and blocked on it.
-NOT_APPLIED = (
-    "\n\nNothing from this attempt was applied: the repository is as it was before it. "
-    "Send the whole change again, corrected, not only the part that was wrong."
-)
-
-
-def _keep_proposal(sink: EventSink, repo: str, number: int, implementation) -> None:
-    """Save what the Developer proposed, applied or not, beside the event log.
-
-    A refusal records only why; what was refused was lost. Three blocks of
-    sprint-metrics#127 and #129 could only be guessed at because of it. Best
-    effort: a proposal that can't be saved never costs the attempt.
-    """
-    if sink.path is None:
-        return
-    import json  # noqa: PLC0415
-    from datetime import UTC, datetime  # noqa: PLC0415
-
-    try:
-        folder = sink.path.parent.parent / "proposals" / repo / str(number)
-        folder.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        target = folder / f"{stamp}.json"
-        target.write_text(json.dumps(implementation.model_dump(mode="json"), indent=1))
-        sink.note(EventKind.NOTE, f"#{number} proposal kept", card=number, path=str(target))
-    except Exception:  # noqa: BLE001
-        return
-
-
-def _keep_refused(sink: EventSink, repo: str, number: int, answers: tuple[str, ...]) -> None:
-    """Save each answer the form refused, beside the kept proposals.
-
-    A proposal is kept once it parses, so one the form refused was lost:
-    crew-presentation#59's third attempt blocked the story, and what it sent could
-    only be guessed at (crew#690). Local files, as the proposals are: answers
-    never go in the log (ADR 0014). Best effort, as `_keep_proposal` is.
-    """
-    if sink.path is None or not answers:
-        return
-    from datetime import UTC, datetime  # noqa: PLC0415
-
-    try:
-        folder = sink.path.parent.parent / "proposals" / repo / str(number)
-        folder.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        for i, answer in enumerate(answers, start=1):
-            (folder / f"{stamp}.refused-{i}.txt").write_text(answer)
-        sink.note(
-            EventKind.NOTE,
-            f"#{number} {len(answers)} refused answers kept",
-            card=number,
-            path=str(folder),
-        )
-    except Exception:  # noqa: BLE001
-        return
-
-
-def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, number: int) -> None:
-    """What the project's fixers changed before VERIFY, on the attempt's record (crew#758)."""
-    fixed = getattr(check, "fixed", [])
-    reverted = getattr(check, "reverted", [])
-    unsafe = getattr(check, "unsafe", [])
-    if not (fixed or reverted or unsafe):
-        return
-    outcome.autofixed = sorted({*outcome.autofixed, *fixed})
-    outcome.unsafe_fixes = [
-        *outcome.unsafe_fixes,
-        *(u for u in unsafe if u not in outcome.unsafe_fixes),
-    ]
-    sink.emit(
-        CrewEvent(
-            kind=EventKind.AUTOFIX_APPLIED,
-            role="Developer",
-            card=number,
-            summary=f"#{number} autofix: {len(fixed)} fixed, {len(reverted)} undone, "
-            f"{len(unsafe)} unsafe",
-            detail={
-                "fixed": fixed,
-                "reverted": reverted,
-                "unsafe": unsafe,
-                "rules": sorted({u.split()[0] for u in unsafe}),
-            },
-        )
-    )
-
-
-def _touched_count(implementation: Implementation) -> int:
-    return (
-        len(implementation.new_files)
-        + len(implementation.all_edits)
-        + len(implementation.text_edits)
-    )
-
-
-def _let_go(implementation: Implementation, outcome: DeliveryOutcome) -> list[str]:
-    """The merged tests this change lets go, in sections a rework reads back (#316)."""
-    lines: list[str] = []
-    if implementation.retired_tests:
-        lines += ["", RETIRED_HEADING, ""]
-        lines += [f"- `{t.path}::{t.test}`: {t.why}" for t in implementation.retired_tests]
-    if outcome.contract_changed:
-        lines += ["", DECLARED_HEADING, ""]
-        lines += [f"- `{key}`" for key in outcome.contract_changed]
-    if outcome.placeholders:
-        lines += ["", PLACEHOLDERS_HEADING, ""]
-        lines += [f"- `{key}`" for key in outcome.placeholders]
-    return lines
-
-
-def _pr_body(card: Card, implementation: Implementation, outcome: DeliveryOutcome) -> str:
-    lines = [
-        implementation.summary,
-        "",
-        "## Verification",
-        "",
-        "Lint and the full test suite pass in an isolated worktree.",
-        "",
-        f"- attempts: {outcome.attempts + 1}",
-        f"- escalated: {'yes' if outcome.escalated else 'no'}",
-        "",
-        "## Changes",
-        "",
-    ]
-    for new in implementation.new_files:
-        lines.append(f"- `{new.path}` (new)")
-    for edit in implementation.all_edits:
-        lines.append(f"- `{edit.path}` — {edit.operation} `{edit.target}`")
-    for text_edit in implementation.text_edits:
-        lines.append(f"- `{text_edit.path}` — edited")
-    for move in implementation.moves:
-        lines.append(f"- `{move.name}` moved from `{move.from_path}` to `{move.to_path}`")
-    for path in implementation.deleted_files:
-        lines.append(f"- `{path}` (deleted)")
-    if outcome.autofixed:
-        lines += ["", "## Fixed by the project's own tools before the checks", ""]
-        lines += [f"- `{path}`" for path in outcome.autofixed]
-        lines += [
-            f"- unsafe fix `{u.split()[0]}` at `{u.split()[1]}`, allowed by "
-            "`workspace.UNSAFE_FIXES`"
-            for u in outcome.unsafe_fixes
-        ]
-    proven = getattr(implementation, "proven_by_existing", None) or []
-    if proven:
-        lines += ["", "## Criteria the existing tests prove", ""]
-        lines += [f"- {p.criterion}: " + ", ".join(f"`{t}`" for t in p.tests) for p in proven]
-    lines += _let_go(implementation, outcome)
-    lines += ["", f"Closes #{card.number}"]
-    # Signed last, after the Verification section the Code Reviewer is shown.
-    return signed("\n".join(lines), "Developer")
-
-
 def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bool:
     """A story returned again after MAX_ROUND_TRIPS deliveries goes back to refinement (#242).
 
     sprint-metrics#145 went round six times: QA returned it because the test
     didn't assert stdout was empty, as its criterion said; the reviewer asked
     for that assertion to go, as the epic's design note said. Repairing can't
-    settle a story that contradicts its own design. True if it went back.
+    settle a story that contradicts its own design. A story with no epic to be
+    split again is blocked for a person with the same evidence, rather than going
+    round again without end (crew#778). True if it went back or was blocked.
     """
     rounds = story_problem.round_trips(issues, repo, card.number or 0)
     if rounds < story_problem.MAX_ROUND_TRIPS:
@@ -2135,7 +693,26 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
         comment=comment,
         reason="gate round trips",
     ):
-        return False
+        from crew_org.flows.session_end import blocked_for_a_person  # noqa: PLC0415
+
+        said = comment.replace(story_problem.STORY_PROBLEM_MARKER + "\n", "")
+        blocked_for_a_person(
+            card,
+            repo=repo,
+            comment=said,
+            rule=Rule.ROUND_TRIPS_NO_EPIC,
+            board=board,
+            issues=issues,
+            sink=sink,
+        )
+        result.blocked.append(
+            DeliveryOutcome(
+                card=card.number or 0,
+                blocked_reason=said.splitlines()[0][:400],
+                blocked_rule=Rule.ROUND_TRIPS_NO_EPIC,
+            )
+        )
+        return True
     if number is not None:
         with contextlib.suppress(Exception):
             issues.comment(
@@ -2170,8 +747,6 @@ def _deliver_and_move(
     issues: IssueClient,
     sink: EventSink,
     ws: Workspace,
-    policy: EscalationPolicy,
-    ledger: EscalationLedger,
     result: DeliveryResult,
     counts: dict[str, int],
     sprint: str,
@@ -2199,17 +774,17 @@ def _deliver_and_move(
     ):
         counts[IN_PROGRESS] -= 1
         return
+    from crew_org.flows.session_delivery import deliver_by_session  # noqa: PLC0415
+
     outcome = None
     interrupted: str | None = None
     try:
-        outcome = deliver_story(
+        outcome = deliver_by_session(
             card,
             board=board,
             issues=issues,
             sink=sink,
             ws=card_ws,
-            policy=policy,
-            ledger=ledger,
             sprint=sprint,
             repo=card_repo,
             default_branch=default_branch,
@@ -2223,7 +798,9 @@ def _deliver_and_move(
         # was blocked for a person on an unreadable GitHub reply mid-outage.
         # The card stays In Progress, and the next pass's reconciliation
         # returns it to the backlog to be tried again. Only a streak blocks it.
-        service = transient_remote(exc)
+        # A session interrupted by its call layer or its container is the same,
+        # and resumes from its last checkpoint (crew#778, P3).
+        service = transient_remote(exc) or getattr(exc, "service", None)
         streak = _interrupted_streak(issues, card_repo, card.number or 0) if service else 0
         if service and streak + 1 < INTERRUPTIONS_BEFORE_BLOCKING:
             interrupted = (
@@ -2233,8 +810,8 @@ def _deliver_and_move(
                 f"{INTERRUPTIONS_BEFORE_BLOCKING} before it's blocked for a person)."
             )
         else:
-            # A last resort. Anything deliver_story can attribute it returns on
-            # its own outcome; reaching here means it could not.
+            # A last resort. Anything the session's delivery can attribute it
+            # returns on its own outcome; reaching here means it could not.
             reason = f"{type(exc).__name__}: {exc}"
             if service:
                 reason = (
@@ -2248,9 +825,11 @@ def _deliver_and_move(
         # card that failed this worktree is the only copy of what was
         # written. Read it before removing it, or the card blocks with no
         # evidence of why and the diagnosis has to be guessed.
-        if outcome is not None and not outcome.ok:
+        if outcome is not None and not outcome.ok and outcome.rejected_diff is None:
             outcome.rejected_diff = card_ws.diff_if_open()
         card_ws.close()
+        if outcome is not None and outcome.ended and outcome.branch:
+            card_ws.forget(outcome.branch)
         profiles.clear()
 
     if interrupted is not None:
@@ -2264,6 +843,17 @@ def _deliver_and_move(
             rule="decision.delivery.interrupted",
         )
         result.interrupted.append(card.number or 0)
+        return
+    assert outcome is not None, "delivered, or blocked by the error, unless interrupted"
+
+    if outcome.routed:
+        # The session's ending took it back to refinement, or blocked it for a
+        # person, and said why on the card or its epic (crew#778, decision 9).
+        counts[IN_PROGRESS] -= 1
+        if outcome.routed == "refinement":
+            result.returned.append((card.number or 0, card.parent or 0))
+        else:
+            result.blocked.append(outcome)
         return
 
     if outcome.already_done:
@@ -2309,24 +899,10 @@ def _deliver_and_move(
             sink,
             repo=repo,
             number=card.number or 0,
-            body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass."
-            + existing_proof_block(outcome.proven_by_existing)
-            + (" Escalated to finish." if outcome.escalated else ""),
+            body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass.",
             by="Developer",
         )
         result.delivered.append(outcome)
-    elif outcome.returned and story_problem.return_to_refinement(
-        board,
-        issues,
-        sink,
-        card,
-        repo=repo,
-        cards=board.cards(),
-        comment=outcome.returned,
-    ):
-        held("decision.delivery.outcome", repo=card.repo or repo, card=card.number)
-        counts[IN_PROGRESS] -= 1
-        result.returned.append((card.number or 0, card.parent or 0))
     else:
         move_card(
             board,
@@ -2351,17 +927,12 @@ def _deliver_and_move(
             number=card.number or 0,
             body=f"**Blocked.** {outcome.blocked_reason}\n\n"
             + (f"Where: `{outcome.where}`\n\n" if outcome.where else "")
-            + f"Attempts: {outcome.attempts}. "
-            f"{'Escalated.' if outcome.escalated else 'Not escalated.'}",
+            + f"Sessions: {outcome.attempts}.",
             by="Developer",
         )
         # One block, one event: the move above already recorded `card.blocked`
         # (#321; the merge path's duplicate went in #304).
         result.blocked.append(outcome)
-        # A usage limit means come back later, not try the next card. The
-        # caller stops on the flag; this one is finished either way.
-        if outcome.blocked_reason and "usage limit" in outcome.blocked_reason.lower():
-            result.rate_limited = True
 
 
 def deliver(
@@ -2369,8 +940,6 @@ def deliver(
     issues: IssueClient,
     sink: EventSink,
     rules: ProcessRules,
-    policy: EscalationPolicy,
-    ledger: EscalationLedger,
     ws: Workspace,
     *,
     sprint: str,
@@ -2485,8 +1054,6 @@ def deliver(
             issues=issues,
             sink=sink,
             ws=ws,
-            policy=policy,
-            ledger=ledger,
             result=result,
             counts=counts,
             sprint=sprint,
@@ -2494,8 +1061,6 @@ def deliver(
             default_branch=default_branch,
             rework=True,
         )
-        if result.rate_limited:
-            return result
     if result.reworked:
         cards = board.cards()
 
@@ -2574,46 +1139,10 @@ def deliver(
             issues=issues,
             sink=sink,
             ws=ws,
-            policy=policy,
-            ledger=ledger,
             result=result,
             counts=counts,
             sprint=sprint,
             repo=repo,
             default_branch=default_branch,
         )
-        if result.rate_limited:
-            held("decision.delivery.rate_limited", repo=card.repo or repo, card=card.number)
-            break
     return result
-
-
-def _what_sent_it_back(issues: IssueClient, repo: str, number: int, pull: int) -> tuple[str, str]:
-    """The gate that last sent the work back, and what it said.
-
-    QA sends back work whose diff the Code Reviewer approved. On
-    mqucifer/sprint-metrics#569 the block named the Code Reviewer and showed its
-    approval, so whoever settled it read the wrong side (crew#645).
-    """
-    from crew_org.flows.acceptance import QA_MARKER  # noqa: PLC0415
-
-    try:
-        reviews = issues.pull_reviews(repo, pull)
-    except Exception:  # noqa: BLE001
-        reviews = []
-    review = reviews[-1] if reviews else {}
-    if review.get("state") == "APPROVED":
-        try:
-            qa = [
-                c.get("body") or ""
-                for c in issues.comments(repo, number)
-                if QA_MARKER in (c.get("body") or "")
-            ]
-        except Exception:  # noqa: BLE001
-            qa = []
-        if qa and "not accepted" in qa[-1]:
-            return "QA", qa[-1]
-        ci = latest_ci_verdict(issues, repo, pull)
-        if ci:
-            return "CI", ci
-    return "the Code Reviewer", review.get("body") or ""

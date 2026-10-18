@@ -15,16 +15,22 @@ So a reason is published only when both hold, mechanically:
 Anything else is left out, and the replay shows the failure class alone. A
 message assembled at runtime from pieces matches no template, so it's left
 out too: the safe direction.
+
+A template whose code is gone stays publishable for the past: `retired_reasons.json`
+keeps the ones the one-call Developer retired with (crew#778), so earlier sprints'
+reasons don't vanish from the history. The same names-only rule holds for them.
 """
 
 from __future__ import annotations
 
 import ast
+import json
 import re
 from functools import cache
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1]
+RETIRED = Path(__file__).resolve().parent / "retired_reasons.json"
 
 # A name the crew's checks fill in: a test or definition, a file path, a column.
 _NAME = r"[\w.][\w./\-]*(?:::[\w.]+)?"
@@ -83,8 +89,8 @@ def _pattern(parts: list[str | None]) -> str | None:
 
 @cache
 def templates() -> tuple[re.Pattern[str], ...]:
-    """The first clause of every string and f-string in the crew's source, and of every
-    message its rulebook declares.
+    """The first clause of every string and f-string in the crew's source, of every
+    message its rulebook declares, and of each retired template (`RETIRED`).
 
     The first clause, because that's what's published, and because it outlasts
     rewording: crew#511 rewrote what follows "has no source", not that.
@@ -108,6 +114,7 @@ def templates() -> tuple[re.Pattern[str], ...]:
         for _, message in spec.messages:
             if pattern := _declared_pattern(message):
                 found.add(pattern)
+    found.update(json.loads(RETIRED.read_text(encoding="utf-8"))["templates"])
     return tuple(re.compile(p, re.DOTALL) for p in sorted(found))
 
 

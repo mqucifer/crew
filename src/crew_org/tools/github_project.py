@@ -174,7 +174,6 @@ class Card(BaseModel):
     parent: int | None = None
     sprint: str | None = None
     points: float | None = None
-    escalations: float | None = None
     # The Product Owner's order of a repository's open epics, 1 first (#358).
     rank: float | None = None
     labels: frozenset[str] = frozenset()
@@ -396,7 +395,6 @@ _FIELD_TO_ATTR = {
     "Owner Agent": "owner_agent",
     "Sprint": "sprint",
     "Points": "points",
-    "Escalations": "escalations",
     "Rank": "rank",
 }
 

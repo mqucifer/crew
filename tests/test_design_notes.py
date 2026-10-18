@@ -25,7 +25,6 @@ from crew_org.flows.sprint import plan_sprint
 from crew_org.project import RECORD_PATH
 from crew_org.tools.github_project import Card
 from tests import asked
-from tests.test_delivery_flow import harness  # noqa: F401
 from tests.test_sprint import REPO, epic, parents, story
 
 RECORD = (
@@ -260,26 +259,6 @@ def test_a_story_finds_its_epics_note():
     assert story_note(issues, child, REPO).endswith("the note")
     assert story_note(issues, story(99, 3), REPO) == ""
     assert note_for(issues, REPO, 50).endswith("the note")
-
-
-def test_the_developer_is_shown_its_epics_note(harness, monkeypatch):  # noqa: F811
-    from tests.test_delivery_flow import FakeIssues, green
-    from tests.test_delivery_flow import story as delivery_story
-
-    monkeypatch.setattr(
-        FakeIssues,
-        "comments",
-        lambda self, repo, n: (
-            [{"body": f"{NOTE_MARKER}\nBuild a range model once."}] if n == 50 else []
-        ),
-        raising=False,
-    )
-    child = delivery_story(6).model_copy(update={"parent": 50})
-    _, _, _, _, calls, _ = harness(checks=[green()], cards=[child])
-
-    context = calls["context"][0]
-    assert "# The design note for this story's epic" in context
-    assert "Build a range model once." in context
 
 
 def test_the_reviewer_is_shown_the_stories_note(monkeypatch):

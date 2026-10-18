@@ -11,7 +11,6 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from crew_org.crews.asks import FileAsk, paths, reasons
-from crew_org.crews.delivery_crew import Implementation
 from crew_org.flows.attempts import failing_tests
 
 REPORT = """\
@@ -69,10 +68,15 @@ def test_a_summary_line_with_no_message_takes_the_tests_first_error_line():
     assert failed["assertion"] == "AssertionError: assert {'a': 1} == {'a': 2}"
 
 
+class Asking(BaseModel):
+    """A form that asks for files, as the split's and QA's do."""
+
+    need_files: list[FileAsk] = []
+
+
 def test_a_file_asked_for_says_why_and_a_bare_path_still_reads():
-    answer = Implementation.model_validate(
+    answer = Asking.model_validate(
         {
-            "summary": "asks",
             "need_files": [
                 "./src/sprint_metrics/service.py",
                 {"path": "src/sprint_metrics/store.py", "why": "the query it changes"},
@@ -85,7 +89,6 @@ def test_a_file_asked_for_says_why_and_a_bare_path_still_reads():
         "src/sprint_metrics/store.py",
     ]
     assert reasons(answer.need_files) == {"src/sprint_metrics/store.py": "the query it changes"}
-    assert answer.asks
 
 
 class Verdict(BaseModel):

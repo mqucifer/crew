@@ -1,7 +1,7 @@
 # 25. The crew makes its own model calls
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first). The Developer's calls become one session (ADR 0032): built as `converse`, and not yet run by delivery.
+- **Status:** Accepted (staged; to be built as Part D of `docs/plans/context-record-build.md`, the criteria check first). The Developer's calls are one session (ADR 0032), made through `converse`; its one-call answer forms are gone (crew#778, Stage E).
 
 ## Context
 
@@ -25,8 +25,8 @@ using it. Its unused features were weighed one by one against the decisions alre
 made, in the installed version and in the newest release, 1.15.27 of 2026-10-09, whose
 executor is identical. Its memory is a recall system over model-written notes, the
 opposite of the baseline ADR 0023 keeps. Its knowledge store is the retrieval index ADR
-0024 rules out. Its planner, delegation and Flows duplicate `crews/stepped.py`, the board
-and `flows/`. Its tool loops never send the answer schema, in the Crew path and in
+0024 rules out. Its planner, delegation and Flows duplicate the Developer's steps (then
+`crews/stepped.py`), the board and `flows/`. Its tool loops never send the answer schema, in the Crew path and in
 `Agent.kickoff` alike, and a schema set on the LLM goes on every call, which blocks the
 tool call itself. Its task guardrails do carry a failure's reason into a retry, after its
 own parsing. So nothing in it does tools then a structured answer or stops the
@@ -65,8 +65,9 @@ Sponsor, 2026-10-10 (D5 and D6 of the plan).
 - **A framework is reconsidered only if** a step needs orchestration the board cannot
   hold, or a call pattern the SDK does not provide. The module is the layer a framework
   would wrap, so one adopted later would sit on it, not replace it.
-- **The Developer's calls become one session** (the Sponsor, 2026-10-17 and 2026-10-18,
-  crew#778; ADR 0032). Built as `calls.converse`; delivery runs it from Stage D.
+- **The Developer's calls are one session** (the Sponsor, 2026-10-17 and 2026-10-18,
+  crew#778; ADR 0032), made through `calls.converse`. Delivery runs nothing else: the
+  one-call Developer, its answer forms and its six rounds are deleted.
   - Its tool calls run until it calls `done` or `blocked`, or a stop ends it. There's
     no round limit and no final answer in a form: `done` is itself a tool call, with a
     short structured statement.
@@ -147,3 +148,6 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   and no answer form, made and recorded as every call is (crew#778, Stage C,
   mqucifer/crew#797). The Developer's session makes its calls through it. Until delivery
   runs the session (Stage D), the Developer's six rounds and its answer form stand.
+- **2026-10-18:** the Developer's one-call path is deleted: its answer forms and their
+  refusals, its rounds and its repairs (crew#778, Stage E; the Sponsor's no-fallback
+  decision). The other steps keep their rounds and forms.

@@ -140,8 +140,8 @@ architect:
   llm_params:
     max_tokens: 32768
   can: [write_design, propose_project_design, create_task, create_spike, comment]
-  # Not the escalation policy (§9): the crew's code classifies failures and
-  # escalates, never the Architect (crew#583, step D4).
+  # Not §9: where a story that can't be finished goes is the crew's code, never
+  # the Architect's (crew#583, step D4).
   constitution: [2, 10, 13, 19]  # taxonomy, audit, when design happens, guidelines
   # A project's design (#144): the same role, choosing a project's toolchain
   # once, and revisiting it when a story needs a different choice.
@@ -182,15 +182,9 @@ developer:
     You work in an isolated worktree on a branch named for the issue. You write
     the test that expresses each acceptance criterion, then the code that
     satisfies it. You match the surrounding code's idiom rather than importing
-    your own taste. You never push to main, and you never widen scope beyond
-    the card — anything you notice in passing becomes a new issue, not a bigger
-    diff.
+    your own taste.
     Documentation affected by your change is updated in the same pull request.
     It is part of Done, not a follow-up and not someone else's job.
-    When tests fail you repair locally and re-run before considering anything
-    else. When a card turns out to be larger or vaguer than it looked, that is
-    a SCOPE failure and it goes back to refinement — it is never a reason to
-    escalate.
   # Reasoning at low effort, on its own alias so every call says which setting
   # made it (2026-09-26). It was switched off after one story: thinking on, 27
   # minutes and no valid result; off, 55 seconds and a working implementation.
@@ -201,19 +195,15 @@ developer:
   # Back to crew-code is this one line.
   llm: crew-code-think
   llm_params:
-    # An implementation's answer carries whole files. On sprint-metrics#475
-    # (2026-10-08), two of three answers stopped at 32,768: about 10,500 tokens
-    # of reasoning and 22,300 of answer, cut off before it closed. It was
-    # 16,384 until sprint-metrics#129 used 14,655. The context is 262,144.
+    # Set for the one-call answer, which carried whole files: on
+    # sprint-metrics#475 (2026-10-08), two of three answers stopped at 32,768,
+    # and the one that finished ran at 27.5 tokens a second. A session's turn is
+    # far shorter (crew#778); these stay until its records say otherwise.
     max_tokens: 65536
-    # The answer that finished on sprint-metrics#475 ran at 27.5 tokens a
-    # second: 65,536 takes about 2,400 seconds, past the 1,800 default.
     timeout: 3600
   can: [write_code, run_tests, open_pr, update_docs, file_bug, comment]
-  # Not the branch and commit conventions (§8) or the escalation policy (§9):
-  # the crew names branches, commits and escalates, never the Developer
-  # (crew#583, step D4).
-  constitution: [7, 10, 19]  # DoD, audit, guidelines
+  # No constitution sections: a session's start tells it its tools' rules, and
+  # `done` what the gates check (crew#778, ADR 0032, decision 4).
 
 qa_engineer:
   role: QA Engineer
@@ -300,10 +290,9 @@ scrum_master:
     You write for the Sponsor, who was not present. You say what happened,
     including what went badly, and you never present a sprint as healthier than
     the board says it is. You cite cards by number.
-    In the retro you read the escalation ledger. An escalation rate above
-    threshold is a defect in task design — name the specific stories that were
-    too large or whose criteria were ambiguous, and propose process defects
-    against them. Never propose a larger escalation budget.
+    In the retro you read which stories went back to the Business Analyst.
+    Each is a defect in task design: name what the story lacked, and propose
+    process defects against it.
   # Not crew-draft: the retro is analysis, not prose. It reads the standups,
   # the retries, and the open and fixed issues, and decides what's a defect.
   # With #174 and #176 adding to that, crew-draft spent all 16,384 tokens
@@ -314,7 +303,7 @@ scrum_master:
   llm_params:
     max_tokens: 32768
   can: [write_standup, write_retro, file_process_defect, file_product_defect, comment]
-  constitution: [9, 10, 11, 12] # escalation, audit, WIP, blocked cards
+  constitution: [9, 10, 11, 12] # stories that can't finish, audit, WIP, blocked cards
 
 senior_engineer:
   role: Senior Engineer
@@ -341,7 +330,7 @@ senior_engineer:
     max_tokens: 32768
   # Diagnosis only, enforced in code: no tools, no workspace (#9).
   can: [diagnose_crew, comment]
-  constitution: [1, 9, 10]      # roles, escalation, audit trail
+  constitution: [1, 9, 10]      # roles, stories that can't finish, audit trail
 
 ux_designer:
   role: UX Designer

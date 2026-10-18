@@ -325,6 +325,7 @@ class Session:
             run = reply.detail
             detail.update(
                 {
+                    "run": run["what"],
                     "commands": run["commands"],
                     "first_error": run["first_error"],
                     "failing": run["failing"],

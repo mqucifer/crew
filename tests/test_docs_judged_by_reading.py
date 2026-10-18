@@ -13,66 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
-from crew_org.crews.delivery_crew import (
-    STANDING_INSTRUCTIONS,
-    FileEdit,
-    FileWrite,
-    FirstAttempt,
-    FirstOrDone,
-    TextEdit,
-    is_doc,
-)
 from crew_org.crews.qa_crew import CriterionVerdict, QAVerdict
 from crew_org.events import EventSink
-from crew_org.flows.acceptance import collect_docs
+from crew_org.flows.acceptance import collect_docs, is_doc
 from crew_org.tools.regression import merged_base
 from tests.test_regression_merged import git
-
-PROSE = TextEdit(
-    path="docs/metrics.md",
-    find="<!-- END generated -->\n",
-    replace="<!-- END generated -->\n\nCycle time counts completed cards only.\n",
-)
-
-
-@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone])
-def test_a_change_to_docs_alone_needs_no_test(answer):
-    assert answer(criteria_tests=[], summary="Explain cycle time", text_edits=[PROSE]).docs_only
-
-
-@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone])
-def test_a_new_doc_needs_no_test(answer):
-    answer(
-        criteria_tests=[],
-        summary="Add a changelog",
-        new_files=[FileWrite(path="CHANGELOG.md", content="# x\n")],
-    )
-
-
-@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone])
-def test_docs_and_code_together_still_need_a_test(answer):
-    code = FileEdit(
-        path="src/sprint_metrics/metrics.py",
-        operation="replace",
-        target="cycle_time",
-        source="def cycle_time(cards):\n    return 0\n",
-    )
-    with pytest.raises(ValidationError, match="no test"):
-        answer(
-            criteria_tests=[],
-            summary="Change cycle time and explain it",
-            text_edits=[PROSE],
-            edits=[code],
-        )
-
-
-@pytest.mark.parametrize("answer", [FirstAttempt, FirstOrDone])
-def test_a_config_file_is_not_a_doc(answer):
-    config = TextEdit(path="pyproject.toml", find="[tool.ruff]\n", replace="[tool.ruff]\n# x\n")
-    with pytest.raises(ValidationError, match="no test"):
-        answer(criteria_tests=[], summary="Tweak config", text_edits=[config])
 
 
 def test_what_counts_as_a_doc():
@@ -82,10 +28,6 @@ def test_what_counts_as_a_doc():
     assert not is_doc("tests/fixtures/expected.md"), "a fixture a test reads is the test's"
     assert not is_doc("src/sprint_metrics/_docs_gen.py")
     assert not is_doc(".crew/project.yaml")
-
-
-def test_the_developer_is_told_not_to_pin_prose():
-    assert "Don't write a test that matches a doc's wording" in STANDING_INSTRUCTIONS
 
 
 def test_qa_may_prove_a_doc_criterion_by_quoting_the_doc():

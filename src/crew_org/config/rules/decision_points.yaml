@@ -509,7 +509,7 @@ flows.delivered.delivered:filter:9e684ba4:
 flows.delivery._deliver_and_move:end:7d493eb9:
   at: flows/delivery.py:_deliver_and_move
   if: rework and _gates_disagree(card, board=board, issues=issues, sink=sink, repo=card_repo, result=result)
-  rule: gate.reviewer_and_developer_disagree
+  rule: story.gate_round_trips
 flows.delivery._deliver_and_move:result:delivered:018164d9:
   at: flows/delivery.py:_deliver_and_move
   if: outcome.ok
@@ -522,51 +522,13 @@ flows.delivery._deliver_and_move:result:interrupted:525aee2d:
   at: flows/delivery.py:_deliver_and_move
   if: interrupted is not None
   rule: decision.delivery.interrupted
-flows.delivery._deliver_and_move:result:returned:00f5cd0f:
-  at: flows/delivery.py:_deliver_and_move
-  if: outcome.returned and story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
-    comment=outcome.returned)
-  rule: decision.delivery.outcome
-flows.delivery._gates_disagree:end:35cf9a3c:
-  at: flows/delivery.py:_gates_disagree
-  if: not story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
-    comment=comment, reason='gate round trips')
-  rule: gate.reviewer_and_developer_disagree
 flows.delivery._gates_disagree:end:dc3ba109:
   at: flows/delivery.py:_gates_disagree
   if: rounds < story_problem.MAX_ROUND_TRIPS
-  rule: gate.reviewer_and_developer_disagree
+  rule: story.gate_round_trips
 flows.delivery._interrupted_streak:skip:e39a6a03:
   at: flows/delivery.py:_interrupted_streak
   if: '''<!-- crew:'' in body'
-  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.delivery._keep_proposal:end:af55ef71:
-  at: flows/delivery.py:_keep_proposal
-  if: sink.path is None
-  not_a_rule: keeps a record for a person; decides nothing
-flows.delivery._keep_refused:end:b581b970:
-  at: flows/delivery.py:_keep_refused
-  if: sink.path is None or not answers
-  not_a_rule: keeps a record for a person; decides nothing
-flows.delivery._record_autofix:end:bb7da915:
-  at: flows/delivery.py:_record_autofix
-  if: not (fixed or reverted or unsafe)
-  not_a_rule: records the autofix (repair.workspace.autofix)
-flows.delivery._what_sent_it_back:end:3cf60fe1:
-  at: flows/delivery.py:_what_sent_it_back
-  if: qa and 'not accepted' in qa[-1]
-  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.delivery._what_sent_it_back:end:4807095f:
-  at: flows/delivery.py:_what_sent_it_back
-  if: ci
-  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.delivery._what_sent_it_back:end:71c00187:
-  at: flows/delivery.py:_what_sent_it_back
-  if: review.get('state') == 'APPROVED'
-  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.delivery._what_sent_it_back:filter:c0537204:
-  at: flows/delivery.py:_what_sent_it_back
-  if: QA_MARKER in (c.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
 flows.delivery.awaiting_rework:end:7287767e:
   at: flows/delivery.py:awaiting_rework
@@ -576,10 +538,6 @@ flows.delivery.awaiting_rework:end:ce5ed0a9:
   at: flows/delivery.py:awaiting_rework
   if: pull is None
   rule: decision.delivery.rework
-flows.delivery.deliver:end:ee4e179c:
-  at: flows/delivery.py:deliver
-  if: result.rate_limited
-  rule: decision.delivery.rate_limited
 flows.delivery.deliver:move:95ef3d3c:
   at: flows/delivery.py:deliver
   if: card.status == REVIEWING
@@ -592,22 +550,10 @@ flows.delivery.deliver:skip:02bfad69:
   at: flows/delivery.py:deliver
   if: limit is not None and claimed >= limit
   rule: decision.delivery.limit
-flows.delivery.deliver:skip:53b50333:
-  at: flows/delivery.py:deliver
-  if: result.rate_limited
-  rule: decision.delivery.rate_limited
 flows.delivery.deliver:skip:d9825b8d:
   at: flows/delivery.py:deliver
   if: repos is not None and (card.repo or repo) not in repos
   rule: decision.delivery.sprint_stories
-flows.delivery.deliver_story:end:99042fca:
-  at: flows/delivery.py:deliver_story
-  if: done
-  rule: decision.delivery.outcome
-flows.delivery.deliver_story:filter:5489883d:
-  at: flows/delivery.py:deliver_story
-  if: not regression._declares(declared, k)
-  rule: guard.scope.without_declared
 flows.delivery.held_by_what_it_builds_on:filter:69928729:
   at: flows/delivery.py:held_by_what_it_builds_on
   if: c.repo == story.repo and c.number in wanted and (c.state != 'CLOSED') and (c.status != DONE)
@@ -625,22 +571,6 @@ flows.delivery.not_ours:filter:3af5a48e:
   if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.sprint
     == sprint or sprint is None) and (c.repo not in repos)
   rule: decision.delivery.sprint_stories
-flows.delivery.not_reproduced:end:1836ae22:
-  at: flows/delivery.py:not_reproduced
-  if: card.work_type != BUG
-  rule: guard.not_reproduced
-flows.delivery.not_reproduced:end:5af06f1e:
-  at: flows/delivery.py:not_reproduced
-  if: found.unchecked
-  rule: guard.not_reproduced
-flows.delivery.not_reproduced:end:b27fb176:
-  at: flows/delivery.py:not_reproduced
-  if: not tests or merged is None
-  rule: guard.not_reproduced
-flows.delivery.prior_context:end:40465ec7:
-  at: flows/delivery.py:prior_context
-  if: not (verdicts or fate)
-  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.delivery.prior_verdicts:filter:c0537204:
   at: flows/delivery.py:prior_verdicts
   if: QA_MARKER in (c.get('body') or '')
@@ -697,7 +627,7 @@ flows.delivery.reconcile_orphans:skip:95859012:
 flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
-  rule: guard.scope.without_declared
+  rule: story.contract_ruling
 flows.design_notes._write_one:end:1c024681:
   at: flows/design_notes.py:_write_one
   if: note.beyond_reach
@@ -1522,10 +1452,6 @@ flows.standup.write_standup:filter:8ab5a662:
   at: flows/standup.py:write_standup
   if: v
   not_a_rule: 'a report or a render: lists, decides nothing'
-flows.story_problem.pinned_failures:skip:417b0d65:
-  at: flows/story_problem.py:pinned_failures
-  if: (path, test) in own
-  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
 flows.story_problem.record_pinned:end:4ffffe43:
   at: flows/story_problem.py:record_pinned
   if: not record.has_record(issues.get(repo, epic).get('body') or '')
@@ -1600,3 +1526,27 @@ work_types.open_in:filter:5de9924e:
   at: work_types.py:open_in
   if: c.status == status and c.work_type in DELIVERED and (c.state != 'CLOSED') and (r
   rule: decision.phase_cards
+flows.delivery._deliver_and_move:result:blocked:c9e55b6b:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed
+  not_a_rule: counts the move a session's route made, which names its rule (session_end.route)
+flows.delivery._deliver_and_move:result:returned:6fdee389:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed == 'refinement'
+  not_a_rule: counts the return a session's route made, which names its rule (session_end.route)
+flows.session_delivery._sessions:end:48e04cd8:
+  at: flows/session_delivery.py:_sessions
+  if: routed.to != session_end.SESSION
+  not_a_rule: carries where session_end.route sent the story, which names its rule
+flows.session_delivery._land:end:a76f3d63:
+  at: flows/session_delivery.py:_land
+  if: reached.to not in (session_end.REVIEW, session_end.QA)
+  not_a_rule: the route already moved the card and named its rule; only clean-up is left
+flows.session_delivery._land:end:95a1ac18:
+  at: flows/session_delivery.py:_land
+  if: reached.to == session_end.QA
+  rule: decision.delivery.outcome
+flows.session_delivery._record_autofix:end:bb7da915:
+  at: flows/session_delivery.py:_record_autofix
+  if: not (fixed or reverted or unsafe)
+  not_a_rule: 'records what the fixers changed, when they changed anything: no decision'

@@ -32,7 +32,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from crew_org.crews.delivery_crew import Implementation
 from crew_org.flows import delivery
 from crew_org.flows.attempts import repair_report
 from crew_org.profiles import profile_for
@@ -149,18 +148,16 @@ def at_done(
                 ),
             )
         )
-    unpushable = delivery.workflows_not_permitted(None, permissions, paths=paths)
+    unpushable = delivery.workflows_not_permitted(paths, permissions)
     if unpushable:
         verdict.findings.append(Finding("check.delivery.workflows_not_permitted", unpushable))
 
-    broken = _contracts(worktree, merged, note)
+    broken = _contracts(worktree, merged)
     broken, verdict.placeholders = regression.without_placeholders(worktree, broken, merged)
     code = {key: value for key, value in broken.items() if not _is_test(key)}
     if code:
         verdict.findings.append(
-            Finding(
-                "guard.regression.broken_contracts", regression.describe_contracts(code, merged)
-            )
+            Finding("guard.regression.broken_contracts", regression.describe_contracts(code))
         )
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
@@ -271,12 +268,12 @@ def _declared_tests(
     why.pop("", None)
     changes = delivery.declares_a_change(story)
     named = {_as_key(t) for t in delivery.declared_contract(story)}
-    undeclared: list[str] = []
+    undeclared: dict[str, str] = {}
     matched: set[str] = set()
     for key, how in sorted(changed_tests(worktree, merged, paths).items()):
         declared = [entry for entry in why if _names(entry, key)]
         if not declared:
-            undeclared.append(f"`{key}` ({how})")
+            undeclared[key] = f"`{key}` ({how})"
             continue
         matched.update(declared)
         reason = why[declared[0]]
@@ -293,28 +290,26 @@ def _declared_tests(
             f"declared changed in `done`, and the diff doesn't change it. `done` says: {why[entry]}"
         )
     if undeclared:
+        # A session has no git: what it would put back is shown, as merged (#316).
+        shown = regression.merged_tests_source(list(undeclared), merged)
         verdict.findings.append(
             Finding(
                 "check.gates.these_merged_tests_changed",
-                says("check.gates.these_merged_tests_changed", tests=", ".join(undeclared)),
+                says(
+                    "check.gates.these_merged_tests_changed",
+                    tests=", ".join(undeclared.values()),
+                )
+                + (f"\n\nAs merged:\n\n{shown}" if shown else ""),
             )
         )
 
 
-def _contracts(
-    worktree: Path, merged: regression.Merged | None, note: Callable[[str], None] | None
-) -> dict[str, tuple[str, str]]:
-    """Merged definitions the branch removes or reshapes, as the regression guard reads them.
-
-    The guard compares every file changed since the merged commit with what's merged,
-    and applies an answer on top. A session's edits are already in the worktree, so
-    there's nothing to apply: an empty answer, built without the form's check that an
-    answer changes something.
-    """
-    nothing = Implementation.model_construct(summary="")
-    broken = regression.draft_breaks(worktree, nothing, merged, note)
-    broken = regression.without_moves(worktree, nothing, broken, merged)
-    broken |= regression.lost_names(worktree, nothing, merged, note)
+def _contracts(worktree: Path, merged: regression.Merged | None) -> dict[str, tuple[str, str]]:
+    """Merged definitions the branch removes or reshapes, as the regression guard reads them:
+    every file changed since the merged commit, compared with what's merged."""
+    broken = regression.draft_breaks(worktree, merged)
+    broken = regression.without_moves(worktree, broken, merged)
+    broken |= regression.lost_names(worktree, merged)
     return broken
 
 

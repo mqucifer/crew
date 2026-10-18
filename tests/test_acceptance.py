@@ -332,22 +332,7 @@ def test_a_goal_closes_when_its_epics_are_done():
     assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == [1]
 
 
-# --- the retro will not ask for a bigger budget -------------------------
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        "increase the escalation budget to 6",
-        "raise the budget for escalations",
-        "allow more escalation budget next sprint",
-    ],
-)
-def test_the_retro_cannot_propose_a_larger_escalation_budget(change):
-    """Escalation rate is a symptom of task design. Treating it as a budget
-    problem is how the discipline erodes."""
-    with pytest.raises(ValidationError, match="not a process improvement"):
-        ProcessDefect(subject="S1", problem="three escalations", change=change)
+# --- a process defect proposes a design change ---------------------------
 
 
 def test_a_real_design_change_is_accepted():

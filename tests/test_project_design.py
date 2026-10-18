@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from crew_org.crews.delivery_crew import Implementation, TextEdit
 from crew_org.crews.design_crew import (
     Change,
     Choice,
@@ -300,13 +299,10 @@ def test_a_revision_is_shown_the_current_design_and_why():
     assert "The Architect's design" not in architect.calls[0]["project"]
 
 
-def test_delivery_cannot_change_the_design(tmp_path: Path):
+def test_delivery_cannot_change_the_design():
+    """A branch that changes the record is sent back by the gates at `done` (crew#778)."""
     record = RECORD.model_copy(update={"design": to_design(proposal("uv run pytest -q"))})
-    change = Implementation(
-        summary="s",
-        text_edits=[TextEdit(path=RECORD_PATH, find="uv run pytest -q", replace="true")],
-    )
-    (reason,) = bounds.out_of_bounds(tmp_path, change, record)
+    (reason,) = bounds.judged([RECORD_PATH], record, workflows=({}, {}), dockerfiles={})
     assert "the record itself" in reason
 
 

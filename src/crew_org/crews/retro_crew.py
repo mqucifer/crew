@@ -1,9 +1,8 @@
 """The retro: what the sprint actually did, and what the process should learn.
 
 The Scrum Master reports; it does not decide. Its one job that needs judgment
-is reading the escalation ledger honestly — a high escalation rate is a defect
-in task design, and the retro's output is process defects, never a request for
-a larger budget.
+is reading the returns honestly: a story that went back to the Business Analyst
+is a defect in task design, and the retro's output is process defects.
 """
 
 from __future__ import annotations
@@ -70,16 +69,6 @@ class ProcessDefect(BaseModel):
             text = f"{text} {word}".strip()
         return text
 
-    @field_validator("change")
-    @classmethod
-    def _is_a_change(cls, value: str) -> str:
-        lowered = value.lower()
-        if "budget" in lowered and (
-            "increase" in lowered or "raise" in lowered or "more" in lowered
-        ):
-            refuse("form.ProcessDefect.is_a_change")
-        return value
-
 
 class Retro(BaseModel):
     summary: str = Field(
@@ -115,7 +104,6 @@ class Retro(BaseModel):
 def write_retro(
     sprint: str,
     board_summary: str,
-    escalations: str,
     *,
     delivery_repos: list[str] | None = None,
     standups: str = "",
@@ -130,9 +118,8 @@ def write_retro(
                 "task",
                 f"Write the retro for sprint {sprint}.\n\n"
                 f"## What the board says\n\n{board_summary}\n\n"
-                f"## The escalation ledger\n\n{escalations or 'No escalations this sprint.'}\n\n"
                 f"## The sprint's standups, one per tick\n\n{standups or 'None recorded.'}\n\n"
-                "The board and the ledger say how the sprint ended; the standups say how it "
+                "The board says how the sprint ended; the standups say how it "
                 "went. Read them for what they show over time: cards that stayed blocked or "
                 "waiting across many ticks, long runs where nothing moved, work that stalled "
                 "and restarted. Epics listed as awaiting approval are the Sponsor's queue at "
@@ -171,9 +158,9 @@ def write_retro(
                 f"them. Give `summary` one or two sentences, `went` at most {MAX_WENT} short "
                 "bullets of what was notable, and `needs_you` only what needs the Sponsor. "
                 "Cite cards by number.\n"
-                "Where escalation was needed, name the specific story that was too large or "
-                "whose criteria were ambiguous, and propose the design change. A larger "
-                "escalation budget is never the answer.\n\n"
+                "Where a story went back to the Business Analyst, name what it lacked: too "
+                "large, criteria that were ambiguous, or a fact it didn't give. Then propose "
+                "the design change.\n\n"
                 "Each defect is filed as an issue where the thing it found lives. Mark it "
                 "`process` if it is about how the crew works, or `product` if it is about "
                 "something the crew built, and for a product defect name the repository: "

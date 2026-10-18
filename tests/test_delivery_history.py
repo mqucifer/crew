@@ -719,6 +719,26 @@ def test_a_declared_rules_message_is_one_the_crew_may_publish():
     from crew_org.packages.reasons import published_reason
     from crew_org.rulebook import says
 
-    shown = says("form.path.stays_in_the_repository", "escapes", path="'../etc/passwd'")
-    assert published_reason(shown) == "'../etc/passwd' escapes the repository"
+    shown = says("session.path", "outside", path="'../etc/passwd'")
+    assert published_reason(shown) == (
+        "`'../etc/passwd'` isn't a path in the repository: give it relative to its root"
+    )
     assert published_reason(says("form.QAVerdict.a_verdict_or_an_ask")) is not None
+
+
+def test_a_retired_rules_message_stays_publishable_for_the_past():
+    """The one-call Developer's rules left with Stage E (crew#778); past sprints' events
+    still hold their messages, kept by `retired_reasons.json`, names only."""
+    from crew_org.packages.reasons import published_reason
+
+    assert published_reason("'../etc/passwd' escapes the repository") == (
+        "'../etc/passwd' escapes the repository"
+    )
+    said = "'it ran: rm -rf / and more words than a name' escapes the repository"
+    assert published_reason(said) is None, "still only names fill it in"
+
+
+def test_a_message_from_neither_the_source_nor_the_retired_list_is_withheld():
+    from crew_org.packages.reasons import published_reason
+
+    assert published_reason("the model wrote this sentence about tests/test_x.py") is None

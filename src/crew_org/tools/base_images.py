@@ -1,11 +1,11 @@
 """The base images a Dockerfile builds from, as their registries hold them now (#364).
 
-The Developer works in a sandbox with no network (§14), so nothing it can do
+The Developer works in a container with no network (§14), so nothing it can do
 tells it what a registry holds. sprint-metrics#310, "pin the base image by
 digest", could only be answered by inventing a digest, and was, twice. So the
-crew's own process reads the registries, anonymously, and shows the Developer
-what they say; and a digest a change pins that the registry doesn't have is
-refused before anything is written.
+crew's own process reads the registries, anonymously: a digest the branch pins
+that the registry doesn't have sends it back from the gates at `done`, naming
+the digest the registry holds now.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -145,45 +144,7 @@ def lookup(host: str, name: str, reference: str) -> str | None:
     return _READ[key]
 
 
-# What says a piece of work is about the image, so only that work is shown it.
-_ABOUT_IMAGES = re.compile(
-    r"dockerfile|containerfile|docker|container image|base image|digest", re.I
-)
-
-
-def concerns(text: str) -> bool:
-    """Does this work mention the image, so it should be shown the base images?"""
-    return bool(_ABOUT_IMAGES.search(text or ""))
-
-
-# --- what the Developer is shown, and what's refused ------------------------------------------
-
-
-def section(worktree: Path) -> str:
-    """Each base image the repository's Dockerfiles use, with its digest now, for the context."""
-    refs: list[Ref] = []
-    for path in sorted(worktree.rglob("*")):
-        if path.is_file() and ".git" not in path.parts and is_dockerfile(path.name):
-            refs += [r for r in base_images(path.read_text(errors="ignore")) if r not in refs]
-    if not refs:
-        return ""
-    when = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    lines = [
-        "# Base images, as their registries hold them now",
-        "",
-        f"Read by the crew at {when}. You can't look these up yourself: the sandbox has no "
-        "network. A digest you pin must be one of these, never one you work out.",
-        "",
-    ]
-    for ref in refs:
-        try:
-            digest = lookup(ref.host, ref.name, ref.tag)
-            lines.append(
-                f"- `{ref.shown}` → `{digest}`" if digest else f"- `{ref.shown}`: no such tag"
-            )
-        except Unreadable as exc:
-            lines.append(f"- `{ref.shown}`: couldn't be read ({exc})")
-    return "\n".join(lines) + "\n\n"
+# --- what's refused ------------------------------------------------------------------------
 
 
 def invented(path: str, dockerfile: str) -> list[str]:
