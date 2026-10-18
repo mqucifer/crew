@@ -156,9 +156,9 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 | The start (4) | Yes | Built with the session. In a tick: a prompt of about 50k characters, and the reading ceilings |
 | The workspace (4b) | Yes, with `devcontainer.json` as its one source | Each check is its own container (ADR 0006). The replay's held container is a prototype |
 | The rule sort (5) | Yes | `rule_sort.py` holds it (crew#788). Nothing in the tick reads it |
-| Stories and the contract ruling (6) | Yes | The ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
+| Stories and the contract ruling (6) | Yes | The gates at `done`, the ruling among them, are built in `flows/gates.py` and `flows/session_end.py` (Stage D part 1, mqucifer/crew#798), and nothing in a tick runs them yet. In a tick, the ruling runs mid-attempt, on the first failure of a merged test the story didn't declare (ADR 0023) |
 | Measures (8) | Yes | delivery-history 1.6.0 carries the session, by names and counts, and each story's deliveries in it (Stage F). sprint-metrics' feed counts a session story's attempts as the times it was handed to review. The sprint measures wait for the Sponsor's Goal in sprint-metrics |
-| No escalation (9) | Yes | Escalation is in the code. Ticks are paused until Stage D's first story |
+| No escalation (9) | Yes | Where a `blocked` or stopped session goes is built in `flows/session_end.py` (mqucifer/crew#798), and nothing in a tick runs it yet. Escalation is in the code. Ticks are paused until Stage D's first story |
 | P1 to P6 | Yes | P5's records and P6's Python-only `find` and `tests_for` are built with the session. P1 to P4 are Stage D's |
 
 ## Consequences
@@ -195,4 +195,9 @@ sprint-metrics computes the sprint measures, so the new definitions reach it thr
 - **2026-10-17:** decided. Decisions 1 to 9 and 4b are the Sponsor's, on crew#778.
 - **2026-10-18:** after the replay (Stage R), on crew#778. The Sponsor decided the parse guard and the whole history with one compaction near 125k. They accepted the report, with pass 3's tools as the build's start, and replaced its proposed stops with high ceilings, no nudges, and every signal recorded. They also made `devcontainer.json` the workspace's one source, read as a subset under the crew's hardening. The Sponsor approved P1 to P6 with the plan (mqucifer/crew#789). Written as this ADR in Stage A.
 - **2026-10-18:** the session is built, beside delivery (Stage C, mqucifer/crew#797): `crew_org/session/`, its calls through `calls.converse`. A reply that calls no tool gets one line back, and 3 in a row end it as `blocked` (the operator's call, on crew#778). The compaction is the replay's masking, its form a later experiment (mqucifer/crew#790). One real session, on mqucifer/sprint-metrics#662, reached `done` with the gate green in 5.3 model minutes.
+- **2026-10-18:** the gates at `done` and where a session's ending goes are built (Stage D part 1, mqucifer/crew#798), run by nothing in a tick until part 2. The operator's calls inside decision 6, on crew#778:
+  - a changed merged test the story's Existing tests line names is fine;
+  - one a line saying the story changes tests doesn't name is a question for review;
+  - a line saying the tests stay unchanged, while `done` changed some, is the disagreement the Business Analyst rules on;
+  - an empty diff at `done` takes today's already-done path (mqucifer/crew#221).
 - **2026-10-18:** decision 8's attempt corrected (the Sponsor, on crew#778): an attempt is the branch handed to review and QA, not a submission at `done`. The gate's returns before review are gate rounds. The measures reach delivery-history (Stage F): each story's deliveries in sessions, and the session's events by names and counts. Escalation's fields stay in the package for the sprints before it retired.

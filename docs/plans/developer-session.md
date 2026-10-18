@@ -83,6 +83,8 @@ Built in `crew_org/session/`, with each model call made by `calls.converse` (cre
 - The gates at `done` read the diff: protected paths, workflows and scope; tests prove criteria; changed merged tests declared (decision 6); docs; CI. Then review and QA as now (P4).
 - The first real story is the proof, then the stories blocked behind mqucifer/sprint-metrics#662.
 
+Part 1, the gates at `done` and where an ending goes, is built in `flows/gates.py` and `flows/session_end.py` (mqucifer/crew#798). Part 2 runs sessions in the deliver phase and acts on what `session_end.route` returns.
+
 ### Stage E: retire
 
 - The Developer's retired rules (crew#788).

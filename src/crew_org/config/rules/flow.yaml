@@ -251,6 +251,8 @@ repair.local:
   - regression.local_repair
   description: A refused or failed attempt is repaired locally, within the attempts allowed, before it's
     escalated.
+session.choice:
+session.no_epic:
 skip.board_flow.a_goal_written_by_not_the:
 skip.board_flow.its_criteria_cant_all_pass_to:
   origin:
@@ -281,6 +283,7 @@ skip.waits_for_the_sponsors_answer:
   - skip.board_flow.waits_for_the_sponsors_answer_on
   - skip.refine_panel.waits_for_the_sponsors_answer_on
   description: An epic waits for the Sponsor's answer before it's refined further.
+story.contract_ruling:
 story.return_to_refinement:
   cases:
   - scope.return
@@ -292,6 +295,7 @@ story.return_to_refinement:
   origin:
   - crew#189
   - crew#242
+story.session_blocked:
 told.review_crew.do_not_re_litigate_a_point:
   guidance: true
   owner: Code Reviewer
