@@ -567,13 +567,16 @@ def test_compaction_clears_the_field_once_before_the_tail_and_the_masking(root, 
         {"role": "assistant", "content": "", "reasoning_content": "aaaa", "tool_calls": []},
         {"role": "assistant", "content": "", "reasoning_content": "bbbbbb", "tool_calls": []},
     ]
-    s._reasoning_tokens = 8
+    s._reasoning_by_item = {0: 3, 1: 5}
     s.compact_at = 1
     sent = s._messages()
     got = [m.get("reasoning_content") for m in sent if m["role"] == "assistant"]
     assert got == ["", "bbbbbb"]  # the newest turn keeps its field, as the masking's tail does
     assert s.compacted["reasoning_chars_cleared"] == 4
-    assert s.compacted["reasoning_tokens_cleared"] == 8
+    assert s.compacted["reasoning_tokens_cleared"] == 3
+    # What is kept afterwards is the newest turn's own count, as its chars are.
+    assert sum(s._reasoning_by_item.values()) == 5
+    assert history.reasoning_size(s.history) == len("bbbbbb")
 
 
 def test_the_field_text_reaches_neither_telemetry_nor_the_package(root, seen):

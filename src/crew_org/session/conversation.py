@@ -119,9 +119,9 @@ class Session:
     troubles: list[dict[str, Any]] = field(default_factory=list)
     history: list[Any] = field(default_factory=list)
     _chars_per_token: float = 0.0  # from the last call, to estimate the next prompt
-    # What the kept `reasoning_content` costs, by the responses' own counts; zero once
-    # compaction has cleared it.
-    _reasoning_tokens: int = 0
+    # What each kept `reasoning_content` costs by the responses' own counts, by its
+    # item's place in the history (compaction keeps the places); cleared ones drop out.
+    _reasoning_by_item: dict[int, int] = field(default_factory=dict)
     _quiet: list[str] = field(default_factory=list)
 
     def run(self) -> Ending:
@@ -175,8 +175,14 @@ class Session:
                 self.compacted = {"turn": self.calls + 1, "estimated_tokens": estimated}
                 self.compacted["turns_masked"] = masked
                 self.compacted["reasoning_chars_cleared"] = before - reasoning_size(self.history)
-                self.compacted["reasoning_tokens_cleared"] = self._reasoning_tokens
-                self._reasoning_tokens = 0
+                gone = {
+                    i
+                    for i in self._reasoning_by_item
+                    if not (self.history[i].get("reasoning_content") or "")
+                }
+                self.compacted["reasoning_tokens_cleared"] = sum(
+                    self._reasoning_by_item.pop(i) for i in gone
+                )
                 sent = messages(self.system, self.start, self.history)
                 record(
                     EventKind.SESSION_COMPACTED,
@@ -201,7 +207,7 @@ class Session:
         kept: dict[str, Any] = {}
         if message.get("reasoning_content"):
             kept["reasoning_content"] = message["reasoning_content"]
-            self._reasoning_tokens += answered.usage.get("reasoning_tokens", 0)
+            self._reasoning_by_item[len(self.history)] = answered.usage.get("reasoning_tokens", 0)
         if not made:
             self.history.append({"role": "assistant", "content": content, **kept})
             self._quiet.append(content[:2000])
@@ -402,7 +408,7 @@ class Session:
             tool_calls=len(replies),
             model_s=round(self.model_s, 1),
             reasoning_kept_chars=reasoning_size(self.history),
-            reasoning_kept_tokens=self._reasoning_tokens,
+            reasoning_kept_tokens=sum(self._reasoning_by_item.values()),
             **seen,
         )
 
