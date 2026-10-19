@@ -467,7 +467,9 @@ def test_the_gates_same_finding_three_times_stops_the_delivery_and_keeps_its_wor
         ">   Caused by: Failed to fetch: `https://pypi.org/simple/pytest/`\n"
     ) in note
     assert f"[`{kept}`]" in note and f"> {said}" in note
-    assert "For the rewrite" not in note, "#671's was the workspace's, not the story's"
+    assert "For the rewrite" not in note, (
+        "sprint-metrics#671's was the workspace's, not the story's"
+    )
 
 
 def test_two_same_findings_then_another_go_on_to_the_next_session(ws, deliver):

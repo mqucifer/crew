@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
-| A setting that changes what the tick does | 188 |
+| A setting that changes what the tick does | 190 |
 | Told, and not checked by anything above | 171 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 101 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 90 |
+| Unplaced | | 92 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -400,7 +400,9 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.review_evidence.MAX_IMPORTED_CHARS`<br>The code a diff leans on can be large; this is a guard, not a budget (§16). | evidence | `src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS` | — | — | src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS | — |
 | `config.const.sandbox.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 300 | guards | `src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT | — |
 | `config.const.sandbox.PROBE_TIMEOUT`<br>PROBE_TIMEOUT = 15 | guards | `src/crew_org/tools/sandbox.py:PROBE_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:PROBE_TIMEOUT | — |
+| `config.const.session_delivery.GATE_REPEATS`<br>The gates' same findings this many rounds in a row end the delivery: the in-session no-progress stop's count, which a new session starts again (the Sponsor, crew#790). sprint-metrics#671's gates refu… | — | `src/crew_org/flows/session_delivery.py:GATE_REPEATS` | — | — | src/crew_org/flows/session_delivery.py:GATE_REPEATS | crew#790<br>sprint-metrics#671 |
 | `config.const.session_end.FINDING_CHARS`<br>How much of a gate's finding the note quotes: its first paragraph, cut to this (crew#778). | — | `src/crew_org/flows/session_end.py:FINDING_CHARS` | — | — | src/crew_org/flows/session_end.py:FINDING_CHARS | crew#778 |
+| `config.const.session_end.FINDING_LINES`<br>A finding's first lines, by which the gates' rounds are compared for the same findings again, and quoted when they stop a delivery (crew#790): its command, exit and first error lines. | — | `src/crew_org/flows/session_end.py:FINDING_LINES` | — | — | src/crew_org/flows/session_end.py:FINDING_LINES | crew#790 |
 | `config.const.settle_crew.ASK_CHARS`<br>ASK_CHARS = 300 | answer_shape | `src/crew_org/crews/settle_crew.py:ASK_CHARS` | — | — | src/crew_org/crews/settle_crew.py:ASK_CHARS | — |
 | `config.const.settle_crew.CONSEQUENCES_CHARS`<br>CONSEQUENCES_CHARS = 140 | answer_shape | `src/crew_org/crews/settle_crew.py:CONSEQUENCES_CHARS` | — | — | src/crew_org/crews/settle_crew.py:CONSEQUENCES_CHARS | — |
 | `config.const.settle_crew.CONTEXT_CHARS`<br>Cell limits. | answer_shape | `src/crew_org/crews/settle_crew.py:CONTEXT_CHARS` | — | — | src/crew_org/crews/settle_crew.py:CONTEXT_CHARS | crew#440 |
