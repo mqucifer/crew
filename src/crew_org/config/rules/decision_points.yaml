@@ -446,13 +446,13 @@ flows.conclusion.story_rows:end:5b123f34:
   at: flows/conclusion.py:story_rows
   if: story is None or story.parent is None or story.number is None
   not_a_rule: 'nothing to act on: a value is absent'
-flows.criteria_check.check_each:filter:55b23bd0:
+flows.criteria_check.check_each:filter:9984775c:
   at: flows/criteria_check.py:check_each
-  if: s is not story
+  if: titles is None or _key(s.title) in titles
   rule: gate.criteria_cannot_all_pass
-flows.criteria_check.check_each:skip:9b265f0a:
-  at: flows/criteria_check.py:check_each
-  if: titles is not None and _key(story.title) not in titles
+flows.criteria_check.one:filter:55b23bd0:
+  at: flows/criteria_check.py:one
+  if: s is not story
   rule: gate.criteria_cannot_all_pass
 flows.criteria_check.flagged:filter:e4456a56:
   at: flows/criteria_check.py:flagged

@@ -464,3 +464,32 @@ def run(
     if ending.error is not None:
         raise ending.error
     raise StepStopped(step.name, ending)
+
+
+def measured(session: Session, ending: Ending) -> dict[str, Any]:
+    """One session's model calls, time and output, for steps run at once (crew#807)."""
+    return {
+        "how": ending.how,
+        "model_calls": session.calls,
+        "model_s": round(session.model_s, 1),
+        "completion_tokens": int(session.usage.get("completion_tokens", 0)),
+    }
+
+
+def at_once(
+    step: str, sessions: dict[str, dict[str, Any]], failed: dict[str, str], wall_s: float
+) -> None:
+    """The record of sessions run at once: each one's `measured`, the wall time, and what
+    the Spark served across them, a first measure for mqucifer/crew#790."""
+    served = sum(m["completion_tokens"] for m in sessions.values())
+    record(
+        EventKind.NOTE,
+        f"{step}: {len(sessions) + len(set(failed) - set(sessions))} sessions at once, "
+        f"{wall_s / 60:.1f} minutes",
+        step=step,
+        sessions=sessions,
+        failed=failed,
+        wall_s=round(wall_s, 1),
+        completion_tokens=served,
+        tokens_per_s=round(served / wall_s, 1) if wall_s else None,
+    )

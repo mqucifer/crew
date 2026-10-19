@@ -11,6 +11,8 @@ code exists.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from crew_org.session import steps
@@ -107,6 +109,7 @@ def check_criteria(
     goal: str = "",
     project_log: str = "",
     reading: steps.Reading | None = None,
+    on_end: Any = None,
 ) -> CriteriaCheck:
     """QA's check of one proposed story's criteria, against the others, the code and the
     rows, in a session over the code (crew#807).
@@ -127,5 +130,6 @@ def check_criteria(
         ),
         reading,
         about=stories,
+        on_end=on_end,
     )
     return found

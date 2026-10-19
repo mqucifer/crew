@@ -194,8 +194,8 @@ def test_each_members_model_time_under_load_and_the_throughput_are_recorded(monk
     finally:
         events.reset_bridge()
     [note] = [e for e in found if e.kind == EventKind.NOTE and e.detail.get("step") == "panel"]
-    assert set(note.detail["members"]) == set(ROLES)
-    assert note.detail["members"]["architect"] == {
+    assert set(note.detail["sessions"]) == set(ROLES)
+    assert note.detail["sessions"]["architect"] == {
         "how": "done",
         "model_calls": 3,
         "model_s": 60.0,

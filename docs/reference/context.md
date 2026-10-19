@@ -118,7 +118,7 @@ Then the four parts every refinement session's start ends with (below). `done` r
 
 ## QA, the criteria check
 
-`criteria_crew.opening`, the start of the session `criteria_crew.check_criteria` runs, one story per session, called by `criteria_check.check_each` (#428, crew#583 D3, crew#807).
+`criteria_crew.opening`, the start of the session `criteria_crew.check_criteria` runs, one session per story, all at once, called by `criteria_check.check_each` (#428, crew#583 D3, crew#807).
 
 | Part | From | Why |
 |---|---|---|

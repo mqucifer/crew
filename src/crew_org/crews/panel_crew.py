@@ -29,7 +29,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from crew_org.events import EventKind, attributed, record
+from crew_org.events import attributed
 from crew_org.permissions import load_agents
 from crew_org.rulebook import refuse
 from crew_org.session import steps
@@ -242,15 +242,7 @@ def run_panel(
     measured: dict[str, dict[str, Any]] = {}
 
     def measure(role: str) -> Any:
-        def ended(session: Any, ending: Any) -> None:
-            measured[role] = {
-                "how": ending.how,
-                "model_calls": session.calls,
-                "model_s": round(session.model_s, 1),
-                "completion_tokens": int(session.usage.get("completion_tokens", 0)),
-            }
-
-        return ended
+        return lambda session, ending: measured.__setitem__(role, steps.measured(session, ending))
 
     def one(role: str) -> PanelAnswer:
         # The caller attributes the card and repo; each member adds its own purpose.
@@ -271,16 +263,5 @@ def run_panel(
                 answers[role] = future.result()
             except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
                 failed[role] = f"{type(exc).__name__}: {exc}"[:300]
-    wall = time.monotonic() - began
-    served = sum(m["completion_tokens"] for m in measured.values())
-    record(
-        EventKind.NOTE,
-        f"panel: {len(roles)} members at once, {wall / 60:.1f} minutes",
-        step="panel",
-        members=measured,
-        failed=sorted(failed),
-        wall_s=round(wall, 1),
-        completion_tokens=served,
-        tokens_per_s=round(served / wall, 1) if wall else None,
-    )
+    steps.at_once("panel", measured, failed, time.monotonic() - began)
     return PanelResult(answers, failed)

@@ -24,7 +24,7 @@ The Sponsor, on crew#807 (2026-10-18), with the operator's calls inside those de
 - the Product Owner's decomposition and settle;
 - the Architect's design settle;
 - the Business Analyst's split, and its repair of criteria the check refuses;
-- QA's criteria check, one story per session;
+- QA's criteria check, one session per story, all at once: each story's check is independent, and the repair waits for them all and gets every conflict together. A check that fails or stops leaves the others' results standing;
 - the UX Designer's note (the UX criteria).
 
 **2. Each step ends with its own answer form as `done`.**
@@ -92,3 +92,4 @@ The events are the Developer's, each naming its step. A step's answer goes on th
 
 - **2026-10-18:** decided and built (crew#807). The Sponsor decided the sessions and the git tool, reviewed each step's opening messages before the build, and chose the role text, the constitution's absence and the stops. They also set the criteria check, its repair and `already_holds` into the build, and the wording in decision 6. The operator's calls on crew#807: the versioning pointer, and `already_delivered`'s `seen_at`.
 - **2026-10-18:** the panel's four members run at once again (the Sponsor, on crew#807): they read independently by design, and the settle waits for all four. "One at a time" had come from the Developer's P1, whose reason was a container per session. Each member's model time under load and the Spark's throughput are recorded, for mqucifer/crew#790.
+- **2026-10-18:** the criteria checks run at once too, one session per story (the Sponsor, on crew#807): the real run's five took 66 model minutes in turn, against about 29 for the longest. Each check's model time is recorded with the wall time, as the panel's is.
