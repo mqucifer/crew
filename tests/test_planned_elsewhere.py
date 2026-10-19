@@ -115,7 +115,7 @@ def test_the_split_is_a_session_with_what_is_delivered_as_a_note(monkeypatch):
     with contextlib.suppress(asked.Stop):
         refinement_crew.split_epic("E", "body", delivered=delivered, reading="THE CHECKOUT")
     assert (seen["step"].name, seen["reading"]) == ("split", "THE CHECKOUT")
-    assert seen["notes"] == {"@notes/delivered.md": delivered}
+    assert seen["notes"] == {"@notes/delivered.md": delivered.replace("- #12", "## #12")}
     assert "`@notes/delivered.md`: 1 stories" in seen["description"]
     assert "50%" not in seen["description"], "the note is searched, not shown"
 

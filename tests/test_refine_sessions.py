@@ -229,3 +229,14 @@ def test_a_failure_handling_done_is_a_reply_and_the_session_goes_on(main, seen, 
     assert run_step(main, proxy).nothing_to_add
     failed = proxy.sent[1]["messages"][-1]
     assert failed["role"] == "tool" and "The tool failed: KeyError" in failed["content"]
+
+
+def test_a_line_found_in_the_delivered_note_names_its_story(main: Path):
+    """Each delivered story is a heading of the note, so a hit names it (mqucifer/crew#810)."""
+    shown, notes = steps.delivered_section(
+        "- #12 Show the rate\n  - when run, then it prints 50%\n- #13 Flag it\n  - when x, then y",
+        "a story these already deliver",
+    )
+    assert "2 stories" in shown
+    reply = ReadTools(main, notes=notes).call("search", {"pattern": "50%"})
+    assert "2 [## #12 Show the rate]: - when run, then it prints 50%" in reply.text

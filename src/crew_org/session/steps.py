@@ -226,14 +226,19 @@ def delivered_section(delivered: str, instead: str) -> tuple[str, dict[str, str]
     sprint-metrics#660."""
     if not delivered:
         return "", {}
-    count = sum(line.startswith("- #") for line in delivered.splitlines())
+    # Each story a heading, so a line `search` finds in the note names its story, as a
+    # line in Markdown is named by its heading (mqucifer/crew#810).
+    note = "\n".join(
+        f"## {line[2:]}" if line.startswith("- #") else line for line in delivered.splitlines()
+    )
+    count = sum(line.startswith("## #") for line in note.splitlines())
     return (
         "## What this project has already delivered\n\n"
         f"`{DELIVERED_NOTE}`: {count} stories, each its title and what its criteria "
-        f"promised ({len(delivered) / 1000:.0f}k characters). Search it or view it. Don't "
+        f"promised ({len(note) / 1000:.0f}k characters). Search it or view it. Don't "
         f"propose {instead}. `git log --oneline --grep=<words>` finds the commit that "
         "delivered one.",
-        {DELIVERED_NOTE: delivered},
+        {DELIVERED_NOTE: note},
     )
 
 
