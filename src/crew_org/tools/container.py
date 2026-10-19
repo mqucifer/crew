@@ -3,10 +3,11 @@
 A session runs its tests and searches in one container for the whole story, not
 one container per command. It starts from the project's image (its
 devcontainer.json, or its design) with the sandbox's hardening, and it never has
-a network. Setup runs before that, once, in a one-off container that has one,
-and only the worktree carries over, as between the sandbox's commands. So
-nothing setup started is still running, and there's no disconnect step to fail
-(`var/notes/778/research-workspace.md`).
+a network. Setup runs before that, in a one-off container that has one, and only
+the worktree carries over, as between the sandbox's commands. So nothing setup
+started is still running, and there's no disconnect step to fail
+(`var/notes/778/research-workspace.md`). It runs again, the same way, when the
+dependency files have changed since it last passed (`resync`, crew#814).
 
 Clean-up has three layers, because a session can end in a crash:
 - `stop()` at the session's end;
@@ -16,6 +17,7 @@ Clean-up has three layers, because a session can end in a crash:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -39,6 +41,20 @@ LIFETIME = 4 * 60 * 60
 SETUP_TIMEOUT = 900
 # How long a command has to stop after its timeout, before it's killed.
 GRACE = 10
+# The files whose change sends setup round again, at the project's root where setup
+# reads them: the devcontainer `updateContentCommand` (crew#814). sprint-metrics#671
+# bumped its version, `uv run` re-locked the stale `uv.lock`, and with no network
+# every run and gate failed.
+MANIFESTS = (
+    "pyproject.toml",
+    "uv.lock",
+    "requirements*.txt",
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+)
 
 
 @dataclass
@@ -51,6 +67,12 @@ class Result:
     @property
     def ok(self) -> bool:
         return self.code == 0
+
+
+def manifests(worktree: Path) -> dict[str, str]:
+    """The dependency files at the worktree's root (`MANIFESTS`), each by name to its digest."""
+    found = {p for pattern in MANIFESTS for p in worktree.glob(pattern) if p.is_file()}
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(found)}
 
 
 def sweep(engine: str = "docker") -> list[str]:
@@ -112,6 +134,9 @@ class Held:
         self.lifetime = lifetime
         self.started = False
         self.lost = False
+        # The dependency files as the last setup that passed left them: setup can
+        # write the lockfile itself, so they're read after it (crew#814).
+        self.synced: dict[str, str] | None = None
 
     def start(self) -> Result:
         """Start the session's container, with no network."""
@@ -133,7 +158,7 @@ class Held:
         return done
 
     def setup(self, timeout: int = SETUP_TIMEOUT) -> Result | None:
-        """The project's setup, once, in a one-off container with the network.
+        """The project's setup, in a one-off container with the network.
 
         Before or after `start`: only the worktree carries over, and the session's
         container sees it as setup leaves it.
@@ -151,7 +176,24 @@ class Held:
             path=self.sandbox.search_path(),
             env=self.tools.env,
         )
-        return _said(_run(argv, " ".join(self.tools.setup), timeout + GRACE + 30), timeout)
+        done = _said(_run(argv, " ".join(self.tools.setup), timeout + GRACE + 30), timeout)
+        if done.ok:
+            self.synced = manifests(self.worktree)
+        return done
+
+    def resync(self, timeout: int = SETUP_TIMEOUT) -> Result | None:
+        """Setup again, the same way, if the dependency files changed since it last passed.
+
+        None when they haven't, or when it never passed. Once more on a failure, as at
+        the start: a fetch can fail for a moment. A failure leaves them as changed, so
+        the next call runs it again.
+        """
+        if self.synced is None or manifests(self.worktree) == self.synced:
+            return None
+        done = self.setup(timeout)
+        if done is not None and not done.ok:
+            done = self.setup(timeout)
+        return done
 
     def exec(
         self, command: list[str], timeout: int = workspace.DEFAULT_TIMEOUT, stdin: str | None = None

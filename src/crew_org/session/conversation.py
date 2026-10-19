@@ -472,6 +472,8 @@ class Session:
             model_s=round(self.model_s, 1),
             edits_applied=len(self.tools.edited),
             test_runs=len(self.tools.runs),
+            resetups=len(self.tools.resetups),
+            resetups_failed=self.tools.resetups.count(False),
             tools_used=dict(self.used),
             compaction=self.compacted or None,
             troubles=self.troubles,

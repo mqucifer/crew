@@ -30,6 +30,9 @@ class _Nowhere:
     def setup(self, timeout: int = 0) -> Any:
         return None
 
+    def resync(self, timeout: int = 0) -> Any:
+        return None
+
     def exec(self, command: list[str], timeout: int = 0, stdin: str | None = None) -> Any:
         raise RuntimeError("a reading step runs nothing")
 

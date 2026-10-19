@@ -38,15 +38,24 @@ class Ran:
 class Fake:
     """The held container: each command answered by the first entry its line starts with."""
 
-    def __init__(self, answers=None):
+    def __init__(self, answers=None, resynced=None):
         self.answers = answers or {}
         self.ran: list[tuple[list[str], str | None]] = []
+        # What setup run again answers, in turn: none while the dependency files are as
+        # it left them.
+        self.resynced = list(resynced or [])
 
     def start(self):
         return Ran("start", 0, "")
 
     def setup(self, timeout=900):
         return None
+
+    def resync(self, timeout=900):
+        if not self.resynced:
+            return None
+        self.ran.append((["setup"], None))
+        return self.resynced.pop(0)
 
     def exec(self, command, timeout=300, stdin=None):
         self.ran.append((command, stdin))
@@ -657,6 +666,63 @@ def test_a_failing_step_after_a_run_is_recorded_and_the_session_goes_on(root, se
     assert (failed.detail["tool"], failed.detail["turn"]) == ("after_run", 1)
     ended = kinds(seen, EventKind.SESSION_ENDED)[0].detail
     assert ended["after_run_errors"] == ["OSError: index.lock exists"]
+
+
+# --- setup again when the dependency files change (crew#814) -------------------------------
+
+SYNC = "uv sync --extra dev"
+OFFLINE = "Resolved 40 packages\nerror: Failed to fetch: `https://pypi.org/simple/pytest/`\n"
+OFFLINE += "  Caused by: dns error: failed to lookup address information"
+
+
+def test_setup_run_again_comes_before_the_checks_and_the_reply_says_so(root):
+    fake = Fake(resynced=[Ran(SYNC, 0, "Resolved 40 packages", 41.0)])
+    reply = tools(root, fake).run("suite")
+    assert [c for c, _ in fake.ran] == [["setup"], *map(list, CHECKS.verify)]
+    assert (
+        reply.kind == "passed" and f"Setup ran first, with the network, as `{SYNC}`" in reply.text
+    )
+    assert [c["command"] for c in reply.detail["commands"]][0] == SYNC
+
+
+def test_a_failed_setup_run_again_is_the_run_s_reply_with_its_output(root):
+    """sprint-metrics#671: the model saw `dns error` from every check, never why."""
+    fake = Fake(resynced=[Ran(SYNC, 2, "x" * 3000 + OFFLINE, 3.0)])
+    t = tools(root, fake)
+    reply = t.run("lint")
+    assert reply.kind == "failed" and [c for c, _ in fake.ran] == [["setup"]], "nothing else ran"
+    assert reply.text.startswith("Failed: setup, so nothing else ran. The dependency files")
+    assert f"$ {SYNC}\n(exit 2)\n" in reply.text and reply.text.endswith(OFFLINE)
+    assert len(reply.text) < 2000, "its output's end"
+    assert t.resetups == [False] and t.runs[-1]["first_error"].startswith("error: Failed to fetch")
+    assert t.run("lint").kind == "passed", "no change left to set up: the checks run"
+
+
+def test_a_failed_setup_before_the_lint_after_an_edit_is_said_and_the_edit_stays(root):
+    """The lint is `uv run ruff`: with a stale lockfile it found nothing, and said so."""
+    fake = Fake(resynced=[Ran(SYNC, 2, OFFLINE)])
+    t = tools(root, fake)
+    reply = t.call(
+        "replace_text", {"path": "src/app.py", "old": "    return 1", "new": "    return 2"}
+    )
+    assert reply.kind == "ok" and "return 2" in (root / "src" / "app.py").read_text()
+    assert "Not linted: setup failed, as below." in reply.text
+    assert "Lint finds" not in reply.text and [c for c, _ in fake.ran] == [["setup"]]
+    assert "before the lint, with the network, and failed" in reply.text
+    assert f"$ {SYNC}\n(exit 2)\n" in reply.text and reply.text.endswith(OFFLINE)
+    assert t.resetups == [False] and t.runs == [], "an edit, not a run"
+
+
+def test_the_session_counts_its_setups_run_again_with_no_output(root, seen):
+    fake = Fake(resynced=[Ran(SYNC, 2, OFFLINE), Ran(SYNC, 0, "")])
+    proxy = Proxy(
+        said(("run", {"what": "suite"})), said(("run", {"what": "suite"})), said(("done", DONE))
+    )
+    assert run_session(root, proxy, fake)[1].how == "done"
+    (ended,) = kinds(seen, EventKind.SESSION_ENDED)
+    assert (ended.detail["resetups"], ended.detail["resetups_failed"]) == (2, 1)
+    sent = telemetry.view(ended)
+    assert (sent["resetups"], sent["resetups_failed"]) == (2, 1)
 
 
 # --- `done` checks itself (the Sponsor's principle on crew#778) -----------------------------

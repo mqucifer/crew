@@ -168,6 +168,8 @@ def route(
     )
     # Which rules sent a story back, for the measures of decision 8: names only (ADR 0010).
     rules = [finding.rule for finding in verdict.findings]
+    # Setup run again before the checks, as the session counts it (crew#814).
+    resetup = getattr(verdict.check, "resetup", None)
     sink.emit(
         CrewEvent(
             kind=EventKind.GATE_CHECKED,
@@ -179,6 +181,8 @@ def route(
                 "passed": verdict.passed,
                 "rules": rules,
                 "already_done": verdict.already_done,
+                "resetups": int(resetup is not None),
+                "resetups_failed": int(resetup is False),
             },
         )
     )

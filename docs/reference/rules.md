@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
-| A setting that changes what the tick does | 188 |
+| A setting that changes what the tick does | 189 |
 | Told, and not checked by anything above | 171 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 101 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 90 |
+| Unplaced | | 91 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -429,6 +429,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.tools.SEARCH_FILES`<br>SEARCH_FILES = 30 | — | `src/crew_org/session/tools.py:SEARCH_FILES` | — | — | src/crew_org/session/tools.py:SEARCH_FILES | crew#778 |
 | `config.const.tools.SEARCH_HITS`<br>SEARCH_HITS = 50 | — | `src/crew_org/session/tools.py:SEARCH_HITS` | — | — | src/crew_org/session/tools.py:SEARCH_HITS | crew#778 |
 | `config.const.tools.SEARCH_PARTS`<br>Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this few (crew#807). | — | `src/crew_org/session/tools.py:SEARCH_PARTS` | — | — | src/crew_org/session/tools.py:SEARCH_PARTS | crew#807 |
+| `config.const.tools.SETUP_TAIL`<br>How much of a failed setup's output a run's reply shows: its end, as the start does. | — | `src/crew_org/session/tools.py:SETUP_TAIL` | — | — | src/crew_org/session/tools.py:SETUP_TAIL | crew#814 |
 | `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
 | `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |

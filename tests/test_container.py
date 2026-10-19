@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from crew_org.session.tools import Tools
 from crew_org.tools import container
 from crew_org.tools.container import LABEL, OWNER, Held, Result, sweep
 from crew_org.tools.sandbox import Mode, Sandbox
@@ -101,7 +102,7 @@ def test_a_session_never_runs_on_the_host(worktree, ran):
     assert held.sandbox.mode is Mode.REQUIRED
 
 
-def test_setup_runs_once_in_a_one_off_container_with_the_network(worktree, ran):
+def test_setup_runs_in_a_one_off_container_with_the_network(worktree, ran):
     Held(worktree, "x").setup(timeout=60)
     argv = next(a for a in ran if a[1] == "run")
     assert argv[argv.index("--network") + 1] == "bridge"
@@ -170,6 +171,108 @@ def test_stop_removes_only_what_it_started(worktree, ran):
     held.start()
     held.stop()
     assert ran[-1] == ["docker", "rm", "-f", "crew-workspace-x"]
+
+
+# --- setup again when the dependency files change (crew#814) ----------------------------
+
+
+def setups(ran: list[list[str]]) -> list[int]:
+    """Where setup ran among the docker calls: a one-off `run`, not the held start."""
+    return [i for i, a in enumerate(ran) if a[1] == "run" and "-d" not in a]
+
+
+def test_a_changed_dependency_file_runs_setup_again_once_before_the_run(worktree, ran):
+    """sprint-metrics#671 bumped its version, and every run then needed the network."""
+    (worktree / "pyproject.toml").write_text('[project]\nversion = "1.3.1"\n')
+    held = Held(worktree, "x")
+    assert held.start().ok and held.setup().ok
+    tools = Tools(worktree, held, held.tools)
+    ran.clear()
+    assert tools.run("suite").kind == "passed"
+    assert setups(ran) == [], "nothing changed, so no setup"
+    (worktree / "pyproject.toml").write_text('[project]\nversion = "1.3.2"\n')
+    ran.clear()
+    assert tools.run("suite").kind == "passed"
+    (setup,) = setups(ran)
+    argv = ran[setup]
+    assert argv[argv.index("--network") + 1] == "bridge" and argv[-2:] == ["uv", "sync"]
+    assert setup < next(i for i, a in enumerate(ran) if a[1] == "exec"), "then the run"
+    ran.clear()
+    tools.run("suite")
+    assert setups(ran) == [], "once"
+    assert tools.resetups == [True]
+
+
+def test_an_edit_to_pyproject_then_the_lint_after_an_edit_sets_up_once(worktree, ran):
+    """sprint-metrics#671's first step: the version in pyproject.toml, then code."""
+    (worktree / ".crew/project.yaml").write_text(
+        (worktree / ".crew/project.yaml").read_text() + "  - uv run ruff check .\n"
+    )
+    (worktree / "pyproject.toml").write_text('[project]\nversion = "1.3.1"\n')
+    (worktree / "app.py").write_text("x = 1\n")
+    held = Held(worktree, "x")
+    assert held.start().ok and held.setup().ok
+    tools = Tools(worktree, held, held.tools)
+    ran.clear()
+    tools.replace_text("pyproject.toml", 'version = "1.3.1"', 'version = "1.3.2"')
+    assert setups(ran) == [], "a TOML edit isn't linted"
+    edited = tools.replace_text("app.py", "x = 1", "x = 2")
+    (setup,) = setups(ran)
+    assert setup < next(i for i, a in enumerate(ran) if a[1] == "exec"), "before the lint"
+    assert "Setup ran first" in edited.text and "Lint finds nothing new." in edited.text
+    ran.clear()
+    assert tools.run("suite").kind == "passed" and setups(ran) == [], "nothing changed since"
+    assert tools.resetups == [True]
+
+
+def test_each_dependency_file_counts_and_nothing_else_does(worktree, ran):
+    held = Held(worktree, "x")
+    held.setup()
+    (worktree / "README.md").write_text("changed\n")
+    assert held.resync() is None
+    (worktree / "requirements-dev.txt").write_text("pytest\n")
+    assert held.resync() is not None
+    assert set(container.manifests(worktree)) == {"requirements-dev.txt"}
+
+
+def test_the_lockfile_setup_writes_doesnt_send_it_round_again(worktree, monkeypatch, ran):
+    """`uv sync` re-locks a stale `uv.lock` itself: what's recorded is what it left."""
+    answer = container.subprocess.run
+
+    def run(argv, **kw):
+        if argv[-2:] == ["uv", "sync"]:
+            (worktree / "uv.lock").write_text(f"locked {len(ran)}\n")
+        return answer(argv, **kw)
+
+    monkeypatch.setattr(container.subprocess, "run", run)
+    held = Held(worktree, "x")
+    held.setup()
+    assert held.resync() is None
+    (worktree / "pyproject.toml").write_text('[project]\nversion = "2"\n')
+    assert held.resync().ok and held.resync() is None
+
+
+def test_a_failed_setup_again_is_tried_once_more_and_again_at_the_next_call(worktree, monkeypatch):
+    """As at the start: a fetch can fail for a moment. A failure leaves the files changed."""
+    codes = iter([0, 1, 1, 1, 0])
+    tried: list[str] = []
+
+    def run(argv, command, timeout, stdin=None):
+        if command == "uv sync":
+            tried.append(command)
+            return Result(command, next(codes), "error: Failed to fetch")
+        return Result(command, 0, "")
+
+    monkeypatch.setattr(container, "_run", run)
+    monkeypatch.setattr(Sandbox, "unavailable_reason", lambda self: None)
+    monkeypatch.setattr(Sandbox, "search_path", lambda self: "/usr/local/bin:/usr/bin")
+    held = Held(worktree, "x")
+    assert held.setup().ok
+    (worktree / "uv.lock").write_text("stale\n")
+    failed = held.resync()
+    assert not failed.ok and failed.output == "error: Failed to fetch" and len(tried) == 3
+    assert held.resync().ok and len(tried) == 5, "the next call runs it again"
+    assert held.resync() is None
 
 
 def test_the_sweep_removes_only_containers_whose_crew_has_gone(monkeypatch):
