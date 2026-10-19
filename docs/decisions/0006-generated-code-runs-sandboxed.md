@@ -58,6 +58,6 @@ a given for all projects honestly."
   commit (crew#788's first hard call, crew#778).
 - 2026-10-18: built. The deliver phase holds each story's workspace container for its
   sessions and the gates at `done` (crew#778, Stages B and D).
-- 2026-10-19: setup runs again, with the network, before a session's `run` or the
-  gates at `done` when the dependency files have changed since it last passed
-  (crew#814). Everything else still runs with none.
+- 2026-10-19: setup runs again, with the network, before a session's `run`, the lint
+  after an edit, or the gates at `done` when the dependency files have changed since
+  it last passed (crew#814). Everything else still runs with none.

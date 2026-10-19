@@ -691,11 +691,26 @@ def test_a_failed_setup_run_again_is_the_run_s_reply_with_its_output(root):
     t = tools(root, fake)
     reply = t.run("lint")
     assert reply.kind == "failed" and [c for c, _ in fake.ran] == [["setup"]], "nothing else ran"
-    assert reply.text.startswith("Failed: setup. The dependency files changed")
+    assert reply.text.startswith("Failed: setup, so nothing else ran. The dependency files")
     assert f"$ {SYNC}\n(exit 2)\n" in reply.text and reply.text.endswith(OFFLINE)
     assert len(reply.text) < 2000, "its output's end"
     assert t.resetups == [False] and t.runs[-1]["first_error"].startswith("error: Failed to fetch")
     assert t.run("lint").kind == "passed", "no change left to set up: the checks run"
+
+
+def test_a_failed_setup_before_the_lint_after_an_edit_is_said_and_the_edit_stays(root):
+    """The lint is `uv run ruff`: with a stale lockfile it found nothing, and said so."""
+    fake = Fake(resynced=[Ran(SYNC, 2, OFFLINE)])
+    t = tools(root, fake)
+    reply = t.call(
+        "replace_text", {"path": "src/app.py", "old": "    return 1", "new": "    return 2"}
+    )
+    assert reply.kind == "ok" and "return 2" in (root / "src" / "app.py").read_text()
+    assert "Not linted: setup failed, as below." in reply.text
+    assert "Lint finds" not in reply.text and [c for c, _ in fake.ran] == [["setup"]]
+    assert "before the lint, with the network, and failed" in reply.text
+    assert f"$ {SYNC}\n(exit 2)\n" in reply.text and reply.text.endswith(OFFLINE)
+    assert t.resetups == [False] and t.runs == [], "an edit, not a run"
 
 
 def test_the_session_counts_its_setups_run_again_with_no_output(root, seen):

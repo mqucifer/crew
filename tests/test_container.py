@@ -203,6 +203,28 @@ def test_a_changed_dependency_file_runs_setup_again_once_before_the_run(worktree
     assert tools.resetups == [True]
 
 
+def test_an_edit_to_pyproject_then_the_lint_after_an_edit_sets_up_once(worktree, ran):
+    """sprint-metrics#671's first step: the version in pyproject.toml, then code."""
+    (worktree / ".crew/project.yaml").write_text(
+        (worktree / ".crew/project.yaml").read_text() + "  - uv run ruff check .\n"
+    )
+    (worktree / "pyproject.toml").write_text('[project]\nversion = "1.3.1"\n')
+    (worktree / "app.py").write_text("x = 1\n")
+    held = Held(worktree, "x")
+    assert held.start().ok and held.setup().ok
+    tools = Tools(worktree, held, held.tools)
+    ran.clear()
+    tools.replace_text("pyproject.toml", 'version = "1.3.1"', 'version = "1.3.2"')
+    assert setups(ran) == [], "a TOML edit isn't linted"
+    edited = tools.replace_text("app.py", "x = 1", "x = 2")
+    (setup,) = setups(ran)
+    assert setup < next(i for i, a in enumerate(ran) if a[1] == "exec"), "before the lint"
+    assert "Setup ran first" in edited.text and "Lint finds nothing new." in edited.text
+    ran.clear()
+    assert tools.run("suite").kind == "passed" and setups(ran) == [], "nothing changed since"
+    assert tools.resetups == [True]
+
+
 def test_each_dependency_file_counts_and_nothing_else_does(worktree, ran):
     held = Held(worktree, "x")
     held.setup()
