@@ -8,10 +8,10 @@ A session ends one of three ways (decision 3):
   when the story says merged tests stay unchanged and `done` changed some.
 - **blocked:** a missing file or fact, or a stop (no progress, the backstop, a
   ceiling, replies that call no tool, or between sessions the gates' same findings
-  again), goes back to the Business Analyst who wrote
-  the story, with the session's evidence, by the path a story takes back to
-  refinement. A choice no one has made goes to the Sponsor as one reaches a person
-  today: the card is blocked, saying so (decision 9).
+  again), goes back to the Business Analyst who wrote the story, with the session's
+  evidence, by the path a story takes back to refinement. A choice no one has made
+  goes to the Sponsor as one reaches a person today: the card is blocked, saying so
+  (decision 9).
 - **interrupted:** a failed call or a lost workspace, nothing about the story. It
   resumes from the last checkpoint (P3), and isn't routed here.
 
