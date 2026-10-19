@@ -25,13 +25,16 @@ import re
 import shlex
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from itertools import groupby
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
 
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
 from crew_org.rulebook import Refusal, refuse
 from crew_org.session.container import GONE, Gone, Workspace
+from crew_org.session.enclosing import Enclosing, enclosing
 from crew_org.session.git import INJECTED, OUTPUT_CHARS, Git, parse, restore_args
 from crew_org.tools.ast_edit import Edit, EditError, apply_edit, definitions
 
@@ -50,6 +53,9 @@ VIEW_LINES = 400
 VIEW_CHARS = 40_000
 SEARCH_HITS = 50
 SEARCH_FILES = 30
+# Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this
+# few (crew#807).
+SEARCH_PARTS = 3
 FIND_HITS = 40
 # The lines either side of an edit its reply shows (SWE-agent's and OpenHands' editors).
 EDIT_CONTEXT = 4
@@ -129,6 +135,60 @@ def changed_lines(before: str, after: str, *, side: str = "new") -> str:
     return "\n".join(shown)
 
 
+def hit_lines(
+    hits: list[tuple[str, int, str]],
+    named: Callable[[str], Enclosing | None],
+    *,
+    counted: bool = False,
+) -> list[str]:
+    """`search`'s hits under their files, each line named by what encloses it (crew#807).
+
+    `named` gives a file's names (`enclosing`). A line is `  27 [jobs.docker.services.
+    postgres]: image: postgres:16`, and lines in a row that share a name are put under
+    it once. A file that doesn't parse says so, and its lines are shown as they are.
+    `counted`, past `SEARCH_HITS`, each of the first `SEARCH_FILES` files gives its
+    count, with the parts its lines are in when there are at most `SEARCH_PARTS`.
+    """
+    by_file: dict[str, list[tuple[int, str]]] = {}
+    for rel, n, line in hits:
+        by_file.setdefault(rel, []).append((n, line))
+    body: list[str] = []
+    for rel, found in list(by_file.items())[: SEARCH_FILES if counted else None]:
+        where = named(rel)
+        names = [where.name(n) if where else "" for n, _ in found]
+        if counted:
+            parts = [f"[{name}]" for name in dict.fromkeys(names) if name]
+            inside = f", in {', '.join(parts)}" if 0 < len(parts) <= SEARCH_PARTS else ""
+            body.append(f"{rel}: {len(found)} lines{inside}")
+            continue
+        if where and where.broken:
+            body.append(
+                f"{rel} (it doesn't parse as {where.broken}, so what each line is in isn't shown):"
+            )
+        else:
+            body.append(f"{rel}:")
+        for name, run in groupby(zip(names, found, strict=True), key=lambda pair: pair[0]):
+            lines = [hit for _, hit in run]
+            if not name:
+                body += [f"  {n}: {line}" for n, line in lines]
+            elif len(lines) == 1:
+                body.append(f"  {lines[0][0]} [{name}]: {lines[0][1]}")
+            else:
+                body += [f"  [{name}]", *(f"    {n}: {line}" for n, line in lines)]
+    if counted and len(by_file) > SEARCH_FILES:
+        body.append(f"... and {len(by_file) - SEARCH_FILES} more files")
+    return body
+
+
+def line_inside(where: Enclosing | None, n: int) -> str:
+    """`view`'s header on what encloses the first line it shows, as `search` names it."""
+    if where is None:
+        return ""
+    if where.broken:
+        return f" It doesn't parse as {where.broken}, so what line {n} is in isn't shown."
+    return f" Line {n} is in [{where.name(n)}]." if where.name(n) else ""
+
+
 @dataclass
 class Reply:
     text: str
@@ -176,8 +236,10 @@ SPECS = [
         "Find lines matching `pattern`, a regular expression (Python `re`; `(?i)` ignores "
         "case), across the repository, `.package/` included, or in one file or folder with "
         "`path`. A pattern that isn't a valid expression is searched as plain text. Up to "
-        f"{SEARCH_HITS} lines are shown, grouped by file, `src/` and `tests/` first; past "
-        "that, each file's count.",
+        f"{SEARCH_HITS} lines are shown, grouped by file, `src/` and `tests/` first, each "
+        "with what it's in: in Python its definition (`Class.method`), in YAML and JSON its "
+        "key path (`jobs.docker.services.postgres`), in Markdown its heading. Past that, "
+        "each file's count.",
         {"pattern": S, "path": S},
         ["pattern"],
     ),
@@ -457,6 +519,15 @@ class Tools:
     def _text(self, real: Path, given: str) -> str:
         return self._read(real, given).decode("utf-8", errors="replace")
 
+    def _enclosing(self, rel: str) -> Enclosing | None:
+        """What encloses each line of a file `search` found, read as `_grep` read it."""
+        if rel in self.notes:
+            return enclosing(rel, self.notes[rel])
+        try:
+            return enclosing(rel, self._text(self.root / rel, rel))
+        except (OSError, Refusal):
+            return None
+
     # --- see and find -------------------------------------------------------------------
     def view(
         self,
@@ -506,8 +577,9 @@ class Tools:
         more = f" The file has {len(lines)} lines." if end < len(lines) or start > 1 else ""
         self.read.append(f"{rel}::{definition}" if definition else f"{rel}:{start}-{end}")
         what = f"{rel}::{definition}" if definition else f"{rel} lines {start}-{end}"
+        inside = "" if definition else line_inside(enclosing(rel, "\n".join(lines)), start)
         return Reply(
-            f"`{what}`{more}{cut}\n{body}",
+            f"`{what}`{more}{inside}{cut}\n{body}",
             "ok",
             f"viewed {what}",
             {"path": rel, "definition": definition, "lines": [start, end]},
@@ -583,19 +655,10 @@ class Tools:
         where = f" in `{under or note}`" if under or note else ""
         head = f"{len(hits)} lines{where} match `{pattern}`, {how}"
         if len(hits) <= SEARCH_HITS:
-            body: list[str] = []
-            last = None
-            for rel, n, line in hits:
-                if rel != last:
-                    body.append(f"{rel}:")
-                    last = rel
-                body.append(f"  {n}: {line}")
+            body = hit_lines(hits, self._enclosing)
         else:
             counts = Counter(rel for rel, _, _ in hits)
-            ordered = list(dict.fromkeys(rel for rel, _, _ in hits))
-            body = [f"{rel}: {counts[rel]} lines" for rel in ordered[:SEARCH_FILES]]
-            if len(counts) > SEARCH_FILES:
-                body.append(f"... and {len(counts) - SEARCH_FILES} more files")
+            body = hit_lines(hits, self._enclosing, counted=True)
             head += (
                 f", in {len(counts)} files. Too many to show: narrow it with `path` or a "
                 "tighter pattern"

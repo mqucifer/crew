@@ -10,7 +10,7 @@ The evidence (`var/notes/first-pass-evidence.md`, `var/notes/778-context-selecti
 - In 10 of 12 failed first answers, the file or fact the failure needed wasn't shown.
 - The file listing takes about 30k of the 50k characters shown. Any sprint-metrics Python file over about 20k characters can't be seen whole by either route.
 - 64% of the Developer's asks were for files the ceiling had just left out. 48 of 69 recorded reads were of test files.
-- Repairs are cheap once the failure names the missing fact. First answers are expensive because they predict: one reasoned 142,842 tokens over 73 minutes.
+- Repairs are cheap once the failure names the missing fact. First answers are expensive because they predict: one first attempt reasoned 142,842 tokens over 8 calls and 73 minutes, and the largest single call reasoned 49,238.
 - In mqucifer/sprint-metrics#662, attempts 2 and 4 fixed the bug and were discarded for dropping a test retirement. The next attempts saw only the refusal, so the fix was lost.
 
 ## What was decided (crew#778)

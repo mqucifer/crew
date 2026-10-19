@@ -28,6 +28,9 @@ config.const.diagnose.MAX_COMMENT:
 config.const.diagnose.MAX_EVENTS:
 config.const.diagnose.PER_TICK:
 config.const.diagnosis_crew.MAX_FILES:
+config.const.enclosing.NAME_CHARS:
+  origin:
+  - crew#807
 config.const.git.OUTPUT_CHARS:
   origin:
   - crew#778
@@ -128,6 +131,9 @@ config.const.tools.SEARCH_FILES:
 config.const.tools.SEARCH_HITS:
   origin:
   - crew#778
+config.const.tools.SEARCH_PARTS:
+  origin:
+  - crew#807
 config.const.tools.VIEW_CHARS:
   origin:
   - crew#778
