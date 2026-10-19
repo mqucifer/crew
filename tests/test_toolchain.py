@@ -310,10 +310,17 @@ def test_check_gives_each_command_the_file_s_environment(tmp_path, monkeypatch):
 
 
 class Held:
-    """A session's container: what ran in it, each answered with success."""
+    """A session's container: what ran in it, each answered with success, and what setup
+    run again answers, None while the dependency files are as it left them (crew#814)."""
 
-    def __init__(self) -> None:
+    def __init__(self, resynced: CommandResult | None = None) -> None:
         self.ran: list[list[str]] = []
+        self.resynced = resynced
+
+    def resync(self):
+        if self.resynced is not None:
+            self.ran.append(["setup"])
+        return self.resynced
 
     def exec(self, command, timeout=0):
         self.ran.append(list(command))
@@ -330,6 +337,19 @@ def test_in_a_held_container_the_fixers_and_checks_run_there_and_setup_doesn_t(
     held = Held()
     assert workspace.check(project(tmp_path, design), held=held).ok
     assert held.ran == [["npx", "prettier", "--write", "."], ["npx", "playwright", "test"]]
+
+
+def test_in_a_held_container_changed_dependency_files_run_setup_first(tmp_path, monkeypatch):
+    """The fixers and checks have no network, and a stale lockfile needs one (crew#814)."""
+    design = "  setup: uv sync --extra dev\n  checks:\n  - uv run pytest -q\n"
+    monkeypatch.setattr(workspace, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    held = Held(CommandResult("uv sync --extra dev", 0, "Resolved 40 packages"))
+    root = project(tmp_path, design)
+    checked = workspace.check(root, held=held)
+    assert checked.ok and checked.resetup is True
+    assert held.ran[0] == ["setup"] and held.ran[-1] == ["uv", "run", "pytest", "-q"]
+    assert checked.results[0].command == "uv sync --extra dev", "on the record, as setup was"
+    assert workspace.check(root, held=Held()).resetup is None
 
 
 def test_what_a_session_touched_counts_its_committed_checkpoints(tmp_path):

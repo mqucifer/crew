@@ -475,8 +475,10 @@ design` writing it.
 
 **The Developer's session holds one workspace container for its story**
 (`tools/container.py`; crew#778, decision 4b; ADR 0032). The deliver phase holds
-it for the story's sessions and the gates at `done`. Setup runs once in a one-off container
-with the network; the session's container then starts with none, under every
+it for the story's sessions and the gates at `done`. Setup runs in a one-off container
+with the network, and again before a `run`, the lint after an edit, or the gates when
+the dependency files (`pyproject.toml`, `uv.lock`, `package.json` and the like) have
+changed since it last passed (crew#814). The session's container starts with none, under every
 protection in the table, with an init process, and runs each command with
 `docker exec` under a timeout. Clean-up has three layers: it's removed at the
 session's end; a tick's start removes those whose crew process has gone; and one

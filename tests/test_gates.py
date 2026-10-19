@@ -17,7 +17,7 @@ import pytest
 from crew_org.flows import gates
 from crew_org.tools import reproduction
 from crew_org.tools.github_project import Card
-from crew_org.tools.workspace import CheckResult, CommandResult
+from crew_org.tools.workspace import CheckResult, CommandResult, check
 
 MODULE = "src/sprint_metrics/metrics.py"
 TESTS = "tests/test_metrics.py"
@@ -219,6 +219,31 @@ def test_every_finding_goes_back_together(repo):
         "check.delivery.lint_or_tests_failed",
     ], "that the named tests exist is `done`'s own check, not the gate's"
     assert "test_rate_of_nothing" in verdict.findings[-1].says, "the report, each cause once"
+
+
+class Resyncing:
+    """A held container whose setup, run again for changed dependency files, failed."""
+
+    def __init__(self) -> None:
+        self.ran: list[list[str]] = []
+
+    def resync(self) -> CommandResult:
+        return CommandResult("uv sync --extra dev", 2, "error: Failed to fetch: dns error")
+
+    def exec(self, command, timeout=0):
+        self.ran.append(list(command))
+        return CommandResult(" ".join(command), 0, "")
+
+
+def test_a_failed_setup_run_again_at_done_goes_back_with_its_output(repo):
+    """Like any failed check (crew#814): the branch changed what setup reads."""
+    uncap(repo)
+    held = Resyncing()
+    verdict = at_done(repo, done(), run_checks=lambda at: check(at, held=held))
+    assert held.ran == [], "nothing runs on a setup that failed"
+    assert verdict.check.resetup is False and not verdict.passed
+    (finding,) = [f for f in verdict.findings if f.rule == "check.delivery.lint_or_tests_failed"]
+    assert "$ uv sync --extra dev\n(exit 2)\nerror: Failed to fetch: dns error" in finding.says
 
 
 def test_an_empty_diff_whose_criteria_existing_tests_prove_is_already_done(repo):

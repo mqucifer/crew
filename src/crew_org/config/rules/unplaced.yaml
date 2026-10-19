@@ -141,6 +141,9 @@ config.const.tools.SEARCH_HITS:
 config.const.tools.SEARCH_PARTS:
   origin:
   - crew#807
+config.const.tools.SETUP_TAIL:
+  origin:
+  - crew#814
 config.const.tools.VIEW_CHARS:
   origin:
   - crew#778

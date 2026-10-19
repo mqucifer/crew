@@ -69,6 +69,9 @@ class CheckResult:
     reverted: list[str] = field(default_factory=list)
     # Each allowed unsafe fix applied (`UNSAFE_FIXES`), as `CODE path:line`.
     unsafe: list[str] = field(default_factory=list)
+    # In a held container: whether setup ran again first, because the dependency files
+    # had changed, and passed (crew#814). None when it didn't run.
+    resetup: bool | None = None
 
     @property
     def ok(self) -> bool:
@@ -324,8 +327,9 @@ def check(
     none at all, so generated code cannot reach anything while it executes.
 
     `held` is a session's workspace container (`tools/container.py`): its setup
-    ran when it started, so the fixers and checks run in it, and nothing else
-    does (crew#778). `since` is the commit the work started from: a session
+    ran when it started, so the fixers and checks run in it (crew#778). Setup runs
+    again first, as the container's, only when the dependency files changed since
+    it last passed (crew#814). `since` is the commit the work started from: a session
     commits its checkpoints, so what it touched is read against that, not HEAD.
     """
     sandbox = sandbox or Sandbox()
@@ -345,8 +349,12 @@ def check(
         return CommandResult(command=done.command, code=done.code, output=done.output)
 
     results = []
+    resetup = None
     if tools.setup and held is None:
         results.append(do(tools.setup, network=True))
+    elif held is not None and (again := held.resync()) is not None:
+        resetup = again.code == 0
+        results.append(CommandResult(command=again.command, code=again.code, output=again.output))
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
@@ -370,7 +378,9 @@ def check(
                 _git(worktree, "checkout", "--", *reverted)
         for command in tools.verify:
             results.append(do(command))
-    return CheckResult(results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe)
+    return CheckResult(
+        results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe, resetup=resetup
+    )
 
 
 def _unsafe_fixes(
