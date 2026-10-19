@@ -110,6 +110,10 @@ DETAIL = frozenset(
         "model_calls",
         "edits_applied",
         "test_runs",
+        # Setup run again because the dependency files changed, and those that failed
+        # (crew#814): on a session's end and the gates' check.
+        "resetups",
+        "resetups_failed",
         "start_chars",
     }
 )

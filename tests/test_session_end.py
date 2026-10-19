@@ -22,6 +22,7 @@ from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER
 from crew_org.rules import RETURN_RULES, Rule
 from crew_org.session.conversation import Ending
 from crew_org.tools.github_project import Card
+from crew_org.tools.workspace import CheckResult, CommandResult
 
 REPO = "sprint-metrics"
 CAPPED = "tests/test_metrics.py::test_rate_is_capped"
@@ -389,7 +390,20 @@ def test_done_through_every_gate_goes_on_to_review_with_its_sections(verdict):
         "passed": True,
         "rules": [],
         "already_done": False,
+        "resetups": 0,
+        "resetups_failed": 0,
     }
+
+
+def test_the_gates_count_setup_run_again_and_whether_it_passed(verdict):
+    """Counts, no output (crew#814): the output is in the finding the session gets."""
+    failed = CommandResult("uv sync --extra dev", 2, "error: Failed to fetch: dns error")
+    verdict.verdict = gates.Verdict(check=CheckResult([failed], resetup=False))
+    gates._checked(verdict.verdict)
+    routed, _, _, seen = route(Ending("done", SAID))
+    [checked] = [e for e in seen if e.kind is EventKind.GATE_CHECKED]
+    assert (checked.detail["resetups"], checked.detail["resetups_failed"]) == (1, 1)
+    assert routed.to == session_end.SESSION and "dns error" in routed.start
 
 
 def test_done_already_proven_goes_to_qa(verdict):

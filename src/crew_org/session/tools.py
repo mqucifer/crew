@@ -66,6 +66,8 @@ NEAR_RATIO = 0.6
 # A run's command, and the lint after an edit: the replay's limits.
 RUN_TIMEOUT = 900
 LINT_TIMEOUT = 120
+# How much of a failed setup's output a run's reply shows: its end, as the start does.
+SETUP_TAIL = 1500
 
 
 def is_text(path: Path) -> bool:
@@ -457,6 +459,8 @@ class Tools:
         self.read: list[str] = []
         self.runs: list[dict[str, Any]] = []
         self.edits_since_run = 0
+        # Whether each setup a run sent round again passed (crew#814).
+        self.resetups: list[bool] = []
         self.pytest = _prefix(self.verify, "pytest")
         # Lint is the checks': the project's checks that lint. Never its autofix, which the
         # gate runs with its outcome ignored (pass 1 told crew-presentation#83 lint failed
@@ -875,6 +879,13 @@ class Tools:
                 refuse("session.run", "no_lint")
         else:
             commands = self.verify
+        # Setup first when the dependency files changed since it last passed: the checks
+        # have no network, and `uv run` re-locks a stale lockfile, which needs one (crew#814).
+        setup = self.workspace.resync()
+        if setup is not None:
+            self.resetups.append(setup.code == 0)
+            if setup.code != 0:
+                return self._setup_failed(what, tests, setup, began)
         results = [self._exec(c, timeout=RUN_TIMEOUT) for c in commands]
         ok = all(r.code == 0 for r in results)
         report = "\n\n".join(f"$ {r.command}\n(exit {r.code})\n{r.output}" for r in results)
@@ -886,7 +897,8 @@ class Tools:
             "tests": tests or [],
             "ok": ok,
             "commands": [
-                {"command": r.command, "code": r.code, "seconds": r.seconds} for r in results
+                {"command": r.command, "code": r.code, "seconds": r.seconds}
+                for r in ([setup] if setup else []) + results
             ],
             "first_error": first,
             "failing": [f["id"] for f in failing][:20],
@@ -895,17 +907,49 @@ class Tools:
         }
         self.runs.append(record)
         self.edits_since_run = 0
+        again = (
+            f"\n\nSetup ran first, with the network, as `{setup.command}`: the dependency "
+            "files had changed since it last passed."
+            if setup
+            else ""
+        )
         if ok:
             shown = "\n\n".join(
                 f"$ {r.command}\n(exit 0)\n" + "\n".join(r.output.splitlines()[-5:])
                 for r in results
             )
-            return Reply(f"Passed.\n{shown}", "passed", f"run {what}: passed", record)
+            return Reply(f"Passed.\n{shown}{again}", "passed", f"run {what}: passed", record)
         command = failed.command if failed else ""
         return Reply(
-            f"Failed: `{command}`. First error: {first}\n{repair_report(report)}",
+            f"Failed: `{command}`. First error: {first}\n{repair_report(report)}{again}",
             "failed",
             f"run {what}: `{command}` failed: {first[:120]}",
+            record,
+        )
+
+    def _setup_failed(self, what: str, tests: list[str] | None, setup: Any, began: float) -> Reply:
+        """A run whose setup, sent round again by changed dependency files, failed. Nothing
+        else ran, and the reply is setup's own command, exit code and output's end."""
+        first = first_failure(setup.output)
+        record = {
+            "what": what,
+            "tests": tests or [],
+            "ok": False,
+            "commands": [{"command": setup.command, "code": setup.code, "seconds": setup.seconds}],
+            "first_error": first,
+            "failing": [],
+            "seconds": round(time.monotonic() - began, 1),
+            "edits_before": self.edits_since_run,
+        }
+        self.runs.append(record)
+        self.edits_since_run = 0
+        return Reply(
+            "Failed: setup. The dependency files changed since it last passed, so it ran "
+            "again before the checks, with the network, and failed; nothing else ran. It "
+            f"runs again at the next `run`.\n$ {setup.command}\n(exit {setup.code})\n"
+            f"{setup.output[-SETUP_TAIL:]}",
+            "failed",
+            f"run {what}: setup failed: {first[:120]}",
             record,
         )
 

@@ -26,8 +26,9 @@ a given for all projects honestly."
   the image, the setup command and the environment from it, and always applies the
   hardening above, so nothing in the file can loosen the container: `runArgs`,
   `mounts`, `privileged`, features and host commands are not honoured. The worktree is
-  mounted, setup runs once with network, and then the session runs
-  with none, under the hardening above. It's removed at the session's end and
+  mounted, setup runs with network, and then the session runs
+  with none, under the hardening above. Setup runs again, the same way, when the
+  dependency files change (crew#814): it's the only command with a network. It's removed at the session's end and
   cleaned up after a crash. The gates at `done` run in it too. Every other check is
   still its own container.
 - **Fail loudly:** no container engine means the check fails. There is never a
@@ -57,3 +58,6 @@ a given for all projects honestly."
   commit (crew#788's first hard call, crew#778).
 - 2026-10-18: built. The deliver phase holds each story's workspace container for its
   sessions and the gates at `done` (crew#778, Stages B and D).
+- 2026-10-19: setup runs again, with the network, before a session's `run` or the
+  gates at `done` when the dependency files have changed since it last passed
+  (crew#814). Everything else still runs with none.
