@@ -137,3 +137,29 @@ def test_the_code_a_split_is_shown_leaves_room_to_read_beside_the_rest():
     shown = repo_context.shown_ceiling(beside)
     assert beside + shown + repo_context.READ_ROOM_CHARS == repo_context.READING_CHAR_CEILING
     assert repo_context.shown_ceiling(10**6) == 0
+
+
+def test_a_builds_on_that_names_a_position_in_the_split_is_refused_at_done(monkeypatch):
+    """The real run on mqucifer/sprint-metrics#667 wrote "Builds on #1" and "#4" for the
+    split's own first and fourth stories, which link to that repository's first and
+    fourth issues (crew#807)."""
+    seen = asked.capture(monkeypatch)
+    with contextlib.suppress(asked.Stop):
+        refinement_crew.split_epic("E", "body", delivered_numbers={655, 658}, planned_numbers={662})
+    by_position = StoryProposal(
+        epic_title="E",
+        stories=[
+            make_story("the cap"),
+            make_story("the docs").model_copy(update={"builds_on": [1]}),
+            make_story("the release").model_copy(update={"builds_on": [4]}),
+        ],
+    )
+    with pytest.raises(ValueError, match="names #1, #4, which aren't stories") as refused:
+        seen["check"](by_position)
+    assert "The order of `stories` is their delivery order" in str(refused.value)
+    assert "`builds_on` is for other epics' stories" in str(refused.value)
+    real = StoryProposal(
+        epic_title="E",
+        stories=[make_story("the cap").model_copy(update={"builds_on": [655, 662]})],
+    )
+    seen["check"](real)

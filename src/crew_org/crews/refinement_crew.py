@@ -750,6 +750,29 @@ def check_delivered(
         )
 
 
+def check_builds_on(
+    proposal: StoryProposal,
+    numbers: set[int] | None,
+    planned: set[int] | frozenset[int] = frozenset(),
+) -> None:
+    """Refuse a `builds_on` naming a story the project hasn't delivered or other epics
+    don't plan.
+
+    The real run on mqucifer/sprint-metrics#667 wrote positions in the split, 1 and 4,
+    as issue numbers, which link to that repository's first and fourth issues (crew#807).
+    """
+    if numbers is None:
+        return
+    named = {n for story in proposal.stories for n in story.builds_on}
+    unknown = sorted(named - numbers - set(planned))
+    if unknown:
+        refuse(
+            "check.refinement_crew.check",
+            "not_a_story",
+            stories=", ".join(f"#{n}" for n in unknown),
+        )
+
+
 def _delivered_block(delivered: str, instead: str) -> str:
     if not delivered:
         return ""
@@ -806,6 +829,7 @@ def split_epic(
 
     def check(proposal: StoryProposal) -> None:
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
+        check_builds_on(proposal, delivered_numbers, planned_numbers or frozenset())
         check_accounted(proposal, superseded or [])
         check_provided(proposal, provided)
         if found := conclusion_flow.problems(proposal, list(rows), declared):

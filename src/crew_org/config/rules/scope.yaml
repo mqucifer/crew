@@ -44,9 +44,13 @@ check.conclusion.problems:
   owner: Business Analyst
   told_in: StoryProposal
 check.refinement_crew.check:
-  description: Refused if `already_delivered` names a story neither delivered nor planned, if a story
-    it replaces isn't accounted for, or if a story names a package field the pinned package doesn't define.
+  description: Refused if `already_delivered` or a story's `builds_on` names a story neither delivered
+    nor planned, if a story it replaces isn't accounted for, or if a story names a package field the pinned
+    package doesn't define.
   messages:
+    not_a_story: '`builds_on` names {stories}, which aren''t stories this project has delivered or other
+      epics plan. The order of `stories` is their delivery order, so a story needs no `builds_on` for
+      one of this split''s: `builds_on` is for other epics'' stories, by their issue number.'
     not_delivered: already_delivered names {stories}, which the project has neither delivered nor planned.
       Name a delivered or planned story, or write the story.
     not_in_package: 'these aren''t fields of the package this project pins: {fields}. Name the field each
@@ -54,6 +58,8 @@ check.refinement_crew.check:
       `not_in_package`, for the Sponsor, and no story shows it.'
     unaccounted: 'the split doesn''t say what became of {stories}. Account for each: rewritten here, already
       delivered, or dropped and why.'
+  origin:
+  - crew#807
   owner: Business Analyst
   told_in: StoryProposal
 check.settle_crew.check_grounded:
