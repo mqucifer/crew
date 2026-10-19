@@ -38,7 +38,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.7.0"
+SCHEMA_VERSION = "1.8.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -258,7 +258,9 @@ Tool = Literal[
     "blocked",
     "after_run",
 ]
-Stop = Literal["no_progress", "backstop", "ceiling", "no_tool_call"]
+# How a session or a delivery was stopped. `gate_repeat` stops a delivery between its
+# sessions, as `backstop` can: the gates' same findings 3 rounds in a row (crew#790).
+Stop = Literal["no_progress", "backstop", "ceiling", "no_tool_call", "gate_repeat"]
 ToolResult = Literal["ok", "refused", "failed", "passed", "error", "end"]
 How = Literal["done", "blocked", "interrupted"]
 BlockedOn = Literal["file", "fact", "choice", "stop"]
@@ -393,7 +395,7 @@ class Returned(_Part):
     card: CardRef
     reason: ReturnReason
     blocked_on: BlockedOn | None = Field(description="For a blocked session, what it lacked.")
-    stop: Stop | None = Field(description="For a stopped session, what stopped it.")
+    stop: Stop | None = Field(description="For a stopped session or delivery, what stopped it.")
 
 
 Event = Annotated[
@@ -592,7 +594,10 @@ class Delivery(_Part):
     first_green_run: int | None = Field(
         description="Of its runs, from 1, the first whole suite that passed."
     )
-    stop: Stop | None = Field(description="What stopped its last session, if anything did.")
+    stop: Stop | None = Field(
+        description="What stopped its last session, or the delivery between sessions "
+        "(the backstop, or the gates' same findings again), if anything did."
+    )
     blocked_on: BlockedOn | None
     ceiling: Literal["reading", "re_viewing"] | None
     since_action: int | None = Field(description="Its last session's signals at the end.")

@@ -183,6 +183,34 @@ def test_a_stop_goes_back_the_same_way_with_its_signals():
     assert returned.detail["stop"] == "ceiling"
 
 
+def test_the_gates_same_finding_again_goes_back_as_a_stop_named_for_the_measures():
+    """crew#790: a stop between sessions, by the path a stopped session takes."""
+    finding = gates.Finding(
+        "check.delivery.lint_or_tests_failed",
+        "Lint or tests failed:\n\n$ uv run ruff check .\n(exit 2)\n"
+        "error: Request failed after 3 retries",
+    )
+    ending = Ending(
+        "blocked",
+        {"missing": "the gates' same findings, sent back 3 times in a row", "kind": "stop"},
+        "gate_repeat",
+        evidence=dict(EVIDENCE, stop={"repeats": 3}),
+    )
+    routed, _, issues, seen = route(
+        ending, leaving=leaving(None, findings=[[finding]] * 3, sessions=3)
+    )
+    assert routed.to == session_end.REFINEMENT
+    comment = issues.posted[0][1]
+    assert (
+        "stopped by the gates at `done`, which sent back the same finding 3 times in a row.**"
+        in comment
+    )
+    assert "> (exit 2)\n> error: Request failed after 3 retries" in comment
+    assert "For the rewrite" not in comment
+    [returned] = [e for e in seen if e.kind is EventKind.STORY_RETURNED]
+    assert (returned.detail["kind"], returned.detail["stop"]) == ("stop", "gate_repeat")
+
+
 def test_replies_that_call_no_tool_end_on_the_last_one_as_its_last_words():
     evidence = dict(
         EVIDENCE,

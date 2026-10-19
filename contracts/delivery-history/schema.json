@@ -645,7 +645,8 @@
                 "no_progress",
                 "backstop",
                 "ceiling",
-                "no_tool_call"
+                "no_tool_call",
+                "gate_repeat"
               ],
               "type": "string"
             },
@@ -653,7 +654,7 @@
               "type": "null"
             }
           ],
-          "description": "What stopped its last session, if anything did.",
+          "description": "What stopped its last session, or the delivery between sessions (the backstop, or the gates' same findings again), if anything did.",
           "title": "Stop"
         },
         "submissions": {

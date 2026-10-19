@@ -448,7 +448,7 @@ def _story_deliveries(ref: dh.CardRef, events: list[dh.Event]) -> list[dh.Delive
         found.update(model_seconds=0.0, returned_because=None)
         return found
 
-    def close(outcome: str, at: datetime | None) -> None:
+    def close(outcome: str, at: datetime | None, returned: dh.Returned | None = None) -> None:
         nonlocal now, running
         if now is None:
             return
@@ -456,6 +456,9 @@ def _story_deliveries(ref: dh.CardRef, events: list[dh.Event]) -> list[dh.Delive
             now["gaps"].append("session_not_ended")
             running = False
         rules = sorted(now.pop("rules"))
+        # A stop between sessions is the return's alone: its last session ended `done`
+        # (the backstop, or the gates' same findings again, crew#790).
+        stopped = returned if returned is not None and returned.stop else last
         out.append(
             dh.Delivery(
                 card=ref,
@@ -463,8 +466,8 @@ def _story_deliveries(ref: dh.CardRef, events: list[dh.Event]) -> list[dh.Delive
                 ended=at,
                 outcome=outcome,  # type: ignore[arg-type]
                 gate_rules=rules,
-                stop=last.stop if last else None,
-                blocked_on=last.blocked_on if last else None,
+                stop=stopped.stop if stopped else None,
+                blocked_on=stopped.blocked_on if stopped else None,
                 ceiling=last.ceiling if last else None,
                 since_action=last.since_action if last else None,
                 most_views=last.most_views if last else None,
@@ -525,7 +528,7 @@ def _story_deliveries(ref: dh.CardRef, events: list[dh.Event]) -> list[dh.Delive
                 close("blocked", e.at)
         elif isinstance(e, dh.Returned):
             now["returned_because"] = e.reason
-            close("returned", e.at)
+            close("returned", e.at, e)
         elif _returned(e):
             now["review_returns"] += 1
             since_return = True

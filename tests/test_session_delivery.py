@@ -382,6 +382,132 @@ def test_findings_with_the_budget_spent_are_a_stop_for_the_business_analyst(ws, 
     assert outcome.routed == session_end.REFINEMENT and outcome.ended
 
 
+# sprint-metrics#671's finding, five times: a version bump made uv sync again, and the
+# workspace container has no network after its setup.
+OFFLINE = (
+    "$ uv run ruff check .\n(exit 2)\nerror: Request failed after 3 retries\n"
+    "  Caused by: Failed to fetch: `https://pypi.org/simple/pytest/`\n"
+    "  Caused by: dns error: failed to lookup address information"
+)
+FAILING = "\n".join(
+    [
+        "$ uv run pytest -q",
+        "(exit 1)",
+        "..F.............                                                         [100%]",
+        "=================================== FAILURES ===================================",
+        "_________________________________ test_shown __________________________________",
+        "    def test_shown():",
+        ">       assert rate() == 2",
+        "E       assert 1 == 2",
+        "tests/test_rate.py:4: AssertionError",
+        "FAILED tests/test_rate.py::test_shown - assert 1 == 2",
+    ]
+)
+
+
+def refused(report: str) -> session_end.Route:
+    """The gates sending the branch back with lint or the tests failing, in their words."""
+    from crew_org.flows.gates import Finding, Verdict
+    from crew_org.rulebook import says
+
+    rule = "check.delivery.lint_or_tests_failed"
+    finding = Finding(rule, says(rule, amended="", repair="", report=report))
+    return session_end.Route(
+        session_end.SESSION, rule, start="## The gates", verdict=Verdict(findings=[finding])
+    )
+
+
+class Gates(Leaves):
+    """The gates' answer at each `done`, scripted; a stop leaves as `Leaves` does."""
+
+    def __init__(self, *answers) -> None:
+        super().__init__()
+        self.answers = list(answers)
+
+    def __call__(self, ending, **kw):
+        if ending.how != "done":
+            return super().__call__(ending, **kw)
+        self.asked.append(ending)
+        return self.answers.pop(0)
+
+
+def test_the_gates_same_finding_three_times_stops_the_delivery_and_keeps_its_work(ws, deliver):
+    """sprint-metrics#671: each refusal started a new session, until a person stopped it."""
+    said = "The `run` tool could not execute checks due to a container network limitation."
+    sessions = Sessions(
+        {"writes": {"rate.py": "RATE = 2\n"}, "ending": Ending("done", DONE)},
+        {"ending": Ending("done", DONE)},
+        {"ending": Ending("done", DONE, evidence={"last_words": said})},
+    )
+    routes = Gates(refused(OFFLINE), refused(OFFLINE), refused(OFFLINE))
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.attempts == 3, "no fourth session"
+    assert outcome.routed == session_end.REFINEMENT and outcome.ended
+    stopped = routes.asked[-1]
+    assert (stopped.how, stopped.stop, stopped.said["kind"]) == ("blocked", "gate_repeat", "stop")
+    assert stopped.evidence["stop"] == {"repeats": 3}
+    [kept] = kept_on_origin(ws)
+    shown = subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "show", f"{kept}:rate.py"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert shown == "RATE = 2\n" and pushed(ws) == "", "kept, and the story's branch not pushed"
+    [note] = routes.notes
+    assert (
+        "stopped by the gates at `done`, which sent back the same finding 3 times in a row.**"
+        in note
+    )
+    assert (
+        "**What the gates sent back each time:**\n\n"
+        "> Lint or tests failed:\n"
+        "> $ uv run ruff check .\n"
+        "> (exit 2)\n"
+        "> error: Request failed after 3 retries\n"
+        ">   Caused by: Failed to fetch: `https://pypi.org/simple/pytest/`\n"
+    ) in note
+    assert f"[`{kept}`]" in note and f"> {said}" in note
+    assert "For the rewrite" not in note, "#671's was the workspace's, not the story's"
+
+
+def test_two_same_findings_then_another_go_on_to_the_next_session(ws, deliver):
+    sessions = Sessions(*({"ending": Ending("done", DONE)} for _ in range(4)))
+    routes = Gates(
+        refused(OFFLINE),
+        refused(OFFLINE),
+        refused(FAILING),
+        session_end.Route(session_end.REVIEW, "decision.delivery.outcome"),
+    )
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.pr == 700 and outcome.attempts == 4
+    assert routes.notes == [] and kept_on_origin(ws) == []
+
+
+def test_rounds_are_the_same_by_rule_and_first_lines_whatever_a_run_s_timing():
+    from crew_org.flows.gates import Finding
+
+    def gates_round(timing: str) -> list[Finding]:
+        return list(refused(f"{FAILING}\n1 failed, 15 passed in {timing}").verdict.findings)
+
+    found = [gates_round("0.12s"), gates_round("0.19s"), gates_round("0.15s")]
+    assert session_delivery._repeats(found) == 3
+    other = Finding("check.gates.x", found[0][0].says)
+    assert session_delivery._repeats([*found, [other]]) == 1, "another rule is another finding"
+    assert session_delivery._repeats([[], [], []]) == 0, "no findings is never a repeat"
+
+
+def test_the_backstop_still_stops_rounds_short_of_three_same_findings(ws, deliver):
+    sessions = Sessions(
+        {"ending": Ending("done", DONE), "model_s": 1800.0},
+        {"ending": Ending("done", DONE), "model_s": BACKSTOP_S},
+    )
+    routes = Gates(refused(OFFLINE), refused(OFFLINE))
+    outcome = deliver(ws, sessions, routes)
+    assert routes.asked[-1].stop == "backstop" and outcome.attempts == 2
+    assert outcome.routed == session_end.REFINEMENT
+    assert "stopped by the backstop: 210 minutes of model time over 2 sessions" in routes.notes[0]
+
+
 GREEN = {"what": "suite", "ok": True, "commands": [{"command": "pytest", "code": 0}]}
 STOP = Ending(
     "blocked",
