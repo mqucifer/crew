@@ -5,18 +5,23 @@
 # check that enforces them; and by guidance's migration, where two lines saying the same
 # thing became one rule, and two were linked to the check that refuses them. Lowered
 # by Stage E of the Developer's session (crew#778): the one-call Developer's told
-# lines went with it, and the Senior Engineer's lines on stepped delivery.
+# lines went with it, and the Senior Engineer's lines on stepped delivery. Refinement in
+# a session (crew#807): the Sponsor's role text for the Architect's and QA's refinement
+# steps, set at their count; the UX Designer's constitution went, as no step sends it;
+# and the one-call prompts' lines the sessions' starts no longer tell.
 Architect: 34
 Architect (design_placement): 3
-Business Analyst: 27
+Architect (refinement): 1
+Business Analyst: 25
 Business Analyst (bug_triage): 1
 Code Reviewer: 19
 DevOps Engineer: 30
 Developer: 0
-Product Owner: 27
+Product Owner: 20
 Product Owner (onboarding): 8
 QA Engineer: 26
 QA Engineer (criteria_check): 2
+QA Engineer (panel): 2
 Scrum Master: 7
 Senior Engineer: 8
-UX Designer: 12
+UX Designer: 11

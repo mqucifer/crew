@@ -132,6 +132,8 @@ form.ReaderCriterion.observable:
   owner: UX Designer
   told_in: ReaderCriterion.then
 form.ReaderCriterion.stated:
+  cases:
+  - form.AlreadyHolds.stated
   description: Refused if its given, when or then is empty.
   messages:
     default: every part of a criterion says something
@@ -199,9 +201,6 @@ told.business_analyst.bug_triage.a_request_for_something_the_project:
 told.business_analyst.every_story_gets_at_least_two:
   guidance: true
   owner: Business Analyst
-told.business_analyst.if_you_cannot_estimate_it_it:
-  guidance: true
-  owner: Business Analyst
 told.business_analyst.you_cannot_create_or_re_scope:
   guidance: true
   owner: Business Analyst
@@ -214,10 +213,10 @@ told.business_analyst.you_split_by_workflow_step_by:
 told.contract_crew.if_its_criteria_or_the_rows:
   guidance: true
   owner: Business Analyst
-told.criteria_crew.every_criterion_that_cant_be_met:
+told.criteria_crew.every_criterion_of_the_story_under:
   guidance: true
   owner: QA Engineer
-told.criteria_crew.report_every_criterion_of_the_proposed:
+told.criteria_crew.report_every_criterion_of_the_story:
   guidance: true
   owner: QA Engineer
 told.design_note_crew.the_stories_acceptance_criteria_are_the:
@@ -232,7 +231,10 @@ told.form.CriteriaConflict.story:
 told.form.PresentationNote.beyond_reach:
   guidance: true
   owner: UX Designer
-told.presentation_note_crew.add_to_the_stories_criteria_never:
+told.form.PresentationNote.stories:
+  guidance: true
+  owner: UX Designer
+told.presentation_note_crew.your_criteria_are_added_to_the:
   guidance: true
   owner: UX Designer
 told.product_owner.you_do_not_write_acceptance_criteria:

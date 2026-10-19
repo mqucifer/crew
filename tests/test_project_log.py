@@ -116,7 +116,6 @@ def context(log="## The project's decision log\n\n### 1. Counting\n\nWhere it me
     return PanelContext(
         goal_ref="mqucifer/sprint-metrics#174",
         goal="GOAL",
-        project="",
         decisions="DECISIONS",
         epic_ref="mqucifer/sprint-metrics#406",
         epic="EPIC",
@@ -124,9 +123,14 @@ def context(log="## The project's decision log\n\n### 1. Counting\n\nWhere it me
     )
 
 
+def opened(parts: dict[str, str]) -> str:
+    """A step's own parts of its session's start, as it reads them (crew#807)."""
+    return "\n\n".join(p for p in parts.values() if p)
+
+
 def test_every_panel_member_is_shown_the_projects_log():
     for role in panel_crew.ROLES:
-        text = panel_crew.describe(context(), role)
+        text = opened(panel_crew.opening(context(), role))
         assert "### 1. Counting" in text and "the project's decision log" in text
 
 
@@ -140,12 +144,12 @@ def test_the_settle_step_is_shown_it_as_a_source():
         },
         {},
     )
-    text = settle_crew.describe(context(), notes)
-    assert "### 1. Counting" in text and "the project's decision log or a sibling's" in text
+    text = opened(settle_crew.opening(context(), notes))
+    assert "### 1. Counting" in text and "the project's decision log, a sibling's" in text
 
 
 def test_a_project_without_a_log_reads_as_before():
-    assert "decision log\n\n###" not in panel_crew.describe(context(log=""), "architect")
+    assert "decision log\n\n###" not in opened(panel_crew.opening(context(log=""), "architect"))
 
 
 def test_the_split_is_shown_the_log(monkeypatch):
@@ -205,7 +209,6 @@ def test_the_panel_step_records_how_big_its_context_is(monkeypatch):
         SimpleNamespace(failed=[], skipped=[]),
         epic,
         "sprint-metrics",
-        project="",
         search=[],
     )
     [note] = [e for e in events if "panel context" in e.summary]

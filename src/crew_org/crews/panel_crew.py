@@ -13,24 +13,26 @@ the test's three changes:
 - each member reviews the epic in front of it. How it fits a sibling is theirs
   to raise; a problem wholly inside a sibling, or in a delivered one, is not.
 
-Each member is its own call with the same context, and the four run at once.
-They don't see each other's notes. Who settles a note is the member's call too
-(`settled_by`), so the settle step only has to read them.
+Each member is its own session over the code with the same context, and the four run
+at once (the Sponsor, crew#807). They don't see each other's notes. Who settles a note
+is the member's call too (`settled_by`), so the settle step only has to read them.
 """
 
 from __future__ import annotations
 
 import contextvars
+import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from crew_org import calls
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
 from crew_org.rulebook import refuse
+from crew_org.session import steps
 
 # What each member reads the epic for: the area it owns, and nothing about what
 # to find. The last two carry the checks for the blind spots the test found.
@@ -39,7 +41,8 @@ FOCUS = {
         "You own coherence: the data shapes, interfaces and decisions in this epic that "
         "would be expensive to reverse, and whether they fit the rest of the Goal.\n"
         "A change to a published version or format is classified by the project's "
-        "versioning rule in the Sponsor's decisions: say whether it is MAJOR, MINOR or "
+        "versioning rule in the project's decision log or record: say whether it is MAJOR, "
+        "MINOR or "
         "PATCH under that rule, and quote it. If the epic needs code that a sibling epic "
         "builds, name the sibling and what it has to provide."
     ),
@@ -127,7 +130,6 @@ class PanelContext:
 
     goal_ref: str
     goal: str
-    project: str
     decisions: str
     epic_ref: str
     epic: str
@@ -143,55 +145,117 @@ class PanelResult:
     failed: dict[str, str]
 
 
-def describe(context: PanelContext, role: str) -> str:
+# The Goal template's own last line, which is the crew's, not the Sponsor's words.
+_GOAL_FOOTER = re.compile(r"\n-{3,}\s*\n\s*_Set by the Product Sponsor\..*?_\s*$", re.S)
+
+
+def sponsors_words(goal: str) -> str:
+    """A Goal's text without its template's footer (crew#807's prompt review)."""
+    return _GOAL_FOOTER.sub("", goal).rstrip()
+
+
+def goal_part(context: PanelContext) -> str:
+    return f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{sponsors_words(context.goal)}"
+
+
+def siblings_text(context: PanelContext) -> str:
+    return "\n\n".join(f"### {s.ref} ({s.state})\n\n{s.text}" for s in context.siblings)
+
+
+def opening(context: PanelContext, role: str) -> dict[str, str]:
+    """A member's session start, before the project, map and hints (crew#807): its
+    step and scope first, then what it reads the epic against."""
     title = load_agents()[role]["role"]
-    siblings = "\n\n".join(f"### {s.ref} ({s.state})\n\n{s.text}" for s in context.siblings)
-    return (
-        f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}\n\n"
-        + (f"{context.project}\n\n" if context.project else "")
-        + (f"{context.decisions}\n\n" if context.decisions else "")
-        + (f"{context.project_log}\n\n" if context.project_log else "")
-        + (f"## The other epics under this Goal\n\n{siblings}\n\n" if siblings else "")
-        + f"## The epic ({context.epic_ref})\n\n{context.epic}\n\n"
-        "## Your task\n\n"
+    siblings = siblings_text(context)
+    return {
+        "step": f"## Your step: the refinement panel, as the {title}\n\n"
         "This epic is about to be split into stories. Before it is, four roles each read "
-        f"it once, for what they own. You are the {title}. {FOCUS[role]}\n\n"
+        "it once, for what they own, and the Product Owner settles what they raise into "
+        f"the epic's record. You are the {title}. {FOCUS[role]}\n\n"
         "Name each problem in your area that should be settled before the split: "
         "something the epic gets wrong, leaves out or contradicts, against the Goal, the "
-        "project's record, the Sponsor's decisions, the project's decision log or the other "
-        "epics. Quote its source.\n\n"
+        "project's record, the Sponsor's decisions, the project's decision log, the other "
+        "epics or the code. Quote its source.\n\n"
         f"{SCOPE}\n\n"
         'If there is nothing in your area to add, say so: "nothing to add" is a complete '
         "answer, and better than a note that isn't needed. Don't restate the epic, propose "
-        "stories or a design, or note things outside your area; the other roles cover theirs.\n\n"
-        "Write every issue or pull request as owner/repo#number, as given above, never as a "
-        "bare number."
-    )
+        "stories or a design, or note things outside your area; the other roles cover theirs. "
+        "Write every issue or pull request as owner/repo#number, never as a bare number.",
+        "goal": goal_part(context),
+        "decisions": context.decisions if _decided(context.decisions) else "",
+        "project_log": context.project_log,
+        "siblings": f"## The other epics under this Goal\n\n{siblings}" if siblings else "",
+        "epic": f"## The epic ({context.epic_ref})\n\n{context.epic}",
+    }
 
 
-def review(context: PanelContext, role: str) -> PanelAnswer:
-    """One member's read of the epic."""
-    answer = calls.ask(
+def _decided(decisions: str) -> bool:
+    """The decisions block holds a decision, or says where it couldn't look, not only
+    its heading (`decisions.render`)."""
+    return "\n## " in decisions or "Not searched" in decisions
+
+
+# The members' own role text in refinement, where one has it (crew#807).
+ROLE_TEXT = {"architect": "refinement", "qa_engineer": "panel"}
+STEPS = {
+    role: steps.Step(
+        f"panel {role}",
         role,
-        [calls.Part("task", describe(context, role))],
         PanelAnswer,
-        expected="Your notes on this epic, or nothing to add.",
+        "your notes on this epic, or nothing to add.",
+        "the epic",
+        step=ROLE_TEXT.get(role),
+    )
+    for role in FOCUS
+}
+
+
+def review(
+    context: PanelContext,
+    role: str,
+    reading: steps.Reading | None = None,
+    on_end: Any = None,
+) -> PanelAnswer:
+    """One member's read of the epic, in a session over the code at `reading`."""
+    answer: PanelAnswer = steps.run(
+        STEPS[role],
+        opening(context, role),
+        reading,
+        about=f"{context.epic}\n\n{context.goal}",
+        on_end=on_end,
     )
     return answer
 
 
-def run_panel(context: PanelContext, roles: tuple[str, ...] = ROLES) -> PanelResult:
-    """All members at once. One failing doesn't lose the others' notes."""
+def run_panel(
+    context: PanelContext,
+    roles: tuple[str, ...] = ROLES,
+    reading: steps.Reading | None = None,
+) -> PanelResult:
+    """All members at once: they read independently, and the settle waits for all of
+    them (the Sponsor, crew#807). One failing doesn't lose the others' notes.
+
+    Each member's model time while they all ran, and what the Spark served across
+    them, are recorded on one event: a first measure of several sessions at once
+    (mqucifer/crew#790).
+    """
+    measured: dict[str, dict[str, Any]] = {}
+
+    def measure(role: str) -> Any:
+        return lambda session, ending: measured.__setitem__(role, steps.measured(session, ending))
 
     def one(role: str) -> PanelAnswer:
         # The caller attributes the card and repo; each member adds its own purpose.
-        answer: PanelAnswer = attributed(lambda: review(context, role), purpose=f"panel {role}")()
+        answer: PanelAnswer = attributed(
+            lambda: review(context, role, reading, on_end=measure(role)), purpose=f"panel {role}"
+        )()
         return answer
 
     answers: dict[str, PanelAnswer] = {}
     failed: dict[str, str] = {}
+    began = time.monotonic()
     with ThreadPoolExecutor(max_workers=len(roles)) as pool:
-        # Each thread runs in its own copy of this context, so its call is
+        # Each thread runs in its own copy of this context, so its calls are
         # attributed to the tick's span and card.
         futures = {role: pool.submit(contextvars.copy_context().run, one, role) for role in roles}
         for role, future in futures.items():
@@ -199,4 +263,5 @@ def run_panel(context: PanelContext, roles: tuple[str, ...] = ROLES) -> PanelRes
                 answers[role] = future.result()
             except Exception as exc:  # noqa: BLE001 - a failed member is a result, not a crash
                 failed[role] = f"{type(exc).__name__}: {exc}"[:300]
+    steps.at_once("panel", measured, failed, time.monotonic() - began)
     return PanelResult(answers, failed)

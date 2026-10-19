@@ -98,6 +98,12 @@ config.const.standup.MAX_STANDUP_CHARS:
 config.const.start.HINTS:
   origin:
   - crew#778
+config.const.steps.BACKSTOP_S:
+  origin:
+  - crew#807
+config.const.steps.READING_CALLS:
+  origin:
+  - crew#807
 config.const.tools.EDIT_CONTEXT:
   origin:
   - crew#778
@@ -136,6 +142,9 @@ config.const.tools.VIEW_LINES:
   - crew#778
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:
+told.architect.refinement.you_settle_the_least_the_stories:
+  guidance: true
+  owner: Architect (refinement)
 told.form.DoneAnswers.bar:
   guidance: true
   owner: Product Owner
@@ -172,6 +181,21 @@ told.product_owner.onboarding.the_optional_answers_matter_too_what:
 told.product_owner.onboarding.the_record_is_read_by_roles:
   guidance: true
   owner: Product Owner (onboarding)
+told.qa_engineer.panel.a_promise_no_test_could_check:
+  guidance: true
+  owner: QA Engineer (panel)
+told.qa_engineer.panel.you_quote_both_sides_and_you:
+  guidance: true
+  owner: QA Engineer (panel)
+told.refinement_crew.a_story_that_extends_another_must:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.each_story_must_satisfy_invest_and:
+  guidance: true
+  owner: Business Analyst
+told.refinement_crew.propose_epics_only_for_what_the:
+  guidance: true
+  owner: Product Owner
 §16 a_failing_run_is_reported_grouped:
   guidance: true
   origin:
@@ -191,11 +215,6 @@ told.product_owner.onboarding.the_record_is_read_by_roles:
   - crew#369
   - crew#645
   - sprint-metrics#569
-§16 the_business_analyst_splits_each_epic:
-  guidance: true
-  origin:
-  - crew#231
-  - crew#312
 §16 the_projects_record_comes_first:
   guidance: true
   origin:

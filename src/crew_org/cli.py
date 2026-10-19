@@ -1707,9 +1707,9 @@ def panel(
 ) -> None:
     """Run the refinement panel on an epic: Architect, UX Designer, QA and DevOps (crew#440).
 
-    Each reads the epic once, in parallel, against its Goal, the project's record,
-    the Sponsor's decisions and its sibling epics. Takes about five minutes.
-    Nothing is written to GitHub without --post.
+    Each reads the epic once, all four at once, in a session over the code at the
+    default branch (crew#807), against its Goal, the project's record, the Sponsor's
+    decisions and its sibling epics. Nothing is written to GitHub without --post.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
@@ -1720,10 +1720,11 @@ def panel(
 
     repo, number = _issue_ref(epic)
     env = load_env()
-    token, _ = resolve_credentials(env)
+    token, identity = resolve_credentials(env)
     issues = IssueClient(token, env["GITHUB_OWNER"])
 
     context = _panel_context(issues, repo, number, env)
+    reading = _reading(env, token, identity, repo)
 
     console.print(
         f"Panel on {context.epic_ref}: {len(context.siblings)} sibling epics, "
@@ -1732,7 +1733,7 @@ def panel(
     # The panel's model calls are recorded like a tick's.
     forward_calls_to(EventSink(VAR / "events" / "panel.jsonl"))
     with working_on(card=number, repo=repo):
-        result = run_panel(context)
+        result = run_panel(context, reading=reading)
     typer.echo(flow.render(result))
     if post:
         posted = flow.post(issues, repo, number, result)
@@ -1742,20 +1743,29 @@ def panel(
 def _panel_context(
     issues: IssueClient, repo: str, number: int, env: dict[str, str]
 ) -> PanelContext:
-    """What the panel and the settle step are shown for an epic."""
+    """What the panel and the settle step are shown for an epic. The project's record
+    is read from the checkout, in each session's start (crew#807)."""
     from crew_org.flows import panel as flow
-    from crew_org.project import RECORD_PATH, ProjectRecordError, brief, parse
 
-    text = issues.file_at(repo, RECORD_PATH, "main")
     try:
-        project = brief(parse(text)) if text else ""
-    except ProjectRecordError as exc:
-        console.print(f"[yellow]Reading without {repo}'s record:[/] {escape(str(exc))}")
-        project = ""
-    try:
-        return flow.gather(issues, repo, number, project=project, search=_decision_repos(repo, env))
+        return flow.gather(issues, repo, number, search=_decision_repos(repo, env))
     except flow.NotUnderAGoal as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
+    """The checkout a refinement step reads, at the default branch, as a tick makes it."""
+    from crew_org.git_ops import Workspace
+    from crew_org.session.steps import Reading
+    from crew_org.tools.coverage_map import CoverageUnavailable, build
+
+    root = Workspace(env["GITHUB_OWNER"], repo, token, _bot_identity(token, identity)).at_main()
+    try:
+        coverage = build(root, repo)
+    except CoverageUnavailable as exc:
+        console.print(f"[yellow]No coverage map:[/] {escape(str(exc))}")
+        coverage = None
+    return Reading.at(root, repo, coverage)
 
 
 @app.command()
@@ -1787,9 +1797,10 @@ def settle(
 
     repo, number = _issue_ref(epic)
     env = load_env()
-    token, _ = resolve_credentials(env)
+    token, identity = resolve_credentials(env)
     issues = IssueClient(token, env["GITHUB_OWNER"])
     context = _panel_context(issues, repo, number, env)
+    reading = _reading(env, token, identity, repo)
 
     sink = EventSink(VAR / "events" / "settle.jsonl")
     forward_calls_to(sink)
@@ -1797,7 +1808,7 @@ def settle(
     if notes is None:
         console.print("No panel comment on the epic: running the panel first.")
         with working_on(card=number, repo=repo):
-            notes = run_panel(context)
+            notes = run_panel(context, reading=reading)
         if post:
             panel_flow.post(issues, repo, number, notes)
     console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
@@ -1810,12 +1821,13 @@ def settle(
             context=context,
             panel=notes,
             known=set(_decision_repos(repo, env)),
+            reading=reading,
         )
         console.print(f"[green]{done.outcome.value}[/]")
         typer.echo(done.text)
     else:
         with working_on(card=number, repo=repo):
-            found = flow.propose(context, notes, "", card=number, repo=repo, sink=sink)
+            found = flow.propose(context, notes, "", card=number, repo=repo, reading=reading)
         typer.echo(
             flow.render(found.conclusion, owner=issues.owner, repo=repo)
             if found.conclusion

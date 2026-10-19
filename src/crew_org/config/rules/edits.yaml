@@ -1,5 +1,4 @@
 # A change applies cleanly. Declared once each (crew#756, ADR 0031): change a rule here.
-config.const.pinning.PINNING_CHAR_CEILING:
 config.const.regression.RESTORE_CHAR_CEILING:
 config.const.workspace.DEFAULT_TIMEOUT:
 config.const.workspace.MAX_FAILURE_REPORT_CHARS:

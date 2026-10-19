@@ -51,3 +51,4 @@ Sponsor, 2026-10-05.
   ADR 0018 (Sponsor).
 - **2026-10-07:** that change folded into this text, now that ADRs are edited in
   place (Sponsor).
+- **2026-10-18:** each member reads the epic in a session over the code at the default branch, all four at once, with the same context and the map and hints, and cites what it states about the code (crew#807, ADR 0033).

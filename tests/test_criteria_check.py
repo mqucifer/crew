@@ -6,6 +6,8 @@ sprint-metrics#184's split gave #393 two criteria for one request, a
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
@@ -68,8 +70,14 @@ class Checker:
         self.answers, self.calls, self.rounds = list(answers), [], []
         self._seen: set[str] = set()
         self._current = CriteriaCheck()
+        # The stories are checked at once (crew#807): one call at a time in here.
+        self._lock = threading.Lock()
 
     def __call__(self, **context):
+        with self._lock:
+            return self._answer(context)
+
+    def _answer(self, context):
         self.calls.append(context)
         title = context["stories"].split("\n", 1)[0]
         if not self.rounds or title in self._seen:
@@ -230,7 +238,7 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
     edge (the context review, C5); one story per call (crew#583, step D3)."""
     from crew_org.flows.criteria_check import check_each
 
-    seen, focused = [], []
+    seen = []
 
     def check(**shown):
         seen.append(shown)
@@ -238,11 +246,7 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
             return ON_CYCLE_TIME
         return CriteriaCheck()
 
-    def code_for(text):
-        focused.append(text.split("\n", 1)[0])
-        return f"code for {text.split(chr(10), 1)[0]}"
-
-    found = check_each(check, SPLIT, code_for=code_for, conclusion="R1", goal="G")
+    found = check_each(check, SPLIT, conclusion="R1", goal="G", reading="THE CHECKOUT")
     titles = [s.title for s in SPLIT.stories]
     assert [s["stories"].split("\n", 1)[0] for s in seen] == [f"### {t}" for t in titles]
     assert all(s["conclusion"] == "R1" and s["goal"] == "G" for s in seen)
@@ -250,7 +254,8 @@ def test_each_story_is_checked_in_its_own_call_against_the_others():
         others = [t for t in titles if t != title]
         assert all(f"### {t}" in shown["siblings"] for t in others)
         assert f"### {title}" not in shown["siblings"]
-        assert shown["repository"] == f"code for ### {title}"
+        # The code is read in each story's session, over the tick's checkout (crew#807).
+        assert shown["reading"] == "THE CHECKOUT" and "repository" not in shown
     assert found.conflicts == ON_CYCLE_TIME.conflicts
 
 
@@ -307,8 +312,102 @@ def test_a_story_conflicting_with_one_test_is_reported_once():
             ]
         )
 
-    found = criteria_check.check_each(check, SPLIT, code_for=lambda _t: "")
+    found = criteria_check.check_each(check, SPLIT)
     assert [c.against for c in found.conflicts] == [
         "test_sprint_keys (tests/test_service.py)",
         "test_enum_exact in tests/test_service.py",
     ]
+
+
+# --- the checks run at once (the Sponsor, crew#807) ------------------------------------
+
+
+def seen_events():
+    from crew_org import events
+    from crew_org.events import EventSink
+
+    found: list = []
+    sink = EventSink(None)
+    sink.subscribe(found.append)
+    events.reset_bridge()
+    events._TARGETS.append((sink, None))
+    return found
+
+
+def test_each_storys_check_runs_at_the_same_time():
+    """Each waits for the other: this only passes if both are in flight together. The real
+    run's five checks took 66 model minutes in turn, against about 29 for the longest."""
+    barrier = threading.Barrier(len(SPLIT.stories), timeout=10)
+
+    def check(**shown):
+        barrier.wait()
+        return ON_CYCLE_TIME if shown["stories"].startswith("### Cycle time") else CriteriaCheck()
+
+    found = criteria_check.check_each(check, SPLIT)
+    assert found.conflicts == ON_CYCLE_TIME.conflicts
+
+
+def test_a_check_that_fails_leaves_the_others_conflicts_standing_and_is_recorded():
+    from crew_org import events
+    from crew_org.events import EventKind
+
+    found_events = seen_events()
+
+    def check(**shown):
+        if shown["stories"].startswith("### Throughput"):
+            raise RuntimeError("the session stopped")
+        return ON_CYCLE_TIME
+
+    try:
+        found = criteria_check.check_each(check, SPLIT)
+    finally:
+        events.reset_bridge()
+    assert found.conflicts == ON_CYCLE_TIME.conflicts
+    [note] = [
+        e
+        for e in found_events
+        if e.kind == EventKind.NOTE and e.detail.get("step") == "criteria check"
+    ]
+    assert note.detail["failed"] == {"Throughput": "RuntimeError: the session stopped"}
+
+
+def test_when_every_check_fails_the_split_fails_with_the_first_failure():
+    def check(**shown):
+        raise RuntimeError(f"stopped on {shown['stories'].splitlines()[0]}")
+
+    with pytest.raises(RuntimeError, match="stopped on ### Cycle time"):
+        criteria_check.check_each(check, SPLIT)
+
+
+def test_each_checks_model_time_is_recorded_with_the_wall_time():
+    from types import SimpleNamespace
+
+    from crew_org import events
+    from crew_org.events import EventKind
+
+    found_events = seen_events()
+
+    def check(*, on_end, **shown):
+        on_end(
+            SimpleNamespace(calls=4, model_s=90.0, usage={"completion_tokens": 300}),
+            SimpleNamespace(how="done"),
+        )
+        return CriteriaCheck()
+
+    try:
+        criteria_check.check_each(check, SPLIT)
+    finally:
+        events.reset_bridge()
+    [note] = [
+        e
+        for e in found_events
+        if e.kind == EventKind.NOTE and e.detail.get("step") == "criteria check"
+    ]
+    assert note.detail["sessions"]["Cycle time"] == {
+        "how": "done",
+        "model_calls": 4,
+        "model_s": 90.0,
+        "completion_tokens": 300,
+    }
+    assert set(note.detail["sessions"]) == {"Cycle time", "Throughput"}
+    assert note.detail["completion_tokens"] == 600 and note.detail["wall_s"] >= 0

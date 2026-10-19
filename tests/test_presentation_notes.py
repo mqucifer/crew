@@ -112,6 +112,8 @@ def epic(labels=("needs:ux",), number=62):
 
 
 class Issues:
+    owner = "mqucifer"
+
     def __init__(self, stories=(63, 64), comments=None):
         self.bodies = {n: STORY for n in stories} | {48: "Five-second scan", 62: "Epic body"}
         self.stories = [{"number": n, "title": f"Story {n}", "state": "open"} for n in stories]
@@ -150,8 +152,31 @@ class Workspace:
         return self.path
 
 
-def run(issues, cards, tmp_path, writes):
-    replies = iter(writes)
+def session(writes, shown=None):
+    """The note's session: each answer goes to `done`, whose check refuses it or lets it
+    end the session; with none left, the session stops (crew#807)."""
+    from crew_org.session import steps
+    from crew_org.session.conversation import Ending
+
+    def write(*, check, **kw):
+        if shown is not None:
+            shown.update(kw)
+        refused = ""
+        for answer in writes:
+            try:
+                check(answer)
+            except ValueError as exc:
+                refused = str(exc)
+                continue
+            return answer
+        raise steps.StepStopped(
+            "presentation note", Ending("blocked", {"missing": refused}, "ceiling")
+        )
+
+    return write
+
+
+def run(issues, cards, tmp_path, writes, shown=None):
     return pn.write_notes(
         issues,
         EventSink(None),
@@ -159,7 +184,7 @@ def run(issues, cards, tmp_path, writes):
         cards,
         default_repo="sprint-metrics",
         repos={"sprint-metrics"},
-        write=lambda **kw: next(replies),
+        write=session(writes, shown),
         render=render,
         line=criterion_lines,
     )
@@ -185,18 +210,44 @@ def test_an_epic_with_a_note_since_its_split_is_not_written_again(tmp_path):
     assert run(issues, [epic()], tmp_path, []).written == []
 
 
-def test_a_note_that_misses_a_story_is_retried_then_blocked(tmp_path):
+def test_a_note_that_never_covers_a_story_stops_and_blocks_the_epic(tmp_path):
     issues = Issues()
     result = run(issues, [epic()], tmp_path, [note(63), note(63)])
     assert result.blocked and "#64 has no criteria" in result.blocked[0][1]
+    assert "session stopped" in result.blocked[0][1]
     assert issues.labelled == [(62, ["blocked", "needs:human"])]
     assert issues.edited == []
 
 
-def test_a_retry_that_covers_every_story_is_written(tmp_path):
+def test_a_note_refused_at_done_for_a_story_it_missed_is_answered_and_written(tmp_path):
     issues = Issues()
     result = run(issues, [epic()], tmp_path, [note(63), note(63, 64)])
     assert result.written == [62] and issues.edited == [63, 64]
+
+
+def test_a_story_whose_reader_criteria_already_hold_is_covered(tmp_path):
+    """sprint-metrics#663's criteria all held at main (crew#807)."""
+    from crew_org.crews.presentation_note_crew import AlreadyHolds
+
+    held = note(63).model_copy(
+        update={
+            "already_holds": [
+                AlreadyHolds(story=64, criterion="the table shows 200%", where="report.py `_row`")
+            ]
+        }
+    )
+    issues = Issues()
+    result = run(issues, [epic()], tmp_path, [held])
+    assert result.written == [62] and issues.edited == [63]
+    assert "**Already holds at main**" in issues._comments[-1]
+
+
+def test_the_note_reads_the_goal_its_siblings_and_the_epic_whole(tmp_path):
+    shown = {}
+    run(Issues(), [epic()], tmp_path, [note(63, 64)], shown)
+    assert shown["goal_ref"] == "mqucifer/sprint-metrics#48" and "Five-second scan" in shown["goal"]
+    assert shown["epic_ref"] == "mqucifer/sprint-metrics#62" and "Epic body" in shown["epic"]
+    assert shown["reading"] is None, "the fake workspace has no checkout"
 
 
 def test_a_decision_beyond_reach_blocks_the_epic(tmp_path):

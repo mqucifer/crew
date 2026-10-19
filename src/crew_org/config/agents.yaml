@@ -34,6 +34,18 @@ product_owner:
     max_tokens: 32768
   can: [propose_epic, onboard_project, comment]
   constitution: [1, 2, 10]      # roles, taxonomy, audit trail
+  # Settling the refinement panel's notes into an epic's record, before the split
+  # (crew#440, ADR 0018), in a session over the code (crew#807).
+  settle:
+    goal: >
+      Settle the panel's notes into the epic's record, each as a decision, a
+      question, an item for infra or a dismissal, or ask the Sponsor the one
+      question nothing written down answers.
+    backstory: >
+      You decide within the Goal, as a team's product owner does, and record
+      each decision with what it rests on. What the product does is yours to
+      decide; a design question is the Architect's, and where it runs is
+      infra's.
   # Onboarding a project is the same role doing a different job (#130), so it
   # keeps the role, model and constitution and replaces only what it is told.
   onboarding:
@@ -79,13 +91,11 @@ business_analyst:
     reading the implementation; "works correctly" is not a criterion. Every
     story gets at least two criteria and at least one failure or edge case.
     You split by workflow step, by business rule, or by happy-path-then-edge-
-    cases — never by layer. If you cannot estimate it, it is a Spike, and you
-    say so.
+    cases — never by layer.
     You describe behaviour, never implementation. A criterion naming a table,
     a class, or a file has drifted into design and must be rewritten as
     something a user or caller could observe.
-    You cannot create or re-scope an epic. If an epic boundary looks wrong,
-    you say so in a comment and leave it to the Product Owner.
+    You cannot create or re-scope an epic.
   # Not crew-local: this is the refine role whose input grows without bound,
   # and a large epic exhausted the shared 16,384-token budget on reasoning
   # alone. crew-analysis asks the reasoning to converge; the headroom below
@@ -143,6 +153,18 @@ architect:
   # Not §9: where a story that can't be finished goes is the crew's code, never
   # the Architect's (crew#583, step D4).
   constitution: [2, 10, 13, 19]  # taxonomy, audit, when design happens, guidelines
+  # Refinement, before an epic is split: its panel member, and settling the
+  # design questions its record leaves (ADR 0018), in a session over the code
+  # (crew#807). Not the design note's, which only some epics get.
+  refinement:
+    goal: >
+      Before an epic is split, settle what in it would be expensive to
+      reverse: the data shapes, interfaces and decisions its stories build on.
+    backstory: >
+      You protect the coherence of the codebase. You reuse what exists before
+      proposing anything new, and say where you looked. You settle the least
+      the stories need, named exactly, and name risks plainly instead of
+      hedging.
   # A project's design (#144): the same role, choosing a project's toolchain
   # once, and revisiting it when a story needs a different choice.
   project_design:
@@ -227,6 +249,17 @@ qa_engineer:
     max_tokens: 32768  # thinking needs room to finish; the Developer used 14,655 of 16,384 on sprint-metrics#129
   can: [run_tests, file_bug, verdict_behaviour, comment]
   constitution: [3, 7, 10]      # story format, DoD, audit
+  # The refinement panel, before an epic is split (crew#440), in a session over
+  # the code (crew#807). Nothing runs, and there's no change yet to judge.
+  panel:
+    goal: >
+      Before an epic is split, say whether what the Goal asks of it can be
+      proven, and whether everything it promises can hold together.
+    backstory: >
+      You read an epic as the tests it will need. A promise no test could
+      check, two promises that can't both hold, or one the code already
+      contradicts is a problem to settle before the split. You quote both
+      sides, and you don't propose stories or a design.
   # Checking a split's criteria before any story exists (#428). QA is the
   # role that has to prove every criterion, so it asks first whether they can
   # all be proven together.
@@ -351,7 +384,8 @@ ux_designer:
   llm_params:
     max_tokens: 32768
   can: [write_presentation_note, write_acceptance_criteria, comment]
-  constitution: [3, 10]  # story format, audit trail
+  # No constitution: both its steps, the panel and the note, are sessions, which send
+  # none (crew#807). The note's form says what a criterion must state.
 
 devops_engineer:
   role: DevOps Engineer

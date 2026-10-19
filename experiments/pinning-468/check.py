@@ -6,6 +6,9 @@ tests sm#507 and sm#529 went on to break are among those shown.
 
     uv run python experiments/coverage-584/check.py   # the clone and its map, once
     uv run python experiments/pinning-468/check.py
+
+It no longer runs: `tools/pinning.py` went when refinement's steps came to read the
+code in a session (crew#807, ADR 0033). `result.txt` is its record.
 """
 
 from __future__ import annotations
@@ -15,8 +18,9 @@ import os
 import re
 from pathlib import Path
 
-from crew_org.tools.coverage_map import build
 from crew_org.tools.pinning import pinning_tests
+
+from crew_org.tools.coverage_map import build
 
 CLONE = Path("var/experiments/coverage-584/sprint-metrics")
 STORE = Path("var/experiments/coverage-584/store")

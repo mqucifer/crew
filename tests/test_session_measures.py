@@ -325,6 +325,19 @@ def test_a_step_s_read_rounds_arent_session_tool_calls():
     assert not kinds(files, "tool_call")
 
 
+def test_a_refinement_steps_session_is_left_out_and_counted():
+    """A step's session is on an epic or a Goal, not a story's delivery (crew#807)."""
+    step = {"step": "panel architect"}
+    events = [
+        raw(1, "session.started", 660, "Architect", start_chars={"total": 20000}, **step),
+        raw(2, "tool.finished", 660, "Architect", tool="view", result="ok", **step),
+        raw(3, "session.ended", 660, "Architect", how="done", **step),
+    ]
+    _, files, manifest = build(events, CARDS)
+    assert not kinds(files, "session_started") and not kinds(files, "tool_call")
+    assert manifest.left_out == {"refinement session": 3}
+
+
 # --- the deliveries ------------------------------------------------------------------------
 
 

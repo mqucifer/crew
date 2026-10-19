@@ -683,21 +683,15 @@ Three rules for every limit on prompt content:
    unproven with the reason, and acceptance follows from that. The context
    is logged, along with what QA read.
 
-   **The Business Analyst splits each epic from its own view of the
-   repository** (crew#231, 2026-09-30). Refinement used to hand it the whole
-   repository for every split; on one day every split was over 60,000
-   tokens, the band where empty answers begin, and long prompts served from
-   the cache were where they clustered (crew#312). A split is now shown the
-   project record, the map of every file and what it defines, and the files
-   its epic names in full — the same shape QA is shown.
-   It can ask for more (`need_files`, twice, the same limit); asking past
-   that fails the split rather than returning an empty one. There are no
-   editing rules in its view, because the Business Analyst decides what a
-   story is, it doesn't edit code. Refinement's own threshold is 60,000
-   characters, lower than the 160,000 above which any repository is
-   focused: a live split of a small
-   epic came to about 34,000 characters against a repository of 159,000, and
-   split into four stories without asking.
+   **Refinement's steps read the code in a session** (crew#807, ADR 0033,
+   2026-10-18). The panel, the decomposition, the settles, the split, the
+   criteria check and its repair, and the UX Designer's note each work as the
+   Developer does: one conversation of read-only tool calls over a checkout of
+   the default branch, starting with what the step decides from, the map and
+   the graph's hints, and ending with its own form as `done`. Nothing preloads
+   the repository. The split was once handed the whole repository, then its
+   own focused view (crew#231); on sprint-metrics#660 its prompt was 283,836
+   characters, over the reading ceiling, so it couldn't read code at all.
 
    Why: long prompts are where the model thinks and then answers nothing
    (crew#312). There were none under 50k tokens in 99 calls, and

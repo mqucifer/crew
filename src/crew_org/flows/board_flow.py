@@ -32,7 +32,6 @@ from crew_org import log
 from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org
-from crew_org.crews import asks as file_asks
 from crew_org.crews.criteria_crew import check_criteria
 from crew_org.crews.refinement_crew import (
     Epic,
@@ -63,14 +62,13 @@ from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.rules import Rule
+from crew_org.session.steps import NoCheckout, Reading
 from crew_org.tools import repo_context
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 from crew_org.tools.github_project import Card, ProjectClient, within
 from crew_org.tools.repo_context import (
-    SELECTION_TEXT_CHARS,
     Focus,
     focused_context,
-    repository_context,
 )
 from crew_org.tools.repo_read import Reader
 
@@ -146,8 +144,6 @@ PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
 NEEDS_DESIGN = "needs:design"
 # An epic that changes what a reader sees: the UX Designer writes a note (#377).
 NEEDS_UX = "needs:ux"
-# Times the Business Analyst may ask to see files before splitting (#231).
-ANALYST_ASK_LIMIT = 2
 # Above this, a split sees the map plus what its epic names, not every file (#231).
 # Lower than the Developer's (160k): sprint-metrics came to 159k characters for
 # refinement, so the Developer's threshold focused nothing, and the rest of the
@@ -1195,6 +1191,11 @@ def record_split_tests(
         sink.note(EventKind.NOTE, f"#{epic}: the split's tests weren't recorded: {exc}"[:160])
 
 
+def _delivered_by(done: Any) -> str:
+    """What already does it: a story, or the code at main (crew#807)."""
+    return f"delivered by #{done.by}" if done.by else f"already in the code at {done.seen_at}"
+
+
 def render_split(
     epic_title: str, proposal: StoryProposal, decision, numbers: dict[str, int]
 ) -> str:
@@ -1218,9 +1219,7 @@ def render_split(
         lines += [f"- #{a.number}: {a.note}" for a in dropped]
     if proposal.already_delivered:
         lines += ["", "### Already delivered, not written again", ""]
-        lines += [
-            f"- {d.title} — delivered by #{d.by}: {d.why}" for d in proposal.already_delivered
-        ]
+        lines += [f"- {d.title} — {_delivered_by(d)}: {d.why}" for d in proposal.already_delivered]
     lines += [
         "",
         "### Design",
@@ -1261,59 +1260,44 @@ class KnownDelivered:
 class RepoContext:
     """The repository each card is about, read once per tick and reused.
 
-    Refinement touches several cards across one or two repositories in a pass,
-    and the context is identical for all of them — so reading it once is both
-    cheaper and what keeps the cached prefix intact between calls.
-
-    A repository that cannot be read is not a reason to stop refining. The
-    agent is then working the way it always has, which is worse but not broken,
-    and the miss is reported rather than hidden.
+    Refinement's sessions read one checkout of the default branch (crew#807); bug
+    triage and the product step are still shown a view of it. A checkout that can't
+    be made is reported, and the steps that need it fail with why; a view that
+    can't be read leaves its step working without it, and says so.
     """
 
     def __init__(self, ws: Workspace | None, sink: EventSink) -> None:
         self._ws = ws
         self._sink = sink
-        self._cache: dict[str, str] = {}
+        self._reading: dict[str, Reading | None] = {}
 
-    def for_repo(self, repo: str) -> str:
+    def reading_for(self, repo: str) -> Reading | None:
+        """The checkout refinement's sessions read, made once per tick (crew#807): the
+        default branch's tip, with its coverage map when there is one. None, said why,
+        when it can't be made: a step then fails, as one with no model would."""
         if self._ws is None:
-            return ""
-        if repo not in self._cache:
+            return None
+        if repo not in self._reading:
+            from crew_org.tools.coverage_map import build  # noqa: PLC0415
+
             try:
-                clone = self._ws.for_repo(repo).current()
-                self._cache[repo] = self._record(repo, clone) + repository_context(clone)
-            except Exception as exc:  # noqa: BLE001
-                self._sink.note(
-                    EventKind.NOTE,
-                    f"refining {repo} without its code: {exc}"[:120],
-                )
-                self._cache[repo] = ""
-        return self._cache[repo]
-
-    def pinning_for(self, repo: str, epic_text: str, evidence: str = "") -> str:
-        """The merged tests pinning what an epic and its record name, in full (#189).
-
-        From the project's coverage map (crew#583, C2): the tests that run the code
-        the epic names and check a whole shape. Without a map, only the tests a
-        story problem or the record names.
-        """
-        from crew_org.tools.coverage_map import build  # noqa: PLC0415
-        from crew_org.tools.pinning import pinning_tests  # noqa: PLC0415
-
-        if self._ws is None:
-            return ""
-        try:
-            clone = self._ws.for_repo(repo).current()
+                root = self._ws.for_repo(repo).at_main()
+            except Exception as exc:  # noqa: BLE001 - said, and the steps fail with it
+                self._sink.note(EventKind.NOTE, f"{repo}: no checkout to read: {exc}"[:160])
+                self._reading[repo] = None
+                return None
             try:
-                coverage = build(clone, repo)
-            except Exception as exc:  # noqa: BLE001 - the split goes on without it
+                coverage = build(root, repo)
+            except Exception as exc:  # noqa: BLE001 - `tests_for` says there's no map
                 reraise_if_down(exc)
-                self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:120])
+                self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:160])
                 coverage = None
-            return pinning_tests(clone, epic_text, evidence, coverage=coverage)
-        except Exception as exc:  # noqa: BLE001
-            self._sink.note(EventKind.NOTE, f"{repo}: pinning tests unread: {exc}"[:120])
-            return ""
+            try:
+                self._reading[repo] = Reading.at(root, repo, coverage)
+            except NoCheckout as exc:
+                self._sink.note(EventKind.NOTE, f"{repo}: {exc}"[:160])
+                self._reading[repo] = None
+        return self._reading[repo]
 
     def focused_for(
         self, repo: str, about: str, extra: list[str] = (), *, beside: int = 0
@@ -1552,11 +1536,6 @@ def admit_held_stories(
     return [admitted.get(c.item_id, c) for c in cards]
 
 
-def _focused_text(context: RepoContext, repo: str, about: str) -> str:
-    """The repository as the split sees it, focused on `about`."""
-    return context.focused_for(repo, about)[0]
-
-
 def refine_epics(
     board: ProjectClient,
     issues: IssueClient,
@@ -1644,9 +1623,8 @@ def refine_epics(
                 result,
                 epic_card,
                 repo,
-                project=context.record_for(repo),
                 search=panel_search,
-                code=partial(_focused_text, context, repo),
+                reading=partial(context.reading_for, repo),
                 unapproved=frozenset(
                     c.number
                     for c in cards
@@ -1714,136 +1692,44 @@ def refine_epics(
                     else ""
                 )
                 planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
-                # The epic and its record: a C row names a test the epic changes.
-                pinning = context.pinning_for(
-                    repo, f"{epic_card.title}\n\n{body}\n\n{conclusion}", notes
+                # Each step reads the code in its own session, over one checkout of the
+                # default branch (crew#807): the split, the criteria check and the repair.
+                reading = context.reading_for(repo)
+                asked_for = dict(
+                    epic_ref=f"{issues.owner}/{repo}#{number}",
+                    superseded=result.superseded.get(number),
+                    feedback=notes,
+                    delivered=done.render(),
+                    delivered_numbers=done.numbers if known else None,
+                    planned="\n".join(
+                        f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
+                    ),
+                    planned_numbers={n for n, _t, _e in planned},
+                    conclusion=conclusion,
+                    project_log=project_log,
+                    siblings=siblings,
+                    provided=context.provided_for(repo),
+                    # Every settled row is followed by a story, or named as not for
+                    # stories (crew#440): refused at `done`, in the session.
+                    rows=rows,
+                    declared=declared,
+                    reading=reading,
                 )
-                # Its own view of the repository, and it may ask for more (#231).
-                about = f"{epic_card.title}\n\n{body}\n\n{notes}"
-                asked: list[str] = []
-                told = ""
-                for asks in range(ANALYST_ASK_LIMIT + 1):
-                    beside = sum(
-                        len(part)
-                        for part in (
-                            pinning,
-                            siblings,
-                            conclusion,
-                            project_log,
-                            body,
-                            done.render(),
-                        )
-                    )
-                    repository, focus = context.focused_for(repo, about, asked, beside=beside)
-                    sink.emit(
-                        CrewEvent(
-                            kind=EventKind.FILES_SHOWN,
-                            role="Business Analyst",
-                            card=number,
-                            summary=f"#{number} split context: {focus.chars:,} chars, "
-                            f"{len(focus.shown)} files in full",
-                            detail={
-                                "context_chars": focus.chars,
-                                "focused": focus.focused,
-                                "shown": focus.shown,
-                                "asked": focus.asked,
-                                "omitted": focus.omitted,
-                                # Local only, like the Developer's (discussion 553).
-                                "selection_text": about[:SELECTION_TEXT_CHARS],
-                            },
-                        )
-                    )
-                    if focus.unknown:
-                        told = (
-                            f"These aren't files in the repository: {', '.join(focus.unknown)}. "
-                            + told
-                        )
-                    asked_for = dict(
-                        repository=repository,
-                        pinning=pinning,
-                        superseded=result.superseded.get(number),
-                        feedback="\n\n".join(f for f in (notes, told) if f),
-                        delivered=done.render(),
-                        delivered_numbers=done.numbers if known else None,
-                        planned="\n".join(
-                            f"- #{n} {title} (epic #{epic})" for n, title, epic in planned
-                        ),
-                        planned_numbers={n for n, _t, _e in planned},
-                        conclusion=conclusion,
-                        project_log=project_log,
-                        siblings=siblings,
-                        reader=context.reader_for(repo, focus),
-                        provided=context.provided_for(repo),
-                    )
-                    proposal = attributed(split_epic, card=number, repo=repo)(
-                        epic_card.title, body, **asked_for
-                    )
-                    if not proposal.asks:
-                        break
-                    wanted = file_asks.paths(proposal.need_files)
-                    fresh = [
-                        f for f in dict.fromkeys(wanted) if f not in asked and f not in focus.shown
-                    ]
-                    sink.emit(
-                        CrewEvent(
-                            kind=EventKind.FILES_ASKED,
-                            role="Business Analyst",
-                            card=number,
-                            summary=f"#{number} asked to see {', '.join(wanted)[:200]}",
-                            detail={
-                                "need_files": wanted,
-                                "why": file_asks.reasons(proposal.need_files),
-                            },
-                        )
-                    )
-                    if fresh and asks < ANALYST_ASK_LIMIT:
-                        asked += fresh
-                        told = ""
-                        continue
-                    # Said as it is: "you've been shown what you asked for", said of
-                    # files past the limit, drew the same ask again (2026-10-09).
-                    told = (
-                        (
-                            f"Not shown: {', '.join(fresh)}. A split may ask "
-                            f"{ANALYST_ASK_LIMIT} times, and this one has. "
-                            if fresh
-                            else "Everything you named is already shown above. "
-                        )
-                        + "Split the epic now with the files you can see, and leave "
-                        "`need_files` empty."
-                    )
-                if proposal.asks:
-                    raise ValueError("it asked to see files past the limit instead of splitting")
-                # Every settled row is followed by a story, or named as not for stories
-                # (crew#440). One re-split with what is missing named; past that it fails.
-                found = conclusion_flow.problems(proposal, rows, declared)
-                if found:
-                    asked_for["feedback"] = "\n\n".join(
-                        f
-                        for f in (str(asked_for["feedback"]), conclusion_flow.feedback(found))
-                        if f
-                    )
-                    proposal = attributed(split_epic, card=number, repo=repo)(
-                        epic_card.title, body, **asked_for
-                    )
-                    found = conclusion_flow.problems(proposal, rows, declared)
-                    if found:
-                        raise ValueError(
-                            "the split doesn't fit the epic's conclusion: " + " ".join(found)
-                        )
+                proposal = attributed(split_epic, card=number, repo=repo)(
+                    epic_card.title, body, **asked_for
+                )
                 # Every criterion has to pass alongside the others and the code, and
                 # that shows before any story exists (#428). One repair of the flagged
                 # stories' criteria; what survives goes to the Product Owner.
                 others = criteria_check.planned_criteria(issues, repo, planned)
-                code_for = partial(_focused_text, context, repo)
                 checked = criteria_check.check_each(
                     attributed(check_criteria, card=number, repo=repo),
                     proposal,
-                    code_for=code_for,
                     planned=others,
                     conclusion=conclusion,
                     goal=goal_text,
                     project_log=project_log,
+                    reading=reading,
                 )
                 named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
                 if named:
@@ -1852,14 +1738,15 @@ def refine_epics(
                     repair = attributed(repair_criteria, card=number, repo=repo)(
                         epic_card.title,
                         body,
+                        epic_ref=f"{issues.owner}/{repo}#{number}",
                         flagged=criteria_check.render_stories(named),
                         others=criteria_check.render_stories(
                             [s for s in proposal.stories if s not in named]
                         ),
                         conflicts=criteria_check.described(checked),
-                        repository=repository,
                         conclusion=conclusion,
                         project_log=project_log,
+                        reading=reading,
                     )
                     proposal = criteria_check.with_repairs(proposal, named, repair)
                 elif checked.conflicts:
@@ -1876,12 +1763,12 @@ def refine_epics(
                     checked = criteria_check.check_each(
                         attributed(check_criteria, card=number, repo=repo),
                         proposal,
-                        code_for=code_for,
                         only=named or None,
                         planned=others,
                         conclusion=conclusion,
                         goal=goal_text,
                         project_log=project_log,
+                        reading=reading,
                     )
             except Exception as exc:  # noqa: BLE001
                 reraise_if_down(exc)
@@ -2034,7 +1921,7 @@ def refine_epics(
             # two planned stories as its delivery, and their epic's rework was
             # about to supersede both.
             waiting = (
-                sorted({d.by for d in proposal.already_delivered} - done.numbers)
+                sorted({d.by for d in proposal.already_delivered if d.by} - done.numbers)
                 if not proposal.stories
                 else []
             )
@@ -2076,7 +1963,7 @@ def refine_epics(
                 sink.note(
                     EventKind.NOTE,
                     f"#{number} closed: already delivered by "
-                    + ", ".join(f"#{d.by}" for d in proposal.already_delivered),
+                    + ", ".join(_delivered_by(d) for d in proposal.already_delivered),
                     card=number,
                     rule="decision.board_flow.already_delivered",
                 )
@@ -2223,20 +2110,25 @@ def tick(
             )
             try:
                 goal_text = f"{card.title}\n\n{_goal_body(issues, repo, number)}"
+                # The code is read in a session, not shown whole (crew#807).
+                reading = context.reading_for(repo)
+                goal_ref = f"{issues.owner}/{repo}#{number}"
                 proposal = (
                     attributed(propose_missing_epics, card=number, repo=repo)(
                         goal_text,
                         lacking=notes,
-                        repository=context.for_repo(repo),
+                        goal_ref=goal_ref,
                         delivered=known.for_repo(repo).render(),
+                        reading=reading,
                     )
                     if extend
                     else attributed(propose_epics, card=number, repo=repo)(
                         goal_text,
-                        repository=context.for_repo(repo),
+                        goal_ref=goal_ref,
                         feedback=notes,
                         delivered=known.for_repo(repo).render(),
                         skeleton=SKELETON_LABEL in card.labels,
+                        reading=reading,
                     )
                 )
             except Exception as exc:  # noqa: BLE001

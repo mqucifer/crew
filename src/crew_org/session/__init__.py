@@ -13,4 +13,9 @@ runs in the story's workspace container (decision 4b). The plan is
 - `signals`: what's recorded on every call, and the two ceilings that stop a session.
 - `history`: the conversation as it's sent, and what it becomes if it's compacted.
 - `conversation`: the session itself, its endings (decision 3) and its records (P5).
+
+Refinement's steps work in the same session (crew#807, ADR 0033):
+
+- `reading`: their tools, the Developer's less what edits or runs.
+- `steps`: what each step starts with, its form as `done`, and the runner.
 """

@@ -953,6 +953,12 @@ def _event(
             failed=kind == "llm.failed",
         )
     if kind in _SESSION_KINDS or (kind == "tool.finished" and "result" in detail):
+        # A refinement step's session names its step (crew#807). The package carries
+        # the Developer's sessions, a story's delivery; a step's isn't one, and is
+        # counted as left out until the package has a place for it.
+        if detail.get("step"):
+            left_out["refinement session"] = left_out.get("refinement session", 0) + 1
+            return None
         ref = needs_card("session")
         if ref is None:
             return None

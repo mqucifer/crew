@@ -82,3 +82,4 @@ Sponsor whenever its written sources ran out.
   question the settle leaves to the implementer isn't the Architect's, and no
   gate checks it. The split refuses an epic with a question still open for the
   Architect.
+- **2026-10-18:** the Product Owner's settle and the Architect's design settle each work in a session over the code (crew#807, ADR 0033): a fact about the code is checked in it, and what's decided is binding. Their checks refuse at `done`, in the session.

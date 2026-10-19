@@ -10,8 +10,11 @@ the epic is split again following that.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import re
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
@@ -20,6 +23,7 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.rulebook import says
 from crew_org.rules import Rule
+from crew_org.session import steps
 
 # What the check is shown of other epics' planned stories. A pass can plan
 # dozens; past this, their titles are still in the split's own context.
@@ -51,17 +55,22 @@ def check_each(
     check: Callable[..., CriteriaCheck],
     proposal: StoryProposal,
     *,
-    code_for: Callable[[str], str],
     only: list[Story] | None = None,
     **shown: Any,
 ) -> CriteriaCheck:
-    """The criteria checked one story per call, every conflict found kept (crew#583, D3).
+    """The criteria checked one story per session, all at once, every conflict found kept
+    (crew#583, D3; the Sponsor, crew#807).
 
     Checked all at once, the criteria check thought a median of 12.6k tokens to write
     641 characters, at the edge where answers come back empty (the context review,
-    C5). Each call is shown one story, with the split's other stories and the planned
-    ones to check it against, the record, and the code its own text names. A conflict
-    between two stories can be found from both sides; the repair rewrites both.
+    C5). Each session is shown one story, with the split's other stories and the planned
+    ones to check it against, and the record, and reads the code it needs (crew#807). A
+    conflict between two stories can be found from both sides; the repair rewrites both.
+
+    Each story's check is independent, so they run at once, and the repair waits for
+    them all. A check that fails or stops is recorded, and the others' conflicts stand;
+    if every one fails, the first failure is raised. One event records each check's
+    model time with the wall time, as the panel's does.
 
     `only` checks just those stories, each still against all the others: after a
     repair, a story nobody changed can't have a new conflict except with a repaired
@@ -69,14 +78,40 @@ def check_each(
     all ten stories again, about an hour, for the few the repair touched (crew#612).
     """
     titles = {_key(s.title) for s in only} if only is not None else None
-    conflicts = []
-    for story in proposal.stories:
-        if titles is not None and _key(story.title) not in titles:
-            continue
+    checked = [s for s in proposal.stories if titles is None or _key(s.title) in titles]
+    if not checked:
+        return CriteriaCheck()
+    measured: dict[str, dict[str, Any]] = {}
+
+    def measure(title: str) -> Callable[[Any, Any], None]:
+        return lambda session, ending: measured.__setitem__(title, steps.measured(session, ending))
+
+    def one(story: Story) -> CriteriaCheck:
         mine = render_stories([story])
         rest = render_stories([s for s in proposal.stories if s is not story])
-        found = check(stories=mine, siblings=rest, repository=code_for(mine), **shown)
-        conflicts += found.conflicts
+        return check(stories=mine, siblings=rest, on_end=measure(story.title), **shown)
+
+    found: dict[int, CriteriaCheck] = {}
+    failed: dict[str, BaseException] = {}
+    began = time.monotonic()
+    with ThreadPoolExecutor(max_workers=len(checked)) as pool:
+        # Each thread runs in its own copy of this context, so its calls are attributed
+        # to the tick's span and card.
+        futures = [pool.submit(contextvars.copy_context().run, one, story) for story in checked]
+        for i, (story, future) in enumerate(zip(checked, futures, strict=True)):
+            try:
+                found[i] = future.result()
+            except Exception as exc:  # noqa: BLE001 - a failed check is recorded, not a crash
+                failed[story.title] = exc
+    steps.at_once(
+        "criteria check",
+        measured,
+        {t: f"{type(e).__name__}: {e}"[:300] for t, e in failed.items()},
+        time.monotonic() - began,
+    )
+    if not found:
+        raise next(iter(failed.values()))
+    conflicts = [c for i in sorted(found) for c in found[i].conflicts]
     return CriteriaCheck(conflicts=_once(conflicts))
 
 

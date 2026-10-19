@@ -17,8 +17,6 @@ config.agents.scrum_master.constitution:
   owner: Scrum Master
 config.agents.senior_engineer.constitution:
   owner: Senior Engineer
-config.agents.ux_designer.constitution:
-  owner: UX Designer
 told.code_reviewer.never_asks_whether_it_works:
   cases:
   - told.code_reviewer.you_never_ask_does_it_work
