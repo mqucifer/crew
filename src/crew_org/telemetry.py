@@ -101,6 +101,11 @@ DETAIL = frozenset(
         "model_s",
         "estimated_tokens",
         "turns_masked",
+        # The kept reasoning field, as counts: never its text (crew#778, ADR 0010).
+        "reasoning_kept_chars",
+        "reasoning_kept_tokens",
+        "reasoning_chars_cleared",
+        "reasoning_tokens_cleared",
         "chars_after",
         "model_calls",
         "edits_applied",

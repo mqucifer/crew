@@ -36,7 +36,7 @@ from crew_org.events import EventKind, record
 from crew_org.rulebook import Refusal
 from crew_org.session import signals
 from crew_org.session.container import Gone, Workspace
-from crew_org.session.history import Turn, compact, messages
+from crew_org.session.history import Turn, compact, messages, reasoning_size
 from crew_org.session.signals import Signals
 from crew_org.session.start import start, system_text
 from crew_org.session.tools import ENDINGS, SPECS, Reply, Tools, check_arguments, target_of
@@ -119,6 +119,9 @@ class Session:
     troubles: list[dict[str, Any]] = field(default_factory=list)
     history: list[Any] = field(default_factory=list)
     _chars_per_token: float = 0.0  # from the last call, to estimate the next prompt
+    # What each kept `reasoning_content` costs by the responses' own counts, by its
+    # item's place in the history (compaction keeps the places); cleared ones drop out.
+    _reasoning_by_item: dict[int, int] = field(default_factory=dict)
     _quiet: list[str] = field(default_factory=list)
 
     def run(self) -> Ending:
@@ -166,10 +169,20 @@ class Session:
         if not self.compacted and self._chars_per_token:
             estimated = int(_chars(sent) / self._chars_per_token)
             if estimated >= self.compact_at:
+                before = reasoning_size(self.history)
                 self.history = compact(self.history)
                 masked = sum(isinstance(t, Turn) and t.masked for t in self.history)
                 self.compacted = {"turn": self.calls + 1, "estimated_tokens": estimated}
                 self.compacted["turns_masked"] = masked
+                self.compacted["reasoning_chars_cleared"] = before - reasoning_size(self.history)
+                gone = {
+                    i
+                    for i in self._reasoning_by_item
+                    if not (self.history[i].get("reasoning_content") or "")
+                }
+                self.compacted["reasoning_tokens_cleared"] = sum(
+                    self._reasoning_by_item.pop(i) for i in gone
+                )
                 sent = messages(self.system, self.start, self.history)
                 record(
                     EventKind.SESSION_COMPACTED,
@@ -190,8 +203,13 @@ class Session:
             self._trouble("cut off", answered.usage)
         elif not made and not content.strip():
             self._trouble("empty", answered.usage)
+        # Qwen's template renders each past turn's reasoning, so it goes back as it came.
+        kept: dict[str, Any] = {}
+        if message.get("reasoning_content"):
+            kept["reasoning_content"] = message["reasoning_content"]
+            self._reasoning_by_item[len(self.history)] = answered.usage.get("reasoning_tokens", 0)
         if not made:
-            self.history.append({"role": "assistant", "content": content})
+            self.history.append({"role": "assistant", "content": content, **kept})
             self._quiet.append(content[:2000])
             self._turn([], answered.usage)
             if len(self._quiet) >= QUIET_LIMIT:
@@ -203,7 +221,7 @@ class Session:
             self.history.append({"role": "user", "content": self.quiet})
             return None
         self._quiet = []
-        self.history.append({"role": "assistant", "content": content, "tool_calls": made})
+        self.history.append({"role": "assistant", "content": content, "tool_calls": made, **kept})
         replies: list[tuple[str, Reply]] = []
         ending: Ending | None = None
         for i, m in enumerate(made):
@@ -389,6 +407,8 @@ class Session:
             turn=self.calls,
             tool_calls=len(replies),
             model_s=round(self.model_s, 1),
+            reasoning_kept_chars=reasoning_size(self.history),
+            reasoning_kept_tokens=sum(self._reasoning_by_item.values()),
             **seen,
         )
 

@@ -315,6 +315,18 @@ def test_compaction_keeps_each_files_latest_view_the_latest_run_and_the_newest_t
     assert sent[3]["content"] == "(older) view a.py"
 
 
+def test_compaction_clears_every_earlier_reasoning_field_then_masks():
+    def asked(text):
+        return {"role": "assistant", "content": "", "reasoning_content": text}
+
+    old = Turn(Reply("long text", "ok", "viewed", {"path": "a.py"}), "", "search", {})
+    whole = [asked("one"), old, asked("two"), asked("three")]
+    out = history.compact(whole)
+    assert [m.get("reasoning_content") for m in out if isinstance(m, dict)] == ["", "", "three"]
+    assert out[1].masked
+    assert whole[0]["reasoning_content"] == "one"  # the caller's history isn't changed
+
+
 # --- the session ---------------------------------------------------------------------------
 
 
@@ -361,6 +373,12 @@ class Proxy:
 
 DONE = {"criteria": [{"criterion": "f is 2", "test": "tests/test_app.py::test_f"}]}
 DONE |= {"docs": "none describe it", "summary": "f returns 2"}
+
+
+def thinking(made, text, **kw):
+    answer = said(*made, **kw)
+    answer["choices"][0]["message"]["reasoning_content"] = text
+    return answer
 
 
 def run_session(root, proxy, fake=None, **settings):
@@ -517,6 +535,56 @@ def test_the_history_is_compacted_once_when_a_prompt_would_pass_the_limit(root, 
     assert ending.how == "done" and s.compacted["turn"] == 2
     (compacted,) = kinds(seen, EventKind.SESSION_COMPACTED)
     assert compacted.detail["turn"] == 2 and compacted.detail["estimated_tokens"] >= 1
+
+
+LOOK = ("view", {"path": "src/app.py", "from_line": 1, "to_line": 2})
+
+
+def assistants(body):
+    return [m for m in body["messages"] if m["role"] == "assistant"]
+
+
+def test_the_reasoning_field_is_stored_and_sent_back_on_its_assistant_message(root, seen):
+    proxy = Proxy(
+        thinking([LOOK], "first thoughts", reasoning=7),
+        said(LOOK),
+        said(("done", DONE)),
+    )
+    s, _ = run_session(root, proxy)
+    first, second = assistants(proxy.sent[1])[0], assistants(proxy.sent[2])
+    assert first["reasoning_content"] == "first thoughts"
+    assert "reasoning_content" not in second[1]  # the turn without one is sent as before
+    turns = kinds(seen, EventKind.SESSION_TURN)
+    assert turns[0].detail["reasoning_kept_chars"] == len("first thoughts")
+    assert turns[0].detail["reasoning_kept_tokens"] == 7
+
+
+def test_compaction_clears_the_field_once_before_the_tail_and_the_masking(root, seen):
+    s = conversation.session(root, "# Story", Fake(), CHECKS, send=Proxy())
+    s._chars_per_token = 1.0
+    # Two turns in, then the trigger passes: every turn but the newest is cleared at once.
+    s.history = [
+        {"role": "assistant", "content": "", "reasoning_content": "aaaa", "tool_calls": []},
+        {"role": "assistant", "content": "", "reasoning_content": "bbbbbb", "tool_calls": []},
+    ]
+    s._reasoning_by_item = {0: 3, 1: 5}
+    s.compact_at = 1
+    sent = s._messages()
+    got = [m.get("reasoning_content") for m in sent if m["role"] == "assistant"]
+    assert got == ["", "bbbbbb"]  # the newest turn keeps its field, as the masking's tail does
+    assert s.compacted["reasoning_chars_cleared"] == 4
+    assert s.compacted["reasoning_tokens_cleared"] == 3
+    # What is kept afterwards is the newest turn's own count, as its chars are.
+    assert sum(s._reasoning_by_item.values()) == 5
+    assert history.reasoning_size(s.history) == len("bbbbbb")
+
+
+def test_the_field_text_reaches_neither_telemetry_nor_the_package(root, seen):
+    proxy = Proxy(thinking([LOOK], "SECRET-THOUGHT", reasoning=4), said(("done", DONE)))
+    run_session(root, proxy, compact_at=1)
+    for event in seen:
+        assert "SECRET-THOUGHT" not in json.dumps(telemetry.view(event), default=str)
+        assert "SECRET-THOUGHT" not in json.dumps(event.detail, default=str)
 
 
 def test_a_worktree_with_a_host_made_venv_is_refused(root):

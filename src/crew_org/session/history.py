@@ -46,6 +46,28 @@ def messages(system: str, start: str, history: list[Any]) -> list[dict[str, Any]
     return out
 
 
+def reasoning_size(history: list[Any]) -> int:
+    """The characters of `reasoning_content` the history holds."""
+    return sum(
+        len(item.get("reasoning_content") or "") for item in history if isinstance(item, dict)
+    )
+
+
+def cleared(history: list[Any]) -> list[Any]:
+    """The history with `reasoning_content` emptied on every assistant turn but the newest's.
+
+    The newest turn's replies haven't been answered yet, so the assistant message they
+    answer stays whole, as the kept tail does in `compact`.
+    """
+    last = max((i for i, item in enumerate(history) if not isinstance(item, Turn)), default=-1)
+    return [
+        {**item, "reasoning_content": ""}
+        if i < last and isinstance(item, dict) and item.get("reasoning_content")
+        else item
+        for i, item in enumerate(history)
+    ]
+
+
 def compact(history: list[Any]) -> list[Any]:
     """The history compacted, once: every tool reply shrinks to its one line but each
     file's latest view of it unchanged, the latest run, and the newest turn's replies.
@@ -54,7 +76,12 @@ def compact(history: list[Any]) -> list[Any]:
     (`var/notes/778/research-compaction.md`, the Sponsor, 2026-10-18). Masking keeps
     every action, and a path in each line, so a file can be viewed again; it's what
     "The Complexity Trap" found as good as a model's summary at less cost.
+
+    Before the masking, every assistant turn before the kept tail loses its
+    `reasoning_content`, in this one pass: a field cleared a turn at a time would
+    change the prefix, and break the cache, on every call.
     """
+    history = cleared(history)
     turns = [i for i, item in enumerate(history) if isinstance(item, Turn)]
     kept: set[int] = set()
     latest_view: dict[str, int] = {}
