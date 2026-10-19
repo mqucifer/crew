@@ -7,10 +7,11 @@ A session ends one of three ways (decision 3):
   to a new session with every finding (P2), or to the Business Analyst's ruling
   when the story says merged tests stay unchanged and `done` changed some.
 - **blocked:** a missing file or fact, or a stop (no progress, the backstop, a
-  ceiling, replies that call no tool), goes back to the Business Analyst who wrote
-  the story, with the session's evidence, by the path a story takes back to
-  refinement. A choice no one has made goes to the Sponsor as one reaches a person
-  today: the card is blocked, saying so (decision 9).
+  ceiling, replies that call no tool, or between sessions the gates' same findings
+  again), goes back to the Business Analyst who wrote the story, with the session's
+  evidence, by the path a story takes back to refinement. A choice no one has made
+  goes to the Sponsor as one reaches a person today: the card is blocked, saying so
+  (decision 9).
 - **interrupted:** a failed call or a lost workspace, nothing about the story. It
   resumes from the last checkpoint (P3), and isn't routed here.
 
@@ -62,6 +63,10 @@ _MISSING = {
 }
 # How much of a gate's finding the note quotes: its first paragraph, cut to this (crew#778).
 FINDING_CHARS = 400
+# A finding's first lines, by which the gates' rounds are compared for the same findings
+# again, and quoted when they stop a delivery (crew#790): its command, exit and first
+# error lines. A test run's timing is on its last line, past them.
+FINDING_LINES = 10
 
 
 @dataclass
@@ -389,12 +394,28 @@ def returned_note(
             "why it can't be done."
         )
     rewrite = for_the_rewrite(ending, kept, story)
+    repeated = _repeated(ending, leaving)
     return (
         f"{STORY_PROBLEM_MARKER}\n"
         f"**#{number} went back to refinement: its Developer session was stopped by "
         f"{stopped_by(ending, leaving)}.**\n\n"
-        f"*{card.title}*.\n\n{found}" + (f"\n\n{rewrite}" if rewrite else "")
+        f"*{card.title}*.\n\n"
+        + (f"{repeated}\n\n" if repeated else "")
+        + found
+        + (f"\n\n{rewrite}" if rewrite else "")
     )
+
+
+def _repeated(ending: Ending, leaving: Leaving | None) -> str:
+    """What the gates sent back each time they stopped a delivery, by the lines compared.
+
+    No line for the rewrite goes with it: sprint-metrics#671's was the workspace's, a
+    container with no network, not the story's (crew#790).
+    """
+    if ending.stop != "gate_repeat" or leaving is None or not leaving.findings:
+        return ""
+    quoted = "\n\n".join(_quoted(first_lines(f.says)) for f in leaving.findings[-1])
+    return f"**What the gates sent back each time:**\n\n{quoted}"
 
 
 def stopped_by(ending: Ending, leaving: Leaving | None = None) -> str:
@@ -406,6 +427,12 @@ def stopped_by(ending: Ending, leaving: Leaving | None = None) -> str:
         return (
             f"the backstop: {minutes} minutes of model time over "
             f"{_count(sessions, 'session')}, the delivery's {BACKSTOP_S // 3600} hours"
+        )
+    if ending.stop == "gate_repeat":
+        last = leaving.findings[-1] if leaving and leaving.findings else []
+        return (
+            f"the gates at `done`, which sent back the same "
+            f"{'finding' if len(last) == 1 else 'findings'} {seen.get('repeats')} times in a row"
         )
     if ending.stop == "ceiling" and seen.get("ceiling") == "re_viewing":
         return (
@@ -541,6 +568,12 @@ def _by_file(tests: dict[str, str], *, listed: bool = False) -> str:
         )
     groups = [f"`{path}`: {', '.join(names)}" for path, names in files.items()]
     return "\n".join(f"- {g}" for g in groups) if listed else "; ".join(groups) + "."
+
+
+def first_lines(text: str) -> str:
+    """A finding's first lines, blank ones dropped: what tells two gate rounds apart."""
+    lines = [line.rstrip() for line in text.strip().splitlines() if line.strip()]
+    return "\n".join(lines[:FINDING_LINES])
 
 
 def _first_paragraph(text: str) -> str:

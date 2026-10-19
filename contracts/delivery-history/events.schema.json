@@ -584,7 +584,8 @@
                 "no_progress",
                 "backstop",
                 "ceiling",
-                "no_tool_call"
+                "no_tool_call",
+                "gate_repeat"
               ],
               "type": "string"
             },
@@ -592,7 +593,7 @@
               "type": "null"
             }
           ],
-          "description": "For a stopped session, what stopped it.",
+          "description": "For a stopped session or delivery, what stopped it.",
           "title": "Stop"
         }
       },
@@ -892,7 +893,8 @@
                 "no_progress",
                 "backstop",
                 "ceiling",
-                "no_tool_call"
+                "no_tool_call",
+                "gate_repeat"
               ],
               "type": "string"
             },

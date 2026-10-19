@@ -13,8 +13,11 @@ session runs in it (Stage C). How the session ends decides the rest:
   else, a failed call or a lost container, is retried next pass (`SessionInterrupted`).
 
 Every session in one delivery shares one 3-hour budget of model time, so a loop
-between a session and the gates can't run unbounded (the operator, on crew#778). A
-return from review or QA is a new delivery, and a new session (P2).
+between a session and the gates can't run unbounded (the operator, on crew#778). The
+gates sending back the same findings 3 rounds in a row ends it sooner, as a stop
+(`gate_repeat`, the Sponsor on crew#790): no session can count those rounds, since
+each starts a new one. A return from review or QA is a new delivery, and a new
+session (P2).
 
 **Checkpoints (P3):** after each green run the branch is committed, never pushed: a
 push to an open pull request's branch would move the head under review. The clone's
@@ -75,6 +78,11 @@ if TYPE_CHECKING:
 
 # One delivery's model time, shared by its sessions (decision 3; the operator, crew#778).
 BACKSTOP_S = conversation.BACKSTOP_S
+# The gates' same findings this many rounds in a row end the delivery: the in-session
+# no-progress stop's count, which a new session starts again (the Sponsor, crew#790).
+# sprint-metrics#671's gates refused five times with one finding, a workspace with no
+# network, and only the backstop bounded it.
+GATE_REPEATS = 3
 # Where a story goes when the route itself fails: blocked for a person, by delivery.
 UNROUTED = "unrouted"
 # Where it goes when the push that keeps its work fails: blocked as any failed push is.
@@ -341,24 +349,14 @@ def _sessions(
             run_checks=run_checks,
             leaving=leaving,
         )
+        stopped = None
         if routed.to == session_end.SESSION:
             found.append(list(getattr(routed.verdict, "findings", None) or []))
-        if routed.to == session_end.SESSION and spent >= BACKSTOP_S:
-            # The budget's spent with the gates' findings still open: a stop, as the
-            # backstop is inside a session, back to the Business Analyst.
+            stopped = _stopped_between(found, spent, ending)
+        if stopped is not None:
+            # A stop, as one inside a session is: back to the Business Analyst, with the
+            # work kept.
             leaving = session_end.Leaving(keep, spent, rounds, list(found))
-            stopped = SimpleNamespace(
-                how="blocked",
-                said={
-                    "missing": f"the gates' findings, still open after {round(spent / 60)} "
-                    "minutes of model time, the backstop",
-                    "kind": "stop",
-                },
-                stop="backstop",
-                why="",
-                evidence=ending.evidence,
-                error=None,
-            )
             routed = _route(
                 route,
                 stopped,
@@ -389,6 +387,57 @@ def _sessions(
                 ),
             )
         instead = routed.start
+
+
+def _stopped_between(found: list[list[Any]], spent: float, ending: Any) -> Any:
+    """The stop the gates' returns reach between sessions, or None for the next session.
+
+    The gates' same findings `GATE_REPEATS` rounds in a row, or the budget spent with
+    their findings still open. Each ends as a stopped session does, `blocked` of kind
+    `stop`, with the last session's evidence.
+    """
+    repeats = _repeats(found)
+    if repeats >= GATE_REPEATS:
+        missing = f"the gates' same findings, sent back {repeats} times in a row"
+        stop, evidence = "gate_repeat", {**(ending.evidence or {}), "stop": {"repeats": repeats}}
+    elif spent >= BACKSTOP_S:
+        missing = (
+            f"the gates' findings, still open after {round(spent / 60)} minutes of model "
+            "time, the backstop"
+        )
+        stop, evidence = "backstop", ending.evidence
+    else:
+        return None
+    return SimpleNamespace(
+        how="blocked",
+        said={"missing": missing, "kind": "stop"},
+        stop=stop,
+        why="",
+        evidence=evidence,
+        error=None,
+    )
+
+
+def _repeats(found: list[list[Any]]) -> int:
+    """How many gate rounds in a row, to the last, sent back the same findings.
+
+    Compared by each finding's rule and its first lines (`session_end.first_lines`), so
+    a test run's timing on its last line doesn't tell two rounds apart. A round with no
+    findings is never a repeat.
+    """
+    from crew_org.flows import session_end  # noqa: PLC0415
+
+    def same(findings: list[Any]) -> list[tuple[str, str]]:
+        return sorted((f.rule, session_end.first_lines(f.says)) for f in findings)
+
+    if not found or not found[-1]:
+        return 0
+    last, repeats = same(found[-1]), 0
+    for findings in reversed(found):
+        if same(findings) != last:
+            break
+        repeats += 1
+    return repeats
 
 
 def _keep(

@@ -82,9 +82,16 @@ config.const.repo_context.WHOLE_FILE_CHARS:
   - crew#591
   - sprint-metrics#567
 config.const.retro.MAX_KNOWN_CHARS:
+config.const.session_delivery.GATE_REPEATS:
+  origin:
+  - crew#790
+  - sprint-metrics#671
 config.const.session_end.FINDING_CHARS:
   origin:
   - crew#778
+config.const.session_end.FINDING_LINES:
+  origin:
+  - crew#790
 config.const.signals.READING_CALLS:
   origin:
   - crew#778

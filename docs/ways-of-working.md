@@ -290,7 +290,7 @@ and nothing is left In Progress with nobody to act:
 
 | How it fails | Where it goes |
 |---|---|
-| The Developer's session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, or the backstop | Back to the Business Analyst who wrote the story, with its work kept on a `crew/kept/` branch and the session's evidence in plain words: why it ended, its last run, the gate's earlier findings, the files and merged tests it changed, a stop's last words, and a line for the rewrite when the evidence points at the story |
+| The Developer's session calls `blocked` on a missing file or fact, or is stopped: no progress, a ceiling, the backstop, or the gates sending back the same finding 3 times in a row | Back to the Business Analyst who wrote the story, with its work kept on a `crew/kept/` branch and the session's evidence in plain words: why it ended, its last run, the gate's earlier findings, the files and merged tests it changed, a stop's last words, and a line for the rewrite when the evidence points at the story |
 | `blocked` on a choice no one has made | Blocked, for the Sponsor |
 | The gates at `done` find something | A new session with every finding, within the delivery's three hours of model time; past them, back to the Business Analyst |
 | Review or QA return it | A new session; after three round trips, back to the Business Analyst |

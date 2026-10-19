@@ -371,6 +371,23 @@ def test_a_delivery_ends_returned_blocked_or_interrupted():
     assert (interrupted.outcome, interrupted.sessions, interrupted.resumes) == ("interrupted", 2, 1)
 
 
+def test_a_delivery_stopped_between_sessions_takes_the_stop_from_its_return():
+    """crew#790: its last session ended `done`, so only the return names the stop."""
+    rule = "check.delivery.lint_or_tests_failed"
+    events = [started(0, 664), ended(1, 664), gate(2, 664, False, [rule])]
+    events += [started(3, 664, rework=True), ended(4, 664), gate(5, 664, False, [rule])]
+    events += [started(6, 664, rework=True), ended(7, 664), gate(8, 664, False, [rule])]
+    events += [
+        raw(9, "story.returned", 664, reason="session blocked", kind="stop", stop="gate_repeat")
+    ]
+    history, files, _ = build(events, CARDS)
+    d = deliveries(history)[(664, 1)]
+    assert (d.outcome, d.stop, d.blocked_on) == ("returned", "gate_repeat", "stop")
+    assert (d.sessions, d.gate_rounds, d.gate_rules) == (3, 3, [rule])
+    (returned,) = kinds(files, "returned")
+    assert returned.stop == "gate_repeat"
+
+
 def test_a_story_already_done_is_handed_on_when_it_goes_to_qa():
     events = [started(0, 662), ended(1, 662), moved(2, 662, "In Progress", "QAing")]
     events += [moved(3, 662, "QAing", "Done")]
