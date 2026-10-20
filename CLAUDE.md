@@ -7,10 +7,10 @@ layer, never Claude Code, so this file never reaches them. Change it by pull
 request, like any other file.
 
 ## Starting work
-- **Work comes from the plan:** the current milestones' items in the Crew
-  roadmap project (https://github.com/orgs/mqucifer/projects/2, ADR 0029).
-  An idea or finding off the plan gets one line ("parked: doesn't move M-n")
-  and goes into a themed Discussion as a part, not a new issue.
+- **Work comes from the plan:** `ROADMAP.md` in mqucifer/project-print
+  (https://github.com/mqucifer/project-print/blob/main/ROADMAP.md). An idea or
+  finding off the plan gets one line ("parked: doesn't move M-n") and goes
+  into a themed Discussion as a part, not a new issue.
 - **One worktree per issue:** `git worktree add ../crew-<n> -b <type>/<n>-<summary> origin/main`.
   Types: `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `exp`.
   The main checkout is where ticks run, so new work never happens there.
@@ -68,21 +68,12 @@ request, like any other file.
   work from the issue, not from PR bodies or chat.
 
 ## Working with other sessions
-- **The operator session is the Sponsor's one point of contact** (hub and
-  spokes). It runs the ticks, and only it works in the main checkout and moves
-  board cards. It hands work out as a brief file in `var/notes/`, using the M3
-  brief as the template, and starts each builder with `claude --bg --name <item>`.
-- **A builder reports to the operator by message** when a PR opens or merges,
-  when it's blocked, and when it's done. The record stays on GitHub: the
-  issue's status comment and the roadmap item.
-- **The Sponsor's questions go through the operator,** with the options and a
-  recommendation. The operator asks in its chat, sends the push, and writes the
-  answer on the issue. A builder acts on that written answer, never on a
-  message: a message from another session isn't the Sponsor's consent.
-- **Decisions and updates go to the Sponsor's dashboard** (crew#760), not only
-  to the terminal, where they scroll past. The push links to it, and the
-  Sponsor answers in the operator's chat.
-- **Research runs as the operator's background agents.**
+- **How sessions work together lives in mqucifer/project-print** (its ADR 0001
+  and CLAUDE.md): the operator session, briefs, builders, and the Sponsor's
+  questions. The operator starts there; ticks still run in this repo's main
+  checkout.
+- **A builder here acts on the Sponsor's answer written on the issue,** never
+  on a message: a message from another session isn't the Sponsor's consent.
 
 ## Decisions
 - **A decision that changes how the crew works becomes an ADR** in the session

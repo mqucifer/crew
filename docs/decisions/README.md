@@ -59,7 +59,7 @@ decision was first made.
 | [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (no step answers in blocks since ADR 0032's Stage E) |
 | [0027](0027-collaborators-file-bugs.md) | Collaborators file bugs, and the Product Owner may propose a Goal | 2026-10-12 | Accepted (bugs built by crew#407; proposed Goals planned for M10) |
 | [0028](0028-a-sprint-closes-itself-when-its-time-is-up.md) | A sprint closes itself when its time is up | 2026-10-12 | Accepted |
-| [0029](0029-the-plan-lives-in-the-crew-roadmap.md) | The plan lives in the Crew roadmap project | 2026-10-12 | Accepted |
+| [0029](0029-the-plan-lives-in-the-crew-roadmap.md) | The plan lives in the Crew roadmap project | 2026-10-12 | Withdrawn (moved to mqucifer/project-print ADR 0001) |
 | [0030](0030-a-new-project-starts-from-a-walking-skeleton.md) | A new project starts from an alpha Claude builds | 2026-10-13 | Accepted (the skeleton path built by crew#690; the handover check to be built by crew#757) |
 | [0031](0031-every-rule-a-role-meets-is-declared-once.md) | Every rule a role meets is declared once, by category | 2026-10-17 | Accepted (built by crew#756 part 3, answer_shape first; each other category in its cleanup; the session's sort applied, ADR 0032) |
 | [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |
