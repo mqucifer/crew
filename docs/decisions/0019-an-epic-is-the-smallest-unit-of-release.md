@@ -1,60 +1,56 @@
-# 19. The Sponsor decides when a release is cut
+# 19. Each completed epic releases itself
 
 - **Date:** 2026-10-07
-- **Status:** Accepted (until crew#500 settles how releases happen)
+- **Status:** Accepted (to be built in M8, crew#816)
 
 ## Context
 
 sprint-metrics epic 406, the stateful service, completed on 2026-10-07 and nothing
 was released. Its outcome begins "A user runs the released container as a service",
-so the epic's work was merged but its outcome wasn't met.
+so the epic's work was merged but its outcome wasn't met. The project's decisions
+said what a release is: "a release is a PR: version bump, dated changelog", and on
+merge a tag, a GitHub Release and an image (Goal 174, D5). They didn't say when one
+happens, or who opens it.
 
-The project's decisions said what a release is: "a release is a PR: version bump,
-dated changelog", and on merge a tag, a GitHub Release and an image (Goal 174, D5),
-with new API as MINOR (D4). They didn't say when a release happens, or who opens
-that pull request. The 1.0.0 and 1.0.2 releases happened only because an epic
-planned a release story.
+A first answer filed a release story under each epic once it completed, and held
+the epic open until it merged. On 2026-10-08 that meant reopening two completed
+epics, and the Sponsor took the call instead: a release only when they asked.
 
-Checking this also found the changelog behind:
-- none of epic 406's stories had added an `[Unreleased]` entry;
-- three entries from Sprint 12 had never been released;
-- 1.0.0 to 1.0.2 were dated July 2025, although all three were tagged on 2026-09-30.
-
-The first version of this decision made each completed epic file a release story
-under itself, and held the epic open until it merged. Applied on 2026-10-08 to
-sprint-metrics' epics 408 (telemetry) and 407 (trends), it meant reopening two
-completed epics to attach releases of behaviour already being replaced
-(mqucifer/sprint-metrics#462). It also left out the harder question: several epics
-are worked at once, so `main` almost always holds part of another epic when one
-completes, and a release cut then would ship that incomplete work. The Sponsor,
-2026-10-08: "I don't like that we're re-opening completed epics just to tack on
-releases", and on bugs: "I'm not willing to exclude that at the moment."
+On 2026-10-19, mqucifer/sprint-metrics#667's split made a release story,
+mqucifer/sprint-metrics#671, and the Product Owner wrote "Epic is a PATCH release"
+into the epic's record. The Sponsor wanted that: an epic deciding its own release.
+Two problems showed up with it (crew#816):
+- **Several epics are in flight at once,** so `main` holds part of another epic when
+  one completes, and its release ships those stories too.
+- **The changelog was behind.** Stories added no `[Unreleased]` entry, and the
+  release story wrote a fixed list and required `[Unreleased]` to end empty, so
+  another epic's entries would be dropped or the release would fail.
 
 ## Decision
 
-- **Until crew#500 settles how releases happen, the Sponsor decides when a release
-  is cut.** The crew files a release story when the Sponsor asks for one, and not
-  otherwise.
-- **A release is never attached to an epic.** A completed epic stays closed. A
-  release story stands on its own, with no parent epic.
-- **What may trigger a release is open.** An epic completing, a bug users need fixed
-  now, or the Sponsor's own call are all possible. crew#500 decides, once releases
-  can cope with several epics in flight.
-- **A release story is dated by the crew,** with the real day. The model never
-  supplies a date or a version on its own.
+- **Every completed epic releases itself** (Sponsor, 2026-10-20). Its last story is
+  a release story, planned at the split with the epic's other stories, so a
+  completed epic is never reopened. The Product Owner sets the SemVer bump from what
+  the epic changes. The Sponsor approves the release PR.
+- **A release ships what `[Unreleased]` holds** (Sponsor, 2026-10-20), including
+  another epic's merged stories. This is trunk-based development: every merged story
+  has passed review, QA and CI. The version is the one the most significant entry
+  needs (Keep a Changelog, SemVer), not the one planned at the split if more has
+  landed since.
 - **A story that changes what a user sees adds its `[Unreleased]` changelog entry,**
   as it adds its documentation criterion, so a release assembles what's there.
+- **A release story is dated by the crew,** with the real day. The model never
+  supplies a date or a version on its own.
 
 ## Consequences
 
-- Work merges to `main` and waits there, unreleased, until the Sponsor cuts a
-  release. sprint-metrics' epics 407 and 408 wait this way, and their stories added
-  no changelog entries, so the first release names them.
-- A release story with no epic is admitted after the approved epics' stories, as any
-  story with no epic is.
+- No branch per epic: crew#500 stays closed. When a project has outside users, or an
+  epic could leave things worse half-done, this is revisited with feature flags.
+- A release can name entries from an epic that hasn't completed. That epic's own
+  release later ships whatever it adds after.
 - Versions follow each project's own versioning rule.
-- crew#500 is on hold for a branching strategy. The Sponsor's view on 2026-10-08:
-  probably "a large complex effort for little gain".
+- Until M8 builds this, the split doesn't plan release stories by rule and the
+  release story still writes a fixed list.
 
 ## Changelog
 
@@ -63,3 +59,7 @@ releases", and on bugs: "I'm not willing to exclude that at the moment."
 - 2026-10-08: Rewritten. The Sponsor decides when a release is cut until crew#500
   settles it; releases are never attached to epics; what triggers one, an epic or a
   bug, is left open. The file keeps its name so existing links still work (crew#500).
+- 2026-10-20: Rewritten as "Each completed epic releases itself". Every completed
+  epic's last story is its release, planned at the split; a release ships what
+  `[Unreleased]` holds, another epic's merged stories included. Decided by the
+  Sponsor in the operator's chat (crew#816). The file keeps its name.
