@@ -24,7 +24,8 @@ SAFe's enabler stories, with event-triggered runbooks for the events.
   does it, with its tools and its scope.
 - **An event or a role's finding opens it:**
   - an event, such as a release merging (a DevOps deploy task) or a release going
-    live (a UX Designer review task);
+    live (a UX Designer review task), or an alert firing (a DevOps review task, in
+    mqucifer/infra; Sponsor, 2026-10-20);
   - a finding outside the story a role is working on, filed in the project's
     repository.
 - **It flows like a bug** (ADR 0027): triaged, sized, admitted to a sprint, done and
@@ -41,6 +42,8 @@ SAFe's enabler stories, with event-triggered runbooks for the events.
 - DevOps's session (crew#817) is the first to pick up tasks. The UX Designer's
   release review (crew#830) is the second.
 - QA's triggers are shaped in M10's planning session.
+- A refinement note marked `infra` (ADR 0017) is DevOps's finding outside its
+  story, so it's filed in mqucifer/infra as a task, not left in the epic's conclusion.
 - A role's finding outside its story is filed, not set aside, so "pre-existing" is no
   longer a reason to drop it.
 - A release's merge is the Sponsor's only approval for a release and its deploy
@@ -50,3 +53,5 @@ SAFe's enabler stories, with event-triggered runbooks for the events.
 
 - **2026-10-20:** decided by the Sponsor in M8's planning session, in the operator's
   chat (crew#839).
+- **2026-10-20:** an alert opens a task for DevOps to review, decided by the Sponsor
+  in M9's planning session (mqucifer/infra#33).
