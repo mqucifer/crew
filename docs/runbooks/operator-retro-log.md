@@ -612,7 +612,7 @@ The sprint ran Goal mqucifer/sprint-metrics#665: epics sm#667 and sm#668, seven 
 - **`these_merged_tests_changed` refused the first `done` on 3 of 3 release attempts.** Each time the next session declared the test and passed. The release stories must change a merged test, because 10 of the 15 changelog tests pin a single release (`test_pyproject_version_is_1_3_3` and the like).
 - **The published CHANGELOG is misdated:** `[1.3.3] - 2026-10-20` sits above `[1.3.2] - 2026-10-21`, though both shipped on 10-19. The session isn't told the date. Review and QA passed both.
 - **One `llm.failed`:** a LiteLLM 500 on sm#674 at 22:08Z, after 19 model minutes. It resumed the next pass, and the second session took 2.6 minutes.
-- **Model time:** 430.3 minutes in all: 271.7 on the epics and 158.2 on the stories (Developer 71.3, Code Reviewer 21.0, QA 65.9). QA took longer than the Developer on 4 of the 7 stories.
+- **Model time:** 430.3 minutes in all: 271.7 on the epics and 158.2 on the stories (Developer 71.3, Code Reviewer 21.0, QA 65.9). QA took longer than the Developer on 3 of the 7 stories (sm#669, sm#672, sm#675).
 - **sprint-metrics' CI has never run its database tests.** The `tests` job has no `SPRINT_METRICS_DB`, and QA accepted `requires_db` tests as proven on sm#669 and sm#670. That's crew#814, parts 1 and 2.
 
 ### 5. The crew's own retro (crew#825) against this one
