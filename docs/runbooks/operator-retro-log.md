@@ -586,3 +586,49 @@ Sprint 20 delivered 12 sprint-metrics stories (34 points) and closed the Goal mq
 - **"Ticks stopped" found nothing this sprint.** None was stopped: tick 3 was held, not stopped. It stays for one more sprint.
 - **"The crew's retro against this one" found a wrong item for a fifth sprint** (crew#585). Sprint 18's proposal 1 is still the fix.
 - **New, for the operator: a story filed by hand runs the split's form checks.** At least `declared_contract`, before it's posted. sm#549 cost one block and about 10 minutes.
+
+## Operator's retro: Sprint 30 (2026-10-19, closed early 2026-10-19, crew#825)
+
+The sprint ran Goal mqucifer/sprint-metrics#665: epics sm#667 and sm#668, seven stories (sm#669 to sm#675) and 14 points. It was the first sprint fully on the Developer's session (ADR 0032) and on refinement as sessions (crew#807). All seven stories merged, and sprint-metrics 1.3.2 and 1.3.3 were published.
+
+### 1. Interventions
+- **One tick stopped by hand:** tick 32e4bae, at 18:00Z, on sm#671.
+  - Its gates refused five rounds in a row with one finding, a DNS error. A version bump left `uv.lock` stale, and the session's container has no network after setup.
+  - Nothing ended the loop but the 3-hour backstop.
+- **Crew PRs merged during the sprint:** crew#811, #812, #813, #824 and #823.
+  - crew#824 (setup re-runs when the dependency files change) and crew#823 (three identical gate refusals end a delivery, the `gate_repeat` stop) were incident fixes for sm#671. Ticks resumed after crew#824.
+  - crew#824's re-sync ran live on sm#675: 1 re-setup, which passed.
+- **No person moved a card:** `crew moves --people` shows none. operator.jsonl and sponsor.jsonl have no Sprint 30 events, so the manual steps are in the working log.
+
+### 2. Where a person was asked
+- **No card was blocked,** and no story went back to the Business Analyst.
+- **Two release questions went to the Sponsor:** before sm#671's merge published 1.3.2, and before sm#675's published 1.3.3. Both were the Sponsor's to answer (releases are theirs).
+
+### 3. Drift between the Goal and the plan
+- **Not gathered** this sprint.
+
+### 4. Repeats and cost
+- **Gate rounds:** 16 for the 7 stories, 7 of them refused. sm#671 had 7 rounds, 6 refused. sm#675 had 2, 1 refused.
+- **`these_merged_tests_changed` refused the first `done` on 3 of 3 release attempts.** Each time the next session declared the test and passed. The release stories must change a merged test, because 10 of the 15 changelog tests pin a single release (`test_pyproject_version_is_1_3_3` and the like).
+- **The published CHANGELOG is misdated:** `[1.3.3] - 2026-10-20` sits above `[1.3.2] - 2026-10-21`, though both shipped on 10-19. The session isn't told the date. Review and QA passed both.
+- **One `llm.failed`:** a LiteLLM 500 on sm#674 at 22:08Z, after 19 model minutes. It resumed the next pass, and the second session took 2.6 minutes.
+- **Model time:** 430.3 minutes in all: 271.7 on the epics and 158.2 on the stories (Developer 71.3, Code Reviewer 21.0, QA 65.9). QA took longer than the Developer on 3 of the 7 stories (sm#669, sm#672, sm#675).
+- **sprint-metrics' CI has never run its database tests.** The `tests` job has no `SPRINT_METRICS_DB`, and QA accepted `requires_db` tests as proven on sm#669 and sm#670. That's crew#814, parts 1 and 2.
+
+### 5. The crew's own retro (crew#825) against this one
+- **It says "6 of 7 first-try" and filed nothing.** `attempts.py` reads only review and QA returns and escalations, so sm#671's six refused gate rounds and the operator's stop don't count.
+- **Four of its five "How it went" lines differ from the events.** For example, it says no ticks ran from 17:25 to 22:08, while tick 32e4bae ran sm#671 until 18:00.
+- **It missed:** the CI gap, the misdated CHANGELOG and the pinned release tests.
+
+### 6. Agreed with the Sponsor (2026-10-20)
+1. **The crew's retro counts every round trip the events record:** gate refusals, `story.returned` with its stop, stranded returns and interruptions. That's crew#826, on M7. Evidence is section 5.
+2. **The Developer's session is given today's date.** That's a part of crew#790. Evidence is the misdated CHANGELOG. Correcting the published headings is still the Sponsor's call.
+3. **Release criteria are proven by the changelog or by rule tests, never by a test pinning one release.** That's a part of crew#815, plus a sprint-metrics Goal when the Sponsor wants it, for three rule tests: the version matches, the sections are in order, and `[Unreleased]` is first. A second check inside `done` was considered and dropped.
+
+**Checks:**
+- **"Ticks stopped" found one this sprint,** and the stop led to two fixes. It stays.
+- **"The crew's retro against this one" found a miscount again.** Proposal 1 is the fix.
+- **New, from the builders:**
+  - the lint after an edit reads a broken lint command as clean;
+  - a stop on a story with no epic doesn't name its stop.
+  Both are logged for later.
