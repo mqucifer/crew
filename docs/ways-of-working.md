@@ -140,6 +140,40 @@ QA refuses it, it comes back to be built (crew#221).
 
 A Spike's output is always a written answer, never production code.
 
+### Writing a Goal
+
+A Goal says what the tool should do and what "done" looks like. The project designs
+the rest (ADR 0021). Each Goal also meets these standards (the Sponsor, 2026-10-20),
+because sprint-metrics Goal mqucifer/sprint-metrics#666 left its epics to guess at
+them:
+
+- **Every wanted answer comes with one worked example.** For instance: "stories of
+  3, 5 and 10 model minutes show a median of 5 and a total of 18". One example
+  settles the statistic, the unit and the rounding. Add a second for the empty case
+  ("a sprint with no finished story shows no cost, not 0"). This is Specification by
+  Example: the example states the answer, not the design.
+- **Name each measure precisely:** the statistic (median, mean, total), its unit, and
+  which items it counts ("stories finished in the sprint"). A plain word such as
+  "middle" or "cost" leaves the epic to choose.
+- **Every "so that…" says what the reader sees.** "So a sprint can be compared with
+  the last" becomes "this sprint and the last, side by side, with the change".
+
+### Proposing epics
+
+The Product Owner's epics from a Goal also meet these (the Sponsor, 2026-10-20):
+
+- **A published contract changes in one epic, first.** When several epics would
+  change the same contract (a new event, a schema, a response version), that change
+  is its own epic, ordered first, and the others build on it. Otherwise each epic
+  changes it separately and they collide, as mqucifer/sprint-metrics#684 to mqucifer/sprint-metrics#686 did.
+- **An epic promises nothing the Goal's decisions rule out.** Its "stands alone"
+  promise is checked against the Goal's decision rows before it's proposed.
+  mqucifer/sprint-metrics#686 promised cost "in which role" against a decision that
+  sums every role.
+
+These are being built into the Product Owner's checks: mqucifer/crew#828 (the
+contract epic) and mqucifer/crew#815 (the check against the decisions).
+
 ---
 
 ## 3. Story format
