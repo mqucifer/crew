@@ -1,7 +1,7 @@
 # 29. The plan lives in the Crew roadmap project
 
 - **Date:** 2026-10-12
-- **Status:** Accepted
+- **Status:** Withdrawn (moved to mqucifer/project-print ADR 0001)
 
 ## Context
 
@@ -29,3 +29,4 @@ A plan kept as one pinned issue still had to be read and updated by hand. The Sp
 ## Changelog
 
 - **2026-10-12:** decided by the Sponsor in chat, when the crew repo's issues were cleaned up.
+- **2026-10-20:** withdrawn: the plan moved to `ROADMAP.md` in mqucifer/project-print, decided by the Sponsor in chat (https://github.com/mqucifer/project-print/blob/main/docs/decisions/0001-cross-project-work-lives-here.md). The roadmap project stays as the board of the issues that exist.
