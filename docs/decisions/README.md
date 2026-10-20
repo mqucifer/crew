@@ -64,3 +64,4 @@ decision was first made.
 | [0031](0031-every-rule-a-role-meets-is-declared-once.md) | Every rule a role meets is declared once, by category | 2026-10-17 | Accepted (built by crew#756 part 3, answer_shape first; each other category in its cleanup; the session's sort applied, ADR 0032) |
 | [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |
 | [0033](0033-refinement-works-in-a-session.md) | Refinement works in a session | 2026-10-18 | Accepted (built by crew#807; the narrow checks wait for the Sponsor's OK) |
+| [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (to be built in M8, crew#839) |
