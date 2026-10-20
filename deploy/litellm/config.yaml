@@ -210,5 +210,7 @@ general_settings:
   # can't tell those apart. Browsable in the admin UI (/ui, Logs), queryable in
   # Postgres. The database has a volume for this (docker-compose.yaml).
   store_prompts_in_spend_logs: true
-  # Full prompts are large; a month is enough to look back on a sprint's runs.
-  maximum_spend_logs_retention_period: "30d"
+  # Full prompts are large, but they're a session's only transcript until
+  # crew#818 keeps one elsewhere: 90 days (the Sponsor, 2026-10-20), about
+  # 16 MB a day in October 2026.
+  maximum_spend_logs_retention_period: "90d"
