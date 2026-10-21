@@ -566,7 +566,10 @@ def open_record_pr(
             f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
             f"with the Sponsor through `crew onboard`{from_template}.\n\n"
             f"- **Purpose:** {intent.scope.purpose}\n"
-            + "".join(f"- **Serves:** {r.who}: {'; '.join(r.needs)}\n" for r in intent.scope.serves)
+            + "".join(
+                f"- **Serves:** {r.who}\n" + "".join(f"  - {n}\n" for n in r.needs)
+                for r in intent.scope.serves
+            )
             + f"- **Release:** {release_line(record)}\n"
             f"- **Done:** {intent.done.bar}\n\n"
             "## Verification\n\n"

@@ -237,7 +237,7 @@ def test_who_it_serves_is_the_scope_the_brief_shows():
     text = brief(record)
     assert record.intent.scope.serves[0].who == "the Sponsor"
     assert "**Who it serves, and what they need to see or decide:** its scope." in text
-    assert "- the Sponsor: compare sprints; see what got done" in text
+    assert "- the Sponsor:\n  - compare sprints\n  - see what got done" in text
     assert "In scope" not in text
 
 

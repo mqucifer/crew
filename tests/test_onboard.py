@@ -294,7 +294,7 @@ def test_the_record_arrives_as_a_pull_request(tmp_path: Path):
     (pull,) = issues.pulls
     assert pull["base"] == "main" and pull["head"] == "chore/7-project-record"
     assert "Closes #7" in pull["body"]
-    assert "- **Serves:** the Sponsor: how the crew performs\n" in pull["body"]
+    assert "- **Serves:** the Sponsor\n  - how the crew performs\n" in pull["body"]
     assert issues.created == [ISSUE_TITLE]
     assert issues.assigned == [(8, ["mquarters"])], "the Sponsor merges it"
 

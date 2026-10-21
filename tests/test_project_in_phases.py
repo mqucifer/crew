@@ -97,7 +97,7 @@ def test_the_brief_carries_purpose_scope_release_done_and_bounds(tmp_path):
     text = brief(read_record(project(tmp_path)))
     for expected in (
         "**Purpose:** Report delivery metrics",
-        "- the Sponsor: how the crew performs",
+        "- the Sponsor:\n  - how the crew performs",
         "- An MCP server, for now",
         "**A release here is:** the merge",
         "**Done means:** Its acceptance criteria are met",

@@ -585,7 +585,7 @@ def _serves(readers: list[Reader]) -> list[str]:
     if not readers:
         # A format 2 record, until it's rewritten (crew#847).
         return ["- (not recorded yet: the purpose says whom it's for)"]
-    return [f"- {r.who}: " + "; ".join(r.needs) for r in readers]
+    return [line for r in readers for line in (f"- {r.who}:", *(f"  - {n}" for n in r.needs))]
 
 
 def _uses(uses: list[Use], root: Path | None) -> list[str]:
