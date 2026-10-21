@@ -194,12 +194,12 @@ def test_the_model_is_told_to_stay_well_under_each_limit():
 
 def test_the_notes_are_numbered_in_a_fixed_order_across_the_members():
     found = numbered(panel(2, 0, 1, 0))
-    assert [(n, role) for n, role, _ in found] == [
-        (1, "architect"),
-        (2, "architect"),
-        (3, "qa_engineer"),
+    assert [(n, role, kind) for n, role, kind, _ in found] == [
+        (1, "architect", "decision"),
+        (2, "architect", "decision"),
+        (3, "qa_engineer", "question"),
     ]
-    assert "architect 0" in found[0][2] and "Source: the Goal" in found[0][2]
+    assert "architect 0" in found[0][3] and "Source: the Goal" in found[0][3]
 
 
 def test_a_conclusion_that_leaves_a_note_unanswered_is_refused_by_name():

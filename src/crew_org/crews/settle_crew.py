@@ -305,8 +305,8 @@ class Unsettled(Refusal):
     """The settlement leaves panel notes unanswered, or answers ones that don't exist."""
 
 
-def numbered(panel: PanelResult) -> list[tuple[int, str, str]]:
-    """The panel's items in a fixed order, as (number, role, text). N1 is the first.
+def numbered(panel: PanelResult) -> list[tuple[int, str, str, str]]:
+    """The panel's items in a fixed order, as (number, role, kind, text). N1 is the first.
 
     The settle is told each one's kind beside its role (ADR 0035): a reader's gap, a
     decision, a question or a runtime change. QA's examples aren't notes: they go to the
@@ -316,6 +316,7 @@ def numbered(panel: PanelResult) -> list[tuple[int, str, str]]:
         (
             n,
             role,
+            item.kind,
             f"{item.text}\n  Source: {item.source}\n"
             f"  The member's view of who settles it: {item.settled_by}",
         )
@@ -476,10 +477,8 @@ def opening(context: PanelContext, panel: PanelResult, *, reply: str = "") -> di
         for role, answer in panel.answers.items()
         if (view := answer.view())
     )
-    kinds = [item.kind for _, item in panel.items()]
     notes = views + "\n\n".join(
-        f"N{n} ({role}, {kind}): {text}"
-        for (n, role, text), kind in zip(numbered(panel), kinds, strict=True)
+        f"N{n} ({role}, {kind}): {text}" for n, role, kind, text in numbered(panel)
     )
     return {
         "step": "## Your step: settle the panel's notes into the epic's record\n\n"
@@ -559,7 +558,7 @@ def settle(
         check_product_calls(found, panel)
         check_covers(found, count)
 
-    notes = "\n\n".join(text for _, _, text in numbered(panel))
+    notes = "\n\n".join(text for *_, text in numbered(panel))
     answer: Settlement = steps.run(
         SETTLE,
         opening(context, panel, reply=reply),
