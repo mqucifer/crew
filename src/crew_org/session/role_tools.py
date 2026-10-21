@@ -260,12 +260,14 @@ def look(context: Context, args: dict[str, Any]) -> str:
     page = str(args.get("page") or "index.html").strip().lstrip("/")
     widths = tuple(int(w) for w in args.get("widths") or ()) or looking.WIDTHS
     fetched: Path | None = None
+    base = "/"
     try:
         if source == "published":
             if context.github is None:
                 return "The published site can't be fetched here: this step has no GitHub client."
             fetched = Path(tempfile.mkdtemp(prefix="look-site-"))
             files = looking.published(context.github, context.repo, fetched)
+            base = looking.base_path(context.github, context.repo)
         else:
             files = (context.root / source).resolve()
             if not files.is_dir() or context.root.resolve() not in files.parents:
@@ -273,7 +275,7 @@ def look(context: Context, args: dict[str, Any]) -> str:
         if not (files / page).is_file():
             pages = sorted(str(p.relative_to(files)) for p in files.rglob("*.html"))[:40]
             return f"`{page}` isn't in `{source}`. Its pages: {', '.join(pages)}"
-        return looking.look(files, page, widths[:4]).text()
+        return looking.look(files, page, widths[:4], base=base).text()
     except looking.NotLooked as exc:
         return f"Couldn't look: {exc}"
     finally:

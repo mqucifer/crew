@@ -364,10 +364,12 @@ def test_the_site_is_mounted_read_only_and_the_container_has_no_network(tmp_path
 def test_the_look_tool_serves_a_directory_of_the_checkout_or_the_published_site(repo, monkeypatch):
     seen = []
     monkeypatch.setattr(
-        looking, "look", lambda files, page, widths: seen.append((files, page, widths)) or looked()
+        looking,
+        "look",
+        lambda files, page, widths, base: seen.append((files, page, widths, base)) or looked(),
     )
     text = role_tools.look(context(repo), {"source": "site/", "widths": [320]})
-    assert "Sprint 30" in text and seen == [((repo / "site").resolve(), "index.html", (320,))]
+    assert "Sprint 30" in text and seen == [((repo / "site").resolve(), "index.html", (320,), "/")]
     assert "isn't in `site`. Its pages: index.html" in role_tools.look(
         context(repo), {"source": "site", "page": "replay.html"}
     )
@@ -375,6 +377,55 @@ def test_the_look_tool_serves_a_directory_of_the_checkout_or_the_published_site(
         context(repo), {"source": "../"}
     )
     assert "no GitHub client" in role_tools.look(context(repo), {})
+
+
+def test_the_published_site_is_served_under_the_path_github_serves_it_under():
+    """A project site's pages name their assets under /<repo>/: at the root they 404."""
+
+    class Pages:
+        def __init__(self, url):
+            self.url = url
+
+        def pages(self, repo):
+            return {"html_url": self.url} if self.url else None
+
+    project = Pages("https://mqucifer.github.io/crew-presentation/")
+    assert looking.base_path(project, "crew-presentation") == "/crew-presentation/"
+    assert looking.base_path(Pages("https://mqucifer.github.io/x"), "x") == "/x/"
+    assert looking.base_path(Pages("https://crew.example.org"), "x") == "/"
+    assert looking.base_path(Pages(None), "x") == "/"
+
+
+def test_the_container_serves_the_site_under_its_base_and_all_of_its_origin(tmp_path):
+    import functools  # noqa: PLC0415
+    import http.server  # noqa: PLC0415
+    import threading  # noqa: PLC0415
+
+    from crew_org.tools import look_page  # noqa: PLC0415
+
+    assert look_page.in_site("/crew-presentation/css/a.css", "/crew-presentation/") == "/css/a.css"
+    assert look_page.in_site("/css/a.css", "/crew-presentation/") is None
+    assert look_page.in_site("/css/a.css", "/") == "/css/a.css"
+    # A nested page's root-relative and sibling assets are the site's too.
+    origin = "http://127.0.0.1:8123"
+    assert look_page.is_local(f"{origin}/crew-presentation/fonts/a.woff2", origin)
+    assert look_page.is_local(f"{origin}/favicon.ico", origin)
+    assert not look_page.is_local("http://127.0.0.1:81234/x", origin)
+    assert not look_page.is_local("https://cdn.example/x.css", origin)
+
+    (tmp_path / "css").mkdir()
+    (tmp_path / "css" / "a.css").write_text("h1{}")
+    served = type("Served", (look_page.Site,), {"base": "/crew-presentation/"})
+    server = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(served, directory=str(tmp_path))
+    )
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        at = f"http://127.0.0.1:{server.server_address[1]}"
+        assert httpx.get(f"{at}/crew-presentation/css/a.css").text == "h1{}"
+        assert httpx.get(f"{at}/css/a.css").status_code == 404
+    finally:
+        server.shutdown()
 
 
 # --- QA's run -------------------------------------------------------------------------------

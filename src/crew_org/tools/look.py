@@ -42,6 +42,7 @@ import zipfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from crew_org.tools.sandbox import Mode, Sandbox
 
@@ -133,6 +134,14 @@ def published(github: Any, repo: str, into: Path) -> Path:
     return into
 
 
+def base_path(github: Any, repo: str) -> str:
+    """The path the published site is served under: `/<repo>/` for a project site, `/`
+    for an organisation's own site or one on its own domain, as GitHub says it's served."""
+    site = github.pages(repo) or {}
+    path = urlparse(site.get("html_url") or "").path or "/"
+    return path if path.endswith("/") else f"{path}/"
+
+
 def externals(files: Path, into: Path) -> dict[str, tuple[str, str]]:
     """The site's resources on other hosts, fetched into `into`, by URL.
 
@@ -192,8 +201,12 @@ def look(
     *,
     sandbox: Sandbox | None = None,
     keep: Path | None = None,
+    base: str = "/",
 ) -> Looked:
     """Open `page` of the site in `files` at each width, in the sandbox, offline.
+
+    The files are served under `base`, the path the published site is served under
+    (`base_path`), so the paths its pages name for their assets resolve.
 
     Screenshots go to `keep` when given, as `<width>.png`; otherwise they go with the
     container's directory.
@@ -210,7 +223,7 @@ def look(
         shutil.copy(SCRIPT, work / "look.py")
         argv = sandbox.command(
             work,
-            ["python3", "look.py", SITE, page, json.dumps(list(widths)), str(HEIGHT)],
+            ["python3", "look.py", SITE, page, json.dumps(list(widths)), str(HEIGHT), base],
             network=False,
             env={"PYTHONPATH": f"/cache/{DRIVER}"},
             readonly={files: SITE, fetched: EXTERNAL},
