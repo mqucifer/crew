@@ -21,7 +21,7 @@ reads as noise (crew#756).
 | Role | Produces |
 |---|---|
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance |
-| Product Owner | Epics, each marked if it changes what a reader sees (`needs:ux`); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
+| Product Owner | Epics, each naming the reader it serves and marked if it changes what a reader sees (`needs:ux`), and what of the Goal it left out or reshaped, with why (ADR 0035); proposed Goals, when a Goal points elsewhere (ADR 0027); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates |
 | UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one |
 | Architect | A project's design, design notes, technical epics, Tasks, Spikes |

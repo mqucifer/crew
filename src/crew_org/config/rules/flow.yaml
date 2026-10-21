@@ -62,6 +62,9 @@ decision.board_flow.parked:
   origin:
   - crew#192
   - crew#440
+decision.board_flow.points_elsewhere:
+  origin:
+  - crew#846
 decision.board_flow.product_step:
   origin:
   - crew#189

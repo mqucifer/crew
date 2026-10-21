@@ -63,12 +63,19 @@ check.refinement_crew.check:
   owner: Business Analyst
   told_in: StoryProposal
 check.settle_crew.check_grounded:
-  description: Refused if the wording isn't in the Goal.
+  description: Refused if the words aren't the Goal's reader or what they should see or decide, or if
+    they're what the Goal rules out.
   messages:
-    default: '{rows}: your own call quotes wording that isn''t in the Goal. Quote the Goal''s own words
-      exactly, or if the Goal doesn''t say which way it points, ask the Sponsor one question instead.'
+    default: '{rows}: your own call quotes words that aren''t the Goal''s reader or what they should see
+      or decide. Quote those exactly, or if the Goal doesn''t say which way it points, ask the Sponsor
+      one question instead.'
+    out: '{rows}: your own call rests on what the Goal rules out. Leave it out, or if serving the reader
+      needs it, ask the Sponsor one question instead.'
+  origin:
+  - crew#440
+  - crew#846
   owner: Product Owner
-  told_in: Row.goal_wording
+  told_in: Row.serves
 check.settle_crew.check_product_calls:
   description: Refused if your own call settles a note a member marked for the Architect.
   messages:
@@ -131,6 +138,18 @@ form.Epic.not_a_restatement:
       is a different question.
   owner: Product Owner
   told_in: Epic.separately_deliverable
+form.EpicProposal.at_the_level_of_intent:
+  description: Refused if an epic names a field, format, endpoint or file. An epic says which reader it
+    serves and what they can now see, decide or do; the specifics are its stories' and design's.
+  messages:
+    default: '{epics}. An epic stays at the level of intent: say which reader it serves and what they
+      can now see, decide or do, in plain words. Fields, formats, endpoints and files belong to its stories
+      and design.'
+  origin:
+  - crew#815
+  - crew#846
+  owner: Product Owner
+  told_in: EpicProposal.epics
 form.EpicProposal.decomposed:
   description: Refused with fewer or more epics than its limits, or two with one title.
   messages:
@@ -159,9 +178,10 @@ form.Placement.epic_is_named:
 form.Row.a_call_stays_within_the_goal:
   description: Refused if empty for your own call.
   messages:
-    default: your own call quotes the Goal's wording that it stays within
+    default: your own call quotes the Goal's words on its reader, or on what they should see or decide,
+      that it serves
   owner: Product Owner
-  told_in: Row.goal_wording
+  told_in: Row.serves
 form.SkeletonEpic.decomposed:
   description: Refused unless it's exactly one.
   messages:
@@ -262,7 +282,7 @@ told.settle_crew.ask_the_sponsor_one_question_with:
   guidance: true
 told.settle_crew.dont_ask_what_you_can_decide:
   guidance: true
-told.settle_crew.it_must_not_contradict_the_goal:
+told.settle_crew.it_must_not_contradict_a_sponsor:
   guidance: true
 told.settle_crew.settle_each_one_now_before_the:
   guidance: true

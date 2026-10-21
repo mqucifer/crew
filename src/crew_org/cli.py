@@ -1794,6 +1794,7 @@ def settle(
     from crew_org.flows import panel as panel_flow
     from crew_org.flows import settle as flow
     from crew_org.tools.github_issues import IssueClient
+    from crew_org.tools.github_project import ProjectClient
 
     repo, number = _issue_ref(epic)
     env = load_env()
@@ -1813,7 +1814,9 @@ def settle(
             panel_flow.post(issues, repo, number, notes)
     console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
     if post:
+        board = ProjectClient(token, env["GITHUB_OWNER"], int(env["GITHUB_PROJECT_NUMBER"]))
         done = flow.settle_epic(
+            board,
             issues,
             sink,
             repo=repo,
