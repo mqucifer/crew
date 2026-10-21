@@ -81,6 +81,19 @@ def test_the_panel_raising_nothing_is_a_record_too():
     assert record.parse(text) == nothing
 
 
+def test_qas_examples_read_back_beside_nothing_raised_and_beside_rows():
+    examples = (record.Example("E1", "A rate", "2 of 4 | half", True, "the Goal"),)
+    nothing = record.Record(nothing_raised=True, examples=examples)
+    text = record.render(nothing)
+    assert text.startswith(f"{record.HEADER}\n\n{record.NOTHING_RAISED}")
+    assert "| E1 | A rate | 2 of 4 \\| half | yes | the Goal |" in text
+    assert record.parse(text) == nothing
+    rows = base().add(decision(replaces="Q1"))
+    with_rows = record.Record(**{**rows.__dict__, "examples": examples})
+    assert record.parse(record.render(with_rows)) == with_rows
+    assert "1 examples" in record.bottom_line(with_rows)
+
+
 def test_the_bottom_line_counts_what_binds_what_was_replaced_and_who_settles_the_rest():
     after = base().add(decision(replaces="R1"))
     line = record.bottom_line(after)

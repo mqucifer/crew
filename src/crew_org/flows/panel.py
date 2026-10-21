@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from crew_org.crews.panel_crew import ASKS, PanelContext, PanelResult, Sibling
+from crew_org.crews.panel_crew import ASKS, Examples, PanelContext, PanelResult, Sibling
 from crew_org.flows import record as record_flow
 from crew_org.flows.decisions import collect_decisions
 from crew_org.flows.decisions import render as render_decisions
@@ -129,6 +129,7 @@ def render(result: PanelResult) -> str:
         "",
         f"{len(items)} items from {len(result.answers)} members before the split: "
         + ", ".join(f"{count} for the {_WHO[who]}" for who, count in by.items())
+        + (f", and {n} of QA's examples for the record" if (n := len(result.examples())) else "")
         + ". Kept as the record of the discussion; the epic's conclusion is separate.",
         "",
     ]
@@ -137,8 +138,13 @@ def render(result: PanelResult) -> str:
         lines += [f"### {roles[role]['role']}: {ask.question}", ""]
         if view := answer.view():
             lines += [f"- {view}", ""]
+        # QA's examples go to the record as the stories' criteria, not to be settled.
+        examples = answer.examples if isinstance(answer, Examples) else []
+        for e in examples:
+            lines += [f"- **{'Edge case' if e.edge else 'Example'}: {e.example}**"]
+            lines += [f"  - Rule: {e.rule}", f"  - Source: {e.source}"]
         if not answer.items():
-            lines += [ask.none, ""]
+            lines += [""] if examples else [ask.none, ""]
             continue
         for i in answer.items():
             # An empty item, after all four sessions ran, is shown as one, not a crash.

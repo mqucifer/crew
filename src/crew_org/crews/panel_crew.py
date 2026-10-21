@@ -42,7 +42,7 @@ from crew_org.permissions import load_agents
 from crew_org.session import steps
 
 SettledBy = Literal["product_owner", "architect", "sponsor", "infra"]
-Kind = Literal["reader", "decision", "example", "question", "runtime"]
+Kind = Literal["reader", "decision", "question", "runtime"]
 
 
 def settled_by(**kw: Any) -> Any:
@@ -178,15 +178,9 @@ class Examples(BaseModel):
     )
 
     def items(self) -> list[Item]:
-        return [
-            Item(
-                "example",
-                f"{e.rule}\n  {'Edge case' if e.edge else 'Example'}: {e.example}",
-                e.source,
-                "product_owner",
-            )
-            for e in self.examples
-        ] + [Item("question", q.question, q.source, q.settled_by) for q in self.questions]
+        """Only the questions: the examples go to the record as they are, as the
+        stories' criteria (ADR 0035), with nothing to settle (`PanelResult.examples`)."""
+        return [Item("question", q.question, q.source, q.settled_by) for q in self.questions]
 
     def view(self) -> str:
         return ""
@@ -333,6 +327,10 @@ class PanelResult:
     def items(self) -> list[tuple[str, Item]]:
         """Every member's items, as (role, item), in the order the settle numbers them."""
         return [(role, item) for role, answer in self.answers.items() for item in answer.items()]
+
+    def examples(self) -> list[Example]:
+        """QA's examples, which the settle writes into the record unchanged."""
+        return [e for a in self.answers.values() if isinstance(a, Examples) for e in a.examples]
 
 
 # The Goal template's own last line, which is the crew's, not the Sponsor's words.

@@ -14,7 +14,7 @@ reads; the conclusion is written then.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -234,6 +234,18 @@ def _write(
         raise SettleFailed(str(exc)) from exc
 
 
+def _examples(panel: PanelResult) -> tuple[record_flow.Example, ...]:
+    """QA's examples as the record's E rows: written as QA gave them, never settled.
+
+    They become the stories' criteria (ADR 0035). As numbered notes, every epic with
+    an example paid a full settle, and "nothing raised" never held.
+    """
+    return tuple(
+        record_flow.Example(f"E{n}", e.rule, e.example, e.edge, e.source)
+        for n, e in enumerate(panel.examples(), 1)
+    )
+
+
 def settle_epic(
     board: Any,
     issues: IssueClient,
@@ -263,7 +275,7 @@ def settle_epic(
             sink,
             repo=repo,
             epic=epic,
-            record=record_flow.Record(nothing_raised=True),
+            record=record_flow.Record(nothing_raised=True, examples=_examples(panel)),
             read=issue.get("body") or "",
         )
         sink.note(
@@ -323,6 +335,7 @@ def settle_epic(
         today=datetime.now(UTC).date().isoformat(),
         known=known,
     )
+    record = replace(record, examples=_examples(panel))
     text = record_flow.render(
         _write(issues, sink, repo=repo, epic=epic, record=record, read=issue.get("body") or "")
     )

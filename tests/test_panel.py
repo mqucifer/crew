@@ -109,11 +109,9 @@ def test_each_form_gives_the_settle_its_items_by_kind():
     assert [(i.kind, i.settled_by) for i in Decisions(decisions=[decision()]).items()] == [
         ("decision", "architect")
     ]
-    assert [(i.kind, i.settled_by) for i in examples.items()] == [
-        ("example", "product_owner"),
-        ("question", "sponsor"),
-    ]
-    assert "Edge case: 2 of 4 shows 50%" in examples.items()[0].text
+    # The examples go to the record as criteria, so only the question is settled (ADR 0035).
+    assert [(i.kind, i.settled_by) for i in examples.items()] == [("question", "sponsor")]
+    assert PanelResult({"qa_engineer": examples}, {}).examples() == examples.examples
     assert [(i.kind, i.settled_by) for i in runtime.items()] == [("runtime", "infra")]
     assert "Reader: the Sponsor" in view.view() and Decisions().view() == ""
 
@@ -356,6 +354,21 @@ def test_an_empty_item_is_shown_as_empty_not_a_crash():
         {},
     )
     assert "- **(empty)**" in panel.render(result)
+
+
+def test_qas_examples_show_in_the_comment_but_are_not_items_to_settle():
+    result = PanelResult(
+        {
+            "qa_engineer": Examples(
+                examples=[Example(rule="A rate", example="2 of 4 shows 50%", source=SOURCE)]
+            )
+        },
+        {},
+    )
+    text = panel.render(result)
+    assert "0 items from 1 members" in text and "1 of QA's examples for the record" in text
+    assert "- **Example: 2 of 4 shows 50%**" in text and "  - Rule: A rate" in text
+    assert "No examples." not in text
 
 
 def test_the_comment_reads_back_as_the_same_answers():

@@ -309,7 +309,8 @@ def numbered(panel: PanelResult) -> list[tuple[int, str, str]]:
     """The panel's items in a fixed order, as (number, role, text). N1 is the first.
 
     The settle is told each one's kind beside its role (ADR 0035): a reader's gap, a
-    decision, an example, a question or a runtime change.
+    decision, a question or a runtime change. QA's examples aren't notes: they go to the
+    record as they are (`PanelResult.examples`).
     """
     return [
         (

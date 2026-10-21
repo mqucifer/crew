@@ -3,7 +3,8 @@
 The epic's body keeps the text the Sponsor approved untouched, then one section
 the code owns, under `## Refinement conclusion`. Its tables are the record:
 decisions (R rows), questions still open (Q), what infra has to provide (I) and
-the panel's notes dismissed (N). Every refinement and design step reads it whole;
+the panel's notes dismissed (N), and QA's examples (E), which the stories' criteria
+are written from (ADR 0035). Every refinement and design step reads it whole;
 the steps that build and judge a story read the rows the story cites. Comments
 are the audit trail of each change, never what a step reads to learn a decision.
 
@@ -77,11 +78,12 @@ FOOTER = (
 )
 
 _CELLS = re.compile(r"(?<!\\)\|")
-_ID = re.compile(r"^([RQINC])(\d+)$")
+_ID = re.compile(r"^([RQINCE])(\d+)$")
 _TESTS = (
     "| ID | Test | What it asserts after | Declared by | Status |",
     "|---|---|---|---|---|",
 )
+_EXAMPLES = ("| ID | Rule | Example | Edge case | Source |", "|---|---|---|---|---|")
 # A C row's status: a story changes the test, or the split dropped it, with why.
 DECLARED = "declared"
 
@@ -143,6 +145,17 @@ class TestRow:
 
 
 @dataclass(frozen=True)
+class Example:
+    """One of QA's examples, from the panel, as the record keeps it: a criterion to come."""
+
+    id: str
+    rule: str
+    example: str
+    edge: bool
+    source: str
+
+
+@dataclass(frozen=True)
 class Item:
     """A line of the infra or the dismissed table: its ID and its one cell."""
 
@@ -159,6 +172,7 @@ class Record:
     to_log: tuple[str, ...] = ()
     nothing_raised: bool = False
     tests: tuple[TestRow, ...] = ()
+    examples: tuple[Example, ...] = ()
 
     def row(self, row_id: str) -> Decision | None:
         return next((d for d in self.decisions if d.id == row_id), None)
@@ -261,6 +275,7 @@ def parse(text: str) -> Record:
     infra: list[Item] = []
     dismissed: list[Item] = []
     tests: list[TestRow] = []
+    examples: list[Example] = []
     for line in text.splitlines():
         if not line.startswith("|"):
             continue
@@ -299,6 +314,8 @@ def parse(text: str) -> Record:
         elif kind == "C" and len(cells) == 5:
             test = cells[1].strip("`")
             tests.append(TestRow(cells[0], test, cells[2], cells[3], cells[4]))
+        elif kind == "E" and len(cells) == 5:
+            examples.append(Example(cells[0], cells[1], cells[2], cells[3] == "yes", cells[4]))
     marked = _TO_LOG.search(text)
     return Record(
         tuple(decisions),
@@ -308,6 +325,7 @@ def parse(text: str) -> Record:
         tuple(marked.group(1).split(",")) if marked else (),
         NOTHING_RAISED in text,
         tuple(tests),
+        tuple(examples),
     )
 
 
@@ -338,14 +356,31 @@ def bottom_line(record: Record) -> str:
         + f", {len(record.for_architect())} open for the Architect, "
         f"{len(record.open) - len(record.for_architect())} left to the implementer, "
         f"{len(record.for_infra)} for infra, {len(record.dismissed)} dismissed"
+        + (f", {len(record.examples)} examples" if record.examples else "")
         + (f", {len(record.declared_tests())} merged tests it changes." if record.tests else ".")
     )
+
+
+def _examples(record: Record) -> list[str]:
+    if not record.examples:
+        return []
+    return [
+        "QA's examples from the panel, which the stories' criteria are written from:",
+        "",
+        *_EXAMPLES,
+        *(
+            f"| {e.id} | {_cell(e.rule)} | {_cell(e.example)} | {'yes' if e.edge else 'no'} | "
+            f"{_cell(e.source)} |"
+            for e in record.examples
+        ),
+        "",
+    ]
 
 
 def render(record: Record) -> str:
     """The record as the epic's body carries it."""
     if record.nothing_raised:
-        return f"{HEADER}\n\n{NOTHING_RAISED}"
+        return "\n".join([HEADER, "", NOTHING_RAISED, "", *_examples(record)]).rstrip()
     lines = [HEADER, "", bottom_line(record), ""]
     if record.decisions:
         lines += [*_DECISIONS, *(_decision_line(d) for d in record.decisions), ""]
@@ -358,6 +393,7 @@ def render(record: Record) -> str:
             ),
             "",
         ]
+    lines += _examples(record)
     if record.tests:
         lines += [
             "Merged tests this epic changes:",
@@ -568,10 +604,14 @@ def change_note(
     dropped = [t for t in after.tests if t.id in old_tests and old_tests[t.id] != t]
     lines += [f"- **{t.id}** `{t.test}`, declared by {t.declared_by}" for t in new_tests]
     lines += [f"- **{t.id}** `{t.test}` {t.status}" for t in dropped]
+    old_examples = {e.id for e in before.examples}
+    new_examples = [e.id for e in after.examples if e.id not in old_examples]
+    if new_examples:
+        lines.append(f"- **{', '.join(new_examples)}** QA's examples, for the stories' criteria")
     if not lines and after.nothing_raised:
         lines.append("- Nothing to record: the panel raised nothing.")
     changed = [d.id for d in added] + [q.id for q in opened]
-    changed += [t.id for t in new_tests + dropped]
+    changed += [t.id for t in new_tests + dropped] + new_examples
     return (
         f"{CHANGE.format(','.join(changed) + (f' {kind}' if kind else ''))}\n"
         f"**The epic's record changed**, by the {by}"

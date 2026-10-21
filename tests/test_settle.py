@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from crew_org.crews.panel_crew import (
     Decision,
     Decisions,
+    Example,
     Examples,
     PanelContext,
     PanelResult,
@@ -781,6 +782,34 @@ def test_a_panel_that_raised_nothing_is_settled_without_a_model_call(monkeypatch
     # And it is a conclusion, so the next tick leaves the epic alone.
     again, calls, _ = run(gh, monkeypatch, notes=nothing)
     assert again.outcome is flow.Outcome.ALREADY and calls == []
+
+
+EXAMPLE = Example(rule="A rate", example="2 of 4 shows 50%", edge=True, source="the Goal")
+
+
+def test_qas_examples_go_to_the_record_with_nothing_to_settle(monkeypatch):
+    """ADR 0035: the examples become the stories' criteria. As notes, every epic with an
+    example paid a full settle, and "nothing raised" never held."""
+    gh = Github()
+    only = PanelResult({"qa_engineer": Examples(examples=[EXAMPLE])}, {})
+    result, calls, _ = run(gh, monkeypatch, notes=only)
+    assert result.outcome is flow.Outcome.WRITTEN and calls == []
+    written = record.parse(record.split(gh.body)[1])
+    assert written.nothing_raised
+    assert written.examples == (
+        record.Example("E1", "A rate", "2 of 4 shows 50%", True, "the Goal"),
+    )
+
+
+def test_qas_examples_go_to_the_record_beside_the_settled_notes(monkeypatch):
+    gh = Github()
+    notes = panel(1, 0, 1, 0)
+    notes.answers["qa_engineer"].examples.append(EXAMPLE)
+    result, calls, _ = run(gh, monkeypatch, good(), notes=notes)
+    assert result.outcome is flow.Outcome.WRITTEN and len(calls) == 1
+    written = record.parse(record.split(gh.body)[1])
+    assert [d.id for d in written.decisions] == ["R1"]
+    assert [e.id for e in written.examples] == ["E1"]
 
 
 # --- the Sponsor's question -----------------------------------------------------------------
