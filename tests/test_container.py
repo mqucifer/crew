@@ -34,7 +34,9 @@ def worktree(tmp_path: Path) -> Path:
     )
     (tmp_path / ".crew").mkdir()
     (tmp_path / ".crew/project.yaml").write_text(
-        "version: 2\nintent:\n  scope:\n    purpose: A site.\n  release:\n    deploys: false\n"
+        "version: 3\nintent:\n  scope:\n"
+        "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+        "    purpose: A site.\n  release:\n    deploys: false\n"
         "  done:\n    bar: CI is green.\ndesign:\n  checks:\n  - uv run pytest -q\n"
     )
     return tmp_path

@@ -33,7 +33,7 @@ jobs:
 """
 RECORD = """
 intent:
-  scope: {purpose: p}
+  scope: {purpose: p, serves: [{who: the Sponsor, needs: [a release]}]}
   release: {publishes: true, where: a tag on main}
   done: {bar: tests pass}
 design:

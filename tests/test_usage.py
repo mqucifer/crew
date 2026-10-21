@@ -32,9 +32,10 @@ Dated, not versioned.
 Not this.
 """
 
-RECORD = """version: 2
+RECORD = """version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: Show how the crew works.
     uses:
       - repo: mqucifer/crew

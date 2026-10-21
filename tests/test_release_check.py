@@ -311,7 +311,9 @@ def test_crew_gaps_are_filed_and_the_sponsor_s_step_is_kept_apart():
 def record(image: str | None) -> str:
     line = f"\n    image: {image}" if image else ""
     return (
-        "version: 2\nintent:\n  scope:\n    purpose: Report delivery metrics.\n"
+        "version: 3\nintent:\n  scope:\n"
+        "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+        "    purpose: Report delivery metrics.\n"
         f"  release:\n    publishes: true\n    where: ghcr.io/mqucifer/sprint-metrics{line}\n"
         "  done:\n    bar: Its criteria are met.\n"
     )

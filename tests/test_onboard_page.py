@@ -16,12 +16,15 @@ from crew_org.crews.onboarding_crew import (
     Answers,
     DoneAnswers,
     Question,
+    ReaderAnswer,
     ReleaseAnswers,
     ScopeAnswers,
     Turn,
 )
 from crew_org.flows.onboard import ANSWER, CONFIRM, interview
 from crew_org.flows.onboard_page import Session, compose, serve, thinking_turn
+
+READERS = [ReaderAnswer(who="the Sponsor", needs=["how the crew performs"])]
 
 
 class Script:
@@ -144,7 +147,9 @@ def test_a_whole_interview_through_the_page(page):
     session, base, _ = page
     po = Script(
         Turn(
-            answers=Answers(scope=ScopeAnswers(purpose="Sprint metrics for the crew")),
+            answers=Answers(
+                scope=ScopeAnswers(purpose="Sprint metrics for the crew", serves=READERS)
+            ),
             say="Two things.",
             questions=[
                 Question(about="intent.release.deploys", question="Is the merge the release?"),
@@ -207,7 +212,7 @@ def test_done_and_later_from_the_page(page, action, settled):
     partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
-            answers=Answers(scope=ScopeAnswers(purpose="Metrics")),
+            answers=Answers(scope=ScopeAnswers(purpose="Metrics", serves=READERS)),
             say="Anything out of scope?",
             questions=[Question(about="intent.scope.out_of_scope", question="Out of scope?")],
         )

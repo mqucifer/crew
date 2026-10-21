@@ -17,9 +17,10 @@ from crew_org.flows.standup import write_standup
 from crew_org.project import RECORD_PATH
 from tests.test_standup import AT, SPRINT, run
 
-INTENT = """version: 2
+INTENT = """version: 3
 intent:
   scope:
+    serves: [{{who: the Sponsor, needs: [how the crew performs]}}]
     purpose: Show how the crew works.
   release:
     deploys: {deploys}

@@ -29,7 +29,9 @@ from tests.test_revert import (
 )
 
 RECORD = parse(
-    "version: 2\nintent:\n  scope:\n    purpose: p\n  release:\n    deploys: false\n"
+    "version: 3\nintent:\n  scope:\n"
+    "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+    "    purpose: p\n  release:\n    deploys: false\n"
     "  done:\n    bar: tests pass\n"
 )
 
