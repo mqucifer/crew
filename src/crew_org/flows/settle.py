@@ -33,6 +33,7 @@ from crew_org.crews.settle_crew import (
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts, proposed_goal
 from crew_org.flows import record as record_flow
+from crew_org.flows.panel import PANEL_MARKER
 from crew_org.session import steps
 from crew_org.tools.github_issues import IssueClient, from_sponsor
 
@@ -169,9 +170,21 @@ def render(
 
 
 def _reply(issues: IssueClient, repo: str, epic: int) -> tuple[bool, str]:
-    """(asked, the Sponsor's reply). Only the Sponsor's words answer (crew#399)."""
+    """(asked, the Sponsor's reply). Only the Sponsor's words answer (crew#399).
+
+    A question counts only after the latest panel comment: it cites that panel's
+    N-numbers. An epic re-panelled while it waited (a panel from before ADR 0035's
+    forms reads as none) has new numbers, so its old question is asked again.
+    """
     comments = issues.comments(repo, epic)
-    asked = [i for i, c in enumerate(comments) if SETTLE_QUESTION_MARKER in (c.get("body") or "")]
+    panelled = max(
+        (i for i, c in enumerate(comments) if PANEL_MARKER in (c.get("body") or "")), default=-1
+    )
+    asked = [
+        i
+        for i, c in enumerate(comments)
+        if i > panelled and SETTLE_QUESTION_MARKER in (c.get("body") or "")
+    ]
     if not asked:
         return False, ""
     replies = [

@@ -1312,9 +1312,13 @@ flows.settle._reply:filter:d5c4ad51:
   at: flows/settle.py:_reply
   if: '''<!-- crew:'' not in (c.get(''body'') or '''') and from_sponsor(issues, c)'
   rule: decision.board_flow.sponsor_words
-flows.settle._reply:filter:f8fbd7d2:
+flows.settle._reply:filter:4f2800c7:
   at: flows/settle.py:_reply
-  if: SETTLE_QUESTION_MARKER in (c.get('body') or '')
+  if: 'PANEL_MARKER in (c.get(''body'') or '''')'
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.settle._reply:filter:55d93879:
+  at: flows/settle.py:_reply
+  if: 'i > panelled and SETTLE_QUESTION_MARKER in (c.get(''body'') or '''')'
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
 flows.settle.settle_design_questions:end:28b0fa92:
   at: flows/settle.py:settle_design_questions

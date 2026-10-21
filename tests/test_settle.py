@@ -867,6 +867,22 @@ def test_a_reply_before_the_question_does_not_count(monkeypatch):
     assert result.outcome is flow.Outcome.WAITING and calls == []
 
 
+def test_a_question_asked_before_the_panel_was_run_again_is_asked_again(monkeypatch):
+    """Its N-numbers were the old panel's: an epic re-panelled while it waited on the
+    Sponsor would settle the new notes with an answer to different ones."""
+    gh = Github()
+    gh.said("mqucifer-crew[bot]", f"{panel_flow.PANEL_MARKER}\nthe old panel")
+    gh.said("mqucifer-crew[bot]", flow.SETTLE_QUESTION_MARKER + " About N3?")
+    gh.said("mquarters", "Keep N3.")
+    gh.said("mqucifer-crew[bot]", f"{panel_flow.PANEL_MARKER}\nthe new panel")
+    result, calls, _ = run(gh, monkeypatch, ASK)
+    assert result.outcome is flow.Outcome.WAITING and calls == [{"reply": ""}]
+    assert flow.SETTLE_QUESTION_MARKER in gh.writes[-1][1]
+    # The question asked after the new panel is the one the next pass waits on.
+    result, calls, _ = run(gh, monkeypatch)
+    assert result.outcome is flow.Outcome.WAITING and calls == []
+
+
 # --- the panel's notes, kept as data ---------------------------------------------------------
 
 
