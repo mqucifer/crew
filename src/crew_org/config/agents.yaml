@@ -29,6 +29,12 @@ product_owner:
   # Medium effort with room, like the Business Analyst and the Architect: xhigh
   # with a 16,384-token cap is the pairing that failed the Architect's design
   # notes twice (#223). It runs only on a new Goal, so it hadn't failed yet.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846). Named, not explained: the model knows them.
+  background: >
+    Outcomes over outputs, and Jobs to Be Done: an epic is judged by what its
+    reader can now see or decide, and a feature its reader doesn't use is a
+    cost. User story mapping orders the work by the reader's path through it.
   llm: crew-analysis
   llm_params:
     max_tokens: 32768
@@ -146,6 +152,13 @@ architect:
   # default, design notes for sprint-metrics#59-61 ran ten minutes each and
   # failed with the budget spent before the answer, the failure that moved the
   # Business Analyst here. Same alias, same headroom.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846).
+  background: >
+    Architecture decision records (Nygard) and one-way versus two-way doors:
+    a decision earns design time by what it costs to reverse. Semantic
+    versioning for published contracts, and consumer-driven contract tests
+    to show who a change breaks.
   llm: crew-analysis
   llm_params:
     max_tokens: 32768
@@ -244,6 +257,13 @@ qa_engineer:
   # Thinking at low effort, like the Developer (#213). Reasoning was off here
   # for the Developer's 27-minute loop, measured at near-greedy sampling; with
   # the vendor's sampling, low effort converges.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846).
+  background: >
+    Specification by Example and Example Mapping: rules shown by concrete
+    examples with real values, the edge cases with them, and questions where
+    an example waits on an answer. The test pyramid: most checks fast and
+    close to the code, few end to end.
   llm: crew-code-think
   llm_params:
     max_tokens: 32768  # thinking needs room to finish; the Developer used 14,655 of 16,384 on sprint-metrics#129
@@ -380,6 +400,13 @@ ux_designer:
   # One model task: the presentation note, for epics labelled `needs:ux` (#377).
   # Rationed as the Architect is (§13): judgement about presentation is as hard
   # for a small model as architecture, so it's asked for only where it applies.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846).
+  background: >
+    Nielsen's usability heuristics, and Stephen Few's dashboard design: the
+    figure the reader came for first, comparison over decoration, labels and
+    units on every number. Pages are judged at the widths their readers use,
+    phone first, with WCAG 2.2 for contrast and reflow.
   llm: crew-analysis
   llm_params:
     max_tokens: 32768
@@ -415,6 +442,13 @@ devops_engineer:
   # something that runs or deploys (#335). Its other duties run as code,
   # attributed to no role, as the merge queue's moves are: the post-merge
   # watcher (#336), the release publish check (#340) and stack health (#347).
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846).
+  background: >
+    The Twelve-Factor App for the runtime contract: config in the
+    environment, disposable processes, health checks. DORA's four key
+    measures (deployment frequency, lead time for changes, change failure
+    rate, time to restore), and what each misses when read alone.
   llm: crew-code-think
   llm_params:
     max_tokens: 32768

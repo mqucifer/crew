@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from crew_org.calls import role_spec
+from crew_org.calls import role_spec, who
 from crew_org.profiles import profile_for
 from crew_org.project import RECORD_PATH, ProjectRecordError, _uses, brief, read_record
 from crew_org.session.tools import SKIPPED, VIEW_LINES
@@ -59,9 +59,7 @@ def system_text(role: str = "developer") -> str:
     left out: `done`'s own description says what the gate returns a branch for.
     """
     spec = role_spec(role)
-    return (
-        f"You are {spec['role']}. {spec['backstory'].strip()}\n\nYour goal: {spec['goal'].strip()}"
-    )
+    return f"{who(spec)}\n\nYour goal: {spec['goal'].strip()}"
 
 
 def _size(n: int) -> str:

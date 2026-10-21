@@ -1987,7 +1987,7 @@ def _sentences(text: str) -> list[str]:
 
 
 def _told_agents() -> list[Entry]:
-    """Each sentence of a role's goal and backstory that states a rule."""
+    """Each sentence of a role's goal, backstory and background that states a rule."""
     out: list[Entry] = []
     for key, spec in load_agents().items():
         parts = [(spec["role"], key, spec)]
@@ -1997,7 +1997,7 @@ def _told_agents() -> list[Entry]:
             if isinstance(sub, dict) and ("goal" in sub or "backstory" in sub)
         ]
         for role, where, body in parts:
-            for part in ("goal", "backstory"):
+            for part in ("goal", "backstory", "background"):
                 for sentence in _sentences(str(body.get(part, ""))):
                     if not _RULE_WORDS.search(sentence):
                         continue

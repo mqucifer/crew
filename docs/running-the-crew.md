@@ -110,7 +110,7 @@ flowchart TD
 | Code Reviewer | Diff verdicts, bugs |
 | Scrum Master | Standups, retros, process defects |
 
-Roles live in `config/agents.yaml` as data — goal, backstory, model alias, capability allow-list, and the constitution sections injected into the prompt. Changing how a role behaves is a config change reviewed like any other, not a prompt edited in passing.
+Roles live in `config/agents.yaml` as data — goal, backstory, the background of its field (the established practice it reads work with, in every step: ADR 0035), model alias, capability allow-list, and the constitution sections injected into the prompt. Changing how a role behaves is a config change reviewed like any other, not a prompt edited in passing.
 
 **What is enforced rather than asked for.** A boundary that depends on granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a small model blurs, so it is made structural:
 

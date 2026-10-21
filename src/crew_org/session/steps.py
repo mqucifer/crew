@@ -28,7 +28,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from crew_org import rulebook
-from crew_org.calls import role_spec
+from crew_org.calls import role_spec, who
 from crew_org.cut_text import check_not_cut_at_a_quote
 from crew_org.events import EventKind, record
 from crew_org.project import RECORD_PATH, ProjectRecordError, brief, read_record
@@ -155,9 +155,7 @@ def system_text(role: str, step: str | None = None) -> str:
     its goal, a step's own over them. The constitution's sections aren't sent: the
     form's descriptions and the step's own section say what it's held to."""
     spec = role_spec(role, step)
-    return (
-        f"You are {spec['role']}. {spec['backstory'].strip()}\n\nYour goal: {spec['goal'].strip()}"
-    )
+    return f"{who(spec)}\n\nYour goal: {spec['goal'].strip()}"
 
 
 RULES = """\
