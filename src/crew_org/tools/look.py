@@ -12,10 +12,11 @@ A screenshot of each width is kept for a person or a filed correction (crew#830)
 
 **What it serves, and how** (the operator, 2026-10-21): the site's JavaScript is
 generated code, so the browser runs in the sandbox, hardened as it is and with no
-network. The host fetches the published files (the newest `github-pages` artifact,
-exactly what the reader is served) or takes a directory of the checkout (the design
-mock), mounts them read-only, and the container serves them on localhost. Nothing is
-built and nothing reaches the network from the container.
+network. The host fetches the published files (the `github-pages` artifact of the
+default branch's last successful deploy, exactly what the reader is served) or takes a
+directory of the checkout (the design mock), mounts them read-only, and the container
+serves them on localhost. Nothing is built and nothing reaches the network from the
+container.
 
 A page can name stylesheets, scripts and fonts on other hosts (crew-presentation's
 design system and fonts come from CDNs). The host fetches those too (`externals`),
@@ -118,7 +119,8 @@ class Looked:
 
 
 def published(github: Any, repo: str, into: Path) -> Path:
-    """The published site's files, from the newest `github-pages` artifact, in `into`."""
+    """The published site's files, from the default branch's last deployed `github-pages`
+    artifact, in `into`."""
     found = github.pages_artifact(repo)
     if found is None:
         raise NotLooked(f"{repo} has no published site to look at: no github-pages artifact")

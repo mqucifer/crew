@@ -106,7 +106,7 @@ Each member is also given the tools its question needs (`Step.tools`, `session/r
 
 | Member | Its tools | What they read |
 |---|---|---|
-| UX Designer | `look` | the published site (its newest `github-pages` artifact) or a directory of the checkout, such as a design mock, in a browser at the reader's widths: in the sandbox, offline (`tools/look.py`) |
+| UX Designer | `look` | the published site (the `github-pages` artifact of the default branch's last successful deploy) or a directory of the checkout, such as a design mock, in a browser at the reader's widths: in the sandbox, offline (`tools/look.py`) |
 | Architect | `contracts` | the published schemas and contracts, and their changes since the last release tag |
 | QA | `run`, `ci_steps` | the Developer's `run`, in its workspace container over a clone of the checkout; and what CI and the devcontainer really run |
 | DevOps | `ci_steps`, `ci_log` | what CI runs, and the default branch's latest runs and a job's log |

@@ -281,6 +281,44 @@ def test_the_published_site_is_the_newest_pages_artifact(tmp_path):
         looking.published(NoPages(), "crew-presentation", tmp_path)
 
 
+def test_the_published_site_is_the_default_branchs_successful_deploy():
+    """Any branch's run uploads a github-pages artifact, and so does a failed deploy."""
+    from crew_org.tools.github_issues import IssueClient, Trust  # noqa: PLC0415
+
+    def artifact(n, branch, expired=False):
+        return {
+            "id": n,
+            "expired": expired,
+            "workflow_run": {"id": n, "head_branch": branch},
+            "archive_download_url": f"https://api.github.com/download/{n}",
+        }
+
+    runs = {
+        1: {"conclusion": "success", "event": "push"},
+        2: {"conclusion": "failure", "event": "push"},
+        3: {"conclusion": "success", "event": "push"},
+        4: {"conclusion": "success", "event": "push"},
+    }
+    listed = [artifact(1, "feature"), artifact(2, "main"), artifact(3, "main", expired=True)]
+    listed.append(artifact(4, "main"))
+
+    def answer(request):
+        path = request.url.path
+        if path == "/repos/mqucifer/crew-presentation":
+            return httpx.Response(200, json={"default_branch": "main"})
+        if path.endswith("/actions/artifacts"):
+            return httpx.Response(200, json={"artifacts": listed})
+        if "/actions/runs/" in path:
+            return httpx.Response(200, json=runs[int(path.rsplit("/", 1)[1])])
+        return httpx.Response(200, content=f"zip {path.rsplit('/', 1)[1]}".encode())
+
+    trust = Trust(sponsor="mquarters", crew=frozenset(), tools=frozenset())
+    client = httpx.Client(transport=httpx.MockTransport(answer))
+    github = IssueClient("t", "mqucifer", client=client, trust=trust)
+    found = github.pages_artifact("crew-presentation")
+    assert found is not None and found[0]["id"] == 4 and found[1] == b"zip 4"
+
+
 def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch):
     """The design system and fonts come from CDNs; the container is offline."""
     site = tmp_path / "site"
