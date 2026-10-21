@@ -44,9 +44,14 @@ DEFAULT_DOCS = "README.md"
 # the project serves in place of a feature list, which moved to `design.built`
 # as history (ADR 0035, crew#847).
 FORMAT_VERSION = 3
-# Read until every onboarded project's record is rewritten, then removed (crew#847):
-# a migration with an end, not a second format kept for good.
-OLDER_READ = 2
+# Why each older format is refused, so its record can be rewritten by hand.
+OLDER = {
+    1: "Version 1 kept the Architect's choices (build, check commands, how a release "
+    "happens) in the Sponsor's intent; they now live in `design` (#143).",
+    2: "Version 2 listed what the project does as `intent.scope.in_scope`; rewrite it as "
+    "`intent.scope.serves`, who the project serves and what they need to see or decide, "
+    "and move the list to `design.built` as history (ADR 0035, crew#847).",
+}
 
 
 class Section(BaseModel):
@@ -346,7 +351,6 @@ WHERE = ("intent", "release", "where")
 WHERE_WORDS = "where it is deployed, since it deploys"
 PUBLISHED_WORDS = "where the version is published, since it publishes one"
 PUBLISHES = ("intent", "release", "publishes")
-SERVES = ("intent", "scope", "serves")
 
 
 def lookup(raw: Any, path: tuple[str, ...]) -> Any:
@@ -365,8 +369,6 @@ def gaps(raw: Any) -> dict[tuple[str, ...], str]:
         value = lookup(raw, path)
         if path == WHERE[:-1] + ("deploys",) and publishes:
             continue  # publishing a version answers it (#141)
-        if path == SERVES and isinstance(raw, dict) and raw.get("version") == OLDER_READ:
-            continue  # asked for when it's rewritten (crew#847)
         if value is None or (isinstance(value, str) and not value.strip()) or value == []:
             found[path] = words
     if lookup(raw, WHERE[:-1] + ("deploys",)) is True and not lookup(raw, WHERE):
@@ -395,46 +397,14 @@ def load_raw(text: str) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ProjectRecordError([f"{RECORD_PATH} must be a mapping, not {type(raw).__name__}"])
     version = raw.get("version", FORMAT_VERSION)
-    if version == OLDER_READ:
-        return _built_from_scope(raw)
     if version != FORMAT_VERSION:
         raise ProjectRecordError(
             [
                 f"{RECORD_PATH} is format version {version}; this crew reads version "
-                f"{FORMAT_VERSION}. Version 1 kept the Architect's choices (build, check "
-                "commands, how a release happens) in the Sponsor's intent; they now live "
-                "in `design` (#143)."
+                f"{FORMAT_VERSION}. {OLDER.get(version, '')}".rstrip()
             ]
         )
     return raw
-
-
-def _built_from_scope(raw: dict[str, Any]) -> dict[str, Any]:
-    """A format 2 record with its `in_scope` moved to `design.built`, as history (crew#847).
-
-    It still loads, without who it serves, until its project's record is rewritten.
-    """
-    scope = lookup(raw, ("intent", "scope"))
-    if not isinstance(scope, dict) or "in_scope" not in scope:
-        return raw
-    did = scope["in_scope"] or []
-    design = raw.get("design") or {}
-    return {
-        **raw,
-        "intent": {**raw["intent"], "scope": {k: v for k, v in scope.items() if k != "in_scope"}},
-        **({"design": {**design, "built": [*design.get("built", []), *did]}} if did else {}),
-    }
-
-
-def upgrade(raw: dict[str, Any]) -> dict[str, Any]:
-    """A raw record in the current format, for `crew onboard` to finish.
-
-    A format 2 record's feature list is kept as the design's history, and who the
-    project serves becomes a missing answer, so the interview asks for it.
-    """
-    if raw.get("version") != OLDER_READ:
-        return raw
-    return {**_built_from_scope(raw), "version": FORMAT_VERSION}
 
 
 def parse(text: str) -> ProjectRecord:
@@ -582,9 +552,6 @@ def brief(record: ProjectRecord) -> str:
 
 
 def _serves(readers: list[Reader]) -> list[str]:
-    if not readers:
-        # A format 2 record, until it's rewritten (crew#847).
-        return ["- (not recorded yet: the purpose says whom it's for)"]
     return [line for r in readers for line in (f"- {r.who}:", *(f"  - {n}" for n in r.needs))]
 
 

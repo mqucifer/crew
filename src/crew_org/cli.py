@@ -1260,7 +1260,7 @@ def onboard(
     from crew_org.git_ops import Workspace
     from crew_org.llm import health
     from crew_org.permissions import Capability, Permissions
-    from crew_org.project import ProjectRecordError, load_raw, upgrade, validate
+    from crew_org.project import ProjectRecordError, load_raw, validate
     from crew_org.tools.github_issues import IssueClient
 
     Permissions.from_agents().require("Product Owner", Capability.ONBOARD_PROJECT)
@@ -1300,8 +1300,6 @@ def onboard(
         except (OSError, ProjectRecordError) as exc:
             console.print(f"[red]{escape(str(exc))}[/]")
             raise typer.Exit(code=1) from None
-    # An older record is finished in today's form: who the project serves is asked for.
-    raw = upgrade(raw)
     kept = source or VAR / "onboarding" / f"{repo}.yaml"
 
     if not project.repository:

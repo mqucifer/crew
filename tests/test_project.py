@@ -256,23 +256,9 @@ def test_a_feature_list_in_intent_is_refused_in_the_current_format():
     assert problem.startswith("intent.scope.in_scope")
 
 
-def test_a_format_2_record_still_loads_with_what_it_does_as_history():
-    """The migration: read until each project's record is rewritten (crew#847)."""
-    from crew_org.project import brief
-
-    record = parse(FORMAT_2)
-    assert record.version == 2 and record.intent.scope.serves == []
-    assert record.design.built == ["A command-line tool", "Prometheus output"]
-    text = brief(record)
-    assert "- (not recorded yet: the purpose says whom it's for)" in text
-    assert "**What it does as built so far:** history, not scope.\n- A command-line tool" in text
-    assert parse(render(record)) == record
-
-
-def test_onboarding_an_older_record_asks_who_it_serves():
-    from crew_org.project import gaps, load_raw, upgrade
-
-    raw = upgrade(load_raw(FORMAT_2))
-    assert raw["version"] == 3 and "in_scope" not in raw["intent"]["scope"]
-    assert raw["design"]["built"] == ["A command-line tool", "Prometheus output"]
-    assert list(gaps(raw)) == [("intent", "scope", "serves")]
+def test_a_format_2_record_is_refused_naming_the_field_to_rewrite():
+    """The migration has ended: every onboarded record is format 3 (crew#847)."""
+    (problem,) = problems(FORMAT_2)
+    assert "format version 2" in problem
+    assert "`intent.scope.in_scope`" in problem and "`intent.scope.serves`" in problem
+    assert "`design.built`" in problem
