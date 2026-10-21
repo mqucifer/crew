@@ -30,7 +30,7 @@ from crew_org.tools.github_issues import IssueClient
 
 if TYPE_CHECKING:
     from crew_org.flows.board_flow import TickResult
-    from crew_org.tools.github_project import Card
+    from crew_org.tools.github_project import Card, ProjectClient
 
 
 class PanelFailed(RuntimeError):
@@ -38,6 +38,7 @@ class PanelFailed(RuntimeError):
 
 
 def panel_step(
+    board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
     result: TickResult,
@@ -79,6 +80,7 @@ def panel_step(
                     raise PanelFailed("; ".join(f"{r}: {why}" for r, why in notes.failed.items()))
                 panel_flow.post(issues, repo, number, notes)
             settled = settle_flow.settle_epic(
+                board,
                 issues,
                 sink,
                 repo=repo,

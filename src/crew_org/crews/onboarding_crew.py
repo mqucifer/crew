@@ -31,9 +31,22 @@ class UseAnswer(BaseModel):
     )
 
 
+class ReaderAnswer(BaseModel):
+    who: str = Field(description="Someone it serves, e.g. the Sponsor, or a visitor to the site")
+    needs: list[str] = Field(description="What they need to see or decide with it, in their words")
+
+
 class ScopeAnswers(BaseModel):
     purpose: str | None = Field(None, description="What the project is for, and for whom")
-    in_scope: list[str] | None = Field(None, description="What it does")
+    # Who it serves, not what it does (ADR 0035): a feature list here read as the
+    # Sponsor's scope, and panels held work to a tool nobody used.
+    serves: list[ReaderAnswer] | None = Field(
+        None,
+        description=(
+            "Who it serves, each with what they need to see or decide. Not features, "
+            "formats or endpoints: what it does is the Architect's design"
+        ),
+    )
     out_of_scope: list[str] | None = Field(None, description="What it deliberately doesn't")
     uses: list[UseAnswer] | None = Field(
         None,

@@ -1,7 +1,7 @@
 # 27. Collaborators file bugs, and the Product Owner may propose a Goal
 
 - **Date:** 2026-10-12
-- **Status:** Accepted (bugs' path through the flow built by crew#407; proposed Goals to be built in M7 as the Product Owner's "the Goal points elsewhere", crew#846, and with ADR 0021's consumer review in M15)
+- **Status:** Accepted (bugs' path through the flow built by crew#407; proposed Goals built in M7 as the Product Owner's "the Goal points elsewhere" by crew#846, and with ADR 0021's consumer review in M15)
 
 ## Context
 

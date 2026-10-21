@@ -345,6 +345,11 @@ def design(
                 for u in ([] if new else getattr(review, "undeclared", []))
             ]
             if not reasons:
+                # What the proposal doesn't choose is kept, not dropped: the CI
+                # secrets, and what's built, which is history (crew#847).
+                if record.design is not None:
+                    for name in Design.model_fields.keys() - candidate.model_fields_set:
+                        setattr(candidate, name, getattr(record.design, name))
                 ended.record = record.model_copy(update={"design": candidate})
                 ended.refused = []
                 return ended

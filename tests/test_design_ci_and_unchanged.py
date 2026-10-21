@@ -53,7 +53,9 @@ def test_a_ci_proof_is_recorded_apart_from_the_commands_the_sandbox_runs():
 
 def test_it_survives_the_record_round_trip():
     record = parse(
-        "version: 2\nintent:\n  scope:\n    purpose: metrics\n  release:\n    deploys: false\n"
+        "version: 3\nintent:\n  scope:\n"
+        "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+        "    purpose: metrics\n  release:\n    deploys: false\n"
         f"  done:\n    bar: CI passes\ndesign:\n  checks: [uv run pytest -q]\n  lockfile: uv.lock\n"
         f'  ci_checks: ["{SMOKE}"]\n'
     )
@@ -81,7 +83,9 @@ def test_the_deploy_review_is_told_what_ci_proves():
     class Records:
         def file_at(self, repo, path, ref):
             return (
-                "version: 2\nintent:\n  scope:\n    purpose: metrics\n  release:\n"
+                "version: 3\nintent:\n  scope:\n"
+                "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+                "    purpose: metrics\n  release:\n"
                 "    publishes: true\n    where: GHCR\n  done:\n    bar: CI passes\n"
                 f'design:\n  checks: [uv run pytest -q]\n  ci_checks: ["{SMOKE}"]\n'
             )

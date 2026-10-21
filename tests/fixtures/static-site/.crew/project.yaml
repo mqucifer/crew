@@ -1,6 +1,7 @@
-version: 2
+version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: A fixture for crew#403, a static page with one browser test.
   release:
     deploys: false
