@@ -11,7 +11,7 @@ import contextlib
 import httpx
 
 from crew_org.crews import panel_crew, settle_crew
-from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, PanelResult
+from crew_org.crews.panel_crew import Examples, PanelContext, PanelResult, Question
 from crew_org.flows import project_log
 from crew_org.flows.project_log import HEADER, accepted, read_log
 from crew_org.tools.github_issues import IssueClient, Trust
@@ -137,9 +137,8 @@ def test_every_panel_member_is_shown_the_projects_log():
 def test_the_settle_step_is_shown_it_as_a_source():
     notes = PanelResult(
         {
-            "qa_engineer": PanelAnswer(
-                nothing_to_add=False,
-                notes=[PanelNote(problem="p", source="s", settle="t", settled_by="product_owner")],
+            "qa_engineer": Examples(
+                questions=[Question(question="p", source="s", settled_by="product_owner")]
             )
         },
         {},

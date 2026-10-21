@@ -577,7 +577,7 @@ def asks() -> tuple[Ask, ...]:
                     if fn is not None and name not in seen:
                         seen.add(name)
                         scope.append(fn)
-            forms = {s.form for s in ran if isinstance(s.form, type)}
+            forms: set[type[BaseModel]] = set()
             for name in seen:
                 fn = _functions(source.tree).get(name) or outer
                 for sub in ast.walk(fn):
@@ -590,12 +590,16 @@ def asks() -> tuple[Ask, ...]:
                         ):
                             forms.add(value)
             check = next((k.value for k in node.keywords if k.arg == "check"), None)
+            # A session's step answers in its own form, told only to its role: the
+            # panel's four members each have one (ADR 0035).
             found += [
                 Ask(
                     roles.get(key, key),
                     source,
                     outer.name if outer is not None else "<module>",
-                    frozenset(forms),
+                    frozenset(
+                        forms | {s.form for s in ran if s.role == key and isinstance(s.form, type)}
+                    ),
                     ast.unparse(check) if check is not None else None,
                     _is_session(node),
                 )
@@ -2416,7 +2420,6 @@ _TOLD_SITES = {
     "agents.yaml:product_owner": "scope",
     "agents.yaml:qa_engineer": "evidence",
     "agents.yaml:qa_engineer.criteria_check": "evidence",
-    "agents.yaml:qa_engineer.panel": "evidence",
     "agents.yaml:scrum_master": "guidance",
     "agents.yaml:senior_engineer": "guidance",
     "agents.yaml:ux_designer": "scope",

@@ -1,21 +1,29 @@
-"""The refinement panel: four roles each read an approved epic once, before it is split (crew#440).
+"""The refinement panel: four roles each ask their own question of an epic, before the split.
 
 On 2026-10-01 the epics of sprint-metrics Goal 174 were split with nobody asking
 the Architect, the UX Designer, QA or DevOps what they saw. The test in
 `experiments/panel-174/` ran these four calls on the epics as they stood that
-morning: they named the problems between epics reliably and added few notes
-that weren't needed, but missed four findings together. This is the panel with
-the test's three changes:
+morning, and the panel was built from it.
 
-- the Sponsor's recorded decisions are in every member's context;
-- DevOps and the Architect each get a check for their blind spot, as a scope
-  line in their task, not a design rule (ADR 0011);
-- each member reviews the epic in front of it. How it fits a sibling is theirs
-  to raise; a problem wholly inside a sibling, or in a delivered one, is not.
+Each member asks its own question, with its own goal and its own kind of answer
+(the Sponsor, 2026-10-21, ADR 0035, crew#828). This is the Three Amigos as Example
+Mapping runs them: each role brings a different kind of card. Before, all four had
+one task and one form with a different area of ownership, and 44% of their notes
+repeated each other (`experiments/panel-overlap-828/`). An example can't repeat a
+design decision, and a small epic gets short answers: no runtime change, nothing
+expensive to reverse.
+
+| Member | Its goal | What it produces |
+|---|---|---|
+| UX Designer | the reader | the reader's view, and what's missing for them (`ReaderView`) |
+| Architect | the system | the decisions to make before building (`Decisions`) |
+| QA | proof | the examples that become the stories' criteria (`Examples`) |
+| DevOps | running it | the runtime changes, or none (`RuntimeChanges`) |
 
 Each member is its own session over the code with the same context, and the four run
-at once (the Sponsor, crew#807). They don't see each other's notes. Who settles a note
-is the member's call too (`settled_by`), so the settle step only has to read them.
+at once (the Sponsor, crew#807). They don't see each other's answers. Who settles an
+item is the member's call (`settled_by`), and every form gives the settle its items
+in one shape (`Item`), so the settle reads them all the same way.
 """
 
 from __future__ import annotations
@@ -27,92 +35,264 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
-from crew_org.rulebook import refuse
 from crew_org.session import steps
 
-# What each member reads the epic for: the area it owns, and nothing about what
-# to find. The last two carry the checks for the blind spots the test found.
-FOCUS = {
-    "architect": (
-        "You own coherence: the data shapes, interfaces and decisions in this epic that "
-        "would be expensive to reverse, and whether they fit the rest of the Goal.\n"
-        "A change to a published version or format is classified by the project's "
-        "versioning rule in the project's decision log or record: say whether it is MAJOR, "
-        "MINOR or "
-        "PATCH under that rule, and quote it. If the epic needs code that a sibling epic "
-        "builds, name the sibling and what it has to provide."
-    ),
-    "ux_designer": (
-        "You own what a person or a program using this sees: what they send, what they "
-        "get back, and what they read to use it."
-    ),
-    "qa_engineer": (
-        "You will have to prove what this epic delivers. You own whether what the Goal "
-        "asks of it can be proven, and whether everything it promises can hold together."
-    ),
-    "devops_engineer": (
-        "You own whether what this epic ships can be run and operated, and proven in CI. "
-        "The project builds to its spec; where it runs is infra's.\n"
-        "For the epic, check the runtime contract: the settings it reads (their names and "
-        "defaults), what it needs at startup, how it is started, health-checked and "
-        "stopped, and how CI proves it, with throwaway services and no real secrets. A gap "
-        "there is a problem to settle.\n"
-        "The deployed runtime is infra's, not the epic's: which server, real addresses and "
-        "secrets, provisioning, backups, scaling, dashboards. Don't ask the epic to settle "
-        "them. If the epic assumes something infra must provide, raise one note for it and "
-        "mark it infra."
-    ),
-}
-ROLES = tuple(FOCUS)
-
-SCOPE = (
-    "Your notes are about this epic. A problem with how it fits another epic is yours to "
-    "raise. A problem wholly inside another epic belongs to that epic's review, and a "
-    "delivered epic is background only."
-)
-
 SettledBy = Literal["product_owner", "architect", "sponsor", "infra"]
+Kind = Literal["reader", "decision", "example", "question", "runtime"]
 
 
-class PanelNote(BaseModel):
-    problem: str = Field(
-        description="What the epic gets wrong, leaves out or contradicts, in one or two sentences"
-    )
-    source: str = Field(
-        description=(
-            "What says so, quoted, and where: the Goal, the project's record, a Sponsor "
-            "decision (name its issue), or another epic (name it)"
-        )
-    )
-    settle: str = Field(description="What should be settled before the epic is split")
-    settled_by: SettledBy = Field(
+def settled_by(**kw: Any) -> Any:
+    """Who settles an item, as each form asks it: one rule, told in each form's field."""
+    return Field(
         description=(
             "Who can settle it: product_owner if the Goal, the record or a recorded Sponsor "
             "decision answers it; architect if it is a design question; sponsor only if "
             "nothing recorded answers it and it is a product choice; infra only for the "
             "deployed runtime (where it runs, real addresses and secrets, provisioning, "
             "backups), which the project doesn't build"
-        )
+        ),
+        **kw,
     )
 
 
-class PanelAnswer(BaseModel):
-    nothing_to_add: bool = Field(
-        description="True if there is nothing in your area to add. Then notes is empty"
-    )
-    notes: list[PanelNote] = Field(default_factory=list)
+_SOURCE = (
+    "What it rests on, quoted, and where: the Goal, the project's record, a Sponsor "
+    "decision (name its issue), another epic (name it), or the code"
+)
 
-    @model_validator(mode="after")
-    def _one_or_the_other(self) -> PanelAnswer:
-        if self.nothing_to_add and self.notes:
-            refuse("form.PanelAnswer.one_or_the_other", "with_notes")
-        if not self.nothing_to_add and not self.notes:
-            refuse("form.PanelAnswer.one_or_the_other", "no_notes")
-        return self
+
+@dataclass(frozen=True)
+class Item:
+    """One thing a member raised, as the settle reads it, whatever the member's form."""
+
+    kind: Kind
+    text: str
+    source: str
+    settled_by: SettledBy
+
+
+# --- the UX Designer: the reader --------------------------------------------------------------
+
+
+class ReaderGap(BaseModel):
+    gap: str = Field(
+        description="What the reader needs from this epic that it leaves out or makes hard "
+        "to use, in one or two sentences"
+    )
+    source: str = Field(description=_SOURCE)
+    settled_by: SettledBy = settled_by()
+
+
+class ReaderView(BaseModel):
+    reader: str = Field(description="Who reads or uses what this epic delivers, from the Goal")
+    sees: str = Field(
+        description="What they will see or do once it is delivered, as they meet it: the "
+        "page, the answer, the output"
+    )
+    matters: str = Field(
+        description="What it lets them see or decide that they couldn't before, or that it "
+        "doesn't matter to them, and why"
+    )
+    missing: list[ReaderGap] = Field(
+        default_factory=list,
+        description="What is missing for the reader. Empty when the epic gives them what they need",
+    )
+
+    def items(self) -> list[Item]:
+        return [Item("reader", g.gap, g.source, g.settled_by) for g in self.missing]
+
+    def view(self) -> str:
+        return f"Reader: {self.reader}\n  Sees: {self.sees}\n  Why it matters: {self.matters}"
+
+
+# --- the Architect: the system ----------------------------------------------------------------
+
+
+class Decision(BaseModel):
+    decision: str = Field(
+        description="What has to be decided before the stories are written: a data shape, "
+        "an interface, a published version or format"
+    )
+    why: str = Field(description="What it would cost to reverse once stories build on it")
+    options: str = Field(description="The options you see, and the one the code or record favours")
+    source: str = Field(description=_SOURCE)
+    settled_by: SettledBy = settled_by(default="architect")
+
+
+class Decisions(BaseModel):
+    decisions: list[Decision] = Field(
+        default_factory=list,
+        description="The decisions to make before building. Empty when nothing this epic "
+        "touches is expensive to reverse",
+    )
+
+    def items(self) -> list[Item]:
+        return [
+            Item(
+                "decision",
+                f"{d.decision}\n  Expensive to reverse because: {d.why}\n  Options: {d.options}",
+                d.source,
+                d.settled_by,
+            )
+            for d in self.decisions
+        ]
+
+    def view(self) -> str:
+        return ""
+
+
+# --- QA: proof --------------------------------------------------------------------------------
+
+
+class Example(BaseModel):
+    rule: str = Field(description="The rule from the epic or the Goal that the example illustrates")
+    example: str = Field(
+        description="One concrete situation and what the reader sees: real values in, the "
+        "result out"
+    )
+    edge: bool = Field(default=False, description="True for an edge case or a failure")
+    source: str = Field(description=_SOURCE)
+
+
+class Question(BaseModel):
+    question: str = Field(
+        description="What has to be answered before an example can be written for a rule"
+    )
+    source: str = Field(description=_SOURCE)
+    settled_by: SettledBy = settled_by()
+
+
+class Examples(BaseModel):
+    examples: list[Example] = Field(
+        default_factory=list,
+        description="The examples that prove the epic worked for its reader, the edge cases "
+        "with them. They become the stories' criteria",
+    )
+    questions: list[Question] = Field(
+        default_factory=list,
+        description="Questions an example waits on. Empty when there are none",
+    )
+
+    def items(self) -> list[Item]:
+        return [
+            Item(
+                "example",
+                f"{e.rule}\n  {'Edge case' if e.edge else 'Example'}: {e.example}",
+                e.source,
+                "product_owner",
+            )
+            for e in self.examples
+        ] + [Item("question", q.question, q.source, q.settled_by) for q in self.questions]
+
+    def view(self) -> str:
+        return ""
+
+
+# --- DevOps: running it -----------------------------------------------------------------------
+
+
+class RuntimeChange(BaseModel):
+    area: Literal["settings", "startup", "health", "stop", "ci"] = Field(
+        description="Which part of the runtime contract it changes"
+    )
+    change: str = Field(
+        description="What changes in it, and what the epic leaves unsaid about it: a "
+        "setting's name and default, what is needed at startup, how it's health-checked or "
+        "stopped, how CI proves it"
+    )
+    source: str = Field(description=_SOURCE)
+    settled_by: SettledBy = settled_by()
+
+
+class RuntimeChanges(BaseModel):
+    changes: list[RuntimeChange] = Field(
+        default_factory=list,
+        description="The runtime changes this epic ships. Empty when it changes nothing that runs",
+    )
+
+    def items(self) -> list[Item]:
+        return [
+            Item("runtime", f"{c.area}: {c.change}", c.source, c.settled_by) for c in self.changes
+        ]
+
+    def view(self) -> str:
+        return ""
+
+
+MemberAnswer = ReaderView | Decisions | Examples | RuntimeChanges
+
+
+@dataclass(frozen=True)
+class Ask:
+    """A member's own question: what it reads the epic for, and the answer it gives."""
+
+    goal: str
+    question: str
+    how: str
+    form: type[BaseModel]
+    said: str
+    # What its answer says when it has nothing to raise, as the comment shows it.
+    none: str
+
+
+ASKS: dict[str, Ask] = {
+    "ux_designer": Ask(
+        "the reader",
+        "Is this what the reader needs? What will they see or do, and does it matter to them?",
+        "Say who the reader is, from the Goal, what they will meet once the epic is "
+        "delivered, and what it lets them see or decide. Then say what is missing for them.",
+        ReaderView,
+        "the reader's view of this epic, and what's missing for them.",
+        "Nothing missing for the reader.",
+    ),
+    "architect": Ask(
+        "the system",
+        "What does this touch that's expensive to reverse?",
+        "Name each decision the stories will build on that would be costly to undo: a data "
+        "shape, an interface, a published version or format. A change to a published version "
+        "or format is classified by the project's versioning rule in its decision log or "
+        "record: say whether it is MAJOR, MINOR or PATCH under that rule, and quote it. If "
+        "the epic needs code that a sibling epic builds, name the sibling and what it has to "
+        "provide.",
+        Decisions,
+        "the decisions to make before building, or none.",
+        "Nothing expensive to reverse.",
+    ),
+    "qa_engineer": Ask(
+        "proof",
+        "How will we know it worked for the reader?",
+        "Write the examples that would prove it: for each rule the epic sets, concrete "
+        "situations with real values and what the reader sees, the edge cases with them. "
+        "Where an example waits on an answer, ask for it as a question.",
+        Examples,
+        "the examples that prove this epic, and any questions that stop one.",
+        "No examples.",
+    ),
+    "devops_engineer": Ask(
+        "running it",
+        "Can this be shipped, run and watched?",
+        "List the runtime changes the epic ships: the settings it reads (their names and "
+        "defaults), what it needs at startup, how it is started, health-checked and stopped, "
+        "and how CI proves it, with throwaway services and no real secrets. The project "
+        "builds to its spec; where it runs is infra's: which server, real addresses and "
+        "secrets, provisioning, backups, scaling, dashboards. If the epic assumes something "
+        "infra must provide, mark that change infra.",
+        RuntimeChanges,
+        "the runtime changes, or none.",
+        "No runtime change.",
+    ),
+}
+ROLES = tuple(ASKS)
+
+SCOPE = (
+    "Your answer is about this epic. How it fits another epic is yours to raise. "
+    "Something wholly inside another epic belongs to that epic's review, and a "
+    "delivered epic is background only."
+)
 
 
 @dataclass(frozen=True)
@@ -140,9 +320,13 @@ class PanelContext:
 
 @dataclass(frozen=True)
 class PanelResult:
-    answers: dict[str, PanelAnswer]
-    # A member whose call failed: its role and why. The others' notes still stand.
+    answers: dict[str, MemberAnswer]
+    # A member whose call failed: its role and why. The others' answers still stand.
     failed: dict[str, str]
+
+    def items(self) -> list[tuple[str, Item]]:
+        """Every member's items, as (role, item), in the order the settle numbers them."""
+        return [(role, item) for role, answer in self.answers.items() for item in answer.items()]
 
 
 # The Goal template's own last line, which is the crew's, not the Sponsor's words.
@@ -164,23 +348,21 @@ def siblings_text(context: PanelContext) -> str:
 
 def opening(context: PanelContext, role: str) -> dict[str, str]:
     """A member's session start, before the project, map and hints (crew#807): its
-    step and scope first, then what it reads the epic against."""
+    step, question and scope first, then what it reads the epic against."""
     title = load_agents()[role]["role"]
+    ask = ASKS[role]
     siblings = siblings_text(context)
     return {
         "step": f"## Your step: the refinement panel, as the {title}\n\n"
-        "This epic is about to be split into stories. Before it is, four roles each read "
-        "it once, for what they own, and the Product Owner settles what they raise into "
-        f"the epic's record. You are the {title}. {FOCUS[role]}\n\n"
-        "Name each problem in your area that should be settled before the split: "
-        "something the epic gets wrong, leaves out or contradicts, against the Goal, the "
-        "project's record, the Sponsor's decisions, the project's decision log, the other "
-        "epics or the code. Quote its source.\n\n"
+        "This epic is about to be split into stories. Before it is, four roles each ask "
+        "their own question of it, and the Product Owner settles their answers into the "
+        f"epic's record. Your goal is {ask.goal}, and your question is: {ask.question}\n\n"
+        f"{ask.how} Read it against the Goal's reader and intent, the project's record, the "
+        "Sponsor's decisions, the project's decision log, the other epics and the code, and "
+        "quote what each answer rests on.\n\n"
         f"{SCOPE}\n\n"
-        'If there is nothing in your area to add, say so: "nothing to add" is a complete '
-        "answer, and better than a note that isn't needed. Don't restate the epic, propose "
-        "stories or a design, or note things outside your area; the other roles cover theirs. "
-        "Write every issue or pull request as owner/repo#number, never as a bare number.",
+        "A short answer is a complete one when the epic is small. Write every issue or pull "
+        "request as owner/repo#number, never as a bare number.",
         "goal": goal_part(context),
         "decisions": context.decisions if _decided(context.decisions) else "",
         "project_log": context.project_log,
@@ -195,18 +377,23 @@ def _decided(decisions: str) -> bool:
     return "\n## " in decisions or "Not searched" in decisions
 
 
-# The members' own role text in refinement, where one has it (crew#807).
-ROLE_TEXT = {"architect": "refinement", "qa_engineer": "panel"}
+# The members' own role text in the panel (crew#807, ADR 0035).
+ROLE_TEXT = {
+    "architect": "refinement",
+    "qa_engineer": "panel",
+    "ux_designer": "panel",
+    "devops_engineer": "panel",
+}
 STEPS = {
     role: steps.Step(
         f"panel {role}",
         role,
-        PanelAnswer,
-        "your notes on this epic, or nothing to add.",
+        ask.form,
+        ask.said,
         "the epic",
         step=ROLE_TEXT.get(role),
     )
-    for role in FOCUS
+    for role, ask in ASKS.items()
 }
 
 
@@ -215,9 +402,9 @@ def review(
     role: str,
     reading: steps.Reading | None = None,
     on_end: Any = None,
-) -> PanelAnswer:
+) -> MemberAnswer:
     """One member's read of the epic, in a session over the code at `reading`."""
-    answer: PanelAnswer = steps.run(
+    answer: MemberAnswer = steps.run(
         STEPS[role],
         opening(context, role),
         reading,
@@ -233,7 +420,7 @@ def run_panel(
     reading: steps.Reading | None = None,
 ) -> PanelResult:
     """All members at once: they read independently, and the settle waits for all of
-    them (the Sponsor, crew#807). One failing doesn't lose the others' notes.
+    them (the Sponsor, crew#807). One failing doesn't lose the others' answers.
 
     Each member's model time while they all ran, and what the Spark served across
     them, are recorded on one event: a first measure of several sessions at once
@@ -244,14 +431,14 @@ def run_panel(
     def measure(role: str) -> Any:
         return lambda session, ending: measured.__setitem__(role, steps.measured(session, ending))
 
-    def one(role: str) -> PanelAnswer:
+    def one(role: str) -> MemberAnswer:
         # The caller attributes the card and repo; each member adds its own purpose.
-        answer: PanelAnswer = attributed(
+        answer: MemberAnswer = attributed(
             lambda: review(context, role, reading, on_end=measure(role)), purpose=f"panel {role}"
         )()
         return answer
 
-    answers: dict[str, PanelAnswer] = {}
+    answers: dict[str, MemberAnswer] = {}
     failed: dict[str, str] = {}
     began = time.monotonic()
     with ThreadPoolExecutor(max_workers=len(roles)) as pool:

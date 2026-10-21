@@ -208,24 +208,26 @@ told.design_crew.name_an_epic_only_from_the:
 told.design_note_crew.the_epics_record_is_settled_build:
   guidance: true
   owner: Architect
+told.form.Decision.settled_by:
+  guidance: true
 told.form.DesignAnswer.decision:
   guidance: true
   owner: Architect
 told.form.DesignNote.beyond_reach:
   guidance: true
   owner: Architect
-told.form.PanelNote.settled_by:
+told.form.Question.settled_by:
+  guidance: true
+told.form.ReaderGap.settled_by:
   guidance: true
 told.form.Row.project_wide:
   guidance: true
   owner: Product Owner
-told.panel_crew.a_problem_wholly_inside_another_epic:
-  guidance: true
-told.panel_crew.dont_ask_the_epic_to_settle:
-  guidance: true
-told.panel_crew.dont_restate_the_epic_propose_stories:
+told.form.RuntimeChange.settled_by:
   guidance: true
 told.panel_crew.if_the_epic_assumes_something_infra:
+  guidance: true
+told.panel_crew.something_wholly_inside_another_epic_belongs:
   guidance: true
 told.panel_crew.write_every_issue_or_pull_request:
   guidance: true

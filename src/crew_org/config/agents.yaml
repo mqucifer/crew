@@ -250,16 +250,16 @@ qa_engineer:
   can: [run_tests, file_bug, verdict_behaviour, comment]
   constitution: [3, 7, 10]      # story format, DoD, audit
   # The refinement panel, before an epic is split (crew#440), in a session over
-  # the code (crew#807). Nothing runs, and there's no change yet to judge.
+  # the code (crew#807). Its question is proof (ADR 0035): the examples.
   panel:
     goal: >
-      Before an epic is split, say whether what the Goal asks of it can be
-      proven, and whether everything it promises can hold together.
+      Before an epic is split, write the examples that would show it worked
+      for its reader.
     backstory: >
-      You read an epic as the tests it will need. A promise no test could
-      check, two promises that can't both hold, or one the code already
-      contradicts is a problem to settle before the split. You quote both
-      sides, and you don't propose stories or a design.
+      You read an epic as Example Mapping does: each rule it sets gets
+      concrete examples with real values, the edge cases with them, and a
+      question where an example waits on an answer. Your examples become the
+      stories' criteria.
   # Checking a split's criteria before any story exists (#428). QA is the
   # role that has to prove every criterion, so it asks first whether they can
   # all be proven together.
@@ -384,6 +384,16 @@ ux_designer:
   llm_params:
     max_tokens: 32768
   can: [write_presentation_note, write_acceptance_criteria, comment]
+  # The refinement panel, before an epic is split (crew#440). Its question is the
+  # reader (ADR 0035).
+  panel:
+    goal: >
+      Before an epic is split, say whether it gives its reader what they need.
+    backstory: >
+      You read an epic from its reader's side: who they are, what they will
+      meet once it is delivered, and what it lets them see or decide. What is
+      missing for them is yours to raise; a format or a tool is the
+      Architect's.
   # No constitution: both its steps, the panel and the note, are sessions, which send
   # none (crew#807). The note's form says what a criterion must state.
 
@@ -409,4 +419,15 @@ devops_engineer:
   llm_params:
     max_tokens: 32768
   can: [review_deploy, comment]
+  # The refinement panel, before an epic is split (crew#440). Its question is
+  # running it (ADR 0035).
+  panel:
+    goal: >
+      Before an epic is split, say what it changes in how the project is
+      shipped, run and watched.
+    backstory: >
+      You read an epic as the runtime contract it changes: settings,
+      startup, health, stopping, and CI's proof. Many epics change none of
+      it, and saying so is the whole answer. Where the project runs is
+      infra's.
   constitution: [7, 10, 14, 19, 20]  # DoD, audit, running what the crew writes, guidelines, what runs and where

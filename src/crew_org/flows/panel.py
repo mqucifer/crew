@@ -14,7 +14,9 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelResult, Sibling
+from pydantic import ValidationError
+
+from crew_org.crews.panel_crew import ASKS, PanelContext, PanelResult, Sibling
 from crew_org.flows import record as record_flow
 from crew_org.flows.decisions import collect_decisions
 from crew_org.flows.decisions import render as render_decisions
@@ -117,31 +119,31 @@ def gather(issues: IssueClient, repo: str, epic: int, *, search: Iterable[str]) 
 
 
 def render(result: PanelResult) -> str:
-    """The panel's notes as the epic's comment."""
+    """The panel's answers as the epic's comment, each member under its own question."""
     roles = load_agents()
-    notes = [n for a in result.answers.values() for n in a.notes]
-    by = {who: sum(1 for n in notes if n.settled_by == who) for who in _WHO}
+    items = [item for _, item in result.items()]
+    by = {who: sum(1 for i in items if i.settled_by == who) for who in _WHO}
     lines = [
         PANEL_MARKER,
         "## Refinement panel",
         "",
-        f"{len(notes)} notes from {len(result.answers)} members before the split: "
+        f"{len(items)} items from {len(result.answers)} members before the split: "
         + ", ".join(f"{count} for the {_WHO[who]}" for who, count in by.items())
         + ". Kept as the record of the discussion; the epic's conclusion is separate.",
         "",
     ]
     for role, answer in result.answers.items():
-        lines += [f"### {roles[role]['role']}", ""]
-        if answer.nothing_to_add:
-            lines += ["Nothing to add.", ""]
+        ask = ASKS[role]
+        lines += [f"### {roles[role]['role']}: {ask.question}", ""]
+        if view := answer.view():
+            lines += [f"- {view}", ""]
+        if not answer.items():
+            lines += [ask.none, ""]
             continue
-        for n in answer.notes:
-            lines += [
-                f"- **{n.problem}**",
-                f"  - Source: {n.source}",
-                f"  - To settle: {n.settle}",
-                f"  - Settled by: {_WHO[n.settled_by]}",
-            ]
+        for i in answer.items():
+            first, *rest = i.text.splitlines()
+            lines += [f"- **{first}**", *[f"  - {r.strip()}" for r in rest]]
+            lines += [f"  - Source: {i.source}", f"  - Settled by: {_WHO[i.settled_by]}"]
         lines.append("")
     for role, why in result.failed.items():
         lines += [f"### {roles[role]['role']}", "", f"Did not answer: {why}", ""]
@@ -156,15 +158,29 @@ def render(result: PanelResult) -> str:
 
 
 def read_panel(comment: str) -> PanelResult | None:
-    """The panel's notes from its comment, or None if it carries none."""
+    """The panel's answers from its comment, or None if it carries none.
+
+    A panel from before each member had its own form (ADR 0035) reads as none, so the
+    panel runs again on an epic not yet settled. A settled epic's record is what a
+    re-split reads, and its panel isn't read again.
+    """
     found = _DATA.search(comment)
     if not found:
         return None
     data = json.loads(found.group(1))
-    return PanelResult(
-        {role: PanelAnswer.model_validate(a) for role, a in data["answers"].items()},
-        data["failed"],
-    )
+    try:
+        answers = {role: _answer(role, a) for role, a in data["answers"].items()}
+    except (KeyError, ValidationError):
+        return None
+    return PanelResult(answers, data["failed"])
+
+
+def _answer(role: str, data: dict[str, Any]) -> Any:
+    form = ASKS[role].form
+    # An old answer's `notes` would otherwise read as an empty new one.
+    if not set(data) <= set(form.model_fields):
+        raise KeyError(f"{role}'s answer isn't a {form.__name__}")
+    return form.model_validate(data)
 
 
 def panel_on(issues: IssueClient, repo: str, epic: int) -> PanelResult | None:

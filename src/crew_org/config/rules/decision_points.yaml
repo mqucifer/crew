@@ -26,6 +26,10 @@ crews.refinement_crew.check_provided:filter:2b3ad7bf:
   if: field not in provided and field.removesuffix('[]').rsplit('.', 1)[-1].removesuffix('[]') not in
     provided
   rule: check.refinement_crew.check
+crews.settle_crew.opening:filter:1c16a4b4:
+  at: crews/settle_crew.py:opening
+  if: (view := answer.view())
+  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.acceptance._already_done:end:11e9b3e2:
   at: flows/acceptance.py:_already_done
   if: not latest or ALREADY_DONE_MARKER not in latest[-1]
@@ -903,9 +907,13 @@ flows.panel.post:end:2652d731:
   at: flows/panel.py:post
   if: issues.has_comment_marked(repo, epic, PANEL_MARKER)
   not_a_rule: 'does a thing once: skips what''s already done'
-flows.panel.render:skip:08405b8e:
+flows.panel.render:filter:80efd002:
   at: flows/panel.py:render
-  if: answer.nothing_to_add
+  if: i.settled_by == who
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.panel.render:skip:1b6bb6dd:
+  at: flows/panel.py:render
+  if: not answer.items()
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.panel.siblings_of:skip:5d3a5c2b:
   at: flows/panel.py:siblings_of

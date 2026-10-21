@@ -110,7 +110,7 @@ def main() -> None:
                         for role, why in result.failed.items():
                             row = {"arm": arm, "run": run, "epic": epic, "role": role}
                             f.write(json.dumps({**row, "error": why, "crew": crew}) + "\n")
-                    counts = {r: len(a.notes) for r, a in result.answers.items()}
+                    counts = {r: len(a.items()) for r, a in result.answers.items()}
                     print(
                         f"run {run} #{epic} {seconds}s notes {counts} failed {list(result.failed)}",
                         flush=True,

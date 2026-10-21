@@ -15,12 +15,19 @@ from pydantic import ValidationError
 
 from crew_org.crews import panel_crew
 from crew_org.crews.panel_crew import (
-    FOCUS,
+    ASKS,
     ROLES,
-    PanelAnswer,
+    Decision,
+    Decisions,
+    Example,
+    Examples,
     PanelContext,
-    PanelNote,
     PanelResult,
+    Question,
+    ReaderGap,
+    ReaderView,
+    RuntimeChange,
+    RuntimeChanges,
     Sibling,
     opening,
     run_panel,
@@ -32,15 +39,25 @@ from crew_org.tools.github_issues import IssueClient, Trust
 TRUST = Trust(sponsor="mquarters", crew=frozenset({"mqucifer-crew[bot]"}), tools=frozenset())
 
 
-def note(**overrides):
+SOURCE = "Goal: 'keeps the history it's given'"
+
+
+def decision(**overrides):
     params = dict(
-        problem="History is kept in memory.",
-        source="Goal: 'keeps the history it's given'",
-        settle="Where the history lives.",
-        settled_by="product_owner",
+        decision="Where the history lives.",
+        why="Every later story reads it from there.",
+        options="A file, or Postgres; the record names Postgres.",
+        source=SOURCE,
     )
     params.update(overrides)
-    return PanelNote(**params)
+    return Decision(**params)
+
+
+def nothing(role: str):
+    """A member's answer with nothing to raise."""
+    if role == "ux_designer":
+        return ReaderView(reader="the Sponsor", sees="a trend", matters="it shows a drift")
+    return ASKS[role].form()
 
 
 def context(**overrides) -> PanelContext:
@@ -62,19 +79,72 @@ def context(**overrides) -> PanelContext:
 # --- an answer -----------------------------------------------------------------------------
 
 
-def test_an_answer_is_notes_or_nothing_to_add_never_both_or_neither():
-    PanelAnswer(nothing_to_add=True)
-    PanelAnswer(nothing_to_add=False, notes=[note()])
-    with pytest.raises(ValidationError):
-        PanelAnswer(nothing_to_add=True, notes=[note()])
-    with pytest.raises(ValidationError):
-        PanelAnswer(nothing_to_add=False)
+def test_each_member_has_its_own_form_and_kind_of_answer():
+    """Different kinds of answer can't repeat each other (ADR 0035, crew#828)."""
+    assert {r: a.form for r, a in ASKS.items()} == {
+        "ux_designer": ReaderView,
+        "architect": Decisions,
+        "qa_engineer": Examples,
+        "devops_engineer": RuntimeChanges,
+    }
+    assert len({a.question for a in ASKS.values()}) == len({a.goal for a in ASKS.values()}) == 4
 
 
-def test_a_note_says_who_settles_it_and_only_from_the_three():
-    assert note(settled_by="sponsor").settled_by == "sponsor"
+def test_each_form_gives_the_settle_its_items_by_kind():
+    view = ReaderView(
+        reader="the Sponsor",
+        sees="a trend line",
+        matters="it shows a drift",
+        missing=[ReaderGap(gap="No unit on the axis.", source=SOURCE, settled_by="product_owner")],
+    )
+    examples = Examples(
+        examples=[Example(rule="A rate", example="2 of 4 shows 50%", edge=True, source=SOURCE)],
+        questions=[Question(question="What is a sprint?", source=SOURCE, settled_by="sponsor")],
+    )
+    runtime = RuntimeChanges(
+        changes=[RuntimeChange(area="settings", change="DB_URL", source=SOURCE, settled_by="infra")]
+    )
+    assert [(i.kind, i.settled_by) for i in view.items()] == [("reader", "product_owner")]
+    assert [(i.kind, i.settled_by) for i in Decisions(decisions=[decision()]).items()] == [
+        ("decision", "architect")
+    ]
+    assert [(i.kind, i.settled_by) for i in examples.items()] == [
+        ("example", "product_owner"),
+        ("question", "sponsor"),
+    ]
+    assert "Edge case: 2 of 4 shows 50%" in examples.items()[0].text
+    assert [(i.kind, i.settled_by) for i in runtime.items()] == [("runtime", "infra")]
+    assert "Reader: the Sponsor" in view.view() and Decisions().view() == ""
+
+
+def test_a_small_epic_gets_short_answers():
+    """Nothing to raise is an empty list: no runtime change, nothing expensive to reverse."""
+    for role in ROLES:
+        assert nothing(role).items() == []
+
+
+def test_an_item_says_who_settles_it_and_only_from_the_four():
+    assert decision(settled_by="sponsor").settled_by == "sponsor"
     with pytest.raises(ValidationError):
-        note(settled_by="qa_engineer")
+        decision(settled_by="qa_engineer")
+
+
+def test_the_results_items_are_in_the_order_the_settle_numbers_them():
+    result = PanelResult(
+        {
+            "architect": Decisions(decisions=[decision(), decision(decision="Two.")]),
+            "qa_engineer": Examples(),
+            "devops_engineer": RuntimeChanges(
+                changes=[RuntimeChange(area="ci", change="CI", source=SOURCE, settled_by="infra")]
+            ),
+        },
+        {},
+    )
+    assert [(r, i.kind) for r, i in result.items()] == [
+        ("architect", "decision"),
+        ("architect", "decision"),
+        ("devops_engineer", "runtime"),
+    ]
 
 
 # --- what a member is shown ----------------------------------------------------------------
@@ -103,39 +173,42 @@ def test_every_member_is_shown_the_same_context(role):
 @pytest.mark.parametrize("role", ROLES)
 def test_every_member_reviews_the_epic_in_front_of_it(role):
     text = describe(context(), role)
-    assert "A problem wholly inside another epic belongs to that epic's review" in text
+    assert "Something wholly inside another epic belongs to that epic's review" in text
     assert "a delivered epic is background only" in text
-    assert FOCUS[role] in text
 
 
-def test_each_member_gets_its_own_area_and_not_the_others():
-    texts = {role: describe(context(), role) for role in ROLES}
-    for role, text in texts.items():
-        for other in ROLES:
-            if other != role:
-                assert FOCUS[other] not in text
+@pytest.mark.parametrize("role", ROLES)
+def test_each_member_is_asked_its_own_question_and_not_the_others(role):
+    text = describe(context(), role)
+    ask = ASKS[role]
+    assert f"Your goal is {ask.goal}, and your question is: {ask.question}" in text
+    assert ask.how in text
+    for other, theirs in ASKS.items():
+        if other != role:
+            assert theirs.question not in text and theirs.how not in text
 
 
-def test_devops_checks_the_runtime_contract_and_leaves_the_deployed_runtime_to_infra():
-    focus = FOCUS["devops_engineer"]
-    assert "The project builds to its spec; where it runs is infra's" in focus
-    # What the product owes: its settings, startup, health, and the CI proof.
+def test_devops_lists_the_runtime_contract_and_leaves_the_deployed_runtime_to_infra():
+    how = ASKS["devops_engineer"].how
+    assert "The project builds to its spec; where it runs is infra's" in how
     for contract in ("settings it reads", "started, health-checked and", "throwaway services"):
-        assert contract in focus
-    # What it doesn't: production, real secrets, provisioning.
-    assert "The deployed runtime is infra's, not the epic's" in focus
-    assert "mark it infra" in focus
-    assert "local checks, CI, a test bed, production" not in focus
+        assert contract in how
+    assert "mark that change infra" in how
 
 
 def test_the_architect_is_asked_for_the_versioning_rule_and_sibling_dependencies():
-    assert "MAJOR, MINOR or" in FOCUS["architect"]
-    assert "name the sibling" in FOCUS["architect"]
+    assert "MAJOR, MINOR or" in ASKS["architect"].how
+    assert "name the sibling" in ASKS["architect"].how
 
 
-def test_a_note_can_be_for_infra_and_the_member_is_told_when():
-    assert note(settled_by="infra").settled_by == "infra"
-    described = PanelNote.model_json_schema()["properties"]["settled_by"]["description"]
+def test_qa_writes_examples_with_the_edge_cases_and_asks_what_stops_one():
+    how = ASKS["qa_engineer"].how
+    assert "concrete situations with real values" in how and "edge cases" in how
+    assert "ask for it as a question" in how
+
+
+def test_an_item_can_be_for_infra_and_the_member_is_told_when():
+    described = RuntimeChange.model_json_schema()["properties"]["settled_by"]["description"]
     assert "infra only for the deployed runtime" in described
 
 
@@ -161,7 +234,7 @@ def test_the_four_members_run_at_the_same_time(monkeypatch):
     def review(ctx, role, reading=None, on_end=None):
         barrier.wait()
         seen.append(role)
-        return PanelAnswer(nothing_to_add=True)
+        return nothing(role)
 
     monkeypatch.setattr(panel_crew, "review", review)
     result = run_panel(context())
@@ -186,7 +259,7 @@ def test_each_members_model_time_under_load_and_the_throughput_are_recorded(monk
     def review(ctx, role, reading=None, on_end=None):
         session = SimpleNamespace(calls=3, model_s=60.0, usage={"completion_tokens": 600})
         on_end(session, SimpleNamespace(how="done"))
-        return PanelAnswer(nothing_to_add=True)
+        return nothing(role)
 
     monkeypatch.setattr(panel_crew, "review", review)
     try:
@@ -208,7 +281,7 @@ def test_a_member_that_fails_does_not_lose_the_others_notes(monkeypatch):
     def review(ctx, role, reading=None, on_end=None):
         if role == "qa_engineer":
             raise RuntimeError("the model returned nothing")
-        return PanelAnswer(nothing_to_add=False, notes=[note(problem=f"from {role}")])
+        return Decisions(decisions=[decision(decision=f"from {role}")])
 
     monkeypatch.setattr(panel_crew, "review", review)
     result = run_panel(context())
@@ -228,42 +301,61 @@ def test_each_member_is_its_own_session_with_its_role_text(monkeypatch):
     monkeypatch.setattr(
         steps,
         "run",
-        lambda step, parts, reading, **kw: ran.append(step) or PanelAnswer(nothing_to_add=True),
+        lambda step, parts, reading, **kw: ran.append(step) or nothing(step.role),
     )
     run_panel(context(), reading="the checkout")
     assert sorted((s.name, s.role, s.step or "") for s in ran) == [
         ("panel architect", "architect", "refinement"),
-        ("panel devops_engineer", "devops_engineer", ""),
+        ("panel devops_engineer", "devops_engineer", "panel"),
         ("panel qa_engineer", "qa_engineer", "panel"),
-        ("panel ux_designer", "ux_designer", ""),
+        ("panel ux_designer", "ux_designer", "panel"),
     ]
-    assert all(s.form is PanelAnswer for s in ran)
+    assert all(s.form is ASKS[s.role].form for s in ran)
 
 
 # --- the comment ---------------------------------------------------------------------------
 
 
-def test_the_comment_is_marked_and_counts_notes_by_who_settles_them():
+def test_the_comment_is_marked_and_counts_items_by_who_settles_them():
     result = PanelResult(
         answers={
-            "architect": PanelAnswer(
-                nothing_to_add=False,
-                notes=[note(settled_by="architect"), note(problem="Two.", settled_by="sponsor")],
+            "architect": Decisions(
+                decisions=[decision(), decision(decision="Two.", settled_by="sponsor")]
             ),
-            "ux_designer": PanelAnswer(nothing_to_add=True),
+            "ux_designer": ReaderView(reader="the Sponsor", sees="a trend", matters="a drift"),
+            "devops_engineer": RuntimeChanges(),
         },
-        failed={"devops_engineer": "TimeoutError: slow"},
+        failed={"qa_engineer": "TimeoutError: slow"},
     )
     text = panel.render(result)
     assert text.startswith(panel.PANEL_MARKER)
-    assert "2 notes from 2 members" in text
+    assert "2 items from 3 members" in text
     assert (
         "0 for the Product Owner, 1 for the Architect, 1 for the Sponsor, 0 for the Infra" in text
     )
-    assert "Nothing to add." in text
+    assert "### Architect: What does this touch that's expensive to reverse?" in text
+    assert "  - Expensive to reverse because: Every later story reads it from there." in text
     assert "  - Settled by: Architect" in text
+    assert "- Reader: the Sponsor" in text and "Nothing missing for the reader." in text
+    assert "No runtime change." in text
     assert "Did not answer: TimeoutError: slow" in text
-    assert "### Architect" in text and "### DevOps Engineer" in text
+
+
+def test_the_comment_reads_back_as_the_same_answers():
+    result = PanelResult(
+        {"architect": Decisions(decisions=[decision()]), "qa_engineer": Examples()},
+        {"devops_engineer": "TimeoutError: slow -- twice"},
+    )
+    assert panel.read_panel(panel.render(result)) == result
+
+
+def test_a_panel_from_before_the_four_forms_reads_as_none_so_it_runs_again():
+    """ADR 0035: an epic not yet settled gets the new panel; there's no old reader."""
+    old = (
+        f"{panel.PANEL_MARKER}\n<!-- crew:panel-data "
+        '{"answers": {"architect": {"nothing_to_add": true, "notes": []}}, "failed": {}} -->'
+    )
+    assert panel.read_panel(old) is None
 
 
 # --- the context from GitHub ---------------------------------------------------------------
@@ -369,7 +461,7 @@ def test_an_epic_with_no_parent_has_no_goal_to_be_read_against():
 
 def test_the_comment_is_posted_once_per_epic():
     by, children = goal_with_epics()
-    result = PanelResult({"architect": PanelAnswer(nothing_to_add=True)}, {})
+    result = PanelResult({"architect": Decisions()}, {})
 
     fresh = github(by, children)
     assert panel.post(fresh, "sprint-metrics", 406, result) is True

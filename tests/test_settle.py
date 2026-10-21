@@ -13,7 +13,18 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, PanelResult
+from crew_org.crews.panel_crew import (
+    Decision,
+    Decisions,
+    Examples,
+    PanelContext,
+    PanelResult,
+    Question,
+    ReaderGap,
+    ReaderView,
+    RuntimeChange,
+    RuntimeChanges,
+)
 from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     DECISION_CHARS,
@@ -52,8 +63,25 @@ APPROVED = "# Run as a service\n\nThe approved text.\n\n---\n\nProposed by the P
 
 
 def note(problem="History is in memory.", settled_by="product_owner"):
-    return PanelNote(
-        problem=problem, source="the Goal", settle="Where it lives", settled_by=settled_by
+    return problem, settled_by
+
+
+def answer(role, *notes):
+    """A member's answer in its own form (ADR 0035), each note one item of it."""
+    at = dict(source="the Goal")
+    if role == "architect":
+        return Decisions(
+            decisions=[
+                Decision(decision=t, why="w", options="o", settled_by=by, **at) for t, by in notes
+            ]
+        )
+    if role == "ux_designer":
+        gaps = [ReaderGap(gap=t, settled_by=by, **at) for t, by in notes]
+        return ReaderView(reader="r", sees="s", matters="m", missing=gaps)
+    if role == "qa_engineer":
+        return Examples(questions=[Question(question=t, settled_by=by, **at) for t, by in notes])
+    return RuntimeChanges(
+        changes=[RuntimeChange(area="settings", change=t, settled_by=by, **at) for t, by in notes]
     )
 
 
@@ -61,13 +89,7 @@ def panel(*per_role: int) -> PanelResult:
     roles = ["architect", "ux_designer", "qa_engineer", "devops_engineer"]
     answers = {}
     for role, count in zip(roles, per_role, strict=False):
-        answers[role] = (
-            PanelAnswer(nothing_to_add=True)
-            if count == 0
-            else PanelAnswer(
-                nothing_to_add=False, notes=[note(f"{role} {i}") for i in range(count)]
-            )
-        )
+        answers[role] = answer(role, *[note(f"{role} {i}") for i in range(count)])
     return PanelResult(answers, {})
 
 
@@ -204,7 +226,10 @@ def test_a_question_for_the_sponsor_needs_no_coverage():
 
 def test_the_start_numbers_the_notes_and_carries_the_sponsors_reply():
     text = describe(context(), panel(1, 0, 1, 0), reply="Keep it after a restart.")
-    assert "N1 (architect)" in text and "N2 (qa_engineer)" in text
+    # Each item says its kind beside its role (ADR 0035), and the reader's view comes first.
+    assert "N1 (architect, decision): architect 0" in text
+    assert "N2 (qa_engineer, question): qa_engineer 0" in text
+    assert text.index("The UX Designer's reader view: Reader: r") < text.index("N1 (")
     assert "Keep it after a restart." in text
     assert "GOAL" in text and "DECISIONS" in text and "The approved text." in text
     assert text.startswith("## Your step: settle the panel's notes")
@@ -427,8 +452,8 @@ def tagged() -> PanelResult:
     ]
     return PanelResult(
         {
-            "qa_engineer": PanelAnswer(nothing_to_add=False, notes=both),
-            "architect": PanelAnswer(nothing_to_add=False, notes=[note("a path", "architect")]),
+            "qa_engineer": answer("qa_engineer", *both),
+            "architect": answer("architect", note("a path", "architect")),
         },
         {},
     )
@@ -606,7 +631,7 @@ def test_a_refused_conclusion_is_refused_at_done_in_the_session(monkeypatch):
 
 def test_an_own_call_on_a_design_question_is_refused_at_done(monkeypatch):
     two = PanelResult(
-        {"architect": PanelAnswer(nothing_to_add=False, notes=[note("a path", "architect")])},
+        {"architect": answer("architect", note("a path", "architect"))},
         {},
     )
     check = checks_handed_to_the_session(monkeypatch, two)["check"]
@@ -659,7 +684,7 @@ def test_a_body_edited_while_the_model_was_thinking_is_not_overwritten(monkeypat
 
 def test_a_panel_that_raised_nothing_is_settled_without_a_model_call(monkeypatch):
     gh = Github()
-    nothing = PanelResult({"architect": PanelAnswer(nothing_to_add=True)}, {})
+    nothing = PanelResult({"architect": answer("architect")}, {})
     result, calls, _ = run(gh, monkeypatch, notes=nothing)
     assert result.outcome is flow.Outcome.WRITTEN and calls == []
     assert gh.body.startswith(APPROVED)
@@ -730,8 +755,8 @@ def test_a_reply_before_the_question_does_not_count(monkeypatch):
 def test_the_panels_notes_come_back_from_its_comment():
     result = PanelResult(
         {
-            "architect": PanelAnswer(nothing_to_add=False, notes=[note("a --> b")]),
-            "qa_engineer": PanelAnswer(nothing_to_add=True),
+            "architect": answer("architect", note("a --> b")),
+            "qa_engineer": answer("qa_engineer"),
         },
         {"devops_engineer": "TimeoutError: slow"},
     )
@@ -743,7 +768,7 @@ def test_a_comment_with_no_data_has_no_notes():
 
 
 def test_the_latest_panel_comment_with_notes_is_the_one_settled():
-    old = PanelResult({"architect": PanelAnswer(nothing_to_add=True)}, {})
+    old = PanelResult({"architect": answer("architect")}, {})
     new = panel(1, 0, 0, 0)
     gh = Github(
         comments=[

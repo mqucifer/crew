@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, Field
 
-from crew_org.crews.panel_crew import PanelAnswer
+from crew_org.crews.panel_crew import Examples
 from crew_org.crews.refinement_crew import StoryProposal
 from crew_org.events import EventKind
 from crew_org.session import steps
@@ -117,11 +117,11 @@ def test_done_is_the_form_with_its_rules_told_and_no_titles_but_a_field_named_ti
     assert "Refused" in points or "refused" in points
 
 
-def step(form=PanelAnswer, name="panel qa_engineer", role="qa_engineer", sub="panel"):
-    return steps.Step(name, role, form, "your notes, or nothing to add.", "the epic", step=sub)
+def step(form=Examples, name="panel qa_engineer", role="qa_engineer", sub="panel"):
+    return steps.Step(name, role, form, "your examples, or none.", "the epic", step=sub)
 
 
-def run_step(main, proxy, *, check=None, form=PanelAnswer):
+def run_step(main, proxy, *, check=None, form=Examples):
     reading = steps.Reading.at(main, "r")
     parts = {"step": "## Your step: read the epic", "epic": "## The epic\n\nf returns 2."}
     return steps.run(
@@ -130,34 +130,34 @@ def run_step(main, proxy, *, check=None, form=PanelAnswer):
 
 
 def test_a_form_refused_for_its_shape_is_a_reply_and_the_session_answers_it(main, seen):  # noqa: F811
-    wrong = {"nothing_to_add": True, "notes": [{"problem": "p"}]}
-    right = {"nothing_to_add": True, "notes": []}
+    wrong = {"questions": [{"question": "p"}]}
+    right = {"examples": [], "questions": []}
     proxy = Proxy(
         said(("view", {"path": "src/app.py"})),
         said(("done", wrong)),
         said(("done", right)),
     )
     answer = run_step(main, proxy)
-    assert isinstance(answer, PanelAnswer) and answer.nothing_to_add
+    assert isinstance(answer, Examples) and answer.items() == []
     refused = proxy.sent[2]["messages"][-1]
     assert refused["role"] == "tool" and refused["content"].startswith("`done` was refused")
-    assert "notes.0.source" in refused["content"]
+    assert "questions.0.source" in refused["content"]
     # The step's own role text, its read tools and its form; nothing that edits or runs.
     sent = proxy.sent[0]
-    assert sent["messages"][0]["content"].startswith("You are QA Engineer. You read an epic")
+    assert sent["messages"][0]["content"].startswith("You are QA Engineer. You read an epic as")
     assert [t["function"]["name"] for t in sent["tools"]] == [
         *("view", "search", "find", "tests_for", "git", "done")
     ]
 
 
 def test_a_steps_own_check_refuses_done_in_the_session(main, seen):  # noqa: F811
-    def check(answer: PanelAnswer) -> None:
-        if answer.nothing_to_add:
+    def check(answer: Examples) -> None:
+        if not answer.items():
             raise ValueError("Refused: a member with nothing to add read no file.")
 
     proxy = Proxy(
-        said(("done", {"nothing_to_add": True, "notes": []})),
-        said(("done", {"nothing_to_add": True, "notes": []})),
+        said(("done", {"examples": [], "questions": []})),
+        said(("done", {"examples": [], "questions": []})),
         said(content="I'll stop."),
         said(content="Still stopping."),
         said(content="Stopped."),
@@ -168,10 +168,10 @@ def test_a_steps_own_check_refuses_done_in_the_session(main, seen):  # noqa: F81
 
 
 def test_every_call_is_recorded_with_the_step_named_and_the_answer_by_its_shape(main, seen):  # noqa: F811
-    note = {"problem": "p", "source": "src/app.py:2", "settle": "s", "settled_by": "architect"}
+    note = {"question": "p", "source": "src/app.py:2", "settled_by": "architect"}
     proxy = Proxy(
         said(("search", {"pattern": "return", "path": NOTE})),
-        said(("done", {"nothing_to_add": False, "notes": [note]})),
+        said(("done", {"examples": [], "questions": [note]})),
     )
     run_step(main, proxy)
     started = kinds(seen, EventKind.SESSION_STARTED)[0]
@@ -184,7 +184,7 @@ def test_every_call_is_recorded_with_the_step_named_and_the_answer_by_its_shape(
     tool = kinds(seen, EventKind.TOOL_FINISHED)[0]
     assert (tool.detail["tool"], tool.detail["step"]) == ("search", "panel qa_engineer")
     ended = kinds(seen, EventKind.SESSION_ENDED)[0]
-    assert ended.detail["said"] == {"nothing_to_add": False, "notes": 1}
+    assert ended.detail["said"] == {"examples": 0, "questions": 1}
     assert "src/app.py:2" not in json.dumps(ended.detail)
 
 
@@ -223,10 +223,10 @@ def test_a_failure_handling_done_is_a_reply_and_the_session_goes_on(main, seen, 
 
     monkeypatch.setattr(conversation, "check_arguments", broken)
     proxy = Proxy(
-        said(("done", {"nothing_to_add": True, "notes": []})),
-        said(("done", {"nothing_to_add": True, "notes": []})),
+        said(("done", {"examples": [], "questions": []})),
+        said(("done", {"examples": [], "questions": []})),
     )
-    assert run_step(main, proxy).nothing_to_add
+    assert run_step(main, proxy).items() == []
     failed = proxy.sent[1]["messages"][-1]
     assert failed["role"] == "tool" and "The tool failed: KeyError" in failed["content"]
 

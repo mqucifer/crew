@@ -234,19 +234,20 @@ class Unsettled(Refusal):
 
 
 def numbered(panel: PanelResult) -> list[tuple[int, str, str]]:
-    """The panel's notes in a fixed order, as (number, role, text). N1 is the first."""
-    found: list[tuple[int, str, str]] = []
-    for role, answer in panel.answers.items():
-        for note in answer.notes:
-            found.append(
-                (
-                    len(found) + 1,
-                    role,
-                    f"{note.problem}\n  Source: {note.source}\n  To settle: {note.settle}\n"
-                    f"  The member's view of who settles it: {note.settled_by}",
-                )
-            )
-    return found
+    """The panel's items in a fixed order, as (number, role, text). N1 is the first.
+
+    The settle is told each one's kind beside its role (ADR 0035): a reader's gap, a
+    decision, an example, a question or a runtime change.
+    """
+    return [
+        (
+            n,
+            role,
+            f"{item.text}\n  Source: {item.source}\n"
+            f"  The member's view of who settles it: {item.settled_by}",
+        )
+        for n, (role, item) in enumerate(panel.items(), 1)
+    ]
 
 
 def check_not_cut(settlement: Settlement) -> None:
@@ -309,15 +310,11 @@ def check_grounded(settlement: Settlement, goal: str) -> None:
 
 
 def note_owners(panel: PanelResult) -> dict[int, str]:
-    """Who each numbered note was marked for by the member who raised it.
+    """Who each numbered item was marked for by the member who raised it.
 
-    Numbered in the order `numbered` uses, so N1 is the same note in both.
+    Numbered in the order `numbered` uses, so N1 is the same item in both.
     """
-    owners: dict[int, str] = {}
-    for answer in panel.answers.values():
-        for note in answer.notes:
-            owners[len(owners) + 1] = note.settled_by
-    return owners
+    return {n: item.settled_by for n, (_, item) in enumerate(panel.items(), 1)}
 
 
 def check_product_calls(settlement: Settlement, panel: PanelResult) -> None:
@@ -389,10 +386,25 @@ def _shared(context: PanelContext, *, decisions: bool = True) -> dict[str, str]:
     }
 
 
+def _title(role: str) -> str:
+    from crew_org.permissions import load_agents  # noqa: PLC0415
+
+    return str(load_agents()[role]["role"])
+
+
 def opening(context: PanelContext, panel: PanelResult, *, reply: str = "") -> dict[str, str]:
     """The Product Owner's settle as a session's start (crew#807): its step and scope
     first, the notes after what they are read against."""
-    notes = "\n\n".join(f"N{n} ({role}): {text}" for n, role, text in numbered(panel))
+    views = "".join(
+        f"The {_title(role)}'s reader view: {view}\n\n"
+        for role, answer in panel.answers.items()
+        if (view := answer.view())
+    )
+    kinds = [item.kind for _, item in panel.items()]
+    notes = views + "\n\n".join(
+        f"N{n} ({role}, {kind}): {text}"
+        for (n, role, text), kind in zip(numbered(panel), kinds, strict=True)
+    )
     return {
         "step": "## Your step: settle the panel's notes into the epic's record\n\n"
         "Four roles read this epic before it is split and raised the notes below. What you "

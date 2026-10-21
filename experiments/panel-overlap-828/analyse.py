@@ -73,6 +73,29 @@ def panels(since: str) -> list[dict]:
     return found
 
 
+# Each member's own form since ADR 0035 (crew#828): the field that says what it raised.
+RAISED = ("gap", "decision", "example", "question", "change")
+
+
+def notes_of(answer: dict) -> list[dict]:
+    """A member's notes, from the shared form or from its own, as problem, source, settle."""
+    if "notes" in answer:
+        return answer["notes"]
+    found = []
+    for value in answer.values():
+        for item in value if isinstance(value, list) else []:
+            raised = next(item[k] for k in RAISED if k in item)
+            found.append(
+                {
+                    "problem": raised,
+                    "source": item.get("source", ""),
+                    "settle": "",
+                    "settled_by": item.get("settled_by", "product_owner"),
+                }
+            )
+    return found
+
+
 def overlapping(notes: list[tuple[str, dict]]) -> set[int]:
     hit: set[int] = set()
     for (i, (role_a, a)), (j, (role_b, b)) in itertools.combinations(enumerate(notes), 2):
@@ -94,10 +117,10 @@ def main(since: str = "2026-10-01T00:00:00Z") -> None:
     settled_by: collections.Counter = collections.Counter()
     sizes: list[int] = []
     for panel in panels(since):
-        notes = [(role, n) for role, a in panel["answers"].items() for n in a.get("notes", [])]
+        notes = [(role, n) for role, a in panel["answers"].items() for n in notes_of(a)]
         for role, answer in panel["answers"].items():
             asked[role] += 1
-            nothing[role] += bool(answer.get("nothing_to_add"))
+            nothing[role] += not notes_of(answer)
         for _, n in notes:
             sizes.append(len((n["problem"] + n["source"] + n["settle"]).split()))
             settled_by[n["settled_by"]] += 1

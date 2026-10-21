@@ -93,7 +93,7 @@ Then the four parts every refinement session's start ends with (below). The repo
 
 | Part | From | Why |
 |---|---|---|
-| Its step | `panel_crew.opening`, with the member's `FOCUS` | What it owns, its scope, and that "nothing to add" is an answer |
+| Its step | `panel_crew.opening`, with the member's `ASKS` entry | Its own goal, question and kind of answer (ADR 0035): the reader's view, the decisions expensive to reverse, the examples, or the runtime changes; and that a short answer is complete on a small epic |
 | The Goal | the Goal's issue, `panel.gather` | What the epic is for |
 | The Sponsor's decisions for the Goal | `decisions.collect_decisions` | What the Sponsor has already decided (ADR 0015); left out when there are none |
 | The project's decision log | `project_log.read_log` | Decisions that hold for every epic |
@@ -111,7 +111,7 @@ Then the four parts every refinement session's start ends with (below).
 | Its step | `settle_crew.opening` | The four ways a note is settled, and when to ask the Sponsor |
 | The Goal, the Sponsor's decisions, the decision log, the other epics | `panel.gather` | What settles a note, or what a call must stay within (ADR 0018) |
 | The epic | its approved text | What the notes are about |
-| The panel's notes | `settle_crew.numbered` | What to settle, by number |
+| The panel's notes | `settle_crew.numbered`, each with its kind, after the UX Designer's reader view | What to settle, by number, and what kind of answer each is (ADR 0035) |
 | The Sponsor's answer | `settle._reply` | When the Product Owner asked |
 
 Then the four parts every refinement session's start ends with (below). `done` refuses a cut cell, an own call the Goal's words don't hold, a design question decided as a product call, or a note left unanswered, in the session.

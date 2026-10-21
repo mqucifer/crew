@@ -156,3 +156,17 @@ def test_a_merged_rule_is_listed_once_with_each_case_where_the_code_has_it():
     assert not {"hold.sibling", "hold.builds_on"} & set(entries)
     assert rulebook.rule_of("hold.sibling") == "hold.waits_for_earlier_work"
     assert rulebook.rule_of("call.schema") == "call.schema"
+
+
+def test_a_session_steps_form_is_told_only_to_its_own_role():
+    """The panel's four members run through one `steps.run`, each with its own form
+    (ADR 0035): a member is told its own form's lines, not the other three's."""
+    from crew_org.crews import panel_crew
+
+    answered = rule_list.answered()
+    for role, ask in panel_crew.ASKS.items():
+        title = rule_list.role_names()[role]
+        assert title in answered[ask.form]
+        for other, theirs in panel_crew.ASKS.items():
+            if other != role:
+                assert title not in answered[theirs.form]
