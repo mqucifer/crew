@@ -139,7 +139,7 @@ def entry(number: int, row: Row, today: date) -> tuple[str, str]:
     """An entry in the project's log: its file name and text, in the log's own form."""
     slug = "-".join(re.findall(r"[a-z0-9]+", row.context.lower())[:6]) or "decision"
     call = (
-        " It's the Product Owner's own call, within the Goal (crew ADR 0018)."
+        " It's the Product Owner's own call, within the Goal's intent (crew ADR 0018)."
         if row.source.startswith(OWN_CALL)
         else ""
     )

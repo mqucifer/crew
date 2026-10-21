@@ -98,10 +98,10 @@ def explicit(text: str, *, owner: str, repo: str) -> str:
 
 
 def _source(row: Row) -> str:
-    """A call the Product Owner made itself says so, and the Goal's words it stays within."""
+    """A call the Product Owner made itself says so, and the Goal's intent it serves."""
     if not row.own_call:
         return row.source
-    return f'{record_flow.OWN_CALL}, within the Goal: "{row.goal_wording}". {row.source}'
+    return f'{record_flow.OWN_CALL}, serving the Goal: "{row.serves}". {row.source}'
 
 
 def from_conclusion(
