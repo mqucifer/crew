@@ -279,6 +279,10 @@ def look(context: Context, args: dict[str, Any]) -> str:
             files = (context.root / source).resolve()
             if not files.is_dir() or context.root.resolve() not in files.parents:
                 return f"`{source}` isn't a directory in the repository."
+        # The host reads the page for its links, so it's the site's, as `Tools._path` keeps
+        # a read in the worktree: `../` or a link mustn't reach the host's own files.
+        if not (files / page).resolve().is_relative_to(files.resolve()):
+            return f"`{page}` isn't a page of `{source}`."
         if not (files / page).is_file():
             pages = sorted(str(p.relative_to(files)) for p in files.rglob("*.html"))[:40]
             return f"`{page}` isn't in `{source}`. Its pages: {', '.join(pages)}"

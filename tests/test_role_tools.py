@@ -605,6 +605,16 @@ def test_the_container_serves_the_site_under_its_base_and_all_of_its_origin(tmp_
         server.shutdown()
 
 
+def test_the_page_looked_at_is_the_sites_never_a_host_file(repo, monkeypatch):
+    """`externals` reads the page on the host, for its links."""
+    monkeypatch.setattr(looking, "look", lambda *a, **kw: pytest.fail("looked outside the site"))
+    (repo / "secret.json").write_text('{"token": "x"}')
+    (repo / "site" / "link.html").symlink_to(repo / "secret.json")
+    for page in ("../secret.json", "../../../../etc/hosts", "link.html"):
+        text = role_tools.look(context(repo), {"source": "site", "page": page})
+        assert "isn't a page of `site`" in text, page
+
+
 # --- QA's run -------------------------------------------------------------------------------
 
 
