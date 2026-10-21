@@ -632,3 +632,78 @@ The sprint ran Goal mqucifer/sprint-metrics#665: epics sm#667 and sm#668, seven 
   - the lint after an edit reads a broken lint command as clean;
   - a stop on a story with no epic doesn't name its stop.
   Both are logged for later.
+
+## Operator's retro: Sprint 31 (2026-10-20 to 2026-10-21, closed at time-up 07:32Z, crew#852)
+
+The sprint ran three sprint-metrics Goals:
+- mqucifer/sprint-metrics#659, field meanings;
+- mqucifer/sprint-metrics#666, session measures;
+- mqucifer/sprint-metrics#683, changelog rules.
+
+They decomposed into 9 epics, mqucifer/sprint-metrics#684 to mqucifer/sprint-metrics#692. The Sponsor approved six of them and held the rest until those deliver. crew-presentation#101 and #102 were re-decomposed into 6 epics, held too.
+- **Delivered:**
+  - mqucifer/sprint-metrics#690 and mqucifer/sprint-metrics#692 (changelog dates and docs);
+  - stories mqucifer/sprint-metrics#693, mqucifer/sprint-metrics#694 and mqucifer/sprint-metrics#706.
+- **Left in review:** 3 stories. **Left in the backlog:** 5. 
+- **Planned while it ran:** the refinement overhaul, now M7 (ADR 0035, mqucifer/crew#846, #847, #815, #828).
+
+### 1. Interventions
+- **No tick was stopped.** No `llm.failed`, `agent.failed` or blocked card in the sprint's events.
+- **The operator moved one card twice:** mqucifer/sprint-metrics#701 (release 1.4.0) to Blocked at the Sponsor's word, then back to Ready 15 minutes later when the Sponsor withdrew the hold. The decision stands (ADR 0019): the crew releases until M8 builds the Sponsor's approval (mqucifer/crew#844).
+- **Crew PRs merged during the sprint:** docs and analysis only (mqucifer/crew#837, #838, #840, #841, #843, #844, #848). The overhaul's code (mqucifer/crew#849, #850, #851) waits for the Sponsor, and is pulled into the main checkout only after this sprint.
+- **LiteLLM restarted between ticks** for the 90-day spend-log retention (mqucifer/crew#840).
+
+### 2. Where a person was asked
+- **Epic approvals:** 9 sprint-metrics epics and 6 crew-presentation ones. The Sponsor approved 6 and held the rest until those deliver.
+- **A release hold:** asked, answered "hold", then withdrawn by the Sponsor as a reversal of their own decision (section 1). The operator's question was the error. Recorded as "a decision's unbuilt step is ours to note, never a reason to hold".
+- **Pause the session-measures epics for the overhaul?** The Sponsor's answer: they finish.
+- **No card went to a person by the crew's own doing,** and no story went back to the Business Analyst.
+
+### 3. Drift between the Goal and the plan
+- **The Goals named the measures, so the epics copied them:** "middle" in mqucifer/sprint-metrics#666 reached story mqucifer/sprint-metrics#709 unchanged.
+- **mqucifer/sprint-metrics#686 promised cost "in which role"** against the Goal's D3, which sums every role.
+- **The project record's `in_scope` read as scope:** mqucifer/sprint-metrics#684's panel named the CLI 36 times. mqucifer/sprint-metrics#722 builds more CLI, which project-print ADR 0003 retires.
+
+These three are the overhaul's evidence (ADR 0035).
+
+### 4. Repeats and cost
+- **Model time, about 1,334 minutes:**
+  - **refinement, about 1,215 (91%):** QA 422, Business Analyst 234, Architect 227, UX Designer 183, Product Owner 110, DevOps 39;
+  - **delivery, about 112:** Developer 66, Code Reviewer 46;
+  - **Scrum Master:** 6.
+- **Working time per epic** (minutes when at least one of its sessions ran):
+  - mqucifer/sprint-metrics#690: 21;
+  - mqucifer/sprint-metrics#691: 50;
+  - mqucifer/sprint-metrics#692: 37;
+  - mqucifer/sprint-metrics#686: 110;
+  - mqucifer/sprint-metrics#685: 93 before its re-splits;
+  - mqucifer/sprint-metrics#684: 100 before its re-split.
+  
+  Contract changes take longer, and the Sponsor said they should. Evidence is on mqucifer/crew#828.
+- **Re-splits:**
+  - mqucifer/sprint-metrics#684 was re-split once and mqucifer/sprint-metrics#685 twice, after the design step found real contradictions between the design and a story's criteria.
+  - 8 stories were closed and replaced (mqucifer/sprint-metrics#698 to mqucifer/sprint-metrics#705).
+  - mqucifer/sprint-metrics#684's re-split took the Business Analyst 80 minutes (92 tool calls), mostly reading merged tests to declare which each story changes.
+- **No limit on re-splits for different reasons.** The crew parks an epic only when its split fails identically (`board_flow.park_epic`). mqucifer/sprint-metrics#685 fixed one gap per round and tripped on the next, about 1.5 hours a round.
+- **The panel repeats itself:** 60% of notes overlap another member's since the panel became sessions (`experiments/panel-overlap-828`). That's ADR 0035's four distinct questions.
+- **About 20% of the pass time ran no session at all:** board reads, gates, merges and CI. It's not model time, and it isn't measured anywhere yet.
+- **First attempts:** 10 of 11 stories (mqucifer/sprint-metrics#712 had one review finding).
+
+### 5. The crew's own retro (mqucifer/crew#852) against this one
+- **It reports delivery only:** 10 of 11 first-try, no returns to the Business Analyst. Both are true.
+- **It can't see where the time went.** It doesn't count:
+  - refinement's 91% of model time;
+  - the three re-splits;
+  - the 8 discarded stories;
+  - the design step's sendbacks.
+- **It filed nothing.**
+
+### 6. Agreed with the Sponsor (2026-10-21)
+**Folded into the Goal intents as metrics to track (project-print#8). No crew changes proposed.** The Sponsor sees sections 4 and 5 as measures the site and sprint-metrics should show: refinement against delivery, refinement's churn, and idle pass time. The refinement overhaul (M7, ADR 0035) is where the next sprints show how they change.
+
+**Checks:**
+- **"Ticks stopped" found none this sprint.** It stays.
+- **"The crew's retro against this one" found the refinement blind spot.** That's proposal 2.
+- **New, for the operator:**
+  - watch approvals by board status, not by the `needs:human` label;
+  - take every timestamp from `date -u`.

@@ -203,6 +203,7 @@ def test_the_panel_step_records_how_big_its_context_is(monkeypatch):
 
     epic = SimpleNamespace(number=406, title="t", parent=174)
     refine_panel.panel_step(
+        None,
         Gh(),
         sink,
         SimpleNamespace(failed=[], skipped=[]),

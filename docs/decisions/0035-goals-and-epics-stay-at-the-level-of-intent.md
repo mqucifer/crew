@@ -1,7 +1,7 @@
 # 35. Goals and epics stay at the level of intent
 
 - **Date:** 2026-10-21
-- **Status:** Accepted (to be built in M7: crew#846, crew#847, crew#815, crew#828)
+- **Status:** Accepted (built in M7: the Product Owner's choices, the intent check, "the Goal points elsewhere" and the epic overreach check by crew#846 and crew#815; the rest by crew#846, crew#847 and crew#828)
 
 ## Context
 

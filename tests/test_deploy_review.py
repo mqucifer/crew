@@ -185,7 +185,9 @@ def test_a_deploy_review_that_fails_posts_nothing(monkeypatch):
 
 def test_it_is_told_how_the_project_is_released(monkeypatch):
     record = (
-        "version: 2\nintent:\n  scope:\n    purpose: metrics\n  release:\n    publishes: true\n"
+        "version: 3\nintent:\n  scope:\n"
+        "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+        "    purpose: metrics\n  release:\n    publishes: true\n"
         "    where: an image on GHCR\n  done:\n    bar: CI passes\n"
         "design:\n  checks: [uv run pytest]\n  release_how: tag on merge\n"
     )

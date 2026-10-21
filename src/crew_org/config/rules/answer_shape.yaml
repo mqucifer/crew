@@ -152,6 +152,15 @@ form.DesignProposal.enforces_something:
     default: 'a design names at least one check: without one, nothing enforces the definition of done'
   owner: Architect
   told_in: DesignProposal.checks
+form.Elsewhere.one_or_the_other:
+  description: Refused unless it gives one question for the Sponsor or one proposed Goal, not both.
+  messages:
+    default: 'the Goal points elsewhere: give one question for the Sponsor, or one Goal you propose; not
+      both'
+  origin:
+  - crew#846
+  owner: Product Owner
+  told_in: Elsewhere
 form.FileAsk.a_bare_path:
 form.Finding.is_actionable:
   description: Refused if it doesn't say specifically what to change.

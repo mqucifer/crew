@@ -43,8 +43,12 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: crew-litellm
+    # Localhost only (the Sponsor, 2026-10-21): the Mac's firewall is off, and
+    # 0.0.0.0 answered on every network the laptop joined. Nothing on another
+    # host reaches it (infra's inventory). Containers on this Mac still reach it
+    # at host.docker.internal:4000, which the collector scrapes.
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     depends_on:

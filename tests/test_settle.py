@@ -32,8 +32,10 @@ from crew_org.crews.settle_crew import (
     INFRA_CHARS,
     Conclusion,
     Dismissal,
+    Elsewhere,
     ForInfra,
     OpenQuestion,
+    ProposedGoal,
     Row,
     Settlement,
     Unsettled,
@@ -42,11 +44,12 @@ from crew_org.crews.settle_crew import (
     check_grounded,
     check_not_cut,
     check_product_calls,
+    goal_intent,
     note_owners,
     numbered,
     opening,
 )
-from crew_org.events import EventSink
+from crew_org.events import EventKind, EventSink
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record
 from crew_org.flows import settle as flow
@@ -376,21 +379,19 @@ GOAL = "The tool reports on what it's handed and forgets it. It should keep the 
 
 
 def own(quote="keep the history it's given", **kw):
-    return row(
-        own_call=True, goal_wording=quote, source="Restart survival is what keeping means", **kw
-    )
+    return row(own_call=True, serves=quote, source="Restart survival is what keeping means", **kw)
 
 
 def test_a_call_the_product_owner_makes_itself_quotes_the_goal_it_stays_within():
     assert own().own_call is True
-    with pytest.raises(ValidationError, match="quotes the Goal's wording"):
+    with pytest.raises(ValidationError, match="quotes the Goal's words on its reader"):
         row(own_call=True)
     with pytest.raises(ValidationError):
         own(quote="x" * (GOAL_QUOTE_CHARS + 1))
 
 
 def test_a_sourced_row_needs_no_quotation():
-    assert row().own_call is False and row().goal_wording == ""
+    assert row().own_call is False and row().serves == ""
 
 
 def test_a_call_that_quotes_the_goal_is_grounded_whatever_the_case_spacing_or_quote_marks():
@@ -403,7 +404,9 @@ def test_a_call_that_quotes_the_goal_is_grounded_whatever_the_case_spacing_or_qu
 
 def test_a_call_that_quotes_wording_the_goal_does_not_have_is_refused():
     made_up = Settlement(conclusion=Conclusion(rows=[row(), own("survive every upgrade")]))
-    with pytest.raises(Unsettled, match=r"row 2: your own call quotes wording that isn't"):
+    with pytest.raises(
+        Unsettled, match=r"row 2: your own call quotes words that aren't the Goal's reader"
+    ):
         check_grounded(made_up, GOAL)
 
 
@@ -412,9 +415,54 @@ def test_a_sourced_row_is_not_held_to_the_goals_words_and_a_question_needs_nothi
     check_grounded(Settlement(sponsor_question="Which?"), GOAL)
 
 
+INTENT = """Show the crew is getting better
+
+## Who reads it
+
+The Sponsor, at a sprint's close.
+
+## What it should let them see or decide
+
+Whether the crew is getting better across sprints, and what to look at first.
+
+## What's out
+
+A per-role cost breakdown. Measures: first attempts, returns, the middle cost.
+"""
+
+
+def test_a_call_serves_the_goals_reader_not_a_measure_it_lists():
+    """crew#846: on a Goal written as intent, the call quotes its reader or what they
+    should see or decide; a listed measure or made-up words aren't its intent."""
+    serving = Settlement(conclusion=Conclusion(rows=[own("getting better across sprints")]))
+    check_grounded(serving, INTENT)
+    check_grounded(Settlement(conclusion=Conclusion(rows=[own("at a sprint's close")])), INTENT)
+    listed = Settlement(conclusion=Conclusion(rows=[own("Show the crew is getting better")]))
+    with pytest.raises(Unsettled, match=r"row 1: your own call quotes words that aren't"):
+        check_grounded(listed, INTENT)
+
+
+def test_a_call_on_what_the_goal_rules_out_is_refused():
+    ruled_out = Settlement(conclusion=Conclusion(rows=[row(), own("a per-role cost breakdown")]))
+    with pytest.raises(Unsettled, match=r"row 2: your own call rests on what the Goal rules out"):
+        check_grounded(ruled_out, INTENT)
+
+
+def test_a_goal_written_before_the_headings_is_all_intent_but_what_it_leaves_out():
+    """The old Goals still refining read as they always did (ADR 0035)."""
+    old = GOAL + "\n\n## Out of scope\n\nUpgrades between versions.\n"
+    within, out = goal_intent(old)
+    assert "keep the history it's given" in within and "Upgrades" not in within
+    assert "Upgrades between versions" in out
+    check_grounded(Settlement(conclusion=Conclusion(rows=[own()])), old)
+    with pytest.raises(Unsettled, match="rules out"):
+        check_grounded(Settlement(conclusion=Conclusion(rows=[own("Upgrades")])), old)
+    assert goal_intent(GOAL) == (GOAL, "")
+
+
 def test_a_quotation_that_ran_into_its_limit_was_cut_off():
     cut = Settlement(conclusion=Conclusion(rows=[own("x" * GOAL_QUOTE_CHARS)]))
-    with pytest.raises(Unsettled, match="row 1 goal wording"):
+    with pytest.raises(Unsettled, match="row 1 serves"):
         check_not_cut(cut)
 
 
@@ -426,7 +474,7 @@ def test_an_own_call_says_so_and_carries_the_goals_words_in_the_table():
     assert "2 decided (1 the Product Owner's call)," in out
     first, second = [line for line in lines if line.startswith("| R")]
     assert "Product Owner's call" not in first
-    assert "Product Owner's call, within the Goal: \"keep the history it's given\"." in second
+    assert "Product Owner's call, serving the Goal: \"keep the history it's given\"." in second
 
 
 def test_a_conclusion_with_no_own_calls_has_no_count_of_them():
@@ -437,8 +485,9 @@ def test_a_conclusion_with_no_own_calls_has_no_count_of_them():
 def test_the_task_lets_the_product_owner_decide_and_asks_it_to_record_the_call():
     text = describe(context(), panel(1, 0, 0, 0))
     assert "decide it yourself, as the product owner does for the team" in text
-    assert "set `own_call`" in text and "quote the Goal's own words" in text
-    assert "must not contradict the Goal or a Sponsor decision" in text
+    assert "set `own_call`" in text.lower() and "quote the Goal's words on its reader" in text
+    assert "by what serves the Goal's reader" in text
+    assert "must not contradict a Sponsor decision or reach into what the Goal rules out" in text
     assert "only when you can't tell which way the Goal points" in text
     assert "Never decide something" not in text
 
@@ -570,13 +619,52 @@ def run(gh: Github, monkeypatch, *settlements, notes=None):
     sink = EventSink(None)
     sink.subscribe(events.append)
     result = flow.settle_epic(
-        gh.client(), sink, repo="sprint-metrics", epic=406, context=context(), panel=notes
+        None, gh.client(), sink, repo="sprint-metrics", epic=406, context=context(), panel=notes
     )
     return result, calls, events
 
 
 def good(count=2):
     return Settlement(conclusion=Conclusion(rows=[row(settles=list(range(1, count + 1)))]))
+
+
+def test_the_goal_pointing_elsewhere_goes_to_the_goal_and_the_record_goes_on(monkeypatch):
+    """crew#846: a question about the Goal is asked on the Goal, not the epic."""
+    gh = Github()
+    asked = good().conclusion.model_copy(
+        update={"elsewhere": Elsewhere(why="N2 shows the team reads it", question="Who reads it?")}
+    )
+    result, _, events = run(gh, monkeypatch, Settlement(conclusion=asked))
+    assert result.outcome is flow.Outcome.WRITTEN
+    kinds = [kind for kind, _ in gh.writes]
+    assert kinds == ["body", "comment", "comment"]
+    on_goal = gh.writes[-1][1]
+    assert "### The Goal points elsewhere" in on_goal
+    assert "From settling mqucifer/sprint-metrics#406: N2 shows the team reads it" in on_goal
+    assert "**A question for the Sponsor about this Goal.** Who reads it?" in on_goal
+    assert "needs:human" in gh.labels
+    product = [e for e in events if e.kind is EventKind.PRODUCT_ASKED]
+    assert product[0].card == 174 and product[0].detail["step"] == "settle"
+
+
+def test_a_goal_proposed_while_settling_is_filed_from_the_epics_goal(monkeypatch):
+    filed = {}
+
+    def propose(issues, board, repo, goal, *, why, source):
+        filed.update(repo=repo, title=goal.title, source=source)
+        return 900
+
+    monkeypatch.setattr("crew_org.flows.proposed_goal.propose", propose)
+    gh = Github()
+    goal = ProposedGoal(title="t", reader="r", see_or_decide="s", out="o")
+    proposing = good().conclusion.model_copy(update={"elsewhere": Elsewhere(why="w", goal=goal)})
+    run(gh, monkeypatch, Settlement(conclusion=proposing))
+    assert filed == {
+        "repo": "sprint-metrics",
+        "title": "t",
+        "source": "mqucifer/sprint-metrics#174",
+    }
+    assert "**A Goal I propose:** mqucifer/sprint-metrics#900" in gh.writes[-1][1]
 
 
 def test_a_conclusion_is_added_below_the_approved_text_which_is_untouched(monkeypatch):
@@ -624,7 +712,7 @@ def test_a_refused_conclusion_is_refused_at_done_in_the_session(monkeypatch):
     with pytest.raises(Unsettled, match="cut off: row 1 consequences"):
         check(cut)
     made_up = Settlement(conclusion=Conclusion(rows=[own("never said", settles=[1, 2])]))
-    with pytest.raises(Unsettled, match="isn't in the Goal"):
+    with pytest.raises(Unsettled, match="aren't the Goal's reader"):
         check(made_up)
     check(good())
 
@@ -672,6 +760,7 @@ def test_a_body_edited_while_the_model_was_thinking_is_not_overwritten(monkeypat
     monkeypatch.setattr(flow, "settle", fake)
     with pytest.raises(flow.SettleFailed, match="changed while"):
         flow.settle_epic(
+            None,
             gh.client(),
             EventSink(None),
             repo="sprint-metrics",

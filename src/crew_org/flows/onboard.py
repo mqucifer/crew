@@ -43,6 +43,10 @@ Path_ = tuple[str, ...]
 # ask one of its own, and carried into a take-away file for each one unanswered.
 QUESTIONS: dict[Path_, str] = {
     ("intent", "scope", "purpose"): "What is this project for, and who is it for?",
+    ("intent", "scope", "serves"): (
+        "Who does it serve, and what do they need to see or decide with it? Not what it "
+        "does: that's the design's to say."
+    ),
     ("intent", "release", "deploys"): (
         "When work merges, is anything deployed, is a version published for people to "
         "install, or is the merge itself the release?"
@@ -562,7 +566,11 @@ def open_record_pr(
             f"Adds `{RECORD_PATH}`, this project's onboarding record, from an interview "
             f"with the Sponsor through `crew onboard`{from_template}.\n\n"
             f"- **Purpose:** {intent.scope.purpose}\n"
-            f"- **Release:** {release_line(record)}\n"
+            + "".join(
+                f"- **Serves:** {r.who}\n" + "".join(f"  - {n}\n" for n in r.needs)
+                for r in intent.scope.serves
+            )
+            + f"- **Release:** {release_line(record)}\n"
             f"- **Done:** {intent.done.bar}\n\n"
             "## Verification\n\n"
             "The record was loaded by the crew's own record loader (mqucifer/crew#129) "

@@ -28,7 +28,9 @@ from tests import asked
 from tests.test_sprint import REPO, epic, parents, story
 
 RECORD = (
-    "version: 2\nintent:\n  scope:\n    purpose: Delivery metrics for the crew.\n"
+    "version: 3\nintent:\n  scope:\n"
+    "    serves: [{who: the Sponsor, needs: [how the crew performs]}]\n"
+    "    purpose: Delivery metrics for the crew.\n"
     "  release:\n    deploys: false\n  done:\n    bar: tests pass\n"
 )
 

@@ -47,7 +47,7 @@ from crew_org.crews.refinement_crew import (
 )
 from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts, bugs, criteria_check
+from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
@@ -55,6 +55,7 @@ from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
+from crew_org.flows.proposed_goal import PROPOSED_LABEL
 from crew_org.flows.readiness import SKELETON_LABEL
 from crew_org.flows.refine_panel import panel_step
 from crew_org.git_ops import Workspace
@@ -198,6 +199,8 @@ def render_epic_body(epic: Epic, goal_number: int, goal_title: str) -> str:
     """An epic issue, written for the Sponsor deciding whether to approve it."""
     return "\n".join(
         [
+            f"**For** — {epic.reader}",
+            "",
             f"**Outcome** — {epic.outcome}",
             "",
             f"**Why** — {epic.rationale}",
@@ -215,7 +218,10 @@ def render_epic_body(epic: Epic, goal_number: int, goal_title: str) -> str:
 
 
 def render_proposal(
-    goal_title: str, proposal: EpicProposal, epic_numbers: dict[str, int] | None = None
+    goal_title: str,
+    proposal: EpicProposal,
+    epic_numbers: dict[str, int] | None = None,
+    proposed: str = "",
 ) -> str:
     """Format a proposal for a human reader who was not present.
 
@@ -238,6 +244,8 @@ def render_proposal(
         lines += [
             heading,
             "",
+            f"**For** — {epic.reader}",
+            "",
             f"**Outcome** — {epic.outcome}",
             "",
             f"**Why** — {epic.rationale}",
@@ -248,6 +256,34 @@ def render_proposal(
         "",
         proposal.ordering_rationale,
         "",
+    ]
+    if proposal.choices:
+        # The Product Owner's calls on the Goal, shown where they're approved (ADR 0018).
+        lines += [
+            "### What I left out or reshaped",
+            "",
+            *(f"- **{c.mentioned}:** {c.instead}. {c.why}" for c in proposal.choices),
+            "",
+        ]
+    if elsewhere := proposal.elsewhere:
+        # "The Goal points elsewhere" is an answer (ADR 0018), brought to the Sponsor here.
+        lines += ["### The Goal points elsewhere", "", elsewhere.why, ""]
+        lines += (
+            [
+                f"**A question for the Sponsor.** {elsewhere.question}",
+                "",
+                "Answer here and add `needs:rework` for me to propose again with your answer, "
+                "or leave the epics as they are.",
+                "",
+            ]
+            if elsewhere.question
+            else [
+                f"**A Goal I propose:** {proposed}, a draft in `Inbox (Goals)`. Add the `goal` "
+                "label to approve it, edit it first, or close it.",
+                "",
+            ]
+        )
+    lines += [
         "---",
         "",
         "Each epic is now a card in `Inbox (Goals)` labelled `needs:human`, nested "
@@ -860,11 +896,26 @@ def set_by_the_sponsor(card: Card, sponsor: str | None, crew_login: str | None) 
 
     Written by the Sponsor, or the skeleton Goal `crew onboard` filed on their
     yes (crew#690, ADR 0030): the crew's own identity, with the `skeleton` label,
-    which only someone with triage on the repository can add.
+    which only someone with triage on the repository can add. Or a Goal the
+    Product Owner proposed, once the Sponsor has added the `goal` label, which
+    the crew never adds to one (ADR 0027).
     """
     if sponsor is None or card.author == sponsor:
         return True
-    return bool(crew_login) and card.author == crew_login and SKELETON_LABEL in card.labels
+    return (
+        bool(crew_login)
+        and card.author == crew_login
+        and (SKELETON_LABEL in card.labels or _approved_proposal(card))
+    )
+
+
+def _approved_proposal(card: Card) -> bool:
+    return PROPOSED_LABEL in card.labels and "goal" in card.labels
+
+
+def _awaiting_approval(card: Card, crew_login: str | None) -> bool:
+    """A Goal the Product Owner proposed, waiting for the Sponsor's label: not unauthored."""
+    return bool(crew_login) and card.author == crew_login and PROPOSED_LABEL in card.labels
 
 
 def lacking_goals(
@@ -989,6 +1040,7 @@ def unauthored_goals(
         and c.state != "CLOSED"
         and c.work_type == GOAL_TYPE
         and not set_by_the_sponsor(c, sponsor, crew_login)
+        and not _awaiting_approval(c, crew_login)
     ]
 
 
@@ -1620,6 +1672,7 @@ def refine_epics(
             # record, and the Architect settles the design questions, all before the
             # split reads it (crew#440, ADR 0018).
             if panel_search is not None and not panel_step(
+                board,
                 issues,
                 sink,
                 result,
@@ -2150,6 +2203,20 @@ def tick(
                 board, issues, sink, repo=repo, goal=card, proposal=proposal
             )
             result.epics_created.extend(epic_numbers.values())
+            proposed = (
+                proposed_goal.bring(
+                    issues,
+                    board,
+                    sink,
+                    repo=repo,
+                    goal=number,
+                    elsewhere=proposal.elsewhere,
+                    step="decompose",
+                    rule="decision.board_flow.points_elsewhere",
+                )
+                if proposal.elsewhere
+                else ""
+            )
 
             # The comment is written last, because it is also the idempotency
             # marker: if card creation fails halfway, the next tick retries rather
@@ -2159,14 +2226,24 @@ def tick(
                 sink,
                 repo=repo,
                 number=number,
-                body=render_proposal(card.title, proposal, epic_numbers),
+                body=render_proposal(card.title, proposal, epic_numbers, proposed),
                 by="Product Owner",
             )
 
             # The decision has moved to the epics. Leaving needs:human on the goal
             # would show the Sponsor four things demanding attention when only
-            # three do, and make the goal look like the card to move.
-            artifacts.label(issues, sink, repo=repo, number=number, by=None, remove=[NEEDS_HUMAN])
+            # three do, and make the goal look like the card to move. A question
+            # on it is the Sponsor's, so it keeps the label.
+            if not (proposal.elsewhere and proposal.elsewhere.question):
+                artifacts.label(
+                    issues,
+                    sink,
+                    repo=repo,
+                    number=number,
+                    by=None,
+                    remove=[NEEDS_HUMAN],
+                    rule="decision.board_flow.points_elsewhere",
+                )
             if extend:
                 # The Sponsor's label, spent: no more epics until it's asked again.
                 artifacts.label(

@@ -86,12 +86,13 @@ class Row(BaseModel):
             "does for the team. It is recorded as your call"
         ),
     )
-    goal_wording: str = Field(
+    serves: str = Field(
         default="",
         max_length=GOAL_QUOTE_CHARS,
         description=(
-            "Only for your own call: the Goal's own words, quoted exactly, that the decision "
-            f"stays within. Under {aim(GOAL_QUOTE_CHARS)} characters"
+            "Only for your own call: the Goal's words on its reader, or on what they should "
+            "see or decide, quoted exactly, that the decision serves. Under "
+            f"{aim(GOAL_QUOTE_CHARS)} characters"
         ),
     )
     settles: list[int] = Field(
@@ -110,9 +111,40 @@ class Row(BaseModel):
 
     @model_validator(mode="after")
     def _a_call_stays_within_the_goal(self) -> Row:
-        if self.own_call and not self.goal_wording.strip():
+        if self.own_call and not self.serves.strip():
             refuse("form.Row.a_call_stays_within_the_goal")
         return self
+
+
+# A Goal written as intent has these three parts (ADR 0035), under these headings.
+READER = "Who reads it"
+SEE_OR_DECIDE = "What it should let them see or decide"
+OUT = "What's out"
+_HEADING = re.compile(r"^##[ \t]+(.+?)[ \t]*$", re.M)
+# What a Goal written before the headings calls what it leaves out.
+_OUT_HEADINGS = (OUT.casefold(), "out of scope", "not in scope")
+
+
+def goal_intent(text: str) -> tuple[str, str]:
+    """A Goal's intent, as (what a call may serve, what's out).
+
+    A Goal written as intent serves its reader and what they should see or decide.
+    One written before the headings (ADR 0035) is all intent, but for what it
+    leaves out: the old Goals still refining read as they always did.
+    """
+    sections: dict[str, str] = {}
+    marks = list(_HEADING.finditer(text))
+    for at, mark in enumerate(marks):
+        stop = marks[at + 1].start() if at + 1 < len(marks) else len(text)
+        sections[mark.group(1).strip().casefold()] = text[mark.end() : stop]
+    out = "\n".join(sections.get(name, "") for name in _OUT_HEADINGS).strip()
+    reader, see = sections.get(READER.casefold()), sections.get(SEE_OR_DECIDE.casefold())
+    within = f"{reader or ''}\n{see or ''}" if reader or see else text
+    if not (reader or see):
+        for name in _OUT_HEADINGS:
+            if section := sections.get(name):
+                within = within.replace(section, "\n")
+    return within, out
 
 
 def _plain(text: str) -> str:
@@ -173,6 +205,37 @@ class Dismissal(BaseModel):
     )
 
 
+class ProposedGoal(BaseModel):
+    """A Goal the Product Owner proposes, written as intent (ADR 0027, ADR 0035).
+
+    Filed as a draft for the Sponsor, who approves it by adding the `goal` label.
+    """
+
+    title: str = Field(description="The outcome for its reader, in a line")
+    reader: str = Field(description="Who reads the result")
+    see_or_decide: str = Field(description="What it should let them see or decide")
+    out: str = Field(description="What's out")
+
+
+class Elsewhere(BaseModel):
+    """The Goal points elsewhere: serving its reader needs what its intent doesn't cover."""
+
+    why: str = Field(description="What serving the reader needs that the Goal doesn't cover")
+    question: str = Field(
+        default="",
+        description="One question for the Sponsor, answerable in a sentence. Or a Goal",
+    )
+    goal: ProposedGoal | None = Field(
+        default=None, description="The Goal you propose to the Sponsor instead. Or a question"
+    )
+
+    @model_validator(mode="after")
+    def _one_or_the_other(self) -> Elsewhere:
+        if bool(self.question.strip()) == (self.goal is not None):
+            refuse("form.Elsewhere.one_or_the_other")
+        return self
+
+
 class Conclusion(BaseModel):
     rows: list[Row] = Field(default_factory=list)
     open: list[OpenQuestion] = Field(
@@ -187,6 +250,15 @@ class Conclusion(BaseModel):
         ),
     )
     dismissed: list[Dismissal] = Field(default_factory=list)
+    # Brought to the Sponsor on the Goal; the epic's record goes on (crew#846).
+    elsewhere: Elsewhere | None = Field(
+        default=None,
+        description=(
+            "Where a note shows serving the Goal's reader needs something its intent doesn't "
+            "cover: a question for the Sponsor about the Goal, or a Goal you propose. The note "
+            "is still settled here"
+        ),
+    )
 
     @model_validator(mode="after")
     def _says_something(self) -> Conclusion:
@@ -263,7 +335,7 @@ def check_not_cut(settlement: Settlement) -> None:
                 ("decision", DECISION_CHARS),
                 ("consequences", CONSEQUENCES_CHARS),
                 ("source", SOURCE_CHARS),
-                ("goal wording", GOAL_QUOTE_CHARS),
+                ("serves", GOAL_QUOTE_CHARS),
             ):
                 if len(getattr(r, name.replace(" ", "_"))) >= limit:
                     cut.append(f"row {i} {name}")
@@ -291,22 +363,25 @@ def _not_cut_at_a_quote(answer: BaseModel) -> None:
 
 
 def check_grounded(settlement: Settlement, goal: str) -> None:
-    """A call the Product Owner makes itself stays within the Goal, in the Goal's own words.
+    """A call the Product Owner makes itself serves the Goal's intent (ADR 0018, ADR 0035).
 
-    The leeway is the Product Owner's, as a team's owner has it, so long as the call is
-    recorded and doesn't contradict the Goal. A quotation that isn't in the Goal is
-    wording it made up, and no call rests on it.
+    The leeway is the Product Owner's, as a team's owner has it: it may leave out or
+    reshape what the Goal mentions, so long as the call is recorded and serves the
+    Goal's reader. Words that aren't the reader or what they should see or decide
+    aren't the intent: made up, a feature the Goal lists, or what it rules out.
     """
     if settlement.conclusion is None:
         return
-    text = _plain(goal)
-    ungrounded = [
-        f"row {i}"
-        for i, r in enumerate(settlement.conclusion.rows, 1)
-        if r.own_call and _plain(r.goal_wording) not in text
+    within, out = (_plain(part) for part in goal_intent(goal))
+    calls = [
+        (i, _plain(r.serves)) for i, r in enumerate(settlement.conclusion.rows, 1) if r.own_call
     ]
-    if ungrounded:
-        refuse("check.settle_crew.check_grounded", kind=Unsettled, rows=", ".join(ungrounded))
+    ruled_out = [f"row {i}" for i, words in calls if out and words in out]
+    outside = [f"row {i}" for i, words in calls if words not in within]
+    if ruled_out:
+        refuse("check.settle_crew.check_grounded", "out", kind=Unsettled, rows=", ".join(ruled_out))
+    if outside:
+        refuse("check.settle_crew.check_grounded", kind=Unsettled, rows=", ".join(outside))
 
 
 def note_owners(panel: PanelResult) -> dict[int, str]:
@@ -422,9 +497,11 @@ _SETTLE_EACH = (
     "- **A row** when you can decide it. If the Goal, the project's record, a Sponsor "
     "decision, the project's decision log, a sibling's conclusion or the code answers it, "
     "say what is decided and what follows, and name the source. If none does, decide it "
-    "yourself, as the product owner does for the team: set `own_call`, say why, and quote "
-    "the Goal's own words that the decision stays within. It is recorded as your call. It "
-    "must not contradict the Goal or a Sponsor decision. Your own calls are for what the "
+    "yourself, as the product owner does for the team, by what serves the Goal's reader: "
+    "you may leave out or reshape what the Goal mentions. Set `own_call`, say why, and "
+    "quote the Goal's words on its reader, or on what they should see or decide, that the "
+    "decision serves. It is recorded as your call. It must not contradict a Sponsor "
+    "decision or reach into what the Goal rules out. Your own calls are for what the "
     "product does. A note a member marked for the Architect is a design question (a path, "
     "a response shape, a parameter): it is an open question for the design note, unless a "
     "source settles it.\n"
@@ -438,6 +515,9 @@ _SETTLE_EACH = (
     "no story waits on it.\n"
     "- **A dismissal** when it isn't needed: already settled, wholly inside another epic, "
     "or wrong. Say why.\n"
+    "When a note shows that serving the Goal's reader needs something the Goal's intent "
+    "doesn't cover, the Goal points elsewhere: say so in `elsewhere`, with a question about "
+    "the Goal or a Goal you propose, and still settle the note.\n"
     "Every note gets one of the four, and a row may answer several. Ask the Sponsor one "
     "question, with no conclusion, only when you can't tell which way the Goal points, so "
     "that any call you made might contradict it. Don't ask what you can decide, and don't "

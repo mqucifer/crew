@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -21,6 +21,7 @@ from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     CONTEXT_CHARS,
     DECISION_CHARS,
+    Elsewhere,
     aim,
 )
 from crew_org.rulebook import Refusal, refuse
@@ -58,6 +59,39 @@ OBSERVABLE = re.compile(
     r"line|row|column|heading|section|exit code)\b",
     re.IGNORECASE,
 )
+
+
+# What an epic leaves to its stories and design (ADR 0035, crew#815): it names a
+# reader and what they gain, never the fields, formats, endpoints or files that get
+# it there. Literal on purpose, so it refuses only what names one outright. Run over
+# 105 past epics before it was set, it caught sm#684 to sm#686 by the files and
+# functions they cite, and no plain-language epic.
+REACH = {
+    "a file": re.compile(
+        r"(?<![\w@/.])(?:[\w.-]+/)*[\w-]+\.(?:py|md|json|ya?ml|toml|ts|tsx|js|jsx|html|css|"
+        r"sql|txt|csv|cfg|ini|lock|sh)\b"
+        r"|(?<![\w./])(?:src|tests|docs|config|schemas|site|\.github)/[\w./-]*\w"
+    ),
+    "a field": re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b\w+\(\)"),
+    "an endpoint": re.compile(
+        r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+/[\w/{}?=&%.-]*|(?<![\w./])/(?:api|v\d+)/[\w/{}.-]*"
+    ),
+    "a format": re.compile(
+        r"\b(?:JSON|NDJSON|CSV|TSV|YAML|XML|TOML|Prometheus|OpenMetrics|protobuf)\b"
+    ),
+}
+
+
+def overreach(text: str) -> list[str]:
+    """What `text` names that an epic leaves to its stories, as "a field (`x`)".
+
+    A file's path is named once, not again as the field its folder looks like.
+    """
+    named: list[str] = []
+    for kind, pattern in REACH.items():
+        named += [f"{kind} (`{m}`)" for m in dict.fromkeys(pattern.findall(text))]
+        text = pattern.sub(" ", text)
+    return named
 
 
 class AcceptanceCriterion(BaseModel):
@@ -163,12 +197,14 @@ class Story(BaseModel):
 
 class Epic(BaseModel):
     title: str = Field(description="Short imperative title")
-    outcome: str = Field(description="The user-visible outcome this delivers")
+    # The epic is at the level of intent: a reader and what they gain (ADR 0035).
+    reader: str = Field(description="Who this serves: the Goal's reader, in a few words")
+    outcome: str = Field(description="What that reader can now see, decide or do")
     rationale: str = Field(description="Why this slice is worth doing, and why now")
     separately_deliverable: str = Field(
         description=(
             "Why this epic can ship on its own and still be worth having, without "
-            "the others. Name what the user could do with only this."
+            "the others. Name what its reader could do with only this."
         )
     )
     changes_what_readers_see: bool = Field(
@@ -193,11 +229,34 @@ class Epic(BaseModel):
         return self
 
 
+class Choice(BaseModel):
+    """Something the Goal mentions that the Product Owner left out or reshaped (ADR 0018)."""
+
+    mentioned: str = Field(description="What the Goal mentions, in a few words")
+    instead: str = Field(description="Left out, or what it became")
+    why: str = Field(description="Why that serves the Goal's reader better")
+
+
 class EpicProposal(BaseModel):
     """What the Product Owner proposes for a goal. Awaits Sponsor approval."""
 
-    epics: list[Epic] = Field(description="The smallest set that covers the goal")
+    epics: list[Epic] = Field(description="The smallest set that serves the Goal's reader")
     ordering_rationale: str = Field(description="Why this order delivers value soonest")
+    names_specifics: ClassVar[bool] = False
+    # The Product Owner's calls, recorded where the Sponsor approves (crew#846).
+    choices: list[Choice] = Field(
+        default_factory=list,
+        description=(
+            "Each thing the Goal mentions that you left out or reshaped, and why. Empty if none"
+        ),
+    )
+    elsewhere: Elsewhere | None = Field(
+        default=None,
+        description=(
+            "Where serving the Goal's reader needs something its intent doesn't cover: a "
+            "question for the Sponsor, or a Goal you propose. The epics still serve this Goal"
+        ),
+    )
 
     @field_validator("epics")
     @classmethod
@@ -210,6 +269,19 @@ class EpicProposal(BaseModel):
         if len(set(titles)) != len(titles):
             refuse("form.EpicProposal.decomposed", "same_title")
         return value
+
+    @model_validator(mode="after")
+    def _at_the_level_of_intent(self) -> EpicProposal:
+        if self.names_specifics:
+            return self
+        named = []
+        for e in self.epics:
+            said = (e.title, e.reader, e.outcome, e.rationale, e.separately_deliverable)
+            if found := overreach("\n".join(said)):
+                named.append(f'"{e.title}" names {", ".join(found)}')
+        if named:
+            refuse("form.EpicProposal.at_the_level_of_intent", epics="; ".join(named))
+        return self
 
 
 class MissingEpics(EpicProposal):
@@ -235,6 +307,10 @@ class SkeletonEpic(EpicProposal):
     epic can only be product work the project's own Goals hold. Held to two,
     the Product Owner padded one with the site's pages (crew#690).
     """
+
+    # Its reader is a developer, and its outcome is the project's files and checks
+    # running, so naming them is its intent.
+    names_specifics: ClassVar[bool] = True
 
     @field_validator("epics")
     @classmethod
@@ -653,8 +729,8 @@ def decompose_opening(
             "however useful it would be: anything more is a new decision for the Sponsor. As "
             f"few as that takes, one is fine, at most {MAX_EPICS}. Each delivers something "
             "none of the goal's epics already delivers. Decompose by outcome, never by "
-            "architectural layer. For each epic, state what a user could do with that epic "
-            "alone."
+            "architectural layer. For each epic, state what its reader could do with that "
+            "epic alone."
         )
     elif skeleton:
         ask = (
@@ -665,16 +741,24 @@ def decompose_opening(
         )
     else:
         ask = (
-            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
-            "Decompose by outcome, never by architectural layer. Order them so the most "
-            "valuable is deliverable first. For each epic, state what a user could do with "
-            "that epic alone, without the others. If you cannot say, it is not a separate "
-            "epic: merge it. A goal that comes back as a single epic has not been decomposed."
+            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together serve that "
+            "reader. Decompose by outcome, never by architectural layer. Order them so the "
+            "most valuable is deliverable first. For each epic, state what its reader could "
+            "do with that epic alone, without the others. If you cannot say, it is not a "
+            "separate epic: merge it. A goal that comes back as a single epic has not been "
+            "decomposed."
         )
     return {
         "step": "## Your step: decompose the Goal into epics\n\n"
-        "The Sponsor set the Goal below. You propose the epics that deliver it, and the "
-        "Sponsor approves or rejects each one. The stories, their criteria and estimates "
+        "The Sponsor set the Goal below: who reads the result, what it should let them see "
+        "or decide, and what's out. You choose what serves that reader, and the Sponsor "
+        "approves or rejects each epic you propose. What the Goal mentions is a lead, not a "
+        "list to copy: leave out or reshape what doesn't serve the reader, and say why. Stay "
+        "within the Goal's intent and the Sponsor's decisions. An epic names its reader and "
+        "what they can now see, decide or do. When serving the reader needs something "
+        "the Goal's intent doesn't cover, the Goal points elsewhere: say so in `elsewhere`, "
+        "with one question for the Sponsor or a Goal you propose, written as intent. "
+        "The stories, their criteria and estimates "
         "are the Business Analyst's, after approval, and a design is the Architect's. " + ask,
         "goal": f"## The Goal ({goal_ref}), set by the Sponsor\n\n{sponsors_words(goal)}",
         "lacking": lacking,

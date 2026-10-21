@@ -53,6 +53,7 @@ def test_an_epic_may_state_a_quality():
     """#281, criterion 3: stories make it testable, not epics."""
     epic = Epic(
         title="Lead the report with a health summary",
+        reader="the Sponsor",
         outcome="A reader sees at a glance whether the crew is doing well",
         rationale="The Sponsor wants a five-second scan of the top of the report.",
         separately_deliverable=(

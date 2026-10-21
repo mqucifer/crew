@@ -23,6 +23,7 @@ from crew_org.crews.panel_crew import PanelContext, PanelResult
 from crew_org.crews.settle_crew import (
     Conclusion,
     DesignSettlement,
+    Elsewhere,
     Row,
     Settlement,
     numbered,
@@ -30,7 +31,7 @@ from crew_org.crews.settle_crew import (
     settle_design,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, proposed_goal
 from crew_org.flows import record as record_flow
 from crew_org.session import steps
 from crew_org.tools.github_issues import IssueClient, from_sponsor
@@ -92,16 +93,20 @@ def _cell(text: str, *, owner: str, repo: str, known: set[str]) -> str:
     )
 
 
+# A Goal's reference as the panel's context gives it: owner/repo#number.
+_GOAL_REF = re.compile(r"([\w.-]+)#(\d+)$")
+
+
 def explicit(text: str, *, owner: str, repo: str) -> str:
     """A cell for the epic's record, from any writer: references explicit and linked."""
     return _cell(text, owner=owner, repo=repo, known={repo})
 
 
 def _source(row: Row) -> str:
-    """A call the Product Owner made itself says so, and the Goal's words it stays within."""
+    """A call the Product Owner made itself says so, and the Goal's intent it serves."""
     if not row.own_call:
         return row.source
-    return f'{record_flow.OWN_CALL}, within the Goal: "{row.goal_wording}". {row.source}'
+    return f'{record_flow.OWN_CALL}, serving the Goal: "{row.serves}". {row.source}'
 
 
 def from_conclusion(
@@ -230,6 +235,7 @@ def _write(
 
 
 def settle_epic(
+    board: Any,
     issues: IssueClient,
     sink: EventSink,
     *,
@@ -351,7 +357,66 @@ def settle_epic(
             },
         )
     )
+    if elsewhere := settlement.conclusion.elsewhere:
+        _points_elsewhere(
+            board,
+            issues,
+            sink,
+            context=context,
+            epic=f"{issues.owner}/{repo}#{epic}",
+            elsewhere=elsewhere,
+        )
     return Settled(Outcome.WRITTEN, text)
+
+
+def _points_elsewhere(
+    board: Any,
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    context: PanelContext,
+    epic: str,
+    elsewhere: Elsewhere,
+) -> None:
+    """ "The Goal points elsewhere", on the epic's Goal, where its direction is the
+    Sponsor's (ADR 0018). The epic's record is written and goes on regardless."""
+    # Every epic the panel reads has its Goal (refine_panel's first check).
+    found = _GOAL_REF.search(context.goal_ref)
+    assert found is not None, context.goal_ref
+    repo, goal = found.group(1), int(found.group(2))
+    proposed = proposed_goal.bring(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        goal=goal,
+        elsewhere=elsewhere,
+        step="settle",
+        rule="decision.settle.settle_epic",
+    )
+    asked = (
+        f"**A question for the Sponsor about this Goal.** {elsewhere.question}"
+        if elsewhere.question
+        else f"**A Goal I propose:** {proposed}, a draft in `Inbox (Goals)`. Add the `goal` "
+        "label to approve it, edit it first, or close it."
+    )
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=goal,
+        body=f"### The Goal points elsewhere\n\nFrom settling {epic}: {elsewhere.why}\n\n{asked}",
+        by="Product Owner",
+    )
+    artifacts.label(
+        issues,
+        sink,
+        repo=repo,
+        number=goal,
+        by="Product Owner",
+        add=[NEEDS_HUMAN],
+        rule="decision.settle.settle_epic",
+    )
 
 
 def propose_design(
