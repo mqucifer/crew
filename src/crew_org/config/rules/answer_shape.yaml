@@ -167,6 +167,12 @@ form.Finding.is_actionable:
   messages:
     default: say specifically what to change. A finding an author cannot act on is not a finding.
   told_in: Finding.action
+form.MemberForm.one_or_the_other:
+  description: Refused unless it raises something or says nothing to add, not both.
+  messages:
+    no_items: 'nothing raised: give at least one, or say nothing_to_add'
+    with_items: 'nothing_to_add with items raised: give the items, or nothing to add'
+  told_in: ReaderView, Decisions, Examples, RuntimeChanges
 form.PresentationNote.has_a_sample:
   description: Refused if empty.
   messages:

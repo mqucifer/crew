@@ -12,7 +12,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | Kind | Rules |
 |---|---|
 | The crew's own decisions (`rules.Rule`) | 19 |
-| An answer's form refuses it | 41 |
+| An answer's form refuses it | 42 |
 | The call layer refuses any answer | 4 |
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
@@ -33,7 +33,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 72 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:architect.refinement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 75 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
@@ -88,6 +88,7 @@ section; one no line holds for is unplaced, never guessed.
 | `form.EpicProposal.decomposed`<br>two epics share a title; each must be a distinct slice | scope | `src/crew_org/crews/refinement_crew.py:EpicProposal._decomposed` | Product Owner | — | src/crew_org/crews/refinement_crew.py:EpicProposal._decomposed | — |
 | `form.FileAsk.a_bare_path`<br>a bare path (repairs the answer, never refuses it) | answer_shape | `src/crew_org/crews/asks.py:FileAsk._a_bare_path` | QA Engineer | — | src/crew_org/crews/asks.py:FileAsk._a_bare_path | — |
 | `form.Finding.is_actionable`<br>say specifically what to change. | answer_shape | `src/crew_org/crews/review_crew.py:Finding._is_actionable` | Code Reviewer<br>DevOps Engineer | — | src/crew_org/crews/review_crew.py:Finding._is_actionable | — |
+| `form.MemberForm.one_or_the_other`<br>nothing raised: give at least one, or say nothing_to_add | answer_shape | `src/crew_org/crews/panel_crew.py:MemberForm._one_or_the_other` | Architect<br>DevOps Engineer<br>QA Engineer<br>UX Designer | — | src/crew_org/crews/panel_crew.py:MemberForm._one_or_the_other | — |
 | `form.MissingEpics.decomposed`<br>name the epic the goal still lacks: at least one | scope | `src/crew_org/crews/refinement_crew.py:MissingEpics._decomposed` | Product Owner | — | src/crew_org/crews/refinement_crew.py:MissingEpics._decomposed | — |
 | `form.Placement.epic_is_named`<br>change … belongs to an epic: name it in `epic` | scope | `src/crew_org/crews/design_crew.py:Placement._epic_is_named` | Architect | `Placement.kind`'s description | src/crew_org/crews/design_crew.py:Placement._epic_is_named | — |
 | `form.PresentationNote.has_a_sample`<br>the note carries a sample of the finished output | answer_shape | `src/crew_org/crews/presentation_note_crew.py:PresentationNote._has_a_sample` | UX Designer | `PresentationNote.sample`'s description | src/crew_org/crews/presentation_note_crew.py:PresentationNote._has_a_sample | — |

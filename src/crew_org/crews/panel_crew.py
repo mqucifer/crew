@@ -35,10 +35,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from crew_org.events import attributed
 from crew_org.permissions import load_agents
+from crew_org.rulebook import refuse
 from crew_org.session import steps
 
 SettledBy = Literal["product_owner", "architect", "sponsor", "infra"]
@@ -75,6 +76,25 @@ class Item:
     settled_by: SettledBy
 
 
+class MemberForm(BaseModel):
+    """What every member's form shares: it raises something, or says it has nothing to
+    add. An empty answer would read as "nothing raised" when it was no answer at all."""
+
+    nothing_to_add: bool = Field(
+        default=False,
+        description="True when you have nothing to raise: then every list is empty",
+    )
+
+    @model_validator(mode="after")
+    def _one_or_the_other(self) -> MemberForm:
+        raised = any(isinstance(v, list) and v for v in self.__dict__.values())
+        if self.nothing_to_add and raised:
+            refuse("form.MemberForm.one_or_the_other", "with_items")
+        if not self.nothing_to_add and not raised:
+            refuse("form.MemberForm.one_or_the_other", "no_items")
+        return self
+
+
 # --- the UX Designer: the reader --------------------------------------------------------------
 
 
@@ -87,7 +107,7 @@ class ReaderGap(BaseModel):
     settled_by: SettledBy = settled_by()
 
 
-class ReaderView(BaseModel):
+class ReaderView(MemberForm):
     reader: str = Field(description="Who reads or uses what this epic delivers, from the Goal")
     sees: str = Field(
         description="What they will see or do once it is delivered, as they meet it: the "
@@ -123,7 +143,7 @@ class Decision(BaseModel):
     settled_by: SettledBy = settled_by(default="architect")
 
 
-class Decisions(BaseModel):
+class Decisions(MemberForm):
     decisions: list[Decision] = Field(
         default_factory=list,
         description="The decisions to make before building. Empty when nothing this epic "
@@ -166,7 +186,7 @@ class Question(BaseModel):
     settled_by: SettledBy = settled_by()
 
 
-class Examples(BaseModel):
+class Examples(MemberForm):
     examples: list[Example] = Field(
         default_factory=list,
         description="The examples that prove the epic worked for its reader, the edge cases "
@@ -202,7 +222,7 @@ class RuntimeChange(BaseModel):
     settled_by: SettledBy = settled_by()
 
 
-class RuntimeChanges(BaseModel):
+class RuntimeChanges(MemberForm):
     changes: list[RuntimeChange] = Field(
         default_factory=list,
         description="The runtime changes this epic ships. Empty when it changes nothing that runs",

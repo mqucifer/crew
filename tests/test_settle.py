@@ -73,19 +73,24 @@ def note(problem="History is in memory.", settled_by="product_owner"):
 def answer(role, *notes):
     """A member's answer in its own form (ADR 0035), each note one item of it."""
     at = dict(source="the Goal")
+    none = dict(nothing_to_add=not notes)
     if role == "architect":
         return Decisions(
             decisions=[
                 Decision(decision=t, why="w", options="o", settled_by=by, **at) for t, by in notes
-            ]
+            ],
+            **none,
         )
     if role == "ux_designer":
         gaps = [ReaderGap(gap=t, settled_by=by, **at) for t, by in notes]
-        return ReaderView(reader="r", sees="s", matters="m", missing=gaps)
+        return ReaderView(reader="r", sees="s", matters="m", missing=gaps, **none)
     if role == "qa_engineer":
-        return Examples(questions=[Question(question=t, settled_by=by, **at) for t, by in notes])
+        return Examples(
+            questions=[Question(question=t, settled_by=by, **at) for t, by in notes], **none
+        )
     return RuntimeChanges(
-        changes=[RuntimeChange(area="settings", change=t, settled_by=by, **at) for t, by in notes]
+        changes=[RuntimeChange(area="settings", change=t, settled_by=by, **at) for t, by in notes],
+        **none,
     )
 
 

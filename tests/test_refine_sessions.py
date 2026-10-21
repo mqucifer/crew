@@ -131,7 +131,7 @@ def run_step(main, proxy, *, check=None, form=Examples):
 
 def test_a_form_refused_for_its_shape_is_a_reply_and_the_session_answers_it(main, seen):  # noqa: F811
     wrong = {"questions": [{"question": "p"}]}
-    right = {"examples": [], "questions": []}
+    right = {"examples": [], "questions": [], "nothing_to_add": True}
     proxy = Proxy(
         said(("view", {"path": "src/app.py"})),
         said(("done", wrong)),
@@ -156,8 +156,8 @@ def test_a_steps_own_check_refuses_done_in_the_session(main, seen):  # noqa: F81
             raise ValueError("Refused: a member with nothing to add read no file.")
 
     proxy = Proxy(
-        said(("done", {"examples": [], "questions": []})),
-        said(("done", {"examples": [], "questions": []})),
+        said(("done", {"examples": [], "questions": [], "nothing_to_add": True})),
+        said(("done", {"examples": [], "questions": [], "nothing_to_add": True})),
         said(content="I'll stop."),
         said(content="Still stopping."),
         said(content="Stopped."),
@@ -223,8 +223,8 @@ def test_a_failure_handling_done_is_a_reply_and_the_session_goes_on(main, seen, 
 
     monkeypatch.setattr(conversation, "check_arguments", broken)
     proxy = Proxy(
-        said(("done", {"examples": [], "questions": []})),
-        said(("done", {"examples": [], "questions": []})),
+        said(("done", {"examples": [], "questions": [], "nothing_to_add": True})),
+        said(("done", {"examples": [], "questions": [], "nothing_to_add": True})),
     )
     assert run_step(main, proxy).items() == []
     failed = proxy.sent[1]["messages"][-1]
@@ -250,7 +250,7 @@ def test_a_step_is_offered_its_roles_tools_and_answered_in_the_session(main, see
     )
     proxy = Proxy(
         said(("ci_steps", {})),
-        said(("done", {"examples": [], "questions": []})),
+        said(("done", {"examples": [], "questions": [], "nothing_to_add": True})),
     )
     reading = steps.Reading.at(main, "r")
     own = steps.Step(

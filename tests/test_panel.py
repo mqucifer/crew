@@ -57,8 +57,10 @@ def decision(**overrides):
 def nothing(role: str):
     """A member's answer with nothing to raise."""
     if role == "ux_designer":
-        return ReaderView(reader="the Sponsor", sees="a trend", matters="it shows a drift")
-    return ASKS[role].form()
+        return ReaderView(
+            reader="the Sponsor", sees="a trend", matters="it shows a drift", nothing_to_add=True
+        )
+    return ASKS[role].form(nothing_to_add=True)
 
 
 def context(**overrides) -> PanelContext:
@@ -113,13 +115,25 @@ def test_each_form_gives_the_settle_its_items_by_kind():
     assert [(i.kind, i.settled_by) for i in examples.items()] == [("question", "sponsor")]
     assert PanelResult({"qa_engineer": examples}, {}).examples() == examples.examples
     assert [(i.kind, i.settled_by) for i in runtime.items()] == [("runtime", "infra")]
-    assert "Reader: the Sponsor" in view.view() and Decisions().view() == ""
+    assert "Reader: the Sponsor" in view.view() and Decisions(nothing_to_add=True).view() == ""
 
 
 def test_a_small_epic_gets_short_answers():
     """Nothing to raise is an empty list: no runtime change, nothing expensive to reverse."""
     for role in ROLES:
         assert nothing(role).items() == []
+
+
+def test_an_empty_answer_is_refused_unless_it_says_nothing_to_add():
+    """`done({})` read as "nothing raised" when it was no answer at all."""
+    for form in (Decisions, Examples, RuntimeChanges):
+        with pytest.raises(ValidationError, match="nothing raised"):
+            form.model_validate({})
+        assert form.model_validate({"nothing_to_add": True}).items() == []
+    with pytest.raises(ValidationError, match="nothing raised"):
+        ReaderView(reader="r", sees="s", matters="m")
+    with pytest.raises(ValidationError, match="nothing_to_add with items"):
+        Decisions(decisions=[decision()], nothing_to_add=True)
 
 
 def test_an_item_says_who_settles_it_and_only_from_the_four():
@@ -132,7 +146,7 @@ def test_the_results_items_are_in_the_order_the_settle_numbers_them():
     result = PanelResult(
         {
             "architect": Decisions(decisions=[decision(), decision(decision="Two.")]),
-            "qa_engineer": Examples(),
+            "qa_engineer": Examples(nothing_to_add=True),
             "devops_engineer": RuntimeChanges(
                 changes=[RuntimeChange(area="ci", change="CI", source=SOURCE, settled_by="infra")]
             ),
@@ -321,8 +335,10 @@ def test_the_comment_is_marked_and_counts_items_by_who_settles_them():
             "architect": Decisions(
                 decisions=[decision(), decision(decision="Two.", settled_by="sponsor")]
             ),
-            "ux_designer": ReaderView(reader="the Sponsor", sees="a trend", matters="a drift"),
-            "devops_engineer": RuntimeChanges(),
+            "ux_designer": ReaderView(
+                reader="the Sponsor", sees="a trend", matters="a drift", nothing_to_add=True
+            ),
+            "devops_engineer": RuntimeChanges(nothing_to_add=True),
         },
         failed={"qa_engineer": "TimeoutError: slow"},
     )
@@ -373,7 +389,10 @@ def test_qas_examples_show_in_the_comment_but_are_not_items_to_settle():
 
 def test_the_comment_reads_back_as_the_same_answers():
     result = PanelResult(
-        {"architect": Decisions(decisions=[decision()]), "qa_engineer": Examples()},
+        {
+            "architect": Decisions(decisions=[decision()]),
+            "qa_engineer": Examples(nothing_to_add=True),
+        },
         {"devops_engineer": "TimeoutError: slow -- twice"},
     )
     assert panel.read_panel(panel.render(result)) == result
@@ -491,7 +510,7 @@ def test_an_epic_with_no_parent_has_no_goal_to_be_read_against():
 
 def test_the_comment_is_posted_once_per_epic():
     by, children = goal_with_epics()
-    result = PanelResult({"architect": Decisions()}, {})
+    result = PanelResult({"architect": Decisions(nothing_to_add=True)}, {})
 
     fresh = github(by, children)
     assert panel.post(fresh, "sprint-metrics", 406, result) is True
