@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 46 |
-| A setting that changes what the tick does | 191 |
+| A setting that changes what the tick does | 197 |
 | Told, and not checked by anything above | 170 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 101 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 91 |
+| Unplaced | | 97 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -368,6 +368,11 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.llm.DEFAULT_MAX_TOKENS`<br>Reasoning models need headroom ABOVE their thinking, and real refinement work thinks hard: a single "propose epics for this goal" task was measured spending 4,097 reasoning tokens and emitting 0 text… | answer_shape | `src/crew_org/llm.py:DEFAULT_MAX_TOKENS` | — | — | src/crew_org/llm.py:DEFAULT_MAX_TOKENS | — |
 | `config.const.llm.DEFAULT_TIMEOUT`<br>Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s gives ~460s for a full implementation), with headroom for reasoning tokens. | answer_shape | `src/crew_org/llm.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/llm.py:DEFAULT_TIMEOUT | — |
 | `config.const.llm.PROBE_TIMEOUT`<br>Long enough for a cold model's first token, short enough to fail a pre-flight rather than hang it. | answer_shape | `src/crew_org/llm.py:PROBE_TIMEOUT` | — | — | src/crew_org/llm.py:PROBE_TIMEOUT | — |
+| `config.const.look.EXTERNAL_BYTES`<br>EXTERNAL_BYTES = 10000000 | — | `src/crew_org/tools/look.py:EXTERNAL_BYTES` | — | — | src/crew_org/tools/look.py:EXTERNAL_BYTES | crew#846 |
+| `config.const.look.EXTERNAL_COUNT`<br>What the host fetches for a page from other hosts: a bound, not a crawl. | — | `src/crew_org/tools/look.py:EXTERNAL_COUNT` | — | — | src/crew_org/tools/look.py:EXTERNAL_COUNT | crew#846 |
+| `config.const.look.HEIGHT`<br>HEIGHT = 800 | — | `src/crew_org/tools/look.py:HEIGHT` | — | — | src/crew_org/tools/look.py:HEIGHT | crew#846 |
+| `config.const.look.TEXT_CHARS`<br>TEXT_CHARS = 6000 | — | `src/crew_org/tools/look.py:TEXT_CHARS` | — | — | src/crew_org/tools/look.py:TEXT_CHARS | crew#846 |
+| `config.const.look.TIMEOUT`<br>TIMEOUT = 180 | — | `src/crew_org/tools/look.py:TIMEOUT` | — | — | src/crew_org/tools/look.py:TIMEOUT | crew#846 |
 | `config.const.loop.MAX_PASSES`<br>MAX_PASSES = 5 | flow | `src/crew_org/flows/loop.py:MAX_PASSES` | — | — | src/crew_org/flows/loop.py:MAX_PASSES | — |
 | `config.const.loop.QUEUE_POLL`<br>QUEUE_POLL = 15.0 | flow | `src/crew_org/flows/loop.py:QUEUE_POLL` | — | — | src/crew_org/flows/loop.py:QUEUE_POLL | — |
 | `config.const.loop.QUEUE_WAIT`<br>How long a pass that moved nothing waits for pull requests it left in the merge queue (#314). | flow | `src/crew_org/flows/loop.py:QUEUE_WAIT` | — | — | src/crew_org/flows/loop.py:QUEUE_WAIT | crew#314 |
@@ -397,6 +402,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.review_crew.MAX_DIFF_CHARS`<br>The whole diff, or no approval. | evidence | `src/crew_org/crews/review_crew.py:MAX_DIFF_CHARS` | — | — | src/crew_org/crews/review_crew.py:MAX_DIFF_CHARS | — |
 | `config.const.review_crew.MIN_ACTION_CHARS`<br>MIN_ACTION_CHARS = 15 | evidence | `src/crew_org/crews/review_crew.py:MIN_ACTION_CHARS` | — | — | src/crew_org/crews/review_crew.py:MIN_ACTION_CHARS | — |
 | `config.const.review_evidence.MAX_IMPORTED_CHARS`<br>The code a diff leans on can be large; this is a guard, not a budget (§16). | evidence | `src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS` | — | — | src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS | — |
+| `config.const.role_tools.LOG_LINES`<br>A job's log is long; its end says how it finished. | — | `src/crew_org/session/role_tools.py:LOG_LINES` | — | — | src/crew_org/session/role_tools.py:LOG_LINES | crew#846 |
 | `config.const.sandbox.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 300 | guards | `src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT | — |
 | `config.const.sandbox.PROBE_TIMEOUT`<br>PROBE_TIMEOUT = 15 | guards | `src/crew_org/tools/sandbox.py:PROBE_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:PROBE_TIMEOUT | — |
 | `config.const.session_delivery.GATE_REPEATS`<br>The gates' same findings this many rounds in a row end the delivery: the in-session no-progress stop's count, which a new session starts again (the Sponsor, crew#790). sprint-metrics#671's gates refu… | — | `src/crew_org/flows/session_delivery.py:GATE_REPEATS` | — | — | src/crew_org/flows/session_delivery.py:GATE_REPEATS | crew#790<br>sprint-metrics#671 |

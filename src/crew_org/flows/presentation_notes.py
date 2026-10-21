@@ -208,7 +208,7 @@ def write_notes(
     from crew_org.flows.board_flow import RepoContext  # noqa: PLC0415
 
     result = PresentationNotes()
-    context = RepoContext(ws, sink)
+    context = RepoContext(ws, sink, issues)
     for epic in cards:
         repo = epic.repo or default_repo
         number = epic.number or 0

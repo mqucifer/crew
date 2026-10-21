@@ -74,3 +74,6 @@ upward and copied them down:
 
 - **2026-10-21:** decided by the Sponsor in the overhaul's planning session, in the
   operator's chat (`briefs/2026-10-21-refinement-overhaul.md` in mqucifer/project-print).
+- **2026-10-21, later:** the panel's four questions built (crew#828, part 2), with each
+  role's background and tools (crew#846, parts 3 and 4). The UX Designer's `look`
+  opens the published site's own files in the sandbox with no network (the operator).

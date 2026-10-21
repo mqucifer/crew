@@ -240,3 +240,24 @@ def test_a_line_found_in_the_delivered_note_names_its_story(main: Path):
     assert "2 stories" in shown
     reply = ReadTools(main, notes=notes).call("search", {"pattern": "50%"})
     assert "2 [## #12 Show the rate]: - when run, then it prints 50%" in reply.text
+
+
+def test_a_step_is_offered_its_roles_tools_and_answered_in_the_session(main, seen):  # noqa: F811
+    """crew#846: a role's own tools, told only to its step, beside the read tools."""
+    (main / ".github" / "workflows").mkdir(parents=True)
+    (main / ".github" / "workflows" / "ci.yml").write_text(
+        "on: push\njobs:\n  t:\n    runs-on: x\n    steps:\n      - run: make check\n"
+    )
+    proxy = Proxy(
+        said(("ci_steps", {})),
+        said(("done", {"examples": [], "questions": []})),
+    )
+    reading = steps.Reading.at(main, "r")
+    own = steps.Step(
+        "panel qa_engineer", "qa_engineer", Examples, "x", "the epic", "panel", ("ci_steps",)
+    )
+    steps.run(own, {"step": "## Your step"}, reading, about="x", send=proxy)
+    assert [t["function"]["name"] for t in proxy.sent[0]["tools"]] == [
+        *("view", "search", "find", "tests_for", "git", "ci_steps", "done")
+    ]
+    assert "make check" in proxy.sent[1]["messages"][-1]["content"]

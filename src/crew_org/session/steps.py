@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,10 +34,10 @@ from crew_org.calls import role_spec, who
 from crew_org.cut_text import check_not_cut_at_a_quote
 from crew_org.events import EventKind, record
 from crew_org.project import RECORD_PATH, ProjectRecordError, brief, read_record
-from crew_org.session import signals
+from crew_org.session import role_tools, signals
 from crew_org.session.conversation import COMPACT_AT, QUIET_LIMIT, Ending, Session
 from crew_org.session.git import OUTPUT_CHARS
-from crew_org.session.reading import ReadTools
+from crew_org.session.reading import ReadTools, RunsAtMain
 from crew_org.session.signals import Signals
 from crew_org.session.start import hints, project_map
 from crew_org.session.tools import SPECS, VIEW_LINES, _spec
@@ -83,6 +85,11 @@ def reading_specs(head: str) -> list[dict[str, Any]]:
         )
     )
     return specs
+
+
+def _spec_named(name: str) -> dict[str, Any]:
+    """One of the Developer's tools, as it's told: QA's `run` (crew#846)."""
+    return copy.deepcopy(next(s for s in SPECS if s["function"]["name"] == name))
 
 
 def cite(head: str) -> str:
@@ -289,15 +296,17 @@ class Reading:
     repo: str
     head: str
     coverage: Any = None
+    # The client a role's tools read GitHub with: CI's logs, the published site.
+    github: Any = None
 
     @classmethod
-    def at(cls, root: Path, repo: str, coverage: Any = None) -> Reading:
+    def at(cls, root: Path, repo: str, coverage: Any = None, github: Any = None) -> Reading:
         found = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
         )
         if found.returncode != 0:
             raise NoCheckout(f"{root} has no commit to read: {found.stderr.strip()[:200]}")
-        return cls(root, repo, found.stdout.strip(), coverage)
+        return cls(root, repo, found.stdout.strip(), coverage, github)
 
 
 class NoCheckout(RuntimeError):
@@ -306,8 +315,9 @@ class NoCheckout(RuntimeError):
 
 @dataclass(frozen=True)
 class Step:
-    """One refinement step as a session: who works it, its answer form, and what its
-    hints are picked from, as they say it ("the epic")."""
+    """One refinement step as a session: who works it, its answer form, what its
+    hints are picked from, as they say it ("the epic"), and the tools its role's
+    question needs beside the read tools (`role_tools`, and `run`)."""
 
     name: str
     role: str
@@ -315,6 +325,7 @@ class Step:
     said: str
     named_in: str
     step: str | None = None
+    tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -435,8 +446,21 @@ def run(
             "quiet_limit": QUIET_LIMIT,
         },
     )
+    given = tuple(t for t in step.tools if t != "run")
+    tools = ReadTools(
+        reading.root,
+        reading.coverage,
+        begun.notes,
+        given=given,
+        context=role_tools.Context(reading.root, reading.repo, reading.github),
+        runs=(
+            RunsAtMain(reading.root, f"{reading.repo}-{step.name}-{os.getpid()}-{time.time_ns()}")
+            if "run" in step.tools
+            else None
+        ),
+    )
     session = Session(
-        ReadTools(reading.root, reading.coverage, begun.notes),
+        tools,
         system_text(step.role, step.step),
         begun.text,
         send=send,
@@ -445,13 +469,21 @@ def run(
         role=step.role,
         step=step.step,
         name=step.name,
-        specs=[*reading_specs(reading.head), done_spec(step.form, step.said, head=reading.head)],
+        specs=[
+            *reading_specs(reading.head),
+            *([_spec_named("run")] if "run" in step.tools else []),
+            *(role_tools.TOOLS[t].spec for t in given),
+            done_spec(step.form, step.said, head=reading.head),
+        ],
         endings=("done",),
         watch=Signals(reading_calls=READING_CALLS),
         quiet=QUIET,
         refused_done=REFUSED_DONE,
     )
-    ending = session.run()
+    try:
+        ending = session.run()
+    finally:
+        tools.stop()
     if on_end is not None:
         try:
             on_end(session, ending)

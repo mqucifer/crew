@@ -1724,7 +1724,7 @@ def panel(
     issues = IssueClient(token, env["GITHUB_OWNER"])
 
     context = _panel_context(issues, repo, number, env)
-    reading = _reading(env, token, identity, repo)
+    reading = _reading(env, token, identity, repo, issues)
 
     console.print(
         f"Panel on {context.epic_ref}: {len(context.siblings)} sibling epics, "
@@ -1753,7 +1753,7 @@ def _panel_context(
         raise typer.BadParameter(str(exc)) from exc
 
 
-def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
+def _reading(env: dict[str, str], token: Any, identity: Any, repo: str, issues: Any = None) -> Any:
     """The checkout a refinement step reads, at the default branch, as a tick makes it."""
     from crew_org.git_ops import Workspace
     from crew_org.session.steps import Reading
@@ -1765,7 +1765,7 @@ def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
     except CoverageUnavailable as exc:
         console.print(f"[yellow]No coverage map:[/] {escape(str(exc))}")
         coverage = None
-    return Reading.at(root, repo, coverage)
+    return Reading.at(root, repo, coverage, issues)
 
 
 @app.command()
@@ -1800,7 +1800,7 @@ def settle(
     token, identity = resolve_credentials(env)
     issues = IssueClient(token, env["GITHUB_OWNER"])
     context = _panel_context(issues, repo, number, env)
-    reading = _reading(env, token, identity, repo)
+    reading = _reading(env, token, identity, repo, issues)
 
     sink = EventSink(VAR / "events" / "settle.jsonl")
     forward_calls_to(sink)

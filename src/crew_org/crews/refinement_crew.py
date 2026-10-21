@@ -605,6 +605,8 @@ def _decomposed(
         form,
         "the epics, each with its outcome and why it stands alone, in order.",
         "the Goal",
+        # The real data its reader would be shown (crew#846).
+        tools=("data",),
     )
     return steps.run(step, {**parts, "delivered": shown}, reading, about=goal, notes=notes)
 

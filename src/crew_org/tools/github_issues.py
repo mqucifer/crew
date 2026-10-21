@@ -470,16 +470,20 @@ class IssueClient:
         response.raise_for_status()
         return response.text
 
-    def failed_jobs(self, repo: str, run_id: int) -> list[dict[str, Any]]:
-        """The jobs of one Actions run that failed, on its latest attempt."""
+    def run_jobs(self, repo: str, run_id: int) -> list[dict[str, Any]]:
+        """The jobs of one Actions run, on its latest attempt."""
         jobs = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/actions/runs/{run_id}/jobs",
             params={"filter": "latest", "per_page": 100},
         )
         jobs.raise_for_status()
+        return list(jobs.json().get("jobs") or [])
+
+    def failed_jobs(self, repo: str, run_id: int) -> list[dict[str, Any]]:
+        """The jobs of one Actions run that failed, on its latest attempt."""
         return [
             job
-            for job in jobs.json().get("jobs") or []
+            for job in self.run_jobs(repo, run_id)
             if job.get("conclusion") in FAILED_CONCLUSIONS
         ]
 
@@ -511,6 +515,23 @@ class IssueClient:
         )
         response.raise_for_status()
         return response.json().get("workflow_runs") or []
+
+    def pages_artifact(self, repo: str) -> tuple[dict[str, Any], bytes] | None:
+        """The newest unexpired `github-pages` artifact a deploy uploaded, and its zip:
+        the files the published site serves (crew#846). None when there is none."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/artifacts",
+            params={"name": "github-pages", "per_page": 20},
+        )
+        response.raise_for_status()
+        for artifact in response.json().get("artifacts") or []:  # newest first
+            if artifact.get("expired"):
+                continue
+            # A redirect to short-lived storage, as a job's log is.
+            zipped = self._client.get(artifact["archive_download_url"], follow_redirects=True)
+            zipped.raise_for_status()
+            return artifact, zipped.content
+        return None
 
     def pages(self, repo: str) -> dict[str, Any] | None:
         """The repository's GitHub Pages site, or None if it has none."""

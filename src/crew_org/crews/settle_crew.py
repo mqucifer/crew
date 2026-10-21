@@ -452,6 +452,8 @@ SETTLE = steps.Step(
     "a conclusion that answers every note, or one question for the Sponsor.",
     "the epic and its notes",
     step="settle",
+    # The real data its reader would be shown (crew#846).
+    tools=("data",),
 )
 
 

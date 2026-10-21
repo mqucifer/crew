@@ -102,6 +102,17 @@ Then the four parts every refinement session's start ends with (below). The repo
 
 Then the four parts every refinement session's start ends with (below).
 
+Each member is also given the tools its question needs (`Step.tools`, `session/role_tools.py`, crew#846), told only to it:
+
+| Member | Its tools | What they read |
+|---|---|---|
+| UX Designer | `look` | the published site (its newest `github-pages` artifact) or a directory of the checkout, such as a design mock, in a browser at the reader's widths: in the sandbox, offline (`tools/look.py`) |
+| Architect | `contracts` | the published schemas and contracts, and their changes since the last release tag |
+| QA | `run`, `ci_steps` | the Developer's `run`, in its workspace container over a clone of the checkout; and what CI and the devcontainer really run |
+| DevOps | `ci_steps`, `ci_log` | what CI runs, and the default branch's latest runs and a job's log |
+
+The Product Owner's decomposition and settle get `data`: the newest delivery-history package built here, with sprint-metrics' answers.
+
 ## Product Owner, settling the panel's notes
 
 `settle_crew.opening`, the start of the session `settle_crew.settle` runs, called by `settle.propose` (crew#440, crew#807).

@@ -237,6 +237,8 @@ class Ask:
     said: str
     # What its answer says when it has nothing to raise, as the comment shows it.
     none: str
+    # The tools its question needs beside the read tools (crew#846, `role_tools`).
+    tools: tuple[str, ...] = ()
 
 
 ASKS: dict[str, Ask] = {
@@ -248,6 +250,7 @@ ASKS: dict[str, Ask] = {
         ReaderView,
         "the reader's view of this epic, and what's missing for them.",
         "Nothing missing for the reader.",
+        ("look",),
     ),
     "architect": Ask(
         "the system",
@@ -261,6 +264,7 @@ ASKS: dict[str, Ask] = {
         Decisions,
         "the decisions to make before building, or none.",
         "Nothing expensive to reverse.",
+        ("contracts",),
     ),
     "qa_engineer": Ask(
         "proof",
@@ -271,6 +275,7 @@ ASKS: dict[str, Ask] = {
         Examples,
         "the examples that prove this epic, and any questions that stop one.",
         "No examples.",
+        ("run", "ci_steps"),
     ),
     "devops_engineer": Ask(
         "running it",
@@ -284,6 +289,7 @@ ASKS: dict[str, Ask] = {
         RuntimeChanges,
         "the runtime changes, or none.",
         "No runtime change.",
+        ("ci_steps", "ci_log"),
     ),
 }
 ROLES = tuple(ASKS)
@@ -392,6 +398,7 @@ STEPS = {
         ask.said,
         "the epic",
         step=ROLE_TEXT.get(role),
+        tools=ask.tools,
     )
     for role, ask in ASKS.items()
 }

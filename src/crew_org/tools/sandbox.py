@@ -143,6 +143,7 @@ class Sandbox:
         env: dict[str, str] | None = None,
         held: str | None = None,
         labels: dict[str, str] | None = None,
+        readonly: dict[Path, str] | None = None,
     ) -> list[str]:
         """Build the container invocation for one command.
 
@@ -153,6 +154,9 @@ class Sandbox:
         `held` names a container held for a session (`tools/container.py`): it
         starts detached under that name, with an init process to reap what tests
         leave behind, and is still removed when `inner` ends.
+
+        `readonly` mounts more host directories, each read-only at its path: the
+        published site `look` serves (crew#846).
         """
         home = f"/work/{HOME_DIR}"
         found = ["-e", f"PATH={home}/.local/bin:{path}"] if path else []
@@ -164,6 +168,11 @@ class Sandbox:
         # `.git` is a file naming its git directory, which isn't mounted at all.
         git = worktree.resolve() / ".git"
         guard = ["--mount", f"type=bind,src={git},dst=/work/.git,readonly"] if git.exists() else []
+        guard += [
+            f
+            for src, dst in (readonly or {}).items()
+            for f in ("--mount", f"type=bind,src={src.resolve()},dst={dst},readonly")
+        ]
         return [
             self.engine,
             "run",
