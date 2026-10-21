@@ -1,7 +1,7 @@
 # 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583; the leeway widened to the Goal's intent on 2026-10-21, to be built by crew#846)
+- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583; the leeway widened to the Goal's intent on 2026-10-21 and built by crew#846)
 
 ## Context
 
@@ -35,8 +35,8 @@ Sponsor, 2026-10-05.
   and what's out. It doesn't contradict a decision of the Sponsor's.
 - **It is recorded as the Product Owner's call.** The row says so and gives the
   reason. The code checks the call against the Goal's intent and sends the conclusion
-  back if it reaches outside it. (Until crew#846 is built, the check is still a
-  quotation of the Goal's words.)
+  back if it reaches outside it: the call quotes the Goal's reader, or what they
+  should see or decide, and not what the Goal rules out.
 - **"The Goal points elsewhere" is an answer.** When serving the reader needs
   something the Goal's intent doesn't cover, the Product Owner brings it to the
   Sponsor as a question or a proposed Goal (ADR 0027).
@@ -65,9 +65,10 @@ Sponsor whenever its written sources ran out.
 - The Sponsor is asked less, and can see every call: a row marked as the Product
   Owner's call, with the Goal wording behind it. A wrong one is replaced by a later
   row or decision, as with any record here.
-- The quotation check proves the wording is the Goal's. It doesn't prove the call is
-  consistent with it: that stays the Product Owner's judgement, and the criteria
-  check and the Sponsor's review of the conclusion are what catch the rest.
+- The intent check proves the call names the Goal's reader or what they should see or
+  decide, and not what it rules out. It doesn't prove the call serves them: that stays
+  the Product Owner's judgement, and the criteria check and the Sponsor's review of the
+  conclusion are what catch the rest.
 - The first run with the leeway had the Product Owner deciding API paths, response
   shapes and parameters. The Sponsor drew the line there (2026-10-05): design goes
   to the Architect.
