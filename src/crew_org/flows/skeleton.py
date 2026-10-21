@@ -15,8 +15,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from crew_org.columns import INBOX
 from crew_org.config import CONFIG_DIR
+from crew_org.flows.proposed_goal import file_in_inbox
 from crew_org.flows.readiness import SKELETON_LABEL
 
 GOAL_TEXT = CONFIG_DIR / "skeleton_goal.md"
@@ -58,8 +58,4 @@ def file_goal(issues: Any, board: Any, repo: str) -> int | None:
     for name, (color, description) in LABELS.items():
         issues.ensure_label(repo, name, color=color, description=description)
     title, body = goal()
-    issue = issues.create(repo, title, body, labels=["goal", SKELETON_LABEL])
-    item = board.add_issue(issue["node_id"])
-    board.set_status(item, INBOX)
-    board.set_select(item, "Work Type", "Goal")
-    return int(issue["number"])
+    return file_in_inbox(issues, board, repo, title, body, ["goal", SKELETON_LABEL])

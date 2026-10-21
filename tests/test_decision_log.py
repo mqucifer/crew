@@ -33,7 +33,7 @@ def row(context="Counting", *, wide=True, own=False, settles=(1,)) -> Row:
         consequences="Every metric reads the merge date",
         source="crew#389" if not own else "the Goal says per sprint",
         own_call=own,
-        goal_wording="per sprint" if own else "",
+        serves="per sprint" if own else "",
         settles=list(settles),
         project_wide=wide,
     )
@@ -153,7 +153,9 @@ def test_marked_rows_become_entries_numbered_after_the_log_in_its_own_form(tmp_p
 def test_an_own_call_says_so_in_its_entry(tmp_path, monkeypatch):
     gh = Github(epics={407: {"title": "Trends", "body": conclusion_body(row(own=True))}})
     write(gh, tmp_path, monkeypatch)
-    assert "the Product Owner's own call, within the Goal" in entries(tmp_path)[0].read_text()
+    assert (
+        "the Product Owner's own call, within the Goal's intent" in entries(tmp_path)[0].read_text()
+    )
 
 
 def test_a_row_already_in_the_log_is_not_written_again_and_its_label_comes_off(

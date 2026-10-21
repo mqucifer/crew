@@ -255,10 +255,10 @@ flows.board_flow.refine_epics:skip:e1acdf1c:
   at: flows/board_flow.py:refine_epics
   if: settled != RESPLIT
   rule: decision.board_flow.rework_gate
-flows.board_flow.refine_epics:skip:feee95e9:
+flows.board_flow.refine_epics:skip:8048c38d:
   at: flows/board_flow.py:refine_epics
-  if: panel_search is not None and (not panel_step(issues, sink, result, epic_card, repo, search=panel_search,
-    reading=partial(context.reading_for, repo), unapproved=frozenset((c.number for c in cards if c.
+  if: panel_search is not None and (not panel_step(board, issues, sink, result, epic_card, repo, search=panel_search,
+    reading=partial(context.reading_for, repo), unapproved=frozenset((c.number for c in card
   rule: decision.refine_panel.panel_step
 flows.board_flow.rework_gate:end:857c696b:
   at: flows/board_flow.py:rework_gate
@@ -308,6 +308,10 @@ flows.board_flow.tick:filter:a4aaaaa5:
   at: flows/board_flow.py:tick
   if: c.status == INBOX and (not c.work_type)
   rule: decision.board_flow.goals_missing_work_type
+flows.board_flow.tick:label:0e010fcb:
+  at: flows/board_flow.py:tick
+  if: not (proposal.elsewhere and proposal.elsewhere.question)
+  rule: decision.board_flow.points_elsewhere
 flows.board_flow.tick:label:322f0fac:
   at: flows/board_flow.py:tick
   if: extend
@@ -324,10 +328,10 @@ flows.board_flow.unauthored_goals:end:0b75f5ea:
   at: flows/board_flow.py:unauthored_goals
   if: sponsor is None
   rule: skip.board_flow.a_goal_written_by_not_the
-flows.board_flow.unauthored_goals:filter:fbc3e55e:
+flows.board_flow.unauthored_goals:filter:5269028a:
   at: flows/board_flow.py:unauthored_goals
   if: c.status == INBOX and c.state != 'CLOSED' and (c.work_type == GOAL_TYPE) and (not set_by_the_sponsor(c,
-    sponsor, crew_login))
+    sponsor, crew_login)) and (not _awaiting_approval(c, crew_login))
   rule: skip.board_flow.a_goal_written_by_not_the
 flows.board_flow.unstarted_children:filter:29d74df2:
   at: flows/board_flow.py:unstarted_children

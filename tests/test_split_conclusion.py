@@ -182,7 +182,7 @@ def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=N
         calls["panel"] += 1
         return SimpleNamespace(answers={"architect": object()}, failed={})
 
-    def settle(issues, sink, **kw):
+    def settle(board, issues, sink, **kw):
         calls["settle"] += 1
         calls["known"] = kw["known"]
         if fail:
@@ -200,6 +200,7 @@ def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=N
 def step(issues=None, epic=None, search=("crew", "sprint-metrics")):
     result = SimpleNamespace(failed=[], skipped=[])
     ok = refine_panel.panel_step(
+        None,
         issues or Gh(),
         EventSink(None),
         result,
@@ -408,7 +409,7 @@ def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repos
 ):
     seen = {}
 
-    def panel_step(issues, sink, result, epic, repo, *, search, reading, unapproved):
+    def panel_step(board, issues, sink, result, epic, repo, *, search, reading, unapproved):
         seen.update(repo=repo, search=search, reading=reading)
         return True
 
