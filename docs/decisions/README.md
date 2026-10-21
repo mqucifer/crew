@@ -48,7 +48,7 @@ decision was first made.
 | [0015](0015-a-goals-decisions-are-the-sponsors-words-under-a-heading.md) | A Goal's decisions are the Sponsor's comments and headed sections | 2026-10-05 | Accepted |
 | [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468) |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
-| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (the Architect's settle before the split to be built by crew#440) |
+| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (leeway widened to the Goal's intent 2026-10-21, to be built by crew#846) |
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | Each completed epic releases itself, shipping what `[Unreleased]` holds | 2026-10-07 | Accepted (to be built in M8, crew#816) |
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source, and the consumer reviews what it receives | 2026-10-07 | Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the consumer's review planned for M10) |
@@ -57,7 +57,7 @@ decision was first made.
 | [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it; changed for the Developer by ADR 0032, built) |
 | [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first; changed for the Developer by ADR 0032: its session's calls through `calls.converse`, its one-call forms deleted) |
 | [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (no step answers in blocks since ADR 0032's Stage E) |
-| [0027](0027-collaborators-file-bugs.md) | Collaborators file bugs, and the Product Owner may propose a Goal | 2026-10-12 | Accepted (bugs built by crew#407; proposed Goals planned for M10) |
+| [0027](0027-collaborators-file-bugs.md) | Collaborators file bugs, and the Product Owner may propose a Goal | 2026-10-12 | Accepted (bugs built by crew#407; proposed Goals in M7, crew#846) |
 | [0028](0028-a-sprint-closes-itself-when-its-time-is-up.md) | A sprint closes itself when its time is up | 2026-10-12 | Accepted |
 | [0029](0029-the-plan-lives-in-the-crew-roadmap.md) | The plan lives in the Crew roadmap project | 2026-10-12 | Withdrawn (moved to mqucifer/project-print ADR 0001) |
 | [0030](0030-a-new-project-starts-from-a-walking-skeleton.md) | A new project starts from an alpha Claude builds | 2026-10-13 | Accepted (the skeleton path built by crew#690; the handover check to be built by crew#757) |
@@ -65,3 +65,4 @@ decision was first made.
 | [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |
 | [0033](0033-refinement-works-in-a-session.md) | Refinement works in a session | 2026-10-18 | Accepted (built by crew#807; the narrow checks wait for the Sponsor's OK) |
 | [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (to be built in M8, crew#839) |
+| [0035](0035-goals-and-epics-stay-at-the-level-of-intent.md) | Goals and epics stay at the level of intent; the panel's members each ask their own question | 2026-10-21 | Accepted (to be built in M7: crew#846, crew#847, crew#815, crew#828) |
