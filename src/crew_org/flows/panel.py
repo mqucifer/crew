@@ -193,8 +193,14 @@ def panel_on(issues: IssueClient, repo: str, epic: int) -> PanelResult | None:
 
 
 def post(issues: IssueClient, repo: str, epic: int, result: PanelResult) -> bool:
-    """Post the notes once per epic. False if a panel comment is already there."""
-    if issues.has_comment_marked(repo, epic, PANEL_MARKER):
+    """Post the notes once per epic. False if a panel that reads is already there.
+
+    A panel from before the four forms stays as it was, and the new one goes below it:
+    refusing on its marker alone left `panel_on` with nothing to read, so the panel ran
+    again every tick the settle waited on the Sponsor, and its N-numbers drifted from
+    the ones the question cited.
+    """
+    if panel_on(issues, repo, epic) is not None:
         return False
     issues.comment(repo, epic, render(result))
     return True

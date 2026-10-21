@@ -907,9 +907,9 @@ flows.panel.panel_on:end:b83f9f59:
   at: flows/panel.py:panel_on
   if: PANEL_MARKER in body and (found := read_panel(body))
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.panel.post:end:2652d731:
+flows.panel.post:end:63a4dc45:
   at: flows/panel.py:post
-  if: issues.has_comment_marked(repo, epic, PANEL_MARKER)
+  if: panel_on(issues, repo, epic) is not None
   not_a_rule: 'does a thing once: skips what''s already done'
 flows.panel.render:filter:80efd002:
   at: flows/panel.py:render

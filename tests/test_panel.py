@@ -7,6 +7,7 @@ because a mock is what hid crew#294.
 
 from __future__ import annotations
 
+import json
 import threading
 
 import httpx
@@ -471,7 +472,25 @@ def test_the_comment_is_posted_once_per_epic():
     already = github(
         by,
         children,
-        comments={406: [{"user": {"login": "mqucifer-crew[bot]"}, "body": panel.PANEL_MARKER}]},
+        comments={406: [{"user": {"login": "mqucifer-crew[bot]"}, "body": panel.render(result)}]},
     )
     assert panel.post(already, "sprint-metrics", 406, result) is False
     assert already.posted == []  # type: ignore[attr-defined]
+
+
+def test_a_panel_from_before_the_four_forms_gets_a_new_one_that_reads_back():
+    """Refused on the old comment's marker, the panel ran again every tick it waited."""
+    by, children = goal_with_epics()
+    result = PanelResult({"architect": Decisions(decisions=[decision()])}, {})
+    old = (
+        f"{panel.PANEL_MARKER}\n<!-- crew:panel-data "
+        '{"answers": {"architect": {"nothing_to_add": true, "notes": []}}, "failed": {}} -->'
+    )
+    comments = [{"user": {"login": "mqucifer-crew[bot]"}, "body": old}]
+    client = github(by, children, comments={406: comments})
+    assert panel.panel_on(client, "sprint-metrics", 406) is None
+    assert panel.post(client, "sprint-metrics", 406, result) is True
+    [(_, posted)] = client.posted  # type: ignore[attr-defined]
+    comments.append({"user": {"login": "mqucifer-crew[bot]"}, "body": json.loads(posted)["body"]})
+    assert panel.panel_on(client, "sprint-metrics", 406) == result
+    assert panel.post(client, "sprint-metrics", 406, result) is False
