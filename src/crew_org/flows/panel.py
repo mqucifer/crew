@@ -141,7 +141,8 @@ def render(result: PanelResult) -> str:
             lines += [ask.none, ""]
             continue
         for i in answer.items():
-            first, *rest = i.text.splitlines()
+            # An empty item, after all four sessions ran, is shown as one, not a crash.
+            first, *rest = i.text.strip().splitlines() or ["(empty)"]
             lines += [f"- **{first}**", *[f"  - {r.strip()}" for r in rest]]
             lines += [f"  - Source: {i.source}", f"  - Settled by: {_WHO[i.settled_by]}"]
         lines.append("")

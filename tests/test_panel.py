@@ -342,6 +342,22 @@ def test_the_comment_is_marked_and_counts_items_by_who_settles_them():
     assert "Did not answer: TimeoutError: slow" in text
 
 
+def test_an_empty_item_is_shown_as_empty_not_a_crash():
+    """Raised after all four sessions had run, it lost their answers."""
+    result = PanelResult(
+        {
+            "ux_designer": ReaderView(
+                reader="r",
+                sees="s",
+                matters="m",
+                missing=[ReaderGap(gap="  ", source=SOURCE, settled_by="product_owner")],
+            )
+        },
+        {},
+    )
+    assert "- **(empty)**" in panel.render(result)
+
+
 def test_the_comment_reads_back_as_the_same_answers():
     result = PanelResult(
         {"architect": Decisions(decisions=[decision()]), "qa_engineer": Examples()},
