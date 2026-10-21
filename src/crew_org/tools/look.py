@@ -142,25 +142,69 @@ def base_path(github: Any, repo: str) -> str:
     return path if path.endswith("/") else f"{path}/"
 
 
-def externals(files: Path, into: Path) -> dict[str, tuple[str, str]]:
-    """The site's resources on other hosts, fetched into `into`, by URL.
+class Fetched:
+    """What one session's looks fetched, kept until it ends: each repository's published
+    site with its base path, and other hosts' files by URL. Each look re-downloaded the
+    artifact and every external before (crew#846's review)."""
 
-    What its pages name in a link, script or img, and the fonts and images their
-    stylesheets name. A URL that can't be fetched is left out, and the page meets it
-    as a reader offline would.
+    def __init__(self) -> None:
+        self._dir: Path | None = None
+        self.sites: dict[str, tuple[Path, str]] = {}
+        # Each URL's file and content type: a stylesheet served without its type is refused.
+        self.found: dict[str, tuple[str, str]] = {}
+
+    def _in(self, name: str) -> Path:
+        if self._dir is None:
+            self._dir = Path(tempfile.mkdtemp(prefix="look-"))
+        path = self._dir / name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def site(self, github: Any, repo: str) -> tuple[Path, str]:
+        """The published site's files and the path it's served under, fetched once."""
+        if repo not in self.sites:
+            files = published(github, repo, self._in(f"site/{repo}"))
+            self.sites[repo] = (files, base_path(github, repo))
+        return self.sites[repo]
+
+    def externals(self) -> Path:
+        return self._in("external")
+
+    def close(self) -> None:
+        if self._dir is not None:
+            shutil.rmtree(self._dir, ignore_errors=True)
+        self._dir, self.sites, self.found = None, {}, {}
+
+
+def externals(
+    files: Path, page: str, into: Path, found: dict[str, tuple[str, str]] | None = None
+) -> dict[str, tuple[str, str]]:
+    """The page's resources on other hosts, fetched into `into`, by URL.
+
+    What the page names in a link, script or img, and the fonts and images its
+    stylesheets name: the page's own, so the bound can't be spent on other pages'.
+    `found` is what earlier looks fetched, which isn't fetched again. A URL that can't
+    be fetched is left out, and the page meets it as a reader offline would.
     """
     import httpx  # noqa: PLC0415
 
-    wanted = list(
-        dict.fromkeys(u for page in files.rglob("*.html") for u in _NAMED.findall(page.read_text()))
-    )
-    # Each URL's file and content type: a stylesheet served without its type is refused.
-    found: dict[str, tuple[str, str]] = {}
-    total = 0
+    found = {} if found is None else found
+    wanted = list(dict.fromkeys(_NAMED.findall((files / page).read_text(errors="replace"))))
+    seen: set[str] = set()
+    count = total = 0
     with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": CHROME}) as web:
-        while wanted and len(found) < EXTERNAL_COUNT and total < EXTERNAL_BYTES:
+        while wanted and count < EXTERNAL_COUNT and total < EXTERNAL_BYTES:
             url = wanted.pop(0)
+            if url in seen:
+                continue
+            seen.add(url)
             if url in found:
+                count += 1
+                # A stylesheet fetched before still names its fonts for this page.
+                name, kind = found[url]
+                if "css" in kind:
+                    css = (into / name).read_text(errors="replace")
+                    wanted += [u for u in _IN_CSS.findall(css) if u not in seen]
                 continue
             try:
                 got = web.get(url)
@@ -170,9 +214,10 @@ def externals(files: Path, into: Path) -> dict[str, tuple[str, str]]:
             name = hashlib.sha1(url.encode()).hexdigest()
             (into / name).write_bytes(got.content)
             found[url] = (name, got.headers.get("content-type", "application/octet-stream"))
+            count += 1
             total += len(got.content)
             if "css" in got.headers.get("content-type", ""):
-                wanted += [u for u in _IN_CSS.findall(got.text) if u not in found]
+                wanted += [u for u in _IN_CSS.findall(got.text) if u not in seen]
     (into / "map.json").write_text(json.dumps(found))
     return found
 
@@ -202,11 +247,13 @@ def look(
     sandbox: Sandbox | None = None,
     keep: Path | None = None,
     base: str = "/",
+    fetched: Fetched | None = None,
 ) -> Looked:
     """Open `page` of the site in `files` at each width, in the sandbox, offline.
 
     The files are served under `base`, the path the published site is served under
-    (`base_path`), so the paths its pages name for their assets resolve.
+    (`base_path`), so the paths its pages name for their assets resolve. Other hosts'
+    files are kept in `fetched` for the session's next look, when given.
 
     Screenshots go to `keep` when given, as `<width>.png`; otherwise they go with the
     container's directory.
@@ -214,10 +261,11 @@ def look(
     sandbox = replace(sandbox or Sandbox(), mode=Mode.REQUIRED, image=IMAGE)
     if reason := sandbox.unavailable_reason():
         raise NotLooked(reason)
+    own = fetched is None
+    kept = fetched or Fetched()
     work = Path(tempfile.mkdtemp(prefix="look-"))
-    fetched = Path(tempfile.mkdtemp(prefix="look-external-"))
     try:
-        externals(files, fetched)
+        externals(files, page, kept.externals(), kept.found)
         _driver(sandbox, work)
         (work / "shots").mkdir()
         shutil.copy(SCRIPT, work / "look.py")
@@ -226,7 +274,7 @@ def look(
             ["python3", "look.py", SITE, page, json.dumps(list(widths)), str(HEIGHT), base],
             network=False,
             env={"PYTHONPATH": f"/cache/{DRIVER}"},
-            readonly={files: SITE, fetched: EXTERNAL},
+            readonly={files: SITE, kept.externals(): EXTERNAL},
         )
         try:
             done = subprocess.run(argv, capture_output=True, text=True, timeout=TIMEOUT)
@@ -247,4 +295,5 @@ def look(
         return Looked(page, {int(w): v for w, v in found.items()}, shots)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        shutil.rmtree(fetched, ignore_errors=True)
+        if own:
+            kept.close()

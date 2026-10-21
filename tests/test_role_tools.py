@@ -336,7 +336,10 @@ def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch)
         "https://f.example/a.woff2": ("font/woff2", "font"),
     }
 
+    asked = []
+
     def answer(request):
+        asked.append(str(request.url))
         kind, body = served[str(request.url)]
         return httpx.Response(200, headers={"content-type": kind}, text=body)
 
@@ -346,13 +349,100 @@ def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch)
     )
     into = tmp_path / "into"
     into.mkdir()
-    found = looking.externals(site, into)
+    found = looking.externals(site, "a.html", into)
     assert {url: kind for url, (_, kind) in found.items()} == {
         url: kind for url, (kind, _) in served.items()
     }
     assert (
         json.loads((into / "map.json").read_text())["https://f.example/a.woff2"][1] == "font/woff2"
     )
+
+
+def test_the_bound_on_other_hosts_is_spent_on_the_requested_page_first(tmp_path, monkeypatch):
+    """Gathered from every page, the page's own CSS and fonts could miss the bound."""
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "a.html").write_text(
+        "".join(f'<script src="https://cdn.example/{n}.js"></script>' for n in range(60))
+    )
+    (site / "b.html").write_text(
+        '<link rel="stylesheet" href="https://cdn.example/b.css"><script src="https://cdn.example/0.js">'
+    )
+
+    def answer(request):
+        kind = "text/css" if request.url.path.endswith(".css") else "text/javascript"
+        body = (
+            "@font-face{src:url(https://f.example/b.woff2)}" if "b.css" in str(request.url) else ""
+        )
+        return httpx.Response(200, headers={"content-type": kind}, text=body)
+
+    real = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(answer), **kw)
+    )
+    into = tmp_path / "into"
+    into.mkdir()
+    found = looking.externals(site, "b.html", into)
+    assert set(found) == {
+        "https://cdn.example/b.css",
+        "https://cdn.example/0.js",
+        "https://f.example/b.woff2",
+    }
+
+
+def test_a_sessions_looks_fetch_the_site_and_other_hosts_once(tmp_path, monkeypatch):
+    """Each look re-downloaded the artifact and every external before."""
+    inner = io.BytesIO()
+    with tarfile.open(fileobj=inner, mode="w") as tar:
+        page = b'<link rel="stylesheet" href="https://cdn.example/s.css"><h1>Sprint 30</h1>'
+        info = tarfile.TarInfo("./index.html")
+        info.size = len(page)
+        tar.addfile(info, io.BytesIO(page))
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w") as zipped:
+        zipped.writestr("artifact.tar", inner.getvalue())
+    downloads = []
+
+    class Pages:
+        def pages_artifact(self, repo):
+            downloads.append(repo)
+            return {"id": 1}, outer.getvalue()
+
+        def pages(self, repo):
+            return {"html_url": f"https://mqucifer.github.io/{repo}/"}
+
+    asked = []
+
+    def answer(request):
+        asked.append(str(request.url))
+        if request.url.path.endswith(".css"):
+            css = "@font-face{src:url(https://f.example/a.woff2)}"
+            return httpx.Response(200, headers={"content-type": "text/css"}, text=css)
+        return httpx.Response(200, headers={"content-type": "font/woff2"}, text="font")
+
+    real = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(answer), **kw)
+    )
+    kept = looking.Fetched()
+    for _ in range(2):
+        files, base = kept.site(Pages(), "crew-presentation")
+        found = looking.externals(files, "index.html", kept.externals(), kept.found)
+    assert downloads == ["crew-presentation"] and base == "/crew-presentation/"
+    assert asked == ["https://cdn.example/s.css", "https://f.example/a.woff2"]
+    # The font a cached stylesheet names is still in this page's map.
+    assert set(json.loads((kept.externals() / "map.json").read_text())) == set(found)
+    assert len(found) == 2
+    where = files.parents[1]
+    kept.close()
+    assert not where.exists()
+
+
+def test_what_look_fetched_goes_when_the_session_ends(repo):
+    tools = ReadTools(repo, given=("look",), context=context(repo))
+    held = tools.context.looked.externals()
+    tools.stop()
+    assert not held.exists()
 
 
 def test_the_site_is_mounted_read_only_and_the_container_has_no_network(tmp_path):
@@ -366,7 +456,9 @@ def test_the_look_tool_serves_a_directory_of_the_checkout_or_the_published_site(
     monkeypatch.setattr(
         looking,
         "look",
-        lambda files, page, widths, base: seen.append((files, page, widths, base)) or looked(),
+        lambda files, page, widths, base, fetched: (
+            seen.append((files, page, widths, base)) or looked()
+        ),
     )
     text = role_tools.look(context(repo), {"source": "site/", "widths": [320]})
     assert "Sprint 30" in text and seen == [((repo / "site").resolve(), "index.html", (320,), "/")]

@@ -151,8 +151,9 @@ class ReadTools(Tools):
         return super().call(name, args)
 
     def stop(self) -> None:
-        """The run container, if one started, and its clone."""
+        """The run container, if one started, and its clone; and what `look` fetched."""
         self.workspace.stop()
+        self.context.looked.close()
 
     def git(self, command: str) -> Reply:
         """A git command that reads. `restore`, which the Developer's git takes, writes."""

@@ -26,7 +26,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,7 @@ import yaml  # type: ignore[import-untyped]
 
 from crew_org.session.git import OUTPUT_CHARS
 from crew_org.session.tools import S, _spec
+from crew_org.tools.look import Fetched
 
 # A job's log is long; its end says how it finished.
 LOG_LINES = 200
@@ -51,6 +52,8 @@ class Context:
     root: Path
     repo: str
     github: Any = None
+    # What the session's `look`s fetched, until it ends (`ReadTools.stop`).
+    looked: Fetched = field(default_factory=Fetched, compare=False)
 
 
 @dataclass(frozen=True)
@@ -251,23 +254,17 @@ def data(context: Context, args: dict[str, Any], packages: Path = PACKAGES) -> s
 
 def look(context: Context, args: dict[str, Any]) -> str:
     """A page of the published site, or of a directory in the checkout, at each width."""
-    import shutil  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
     from crew_org.tools import look as looking  # noqa: PLC0415
 
     source = str(args.get("source") or "published").strip().strip("/")
     page = str(args.get("page") or "index.html").strip().lstrip("/")
     widths = tuple(int(w) for w in args.get("widths") or ()) or looking.WIDTHS
-    fetched: Path | None = None
     base = "/"
     try:
         if source == "published":
             if context.github is None:
                 return "The published site can't be fetched here: this step has no GitHub client."
-            fetched = Path(tempfile.mkdtemp(prefix="look-site-"))
-            files = looking.published(context.github, context.repo, fetched)
-            base = looking.base_path(context.github, context.repo)
+            files, base = context.looked.site(context.github, context.repo)
         else:
             files = (context.root / source).resolve()
             if not files.is_dir() or context.root.resolve() not in files.parents:
@@ -275,12 +272,9 @@ def look(context: Context, args: dict[str, Any]) -> str:
         if not (files / page).is_file():
             pages = sorted(str(p.relative_to(files)) for p in files.rglob("*.html"))[:40]
             return f"`{page}` isn't in `{source}`. Its pages: {', '.join(pages)}"
-        return looking.look(files, page, widths[:4], base=base).text()
+        return looking.look(files, page, widths[:4], base=base, fetched=context.looked).text()
     except looking.NotLooked as exc:
         return f"Couldn't look: {exc}"
-    finally:
-        if fetched is not None:
-            shutil.rmtree(fetched, ignore_errors=True)
 
 
 TOOLS: dict[str, RoleTool] = {
