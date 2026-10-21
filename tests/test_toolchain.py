@@ -9,9 +9,10 @@ from crew_org.tools import workspace
 from crew_org.tools.sandbox import IMAGE, Mode, Sandbox
 from crew_org.tools.workspace import AUTOFIX, SETUP, VERIFY, CommandResult, toolchain
 
-INTENT = """version: 2
+INTENT = """version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: A static site.
   release:
     deploys: false

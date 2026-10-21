@@ -731,8 +731,10 @@ prompt describing what the agent could not see.
 **The project's record comes first.** Where a project has a record
 (`.crew/project.yaml`, crew#111), the Product Owner and Business Analyst in
 refinement, the Developer's session, and QA are shown it ahead of the code:
-its purpose and scope, what a release is, the bar for done, what agents must
-not touch, its guidelines, and the Architect's design. A record that exists
+its purpose, who it serves and what they need to see or decide (its scope,
+never a feature list: ADR 0035), what's out, what a release is, the bar for
+done, what agents must not touch, its guidelines, and the Architect's design,
+with what the project does as built so far given as history, not scope. A record that exists
 but can't be read stops delivery on that card, and is reported in refinement,
 never worked around in silence. The gates at `done` also send back any change
 to a never-touch path or to the record itself, and any change to CI that stops

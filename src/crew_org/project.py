@@ -7,19 +7,21 @@ answers instead of inferring them from the code.
 Three sections with three owners (#143):
 
 - `intent` is the Sponsor's, written through the `crew onboard` interview
-  (#130): purpose and scope, what a release is, the bar for done in words,
-  the project's own guidelines on top of the crew-wide ones (constitution §19),
-  and what agents must not touch.
+  (#130): purpose, who the project serves and what they need to see or decide,
+  what's out, what a release is, the bar for done in words, the project's own
+  guidelines on top of the crew-wide ones (constitution §19), and what agents
+  must not touch.
 - `design` is the project's Architect's, proposed by pull request (#144): the
-  language, build and sandbox needs, the commands that enforce done, and how a
-  release happens. The Sponsor sets the rules; the Architect picks the tools.
+  language, build and sandbox needs, the commands that enforce done, how a
+  release happens, and what the project does as built so far. The Sponsor sets
+  the rules; the Architect picks the tools.
 - `learned` is the crew's, proposed by pull request with evidence and a date
   (#112).
 
-Required, decided on #111 and revised on #143: purpose, whether it deploys,
-and the definition of done in words. Everything in `design` is optional here,
-because a project can be onboarded before it has an Architect's answer, or
-any code at all.
+Required, decided on #111 and revised on #143 and ADR 0035: purpose, who it
+serves, whether it deploys, and the definition of done in words. Everything in
+`design` is optional here, because a project can be onboarded before it has an
+Architect's answer, or any code at all.
 
 Loading a record that is missing required answers fails with every missing
 answer named in words, all at once. An unknown field, or a file in an older
@@ -38,8 +40,13 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError,
 
 RECORD_PATH = ".crew/project.yaml"
 DEFAULT_DOCS = "README.md"
-# 2 split the Architect's `design` out of the Sponsor's `intent` (#143).
-FORMAT_VERSION = 2
+# 2 split the Architect's `design` out of the Sponsor's `intent` (#143). 3 put who
+# the project serves in place of a feature list, which moved to `design.built`
+# as history (ADR 0035, crew#847).
+FORMAT_VERSION = 3
+# Read until every onboarded project's record is rewritten, then removed (crew#847):
+# a migration with an end, not a second format kept for good.
+OLDER_READ = 2
 
 
 class Section(BaseModel):
@@ -73,11 +80,28 @@ class Use(Section):
     )
 
 
+class Reader(Section):
+    """Someone the project serves, and what it lets them see or decide (ADR 0035)."""
+
+    who: str = Field(description="Who it serves, e.g. the Sponsor, or a visitor to the site")
+    needs: list[str] = Field(
+        min_length=1, description="What they need to see or decide with it, in their words"
+    )
+
+
 class Scope(Section):
-    """What the project is for, and where its edges are."""
+    """What the project is for, and where its edges are.
+
+    Its scope is who it serves and what they need, never a feature list. A list of
+    what it does read as binding: sprint-metrics' named a command-line tool nobody
+    uses, and a panel named it 36 times (ADR 0035). What it does is the design's.
+    """
 
     purpose: str = Field(description="What the project is for, and for whom, in a sentence or two")
-    in_scope: list[str] = Field(default_factory=list, description="What it does")
+    serves: list[Reader] = Field(
+        default_factory=list,
+        description="Who it serves, each with what they need to see or decide with it",
+    )
     out_of_scope: list[str] = Field(
         default_factory=list, description="What it deliberately doesn't"
     )
@@ -237,6 +261,11 @@ class Design(Section):
         description="What CI proves on every pull request that the local checks can't",
     )
     release_how: str | None = Field(default=None, description="How a release happens")
+    # History, not scope (ADR 0035): what's built is no reason to build more of it.
+    built: list[str] = Field(
+        default_factory=list,
+        description="What the project does as built so far: history, not scope",
+    )
     # How the code is divided, and what each part owns (#192). The toolchain
     # alone said nothing about where work lands, so a module every story had to
     # touch was nobody's decision to split.
@@ -305,6 +334,7 @@ class ProjectRecordError(ValueError):
 # error use. Keyed by where each lives in the file.
 REQUIRED: dict[tuple[str, ...], str] = {
     ("intent", "scope", "purpose"): "what the project is for (purpose)",
+    ("intent", "scope", "serves"): "who the project serves, and what they need to see or decide",
     ("intent", "release", "deploys"): (
         "whether it deploys, publishes a version, or the merge is the release"
     ),
@@ -316,6 +346,7 @@ WHERE = ("intent", "release", "where")
 WHERE_WORDS = "where it is deployed, since it deploys"
 PUBLISHED_WORDS = "where the version is published, since it publishes one"
 PUBLISHES = ("intent", "release", "publishes")
+SERVES = ("intent", "scope", "serves")
 
 
 def lookup(raw: Any, path: tuple[str, ...]) -> Any:
@@ -334,6 +365,8 @@ def gaps(raw: Any) -> dict[tuple[str, ...], str]:
         value = lookup(raw, path)
         if path == WHERE[:-1] + ("deploys",) and publishes:
             continue  # publishing a version answers it (#141)
+        if path == SERVES and isinstance(raw, dict) and raw.get("version") == OLDER_READ:
+            continue  # asked for when it's rewritten (crew#847)
         if value is None or (isinstance(value, str) and not value.strip()) or value == []:
             found[path] = words
     if lookup(raw, WHERE[:-1] + ("deploys",)) is True and not lookup(raw, WHERE):
@@ -362,6 +395,8 @@ def load_raw(text: str) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ProjectRecordError([f"{RECORD_PATH} must be a mapping, not {type(raw).__name__}"])
     version = raw.get("version", FORMAT_VERSION)
+    if version == OLDER_READ:
+        return _built_from_scope(raw)
     if version != FORMAT_VERSION:
         raise ProjectRecordError(
             [
@@ -372,6 +407,34 @@ def load_raw(text: str) -> dict[str, Any]:
             ]
         )
     return raw
+
+
+def _built_from_scope(raw: dict[str, Any]) -> dict[str, Any]:
+    """A format 2 record with its `in_scope` moved to `design.built`, as history (crew#847).
+
+    It still loads, without who it serves, until its project's record is rewritten.
+    """
+    scope = lookup(raw, ("intent", "scope"))
+    if not isinstance(scope, dict) or "in_scope" not in scope:
+        return raw
+    did = scope["in_scope"] or []
+    design = raw.get("design") or {}
+    return {
+        **raw,
+        "intent": {**raw["intent"], "scope": {k: v for k, v in scope.items() if k != "in_scope"}},
+        **({"design": {**design, "built": [*design.get("built", []), *did]}} if did else {}),
+    }
+
+
+def upgrade(raw: dict[str, Any]) -> dict[str, Any]:
+    """A raw record in the current format, for `crew onboard` to finish.
+
+    A format 2 record's feature list is kept as the design's history, and who the
+    project serves becomes a missing answer, so the interview asks for it.
+    """
+    if raw.get("version") != OLDER_READ:
+        return raw
+    return {**_built_from_scope(raw), "version": FORMAT_VERSION}
 
 
 def parse(text: str) -> ProjectRecord:
@@ -471,8 +534,9 @@ def brief(record: ProjectRecord) -> str:
         "",
         f"**Purpose:** {intent.scope.purpose}",
         "",
-        "**In scope:**",
-        *bullets(intent.scope.in_scope),
+        "**Who it serves, and what they need to see or decide:** its scope. Choose what "
+        "serves them; what's already built is no reason to build more of it.",
+        *_serves(intent.scope.serves),
         "",
         "**Out of scope:**",
         *bullets(intent.scope.out_of_scope),
@@ -499,14 +563,29 @@ def brief(record: ProjectRecord) -> str:
 
         lines += ["", f"**How the crew's sandbox runs this project's commands:** {HOW_IT_RUNS}"]
     if record.design:
-        design = record.design.model_dump(exclude_none=True, exclude_defaults=True)
+        design = record.design.model_dump(
+            exclude_none=True, exclude_defaults=True, exclude={"built"}
+        )
         lines += ["", "**The Architect's design:**"]
         lines += [
             f"- {name.replace('_', ' ')}: "
             + (", ".join(f"`{v}`" for v in value) if isinstance(value, list) else str(value))
             for name, value in design.items()
         ]
+        if record.design.built:
+            lines += [
+                "",
+                "**What it does as built so far:** history, not scope.",
+                *bullets(record.design.built),
+            ]
     return "\n".join(lines)
+
+
+def _serves(readers: list[Reader]) -> list[str]:
+    if not readers:
+        # A format 2 record, until it's rewritten (crew#847).
+        return ["- (not recorded yet: the purpose says whom it's for)"]
+    return [line for r in readers for line in (f"- {r.who}:", *(f"  - {n}" for n in r.needs))]
 
 
 def _uses(uses: list[Use], root: Path | None) -> list[str]:

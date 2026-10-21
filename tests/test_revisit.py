@@ -39,9 +39,10 @@ MODULE = "src/sprint_metrics/crew_performance.py"
 
 RECORD = parse(
     """
-version: 2
+version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: Report delivery metrics for the crew's own board.
   release:
     deploys: false

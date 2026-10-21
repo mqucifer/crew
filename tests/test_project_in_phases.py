@@ -24,11 +24,11 @@ from crew_org.project import (
 from crew_org.tools import bounds, ci_guard
 
 RECORD = """
-version: 2
+version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: Report delivery metrics for the crew's own board.
-    in_scope: [cycle time]
     out_of_scope: ["An MCP server, for now"]
   release:
     deploys: false
@@ -88,7 +88,7 @@ def test_a_project_without_a_record_reads_as_none(tmp_path):
 
 
 def test_an_unusable_record_raises_rather_than_reading_as_none(tmp_path):
-    project(tmp_path, record="version: 2\nintent: {}\n")
+    project(tmp_path, record="version: 3\nintent: {}\n")
     with pytest.raises(ProjectRecordError, match="missing"):
         read_record(tmp_path)
 
@@ -97,7 +97,7 @@ def test_the_brief_carries_purpose_scope_release_done_and_bounds(tmp_path):
     text = brief(read_record(project(tmp_path)))
     for expected in (
         "**Purpose:** Report delivery metrics",
-        "- cycle time",
+        "- the Sponsor:\n  - how the crew performs",
         "- An MCP server, for now",
         "**A release here is:** the merge",
         "**Done means:** Its acceptance criteria are met",
