@@ -698,10 +698,8 @@ These three are the overhaul's evidence (ADR 0035).
   - the design step's sendbacks.
 - **It filed nothing.**
 
-### 6. Proposed for the crew iteration (for the Sponsor to agree)
-1. **A limit on re-splits for any reason,** not only identical ones. After the second sendback, the epic goes to a person with its rounds listed. That's part of mqucifer/crew#815. Evidence: section 4.
-2. **The crew's retro counts refinement's churn:** re-splits, discarded stories, design sendbacks, and model time split into refinement and delivery. That's part of mqucifer/crew#826. Evidence: section 5.
-3. **Measure the passes' idle time** before acting on it: what the 20% is made of, per phase. This is an operator check next sprint, with no fix proposed yet.
+### 6. Agreed with the Sponsor (2026-10-21)
+**Folded into the Goal intents as metrics to track (project-print#8). No crew changes proposed.** The Sponsor sees sections 4 and 5 as measures the site and sprint-metrics should show: refinement against delivery, refinement's churn, and idle pass time. The refinement overhaul (M7, ADR 0035) is where the next sprints show how they change.
 
 **Checks:**
 - **"Ticks stopped" found none this sprint.** It stays.
