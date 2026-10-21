@@ -1,7 +1,7 @@
 # 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583)
+- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583; the leeway widened to the Goal's intent on 2026-10-21, to be built by crew#846)
 
 ## Context
 
@@ -28,12 +28,18 @@ handed them on past the point where they were needed.
 
 Sponsor, 2026-10-05.
 
-- **The Product Owner may decide a note itself** when no source answers it, as a
-  team's owner does. The decision doesn't contradict the Goal or a decision of the
-  Sponsor's.
-- **It is recorded as the Product Owner's call.** The row says so, gives the
-  reason, and quotes the Goal's own words that the decision stays within. The code
-  checks the quotation is in the Goal, and sends the conclusion back if it isn't.
+- **The Product Owner chooses what serves the Goal's reader** (the Sponsor,
+  2026-10-21, ADR 0035). It may decide a note itself when no source answers it, as a
+  team's owner does, and may leave out or reshape what the Goal mentions, saying why.
+  A call stays within the Goal's intent: its reader, what they should see or decide,
+  and what's out. It doesn't contradict a decision of the Sponsor's.
+- **It is recorded as the Product Owner's call.** The row says so and gives the
+  reason. The code checks the call against the Goal's intent and sends the conclusion
+  back if it reaches outside it. (Until crew#846 is built, the check is still a
+  quotation of the Goal's words.)
+- **"The Goal points elsewhere" is an answer.** When serving the reader needs
+  something the Goal's intent doesn't cover, the Product Owner brings it to the
+  Sponsor as a question or a proposed Goal (ADR 0027).
   The conclusion's bottom line counts the calls.
 - **The leeway is for what the product does.** A note a member marked for the
   Architect is a design question (a path, a response shape, a parameter): it stays
@@ -83,3 +89,4 @@ Sponsor whenever its written sources ran out.
   gate checks it. The split refuses an epic with a question still open for the
   Architect.
 - **2026-10-18:** the Product Owner's settle and the Architect's design settle each work in a session over the code (crew#807, ADR 0033): a fact about the code is checked in it, and what's decided is binding. Their checks refuse at `done`, in the session.
+- **2026-10-21:** the Product Owner chooses what serves the Goal's reader, within its intent rather than its words; the quotation check becomes a check against the intent; "the Goal points elsewhere" is an answer. Decided by the Sponsor in the overhaul's planning session (ADR 0035, crew#846).

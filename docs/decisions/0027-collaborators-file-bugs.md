@@ -1,7 +1,7 @@
 # 27. Collaborators file bugs, and the Product Owner may propose a Goal
 
 - **Date:** 2026-10-12
-- **Status:** Accepted (bugs' path through the flow built by crew#407; proposed Goals to be built with ADR 0021's consumer review, planned for M10)
+- **Status:** Accepted (bugs' path through the flow built by crew#407; proposed Goals to be built in M7 as the Product Owner's "the Goal points elsewhere", crew#846, and with ADR 0021's consumer review in M15)
 
 ## Context
 
@@ -40,3 +40,4 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 
 - **2026-10-12:** decided by the Sponsor in chat, while crew#407 was raised to P1.
 - **2026-10-17:** the Product Owner may propose a Goal, which the Sponsor approves by applying the `goal` label; its rows stay the Product Owner's. "A Goal stays the Sponsor's alone" no longer holds. Decided by the Sponsor in the M6 planning session (crew#755).
+- **2026-10-21:** a proposed Goal is also how the Product Owner says "the Goal points elsewhere" (ADR 0018), so it's built in M7 (crew#846) rather than waiting for the consumer review. Decided by the Sponsor in the overhaul's planning session.
