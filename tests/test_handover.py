@@ -21,9 +21,10 @@ from crew_org.flows.readiness import CREW, SPONSOR, Missing, Readiness
 from crew_org.project import RECORD_PATH, Part, parse
 from crew_org.tools.container import Result
 
-RECORD = """version: 2
+RECORD = """version: 3
 intent:
   scope:
+    serves: [{{who: the Sponsor, needs: [how the crew performs]}}]
     purpose: Show how the crew works.
     {uses}
   release:

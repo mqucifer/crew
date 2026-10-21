@@ -345,6 +345,9 @@ def design(
                 for u in ([] if new else getattr(review, "undeclared", []))
             ]
             if not reasons:
+                # What's built is history the proposal doesn't choose (crew#847).
+                if record.design is not None:
+                    candidate.built = record.design.built
                 ended.record = record.model_copy(update={"design": candidate})
                 ended.refused = []
                 return ended

@@ -34,9 +34,10 @@ from tests.test_onboard import FakeIssues, FakeWorkspace
 
 RECORD = parse(
     """
-version: 2
+version: 3
 intent:
   scope:
+    serves: [{who: the Sponsor, needs: [how the crew performs]}]
     purpose: Report delivery metrics for the crew's own board.
   release:
     deploys: false
@@ -285,6 +286,16 @@ def test_a_design_needing_node_with_no_image_is_refused_before_review():
 
 
 # --- 4: a later change comes through the Architect, never delivery
+
+
+def test_a_revision_keeps_what_is_built_as_history():
+    """crew#847: what the project does is the design's history, not a choice to remake."""
+    built = to_design(proposal("uv run pytest -q")).model_copy(update={"built": ["A CLI"]})
+    record = RECORD.model_copy(update={"design": built})
+
+    ended = run(Architect(proposal("uv run pytest -q")), record=record, reason="a type check")
+
+    assert ended.record.design.built == ["A CLI"]
 
 
 def test_a_revision_is_shown_the_current_design_and_why():

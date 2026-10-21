@@ -17,6 +17,7 @@ from crew_org.crews.onboarding_crew import (
     Conflict,
     DoneAnswers,
     Question,
+    ReaderAnswer,
     ReleaseAnswers,
     ScopeAnswers,
     Turn,
@@ -42,16 +43,21 @@ from crew_org.git_ops import ProtectedBranchError
 from crew_org.project import RECORD_PATH, gaps, load_raw, lookup, parse, render, validate
 
 PURPOSE = ("intent", "scope", "purpose")
+SERVES = ("intent", "scope", "serves")
 DEPLOYS = ("intent", "release", "deploys")
 BAR = ("intent", "done", "bar")
 
 COMPLETE = {
     "intent": {
-        "scope": {"purpose": "Report how the crew performs"},
+        "scope": {
+            "purpose": "Report how the crew performs",
+            "serves": [{"who": "the Sponsor", "needs": ["how the crew performs"]}],
+        },
         "release": {"deploys": False},
         "done": {"bar": "tests pass"},
     }
 }
+READERS = [ReaderAnswer(who="the Sponsor", needs=["how the crew performs"])]
 
 
 def answers(**sections) -> Answers:
@@ -162,7 +168,7 @@ def test_the_interview_runs_until_every_required_answer_is_settled():
         Turn(answers=answers(), say="Tell me about it."),
         Turn(
             answers=answers(
-                scope=ScopeAnswers(purpose="Report how the crew performs"),
+                scope=ScopeAnswers(purpose="Report how the crew performs", serves=READERS),
                 release=ReleaseAnswers(deploys=False),
                 done=DoneAnswers(bar="tests pass"),
             ),
@@ -288,6 +294,7 @@ def test_the_record_arrives_as_a_pull_request(tmp_path: Path):
     (pull,) = issues.pulls
     assert pull["base"] == "main" and pull["head"] == "chore/7-project-record"
     assert "Closes #7" in pull["body"]
+    assert "- **Serves:** the Sponsor: how the crew performs\n" in pull["body"]
     assert issues.created == [ISSUE_TITLE]
     assert issues.assigned == [(8, ["mquarters"])], "the Sponsor merges it"
 
@@ -343,7 +350,9 @@ def test_the_workspace_refuses_to_write_the_default_branch(tmp_path: Path):
 def test_an_unsettled_answer_is_asked_about_again_specifically():
     po = Script(
         Turn(
-            answers=answers(scope=ScopeAnswers(purpose="Report how the crew performs")),
+            answers=answers(
+                scope=ScopeAnswers(purpose="Report how the crew performs", serves=READERS)
+            ),
             say="Noted the purpose.",
             questions=[
                 Question(about="intent.release.deploys", question="Does it ship anywhere?"),
@@ -365,10 +374,11 @@ def test_an_unsettled_answer_is_asked_about_again_specifically():
 
 
 def test_an_answer_settled_earlier_is_kept_when_a_turn_leaves_it_out():
-    kept = merge(COMPLETE, {"intent": {"scope": {"in_scope": ["cycle time"]}}})
+    kept = merge(COMPLETE, {"intent": {"scope": {"out_of_scope": ["a web UI"]}}})
     assert kept["intent"]["scope"] == {
         "purpose": "Report how the crew performs",
-        "in_scope": ["cycle time"],
+        "serves": [{"who": "the Sponsor", "needs": ["how the crew performs"]}],
+        "out_of_scope": ["a web UI"],
     }
     assert merge(COMPLETE, {"intent": {"done": None}})["intent"]["done"] == {"bar": "tests pass"}
 
@@ -392,7 +402,9 @@ def test_a_correction_at_the_confirmation_goes_back_to_the_product_owner():
 def test_stopping_early_leaves_a_takeaway_with_the_questions_still_open(tmp_path: Path):
     po = Script(
         Turn(
-            answers=answers(scope=ScopeAnswers(purpose="Report how the crew performs")),
+            answers=answers(
+                scope=ScopeAnswers(purpose="Report how the crew performs", serves=READERS)
+            ),
             say="Noted.",
             questions=[Question(about="intent.done.bar", question="What must pass?")],
         )
@@ -417,7 +429,7 @@ def test_stopping_early_leaves_a_takeaway_with_the_questions_still_open(tmp_path
 def test_ending_the_session_is_the_same_as_later():
     po = Script(Turn(answers=answers(), say="What is it for?"))
     ended = interview({}, repository="", turn=po, ask=Sponsor(None), tell=told()[1])
-    assert not ended.settled and set(ended.questions) == {PURPOSE, DEPLOYS, BAR}
+    assert not ended.settled and set(ended.questions) == {PURPOSE, SERVES, DEPLOYS, BAR}
 
 
 def test_a_failed_turn_keeps_the_answers_so_far():
@@ -428,13 +440,14 @@ def test_a_failed_turn_keeps_the_answers_so_far():
     ended = interview(raw, repository="", turn=broken, ask=Sponsor(), tell=told()[1])
 
     assert ended.interrupted == "proxy went away"
-    assert ended.raw == raw and set(ended.questions) == {DEPLOYS, BAR}
+    assert ended.raw == raw and set(ended.questions) == {SERVES, DEPLOYS, BAR}
 
 
 def test_a_takeaway_finished_by_hand_is_a_complete_record(tmp_path: Path):
     text = takeaway({}, {}, repo="r", path=tmp_path / "r.yaml")
     finished = (
         text.replace("    # purpose:", "    purpose: A tool")
+        .replace("    # serves: []", "    serves: [{who: the Sponsor, needs: [a number]}]")
         .replace("    # deploys:", "    deploys: false")
         .replace("    # bar:", "    bar: tests pass")
     )
@@ -445,7 +458,15 @@ def test_a_takeaway_finished_by_hand_is_a_complete_record(tmp_path: Path):
 
 
 def test_carrying_on_asks_only_about_what_is_still_missing():
-    partial = {"intent": {"scope": {"purpose": "p"}, "release": {"deploys": False}}}
+    partial = {
+        "intent": {
+            "scope": {
+                "purpose": "p",
+                "serves": [{"who": "the Sponsor", "needs": ["how the crew performs"]}],
+            },
+            "release": {"deploys": False},
+        }
+    }
     po = Script(
         Turn(answers=answers(), say="What must pass?"),
         Turn(answers=answers(done=DoneAnswers(bar="tests pass")), say="Thanks."),
@@ -518,11 +539,16 @@ def test_questions_about_a_filled_answer_keep_the_interview_going():
     partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
-            answers=answers(scope=ScopeAnswers(purpose="Current-sprint metrics")),
+            answers=answers(scope=ScopeAnswers(purpose="Current-sprint metrics", serves=READERS)),
             say="Noted, but goal #43 asks for past sprints.",
             questions=[Question(about="intent.scope.purpose", question="Past sprints too?")],
         ),
-        Turn(answers=answers(scope=ScopeAnswers(purpose="Sprints, past and present")), say="Ok."),
+        Turn(
+            answers=answers(
+                scope=ScopeAnswers(purpose="Sprints, past and present", serves=READERS)
+            ),
+            say="Ok.",
+        ),
     )
     sponsor = Sponsor("yes, past ones too", "yes")
     said, tell = told()
@@ -540,7 +566,7 @@ def test_saying_it_is_fine_goes_back_to_the_product_owner():
     partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
-            answers=answers(scope=ScopeAnswers(purpose="Metrics")),
+            answers=answers(scope=ScopeAnswers(purpose="Metrics", serves=READERS)),
             say="Is pytest enough to call a change done?",
             questions=[Question(about="intent.done.bar", question="Is pytest enough?")],
         ),
@@ -559,7 +585,7 @@ def test_done_goes_straight_to_the_record_past_the_product_owners_questions():
     partial = {"intent": {"release": {"deploys": False}, "done": {"bar": "tests pass"}}}
     po = Script(
         Turn(
-            answers=answers(scope=ScopeAnswers(purpose="Metrics")),
+            answers=answers(scope=ScopeAnswers(purpose="Metrics", serves=READERS)),
             say="Anything out of scope?",
             questions=[Question(about="intent.scope.out_of_scope", question="Out of scope?")],
         )
@@ -577,7 +603,7 @@ def test_done_cannot_skip_a_required_answer():
         Turn(answers=answers(), say="What is it for?"),
         Turn(
             answers=answers(
-                scope=ScopeAnswers(purpose="Metrics"),
+                scope=ScopeAnswers(purpose="Metrics", serves=READERS),
                 release=ReleaseAnswers(deploys=False),
                 done=DoneAnswers(bar="tests pass"),
             ),
@@ -598,7 +624,7 @@ def test_an_unanswered_optional_answer_is_left_out_not_written_empty():
     text = render(validate(COMPLETE))
     written = load_raw(text)
     assert "learned" not in written
-    assert set(written["intent"]["scope"]) == {"purpose"}
+    assert set(written["intent"]["scope"]) == {"purpose", "serves"}
     assert set(written["intent"]["done"]) == {"bar"}
     assert "[]" not in text
     assert parse(text) == validate(COMPLETE)
@@ -738,7 +764,7 @@ def test_a_conflict_holds_the_interview_open_and_done_cannot_skip_it():
     po = Script(
         conflicting(
             answers=answers(
-                scope=ScopeAnswers(purpose="Metrics"),
+                scope=ScopeAnswers(purpose="Metrics", serves=READERS),
                 guidelines=["Tests may call the real GitHub API"],
             )
         ),
@@ -778,7 +804,15 @@ def proposing(**more) -> Turn:
     )
 
 
-PARTIAL = {"intent": {"scope": {"purpose": "Metrics"}, "release": {"deploys": False}}}
+PARTIAL = {
+    "intent": {
+        "scope": {
+            "purpose": "Metrics",
+            "serves": [{"who": "the Sponsor", "needs": ["how the crew performs"]}],
+        },
+        "release": {"deploys": False},
+    }
+}
 
 
 def test_a_proposal_does_not_settle_a_required_answer():
