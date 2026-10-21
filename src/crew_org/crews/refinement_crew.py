@@ -21,6 +21,7 @@ from crew_org.crews.settle_crew import (
     CONSEQUENCES_CHARS,
     CONTEXT_CHARS,
     DECISION_CHARS,
+    Elsewhere,
     aim,
 )
 from crew_org.rulebook import Refusal, refuse
@@ -247,6 +248,13 @@ class EpicProposal(BaseModel):
         default_factory=list,
         description=(
             "Each thing the Goal mentions that you left out or reshaped, and why. Empty if none"
+        ),
+    )
+    elsewhere: Elsewhere | None = Field(
+        default=None,
+        description=(
+            "Where serving the Goal's reader needs something its intent doesn't cover: a "
+            "question for the Sponsor, or a Goal you propose. The epics still serve this Goal"
         ),
     )
 
@@ -745,7 +753,10 @@ def decompose_opening(
         "approves or rejects each epic you propose. What the Goal mentions is a lead, not a "
         "list to copy: leave out or reshape what doesn't serve the reader, and say why. Stay "
         "within the Goal's intent and the Sponsor's decisions. An epic names its reader and "
-        "what they can now see, decide or do. The stories, their criteria and estimates "
+        "what they can now see, decide or do. When serving the reader needs something "
+        "the Goal's intent doesn't cover, the Goal points elsewhere: say so in `elsewhere`, "
+        "with one question for the Sponsor or a Goal you propose, written as intent. "
+        "The stories, their criteria and estimates "
         "are the Business Analyst's, after approval, and a design is the Architect's. " + ask,
         "goal": f"## The Goal ({goal_ref}), set by the Sponsor\n\n{sponsors_words(goal)}",
         "lacking": lacking,

@@ -4,9 +4,13 @@ and a failure on one card does not abandon the rest."""
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from crew_org.config import load_org
 from crew_org.crews.criteria_crew import CriteriaCheck
 from crew_org.crews.refinement_crew import Choice, Epic, EpicProposal
+from crew_org.crews.settle_crew import Elsewhere, ProposedGoal, goal_intent
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import board_flow
 from crew_org.flows.board_flow import (
@@ -115,6 +119,9 @@ class FakeIssues:
 
     def get(self, repo: str, number: int) -> dict:
         return {"body": "goal body"}
+
+    def ensure_label(self, repo: str, name: str, **kw) -> None:
+        pass
 
 
 class FakeBoard:
@@ -428,6 +435,74 @@ def test_the_proposal_says_the_goal_is_not_the_card_to_move(monkeypatch):
     body = render_proposal("Goal: x", PROPOSAL, {"Report as a table": 3})
     assert "not a card to move" in body
     assert "individually" in body
+
+
+# --- the Goal points elsewhere (crew#846, ADR 0027) ------------------------
+
+ELSEWHERE_GOAL = ProposedGoal(
+    title="The Sponsor sees which sprint changes paid off",
+    reader="The Sponsor, at a sprint's close.",
+    see_or_decide="Which of the crew's changes made the next sprint better.",
+    out="Per-role cost.",
+)
+
+
+def proposing(elsewhere):
+    return lambda goal, **kw: PROPOSAL.model_copy(update={"elsewhere": elsewhere})
+
+
+def test_a_proposed_goal_is_filed_as_a_draft_the_sponsor_approves(monkeypatch):
+    """It waits in Inbox (Goals) without the `goal` label (ADR 0027), written as intent."""
+    issues, board = FakeIssues(), FakeBoard([card(1)])
+    elsewhere = Elsewhere(why="The reader asks what paid off", goal=ELSEWHERE_GOAL)
+    _, seen = run(board, issues, monkeypatch, proposer=proposing(elsewhere))
+    filed = issues.created[-1]
+    assert filed["title"] == ELSEWHERE_GOAL.title
+    assert filed["labels"] == ["proposed-goal", "needs:human"]
+    assert ("ITEM_N103", INBOX) in board.moves and (
+        "ITEM_N103",
+        "Work Type",
+        "Goal",
+    ) in board.selects
+    # The Goal's intent reads back from the draft as from any Goal written as intent.
+    within, out = goal_intent(filed["body"])
+    assert "Which of the crew's changes" in within and "Per-role cost." in out
+    comment = issues.posted[-1][1]
+    assert "### The Goal points elsewhere" in comment
+    assert "**A Goal I propose:** mqucifer/sprint-metrics#103" in comment
+    asked = [e for e in seen if e.kind is EventKind.PRODUCT_ASKED]
+    assert asked and asked[0].detail["proposed_goal"] == 103
+    assert issues.removed_labels == [(1, "needs:human")]
+
+
+def test_a_question_on_the_goal_keeps_it_waiting_for_the_sponsor(monkeypatch):
+    issues = FakeIssues()
+    elsewhere = Elsewhere(
+        why="The reader may be the team", question="Who reads it: you or the team?"
+    )
+    run(FakeBoard([card(1)]), issues, monkeypatch, proposer=proposing(elsewhere))
+    assert "**A question for the Sponsor.** Who reads it: you or the team?" in issues.posted[-1][1]
+    assert len(issues.created) == 2
+    assert issues.removed_labels == []
+
+
+def test_points_elsewhere_is_a_question_or_a_goal_not_both():
+    with pytest.raises(ValidationError, match="one question for the Sponsor, or one Goal"):
+        Elsewhere(why="w")
+    with pytest.raises(ValidationError, match="one question for the Sponsor, or one Goal"):
+        Elsewhere(why="w", question="q", goal=ELSEWHERE_GOAL)
+
+
+def test_a_proposed_goal_is_decomposed_only_once_the_sponsor_adds_the_goal_label():
+    drafted = card(7, author="crew[bot]", labels=frozenset({"proposed-goal", "needs:human"}))
+    approved = card(8, author="crew[bot]", labels=frozenset({"proposed-goal", "goal"}))
+    other = card(9, author="crew[bot]")
+    cards = [drafted, approved, other]
+    picked = goal_cards(cards, sponsor="mquarters", crew_login="crew[bot]")
+    assert [c.number for c in picked] == [8]
+    # The draft waits for the Sponsor; it isn't reported as nobody's.
+    unset = unauthored_goals(cards, sponsor="mquarters", crew_login="crew[bot]")
+    assert [c.number for c in unset] == [9]
 
 
 # --- the Business Analyst pass -------------------------------------------

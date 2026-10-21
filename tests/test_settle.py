@@ -21,8 +21,10 @@ from crew_org.crews.settle_crew import (
     INFRA_CHARS,
     Conclusion,
     Dismissal,
+    Elsewhere,
     ForInfra,
     OpenQuestion,
+    ProposedGoal,
     Row,
     Settlement,
     Unsettled,
@@ -36,7 +38,7 @@ from crew_org.crews.settle_crew import (
     numbered,
     opening,
 )
-from crew_org.events import EventSink
+from crew_org.events import EventKind, EventSink
 from crew_org.flows import panel as panel_flow
 from crew_org.flows import record
 from crew_org.flows import settle as flow
@@ -592,13 +594,52 @@ def run(gh: Github, monkeypatch, *settlements, notes=None):
     sink = EventSink(None)
     sink.subscribe(events.append)
     result = flow.settle_epic(
-        gh.client(), sink, repo="sprint-metrics", epic=406, context=context(), panel=notes
+        None, gh.client(), sink, repo="sprint-metrics", epic=406, context=context(), panel=notes
     )
     return result, calls, events
 
 
 def good(count=2):
     return Settlement(conclusion=Conclusion(rows=[row(settles=list(range(1, count + 1)))]))
+
+
+def test_the_goal_pointing_elsewhere_goes_to_the_goal_and_the_record_goes_on(monkeypatch):
+    """crew#846: a question about the Goal is asked on the Goal, not the epic."""
+    gh = Github()
+    asked = good().conclusion.model_copy(
+        update={"elsewhere": Elsewhere(why="N2 shows the team reads it", question="Who reads it?")}
+    )
+    result, _, events = run(gh, monkeypatch, Settlement(conclusion=asked))
+    assert result.outcome is flow.Outcome.WRITTEN
+    kinds = [kind for kind, _ in gh.writes]
+    assert kinds == ["body", "comment", "comment"]
+    on_goal = gh.writes[-1][1]
+    assert "### The Goal points elsewhere" in on_goal
+    assert "From settling mqucifer/sprint-metrics#406: N2 shows the team reads it" in on_goal
+    assert "**A question for the Sponsor about this Goal.** Who reads it?" in on_goal
+    assert "needs:human" in gh.labels
+    product = [e for e in events if e.kind is EventKind.PRODUCT_ASKED]
+    assert product[0].card == 174 and product[0].detail["step"] == "settle"
+
+
+def test_a_goal_proposed_while_settling_is_filed_from_the_epics_goal(monkeypatch):
+    filed = {}
+
+    def propose(issues, board, repo, goal, *, why, source):
+        filed.update(repo=repo, title=goal.title, source=source)
+        return 900
+
+    monkeypatch.setattr("crew_org.flows.proposed_goal.propose", propose)
+    gh = Github()
+    goal = ProposedGoal(title="t", reader="r", see_or_decide="s", out="o")
+    proposing = good().conclusion.model_copy(update={"elsewhere": Elsewhere(why="w", goal=goal)})
+    run(gh, monkeypatch, Settlement(conclusion=proposing))
+    assert filed == {
+        "repo": "sprint-metrics",
+        "title": "t",
+        "source": "mqucifer/sprint-metrics#174",
+    }
+    assert "**A Goal I propose:** mqucifer/sprint-metrics#900" in gh.writes[-1][1]
 
 
 def test_a_conclusion_is_added_below_the_approved_text_which_is_untouched(monkeypatch):
@@ -694,6 +735,7 @@ def test_a_body_edited_while_the_model_was_thinking_is_not_overwritten(monkeypat
     monkeypatch.setattr(flow, "settle", fake)
     with pytest.raises(flow.SettleFailed, match="changed while"):
         flow.settle_epic(
+            None,
             gh.client(),
             EventSink(None),
             repo="sprint-metrics",

@@ -237,6 +237,7 @@ def test_the_waiting_epic_is_not_designed_and_says_why(monkeypatch):
     result = SimpleNamespace(failed=[], skipped=[])
     epic = SimpleNamespace(number=552, parent=528, title="Report the reason")
     ok = refine_panel.panel_step(
+        None,
         Gh({551: "THE STORE", 552: body}),
         EventSink(None),
         result,

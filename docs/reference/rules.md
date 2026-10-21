@@ -12,7 +12,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | Kind | Rules |
 |---|---|
 | The crew's own decisions (`rules.Rule`) | 19 |
-| An answer's form refuses it | 41 |
+| An answer's form refuses it | 42 |
 | The call layer refuses any answer | 4 |
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 8 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
-| The tick decides a card's handling, found by the decision-point audit | 46 |
+| The tick decides a card's handling, found by the decision-point audit | 47 |
 | A setting that changes what the tick does | 191 |
 | Told, and not checked by anything above | 171 |
 
@@ -33,12 +33,12 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 72 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:architect.refinement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 74 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.panel`, `criteria_crew`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 62 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 101 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 102 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 93 |
@@ -81,6 +81,7 @@ section; one no line holds for is unplaced, never guessed.
 | `form.DesignAnswer.an_id`<br>name the question by its ID, like Q1 | answer_shape | `src/crew_org/crews/settle_crew.py:DesignAnswer._an_id` | Architect | — | src/crew_org/crews/settle_crew.py:DesignAnswer._an_id | — |
 | `form.DesignNote.covers_the_stories`<br>a design note gives each story its direction | answer_shape | `src/crew_org/crews/design_note_crew.py:DesignNote._covers_the_stories` | Architect | — | src/crew_org/crews/design_note_crew.py:DesignNote._covers_the_stories | — |
 | `form.DesignProposal.enforces_something`<br>a design names at least one check: without one, nothing enforces the definition of done | answer_shape | `src/crew_org/crews/design_crew.py:DesignProposal._enforces_something` | Architect | — | src/crew_org/crews/design_crew.py:DesignProposal._enforces_something | — |
+| `form.Elsewhere.one_or_the_other`<br>the Goal points elsewhere: give one question for the Sponsor, or one Goal you propose; not both | answer_shape | `src/crew_org/crews/settle_crew.py:Elsewhere._one_or_the_other` | Product Owner | — | src/crew_org/crews/settle_crew.py:Elsewhere._one_or_the_other | crew#846 |
 | `form.Epic.is_an_argument`<br>state specifically what a user could do with this epic alone. | scope | `src/crew_org/crews/refinement_crew.py:Epic._is_an_argument` | Product Owner | `Epic.separately_deliverable`'s description | src/crew_org/crews/refinement_crew.py:Epic._is_an_argument | — |
 | `form.Epic.not_a_restatement`<br>separately_deliverable repeats the outcome. | scope | `src/crew_org/crews/refinement_crew.py:Epic._not_a_restatement` | Product Owner | `Epic.separately_deliverable`'s description | src/crew_org/crews/refinement_crew.py:Epic._not_a_restatement | — |
 | `form.EpicProposal.at_the_level_of_intent`<br>…. | scope | `src/crew_org/crews/refinement_crew.py:EpicProposal._at_the_level_of_intent` | Product Owner | — | src/crew_org/crews/refinement_crew.py:EpicProposal._at_the_level_of_intent | crew#815<br>crew#846 |
@@ -229,6 +230,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.board_flow.goal_cards`<br>Cards awaiting an epic proposal. | flow | `src/crew_org/flows/board_flow.py:goal_cards` | — | — | src/crew_org/flows/board_flow.py:goal_cards<br>src/crew_org/flows/board_flow.py:set_by_the_sponsor | — |
 | `decision.board_flow.lacking_goals`<br>Goals the Sponsor asked for a missing epic, wherever on the board they are. | flow | `src/crew_org/flows/board_flow.py:lacking_goals` | — | — | src/crew_org/flows/board_flow.py:lacking_goals<br>src/crew_org/flows/board_flow.py:tick | — |
 | `decision.board_flow.parked`<br>Split approved epics into stories, and decide whether design is warranted. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#440 |
+| `decision.board_flow.points_elsewhere`<br>The refinement phase: goals become epics, approved epics become stories. | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | ADR 0030<br>crew#690<br>crew#846 |
 | `decision.board_flow.product_step`<br>Before an epic sent back as a story problem is split again (#189). | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step<br>src/crew_org/flows/board_flow.py:refine_epics | crew#189 |
 | `decision.board_flow.skeleton_only`<br>The refinement phase: goals become epics, approved epics become stories. | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | ADR 0030<br>crew#690 |
 | `decision.board_flow.sponsor_words`<br>Every reply the Sponsor writes on an epic becomes a row of its record (ADR 0023). | flow | `src/crew_org/flows/board_flow.py:record_sponsor_words` | — | — | src/crew_org/flows/board_flow.py:record_sponsor_words<br>src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/settle.py:_reply | ADR 0023 |
@@ -575,7 +577,7 @@ section; one no line holds for is unplaced, never guessed.
 | `told.senior_engineer.a_finding_you_cant_tie_to`<br>A finding you can't tie to a line you were shown is a guess, and you don't give it. | guidance | `src/crew_org/config/agents.yaml:senior_engineer.backstory` | Senior Engineer | agents.yaml senior_engineer.backstory | guidance | — |
 | `told.senior_engineer.diagnose_the_crews_own_code_say`<br>Diagnose the crew's own code: say what is wrong with it, where, and what to change, so that diagnosing the crew isn't a job only the Sponsor can do. | guidance | `src/crew_org/config/agents.yaml:senior_engineer.goal` | Senior Engineer | agents.yaml senior_engineer.goal | maybe check.delivery.workflows_not_permitted | — |
 | `told.senior_engineer.you_read_the_crews_code_and`<br>You read the crew's code and never change it. | guidance | `src/crew_org/config/agents.yaml:senior_engineer.backstory` | Senior Engineer | agents.yaml senior_engineer.backstory | guidance | — |
-| `told.settle_crew.ask_the_sponsor_one_question_with`<br>Ask the Sponsor one question, with no conclusion, only when you can't tell which way the Goal points, so that any call you made might contradict it. | scope | `src/crew_org/crews/settle_crew.py:_SETTLE_EACH` | Architect<br>Product Owner | the prompt, src/crew_org/crews/settle_crew.py:_SETTLE_EACH | guidance | — |
+| `told.settle_crew.ask_the_sponsor_one_question_with`<br>Ask the Sponsor one question, with no conclusion, only when you can't tell which way the Goal points, so that any call you made might contradict it. | scope | `src/crew_org/crews/settle_crew.py:_SETTLE_EACH` | Architect<br>Product Owner | the prompt, src/crew_org/crews/settle_crew.py:_SETTLE_EACH | maybe form.Elsewhere.one_or_the_other | — |
 | `told.settle_crew.dont_ask_what_you_can_decide`<br>Don't ask what you can decide, and don't restate the epic. | scope | `src/crew_org/crews/settle_crew.py:_SETTLE_EACH` | Architect<br>Product Owner | the prompt, src/crew_org/crews/settle_crew.py:_SETTLE_EACH | guidance | — |
 | `told.settle_crew.it_must_not_contradict_a_sponsor`<br>It must not contradict a Sponsor decision or reach into what the Goal rules out. | scope | `src/crew_org/crews/settle_crew.py:_SETTLE_EACH` | Architect<br>Product Owner | the prompt, src/crew_org/crews/settle_crew.py:_SETTLE_EACH | guidance | — |
 | `told.settle_crew.settle_each_one_now_before_the`<br>Settle each one now, before the epic is split into stories, so their criteria are written against your answer: name the key, the path, the response shape or the parameter exactly, as the code has it or as it will be. | scope | `src/crew_org/crews/settle_crew.py:design_opening` | Architect | the prompt, src/crew_org/crews/settle_crew.py:design_opening | maybe decision.settle.design_questions | — |

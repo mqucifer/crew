@@ -205,6 +205,37 @@ class Dismissal(BaseModel):
     )
 
 
+class ProposedGoal(BaseModel):
+    """A Goal the Product Owner proposes, written as intent (ADR 0027, ADR 0035).
+
+    Filed as a draft for the Sponsor, who approves it by adding the `goal` label.
+    """
+
+    title: str = Field(description="The outcome for its reader, in a line")
+    reader: str = Field(description="Who reads the result")
+    see_or_decide: str = Field(description="What it should let them see or decide")
+    out: str = Field(description="What's out")
+
+
+class Elsewhere(BaseModel):
+    """The Goal points elsewhere: serving its reader needs what its intent doesn't cover."""
+
+    why: str = Field(description="What serving the reader needs that the Goal doesn't cover")
+    question: str = Field(
+        default="",
+        description="One question for the Sponsor, answerable in a sentence. Or a Goal",
+    )
+    goal: ProposedGoal | None = Field(
+        default=None, description="The Goal you propose to the Sponsor instead. Or a question"
+    )
+
+    @model_validator(mode="after")
+    def _one_or_the_other(self) -> Elsewhere:
+        if bool(self.question.strip()) == (self.goal is not None):
+            refuse("form.Elsewhere.one_or_the_other")
+        return self
+
+
 class Conclusion(BaseModel):
     rows: list[Row] = Field(default_factory=list)
     open: list[OpenQuestion] = Field(
@@ -219,6 +250,15 @@ class Conclusion(BaseModel):
         ),
     )
     dismissed: list[Dismissal] = Field(default_factory=list)
+    # Brought to the Sponsor on the Goal; the epic's record goes on (crew#846).
+    elsewhere: Elsewhere | None = Field(
+        default=None,
+        description=(
+            "Where a note shows serving the Goal's reader needs something its intent doesn't "
+            "cover: a question for the Sponsor about the Goal, or a Goal you propose. The note "
+            "is still settled here"
+        ),
+    )
 
     @model_validator(mode="after")
     def _says_something(self) -> Conclusion:
@@ -463,6 +503,9 @@ _SETTLE_EACH = (
     "no story waits on it.\n"
     "- **A dismissal** when it isn't needed: already settled, wholly inside another epic, "
     "or wrong. Say why.\n"
+    "When a note shows that serving the Goal's reader needs something the Goal's intent "
+    "doesn't cover, the Goal points elsewhere: say so in `elsewhere`, with a question about "
+    "the Goal or a Goal you propose, and still settle the note.\n"
     "Every note gets one of the four, and a row may answer several. Ask the Sponsor one "
     "question, with no conclusion, only when you can't tell which way the Goal points, so "
     "that any call you made might contradict it. Don't ask what you can decide, and don't "
