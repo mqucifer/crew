@@ -59,6 +59,7 @@ config.const.look.EXTERNAL_COUNT:
 config.const.look.HEIGHT:
   origin:
   - crew#846
+config.const.look.REDIRECTS:
 config.const.look.TEXT_CHARS:
   origin:
   - crew#846

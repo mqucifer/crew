@@ -346,21 +346,74 @@ def test_the_published_site_is_the_default_branchs_successful_deploy():
     assert found is not None and found[0]["id"] == 4 and found[1] == b"zip 4"
 
 
-def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch):
+PUBLIC = [(2, 1, 6, "", ("151.101.1.229", 443))]
+
+
+@pytest.fixture
+def public(monkeypatch):
+    """Every host resolves to a public address, as the CDNs do."""
+    monkeypatch.setattr(looking.socket, "getaddrinfo", lambda *a, **kw: PUBLIC)
+
+
+def test_the_host_fetches_only_public_https_hosts_on_the_list(monkeypatch):
+    """The page is generated code: what it names mustn't make the host reach localhost,
+    the LAN or the Spark (CLAUDE.md's Never rules)."""
+    monkeypatch.setattr(looking.socket, "getaddrinfo", lambda *a, **kw: PUBLIC)
+    assert looking.allowed("https://cdn.jsdelivr.net/gh/mqucifer/design-system@v0.1.0/x.css")
+    assert not looking.allowed("http://cdn.jsdelivr.net/x.css")
+    assert not looking.allowed("https://localhost/x.css")
+    assert not looking.allowed("https://127.0.0.1:4000/v1/models")
+    assert not looking.allowed("https://192.168.1.20:30000/v1/models")
+    assert not looking.allowed("https://evil.example/x.css")
+    # A listed name that resolves to a private address is refused after DNS.
+    for private in ("192.168.1.20", "10.0.0.5", "127.0.0.1", "169.254.169.254", "::1"):
+        found = [(2, 1, 6, "", (private, 443))]
+        monkeypatch.setattr(looking.socket, "getaddrinfo", lambda *a, found=found, **kw: found)
+        assert not looking.allowed("https://cdn.jsdelivr.net/x.css"), private
+
+
+def test_a_page_naming_private_addresses_makes_the_host_fetch_nothing_of_them(
+    tmp_path, monkeypatch, public
+):
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "a.html").write_text(
+        '<link rel="stylesheet" href="http://localhost:4000/v1/models">'
+        '<script src="https://192.168.1.20:30000/generate"></script>'
+        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/moved.css">'
+    )
+    asked = []
+
+    def answer(request):
+        asked.append(str(request.url))
+        # A listed host redirecting off the list is not followed.
+        return httpx.Response(302, headers={"location": "http://192.168.1.20/x.css"})
+
+    real = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(answer), **kw)
+    )
+    into = tmp_path / "into"
+    into.mkdir()
+    assert looking.externals(site, "a.html", into) == {}
+    assert asked == ["https://cdn.jsdelivr.net/moved.css"]
+
+
+def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch, public):
     """The design system and fonts come from CDNs; the container is offline."""
     site = tmp_path / "site"
     site.mkdir()
     (site / "a.html").write_text(
-        '<link rel="stylesheet" href="https://cdn.example/styles.css">'
-        '<script src="https://cdn.example/app.js"></script><img src="local.png">'
+        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/styles.css">'
+        '<script src="https://cdn.jsdelivr.net/app.js"></script><img src="local.png">'
     )
     served = {
-        "https://cdn.example/styles.css": (
+        "https://cdn.jsdelivr.net/styles.css": (
             "text/css",
-            "@font-face{src:url(https://f.example/a.woff2)}",
+            "@font-face{src:url(https://fonts.gstatic.com/a.woff2)}",
         ),
-        "https://cdn.example/app.js": ("text/javascript", "1"),
-        "https://f.example/a.woff2": ("font/woff2", "font"),
+        "https://cdn.jsdelivr.net/app.js": ("text/javascript", "1"),
+        "https://fonts.gstatic.com/a.woff2": ("font/woff2", "font"),
     }
 
     asked = []
@@ -381,25 +434,30 @@ def test_a_pages_other_hosts_are_fetched_with_their_types(tmp_path, monkeypatch)
         url: kind for url, (kind, _) in served.items()
     }
     assert (
-        json.loads((into / "map.json").read_text())["https://f.example/a.woff2"][1] == "font/woff2"
+        json.loads((into / "map.json").read_text())["https://fonts.gstatic.com/a.woff2"][1]
+        == "font/woff2"
     )
 
 
-def test_the_bound_on_other_hosts_is_spent_on_the_requested_page_first(tmp_path, monkeypatch):
+def test_the_bound_on_other_hosts_is_spent_on_the_requested_page_first(
+    tmp_path, monkeypatch, public
+):
     """Gathered from every page, the page's own CSS and fonts could miss the bound."""
     site = tmp_path / "site"
     site.mkdir()
     (site / "a.html").write_text(
-        "".join(f'<script src="https://cdn.example/{n}.js"></script>' for n in range(60))
+        "".join(f'<script src="https://cdn.jsdelivr.net/{n}.js"></script>' for n in range(60))
     )
     (site / "b.html").write_text(
-        '<link rel="stylesheet" href="https://cdn.example/b.css"><script src="https://cdn.example/0.js">'
+        '<link rel="stylesheet" href="https://cdn.jsdelivr.net/b.css"><script src="https://cdn.jsdelivr.net/0.js">'
     )
 
     def answer(request):
         kind = "text/css" if request.url.path.endswith(".css") else "text/javascript"
         body = (
-            "@font-face{src:url(https://f.example/b.woff2)}" if "b.css" in str(request.url) else ""
+            "@font-face{src:url(https://fonts.gstatic.com/b.woff2)}"
+            if "b.css" in str(request.url)
+            else ""
         )
         return httpx.Response(200, headers={"content-type": kind}, text=body)
 
@@ -411,17 +469,17 @@ def test_the_bound_on_other_hosts_is_spent_on_the_requested_page_first(tmp_path,
     into.mkdir()
     found = looking.externals(site, "b.html", into)
     assert set(found) == {
-        "https://cdn.example/b.css",
-        "https://cdn.example/0.js",
-        "https://f.example/b.woff2",
+        "https://cdn.jsdelivr.net/b.css",
+        "https://cdn.jsdelivr.net/0.js",
+        "https://fonts.gstatic.com/b.woff2",
     }
 
 
-def test_a_sessions_looks_fetch_the_site_and_other_hosts_once(tmp_path, monkeypatch):
+def test_a_sessions_looks_fetch_the_site_and_other_hosts_once(tmp_path, monkeypatch, public):
     """Each look re-downloaded the artifact and every external before."""
     inner = io.BytesIO()
     with tarfile.open(fileobj=inner, mode="w") as tar:
-        page = b'<link rel="stylesheet" href="https://cdn.example/s.css"><h1>Sprint 30</h1>'
+        page = b'<link rel="stylesheet" href="https://cdn.jsdelivr.net/s.css"><h1>Sprint 30</h1>'
         info = tarfile.TarInfo("./index.html")
         info.size = len(page)
         tar.addfile(info, io.BytesIO(page))
@@ -443,7 +501,7 @@ def test_a_sessions_looks_fetch_the_site_and_other_hosts_once(tmp_path, monkeypa
     def answer(request):
         asked.append(str(request.url))
         if request.url.path.endswith(".css"):
-            css = "@font-face{src:url(https://f.example/a.woff2)}"
+            css = "@font-face{src:url(https://fonts.gstatic.com/a.woff2)}"
             return httpx.Response(200, headers={"content-type": "text/css"}, text=css)
         return httpx.Response(200, headers={"content-type": "font/woff2"}, text="font")
 
@@ -456,7 +514,7 @@ def test_a_sessions_looks_fetch_the_site_and_other_hosts_once(tmp_path, monkeypa
         files, base = kept.site(Pages(), "crew-presentation")
         found = looking.externals(files, "index.html", kept.externals(), kept.found)
     assert downloads == ["crew-presentation"] and base == "/crew-presentation/"
-    assert asked == ["https://cdn.example/s.css", "https://f.example/a.woff2"]
+    assert asked == ["https://cdn.jsdelivr.net/s.css", "https://fonts.gstatic.com/a.woff2"]
     # The font a cached stylesheet names is still in this page's map.
     assert set(json.loads((kept.externals() / "map.json").read_text())) == set(found)
     assert len(found) == 2

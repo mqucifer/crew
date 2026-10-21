@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 47 |
-| A setting that changes what the tick does | 197 |
+| A setting that changes what the tick does | 198 |
 | Told, and not checked by anything above | 170 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 102 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 97 |
+| Unplaced | | 98 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -372,8 +372,9 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.llm.DEFAULT_TIMEOUT`<br>Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s gives ~460s for a full implementation), with headroom for reasoning tokens. | answer_shape | `src/crew_org/llm.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/llm.py:DEFAULT_TIMEOUT | — |
 | `config.const.llm.PROBE_TIMEOUT`<br>Long enough for a cold model's first token, short enough to fail a pre-flight rather than hang it. | answer_shape | `src/crew_org/llm.py:PROBE_TIMEOUT` | — | — | src/crew_org/llm.py:PROBE_TIMEOUT | — |
 | `config.const.look.EXTERNAL_BYTES`<br>EXTERNAL_BYTES = 10000000 | — | `src/crew_org/tools/look.py:EXTERNAL_BYTES` | — | — | src/crew_org/tools/look.py:EXTERNAL_BYTES | crew#846 |
-| `config.const.look.EXTERNAL_COUNT`<br>What the host fetches for a page from other hosts: a bound, not a crawl. | — | `src/crew_org/tools/look.py:EXTERNAL_COUNT` | — | — | src/crew_org/tools/look.py:EXTERNAL_COUNT | crew#846 |
+| `config.const.look.EXTERNAL_COUNT`<br>EXTERNAL_COUNT = 40 | — | `src/crew_org/tools/look.py:EXTERNAL_COUNT` | — | — | src/crew_org/tools/look.py:EXTERNAL_COUNT | crew#846 |
 | `config.const.look.HEIGHT`<br>HEIGHT = 800 | — | `src/crew_org/tools/look.py:HEIGHT` | — | — | src/crew_org/tools/look.py:HEIGHT | crew#846 |
+| `config.const.look.REDIRECTS`<br>REDIRECTS = 5 | — | `src/crew_org/tools/look.py:REDIRECTS` | — | — | src/crew_org/tools/look.py:REDIRECTS | — |
 | `config.const.look.TEXT_CHARS`<br>TEXT_CHARS = 6000 | — | `src/crew_org/tools/look.py:TEXT_CHARS` | — | — | src/crew_org/tools/look.py:TEXT_CHARS | crew#846 |
 | `config.const.look.TIMEOUT`<br>TIMEOUT = 180 | — | `src/crew_org/tools/look.py:TIMEOUT` | — | — | src/crew_org/tools/look.py:TIMEOUT | crew#846 |
 | `config.const.loop.MAX_PASSES`<br>MAX_PASSES = 5 | flow | `src/crew_org/flows/loop.py:MAX_PASSES` | — | — | src/crew_org/flows/loop.py:MAX_PASSES | — |

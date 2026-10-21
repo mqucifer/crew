@@ -20,8 +20,10 @@ container.
 
 A page can name stylesheets, scripts and fonts on other hosts (crew-presentation's
 design system and fonts come from CDNs). The host fetches those too (`externals`),
-and the browser answers each request from that copy; anything else off the site is
-refused. The page is judged as styled, and the container stays offline.
+but only from the public hosts on EXTERNAL_HOSTS: the page is generated code, and
+what it names mustn't make the host reach a private address. The browser answers
+each request from that copy; anything else off the site is refused. The page is
+judged as styled, and the container stays offline.
 
 The image carries the browsers but not the Python package that drives them. That is
 installed once, pinned, into the sandbox's cache, in a container with the network
@@ -32,9 +34,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import ipaddress
 import json
 import re
 import shutil
+import socket
 import subprocess
 import tarfile
 import tempfile
@@ -58,6 +62,11 @@ TIMEOUT = 180
 SITE = "/site"
 EXTERNAL = "/external"
 # What the host fetches for a page from other hosts: a bound, not a crawl.
+# The page is generated code, so what it names is fetched only from the public hosts
+# the crew's sites use, over https, each address checked public after DNS: the host
+# never reaches localhost, the LAN or the Spark for it. Another host is a code change.
+EXTERNAL_HOSTS = frozenset({"cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"})
+REDIRECTS = 5
 EXTERNAL_COUNT = 40
 EXTERNAL_BYTES = 10_000_000
 # Google Fonts answers with the font format the browser asks for.
@@ -176,6 +185,32 @@ class Fetched:
         self._dir, self.sites, self.found = None, {}, {}
 
 
+def allowed(url: str) -> bool:
+    """Whether the host may fetch `url` for a page: https, a host on EXTERNAL_HOSTS, and
+    every address it resolves to public (not private, loopback or link-local)."""
+    parts = urlparse(url)
+    if parts.scheme != "https" or parts.hostname not in EXTERNAL_HOSTS:
+        return False
+    try:
+        found = socket.getaddrinfo(parts.hostname, parts.port or 443, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return False
+    return bool(found) and all(ipaddress.ip_address(a[4][0]).is_global for a in found)
+
+
+def _fetch(web: Any, url: str) -> Any:
+    """`url`, following a redirect only to where `allowed` lets the host go; or None."""
+    for _ in range(REDIRECTS + 1):
+        if not allowed(url):
+            return None
+        got = web.get(url)
+        if not got.is_redirect:
+            got.raise_for_status()
+            return got
+        url = str(got.next_request.url) if got.next_request else ""
+    return None
+
+
 def externals(
     files: Path, page: str, into: Path, found: dict[str, tuple[str, str]] | None = None
 ) -> dict[str, tuple[str, str]]:
@@ -183,8 +218,9 @@ def externals(
 
     What the page names in a link, script or img, and the fonts and images its
     stylesheets name: the page's own, so the bound can't be spent on other pages'.
-    `found` is what earlier looks fetched, which isn't fetched again. A URL that can't
-    be fetched is left out, and the page meets it as a reader offline would.
+    `found` is what earlier looks fetched, which isn't fetched again. Only what `allowed`
+    lets the host fetch is fetched. A URL that isn't, or can't be, is left out, and the
+    page meets it as a reader offline would.
     """
     import httpx  # noqa: PLC0415
 
@@ -192,7 +228,7 @@ def externals(
     wanted = list(dict.fromkeys(_NAMED.findall((files / page).read_text(errors="replace"))))
     seen: set[str] = set()
     count = total = 0
-    with httpx.Client(follow_redirects=True, timeout=30, headers={"User-Agent": CHROME}) as web:
+    with httpx.Client(follow_redirects=False, timeout=30, headers={"User-Agent": CHROME}) as web:
         while wanted and count < EXTERNAL_COUNT and total < EXTERNAL_BYTES:
             url = wanted.pop(0)
             if url in seen:
@@ -207,9 +243,10 @@ def externals(
                     wanted += [u for u in _IN_CSS.findall(css) if u not in seen]
                 continue
             try:
-                got = web.get(url)
-                got.raise_for_status()
+                got = _fetch(web, url)
             except httpx.HTTPError:
+                continue
+            if got is None:
                 continue
             name = hashlib.sha1(url.encode()).hexdigest()
             (into / name).write_bytes(got.content)
