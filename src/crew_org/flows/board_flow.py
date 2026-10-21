@@ -198,6 +198,8 @@ def render_epic_body(epic: Epic, goal_number: int, goal_title: str) -> str:
     """An epic issue, written for the Sponsor deciding whether to approve it."""
     return "\n".join(
         [
+            f"**For** — {epic.reader}",
+            "",
             f"**Outcome** — {epic.outcome}",
             "",
             f"**Why** — {epic.rationale}",
@@ -238,6 +240,8 @@ def render_proposal(
         lines += [
             heading,
             "",
+            f"**For** — {epic.reader}",
+            "",
             f"**Outcome** — {epic.outcome}",
             "",
             f"**Why** — {epic.rationale}",
@@ -248,6 +252,16 @@ def render_proposal(
         "",
         proposal.ordering_rationale,
         "",
+    ]
+    if proposal.choices:
+        # The Product Owner's calls on the Goal, shown where they're approved (ADR 0018).
+        lines += [
+            "### What I left out or reshaped",
+            "",
+            *(f"- **{c.mentioned}:** {c.instead}. {c.why}" for c in proposal.choices),
+            "",
+        ]
+    lines += [
         "---",
         "",
         "Each epic is now a card in `Inbox (Goals)` labelled `needs:human`, nested "

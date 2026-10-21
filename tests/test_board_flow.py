@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from crew_org.config import load_org
 from crew_org.crews.criteria_crew import CriteriaCheck
-from crew_org.crews.refinement_crew import Epic, EpicProposal
+from crew_org.crews.refinement_crew import Choice, Epic, EpicProposal
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import board_flow
 from crew_org.flows.board_flow import (
@@ -14,6 +14,7 @@ from crew_org.flows.board_flow import (
     INBOX,
     goal_cards,
     goals_missing_work_type,
+    render_epic_body,
     render_proposal,
     tick,
     unauthored_goals,
@@ -27,6 +28,7 @@ PROPOSAL = EpicProposal(
     epics=[
         Epic(
             title="Report as a table",
+            reader="the Sponsor",
             outcome="Sponsor sees metrics",
             rationale="most valuable",
             separately_deliverable=(
@@ -36,6 +38,7 @@ PROPOSAL = EpicProposal(
         ),
         Epic(
             title="Emit JSON",
+            reader="the Sponsor",
             outcome="tooling can consume it",
             rationale="completes formats",
             separately_deliverable=(
@@ -391,6 +394,22 @@ def test_the_proposal_reads_as_a_decision_not_a_transcript():
     # It must tell the Sponsor what to do next, on which card.
     assert "Needs Refinement" in body
     assert "Inbox (Goals)" in body
+
+
+def test_the_proposal_shows_each_epics_reader_and_the_product_owners_choices():
+    """crew#846: what was left out or reshaped is recorded where the Sponsor approves."""
+    assert "### What I left out or reshaped" not in render_proposal("g", PROPOSAL)
+    chosen = PROPOSAL.model_copy(
+        update={
+            "choices": [
+                Choice(mentioned="the middle", instead="left out", why="no reader decides on it")
+            ]
+        }
+    )
+    body = render_proposal("g", chosen)
+    assert "**For** — the Sponsor" in body
+    assert "- **the middle:** left out. no reader decides on it" in body
+    assert "**For** — the Sponsor" in render_epic_body(PROPOSAL.epics[0], 1, "g")
 
 
 def test_the_marker_is_present_so_the_crew_recognises_its_own_work():

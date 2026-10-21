@@ -85,6 +85,7 @@ def test_an_epic_must_decompose_into_at_least_one_story():
 def epic(title: str = "Report performance", **overrides) -> Epic:
     params = dict(
         title=title,
+        reader="the Sponsor",
         outcome="Sponsor sees metrics",
         rationale="why",
         separately_deliverable="The Sponsor can read the metrics with nothing else built.",
@@ -128,6 +129,27 @@ def test_only_a_skeleton_goal_is_asked_for_one_epic(monkeypatch):
         propose_epics("Goal: a site")
     assert seen["form"] is EpicProposal
     assert f"between {MIN_EPICS} and {MAX_EPICS} epics" in seen["description"]
+
+
+def test_the_product_owner_chooses_for_the_goals_reader(monkeypatch):
+    """crew#846: the Goal is a lead, not a list to copy (ADR 0018, ADR 0035)."""
+    seen = capture(monkeypatch)
+    with pytest.raises(Stop):
+        propose_epics("Goal: a site")
+    assert "You choose what serves that reader" in seen["description"]
+    assert "not a list to copy" in seen["description"]
+    assert "propose the epics that deliver it" not in seen["description"]
+
+
+def test_an_epic_names_its_reader():
+    with pytest.raises(ValidationError, match="reader"):
+        Epic(
+            title="Report",
+            outcome="sees metrics",
+            rationale="why",
+            separately_deliverable="The Sponsor can read the metrics with nothing else built.",
+            changes_what_readers_see=False,
+        )
 
 
 def test_too_many_epics_is_also_rejected():

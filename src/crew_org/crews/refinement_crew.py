@@ -163,12 +163,14 @@ class Story(BaseModel):
 
 class Epic(BaseModel):
     title: str = Field(description="Short imperative title")
-    outcome: str = Field(description="The user-visible outcome this delivers")
+    # The epic is at the level of intent: a reader and what they gain (ADR 0035).
+    reader: str = Field(description="Who this serves: the Goal's reader, in a few words")
+    outcome: str = Field(description="What that reader can now see, decide or do")
     rationale: str = Field(description="Why this slice is worth doing, and why now")
     separately_deliverable: str = Field(
         description=(
             "Why this epic can ship on its own and still be worth having, without "
-            "the others. Name what the user could do with only this."
+            "the others. Name what its reader could do with only this."
         )
     )
     changes_what_readers_see: bool = Field(
@@ -193,11 +195,26 @@ class Epic(BaseModel):
         return self
 
 
+class Choice(BaseModel):
+    """Something the Goal mentions that the Product Owner left out or reshaped (ADR 0018)."""
+
+    mentioned: str = Field(description="What the Goal mentions, in a few words")
+    instead: str = Field(description="Left out, or what it became")
+    why: str = Field(description="Why that serves the Goal's reader better")
+
+
 class EpicProposal(BaseModel):
     """What the Product Owner proposes for a goal. Awaits Sponsor approval."""
 
-    epics: list[Epic] = Field(description="The smallest set that covers the goal")
+    epics: list[Epic] = Field(description="The smallest set that serves the Goal's reader")
     ordering_rationale: str = Field(description="Why this order delivers value soonest")
+    # The Product Owner's calls, recorded where the Sponsor approves (crew#846).
+    choices: list[Choice] = Field(
+        default_factory=list,
+        description=(
+            "Each thing the Goal mentions that you left out or reshaped, and why. Empty if none"
+        ),
+    )
 
     @field_validator("epics")
     @classmethod
@@ -651,8 +668,8 @@ def decompose_opening(
             "however useful it would be: anything more is a new decision for the Sponsor. As "
             f"few as that takes, one is fine, at most {MAX_EPICS}. Each delivers something "
             "none of the goal's epics already delivers. Decompose by outcome, never by "
-            "architectural layer. For each epic, state what a user could do with that epic "
-            "alone."
+            "architectural layer. For each epic, state what its reader could do with that "
+            "epic alone."
         )
     elif skeleton:
         ask = (
@@ -663,16 +680,21 @@ def decompose_opening(
         )
     else:
         ask = (
-            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together deliver it. "
-            "Decompose by outcome, never by architectural layer. Order them so the most "
-            "valuable is deliverable first. For each epic, state what a user could do with "
-            "that epic alone, without the others. If you cannot say, it is not a separate "
-            "epic: merge it. A goal that comes back as a single epic has not been decomposed."
+            f"Propose between {MIN_EPICS} and {MAX_EPICS} epics that together serve that "
+            "reader. Decompose by outcome, never by architectural layer. Order them so the "
+            "most valuable is deliverable first. For each epic, state what its reader could "
+            "do with that epic alone, without the others. If you cannot say, it is not a "
+            "separate epic: merge it. A goal that comes back as a single epic has not been "
+            "decomposed."
         )
     return {
         "step": "## Your step: decompose the Goal into epics\n\n"
-        "The Sponsor set the Goal below. You propose the epics that deliver it, and the "
-        "Sponsor approves or rejects each one. The stories, their criteria and estimates "
+        "The Sponsor set the Goal below: who reads the result, what it should let them see "
+        "or decide, and what's out. You choose what serves that reader, and the Sponsor "
+        "approves or rejects each epic you propose. What the Goal mentions is a lead, not a "
+        "list to copy: leave out or reshape what doesn't serve the reader, and say why. Stay "
+        "within the Goal's intent and the Sponsor's decisions. An epic names its reader and "
+        "what they can now see, decide or do. The stories, their criteria and estimates "
         "are the Business Analyst's, after approval, and a design is the Architect's. " + ask,
         "goal": f"## The Goal ({goal_ref}), set by the Sponsor\n\n{sponsors_words(goal)}",
         "lacking": lacking,
