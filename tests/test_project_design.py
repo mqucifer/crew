@@ -288,14 +288,17 @@ def test_a_design_needing_node_with_no_image_is_refused_before_review():
 # --- 4: a later change comes through the Architect, never delivery
 
 
-def test_a_revision_keeps_what_is_built_as_history():
-    """crew#847: what the project does is the design's history, not a choice to remake."""
-    built = to_design(proposal("uv run pytest -q")).model_copy(update={"built": ["A CLI"]})
-    record = RECORD.model_copy(update={"design": built})
+def test_a_revision_keeps_what_the_proposal_does_not_choose():
+    """crew#847: the CI secrets, and what's built as history, survive a redesign."""
+    current = to_design(proposal("uv run pytest -q")).model_copy(
+        update={"built": ["A CLI"], "secrets": ["PYPI_TOKEN"]}
+    )
+    record = RECORD.model_copy(update={"design": current})
 
     ended = run(Architect(proposal("uv run pytest -q")), record=record, reason="a type check")
 
     assert ended.record.design.built == ["A CLI"]
+    assert ended.record.design.secrets == ["PYPI_TOKEN"]
 
 
 def test_a_revision_is_shown_the_current_design_and_why():
