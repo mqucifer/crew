@@ -178,8 +178,11 @@ class GitHub:
     def __init__(self, log="line\n" * 300 + "FAILED test_x"):
         self.log = log
 
+    def default_branch(self, repo):
+        return "trunk"
+
     def latest_runs(self, repo, branch):
-        assert branch == "main"
+        assert branch == "trunk"
         return {
             ".github/workflows/tests.yml": {
                 "id": 9,
@@ -197,9 +200,7 @@ class GitHub:
 
 
 def test_ci_log_shows_the_default_branchs_runs_and_a_jobs_log_end(repo):
-    sh(repo, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
-    sh(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-    sh(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    """The branch is GitHub's: the checkout has no origin/HEAD to guess from."""
     text = role_tools.ci_log(context(repo, GitHub()), {})
     assert "## .github/workflows/tests.yml: failure" in text and "(abcdef1)" in text
     assert "- job 77 `test`: failure" in text

@@ -196,11 +196,6 @@ def contracts(context: Context, args: dict[str, Any]) -> str:
 # --- ci_log: how CI ran on the default branch ---------------------------------------------------
 
 
-def _branch(root: Path) -> str:
-    head = _git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
-    return head.removeprefix("origin/") or "main"
-
-
 def ci_log(context: Context, args: dict[str, Any]) -> str:
     """The default branch's latest run of each workflow, and its jobs; or a job's log."""
     github = context.github
@@ -212,7 +207,8 @@ def ci_log(context: Context, args: dict[str, Any]) -> str:
             return f"Job {job}'s log can't be read: expired, or no access."
         tail = log.splitlines()[-LOG_LINES:]
         return _cut(f"The last {len(tail)} lines of job {job}'s log:\n\n" + "\n".join(tail))
-    branch = _branch(context.root)
+    # GitHub's, not guessed from the checkout's origin/HEAD.
+    branch = github.default_branch(context.repo)
     runs = github.latest_runs(context.repo, branch)
     if not runs:
         return f"No finished push run on {branch}."

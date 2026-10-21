@@ -516,6 +516,12 @@ class IssueClient:
         response.raise_for_status()
         return response.json().get("workflow_runs") or []
 
+    def default_branch(self, repo: str) -> str:
+        """The repository's default branch, as GitHub has it."""
+        found = self._client.get(f"{API}/repos/{self.owner}/{repo}")
+        found.raise_for_status()
+        return str(found.json()["default_branch"])
+
     def pages_artifact(self, repo: str) -> tuple[dict[str, Any], bytes] | None:
         """The `github-pages` artifact of the default branch's newest successful run, and
         its zip: the files the published site serves (crew#846). None when there is none.
@@ -523,9 +529,7 @@ class IssueClient:
         Any branch's run uploads one, and a run that failed to deploy did too, so the
         newest artifact alone can be a site no reader was ever served.
         """
-        found = self._client.get(f"{API}/repos/{self.owner}/{repo}")
-        found.raise_for_status()
-        branch = found.json().get("default_branch")
+        branch = self.default_branch(repo)
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/actions/artifacts",
             params={"name": "github-pages", "per_page": 50},
