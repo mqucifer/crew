@@ -131,6 +131,18 @@ form.Epic.not_a_restatement:
       is a different question.
   owner: Product Owner
   told_in: Epic.separately_deliverable
+form.EpicProposal.at_the_level_of_intent:
+  description: Refused if an epic names a field, format, endpoint or file. An epic says which reader it
+    serves and what they can now see, decide or do; the specifics are its stories' and design's.
+  messages:
+    default: '{epics}. An epic stays at the level of intent: say which reader it serves and what they
+      can now see, decide or do, in plain words. Fields, formats, endpoints and files belong to its stories
+      and design.'
+  origin:
+  - crew#815
+  - crew#846
+  owner: Product Owner
+  told_in: EpicProposal.epics
 form.EpicProposal.decomposed:
   description: Refused with fewer or more epics than its limits, or two with one title.
   messages:

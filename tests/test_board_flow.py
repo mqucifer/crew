@@ -37,7 +37,7 @@ PROPOSAL = EpicProposal(
             changes_what_readers_see=True,
         ),
         Epic(
-            title="Emit JSON",
+            title="Feed other tools",
             reader="the Sponsor",
             outcome="tooling can consume it",
             rationale="completes formats",
@@ -277,7 +277,7 @@ def test_an_epic_that_changes_what_readers_see_is_labelled_for_the_ux_designer(m
     run(FakeBoard([card(1)]), issues, monkeypatch)
     labels = {i["title"]: i["labels"] for i in issues.created}
     assert labels["Report as a table"] == ["needs:human", "needs:ux"]
-    assert labels["Emit JSON"] == ["needs:human"]
+    assert labels["Feed other tools"] == ["needs:human"]
 
 
 def test_a_goal_outside_the_crews_repositories_is_not_decomposed(monkeypatch):
@@ -389,7 +389,7 @@ def test_an_empty_board_is_quiescent(monkeypatch):
 
 def test_the_proposal_reads_as_a_decision_not_a_transcript():
     body = render_proposal("Goal: report performance", PROPOSAL)
-    assert "Report as a table" in body and "Emit JSON" in body
+    assert "Report as a table" in body and "Feed other tools" in body
     assert "Outcome" in body and "Why" in body
     # It must tell the Sponsor what to do next, on which card.
     assert "Needs Refinement" in body

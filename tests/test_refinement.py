@@ -4,6 +4,8 @@ three columns later."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from pydantic import ValidationError
 
@@ -17,6 +19,7 @@ from crew_org.crews.refinement_crew import (
     SkeletonEpic,
     Story,
     StoryProposal,
+    overreach,
     propose_epics,
 )
 from tests.asked import Stop, capture
@@ -96,7 +99,9 @@ def epic(title: str = "Report performance", **overrides) -> Epic:
 
 
 def test_a_well_formed_proposal_validates():
-    proposal = EpicProposal(epics=[epic(), epic("Emit JSON")], ordering_rationale="value first")
+    proposal = EpicProposal(
+        epics=[epic(), epic("Feed other tools")], ordering_rationale="value first"
+    )
     assert proposal.epics[0].title == "Report performance"
 
 
@@ -150,6 +155,39 @@ def test_an_epic_names_its_reader():
             separately_deliverable="The Sponsor can read the metrics with nothing else built.",
             changes_what_readers_see=False,
         )
+
+
+def test_an_epic_that_names_fields_formats_endpoints_or_files_is_sent_back():
+    """crew#815: an epic stays at the level of intent (ADR 0035). Each kind, from a
+    real epic's words: sm#684 cited files and functions, sm#467 an endpoint."""
+    for words, named in [
+        ("as count_escalated_events does today", "a field (`count_escalated_events`)"),
+        ("from src/sprint_metrics/store.py", "a file (`src/sprint_metrics/store.py`)"),
+        ("by asking GET /sprint?label=X", "an endpoint (`GET /sprint?label=X`)"),
+        ("as JSON", "a format (`JSON`)"),
+    ]:
+        with pytest.raises(ValidationError, match=re.escape(named)) as refused:
+            EpicProposal(epics=[epic(), epic("Two", outcome=words)], ordering_rationale="x")
+        assert '"Two" names' in str(refused.value)
+        assert "level of intent" in str(refused.value)
+
+
+def test_a_plain_language_epic_is_left_alone():
+    """crew-presentation#14's words, which the check passed over the past epics."""
+    plain = epic(
+        "A reader sees how the crew's sprints have been changing",
+        outcome="A reader compares the latest sprint with the ones before it, on a phone.",
+    )
+    EpicProposal(epics=[epic(), plain], ordering_rationale="value first")
+    assert overreach("cost in which role, its middle and total") == []
+
+
+def test_a_walking_skeleton_may_name_its_files():
+    """ADR 0030: the skeleton's outcome is the project's files and checks running."""
+    SkeletonEpic(
+        epics=[epic(outcome="build.py writes site/index.html and tests.yml runs pytest")],
+        ordering_rationale="one outcome",
+    )
 
 
 def test_too_many_epics_is_also_rejected():

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -58,6 +58,39 @@ OBSERVABLE = re.compile(
     r"line|row|column|heading|section|exit code)\b",
     re.IGNORECASE,
 )
+
+
+# What an epic leaves to its stories and design (ADR 0035, crew#815): it names a
+# reader and what they gain, never the fields, formats, endpoints or files that get
+# it there. Literal on purpose, so it refuses only what names one outright. Run over
+# 105 past epics before it was set, it caught sm#684 to sm#686 by the files and
+# functions they cite, and no plain-language epic.
+REACH = {
+    "a file": re.compile(
+        r"(?<![\w@/.])(?:[\w.-]+/)*[\w-]+\.(?:py|md|json|ya?ml|toml|ts|tsx|js|jsx|html|css|"
+        r"sql|txt|csv|cfg|ini|lock|sh)\b"
+        r"|(?<![\w./])(?:src|tests|docs|config|schemas|site|\.github)/[\w./-]*\w"
+    ),
+    "a field": re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|\b\w+\(\)"),
+    "an endpoint": re.compile(
+        r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+/[\w/{}?=&%.-]*|(?<![\w./])/(?:api|v\d+)/[\w/{}.-]*"
+    ),
+    "a format": re.compile(
+        r"\b(?:JSON|NDJSON|CSV|TSV|YAML|XML|TOML|Prometheus|OpenMetrics|protobuf)\b"
+    ),
+}
+
+
+def overreach(text: str) -> list[str]:
+    """What `text` names that an epic leaves to its stories, as "a field (`x`)".
+
+    A file's path is named once, not again as the field its folder looks like.
+    """
+    named: list[str] = []
+    for kind, pattern in REACH.items():
+        named += [f"{kind} (`{m}`)" for m in dict.fromkeys(pattern.findall(text))]
+        text = pattern.sub(" ", text)
+    return named
 
 
 class AcceptanceCriterion(BaseModel):
@@ -208,6 +241,7 @@ class EpicProposal(BaseModel):
 
     epics: list[Epic] = Field(description="The smallest set that serves the Goal's reader")
     ordering_rationale: str = Field(description="Why this order delivers value soonest")
+    names_specifics: ClassVar[bool] = False
     # The Product Owner's calls, recorded where the Sponsor approves (crew#846).
     choices: list[Choice] = Field(
         default_factory=list,
@@ -227,6 +261,19 @@ class EpicProposal(BaseModel):
         if len(set(titles)) != len(titles):
             refuse("form.EpicProposal.decomposed", "same_title")
         return value
+
+    @model_validator(mode="after")
+    def _at_the_level_of_intent(self) -> EpicProposal:
+        if self.names_specifics:
+            return self
+        named = []
+        for e in self.epics:
+            said = (e.title, e.reader, e.outcome, e.rationale, e.separately_deliverable)
+            if found := overreach("\n".join(said)):
+                named.append(f'"{e.title}" names {", ".join(found)}')
+        if named:
+            refuse("form.EpicProposal.at_the_level_of_intent", epics="; ".join(named))
+        return self
 
 
 class MissingEpics(EpicProposal):
@@ -252,6 +299,10 @@ class SkeletonEpic(EpicProposal):
     epic can only be product work the project's own Goals hold. Held to two,
     the Product Owner padded one with the site's pages (crew#690).
     """
+
+    # Its reader is a developer, and its outcome is the project's files and checks
+    # running, so naming them is its intent.
+    names_specifics: ClassVar[bool] = True
 
     @field_validator("epics")
     @classmethod
