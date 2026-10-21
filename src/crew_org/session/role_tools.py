@@ -23,6 +23,7 @@ None runs the project's code on the host. `look` opens pages in the sandbox, off
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -38,7 +39,8 @@ from crew_org.tools.look import Fetched
 
 # A job's log is long; its end says how it finished.
 LOG_LINES = 200
-CONTRACT_GLOBS = ("contracts/**/*", "**/*.schema.json", "**/openapi.*", "schemas/**/*")
+# What a project publishes: anything under these, and these files anywhere.
+CONTRACT_DIRS = ("contracts", "schemas")
 SKIP = {".git", "node_modules", ".venv", "site-packages"}
 # Where `crew package build` and a release write a package, from the crew's directory.
 PACKAGES = Path("var") / "packages"
@@ -128,13 +130,21 @@ def ci_steps(context: Context, args: dict[str, Any]) -> str:
 # --- contracts: what's published, and what changed since the release -------------------------
 
 
+def _is_contract(rel: Path) -> bool:
+    return (
+        (len(rel.parts) > 1 and rel.parts[0] in CONTRACT_DIRS)
+        or rel.name.endswith(".schema.json")
+        or rel.name.startswith("openapi.")
+    )
+
+
 def _contract_files(root: Path) -> list[str]:
-    found: set[str] = set()
-    for pattern in CONTRACT_GLOBS:
-        for path in root.glob(pattern):
-            rel = path.relative_to(root)
-            if path.is_file() and not SKIP & set(rel.parts):
-                found.add(str(rel))
+    """Walked with SKIP pruned: a recursive glob walked node_modules and .venv first."""
+    found: list[str] = []
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in SKIP]
+        under = Path(here).relative_to(root)
+        found += [str(under / f) for f in files if _is_contract(under / f)]
     return sorted(found)
 
 

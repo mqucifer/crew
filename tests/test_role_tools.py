@@ -144,6 +144,33 @@ def test_contracts_without_a_release_or_any_contract(repo, tmp_path):
     assert "isn't one of the contracts" in role_tools.contracts(context(repo), {"path": "x.json"})
 
 
+def test_contracts_are_found_without_walking_dependencies(repo, monkeypatch):
+    """A recursive glob walked node_modules and .venv before filtering them out."""
+    import os  # noqa: PLC0415
+
+    (repo / "openapi.yaml").write_text("openapi: 3.1\n")
+    (repo / "api" / "v1").mkdir(parents=True)
+    (repo / "api" / "v1" / "event.schema.json").write_text("{}")
+    (repo / "node_modules" / "pkg").mkdir(parents=True)
+    (repo / "node_modules" / "pkg" / "x.schema.json").write_text("{}")
+    entered = []
+    real = os.walk
+
+    def walk(top):
+        for here, dirs, files in real(top):
+            entered.append(Path(here).name)
+            yield here, dirs, files
+
+    monkeypatch.setattr(role_tools.os, "walk", walk)
+    assert role_tools._contract_files(repo) == [
+        "api/v1/event.schema.json",
+        "contracts/answers/schema.json",
+        "contracts/answers/versions.json",
+        "openapi.yaml",
+    ]
+    assert "node_modules" not in entered and ".git" not in entered
+
+
 # --- ci_log ---------------------------------------------------------------------------------
 
 
