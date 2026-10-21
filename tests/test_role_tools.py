@@ -570,11 +570,56 @@ def test_a_container_that_doesnt_start_says_why_on_every_run(repo, monkeypatch):
         def start(self):
             return container.Result("start", 126, "docker is not running")
 
+        def stop(self):
+            pass
+
     monkeypatch.setattr(container, "Held", Down)
     runs = RunsAtMain(repo, "x")
     assert runs.exec(["pytest"]).output == "docker is not running"
     assert runs.exec(["pytest"]).code == 126
     runs.stop()
+
+
+def test_a_failed_start_leaves_nothing_behind_and_the_next_run_tries_again(repo, monkeypatch):
+    """One Docker hiccup was kept as the answer for the whole session, and each failed
+    try left its clone behind."""
+    from crew_org.tools import container
+
+    tries = []
+
+    class Flaky:
+        def __init__(self, worktree, name):
+            tries.append(self)
+            self.worktree, self.stopped = worktree, False
+
+        def start(self):
+            ok = len(tries) > 1
+            return container.Result("start", 0 if ok else 125, "" if ok else "daemon hiccup")
+
+        def setup(self):
+            return None
+
+        def exec(self, command, timeout=0, stdin=None):
+            return container.Result(" ".join(command), 0, "1 passed")
+
+        def stop(self):
+            self.stopped = True
+
+    monkeypatch.setattr(container, "Held", Flaky)
+    runs = RunsAtMain(repo, "x")
+    assert runs.exec(["pytest"]).output == "daemon hiccup"
+    assert tries[0].stopped and not tries[0].worktree.exists()
+    assert runs.exec(["pytest"]).output == "1 passed"
+    runs.stop()
+    assert not list(repo.parent.glob("reading-run-*"))
+
+
+def test_a_clone_that_fails_says_why_and_leaves_nothing_behind(tmp_path):
+    (tmp_path / "not-a-repo").mkdir()
+    runs = RunsAtMain(tmp_path / "not-a-repo", "x")
+    done = runs.exec(["pytest"])
+    assert not done.ok and done.command.startswith("git clone")
+    assert not list(tmp_path.glob("reading-run-*"))
 
 
 def test_the_product_owner_reads_the_real_data_where_it_chooses():

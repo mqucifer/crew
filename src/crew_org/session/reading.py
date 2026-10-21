@@ -59,34 +59,47 @@ class RunsAtMain:
         self.name = name
         self.held: Any = None
         self.copy: Path | None = None
-        self.unready: Any = None
 
     def _ready(self) -> Any:
-        """The started container, or the result that says why it isn't."""
+        """The started container, or the result that says why it isn't.
+
+        A failure leaves no clone or container behind, and isn't kept: the next run tries
+        again, so one Docker hiccup doesn't cost QA every run of its session.
+        """
         from crew_org.tools.container import Held, Result  # noqa: PLC0415
 
-        if self.held is None and self.unready is None:
-            self.copy = Path(tempfile.mkdtemp(prefix="reading-run-", dir=self.root.parent))
+        if self.held is not None:
+            return self.held
+        copy = Path(tempfile.mkdtemp(prefix="reading-run-", dir=self.root.parent))
+        held = None
+        try:
             head = subprocess.run(
                 ["git", "-C", str(self.root), "rev-parse", "HEAD"], capture_output=True, text=True
             ).stdout.strip()
-            subprocess.run(["git", "clone", "--quiet", str(self.root), str(self.copy)], check=True)
-            subprocess.run(["git", "-C", str(self.copy), "checkout", "--quiet", head], check=True)
-            held = Held(self.copy, self.name)
+            for command in (
+                ["git", "clone", "--quiet", str(self.root), str(copy)],
+                ["git", "-C", str(copy), "checkout", "--quiet", head],
+            ):
+                cloned = subprocess.run(command, capture_output=True, text=True)
+                if cloned.returncode != 0:
+                    return Result(" ".join(command), cloned.returncode, cloned.stderr[-800:])
+            held = Held(copy, self.name)
             started = held.start()
             if not started.ok:
-                self.unready = started
                 return started
             done = held.setup()
             if done is not None and not done.ok:
                 # Once more: a fetch can fail for a moment.
                 done = held.setup()
             if done is not None and not done.ok:
-                held.stop()
-                self.unready = Result(done.command, done.code, f"setup failed: {done.output}")
-                return self.unready
-            self.held = held
-        return self.held or self.unready
+                return Result(done.command, done.code, f"setup failed: {done.output}")
+            self.held, self.copy, held = held, copy, None
+            return self.held
+        finally:
+            if self.held is None:
+                if held is not None:
+                    held.stop()
+                shutil.rmtree(copy, ignore_errors=True)
 
     def start(self) -> Any:
         return None
@@ -99,7 +112,7 @@ class RunsAtMain:
 
     def exec(self, command: list[str], timeout: int = 0, stdin: str | None = None) -> Any:
         ready = self._ready()
-        if ready is self.unready:
+        if ready is not self.held:
             return ready
         return ready.exec(command, timeout=timeout, stdin=stdin)
 
