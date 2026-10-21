@@ -31,7 +31,9 @@ Two problems showed up with it (crew#816):
 - **Every completed epic releases itself** (Sponsor, 2026-10-20). Its last story is
   a release story, planned at the split with the epic's other stories, so a
   completed epic is never reopened. The Product Owner sets the SemVer bump from what
-  the epic changes. The Sponsor approves the release PR.
+  the epic changes. The Sponsor approves the release PR, once M8 builds that step
+  (crew#816). **Until then the crew merges release PRs itself** like any story, and
+  releases go ahead (Sponsor, 2026-10-20): the missing step is not a reason to hold.
 - **A release ships what `[Unreleased]` holds** (Sponsor, 2026-10-20), including
   another epic's merged stories. This is trunk-based development: every merged story
   has passed review, QA and CI. The version is the one the most significant entry
@@ -63,3 +65,6 @@ Two problems showed up with it (crew#816):
   epic's last story is its release, planned at the split; a release ships what
   `[Unreleased]` holds, another epic's merged stories included. Decided by the
   Sponsor in the operator's chat (crew#816). The file keeps its name.
+- 2026-10-20: the crew releases until M8 builds the Sponsor's approval of a release
+  PR. The Sponsor, after the operator held mqucifer/sprint-metrics#701 for their
+  merge: the decision stands, and the missing step was ours, not a reason to hold.
