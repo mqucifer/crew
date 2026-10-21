@@ -169,8 +169,9 @@ class ReadTools(Tools):
         self.coverage = coverage
         self.notes = notes or {}
         self.search_notes = True
-        self.given = {n: role_tools.TOOLS[n] for n in given}
         self.context = context or role_tools.Context(root, "")
+        tools = {n: role_tools.TOOLS[n] for n in given}
+        self.given = {n: t for n, t in tools.items() if t.offered(self.context)}
         self.offered = (*OFFERED, *(("run",) if runs else ()), *self.given)
 
     def call(self, name: str, args: Any) -> Reply:

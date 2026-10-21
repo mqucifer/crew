@@ -111,7 +111,7 @@ Each member is also given the tools its question needs (`Step.tools`, `session/r
 | QA | `run`, `ci_steps` | the Developer's `run`, in its workspace container over a clone of the checkout; and what CI and the devcontainer really run |
 | DevOps | `ci_steps`, `ci_log` | what CI runs, and the default branch's latest runs and a job's log |
 
-The Product Owner's decomposition and settle get `data`: the newest delivery-history package built here, with sprint-metrics' answers.
+The Product Owner's decomposition and settle get `data` where the project reads the delivery-history package (its checkout pins `delivery-history.tag`): the newest package built in the crew's `var/packages`, with sprint-metrics' answers.
 
 ## Product Owner, settling the panel's notes
 

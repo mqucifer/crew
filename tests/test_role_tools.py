@@ -728,6 +728,14 @@ def test_a_clone_that_fails_says_why_and_leaves_nothing_behind(tmp_path):
     assert not list(tmp_path.glob("reading-run-*"))
 
 
+def test_data_is_given_only_where_the_project_reads_the_package(repo):
+    """sprint-metrics doesn't read it, so its steps were shown the crew's own data."""
+    assert role_tools.PACKAGES.is_absolute()
+    assert "data" not in ReadTools(repo, given=("data",), context=context(repo)).offered
+    (repo / "delivery-history.tag").write_text("delivery-history-2026-10-20\n")
+    assert "data" in ReadTools(repo, given=("data",), context=context(repo)).offered
+
+
 def test_the_product_owner_reads_the_real_data_where_it_chooses():
     """Deciding the epics and settling the panel (crew#846's table)."""
     from crew_org.crews import settle_crew

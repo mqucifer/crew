@@ -12,8 +12,10 @@ given (`Step.tools`), and each is told only to that step.
 | `ci_steps` | QA, DevOps | each workflow's jobs and the commands they run, and the devcontainer's |
 | `ci_log` | DevOps | the default branch's latest CI runs, and a job's log |
 | `contracts` | the Architect | the published contracts, and their changes since the last release |
-| `data` | the Product Owner | the newest delivery-history package, with sprint-metrics' answers |
+| `data` | the Product Owner* | the newest delivery-history package, with sprint-metrics' answers |
 | `look` | the UX Designer | the published site, or a checkout's directory, at the reader's widths |
+
+* Only where the project reads the package: its checkout pins `delivery-history.tag`.
 
 None runs the project's code on the host. `look` opens pages in the sandbox, offline
 (`tools.look`), and QA's `run` is the Developer's, in its workspace container
@@ -33,6 +35,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from crew_org.git_ops import WORK_ROOT
 from crew_org.session.git import OUTPUT_CHARS
 from crew_org.session.tools import S, _spec
 from crew_org.tools.look import Fetched
@@ -42,8 +45,11 @@ LOG_LINES = 200
 # What a project publishes: anything under these, and these files anywhere.
 CONTRACT_DIRS = ("contracts", "schemas")
 SKIP = {".git", "node_modules", ".venv", "site-packages"}
-# Where `crew package build` and a release write a package, from the crew's directory.
-PACKAGES = Path("var") / "packages"
+# Where `crew package build` and a release write a package: the crew's own `var`, as an
+# absolute path, whatever directory a step runs from.
+PACKAGES = WORK_ROOT / "packages"
+# A project that reads the delivery-history package pins its release here (ADR 0021).
+CONSUMES = "delivery-history.tag"
 _PACKAGE = re.compile(r"delivery-history-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$")
 
 
@@ -62,6 +68,13 @@ class Context:
 class RoleTool:
     spec: dict[str, Any]
     call: Callable[[Context, dict[str, Any]], str]
+    # Whether a step over this project is given it at all.
+    offered: Callable[[Context], bool] = lambda context: True
+
+
+def consumes_the_package(context: Context) -> bool:
+    """Whether the project reads the delivery-history package, so `data` is its data."""
+    return (context.root / CONSUMES).is_file()
 
 
 def _cut(text: str) -> str:
@@ -335,6 +348,7 @@ TOOLS: dict[str, RoleTool] = {
             [],
         ),
         data,
+        consumes_the_package,
     ),
     "look": RoleTool(
         _spec(
