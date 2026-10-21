@@ -52,25 +52,44 @@ class _Nowhere:
 
 class RunsAtMain:
     """The Developer's workspace container over a clone of the checkout a step reads,
-    started on the step's first `run` (crew#846), as `handover.setup_leaves` runs one."""
+    started on the step's first `run` (crew#846), as `handover.setup_leaves` runs one.
 
-    def __init__(self, root: Path, name: str) -> None:
+    The clone goes under the crew's worktrees (`git_ops.WORKTREES`), beside the
+    checkout the steps read, wherever that checkout is.
+    """
+
+    def __init__(self, root: Path, name: str, under: Path | None = None) -> None:
+        from crew_org.git_ops import WORKTREES  # noqa: PLC0415
+
         self.root = root
         self.name = name
+        self.under = under or WORKTREES
         self.held: Any = None
         self.copy: Path | None = None
+        # Why this run's start failed: the rest of the run is told so, not started again.
+        self.failed: Any = None
 
     def _ready(self) -> Any:
         """The started container, or the result that says why it isn't.
 
-        A failure leaves no clone or container behind, and isn't kept: the next run tries
-        again, so one Docker hiccup doesn't cost QA every run of its session.
+        A failure leaves no clone or container behind, and isn't kept past its run: the
+        next run tries again, so one Docker hiccup doesn't cost QA every run of its
+        session. Its exit code is never the one that says the workspace is gone, which
+        would end QA's session.
         """
+        from crew_org.session.container import GONE  # noqa: PLC0415
         from crew_org.tools.container import Held, Result  # noqa: PLC0415
+
+        def failed(command: str, code: int, output: str) -> Any:
+            self.failed = Result(
+                command, 1 if code == GONE else code, f"the run's container didn't start: {output}"
+            )
+            return self.failed
 
         if self.held is not None:
             return self.held
-        copy = Path(tempfile.mkdtemp(prefix="reading-run-", dir=self.root.parent))
+        self.under.mkdir(parents=True, exist_ok=True)
+        copy = Path(tempfile.mkdtemp(prefix="reading-run-", dir=self.under))
         held = None
         try:
             head = subprocess.run(
@@ -82,17 +101,17 @@ class RunsAtMain:
             ):
                 cloned = subprocess.run(command, capture_output=True, text=True)
                 if cloned.returncode != 0:
-                    return Result(" ".join(command), cloned.returncode, cloned.stderr[-800:])
+                    return failed(" ".join(command), cloned.returncode, cloned.stderr[-800:])
             held = Held(copy, self.name)
             started = held.start()
             if not started.ok:
-                return started
+                return failed(started.command, started.code, started.output)
             done = held.setup()
             if done is not None and not done.ok:
                 # Once more: a fetch can fail for a moment.
                 done = held.setup()
             if done is not None and not done.ok:
-                return Result(done.command, done.code, f"setup failed: {done.output}")
+                return failed(done.command, done.code, f"setup failed: {done.output}")
             self.held, self.copy, held = held, copy, None
             return self.held
         finally:
@@ -108,13 +127,20 @@ class RunsAtMain:
         return None
 
     def resync(self, timeout: int = 0) -> Any:
-        return self.held.resync() if self.held is not None else None
+        """Where each run starts (`Tools.run`): the container, the first time. A start
+        that fails is that run's failed setup, and nothing else in it runs."""
+        if self.held is not None:
+            return self.held.resync()
+        self.failed = None
+        ready = self._ready()
+        return None if ready is self.held else ready
 
     def exec(self, command: list[str], timeout: int = 0, stdin: str | None = None) -> Any:
-        ready = self._ready()
-        if ready is not self.held:
-            return ready
-        return ready.exec(command, timeout=timeout, stdin=stdin)
+        if self.held is None:
+            ready = self.failed or self._ready()
+            if ready is not self.held:
+                return ready
+        return self.held.exec(command, timeout=timeout, stdin=stdin)
 
     def stop(self) -> None:
         if self.held is not None:

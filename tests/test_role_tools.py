@@ -646,7 +646,7 @@ def test_qa_runs_in_the_developers_container_over_a_clone_started_on_its_first_r
             self.stopped = True
 
     monkeypatch.setattr(container, "Held", Held)
-    runs = RunsAtMain(repo, "sprint-metrics-panel-qa")
+    runs = RunsAtMain(repo, "sprint-metrics-panel-qa", under=repo.parent)
     tools = ReadTools(repo, given=("ci_steps",), context=context(repo), runs=runs)
     assert "run" in tools.offered and made == []
     done = runs.exec(["pytest", "-q"])
@@ -669,15 +669,15 @@ def test_a_container_that_doesnt_start_says_why_on_every_run(repo, monkeypatch):
             pass
 
     monkeypatch.setattr(container, "Held", Down)
-    runs = RunsAtMain(repo, "x")
-    assert runs.exec(["pytest"]).output == "docker is not running"
-    assert runs.exec(["pytest"]).code == 126
+    runs = RunsAtMain(repo, "x", under=repo.parent)
+    assert runs.resync().output.endswith("didn't start: docker is not running")
+    assert runs.resync().code == 126
     runs.stop()
 
 
-def test_a_failed_start_leaves_nothing_behind_and_the_next_run_tries_again(repo, monkeypatch):
-    """One Docker hiccup was kept as the answer for the whole session, and each failed
-    try left its clone behind."""
+def test_a_failed_start_fails_its_run_and_the_next_run_tries_again(repo, monkeypatch):
+    """One Docker hiccup was kept as the answer for the whole session; each failed try
+    left its clone behind; and exit 125, the workspace gone, ended QA's session."""
     from crew_org.tools import container
 
     tries = []
@@ -694,6 +694,9 @@ def test_a_failed_start_leaves_nothing_behind_and_the_next_run_tries_again(repo,
         def setup(self):
             return None
 
+        def resync(self):
+            return None
+
         def exec(self, command, timeout=0, stdin=None):
             return container.Result(" ".join(command), 0, "1 passed")
 
@@ -701,18 +704,26 @@ def test_a_failed_start_leaves_nothing_behind_and_the_next_run_tries_again(repo,
             self.stopped = True
 
     monkeypatch.setattr(container, "Held", Flaky)
-    runs = RunsAtMain(repo, "x")
-    assert runs.exec(["pytest"]).output == "daemon hiccup"
+    under = repo.parent / "worktrees"
+    runs = RunsAtMain(repo, "x", under=under)
+    tools = ReadTools(repo, context=context(repo), runs=runs)
+    # The first run: its setup fails, not with the code that ends the session.
+    failed = runs.resync()
+    assert failed.code == 1 and failed.output.endswith("didn't start: daemon hiccup")
     assert tries[0].stopped and not tries[0].worktree.exists()
-    assert runs.exec(["pytest"]).output == "1 passed"
-    runs.stop()
-    assert not list(repo.parent.glob("reading-run-*"))
+    # The rest of that run is told so, with no new clone or start.
+    assert tools._exec(["pytest"], timeout=10) is failed and len(tries) == 1
+    # The next run tries again.
+    assert runs.resync() is None and tools._exec(["pytest"], timeout=10).output == "1 passed"
+    assert tries[1].worktree.parent == under
+    tools.stop()
+    assert not list(under.glob("reading-run-*"))
 
 
 def test_a_clone_that_fails_says_why_and_leaves_nothing_behind(tmp_path):
     (tmp_path / "not-a-repo").mkdir()
-    runs = RunsAtMain(tmp_path / "not-a-repo", "x")
-    done = runs.exec(["pytest"])
+    runs = RunsAtMain(tmp_path / "not-a-repo", "x", under=tmp_path)
+    done = runs.resync()
     assert not done.ok and done.command.startswith("git clone")
     assert not list(tmp_path.glob("reading-run-*"))
 
