@@ -1,7 +1,7 @@
 # 35. Goals and epics stay at the level of intent
 
 - **Date:** 2026-10-21
-- **Status:** Accepted (built in M7: the Product Owner's choices, the intent check, "the Goal points elsewhere" and the epic overreach check by crew#846 and crew#815; the rest by crew#846, crew#847 and crew#828)
+- **Status:** Accepted (built in M7: the Product Owner's choices, the intent check, "the Goal points elsewhere" and the epic overreach check by crew#846 and crew#815; the rest by crew#846, crew#847 and crew#858, which replaced crew#828's per-epic panel with the Goal's look, ADR 0036)
 
 ## Context
 
@@ -42,13 +42,15 @@ upward and copied them down:
 - **The Product Owner chooses what serves the reader,** and may leave out or reshape
   what the Goal mentions, saying why. "The Goal points elsewhere" is an answer it brings
   to the Sponsor (ADR 0018, ADR 0027, crew#846).
-- **Each panel member asks its own question,** with its own goal and its own kind of
-  answer (crew#828):
+- **Each role asks its own question,** with its own goal and its own kind of answer.
+  The Architect and the UX Designer ask theirs across a Goal's epics at once, in the
+  Goal's look (ADR 0036); QA's and DevOps's open as their own tasks (ADR 0034), once
+  their epic is split:
 
-  | Member | Its goal | Its question | What it produces |
+  | Role | Its goal | Its question | What it produces |
   |---|---|---|---|
-  | UX Designer | the reader | Is this what the reader needs? What will they see or do, and does it matter to them? | the reader's view and what's missing for them |
-  | Architect | the system | What does this touch that's expensive to reverse? | the decisions to make before building |
+  | UX Designer | the reader | Is this what the reader needs? What will they see or do, and does it matter to them? | the reader's view, what's missing for them, and criteria about what they see |
+  | Architect | the system | What does this touch that's expensive to reverse? | the decisions, made before building, and the Goal's target diagram |
   | QA | proof | How will we know it worked for the reader? | the examples, which become the stories' criteria |
   | DevOps | running it | Can this be shipped, run and watched? | the runtime changes, or "none" |
 
@@ -63,10 +65,10 @@ upward and copied them down:
 - A Goal can be short. The specifics arrive at the story, where the Business Analyst
   writes them as examples.
 - Approval stays a title and a summary, and both now say the outcome for a reader.
-- A small epic gets short panel answers (DevOps "none", nothing expensive to reverse),
-  which sizes the panel without a separate step (crew#828).
-- The test is a crew-presentation Goal written as intent, filed once crew#815, crew#828,
-  crew#846 and crew#847 are built.
+- A small Goal gets short answers in its look (nothing expensive to reverse), which sizes
+  the look without a separate step.
+- The test is a crew-presentation Goal written as intent, filed once crew#815, crew#846,
+  crew#847 and crew#858 are built.
 - The draft standards PRs of 2026-10-20 asked the Sponsor for worked examples in the
   Goal. They're replaced by this ADR, and closed.
 
@@ -74,3 +76,8 @@ upward and copied them down:
 
 - **2026-10-21:** decided by the Sponsor in the overhaul's planning session, in the
   operator's chat (`briefs/2026-10-21-refinement-overhaul.md` in mqucifer/project-print).
+- **2026-10-22:** the per-epic panel went (ADR 0036, crew#858). The Architect and the UX
+  Designer ask their questions once for a Goal, in the Goal's look, each in its own form;
+  QA's and DevOps's questions open as their own tasks (ADR 0034, M8). The Architect's and
+  the UX Designer's background and tools are built; the Product Owner's `data` tool and
+  QA's and DevOps's tools wait for their steps.

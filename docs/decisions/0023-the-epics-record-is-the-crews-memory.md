@@ -1,7 +1,7 @@
 # 23. The epic's record is the crew's memory
 
 - **Date:** 2026-10-10
-- **Status:** Accepted (to be built by crew#583 as Part A of `docs/plans/context-record-build.md`; the ruling runs at the gate at `done`, ADR 0032)
+- **Status:** Accepted (built by crew#583 as Part A of `docs/plans/context-record-build.md`; the ruling runs at the gate at `done`, ADR 0032; the record kept on the Goal since crew#858, ADR 0036)
 
 ## Context
 
@@ -25,20 +25,23 @@ not built. The Sponsor's ask, 2026-10-10: this problem is not to be rediscovered
 
 Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
 
-- **One record per epic is the crew's memory.** It lives in the epic's body under its
-  own heading, below the approved text, which is never touched. Every refinement and
-  design step reads it whole. The Developer, the Code Reviewer and QA read the rows
-  their story cites. Comments are the audit trail of each change, never what a step
-  reads to learn a decision.
+- **One record per Goal is the crew's memory** (ADR 0036). It lives in a marked
+  comment on the Goal, since the Goal's body is the Sponsor's, and each row names the
+  epics it binds: `all`, or their refs. An epic reads the rows that bind it, and every
+  refinement step reads them whole. The Developer, the Code Reviewer and QA read the
+  rows their story cites. Comments are the audit trail of each change, never what a
+  step reads to learn a decision. An epic split before its Goal had a record keeps its
+  own, in its body below the approved text, until it closes.
 - **Every row has a status.** *Binding* rows are set by the Sponsor, the Goal's text,
-  the Product Owner within the Goal (ADR 0018) or the Architect; later roles build and
-  judge to them. *Open* rows name who settles them: the Architect before the split
-  (ADR 0018), or the implementer, whose choice no gate checks. What the Goal is specific
+  the Product Owner within the Goal (ADR 0018), the Architect, or the UX Designer for
+  what the reader sees; later roles build and judge to them. *Open* rows are left to
+  the implementer, whose choice no gate checks: the Architect decides the rest in the
+  Goal's look (ADR 0036). What the Goal is specific
   about is binding; what it leaves open is the crew's choice.
 - **A binding row changes only by a row that replaces it,** naming its author and date,
   never by deletion. The Sponsor may replace any row, the Product Owner its own calls,
   the Architect design rows, and the Business Analyst the rows naming the merged tests a
-  story changes. Each change posts one comment on the epic.
+  story changes. Each change posts one comment on the card it was made for.
 - **A Sponsor reply on an epic is recorded as a row** (Sponsor, 2026-10-10: "if I
   respond to an epic it should be recorded"). The Product Owner step enters it as a
   binding row whose source is the Sponsor and whose Decision cell quotes the Sponsor's
@@ -54,11 +57,8 @@ Sponsor, 2026-10-10 (D1, D2 and D7 of the plan).
   in `docs/reference/context.md`, a test checks the code against it, and each call's
   event records the parts and their sizes.
 - **A Goal's epics share what they decide** (Sponsor, 2026-10-10, after Sprint 21's
-  first run). A row that two epics of one Goal depend on is seen by both, and an epic
-  another builds on is settled through its split before the dependent one's design
-  questions are asked. The rows stay in each epic's record: every epic is shown its
-  sibling epics' records, a superseded epic's binding rows are carried to the epic that
-  replaces it, and the Goal shows an index of every row across its epics.
+  first run). A row that two epics of one Goal depend on is one row of the Goal's
+  record, binding both (ADR 0036).
 - **The condition on all of it:** no rule put on the crew's context may be detrimental
   to how a development team develops and changes software; that is the crew's whole
   goal. The manifest is a drift check, not a gate. A rule that slows an ordinary change
@@ -108,3 +108,7 @@ its docs against its code.
   criteria (ADR 0032, decision 6; the Sponsor, on crew#778). Decided, not built.
 - **2026-10-18:** built: the ruling runs at `done` (crew#778, Stage D), and the
   mid-attempt ruling went with the one-call Developer (Stage E).
+- **2026-10-22:** the record moves to the Goal: one marked comment on the Goal, each row
+  naming the epics it binds, written by the Goal's look and its settle (ADR 0036,
+  crew#858). The sibling epics' records, the order of dependent epics and the Goal's
+  index went with it. An epic split before keeps its own record until it closes.

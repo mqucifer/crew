@@ -46,14 +46,14 @@ decision was first made.
 | [0013](0013-claude-and-the-crew-are-independent.md) | Claude's standards and the crew's are independent | 2026-10-02 | Accepted |
 | [0014](0014-logging-one-levelled-stream.md) | Logging: one levelled stream, named events for what code reads | 2026-10-02 | Accepted (built by crew#449) |
 | [0015](0015-a-goals-decisions-are-the-sponsors-words-under-a-heading.md) | A Goal's decisions are the Sponsor's comments and headed sections | 2026-10-05 | Accepted |
-| [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468) |
+| [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468; the panel replaced by the Goal's look, ADR 0036) |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
-| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (leeway widened to the Goal's intent 2026-10-21, to be built by crew#846) |
+| [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (leeway widened to the Goal's intent 2026-10-21, to be built by crew#846; the Architect decides in the Goal's look, ADR 0036) |
 | [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | Each completed epic releases itself, shipping what `[Unreleased]` holds | 2026-10-07 | Accepted (to be built in M8, crew#816) |
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source, and the consumer reviews what it receives | 2026-10-07 | Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the consumer's review planned for M10) |
 | [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
-| [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (to be built by crew#583, Part A of the record plan; the ruling at the gate, ADR 0032) |
+| [0023](0023-the-epics-record-is-the-crews-memory.md) | The epic's record is the crew's memory | 2026-10-10 | Accepted (built by crew#583, Part A of the record plan; the ruling at the gate, ADR 0032; kept on the Goal, ADR 0036) |
 | [0024](0024-a-steps-code-comes-from-a-graph-then-by-asking.md) | A step's code comes from a graph, then by asking | 2026-10-10 | Accepted (to be built as Part C of the record plan; crew#584 lands in it; changed for the Developer by ADR 0032, built) |
 | [0025](0025-the-crew-makes-its-own-model-calls.md) | The crew makes its own model calls | 2026-10-10 | Accepted (staged; Part D of the record plan, the criteria check first; changed for the Developer by ADR 0032: its session's calls through `calls.converse`, its one-call forms deleted) |
 | [0026](0026-code-comes-back-in-blocks-structure-in-json.md) | Code comes back in blocks, its structure in JSON | 2026-10-11 | Accepted (no step answers in blocks since ADR 0032's Stage E) |
@@ -65,4 +65,5 @@ decision was first made.
 | [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |
 | [0033](0033-refinement-works-in-a-session.md) | Refinement works in a session | 2026-10-18 | Accepted (built by crew#807; the narrow checks wait for the Sponsor's OK) |
 | [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (to be built in M8, crew#839) |
-| [0035](0035-goals-and-epics-stay-at-the-level-of-intent.md) | Goals and epics stay at the level of intent; the panel's members each ask their own question | 2026-10-21 | Accepted (to be built in M7: crew#846, crew#847, crew#815, crew#828) |
+| [0035](0035-goals-and-epics-stay-at-the-level-of-intent.md) | Goals and epics stay at the level of intent; each role asks its own question | 2026-10-21 | Accepted (to be built in M7: crew#846, crew#847, crew#815; the questions asked in the Goal's look, ADR 0036) |
+| [0036](0036-one-look-across-a-goals-epics.md) | One look across a Goal's epics, recorded on the Goal; one Goal refines at a time | 2026-10-21 | Accepted (built by crew#858) |
