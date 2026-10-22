@@ -49,6 +49,22 @@ check.delivery.these_named_tests_dont_exist:
   - crew#221
   owner: Developer
   told_in: ExistingProof, CriterionMet.test
+check.gates.a_service_wont_start:
+  description: At `done`, a service the project declares for its tests that isn't running is a finding
+    naming it, never a silent skip (crew#860). The declaration is DevOps's to keep true.
+  messages:
+    default: 'A service the project declares for its tests isn''t running in your workspace, so the tests
+      that need it skip or fail there for the workspace''s reason, not your work''s:
+
+      {services}
+
+
+      The project''s `devcontainer.json` and its compose file declare these, and they''re DevOps''s to
+      fix. Don''t work around it in the code or the tests: finish the rest, and call `done` again.'
+  origin:
+  - crew#814
+  - crew#860
+  owner: DevOps Engineer
 check.gates.the_branch_changes_nothing:
   description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion
     and the checks pass, as an already-done story does (crew#221).
@@ -58,6 +74,24 @@ check.gates.the_branch_changes_nothing:
   origin:
   - crew#221
   - crew#778
+  owner: Developer
+check.gates.these_tests_skipped:
+  description: At `done`, a test the branch adds or changes that skipped for a reason the project doesn't
+    declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor,
+    2026-10-21; crew#860).
+  messages:
+    default: 'These tests you added or changed skipped here, and CI runs them, so they prove nothing at
+      `done`:
+
+      {tests}
+
+
+      Make them run here. If one needs a service the workspace doesn''t have (a database, say), don''t
+      skip or fake it: the project''s `devcontainer.json` declares its services, and that''s DevOps''s.
+      Say so in `done`''s summary.'
+  origin:
+  - mqucifer/sprint-metrics#717
+  - crew#860
   owner: Developer
 check.review.with_docs_finding:
   description: An option the change adds that no user doc mentions is added as a blocking finding.

@@ -57,10 +57,17 @@ def test_the_conclusion_is_shown_to_the_check_before_the_stories(monkeypatch):
     assert text.index("| R1 |") < text.index("## The story under check")
 
 
-def test_a_criterion_against_a_row_or_deciding_an_open_question_is_a_conflict(monkeypatch):
+def test_a_criterion_against_a_row_is_a_conflict(monkeypatch):
     text = described(monkeypatch, conclusion="C")
     assert "a row of the epic's record" in text
-    assert "decides an open question (Q)" in text
+
+
+def test_deciding_an_open_question_is_not_a_conflict(monkeypatch):
+    """125 of 307 conflicts from 2026-10-01 to 10-21 came from this one rule, 88 on
+    sprint-metrics#468; the Goal-level look now settles open questions before the split
+    (ADR 0036, crew#860)."""
+    text = described(monkeypatch, conclusion="C")
+    assert "open question" not in text
 
 
 def test_an_epic_without_a_conclusion_is_checked_as_before(monkeypatch):
@@ -135,12 +142,6 @@ def test_the_check_is_shown_the_goal_and_the_projects_log_before_the_stories(mon
     assert text.index("five kinds of event") < text.index("## The story under check")
 
 
-def test_restating_a_decision_is_not_deciding_an_open_question(monkeypatch):
-    text = described(monkeypatch, conclusion="C")
-    assert "decides an open question (Q)" in text
-    assert "restating a decision isn't deciding the question" in text
-
-
 def test_the_tick_gives_the_check_the_projects_log(monkeypatch):
     from tests.test_project_log import LOG
 
@@ -170,4 +171,3 @@ def test_the_epics_decisions_reach_the_check_as_rows_of_its_record(monkeypatch):
     assert "first_attempt_count" in text
     assert text.index("first_attempt_count") < text.index("## The story under check")
     assert "Decided on this epic since it was sent back" not in text
-    assert "a row of the record already says" in text

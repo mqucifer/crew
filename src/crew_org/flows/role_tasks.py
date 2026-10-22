@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -92,6 +93,9 @@ DEVOPS = TaskRole(
         "docker-compose.yml",
         "docker-compose.yaml",
         ".dockerignore",
+        # The workspace file and the services it declares (the Sponsor, 2026-10-22).
+        ".devcontainer/*",
+        ".devcontainer.json",
     ),
 )
 # Filed and held: their sessions come with M8's release review (crew#830) and
@@ -108,6 +112,8 @@ LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in R
 # Code Reviewer, as a bug does (ADR 0027).
 DIAGRAM = "diagram"
 FIRST_DIAGRAM = "first-diagram"
+FIRST_WORKSPACE = "first-workspace"
+NEED = "need"
 RELEASE = "release"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
@@ -618,6 +624,80 @@ def file_findings(
     return filed
 
 
+def workspace_finding(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    story: int,
+    skipped: dict[str, str],
+    down: dict[str, str],
+    cards: list[Card],
+) -> int | None:
+    """DevOps's finding when the gate at `done` finds the workspace isn't what CI runs.
+
+    Merged tests that skipped for a reason the project doesn't declare CI-only, and
+    declared services that wouldn't start (crew#860). Neither is the story's: the
+    workspace file is DevOps's (the Sponsor, 2026-10-22). Keyed by the reasons and the
+    services, not by story, so every story that meets the same cause finds the one
+    Task, open or closed, instead of filing its own. None when there's nothing to file.
+    """
+    if not skipped and not down:
+        return None
+    reasons = sorted(set(skipped.values()))
+    cause = "\n".join([*reasons, *sorted(down)])
+    key = "workspace-" + hashlib.sha256(cause.encode()).hexdigest()[:12]
+    lines = [f"- `{name}`: {why}" for name, why in sorted(down.items())]
+    for reason in reasons:
+        tests = sorted(t for t, r in skipped.items() if r == reason)
+        shown = ", ".join(f"`{t}`" for t in tests[:5]) + (
+            f" and {len(tests) - 5} more" if len(tests) > 5 else ""
+        )
+        lines.append(f'- {len(tests)} skipped for "{reason}": {shown}')
+    why = (
+        f"The gates at `done` on #{story} found the workspace doesn't run what CI runs:\n\n"
+        + "\n".join(lines)
+        + "\n\nNone of it is that story's: the workspace file and its services are DevOps's."
+    )
+    opened = open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=FINDING,
+        key=key,
+        title="The workspace doesn't run what CI runs",
+        body=render(
+            DEVOPS,
+            kind=FINDING,
+            key=key,
+            why=why,
+            work="Make the workspace match CI: declare each service the tests need in "
+            "`.devcontainer/` so they run there, or, where CI skips them too, declare the "
+            "reason in `devcontainer.json`'s `customizations.crew.ciOnlySkips`.",
+            done_when=["Triaged: the Business Analyst writes what done means."],
+        ),
+        points=None,
+        cards=cards,
+        column=NEEDS_REFINEMENT,
+        by="Developer",
+        event="finding",
+        rule="check.gates.these_tests_skipped" if skipped else "check.gates.a_service_wont_start",
+    )
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.FINDING_FILED,
+            role="Developer",
+            card=story,
+            summary=f"devops finding filed as #{opened.number}"[:100],
+            detail={"repo": repo, "owner": DEVOPS.key, "filed": opened.number, "round": key},
+        )
+    )
+    return opened.number
+
+
 def _file_bug(
     issues: IssueClient,
     board: ProjectClient,
@@ -794,24 +874,205 @@ def first_diagrams(
     A repository that can't be read, or whose Task GitHub refused, is said as held and
     tried again next pass.
     """
+    return _first_tasks(
+        first_diagram_task, ARCHITECT, FIRST_DIAGRAM, issues, board, sink, repos, cards
+    )
+
+
+def _first_tasks(
+    open_one: Any,
+    role: TaskRole,
+    kind: str,
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    repos: set[str],
+    cards: list[Card],
+) -> FirstDiagrams:
+    """A role's first Task in each repository that lacks what it makes, once."""
     result = FirstDiagrams([], [])
     for repo in sorted(repos):
         try:
-            opened = first_diagram_task(issues, board, sink, repo=repo, cards=cards)
+            opened = open_one(issues, board, sink, repo=repo, cards=cards)
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             result.failed.append(
-                (
-                    repo,
-                    not_opened(
-                        sink, repo=repo, role=ARCHITECT, kind=FIRST_DIAGRAM, card=None, why=exc
-                    ),
-                )
+                (repo, not_opened(sink, repo=repo, role=role, kind=kind, card=None, why=exc))
             )
             continue
         if opened is not None and opened.new:
             result.opened.append((repo, opened.number))
     return result
+
+
+# What DevOps's first workspace Task makes, by the Development Container specification.
+WORKSPACE_PATH = ".devcontainer/devcontainer.json"
+FIRST_WORKSPACE_POINTS = 3
+
+
+def first_workspace_task(
+    issues: IssueClient, board: ProjectClient, sink: EventSink, *, repo: str, cards: list[Card]
+) -> Opened | None:
+    """DevOps's first Task in a repository with no workspace file: write it (crew#860).
+
+    The Sponsor (2026-10-22): DevOps keeps each project's workspace file true, since
+    the workspace has to match CI and DevOps owns CI. ADR 0032 made the file the
+    workspace's one source, but no step ever wrote one. None when the repository has it.
+    """
+    from crew_org.tools.devcontainer import PATHS  # noqa: PLC0415
+
+    branch = issues.default_branch(repo)
+    if any(issues.file_at(repo, path, branch) is not None for path in PATHS):
+        return None
+    body = render(
+        DEVOPS,
+        kind=FIRST_WORKSPACE,
+        key="repository",
+        why=f"`{repo}` has no workspace file. The Developer's workspace runs on the crew's "
+        "fallback image, with no services, so tests that need one (a database) skip there "
+        "and the gate at `done` can't tell a skip CI makes from one it doesn't. The "
+        "workspace has to run what CI runs.",
+        work=f"Write `{WORKSPACE_PATH}` (the Development Container specification), as the "
+        "crew reads it: the workspace's image by digest, one setup command as an array of "
+        "words, and `containerEnv`. Declare each service the tests need in a compose file "
+        "beside it, named by `dockerComposeFile`, with the workspace's own `service`: each "
+        "service's image by digest, a `user` that isn't root, a `healthcheck` in "
+        '["CMD", ...] form and `tmpfs` for its data. Name the skip reasons CI makes too in '
+        "`customizations.crew.ciOnlySkips`. Then make CI's test job run the same services, "
+        "so the workspace and CI run the same tests.",
+        done_when=[
+            f"`{WORKSPACE_PATH}` names the workspace's image by digest and its setup",
+            "Each service the tests need is declared beside it and starts in the workspace",
+            "CI's test job runs the same services, and the tests that need them run there",
+            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
+        ],
+    )
+    return open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=FIRST_WORKSPACE,
+        key="repository",
+        title="Write the workspace file and the services its tests need",
+        body=body,
+        points=FIRST_WORKSPACE_POINTS,
+        cards=cards,
+        event="repository.no_workspace",
+    )
+
+
+def need_tasks(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    goal: int,
+    needs: list[str],
+) -> list[int]:
+    """DevOps's Task under the Goal for each service or toolchain its look says it needs.
+
+    The Sponsor (2026-10-22): the Architect names what the Goal needs, at the level of
+    intent ("a Postgres for the tests"), and DevOps's Task works out the image, the
+    declaration and CI's side (ADR 0035). Keyed by the Goal and the need, so a look
+    read again opens none twice. One that can't be opened is recorded, and the look
+    goes on: the Task is DevOps's, not the Goal's record.
+    """
+    opened: list[int] = []
+    for need in needs:
+        key = f"goal-{goal}-" + hashlib.sha256(need.strip().lower().encode()).hexdigest()[:12]
+        body = render(
+            DEVOPS,
+            kind=NEED,
+            key=key,
+            why=f"The Goal's look on #{goal} says it needs {need.strip().rstrip('.')}, and "
+            "the project's workspace doesn't have it yet.",
+            work="Give the workspace and CI what the Goal needs: declare it in "
+            "`.devcontainer/`, and make CI's test job run the same, so its tests run in "
+            "both.",
+            done_when=["Triaged: the Business Analyst writes what done means."],
+        )
+        try:
+            found = open_task(
+                issues,
+                board,
+                sink,
+                repo=repo,
+                role=DEVOPS,
+                kind=NEED,
+                key=key,
+                title=f"The workspace for Goal #{goal}: {need.strip().rstrip('.')}"[:120],
+                body=body,
+                points=None,
+                cards=board.cards(),
+                parent=goal,
+                column=NEEDS_REFINEMENT,
+                by="Architect",
+                event="goal.needs",
+            )
+        except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
+            not_opened(sink, repo=repo, role=DEVOPS, kind=NEED, card=goal, why=exc)
+            continue
+        opened.append(found.number)
+    return opened
+
+
+def goals_needs(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repos: set[str],
+    cards: list[Card],
+) -> list[int]:
+    """Each open Goal's needs, from its record, opened as DevOps's Tasks where they aren't.
+
+    The look runs once per epic, so a need Task GitHub refused then would never be
+    opened again: each pass tries, as for the other Tasks, and `open_task` opens none
+    twice (crew#860).
+    """
+    from crew_org.flows import record as record_flow  # noqa: PLC0415
+    from crew_org.work_types import GOAL  # noqa: PLC0415
+
+    opened: list[int] = []
+    for card in cards:
+        repo = card.repo or ""
+        if card.work_type != GOAL or card.state == "CLOSED" or repo not in repos or not card.number:
+            continue
+        try:
+            held = record_flow.goal_record_comment(issues, repo, card.number)
+        except Exception as exc:  # noqa: BLE001 - read again next pass
+            reraise_if_down(exc)
+            not_opened(sink, repo=repo, role=DEVOPS, kind=NEED, card=card.number, why=exc)
+            continue
+        if not held:
+            continue
+        needs = record_flow.parse(record_flow.comment_text(held.get("body") or "")).needs
+        if needs:
+            opened += need_tasks(
+                issues, board, sink, repo=repo, goal=card.number, needs=list(needs)
+            )
+    return opened
+
+
+def first_workspaces(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repos: set[str],
+    cards: list[Card],
+) -> FirstDiagrams:
+    """Each repository with no workspace file gets DevOps's Task to write it, once.
+
+    Held and tried again next pass, as the first diagram is.
+    """
+    return _first_tasks(
+        first_workspace_task, DEVOPS, FIRST_WORKSPACE, issues, board, sink, repos, cards
+    )
 
 
 RELEASE_POINTS = 3

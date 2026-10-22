@@ -92,6 +92,7 @@ config.agents.ux_designer.can:
 config.const.base_images.TIMEOUT:
 config.const.container.GRACE:
 config.const.container.LIFETIME:
+config.const.container.SERVICE_TIMEOUT:
 config.const.container.SETUP_TIMEOUT:
 config.const.sandbox.DEFAULT_TIMEOUT:
 config.const.sandbox.PROBE_TIMEOUT:

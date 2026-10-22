@@ -3,7 +3,9 @@
 The Development Container specification (containers.dev) is the standard file a
 person's editor opens too, and it's the one source of a project's image and setup
 (the Sponsor, 2026-10-18). The crew reads three things from it: the image, the one
-setup command, and the environment. Whatever would loosen the container, build an
+setup command, and the environment. A file that names a compose file gives the image
+as its workspace service's, and the compose file's other services run beside the
+workspace (`tools/services.py`, crew#814). Whatever would loosen the container, build an
 image or run on the host stays the crew's to set (ADR 0006). Those fields are named
 as not honoured rather than skipped quietly: a file that asks for a feature and
 doesn't get it misleads whoever reads it. The rest (`name`, `customizations`,
@@ -40,7 +42,6 @@ NOT_HONOURED = {
     "overrideFeatureInstallOrder": "nothing is installed into the image",
     "build": "the image is pulled, never built: name it by digest",
     "dockerFile": "the image is pulled, never built: name it by digest",
-    "dockerComposeFile": "the workspace is one container, from `image`",
     "initializeCommand": "it runs on the host",
     "postStartCommand": "the crew runs one setup command, once",
     "postAttachCommand": "the crew runs one setup command, once",
@@ -82,7 +83,11 @@ def read(root: Path) -> Definition | None:
     problems: list[str] = []
     not_honoured = {name: why for name, why in NOT_HONOURED.items() if raw.get(name) is not None}
     image = raw.get("image")
-    if not isinstance(image, str) or not image.strip():
+    if raw.get("dockerComposeFile") is not None and image is None:
+        image, why = _compose_image(root, path, raw)
+        if why:
+            problems.append(why)
+    elif not isinstance(image, str) or not image.strip():
         problems.append(f"`{path}` names no `image`")
         image = None
 
@@ -114,6 +119,28 @@ def read(root: Path) -> Definition | None:
         else:
             env[name] = value
     return Definition(path, image, setup, env, problems, not_honoured)
+
+
+def _compose_image(root: Path, path: str, raw: dict[str, object]) -> tuple[str | None, str | None]:
+    """The workspace's image from its service in the compose file, or why there's none."""
+    import posixpath  # noqa: PLC0415
+
+    import yaml  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    named, service = raw.get("dockerComposeFile"), raw.get("service")
+    named = named[0] if isinstance(named, list) and len(named) == 1 else named
+    if not isinstance(named, str) or not isinstance(service, str):
+        return None, f"`{path}` names one compose file and its workspace `service` to use them"
+    compose = posixpath.normpath(posixpath.join(posixpath.dirname(path), named))
+    try:
+        spec = yaml.safe_load((root / compose).read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        return None, f"`{path}`'s compose file `{compose}` can't be read: {exc}"
+    found = ((spec or {}).get("services") or {}).get(service) if isinstance(spec, dict) else None
+    image = found.get("image") if isinstance(found, dict) else None
+    if not isinstance(image, str) or not image.strip():
+        return None, f"`{compose}`'s `{service}` names no `image`"
+    return image, None
 
 
 def _command(value: object) -> tuple[list[str] | None, str | None]:

@@ -586,6 +586,83 @@ def test_a_repository_with_no_diagram_gets_one_task_to_draw_it(tmp_path):
     assert again.opened == []
 
 
+def test_a_repository_with_no_workspace_file_gets_devops_one_task_to_write_it(tmp_path):
+    """The Sponsor (2026-10-22): DevOps keeps the workspace file true; none was ever
+    written, so a first tick opens one per project (crew#860)."""
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.files[".devcontainer.json"] = '{"image": "i"}'
+    assert role_tasks.first_workspaces(issues, board, s, repos={"sm"}, cards=[]).opened == []
+    issues.files.clear()
+    housed = role_tasks.first_workspaces(issues, board, s, repos={"sm"}, cards=[])
+    assert housed.opened == [("sm", 901)]
+    task = issues.issues[901]
+    assert {lab["name"] for lab in task["labels"]} == {"role:devops"}
+    assert marked(task["body"]).kind == "first-workspace"
+    assert "ciOnlySkips" in task["body"] and "CI's test job runs the same services" in task["body"]
+    again = role_tasks.first_workspaces(
+        issues, board, s, repos={"sm"}, cards=[Card(item_id="x", number=901, repo="sm")]
+    )
+    assert again.opened == []
+
+
+def test_a_workspace_task_that_cant_be_opened_is_held_for_next_pass(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.fail = "create"
+    housed = role_tasks.first_workspaces(issues, board, s, repos={"sm"}, cards=[])
+    assert housed.opened == [] and "first-workspace task not opened" in housed.failed[0][1]
+
+
+def test_devops_may_change_the_workspace_file_and_its_services():
+    assert (
+        role_tasks.outside_scope(
+            DEVOPS, [".devcontainer/devcontainer.json", ".devcontainer/compose.yaml"]
+        )
+        == []
+    )
+
+
+def test_each_need_of_a_goal_is_one_devops_task_under_it(tmp_path):
+    from crew_org.columns import NEEDS_REFINEMENT
+
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    needs = ["a Postgres for the tests", "Node for the site build"]
+    opened = role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=needs)
+    assert opened == [901, 902]
+    assert marked(issues.issues[901]["body"]).kind == "need"
+    assert issues.subs[666] == [901, 902]
+    assert ("status", "item-N901", NEEDS_REFINEMENT) in board.done
+    again = role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=needs[:1])
+    assert again == [901] and len(issues.issues) == 2
+
+
+def test_a_need_that_cant_be_opened_is_recorded_and_the_rest_go_on(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    issues.fail = "create"
+    assert role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=["x"]) == []
+    assert any("need task not opened" in e["summary"] for e in events(tmp_path))
+
+
+def test_each_pass_opens_a_goals_needs_from_its_record_once(tmp_path, monkeypatch):
+    """A need Task GitHub refused when the look ran is opened by a later pass (crew#860)."""
+    from crew_org.flows import record as record_flow
+
+    held = {"body": record_flow.render(record_flow.Record(on_goal=True, needs=("a Postgres",)))}
+    monkeypatch.setattr(record_flow, "goal_record_comment", lambda issues, repo, goal: held)
+    monkeypatch.setattr(record_flow, "comment_text", lambda body: body)
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    goal = Card(item_id="G", number=666, repo="sm", work_type="Goal", state="OPEN")
+    closed = Card(item_id="C", number=600, repo="sm", work_type="Goal", state="CLOSED")
+    issues.fail = "create"
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal, closed]) == []
+    issues.fail = None
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal, closed]) == [901]
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal]) == [901]
+    assert len(issues.issues) == 1 and issues.subs[666] == [901]
+
+
 def test_the_architects_diagram_must_render():
     from crew_org.flows.role_tasks import diagram_problems
 

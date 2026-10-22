@@ -238,6 +238,38 @@ def test_the_first_look_writes_the_goals_record_and_its_diagram(monkeypatch):
     assert gh.marked(666, goal_look.LOOK_MARKER)
 
 
+def test_what_the_goal_needs_opens_devops_tasks_under_it(monkeypatch):
+    """The Sponsor (2026-10-22): a new service or toolchain the Architect names opens a
+    DevOps Task under the Goal, at the level of intent (crew#860)."""
+    from crew_org.flows import role_tasks
+
+    asked = []
+    monkeypatch.setattr(role_tasks, "need_tasks", lambda *a, **kw: asked.append(kw) or [])
+    gh = GitHub({684: 666, 685: 666})
+    roles = Roles(monkeypatch, settlements=[settled()])
+    roles.system = system(needs=["a Postgres for the tests"])
+    cards = [goal(666), epic(684, 666), epic(685, 666)]
+
+    ok, _ = step(gh, cards[1], cards)
+
+    assert ok and asked == [{"repo": REPO, "goal": 666, "needs": ["a Postgres for the tests"]}]
+    [look] = gh.marked(666, goal_look.LOOK_MARKER)
+    assert "**Needs, for DevOps:**" in look["body"] and "a Postgres for the tests" in look["body"]
+    assert goal_look.read_look(look["body"])[1].system.needs == ["a Postgres for the tests"]
+
+
+def test_a_goal_that_needs_nothing_new_opens_no_task(monkeypatch):
+    from crew_org.flows import role_tasks
+
+    asked = []
+    monkeypatch.setattr(role_tasks, "need_tasks", lambda *a, **kw: asked.append(kw) or [])
+    gh = GitHub({684: 666, 685: 666})
+    Roles(monkeypatch, settlements=[settled()])
+    cards = [goal(666), epic(684, 666), epic(685, 666)]
+    step(gh, cards[1], cards)
+    assert asked == []
+
+
 def test_the_goals_other_epics_go_on_from_the_same_record(monkeypatch):
     gh = GitHub({684: 666, 685: 666})
     roles = Roles(monkeypatch, settlements=[settled()])

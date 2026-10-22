@@ -65,10 +65,7 @@ def opening(
         "Existing tests line says a contract change naming them) is allowed to"
         + (
             ";\n- a row of the epic's record: a criterion that expects the opposite of what a "
-            "row decides. A criterion that decides an open question (Q) the record leaves to "
-            "whoever builds it is a conflict too, since no story settles it, unless the Goal, "
-            "the project's decision log or a row of the record already says what the "
-            "criterion states: restating a decision isn't deciding the question"
+            "row decides"
             if conclusion
             else ""
         )
@@ -110,6 +107,7 @@ def check_criteria(
     project_log: str = "",
     reading: steps.Reading | None = None,
     on_end: Any = None,
+    send: Any = None,
 ) -> CriteriaCheck:
     """QA's check of one proposed story's criteria, against the others, the code and the
     rows, in a session over the code (crew#807).
@@ -117,6 +115,8 @@ def check_criteria(
     The epic's record (crew#440, ADR 0023) holds every decision so far, the Product
     Owner's answers to story problems included: a criterion that goes against one of
     its rows can't be right, however well it reads.
+
+    `send` stands in for the model, as the planted contradiction's test does (crew#860).
     """
     found: CriteriaCheck = steps.run(
         CHECK,
@@ -131,5 +131,6 @@ def check_criteria(
         reading,
         about=stories,
         on_end=on_end,
+        send=send,
     )
     return found

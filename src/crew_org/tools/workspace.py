@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import os
 import subprocess
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
+from crew_org.tools.sandbox import HOME_DIR, Mode, Sandbox, prepare_home
 
 if TYPE_CHECKING:
     from crew_org.project import Design
@@ -72,6 +73,13 @@ class CheckResult:
     # In a held container: whether setup ran again first, because the dependency files
     # had changed, and passed (crew#814). None when it didn't run.
     resetup: bool | None = None
+    # In a held container: each service the project declares that isn't running, with
+    # why (crew#860). Its tests would skip or fail for the workspace's reason, not the
+    # story's.
+    services_down: dict[str, str] = field(default_factory=dict)
+    # In a held container: each test the checks skipped, by `path::Class.name`, with its
+    # reason, from pytest's report (crew#860). None when there's no report: not pytest.
+    skipped: dict[str, str] | None = None
 
     @property
     def ok(self) -> bool:
@@ -358,6 +366,7 @@ def check(
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
+    skipped: dict[str, str] | None = None
     if all(r.ok for r in results):
         touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
@@ -376,11 +385,76 @@ def check(
             reverted = sorted((_changed(worktree, since) or set()) - touched)
             if reverted:
                 _git(worktree, "checkout", "--", *reverted)
+        if held is not None:
+            (worktree / REPORT).unlink(missing_ok=True)
         for command in tools.verify:
             results.append(do(command))
+            # Each pytest command writes the one report: read after each, so a project
+            # with several (crew-presentation runs three) is read whole.
+            if held is not None and (found := skipped_tests(worktree)) is not None:
+                skipped = {**(skipped or {}), **found}
+                (worktree / REPORT).unlink(missing_ok=True)
     return CheckResult(
-        results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe, resetup=resetup
+        results=results,
+        fixed=sorted(fixed),
+        reverted=reverted,
+        unsafe=unsafe,
+        resetup=resetup,
+        services_down=dict(getattr(held, "down", None) or {}),
+        skipped=skipped,
     )
+
+
+# The tests' report, written by every pytest run in a held workspace into the worktree's
+# own home, which ignores itself, so it's never committed (crew#860). The checks remove
+# it first, so what's read after them is theirs.
+REPORT = f"{HOME_DIR}/junit.xml"
+
+
+def with_report(env: dict[str, str]) -> dict[str, str]:
+    """A held workspace's environment, with pytest told to write its report."""
+    given = env.get("PYTEST_ADDOPTS", "")
+    # The root pinned to the worktree, and xunit1, whose test cases name their file: a
+    # test is then named by its path, whatever dots its directories have.
+    ours = f"--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    return {**env, "PYTEST_ADDOPTS": f"{given} {ours}".strip()}
+
+
+def skipped_tests(worktree: Path) -> dict[str, str] | None:
+    """Each test the last pytest run skipped, by `path::Class.name`, with its reason.
+
+    None when there's no report, or it doesn't parse: the checks weren't pytest's.
+    """
+    try:
+        root = ET.parse(worktree / REPORT).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    found: dict[str, str] = {}
+    for case in root.iter("testcase"):
+        skip = case.find("skipped")
+        # An expected failure is reported as skipped, but it ran.
+        if skip is None or skip.get("type") == "pytest.xfail":
+            continue
+        reason = (skip.get("message") or skip.text or "").strip()
+        named = (case.get("file"), case.get("classname") or "", case.get("name") or "")
+        found[_test_id(worktree, *named)] = reason
+    return found
+
+
+def _test_id(worktree: Path, file: str | None, classname: str, name: str) -> str:
+    """A test case as `path::Class.name`: its file, as xunit1 names it, with the classes
+    after the module in its dotted `classname`. Without the file, the classname is read
+    as one. One that names no file in the worktree is left as pytest gave it."""
+    if file and file.endswith(".py") and (worktree / file).is_file():
+        module = file[: -len(".py")].replace("/", ".")
+        rest = classname[len(module) + 1 :] if classname.startswith(f"{module}.") else ""
+        return f"{file}::" + ".".join([*filter(None, [rest]), name])
+    parts = classname.split(".")
+    for at in range(len(parts), 0, -1):
+        path = "/".join(parts[:at]) + ".py"
+        if (worktree / path).is_file():
+            return f"{path}::" + ".".join([*parts[at:], name])
+    return f"{classname}::{name}"
 
 
 def _unsafe_fixes(

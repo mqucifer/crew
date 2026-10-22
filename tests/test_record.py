@@ -436,3 +436,17 @@ def test_a_story_follows_the_goals_rows_and_is_shown_them():
     story = SimpleNamespace(parent=684, number=700, repo="sprint-metrics")
     shown = conclusion.story_rows(issues, story, "sprint-metrics")
     assert "| R2 |" in shown and "Nested keys" in shown and "| R3 |" not in shown
+
+
+def test_the_goals_needs_are_kept_in_its_record_and_read_back():
+    """What the look said the Goal needs stays in its record, so each pass can open a
+    DevOps Task GitHub refused before (crew#860). Free text, commas and `--` included."""
+    from crew_org.flows import record as record_flow
+
+    needs = ("a Postgres for the tests, version-free", "Node -- for the site build")
+    text = record_flow.render(record_flow.Record(on_goal=True, needs=needs))
+    assert "Needs, for DevOps:" in text and "- Node -- for the site build" in text
+    [marker] = [line for line in text.splitlines() if line.startswith("<!-- crew:needs ")]
+    # An HTML comment ends at the first `--`, so the marker holds none but its own.
+    assert "--" not in marker.removeprefix("<!--").removesuffix("-->")
+    assert record_flow.parse(text).needs == needs

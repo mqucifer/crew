@@ -145,6 +145,9 @@ def render(result: LookResult, context: GoalContext) -> str:
         if system.beyond_the_goal:
             lines += ["", "**Beyond the Goal, for the Sponsor:**", ""]
             lines += _list([f"{b.question} {b.why}" for b in system.beyond_the_goal])
+        if system.needs:
+            lines += ["", "**Needs, for DevOps:**", ""]
+            lines += _list(system.needs)
         lines.append("")
     if (reader := result.reader) is not None:
         lines += ["### UX Designer", "", f"**The reader:** {reader.reader}", ""]
@@ -638,6 +641,9 @@ def _write(
             dismissed=(*current.dismissed, *dismissed),
             looked_at=tuple(dict.fromkeys([*current.looked_at, *context.looking_at])),
             replies=tuple(dict.fromkeys([*current.replies, *answered])),
+            needs=tuple(
+                dict.fromkeys([*current.needs, *(look.system.needs if look.system else [])])
+            ),
             to_log=tuple(logged),
         )
         return current
@@ -659,6 +665,10 @@ def _write(
         )
     assert look.system is not None
     post_diagram(issues, sink, repo=repo, goal=goal, system=look.system)
+    if written.needs:
+        from crew_org.flows.role_tasks import need_tasks  # noqa: PLC0415
+
+        need_tasks(issues, board, sink, repo=repo, goal=goal, needs=list(written.needs))
     if written.to_log:
         issues.ensure_label(
             repo,

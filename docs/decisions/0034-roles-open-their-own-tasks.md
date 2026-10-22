@@ -52,6 +52,14 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
     once that Task is done too.
   - **A repository has no diagram:** the Architect's first Task draws it. Not the
     crew's own repository, whose architecture has no owner.
+  - **A repository has no workspace file:** DevOps's first Task writes
+    `devcontainer.json` and the services its tests need, and makes CI run the same
+    (crew#860). Not while it waits on its walking skeleton.
+  - **A Goal's look names a new service or toolchain:** DevOps's Task for it, a child
+    of the Goal, named at the level of intent (crew#860).
+  - **The gate at `done` finds the workspace isn't what CI runs:** a merged test
+    skipped for a reason the file doesn't declare CI-only, or a service that won't
+    start. DevOps's finding, one per cause, however many stories meet it (crew#860).
   - **An epic is split:** DevOps's Task for its CI and release, a child of the epic, one
     per epic. It replaces the release story (ADR 0019): the split refuses a story that
     cuts the release. It waits for every story of the epic, so the epic doesn't close
@@ -104,3 +112,6 @@ review when a release goes live (crew#830). QA's Tasks wait for M10.
 - **2026-10-22:** a task is the board's `Task` work type, and M7 builds the Architect's
   and DevOps's share, decided by the Sponsor on crew#839. Built by crew#839, with the
   operator's answers on what the Sponsor approves and the finding cap.
+- **2026-10-22:** DevOps keeps each project's workspace file true (the Sponsor, on
+  crew#860): its first Task where there's none, one for each need a Goal's look names,
+  and a finding when the gate at `done` finds the workspace isn't what CI runs.
