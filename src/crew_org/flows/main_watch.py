@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.columns import NEEDS_REFINEMENT
 from crew_org.events import EventKind, EventSink
 from crew_org.flows.ci import report
@@ -101,6 +102,8 @@ def _file(issues, board, sink, *, repo, branch, run, result) -> None:
             "watcher if the workflow passes again before any work starts."
         ),
     )
+    # The card is the epic filed: the run names a commit, not the story that broke it.
+    sendbacks.record(sink, sendbacks.MAIN_RED, card=number, repo=repo, jobs=len(failed))
     result.filed.append((repo, number))
 
 

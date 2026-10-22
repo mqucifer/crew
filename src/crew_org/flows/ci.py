@@ -17,9 +17,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.columns import IN_PROGRESS, MERGING
 from crew_org.events import EventSink
 from crew_org.flows.moves import move_card
+from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 
@@ -113,11 +115,12 @@ def return_for_ci(
     marker = CI_MARKER.format(head=head)
     names = ", ".join(f"`{r.get('name')}`" for r in failed[:MAX_JOBS])
     try:
-        already = any(
-            marker in (c.get("body") or "") for c in issues.comments(repo, pull["number"])
-        )
+        bodies: list[str] | None = [
+            c.get("body") or "" for c in issues.comments(repo, pull["number"])
+        ]
     except Exception:  # noqa: BLE001
-        already = False
+        bodies = None
+    already = any(marker in b for b in bodies or [])
     if not already:
         issues.comment(
             repo,
@@ -137,6 +140,19 @@ def return_for_ci(
         frm=frm,
         summary=f"PR #{pull['number']}: {names} failed {where}, returned with the log"[:120],
         **named,
+    )
+    # Its round: CI's returns of this pull request, this head's included, as its comments
+    # count them; unknown when they can't be read. The marker is the same before review
+    # and at merge, so both kinds count together, as the records reference says.
+    sendbacks.record(
+        sink,
+        sendbacks.CI_BEFORE_REVIEW if rule == Rule.CI_BEFORE_REVIEW else sendbacks.MERGE_CI_FAILED,
+        card=number,
+        repo=repo,
+        round_=None
+        if bodies is None
+        else sum(CI_MARKER_PREFIX in b and marker not in b for b in bodies) + 1,
+        jobs=len(failed),
     )
 
 

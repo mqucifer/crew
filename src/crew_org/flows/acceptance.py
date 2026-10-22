@@ -22,7 +22,7 @@ from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from crew_org import log, profiles
+from crew_org import log, profiles, sendbacks
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews import asks as file_asks
 from crew_org.crews.qa_crew import QAVerdict, verify_story
@@ -92,6 +92,21 @@ def qa_marker(revision: str) -> str:
     judged. Bare `QA_MARKER` stays in the body so older verdicts remain findable.
     """
     return f"<!-- crew:qa {revision[:12]} -->"
+
+
+def qa_returns(issues: Any, repo: str, number: int, revision: str) -> int | None:
+    """QA's returns of a card, this revision's included; None if they can't be read.
+
+    Its earlier revisions' are counted from their verdicts, so the count holds whether
+    or not the verdict just posted is read back yet.
+    """
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return None
+    this = qa_marker(revision)
+    earlier = (b for b in bodies if QA_MARKER in b and this not in b)
+    return sum("## QA — not accepted" in b for b in earlier) + 1
 
 
 @dataclass
@@ -869,6 +884,15 @@ def run_qa(
                     frm=QAING,
                     summary=f"returned — {len(verdict.unproven)} unproven",
                     rule=Rule.QA_UNPROVEN,
+                )
+                sendbacks.record(
+                    sink,
+                    sendbacks.QA_UNPROVEN,
+                    card=number,
+                    repo=card_repo,
+                    role="QA Engineer",
+                    round_=qa_returns(issues, card_repo, number, revision),
+                    unproven=len(verdict.unproven),
                 )
                 outcome = QAOutcome(
                     card=number,

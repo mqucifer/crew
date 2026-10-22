@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.events import EventKind, EventSink, held
 from crew_org.flows.main_watch import file_technical_epic
 from crew_org.flows.revisit import TECHNICAL
@@ -242,5 +243,6 @@ def check_releases(
                 "(mqucifer/crew#192, #335)."
             ),
         )
+        sendbacks.record(sink, sendbacks.RELEASE_GAPS, card=number, repo=repo, gaps=len(missing))
         result.filed.append((repo, number))
     return result

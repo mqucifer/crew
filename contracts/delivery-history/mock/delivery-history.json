@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "1.9.0",
+ "schema_version": "1.10.0",
  "date": "2026-09-25",
  "timezone": "America/Chicago",
  "crew_repository": "crew",
@@ -374,7 +374,7 @@
    "start": "2026-09-25",
    "end": "2026-09-25",
    "file": "events/2026-09-25.json",
-   "events": 129
+   "events": 133
   }
  ],
  "analysis": {

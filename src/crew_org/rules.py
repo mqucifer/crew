@@ -76,6 +76,33 @@ class Rule(StrEnum):
     CRITERIA_CANNOT_ALL_PASS = "gate.criteria_cannot_all_pass"
     """A split's criteria contradict each other or a merged test."""
 
+    GATE_FINDINGS = "gate.findings_at_done"
+    """The gates at `done` found problems: the Developer works on in a new session."""
+    CRITERIA_REPAIR = "gate.criteria_repair"
+    """The criteria check flagged stories whose criteria can't all pass: they're rewritten."""
+    CRITERIA_RESPLIT = "gate.criteria_resplit"
+    """The criteria check's findings named no story to repair: the epic is split again whole."""
+    MERGE_CI_FAILED = "gate.merge_ci_failed"
+    """CI failed at merge, or the merge queue removed the pull request: back to the Developer."""
+    MERGE_CONFLICT = "gate.merge_conflict"
+    """The pull request conflicts with main at merge: the Developer rebuilds it on main."""
+
+    # --- work sent back after it merged, or to the design (crew#862) ---
+    SENT_BACK_EPIC_REWORK = "sent_back.epic_rework"
+    """The Sponsor sent an epic back (`needs:rework`): it's split again."""
+    MAIN_RED = "sent_back.main_red"
+    """The default branch went red after a merge: a technical epic to fix it."""
+    RELEASE_GAPS = "sent_back.release_gaps"
+    """The release check found gaps: a technical epic to close them."""
+    REVERTED = "sent_back.reverted"
+    """A merged change was reverted: its card goes back to Needs Refinement."""
+    DESIGN_FAULTS = "sent_back.design_faults"
+    """Blocked stories found faults in the design: the Architect revises it."""
+    REBUILD_STRAIN = "sent_back.rebuild_strain"
+    """Rebuilds kept straining one file: the Architect revises the design."""
+    DESIGN_REFUSED = "sent_back.design_refused"
+    """The Code Reviewer refused the Architect's design: it's proposed again."""
+
     # --- a story sent back to be split again (story_problem.py) ---
     RETURN_GATE_ROUND_TRIPS = "story.gate_round_trips"
     """The gates kept returning it."""

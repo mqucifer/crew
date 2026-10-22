@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.events import CrewEvent, EventKind, EventSink, held
@@ -394,6 +395,7 @@ def _return_card(
             },
         )
     )
+    sendbacks.record(sink, sendbacks.REVERTED, card=number, repo=card_repo)
     result.returned.append(number)
 
 

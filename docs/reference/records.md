@@ -61,6 +61,18 @@ The record's summary says it for a person; the rule is what a count reads.
 | `gate.review_changes_requested` | The Code Reviewer or DevOps Engineer requested changes. |
 | `gate.qa_unproven` | QA found criteria the work doesn't prove. |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. |
+| `gate.findings_at_done` | The gates at `done` found problems: the Developer works on in a new session. |
+| `gate.criteria_repair` | The criteria check flagged stories whose criteria can't all pass: they're rewritten. |
+| `gate.criteria_resplit` | The criteria check's findings named no story to repair: the epic is split again whole. |
+| `gate.merge_ci_failed` | CI failed at merge, or the merge queue removed the pull request: back to the Developer. |
+| `gate.merge_conflict` | The pull request conflicts with main at merge: the Developer rebuilds it on main. |
+| `sent_back.epic_rework` | The Sponsor sent an epic back (`needs:rework`): it's split again. |
+| `sent_back.main_red` | The default branch went red after a merge: a technical epic to fix it. |
+| `sent_back.release_gaps` | The release check found gaps: a technical epic to close them. |
+| `sent_back.reverted` | A merged change was reverted: its card goes back to Needs Refinement. |
+| `sent_back.design_faults` | Blocked stories found faults in the design: the Architect revises it. |
+| `sent_back.rebuild_strain` | Rebuilds kept straining one file: the Architect revises the design. |
+| `sent_back.design_refused` | The Code Reviewer refused the Architect's design: it's proposed again. |
 | `story.gate_round_trips` | The gates kept returning it. |
 | `story.pinned_tests` | It keeps breaking merged tests it didn't write. |
 | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids. |
@@ -72,6 +84,52 @@ The record's summary says it for a person; the rule is what a count reads.
 | `hold.builds_on` | It waits for a story it builds on. |
 | `hold.wip_limit` | The next column is at its limit. |
 | `hold.no_session` | A role's Task waits for the milestone that brings its role's session. |
+
+## Send-backs (`work.sent_back`)
+
+**A send-back** is a step's finished output that a check or a role sends back to
+the same step or an earlier one, to be done again: rework, counted per step
+(crew#862). Each writes one `work.sent_back`, with `sent_from`, `sent_to`, `rule`,
+the card, its `round` where the step knows it, and `counts`.
+
+**Its round** counts from 1, from what the step keeps: the session's round for the
+gates, the rebuilds for a merge conflict, the deliveries for the round-trip limit, and
+for CI, review and QA their returns of the pull request or card on GitHub. CI's
+comment marker is the same before review and at merge, so a CI return's round counts
+both together. None where the step keeps no count.
+
+**Not counted:** a refusal inside a session or a call (`tool.finished`,
+`llm.refused`); a hold, an interruption, or a retry of a step that didn't finish; a
+block for a person (`card.blocked`); a finding filed as a new Task or bug
+(`finding.filed`).
+
+| From | To | Rule | Meaning |
+|---|---|---|---|
+| `sponsor` | `decompose` | `decision.board_flow.rework_gate` | The Sponsor sent a Goal back (`needs:rework`): its unstarted epics are decomposed again. |
+| `sponsor` | `decompose` | `decision.board_flow.lacking_goals` | The Sponsor said a Goal lacks epics (`needs:epic`): it's decomposed again for them. |
+| `sponsor` | `split` | `sent_back.epic_rework` | The Sponsor sent an epic back (`needs:rework`): it's split again. |
+| `refinement` | `split` | `skip.board_flow.waits_for_planned` | An epic's stories it waits for closed undelivered: it's split again. |
+| `criteria_check` | `split` | `gate.criteria_repair` | The criteria check found criteria that can't all pass: the flagged stories' are rewritten. |
+| `criteria_check` | `split` | `gate.criteria_resplit` | The criteria check's findings named no story to repair: the epic is split again whole. |
+| `criteria_check` | `story_problem` | `gate.criteria_cannot_all_pass` | The criteria still can't all pass after the repair: a story problem for the Product Owner. |
+| `gate` | `build` | `gate.findings_at_done` | The gates at `done` found problems: the Developer works on in a new session. |
+| `gate` | `build` | `check.gates.the_business_analyst_ruled_that` | The Business Analyst ruled the merged tests it changed must stay: a new session repairs it. |
+| `build` | `split` | `story.session_blocked` | Its session ended blocked on a file or fact, or was stopped: back to refinement. |
+| `gate` | `split` | `story.contract_ruling` | The Business Analyst ruled the story shouldn't change merged tests: back to refinement. |
+| `build` | `split` | `story.gate_round_trips` | Review, QA or CI kept returning it, up to the round-trip limit: back to refinement. |
+| `ci` | `build` | `gate.ci_before_review` | CI failed on the pull request's head before review: back to the Developer. |
+| `review` | `build` | `gate.review_changes_requested` | The Code Reviewer requested changes: back to the Developer. |
+| `deploy_review` | `build` | `gate.review_changes_requested` | Only the DevOps Engineer's deploy review requested changes: back to the Developer. |
+| `review` | `split` | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids: back to refinement. |
+| `qa` | `build` | `gate.qa_unproven` | QA found criteria the work doesn't prove: back to the Developer. |
+| `merge` | `build` | `gate.merge_ci_failed` | CI failed at merge, or the merge queue removed it: back to the Developer. |
+| `merge` | `build` | `gate.merge_conflict` | It conflicts with main at merge: rebuilt on main by the Developer. |
+| `main` | `refinement` | `sent_back.main_red` | The default branch went red after a merge: a technical epic to fix it. |
+| `release_check` | `refinement` | `sent_back.release_gaps` | The release check found gaps: a technical epic to close them. |
+| `revert` | `refinement` | `sent_back.reverted` | Its merged change was reverted: the card goes back to Needs Refinement. |
+| `revisit` | `design` | `sent_back.design_faults` | Blocked stories found faults in the design: the Architect revises it. |
+| `revisit` | `design` | `sent_back.rebuild_strain` | Rebuilds kept straining one file: the Architect revises the design. |
+| `review` | `design` | `sent_back.design_refused` | The Code Reviewer refused the Architect's design: it's proposed again. |
 
 ## Event names
 
@@ -116,6 +174,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `product.asked`
 - `epic.resplit`
 - `epic.resplit_stopped`
+- `work.sent_back`
 - `goal.reworked`
 - `github.throttled`
 - `files.shown`

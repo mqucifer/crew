@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Annotated, Any, Literal, get_args
@@ -35,10 +35,11 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field
 
 from crew_org.packages.reasons import published_reason
+from crew_org.sendbacks import Step
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.9.0"
+SCHEMA_VERSION = "1.10.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -400,6 +401,38 @@ class Returned(_Part):
     stop: Stop | None = Field(description="For a stopped session or delivery, what stopped it.")
 
 
+class SentBack(_Part):
+    """Finished work sent back to its own step or an earlier one, to be done again (crew#862).
+
+    Rework, counted per step: which step sent it, which it went back to, and the rule
+    that decided. Every send-back writes one, beside the events that record their own
+    parts (`returned`, `gate_checked`, a move's rule). A refusal inside a session, a
+    hold, a block for a person and a finding filed as new work aren't send-backs.
+    """
+
+    kind: Literal["sent_back"] = "sent_back"
+    at: datetime
+    repo: str
+    card: CardRef | None = Field(
+        description="The card sent back; None for a project's design, which no card holds."
+    )
+    sent_from: Step = Field(
+        description="The step that sent it back. A later MINOR may add steps: accept one "
+        "you don't know."
+    )
+    sent_to: Step = Field(
+        description="The step it went back to. A later MINOR may add steps: accept one "
+        "you don't know."
+    )
+    rule: str = Field(description="The declared rule that decided it (ADR 0031).")
+    round: int | None = Field(
+        description="Its round at that step, counted from 1; None where the step keeps none."
+    )
+    counts: dict[str, int] = Field(
+        description="What it carried back, by name: findings, conflicts, stories, unproven."
+    )
+
+
 Event = Annotated[
     CardMoved
     | WorkStarted
@@ -415,7 +448,8 @@ Event = Annotated[
     | SessionCompacted
     | SessionEnded
     | GateChecked
-    | Returned,
+    | Returned
+    | SentBack,
     Field(discriminator="kind"),
 ]
 
@@ -822,6 +856,45 @@ def _reason(failure_class: str, detail: dict[str, Any]) -> str | None:
     return None
 
 
+def _sent_back(
+    at: datetime,
+    where: Any,
+    detail: dict[str, Any],
+    card: Callable[[], CardRef | None] | None,
+    left_out: dict[str, int],
+) -> SentBack | None:
+    """A send-back, or None, counted in `left_out`, when its card or names can't be read."""
+    ref = card() if card is not None else None
+    steps = {s.value for s in Step}
+    rule = detail.get("rule")
+    if (
+        (card is not None and ref is None)
+        or not (ref is not None or isinstance(where, str))
+        or detail.get("sent_from") not in steps
+        or detail.get("sent_to") not in steps
+        or not (isinstance(rule, str) and _RULE_ID.fullmatch(rule))
+    ):
+        left_out["sent back: unreadable"] = left_out.get("sent back: unreadable", 0) + 1
+        return None
+    round_ = detail.get("round")
+    given = detail.get("counts")
+    counts = given if isinstance(given, dict) else {}
+    return SentBack(
+        at=at,
+        repo=ref.repo if ref is not None else str(where),
+        card=ref,
+        sent_from=Step(detail["sent_from"]),
+        sent_to=Step(detail["sent_to"]),
+        rule=rule,
+        round=round_ if isinstance(round_, int) and not isinstance(round_, bool) else None,
+        counts={
+            k: v
+            for k, v in counts.items()
+            if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+        },
+    )
+
+
 def _decision(summary: str) -> Decision | None:
     """The escalation policy's decision, from the summary its code writes: "CLASS — decision"."""
     _, _, tail = summary.partition(" — ")
@@ -993,6 +1066,8 @@ def _event(
             rules=sorted(set(rules)),
             already_done=detail.get("already_done") is True,
         )
+    if kind == "work.sent_back":
+        return _sent_back(at, where, detail, card if isinstance(number, int) else None, left_out)
     if kind == "story.returned":
         ref = needs_card("returned")
         reason = _one_of(detail.get("reason"), ReturnReason)

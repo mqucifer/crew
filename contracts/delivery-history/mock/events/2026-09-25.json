@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "1.9.0",
+ "schema_version": "1.10.0",
  "sprint": "Sprint 6",
  "start": "2026-09-25",
  "end": "2026-09-25",
@@ -933,6 +933,17 @@
    "role": "Developer"
   },
   {
+   "kind": "sent_back",
+   "at": "2026-09-26T02:49:30Z",
+   "repo": "sprint-metrics",
+   "card": null,
+   "sent_from": "review",
+   "sent_to": "design",
+   "rule": "sent_back.design_refused",
+   "round": 1,
+   "counts": {}
+  },
+  {
    "kind": "card_moved",
    "at": "2026-09-26T02:50:00Z",
    "card": {
@@ -1328,6 +1339,22 @@
    "already_done": false
   },
   {
+   "kind": "sent_back",
+   "at": "2026-09-26T03:36:00Z",
+   "repo": "sprint-metrics",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "sent_from": "gate",
+   "sent_to": "build",
+   "rule": "gate.findings_at_done",
+   "round": 1,
+   "counts": {
+    "findings": 1
+   }
+  },
+  {
    "kind": "session_started",
    "at": "2026-09-26T03:36:00Z",
    "card": {
@@ -1609,6 +1636,22 @@
    "role": "Developer"
   },
   {
+   "kind": "sent_back",
+   "at": "2026-09-26T03:41:00Z",
+   "repo": "sprint-metrics",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 132
+   },
+   "sent_from": "build",
+   "sent_to": "split",
+   "rule": "story.session_blocked",
+   "round": null,
+   "counts": {
+    "stories": 1
+   }
+  },
+  {
    "kind": "gate_checked",
    "at": "2026-09-26T03:42:00Z",
    "card": {
@@ -1669,6 +1712,22 @@
    "to_column": "In Progress",
    "by": "crew",
    "role": "Code Reviewer"
+  },
+  {
+   "kind": "sent_back",
+   "at": "2026-09-26T03:48:00Z",
+   "repo": "sprint-metrics",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 136
+   },
+   "sent_from": "review",
+   "sent_to": "build",
+   "rule": "gate.review_changes_requested",
+   "round": 1,
+   "counts": {
+    "findings": 2
+   }
   },
   {
    "kind": "session_started",

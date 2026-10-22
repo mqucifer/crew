@@ -49,6 +49,9 @@ issue.cites ─► cards (repo#n)        a fix's merge commit ─► the first t
 - **Issues:** each pass records `issue.cites` for the crew issues changed since the last one: the
   qualified cards their body names, whoever filed them. A bare `#N` isn't guessed at.
 - **Fixes:** a fix is dated by the first tick whose commit contains it, not by its merge.
+- **Send-backs:** every send-back is one `work.sent_back`: finished work sent back to its own
+  step or an earlier one, by step, rule and round (crew#862). What counts, what doesn't, and
+  each one the crew declares are in [reference/records.md](reference/records.md#send-backs-worksent_back).
 
 ## Asking it questions
 
@@ -57,6 +60,7 @@ issue.cites ─► cards (repo#n)        a fix's merge commit ─► the first t
 | What is a tick doing now? | `crew log --follow` (`--level`, `--card`, `--phase`, `--event` filter it) |
 | What happened to a card, run by run? | `crew runs --card sprint-metrics#475` |
 | Every event of one run | `jq -c 'select(.ctx.run == "RUN")' var/events/*.jsonl` |
+| What was sent back this sprint, by step | `jq -r 'select(.kind == "work.sent_back" and .ctx.sprint == "Sprint 31") \| "\(.detail.sent_from) -> \(.detail.sent_to) \(.detail.rule)"' var/events/*.jsonl \| sort \| uniq -c` |
 | What blocked cards this sprint, by rule | `jq -r 'select(.kind == "card.blocked" and .ctx.sprint == "Sprint 20") \| .detail.rule' var/events/*.jsonl \| sort \| uniq -c` |
 | Which issues cite a card | `jq -c 'select(.kind == "issue.cites" and (.detail.cites \| index("sprint-metrics#475")))' var/events/*.jsonl` |
 | How a Developer session went, call by call (crew#778) | `jq -c 'select(.card == 662 and (.kind \| startswith("session.")))' var/events/*.jsonl` |

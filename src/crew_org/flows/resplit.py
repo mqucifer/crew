@@ -19,6 +19,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from crew_org import sendbacks
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows.conclusion import parse_follows
 from crew_org.tools.github_issues import IssueClient
@@ -217,9 +218,27 @@ def render(plan: Plan, round_: int | None = None) -> str:
     return "\n".join(lines)
 
 
-def emit(sink: EventSink, repo: str, epic: int, again: Resplit, *, reads_decision: bool) -> None:
-    """One event per round, so the stop can be lowered from evidence (crew#859)."""
+def emit(
+    sink: EventSink,
+    repo: str,
+    epic: int,
+    again: Resplit,
+    *,
+    reads_decision: bool,
+    waits_broke: bool = False,
+    round_: int | None = None,
+) -> None:
+    """One event per round, so the stop can be lowered from evidence (crew#859).
+
+    A round the Sponsor asked for is their send-back, recorded here, once per round. A
+    story problem's was recorded where the story was sent back, and a broken wait's
+    where it broke, though it reaches the split as the Sponsor's.
+    """
     plan = again.plan
+    if again.because == "sponsor" and not waits_broke:
+        sendbacks.record(
+            sink, sendbacks.EPIC_REWORK, card=epic, repo=repo, replaced=len(plan.replaced)
+        )
     sink.emit(
         CrewEvent(
             kind=EventKind.EPIC_RESPLIT,
@@ -241,6 +260,8 @@ def emit(sink: EventSink, repo: str, epic: int, again: Resplit, *, reads_decisio
                 "of": len(plan.replaced) + len(plan.kept),
                 "because": again.because,
                 "reads_decision": reads_decision,
+                # A story problem's round, as the stop counts them (crew#862).
+                "round": round_,
                 "rule": "decision.resplit.affected",
             },
         )

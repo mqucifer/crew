@@ -93,6 +93,10 @@ class EventKind(StrEnum):
     # An epic re-split as often as `refinement.resplit_stop` allows: its next problem
     # goes to the Sponsor as one question (crew#859).
     EPIC_RESPLIT_STOPPED = "epic.resplit_stopped"
+    # Any step's finished work sent back to be done again, in one shape (crew#862): from
+    # which step, to which, by which rule, with its round and counts. `sendbacks.py`
+    # declares each; the events above still record their own parts beside it.
+    WORK_SENT_BACK = "work.sent_back"
     # A Goal the Sponsor sent back: its unstarted epics superseded, decomposed again.
     GOAL_REWORKED = "goal.reworked"
 

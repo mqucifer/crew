@@ -1,8 +1,8 @@
 """The reference for the crew's records, generated from the code (crew#449, ADR 0014).
 
 What a person or an experiment reads to know what a record's fields mean: the
-context every record carries, the kinds of failure, the rules that decide, and
-the event names. Written by `crew reference` into `docs/reference/records.md`;
+context every record carries, the kinds of failure, the rules that decide, the
+send-backs, and the event names. Written by `crew reference` into `docs/reference/records.md`;
 a test regenerates it and compares, so the page and the code can't drift.
 """
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from crew_org.events import EventKind
 from crew_org.rules import Kind, Rule, meanings
+from crew_org.sendbacks import CATALOG
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "docs" / "reference" / "records.md"
@@ -75,6 +76,31 @@ def render() -> str:
         "The record's summary says it for a person; the rule is what a count reads.",
         "",
         *_table({r.value: rules[r.name] for r in Rule}, head=("Rule", "Meaning")),
+        "",
+        "## Send-backs (`work.sent_back`)",
+        "",
+        "**A send-back** is a step's finished output that a check or a role sends back to",
+        "the same step or an earlier one, to be done again: rework, counted per step",
+        "(crew#862). Each writes one `work.sent_back`, with `sent_from`, `sent_to`, `rule`,",
+        "the card, its `round` where the step knows it, and `counts`.",
+        "",
+        "**Its round** counts from 1, from what the step keeps: the session's round for the",
+        "gates, the rebuilds for a merge conflict, the deliveries for the round-trip limit, and",
+        "for CI, review and QA their returns of the pull request or card on GitHub. CI's",
+        "comment marker is the same before review and at merge, so a CI return's round counts",
+        "both together. None where the step keeps no count.",
+        "",
+        "**Not counted:** a refusal inside a session or a call (`tool.finished`,",
+        "`llm.refused`); a hold, an interruption, or a retry of a step that didn't finish; a",
+        "block for a person (`card.blocked`); a finding filed as a new Task or bug",
+        "(`finding.filed`).",
+        "",
+        "| From | To | Rule | Meaning |",
+        "|---|---|---|---|",
+        *(
+            f"| `{b.sent_from.value}` | `{b.sent_to.value}` | `{b.rule}` | {b.means} |"
+            for b in CATALOG
+        ),
         "",
         "## Event names",
         "",

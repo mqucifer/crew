@@ -92,6 +92,8 @@ class Designed:
     proposal: Any = None
     refused: list[str] = field(default_factory=list)
     attempts: int = 0
+    # Proposals the Code Reviewer refused: each a send-back to the Architect (crew#862).
+    reviews_refused: int = 0
 
 
 def to_design(proposal: Any) -> Design:
@@ -354,6 +356,7 @@ def design(
                 ended.refused = []
                 return ended
             refusals["review"] += 1
+            ended.reviews_refused += 1
         ended.refused = reasons
         feedback = "\n".join(f"- {r}" for r in reasons)
     return ended
