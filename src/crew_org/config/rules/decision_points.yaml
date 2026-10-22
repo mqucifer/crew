@@ -218,6 +218,10 @@ flows.board_flow.product_step:end:df353202:
   at: flows/board_flow.py:product_step
   if: NEEDS_REWORK not in epic.labels
   rule: decision.board_flow.product_step
+flows.board_flow.product_step:result:skipped:a9837858:
+  at: flows/board_flow.py:product_step
+  if: stop is not None and done >= stop
+  rule: decision.resplit.stop
 flows.board_flow.record_split_tests:end:e2823bf7:
   at: flows/board_flow.py:record_split_tests
   if: not (changes or proposal.tests_dropped)

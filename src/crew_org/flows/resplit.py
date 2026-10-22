@@ -142,9 +142,25 @@ def covered(stories: dict[int, Open], kept: Iterable[int]) -> tuple[set[str], st
     return rows, "\n".join(tests)
 
 
-def render(plan: Plan) -> str:
-    """What a re-split did to the epic's stories, for whoever reads the epic later."""
+# Marks the split comment of a round: a re-split after a story problem. Counted on
+# GitHub, so the count survives between ticks (crew#859).
+ROUND_MARKER = "<!-- crew:resplit round={round} -->"
+_ROUND = re.compile(r"<!-- crew:resplit round=(\d+) -->")
+
+
+def rounds(bodies: Iterable[str]) -> int:
+    """How many rounds an epic has had: re-splits after a story problem."""
+    return sum(len(_ROUND.findall(body)) for body in bodies)
+
+
+def render(plan: Plan, round_: int | None = None) -> str:
+    """What a re-split did to the epic's stories, for whoever reads the epic later.
+
+    `round_` is its round, when a story problem sent the epic back.
+    """
     lines = ["", "", "### Split again: only what the problem affects", ""]
+    if round_ is not None:
+        lines = [*lines[:-1], ROUND_MARKER.format(round=round_), f"Round {round_}.", ""]
     lines.append(
         "Replaced, closed as not planned: " + ", ".join(f"#{n}" for n in plan.replaced) + "."
         if plan.replaced
@@ -181,5 +197,63 @@ def emit(sink: EventSink, repo: str, epic: int, again: Resplit, *, reads_decisio
                 "reads_decision": reads_decision,
                 "rule": "decision.resplit.affected",
             },
+        )
+    )
+
+
+def stop_question(bodies: list[str], *, epic: int, problem: str, stop: int) -> str:
+    """The Sponsor's one question when an epic's rounds reach the stop (crew#859).
+
+    Two lines first, what keeps failing and the question, since the crew's issues are
+    hard to read; each round below, folded.
+    """
+    from crew_org.flows.board_flow import (  # noqa: PLC0415
+        PRODUCT_QUESTION_MARKER,
+        STORY_PROBLEM_MARKER,
+    )
+
+    def first(body: str) -> str:
+        line = next((ln for ln in body.splitlines() if ln.strip() and "<!--" not in ln), "")
+        return line.strip().strip("*").strip()[:300]
+
+    detail, said, decided = [], "", ""
+    for body in bodies:
+        if STORY_PROBLEM_MARKER in body:
+            said, decided = first(body), ""
+        elif "**Decided:**" in body:
+            decided = body.split("**Decided:**", 1)[1].strip().splitlines()[0][:300]
+        elif found := _ROUND.search(body):
+            replaced = next((ln for ln in body.splitlines() if ln.startswith("Replaced")), "")
+            detail += [
+                f"**Round {found.group(1)}.** The problem: {said or '(not found)'}",
+                f"- The Product Owner decided: {decided or '(the Sponsor answered)'}",
+                f"- {replaced or 'Nothing replaced.'}",
+                "",
+            ]
+    return "\n".join(
+        [
+            PRODUCT_QUESTION_MARKER,
+            f"**Epic #{epic} has been split again {stop} times, and another story problem "
+            f"came back:** {first(problem)}",
+            "**Your call:** reply with how it should go (your reply becomes a binding row, "
+            "and only the stories it affects are split again), or close the epic.",
+            "",
+            "<details><summary>Each round so far</summary>",
+            "",
+            *detail,
+            "</details>",
+        ]
+    )
+
+
+def stopped(sink: EventSink, repo: str, epic: int, *, done: int, stop: int) -> None:
+    """The stop, recorded, so it can be lowered from evidence."""
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.EPIC_RESPLIT_STOPPED,
+            role="Product Owner",
+            card=epic,
+            summary=f"epic #{epic}: {done} re-splits, the next problem goes to the Sponsor",
+            detail={"repo": repo, "round": done, "stop": stop, "rule": "decision.resplit.stop"},
         )
     )

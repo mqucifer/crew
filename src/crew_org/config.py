@@ -78,6 +78,10 @@ def _validate(org: dict[str, Any]) -> None:
     if not isinstance(look, bool):
         raise ValueError(f"refinement.look must be true or false, got {look!r}")
 
+    stop = (org.get("refinement") or {}).get("resplit_stop")
+    if stop is not None and (isinstance(stop, bool) or not isinstance(stop, int) or stop < 1):
+        raise ValueError(f"refinement.resplit_stop must be a whole number above 0, got {stop!r}")
+
     sandbox = org.get("sandbox") or {}
     mode = sandbox.get("mode", "required")
     if mode not in ("required", "off"):

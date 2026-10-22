@@ -35,6 +35,7 @@ config.org.board.columns:
 config.org.board.human_gates:
 config.org.delivery.repos:
 config.org.refinement.look:
+config.org.refinement.resplit_stop:
 config.org.sprint.blocked_aging_days:
 config.org.sprint.capacity_points:
 config.org.sprint.timezone:
@@ -143,6 +144,12 @@ decision.resplit.affected:
   description: An epic sent back is split again only where the problem reaches. The stories it names and
     every later story of the epic are replaced, once their replacements exist, and the rest stay; a problem
     that names none replaces every unstarted story.
+  origin:
+  - crew#859
+decision.resplit.stop:
+  description: An epic re-split after story problems as many times as refinement.resplit_stop allows (3
+    to start) sends its next problem to the Sponsor as one question, with every round so far, not to the
+    Product Owner. Every round and every stop is an event, so the stop is lowered from evidence.
   origin:
   - crew#859
 decision.revert.refused:
@@ -264,6 +271,7 @@ skip.board_flow.its_criteria_cant_all_pass_to:
   - crew#583
   - crew#612
   - sprint-metrics#551
+skip.board_flow.re_split_times_the_sponsors_to:
 skip.board_flow.waits_for_planned:
 skip.goal_look.waits_for_one_goal_refines_at:
   description: A Goal's epics wait to be refined while another Goal of the project refines; the one that

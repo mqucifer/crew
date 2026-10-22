@@ -598,6 +598,7 @@ def product_step(
     goal: str,
     project: str,
     delivered: str,
+    stop: int | None = None,
 ) -> bool:
     """Before an epic sent back as a story problem is split again (#189).
 
@@ -605,6 +606,9 @@ def product_step(
     already has (the Goal, its record, delivered stories), or asks the Sponsor
     one question and the epic waits. The Sponsor's reply comment is what the
     re-split reads: no board moves. True when the split may go ahead.
+
+    An epic re-split `stop` times already (`refinement.resplit_stop`) asks the
+    Sponsor instead, with every round so far (crew#859).
     """
     number = epic.number or 0
     if NEEDS_REWORK not in epic.labels:
@@ -636,6 +640,30 @@ def product_step(
             held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
             result.skipped.append((number, "waits for the Sponsor's answer on the epic"))
         return replied
+
+    done = resplit.rounds(bodies)
+    if stop is not None and done >= stop:
+        held("decision.resplit.stop", repo=repo, card=number)
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=resplit.stop_question(bodies, epic=number, problem=since[problems[-1]], stop=done),
+            by="Product Owner",
+        )
+        artifacts.label(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            by="Product Owner",
+            add=[NEEDS_HUMAN],
+            rule="decision.resplit.stop",
+        )
+        resplit.stopped(sink, repo, number, done=done, stop=stop)
+        result.skipped.append((number, f"re-split {done} times: the Sponsor's to answer"))
+        return False
 
     about = returned_story(since[problems[-1]])
     feedback = ""
@@ -1687,8 +1715,12 @@ def refine_epics(
     holds: dict[str, str] | None = None,
     known: KnownDelivered | None = None,
     look_search: list[str] | None = None,
+    resplit_stop: int | None = None,
 ) -> None:
     """Split approved epics into stories, once their Goal's record covers them.
+
+    `resplit_stop` is how many rounds an epic gets before its next story problem goes
+    to the Sponsor (`refinement.resplit_stop`); None sets no stop (crew#859).
 
     `look_search` is where the Goal's look finds the Sponsor's decisions; None leaves
     the look off, and epics are split with no record (crew#858).
@@ -1742,6 +1774,7 @@ def refine_epics(
                 goal=_goal_body(issues, repo, epic_card.parent) if epic_card.parent else "",
                 project=context.record_for(repo),
                 delivered=done.render(),
+                stop=resplit_stop,
             ):
                 held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
                 continue
@@ -2053,8 +2086,14 @@ def refine_epics(
             body = render_split(
                 epic_card.title, proposal, numbers, str((drawn or {}).get("html_url") or "")
             )
-            if plan:
-                body += resplit.render(plan)
+            if again:
+                # A round when a story problem sent it back, counted on the epic (crew#859).
+                body += resplit.render(
+                    again.plan,
+                    resplit.rounds([_all_bodies(issues, repo, number)]) + 1
+                    if again.because == "story problem"
+                    else None,
+                )
             if waiting:
                 body += (
                     "\n\n### Waiting, not closed\n\n"
@@ -2421,6 +2460,7 @@ def tick(
         holds=holds,
         known=known,
         look_search=look_search,
+        resplit_stop=(org.get("refinement") or {}).get("resplit_stop"),
     )
 
     sink.note(

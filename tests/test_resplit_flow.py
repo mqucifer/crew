@@ -189,3 +189,19 @@ def test_devops_release_task_stays_under_the_epic(monkeypatch):
     asked, _ = run(monkeypatch, issues, [sent_back(), *stories(*FOUR), task])
     assert 702 not in [n for n, _ in asked[0]["superseded"]]
     assert 702 not in [n for n, _ in issues.closed]
+
+
+def test_each_round_is_marked_on_the_split_and_counted_from_github(monkeypatch):
+    earlier = f"{STORY_SPLIT_MARKER}\n<!-- crew:resplit round=1 -->\nRound 1."
+    issues = Issues([SPLIT, earlier, PROBLEM, ANSWER])
+    run(monkeypatch, issues, [sent_back(), *stories(*FOUR)])
+    [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
+    assert "<!-- crew:resplit round=2 -->" in split
+
+
+def test_the_sponsors_own_rework_isnt_a_round(monkeypatch):
+    issues = Issues([SPLIT, "Split it smaller."])
+    monkeypatch.setattr("crew_org.flows.board_flow.from_sponsor", lambda issues, c: True)
+    run(monkeypatch, issues, [sent_back(), *stories(*FOUR)])
+    [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
+    assert "crew:resplit round" not in split

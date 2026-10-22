@@ -83,6 +83,7 @@ DETAIL = frozenset(
         "positions",
         "of",
         "round",
+        "stop",
         # GitHub's limits (#293): how long, what, and the budget left.
         "wait_s",
         "status",
