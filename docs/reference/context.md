@@ -15,7 +15,7 @@ Every step the plan's table "What each step reads after Part A" names is listed.
 | The project's record | `.crew/project.yaml` | What the project is for |
 | What the project has delivered | `Delivered.render` | A choice that contradicts delivered work is caught |
 | The Goal | the Goal's issue | The answer stays within it |
-| The epic, with its record | the epic's body | Every decision so far, its own earlier answers included (ADR 0023) |
+| The epic, with its record | `board_flow._with_record`: its body, with the Goal's rows that bind it | Every decision so far, its own earlier answers included (ADR 0023) |
 | Why it came back | `story_problem_evidence`, the latest story problem | The question to answer |
 | The last refusal | `product_step` | Why the record refused the previous rows |
 
@@ -25,7 +25,7 @@ Every step the plan's table "What each step reads after Part A" names is listed.
 
 | Part | From | Why |
 |---|---|---|
-| The epic, with its record | the epic's body | Which row or question the words change |
+| The epic, with its record | `board_flow._with_record` | Which row or question the words change |
 | The Sponsor's words | the Sponsor's comment on the epic, or on its Goal once the Goal has a record | Quoted as the row's decision, unchanged |
 | The last refusal | `record_sponsor_words` | Why the record refused the previous placing |
 
@@ -38,6 +38,7 @@ Every step the plan's table "What each step reads after Part A" names is listed.
 | Its step | `refinement_crew.split_opening` | How stories are written here, and that the epic's scope is the Product Owner's |
 | The epic | its approved text | What to split |
 | The record, as the epic sees it | `record.text_for`: the Goal's rows that bind it, or its own record from before the Goal's look | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
+| The Goal's target diagram | `goal_look.diagram_of` | What the stories build: the system once the Goal is delivered (crew#858) |
 | The project's decision log | the project's `docs/decisions/` | Decisions that hold for every epic |
 | Stories other epics plan | `planned_elsewhere` | Not written again, or built on |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
@@ -152,6 +153,7 @@ Each step reads one checkout of the default branch, `Workspace.at_main`, through
 |---|---|---|
 | The story | its issue, with `session_delivery.story_section` | What to build, and its Existing tests line |
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
+| The Goal's target diagram | `conclusion.story_diagram` | The system it builds into (crew#858) |
 | The epic's notes, for an epic split before the Goal's look | `epic_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
 | The tests the story declares | `start.declared_tests` | Always shown, as merged at the base commit |
 | How the project works | `start.how_it_works`, from the project's record | Its checks, its parts and its conventions |
@@ -169,6 +171,7 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 | Part | From | Why |
 |---|---|---|
 | The story and the rows it follows | its issue, `conclusion.story_rows` | What the change is judged against |
+| The Goal's target diagram | `conclusion.story_diagram` | A part or a connection it doesn't draw is a finding (crew#858) |
 | The epic's notes, for an epic split before the Goal's look | `epic_notes.story_notes` | The direction the change follows |
 | The code the diff imports, and who imports what it changes | `review_evidence.importers_section` | What the change can break |
 | The diff | the pull request | What is judged |
@@ -180,6 +183,7 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 | Part | From | Why |
 |---|---|---|
 | The story and the rows it follows | its issue, `conclusion.story_rows` | Each criterion is proven or not |
+| The Goal's target diagram | `conclusion.story_diagram` | The parts a criterion is proven through (crew#858) |
 | The tests that were written | the pull request | Which test proves which criterion |
 | What running the suite produced | the sandbox | Proof, not a claim |
 | The docs the change edits | the pull request | A doc criterion is judged by reading the doc |

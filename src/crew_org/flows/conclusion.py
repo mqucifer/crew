@@ -59,6 +59,25 @@ def story_rows(issues: Any, story: Any, default_repo: str) -> str:
     return record.rows_for(text, ids)
 
 
+def story_diagram(issues: Any, story: Any, default_repo: str) -> str:
+    """The target diagram of the Goal above this story's epic, or "" (crew#858).
+
+    Drawn in the Goal's look: what the system will be once the Goal is delivered, for
+    the steps that build and judge the story. An epic with no Goal, or a Goal looked at
+    before the diagram existed, gives nothing.
+    """
+    from crew_org.flows.goal_look import diagram_of  # noqa: PLC0415
+
+    if story is None or story.parent is None:
+        return ""
+    repo = story.repo or default_repo
+    try:
+        goal = record.goal_of(issues.get(repo, story.parent))
+        return diagram_of(issues, repo, goal) if goal is not None else ""
+    except Exception:  # noqa: BLE001 - context, never a reason to stop the work
+        return ""
+
+
 def problems(proposal: Any, rows: list[str], tests: Sequence[str] = ()) -> list[str]:
     """What is wrong between a proposed split and the record's rows. Empty if nothing.
 

@@ -146,6 +146,10 @@ flows.board_flow._last_marked:filter:36182919:
   at: flows/board_flow.py:_last_marked
   if: marker in (c.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.board_flow._with_record:end:6a70cc9a:
+  at: flows/board_flow.py:_with_record
+  if: record_flow.has_record(body)
+  not_a_rule: 'reads where a record is kept: an epic''s body, or its Goal''s comment'
 flows.board_flow.admit_held_stories:result:waiting:539e9641:
   at: flows/board_flow.py:admit_held_stories
   if: not verdict.allowed
@@ -436,6 +440,10 @@ flows.close.sprint_cards:filter:3697dabb:
   at: flows/close.py:sprint_cards
   if: c.sprint == sprint and c.work_type in DELIVERED
   rule: decision.close.close_sprint
+flows.conclusion.story_diagram:end:eefe2c98:
+  at: flows/conclusion.py:story_diagram
+  if: story is None or story.parent is None
+  not_a_rule: 'nothing to act on: a value is absent'
 flows.conclusion.story_rows:end:19db48bf:
   at: flows/conclusion.py:story_rows
   if: not ids

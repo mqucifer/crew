@@ -315,7 +315,12 @@ def test_the_session_s_story_holds_the_card_and_what_its_epic_decided(ws, delive
     story = sessions.started[0]["story"]
     assert story.startswith("Show the rate\n\n**Acceptance criteria**")
     assert "| rate | per hour |" in story and "Hours, not days." in story
-    assert sessions.started[0]["story_parts"] == {"card": 58, "decided": 19, "note": 16}
+    assert sessions.started[0]["story_parts"] == {
+        "card": 58,
+        "decided": 19,
+        "note": 16,
+        "diagram": 0,
+    }
 
 
 def test_a_green_run_is_a_checkpoint_and_a_red_one_isn_t(ws, deliver):

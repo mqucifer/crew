@@ -97,6 +97,7 @@ def review_diff(
     design_note: str = "",
     importers: str = "",
     decisions: str = "",
+    diagram: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -164,6 +165,11 @@ def review_diff(
                     decisions,
                     "These are decided for the epic. Judge the diff against them as well: a "
                     "change that contradicts one is a finding, whatever else it gets right.",
+                )
+                + epic_rows.diagram(
+                    diagram,
+                    "What the system will be once the Goal is delivered. A change that adds a "
+                    "part or a connection it doesn't draw is a finding.",
                 )
                 + (
                     "## The Architect's design note for this story's epic\n\n"

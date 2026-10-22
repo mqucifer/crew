@@ -51,7 +51,7 @@ from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
-from crew_org.flows.goal_look import Turns, diagram_comment, look_step
+from crew_org.flows.goal_look import Turns, diagram_comment, diagram_of, look_step
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
 from crew_org.flows.proposed_goal import PROPOSED_LABEL
@@ -491,7 +491,7 @@ def record_sponsor_words(
         for _attempt in range(ANSWER_ATTEMPTS):
             try:
                 placed = attributed(place_sponsor_words, card=number, repo=repo)(
-                    epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
+                    epic=f"#{number} {epic.title}\n\n{_with_record(issues, repo, number)}",
                     words=(comment.get("body") or "").strip(),
                     feedback=feedback,
                 )
@@ -624,10 +624,10 @@ def product_step(
     feedback = ""
     for _attempt in range(ANSWER_ATTEMPTS):
         try:
-            # The epic's body carries its record: the Product Owner sees every decision
-            # so far, its own earlier answers included (ADR 0023).
+            # With its record, the epic's own or its Goal's: the Product Owner sees every
+            # decision so far, its own earlier answers included (ADR 0023).
             reply = attributed(answer_story_problem, card=number, repo=repo)(
-                epic=f"#{number} {epic.title}\n\n{_goal_body(issues, repo, number)}",
+                epic=f"#{number} {epic.title}\n\n{_with_record(issues, repo, number)}",
                 goal=goal,
                 evidence=since[problems[-1]].replace(STORY_PROBLEM_MARKER, "").strip(),
                 project=project,
@@ -1172,7 +1172,9 @@ def existing_tests_line(pinned: str) -> str:
     )
 
 
-def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
+def render_story_body(
+    story: Story, epic_number: int, epic_title: str, *, on_goal: bool = False
+) -> str:
     """A story issue, written so a test can be derived from it directly."""
     lines = [
         f"As a **{story.as_a}**, I want **{story.i_want}**, so that **{story.so_that}**.",
@@ -1197,7 +1199,7 @@ def render_story_body(story: Story, epic_number: int, epic_title: str) -> str:
         ]
     if story.follows:
         # Read back by later steps, which are shown only the rows named here (crew#440).
-        lines += [conclusion_flow.follows_line(story.follows), ""]
+        lines += [conclusion_flow.follows_line(story.follows, on_goal=on_goal), ""]
     lines += [
         f"**Estimate** — {story.points} points",
         "",
@@ -1738,13 +1740,17 @@ def refine_epics(
                 # Owner one step earlier was given its goal whole — and the Business
                 # Analyst is the role that writes the acceptance criteria, so what it
                 # cannot see becomes a criterion nobody can satisfy.
-                # The conclusion is shown apart from the epic's own text, so it can't be
-                # missed or mistaken for what the Sponsor approved (crew#440).
-                body, conclusion = record_flow.split(_goal_body(issues, repo, number))
+                # The record is shown apart from the epic's own text, so it can't be
+                # missed or mistaken for what the Sponsor approved (crew#440): the Goal's
+                # rows that bind this epic, or its own from before the Goal's look.
+                body = record_flow.split(_goal_body(issues, repo, number))[0]
+                conclusion = record_flow.text_for(issues, repo, number)
                 # Only binding rows need a story: a replaced row lives on in its replacement.
                 rows = record_flow.parse(conclusion).binding_ids()
                 # The merged tests the record says this epic changes (crew#583, step A4).
                 declared = record_flow.parse(conclusion).declared_tests()
+                # What the Goal will build, drawn in its look (crew#858).
+                diagram = diagram_of(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # The Goal, shown to the criteria check with the project's log (crew#440).
                 goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # What the project has decided for every epic (crew#468).
@@ -1765,6 +1771,7 @@ def refine_epics(
                     planned_numbers={n for n, _t, _e in planned},
                     conclusion=conclusion,
                     project_log=project_log,
+                    diagram=diagram,
                     provided=context.provided_for(repo),
                     # Every settled row is followed by a story, or named as not for
                     # stories (crew#440): refused at `done`, in the session.
@@ -1906,7 +1913,14 @@ def refine_epics(
             numbers: dict[str, int] = {}
             for story in proposal.stories:
                 issue = issues.create(
-                    repo, story.title, render_story_body(story, number, epic_card.title)
+                    repo,
+                    story.title,
+                    render_story_body(
+                        story,
+                        number,
+                        epic_card.title,
+                        on_goal=record_flow.parse(conclusion).on_goal,
+                    ),
                 )
                 numbers[story.title] = issue["number"]
                 split_now.append((repo, issue["number"], story.title, number))
@@ -1963,9 +1977,9 @@ def refine_epics(
                 if not proposal.stories
                 else []
             )
-            diagram = diagram_comment(issues, repo, epic_card.parent) if epic_card.parent else None
+            drawn = diagram_comment(issues, repo, epic_card.parent) if epic_card.parent else None
             body = render_split(
-                epic_card.title, proposal, numbers, str((diagram or {}).get("html_url") or "")
+                epic_card.title, proposal, numbers, str((drawn or {}).get("html_url") or "")
             )
             if waiting:
                 body += (
@@ -2308,6 +2322,16 @@ def _goal_body(issues: IssueClient, repo: str, number: int) -> str:
         return (issues.get(repo, number).get("body") or "").strip()
     except Exception:  # noqa: BLE001
         return ""
+
+
+def _with_record(issues: IssueClient, repo: str, number: int) -> str:
+    """The epic's text with the record it reads: in its body, or its Goal's rows that bind
+    it (crew#858). The Product Owner sees every decision so far (ADR 0023)."""
+    body = _goal_body(issues, repo, number)
+    if record_flow.has_record(body):
+        return body
+    record = record_flow.text_for(issues, repo, number)
+    return f"{body}\n\n{record}".strip()
 
 
 def not_in_package_note(missing: list[Any]) -> str:

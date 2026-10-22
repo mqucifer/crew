@@ -597,3 +597,139 @@ def test_the_look_records_how_big_its_context_is(monkeypatch):
     )
     [note] = [e for e in events if "look context" in e.summary]
     assert note.detail["decisions_chars"] == 0 and note.detail["epics"] == 1
+
+
+# --- what the split, the Developer, the Code Reviewer and QA are shown ------------------------
+
+
+def goal_records(gh):
+    """Goal 666's record and target diagram, as its look leaves them."""
+    binds_first, binds_second = (ref(684),), (ref(685),)
+    held = record_flow.Record(
+        decisions=(
+            record_flow.Decision(
+                "R1",
+                "Store",
+                "One table",
+                "-",
+                "the Goal",
+                "Architect",
+                "2026-10-22",
+                binds=(record_flow.ALL,),
+            ),
+            record_flow.Decision(
+                "R2",
+                "Units",
+                "Weeks",
+                "-",
+                "the reader",
+                "UX Designer",
+                "2026-10-22",
+                binds=binds_first,
+            ),
+            record_flow.Decision(
+                "R3",
+                "Legend",
+                "On the right",
+                "-",
+                "the reader",
+                "UX Designer",
+                "2026-10-22",
+                binds=binds_second,
+            ),
+        ),
+        on_goal=True,
+        looked_at=(ref(684), ref(685)),
+    )
+    gh.comment(REPO, 666, f"{record_flow.GOAL_RECORD_MARKER}\n{record_flow.render(held)}\n")
+    goal_look.post_diagram(gh, EventSink(None), repo=REPO, goal=666, system=system(new=[]))
+
+
+def test_the_split_is_shown_the_goals_rows_that_bind_its_epic_and_the_diagram(monkeypatch):
+    from crew_org.config import load_org
+    from tests.test_board_flow import FakeBoard
+    from tests.test_split_conclusion import proposal, story
+
+    class Issues(GitHub):
+        def create(self, repo, title, body, labels=None):
+            self.next += 1
+            self.bodies[self.next] = body
+            return {"number": self.next, "id": self.next, "node_id": f"N{self.next}"}
+
+        def add_sub_issue(self, *a):
+            pass
+
+        def sub_issues(self, repo, number):
+            return []
+
+        def list_dir(self, *a):
+            return []
+
+        def branches(self, repo):
+            return []
+
+    gh = Issues({684: 666, 685: 666}, bodies={684: "The approved text."})
+    goal_records(gh)
+    asked = []
+
+    def split(title, context="", **kw):
+        asked.append((context, kw))
+        return proposal(story("A", "R1", "R2"))
+
+    monkeypatch.setattr(board_flow, "split_epic", split)
+    board_flow.refine_epics(
+        FakeBoard([epic(684, 666), epic(685, 666)]),
+        gh,
+        EventSink(None),
+        board_flow.ProcessRules.from_config(load_org()),
+        board_flow.TickResult(),
+        cards=[epic(684, 666)],
+        default_repo=REPO,
+        context=board_flow.RepoContext(None, EventSink(None)),
+    )
+    context, kw = asked[0]
+    assert context == "The approved text."
+    assert kw["conclusion"].startswith(record_flow.GOAL_HEADER)
+    assert list(kw["rows"]) == ["R1", "R2"], "R3 binds the other epic"
+    assert kw["diagram"].startswith("C4Container")
+    [made] = [b for n, b in gh.bodies.items() if n not in (684,) and "As a" in b]
+    assert "Follows the Goal's R1, R2." in made
+    [split_comment] = gh.marked(684, STORY_SPLIT_MARKER)
+    assert "[target diagram](https://github.com/" in split_comment["body"]
+
+
+def test_a_story_is_built_and_judged_with_the_goals_target_diagram():
+    from crew_org.flows import conclusion
+
+    gh = GitHub({684: 666})
+    goal_records(gh)
+    story = SimpleNamespace(parent=684, number=700, repo=REPO)
+    assert conclusion.story_diagram(gh, story, REPO).startswith("C4Container")
+    assert conclusion.story_diagram(gh, SimpleNamespace(parent=None), REPO) == ""
+    no_goal = SimpleNamespace(parent=900, number=901, repo=REPO)
+    assert conclusion.story_diagram(gh, no_goal, REPO) == ""
+
+
+def test_the_developer_reviewer_and_qa_are_told_what_the_diagram_is_for(monkeypatch):
+    from crew_org.crews import qa_crew, review_crew
+    from crew_org.flows.session_delivery import story_section
+    from tests import asked
+
+    assert "### The Goal's target diagram\n\n```mermaid\nC4Context" in story_section(
+        "Story", "", "", 'C4Context\nPerson(a, "A")'
+    )
+    for call in (
+        lambda: review_crew.review_diff("t", "diff", diagram="C4Context"),
+        lambda: qa_crew.verify_story("s", test_output="", test_code="", diagram="C4Context"),
+    ):
+        seen = asked.capture(monkeypatch)
+        with pytest.raises(asked.Stop):
+            call()
+        assert "## The Goal's target diagram\n\n```mermaid\nC4Context" in seen["description"]
+
+
+def test_the_product_owner_answers_a_story_problem_shown_the_goals_rows(monkeypatch):
+    gh = GitHub({684: 666}, bodies={684: "The approved text."})
+    goal_records(gh)
+    text = board_flow._with_record(gh, REPO, 684)
+    assert text.startswith("The approved text.") and "| R2 |" in text and "| R3 |" not in text
