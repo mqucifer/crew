@@ -84,6 +84,9 @@ DETAIL = frozenset(
         "of",
         "round",
         "stop",
+        # A send-back (crew#862): the steps it went between, as names.
+        "sent_from",
+        "sent_to",
         # GitHub's limits (#293): how long, what, and the budget left.
         "wait_s",
         "status",

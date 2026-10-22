@@ -246,6 +246,11 @@ gate.ci_before_review:
   origin:
   - crew#756
 gate.criteria_cannot_all_pass:
+gate.criteria_repair:
+gate.criteria_resplit:
+gate.findings_at_done:
+gate.merge_ci_failed:
+gate.merge_conflict:
 gate.qa_unproven:
 gate.review_changes_requested:
 hold.no_session:
@@ -270,6 +275,13 @@ hold.wip:
   origin:
   - crew#33
   - crew#34
+sent_back.design_faults:
+sent_back.design_refused:
+sent_back.epic_rework:
+sent_back.main_red:
+sent_back.rebuild_strain:
+sent_back.release_gaps:
+sent_back.reverted:
 session.choice:
 session.no_epic:
 skip.board_flow.a_goal_written_by_not_the:
