@@ -76,6 +76,7 @@ from crew_org.tools.repo_context import (
     focused_context,
 )
 from crew_org.tools.repo_read import Reader
+from crew_org.work_types import TASK
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -807,10 +808,14 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
     except Exception:  # noqa: BLE001
         return [], []
 
+    # A role's Task under the epic isn't the split's to supersede: DevOps's CI and
+    # release stays, and waits for the new stories (crew#839).
     live = [
         card
         for child in children
-        if (card := by_key.get((repo, child))) is not None and card.state != "CLOSED"
+        if (card := by_key.get((repo, child))) is not None
+        and card.state != "CLOSED"
+        and card.work_type != TASK
     ]
     busy = started(issues, repo, live)
     closable, in_flight = [], []

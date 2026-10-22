@@ -46,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 from crew_org import profiles
 from crew_org.crews import epic_rows
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import gates
+from crew_org.flows import gates, role_tasks
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.delivery import (
     DeliveryOutcome,
@@ -131,10 +131,15 @@ def deliver_by_session(
     default_branch: str,
     rework: bool = False,
 ) -> DeliveryOutcome:
-    """Take one story to a pull request by Developer sessions, or to where they end it."""
+    """Take one story to a pull request by Developer sessions, or to where they end it.
+
+    A role's Task goes the same way, worked by its role's session in the Developer's
+    place, with the Developer's tools (crew#839).
+    """
     from crew_org.flows import session_end  # noqa: PLC0415
 
     number = card.number or 0
+    role = role_tasks.role_of(card)
     outcome = DeliveryOutcome(card=number)
     body = issues.get(repo, number).get("body") or ""
     story_text = f"{card.title}\n\n{body}"
@@ -179,7 +184,12 @@ def deliver_by_session(
     profiles.set_project(record)
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)
-    story = story_section(story_text, note, rows, diagram)
+    story = story_section(
+        f"{role_tasks.task_start(role, _today())}\n\n{story_text}" if role else story_text,
+        note,
+        rows,
+        diagram,
+    )
     # The story's part of the start, measured by what it's made of (the operator, crew#778).
     measured = {
         "card": len(story_text),
@@ -196,7 +206,12 @@ def deliver_by_session(
     # After a catch-up, the branch's base is main as it is now.
     since = _merge_base(worktree) or "origin/HEAD"
     sink.emit(
-        CrewEvent(kind=EventKind.AGENT_STARTED, role="Developer", card=number, summary=branch)
+        CrewEvent(
+            kind=EventKind.AGENT_STARTED,
+            role=role.name if role else "Developer",
+            card=number,
+            summary=branch,
+        )
     )
 
     unfit = conversation.unfit(worktree)
@@ -242,6 +257,7 @@ def deliver_by_session(
             outcome=outcome,
             route=session_end.route,
             measured=measured,
+            role=role.spec if role else conversation.ROLE,
         )
     finally:
         held.stop()
@@ -282,6 +298,7 @@ def _sessions(
     outcome: DeliveryOutcome,
     route: Any,
     measured: dict[str, int],
+    role: str = conversation.ROLE,
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -315,6 +332,7 @@ def _sessions(
             base=since,
             round=rounds,
             story_parts=measured,
+            role=role,
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(
@@ -673,6 +691,14 @@ def _say_reworked(
             f"#{number} re-worked on PR #{pull}, and its comment failed: {exc}"[:300],
             card=number,
         )
+
+
+def _today() -> str:
+    """Today by the sprint clock, for a role's Task that dates what it writes (crew#839)."""
+    from crew_org.clock import sprint_today  # noqa: PLC0415
+    from crew_org.config import load_org  # noqa: PLC0415
+
+    return sprint_today(load_org()).isoformat()
 
 
 def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: list[str]) -> str:

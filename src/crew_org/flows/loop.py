@@ -261,6 +261,7 @@ def _land(crew: Crew) -> PhaseOutcome:
         default_repo=crew.repo,
         repos=crew.repos,
         keep_both=keeping_both(crew.ws),
+        sponsor=crew.sponsor,
     )
     if landed.merged or landed.conflicted or landed.rebuilding:
         cards = crew.board.cards()
@@ -614,6 +615,7 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         repo=crew.repo,
         limit=None,
         repos=crew.repos,
+        sponsor=crew.sponsor,
     )
     reverts = result.reverts
     moved = bool(
@@ -628,6 +630,10 @@ def _deliver(crew: Crew) -> PhaseOutcome:
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
+        + [
+            f"#{n} — a role's Task: PR #{pr} waits for the Sponsor's approval"
+            for n, pr in result.awaiting_sponsor
+        ]
         + [
             f"#{n} — PR #{pr} was behind main; brought up to date, merges once checks pass"
             for n, pr in result.updating

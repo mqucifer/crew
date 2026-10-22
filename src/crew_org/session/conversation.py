@@ -513,18 +513,21 @@ def session(
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     instead_of_hints: str | None = None,
     after_run: Callable[[dict[str, Any]], None] | None = None,
+    role: str = ROLE,
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
 
-    `about` goes on the `session.started` event, such as the base commit.
+    `about` goes on the `session.started` event, such as the base commit. `role` is
+    agents.yaml's key for who works it: the Developer, or the role whose Task it is
+    (crew#839), with the Developer's tools.
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     tools = Tools(worktree, workspace, toolchain, coverage, notes)
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
-        role=_role(),
+        role=_role(role),
         start_chars=sizes,
         limits={
             "backstop_s": BACKSTOP_S,
@@ -537,11 +540,12 @@ def session(
     )
     return Session(
         tools,
-        system_text(ROLE),
+        system_text(role),
         opening,
         send=send,
         after_run=after_run,
         check_done=own_checks(worktree),
+        role=role,
     )
 
 

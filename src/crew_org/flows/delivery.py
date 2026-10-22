@@ -99,6 +99,8 @@ class DeliveryResult:
     # worked these out and the command printed neither, so a run that silently
     # skipped every merge looked exactly like a run with nothing to merge.
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # A role's Task the Sponsor approves before it merges (crew#839).
+    awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
@@ -945,6 +947,7 @@ def deliver(
     default_branch: str = "main",
     limit: int | None = None,
     repos: set[str] | None = None,
+    sponsor: str | None = None,
 ) -> DeliveryResult:
     """Pull stories into progress up to the WIP limit, and deliver them."""
     result = DeliveryResult()
@@ -960,10 +963,12 @@ def deliver(
         default_repo=repo,
         repos=repos,
         keep_both=keeping_both(ws),
+        sponsor=sponsor,
     )
     result.conflicted = [card for card, _pr in landed.conflicted]
     result.rebuilding = list(landed.rebuilding)
     result.awaiting_approval = list(landed.awaiting_approval)
+    result.awaiting_sponsor = list(landed.awaiting_sponsor)
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     result.updating = list(landed.updating)

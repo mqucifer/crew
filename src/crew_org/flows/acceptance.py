@@ -49,7 +49,7 @@ from crew_org.tools.repo_context import (
 )
 from crew_org.tools.repo_read import Reader
 from crew_org.tools.sandbox import Sandbox
-from crew_org.work_types import BUG, open_in
+from crew_org.work_types import BUG, TASK, open_in
 
 # QA reasons about the test code, so what it is shown decides its verdict. A
 # 12,000-character slice in the prompt cut story #13's two new tests off the end
@@ -672,6 +672,23 @@ def run_qa(
         with log.run("QA Engineer", card=card.number, repo=card.repo or repo):
             number = card.number or 0
             card_repo = card.repo or repo
+            # A role's Task has no story criteria for QA to prove: its role's checks ran
+            # at `done`, the Code Reviewer judged it, and a release is proven by the
+            # release check once it's out (crew#839). QA's own Tasks wait for M10.
+            if card.work_type == TASK:
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=MERGING,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary="a role's Task: nothing for QA to prove",
+                    rule="decision.role_tasks.no_qa",
+                )
+                result.verified.append(QAOutcome(card=number, accepted=True))
+                continue
             branch = branch_name(number, card.title)
             # The worktree has to come from the card's own repository too, or QA
             # verifies a branch of the same name in a different codebase.
