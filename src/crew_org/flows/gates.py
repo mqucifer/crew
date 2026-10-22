@@ -359,8 +359,11 @@ def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdic
 
     What CI runs is checkable through the project's declaration: a test that skips for
     a reason its workspace file declares CI-only (Docker, say) is one CI skips too, and
-    anything else would run there. One the branch adds or changes goes back. One already
-    merged isn't this Developer's to fix: it's DevOps's, whose declaration it is. A
+    anything else would run there. One the branch causes goes back: a test it adds or
+    changes, or any test in a module it changes or under a `conftest.py` it changes,
+    where a `pytestmark`, a fixture or a `skipif` can skip tests it never touched. So
+    does one the report can't place in a file. One already merged isn't this
+    Developer's to fix: it's DevOps's, whose declaration it is. A
     project with no file can't say what's CI-only yet, so its merged skips wait for
     DevOps's first workspace Task, which covers them.
     """
@@ -374,7 +377,12 @@ def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdic
         if not any(ci in reason for ci in declared.ci_only)
     }
     touched = added_or_changed(worktree, merged, paths)
-    mine = {t: r for t, r in run_in_ci.items() if t.split("[", 1)[0] in touched}
+    changed = set(paths)
+    mine = {
+        t: r
+        for t, r in run_in_ci.items()
+        if t.split("[", 1)[0] in touched or _caused(worktree, t.partition("::")[0], changed)
+    }
     if mine:
         verdict.findings.append(
             Finding(
@@ -387,6 +395,19 @@ def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdic
         )
     if declared.path is not None:
         verdict.for_devops = {t: r for t, r in run_in_ci.items() if t not in mine}
+
+
+def _caused(worktree: Path, path: str, changed: set[str]) -> bool:
+    """Could the branch have made a test in `path` skip, outside the test itself? True
+    for a path that names no file in the worktree: the gate refuses rather than hands it
+    on."""
+    if not path.endswith(".py") or not (worktree / path).is_file() or path in changed:
+        return True
+    folder = Path(path).parent
+    conftests = {
+        (d / "conftest.py").as_posix().removeprefix("./") for d in [folder, *folder.parents]
+    }
+    return bool(conftests & changed)
 
 
 def added_or_changed(worktree: Path, merged: regression.Merged, paths: list[str]) -> set[str]:

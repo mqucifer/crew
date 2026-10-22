@@ -299,3 +299,31 @@ def test_the_sweep_without_an_engine_removes_nothing(monkeypatch):
 
     monkeypatch.setattr(container.subprocess, "run", missing)
     assert sweep("podman") == []
+
+
+def test_with_no_services_the_workspace_is_mains_but_for_the_tests_report(worktree, ran):
+    """crew#860 changes one thing for a project that declares no service: pytest is
+    told to write its report. The rest is the argv main builds, word for word, so any
+    other drift shows here."""
+    from crew_org.tools.services import Declared
+    from crew_org.tools.workspace import REPORT
+
+    Held(worktree, "x", declared=Declared()).start()
+    argv = next(a for a in ran if a[1] == "run")
+    wt = str(worktree.resolve())
+    report = f"PYTEST_ADDOPTS=--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    assert argv == [
+        *("docker", "run", "--rm", "-d", "--name", "crew-workspace-x", "--init"),
+        *("--label", "crew.workspace=1", "--label", f"crew.pid={os.getpid()}"),
+        *("--network", "none", "--user", f"{os.getuid()}:{os.getgid()}", "--read-only"),
+        *("--tmpfs", "/tmp:rw,nosuid,size=512m", "--memory", "2g", "--memory-swap", "2g"),
+        *("--pids-limit", "512", "--cpus", "2", "--cap-drop", "ALL"),
+        *("--security-opt", "no-new-privileges", "-v", f"{wt}:/work"),
+        *("--mount", f"type=bind,src={wt}/.git,dst=/work/.git,readonly"),
+        *("-v", f"{Sandbox().cache_dir}:/cache", "-w", "/work"),
+        *("-e", "LANG=C.UTF-8", "-e", report),
+        *("-e", "UV_CACHE_DIR=/cache", "-e", "HOME=/work/.crew-home"),
+        *("-e", "XDG_CACHE_HOME=/cache"),
+        *("-e", "PATH=/work/.crew-home/.local/bin:/usr/local/bin:/usr/bin"),
+        *(IMAGE, "sleep", str(container.LIFETIME)),
+    ]

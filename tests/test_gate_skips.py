@@ -27,11 +27,16 @@ DB = "SPRINT_METRICS_DB not set"
 DOCKER = "Docker not available"
 
 
-def report(root: Path, cases: dict[tuple[str, str], str | None]) -> None:
-    """pytest's JUnit report: each (classname, name), skipped with its reason or passed."""
+def report(
+    root: Path, cases: dict[tuple[str, str], str | None], files=None, kind="pytest.skip"
+) -> None:
+    """pytest's JUnit report: each (classname, name), skipped with its reason or passed;
+    with `files`, each case names its file, as xunit1 does."""
     xml = "".join(
-        f'<testcase classname="{c}" name="{n}">'
-        + (f'<skipped type="pytest.skip" message="{r}">{r}</skipped>' if r else "")
+        f'<testcase classname="{c}" name="{n}"'
+        + (f' file="{files[(c, n)]}"' if files else "")
+        + ">"
+        + (f'<skipped type="{kind}" message="{r}">{r}</skipped>' if r else "")
         + "</testcase>"
         for (c, n), r in cases.items()
     )
@@ -88,6 +93,21 @@ def test_each_pytest_command_of_the_checks_is_read(worktree):  # noqa: F811
     }
 
 
+def test_an_expected_failure_ran_and_isnt_a_skip(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / NEW).write_text("")
+    report(tmp_path, {("tests.test_store", "test_known_bug"): "reason"}, kind="pytest.xfail")
+    assert skipped_tests(tmp_path) == {}
+
+
+def test_a_test_in_a_dotted_directory_is_named_by_its_file(tmp_path):
+    (tmp_path / "tests/v1.2").mkdir(parents=True)
+    (tmp_path / "tests/v1.2/test_api.py").write_text("")
+    case = ("tests.v1.2.test_api.TestGet", "test_one")
+    report(tmp_path, {case: DB}, files={case: "tests/v1.2/test_api.py"})
+    assert skipped_tests(tmp_path) == {"tests/v1.2/test_api.py::TestGet.test_one": DB}
+
+
 def test_no_report_is_no_pytest_and_nothing_is_read(tmp_path):
     assert skipped_tests(tmp_path) is None
 
@@ -95,10 +115,9 @@ def test_no_report_is_no_pytest_and_nothing_is_read(tmp_path):
 def test_every_pytest_run_in_the_workspace_writes_the_report(worktree, ran):  # noqa: F811
     Held(worktree, "x", declared=Declared()).start()
     argv = next(a for a in ran if a[1] == "run")
-    assert f"PYTEST_ADDOPTS=--junitxml=/work/{REPORT}" in argv
-    assert with_report({"PYTEST_ADDOPTS": "-x"})["PYTEST_ADDOPTS"] == (
-        f"-x --junitxml=/work/{REPORT}"
-    )
+    ours = f"--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    assert f"PYTEST_ADDOPTS={ours}" in argv
+    assert with_report({"PYTEST_ADDOPTS": "-x"})["PYTEST_ADDOPTS"] == f"-x {ours}"
 
 
 def test_the_ci_only_reasons_are_the_projects_own_setting():
@@ -162,6 +181,33 @@ def test_with_no_workspace_file_merged_skips_wait_for_its_first_task(repo):  # n
     merged = f"{TESTS}::test_rate_of_nothing"
     verdict = at_done(repo, done(), run_checks=skipping({merged: DB, f"{NEW}::test_insert": DB}))
     assert [f.rule for f in verdict.findings] == ["check.gates.these_tests_skipped"]
+    assert verdict.for_devops == {}
+
+
+def test_a_module_mark_the_branch_adds_makes_its_merged_tests_skips_the_branchs(repo):  # noqa: F811
+    """A `pytestmark` skips tests the branch never touched: it caused them (crew#860)."""
+    declare(repo)
+    (repo / TESTS).write_text("import pytest\npytestmark = pytest.mark.skip\n" + MERGED_TESTS)
+    merged = f"{TESTS}::test_rate_of_nothing"
+    verdict = at_done(repo, done(), run_checks=skipping({merged: "unconditional skip"}))
+    assert "check.gates.these_tests_skipped" in [f.rule for f in verdict.findings]
+    assert verdict.for_devops == {}
+
+
+def test_a_conftest_the_branch_adds_makes_the_skips_below_it_the_branchs(repo):  # noqa: F811
+    declare(repo)
+    (repo / "tests/conftest.py").write_text("import pytest\n")
+    merged = f"{TESTS}::test_rate_of_nothing"
+    verdict = at_done(repo, done(), run_checks=skipping({merged: "skipped by a fixture"}))
+    assert "check.gates.these_tests_skipped" in [f.rule for f in verdict.findings]
+    assert verdict.for_devops == {}
+
+
+def test_a_skip_the_report_cant_place_in_a_file_is_refused_not_handed_on(repo):  # noqa: F811
+    declare(repo)
+    adds_a_db_test(repo)
+    verdict = at_done(repo, done(), run_checks=skipping({"tests.gone::test_x": DB}))
+    assert "check.gates.these_tests_skipped" in [f.rule for f in verdict.findings]
     assert verdict.for_devops == {}
 
 

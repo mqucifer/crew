@@ -1640,9 +1640,9 @@ flows.gates._skipped:filter:4b9131ff:
   at: flows/gates.py:_skipped
   if: not any((ci in reason for ci in declared.ci_only))
   rule: check.gates.these_tests_skipped
-flows.gates._skipped:filter:04462d0d:
+flows.gates._skipped:filter:5f841afe:
   at: flows/gates.py:_skipped
-  if: t.split('[', 1)[0] in touched
+  if: t.split('[', 1)[0] in touched or _caused(worktree, t.partition('::')[0], changed)
   rule: check.gates.these_tests_skipped
 flows.gates._skipped:filter:0eb8726c:
   at: flows/gates.py:_skipped
@@ -1664,3 +1664,11 @@ flows.role_tasks.first_workspace_task:end:9910567e:
   at: flows/role_tasks.py:first_workspace_task
   if: any((issues.file_at(repo, path, branch) is not None for path in PATHS))
   rule: decision.role_tasks.first_workspace
+flows.role_tasks.goals_needs:skip:9d6000d3:
+  at: flows/role_tasks.py:goals_needs
+  if: card.work_type != GOAL or card.state == 'CLOSED' or repo not in repos or (not card.number)
+  not_a_rule: reads only the open Goals of the worked repositories
+flows.role_tasks.goals_needs:skip:4804524e:
+  at: flows/role_tasks.py:goals_needs
+  if: not held
+  not_a_rule: a Goal with no record has no needs yet

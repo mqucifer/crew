@@ -414,7 +414,10 @@ REPORT = f"{HOME_DIR}/junit.xml"
 def with_report(env: dict[str, str]) -> dict[str, str]:
     """A held workspace's environment, with pytest told to write its report."""
     given = env.get("PYTEST_ADDOPTS", "")
-    return {**env, "PYTEST_ADDOPTS": f"{given} --junitxml=/work/{REPORT}".strip()}
+    # The root pinned to the worktree, and xunit1, whose test cases name their file: a
+    # test is then named by its path, whatever dots its directories have.
+    ours = f"--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    return {**env, "PYTEST_ADDOPTS": f"{given} {ours}".strip()}
 
 
 def skipped_tests(worktree: Path) -> dict[str, str] | None:
@@ -429,15 +432,23 @@ def skipped_tests(worktree: Path) -> dict[str, str] | None:
     found: dict[str, str] = {}
     for case in root.iter("testcase"):
         skip = case.find("skipped")
-        if skip is None:
+        # An expected failure is reported as skipped, but it ran.
+        if skip is None or skip.get("type") == "pytest.xfail":
             continue
         reason = (skip.get("message") or skip.text or "").strip()
-        found[_test_id(worktree, case.get("classname") or "", case.get("name") or "")] = reason
+        named = (case.get("file"), case.get("classname") or "", case.get("name") or "")
+        found[_test_id(worktree, *named)] = reason
     return found
 
 
-def _test_id(worktree: Path, classname: str, name: str) -> str:
-    """pytest's dotted `classname` as the file it names, and the classes after it."""
+def _test_id(worktree: Path, file: str | None, classname: str, name: str) -> str:
+    """A test case as `path::Class.name`: its file, as xunit1 names it, with the classes
+    after the module in its dotted `classname`. Without the file, the classname is read
+    as one. One that names no file in the worktree is left as pytest gave it."""
+    if file and file.endswith(".py") and (worktree / file).is_file():
+        module = file[: -len(".py")].replace("/", ".")
+        rest = classname[len(module) + 1 :] if classname.startswith(f"{module}.") else ""
+        return f"{file}::" + ".".join([*filter(None, [rest]), name])
     parts = classname.split(".")
     for at in range(len(parts), 0, -1):
         path = "/".join(parts[:at]) + ".py"
