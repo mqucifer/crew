@@ -170,8 +170,8 @@ decision.role_tasks.carry_out:
   - crew#839
 decision.role_tasks.epic_split:
   description: An epic's split opens DevOps's Task for the epic's CI and release, one per epic, in place
-    of a release story (ADR 0019). One the split couldn't open leaves the epic marked, and the next pass
-    opens it.
+    of a release story (ADR 0019). One the split couldn't open is opened by the next pass, from the board
+    alone.
   origin:
   - crew#839
   - crew#816

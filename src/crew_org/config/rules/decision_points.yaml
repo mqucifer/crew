@@ -933,9 +933,17 @@ flows.merge.merge_approved:skip:5961229c:
   at: flows/merge.py:merge_approved
   if: landed.how == Landing.CONFLICTED
   rule: decision.merge.merge_approved
-flows.merge.merge_approved:result:awaiting_sponsor:da191925:
+flows.merge.merge_approved:result:awaiting_sponsor:2694146a:
   at: flows/merge.py:merge_approved
-  if: role_tasks.for_the_sponsor(issues, repo, card) and (not role_tasks.sponsor_approved(reviews, sponsor))
+  if: role_tasks.for_the_sponsor(issues, repo, card)
+  rule: decision.role_tasks.sponsor_approves
+flows.merge.merge_approved:result:awaiting_sponsor:6eefd3cf:
+  at: flows/merge.py:merge_approved
+  if: not role_tasks.sponsor_approved(reviews, login, head)
+  rule: decision.role_tasks.sponsor_approves
+flows.merge.merge_approved:result:no_sponsor:c16c1664:
+  at: flows/merge.py:merge_approved
+  if: not login
   rule: decision.role_tasks.sponsor_approves
 flows.merge.merged_elsewhere:filter:3cc79fb3:
   at: flows/merge.py:merged_elsewhere
@@ -1271,10 +1279,6 @@ flows.role_tasks.carry_out:move:7d7d054f:
   at: flows/role_tasks.py:carry_out
   if: triage.outcome == 'accepted'
   rule: decision.role_tasks.carry_out
-flows.role_tasks.epic_release_task:label:9c0db998:
-  at: flows/role_tasks.py:epic_release_task
-  if: RELEASE_PENDING not in epic.labels
-  not_a_rule: 'does a thing once: skips what''s already done'
 flows.role_tasks.existing:filter:158652dc:
   at: flows/role_tasks.py:existing
   if: wanted in (i.get('body') or '')
@@ -1299,10 +1303,18 @@ flows.role_tasks.pending_release_tasks:filter:888bb5ad:
   at: flows/role_tasks.py:pending_release_tasks
   if: c.parent == epic.number and c.repo == epic.repo and (c.work_type == 'Story')
   not_a_rule: 'a report or a render: lists, decides nothing'
-flows.role_tasks.pending_release_tasks:skip:c5429bfd:
+flows.role_tasks.pending_release_tasks:filter:690c30c0:
   at: flows/role_tasks.py:pending_release_tasks
-  if: epic.work_type != 'Epic' or epic.state == 'CLOSED' or RELEASE_PENDING not in epic.labels or (repos is not None and epic.repo not in repos)
-  rule: decision.role_tasks.not_opened
+  if: c.parent == epic.number and c.repo == epic.repo
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.role_tasks.pending_release_tasks:skip:18868cd1:
+  at: flows/role_tasks.py:pending_release_tasks
+  if: not split_since or any((role_of(c) is DEVOPS for c in under))
+  rule: decision.role_tasks.epic_split
+flows.role_tasks.pending_release_tasks:skip:43d7d97e:
+  at: flows/role_tasks.py:pending_release_tasks
+  if: epic.work_type != 'Epic' or epic.state == 'CLOSED' or (repos is not None and epic.repo not in repos)
+  rule: decision.role_tasks.epic_split
 flows.role_tasks.role_of:end:2546eb7a:
   at: flows/role_tasks.py:role_of
   if: card.work_type != TASK

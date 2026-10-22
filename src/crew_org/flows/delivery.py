@@ -101,6 +101,7 @@ class DeliveryResult:
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
     # A role's Task the Sponsor approves before it merges (crew#839).
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
+    no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
@@ -969,6 +970,7 @@ def deliver(
     result.rebuilding = list(landed.rebuilding)
     result.awaiting_approval = list(landed.awaiting_approval)
     result.awaiting_sponsor = list(landed.awaiting_sponsor)
+    result.no_sponsor = list(landed.no_sponsor)
     result.unapprovable = list(landed.unapprovable)
     result.unmergeable = list(landed.failed)
     result.updating = list(landed.updating)

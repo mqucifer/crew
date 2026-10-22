@@ -116,12 +116,17 @@ class AcceptanceCriterion(BaseModel):
         return value
 
 
-# A story whose work is cutting the release: its version bump, its tag or its publishing.
+# A story whose whole job is cutting the project's own release, by its title: as the
+# split has written them, "Cut release 1.3.2 with ...", "Cut the 1.0.0 release",
+# "Release 1.3.0: ..." and "Bump the version to 1.0.1 and ...". Only at the start,
+# so a story that shows releases as data ("Show escalations since release 1.3.2",
+# "Detect a missing version bump in the release check") is never one. Checked against
+# every issue title in sprint-metrics, crew-presentation, infra and crew (crew#839).
 _RELEASE_STORY = re.compile(
-    r"\b(?:cut|tag|publish|ship)\s+(?:a\s+|the\s+)?(?:new\s+)?(?:\w+\s+)?release\b"
-    r"|\brelease\s+v?\d+\.\d+"
-    r"|\bversion\s+bump\b|\bbump\s+(?:the\s+)?(?:package\s+)?version\b"
-    r"|\b(?:PATCH|MINOR|MAJOR)\s+(?:package\s+)?release\b",
+    r"^(?:cut\s+(?:and\s+publish\s+)?(?:the\s+|a\s+)?(?:first\s+versioned\s+|next\s+)?"
+    r"(?:v?\d+\.\d+\.\d+\s+)?release\b"
+    r"|release\s+v?\d+\.\d+\.\d+\s*:"
+    r"|bump\s+(?:the\s+)?version\s+to\s+v?\d)",
     re.IGNORECASE,
 )
 
@@ -209,7 +214,7 @@ class Story(BaseModel):
         # The epic's release is DevOps's Task, opened by the split (crew#839), so a
         # story that cuts it would release the epic twice. mqucifer/sprint-metrics#671
         # was one: "Cut release 1.3.2 with the escalation-rate fix in the changelog".
-        if _RELEASE_STORY.search(f"{self.title}\n{self.i_want}"):
+        if _RELEASE_STORY.search(self.title.strip()):
             refuse("form.Story.not_the_release")
         return self
 

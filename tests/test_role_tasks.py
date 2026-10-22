@@ -219,6 +219,22 @@ def test_a_task_changes_only_its_roles_area():
     assert outside_scope(ARCHITECT, ["docs/architecture.md", "src/app.py"]) == ["src/app.py"]
     changed = [".github/workflows/ci.yml", "pyproject.toml", "CHANGELOG.md", "src/x.py"]
     assert outside_scope(DEVOPS, changed) == ["src/x.py"]
+    # How tests run, the version file and every lockfile are the release's too.
+    release = [
+        "pytest.ini",
+        "tox.ini",
+        "setup.cfg",
+        "noxfile.py",
+        "src/sprint_metrics/version.py",
+        "src/sprint_metrics/__version__.py",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "npm-shrinkwrap.json",
+    ]
+    assert outside_scope(DEVOPS, release) == []
+    assert outside_scope(DEVOPS, ["src/sprint_metrics/__init__.py"]) == [
+        "src/sprint_metrics/__init__.py"
+    ]
 
 
 def test_the_scope_is_said_where_the_gate_says_it():
@@ -270,12 +286,8 @@ def test_a_rework_leaves_the_epics_task_alone():
     assert 30 not in closable
 
 
-def _reviews(*who):
-    return [{"state": "APPROVED", "user": {"login": login, "type": kind}} for login, kind in who]
-
-
 def test_the_diagram_and_the_release_wait_for_the_sponsor():
-    from crew_org.flows.role_tasks import for_the_sponsor, sponsor_approved
+    from crew_org.flows.role_tasks import for_the_sponsor
 
     issues = Issues()
     issues.add(
@@ -285,13 +297,97 @@ def test_the_diagram_and_the_release_wait_for_the_sponsor():
     assert for_the_sponsor(issues, "sm", _task(30, READY, "devops"))
     assert not for_the_sponsor(issues, "sm", _task(31, READY, "devops"))
 
-    crew_only = _reviews(("crew-reviewer[bot]", "Bot"))
-    assert not sponsor_approved(crew_only, "mquarters")
-    assert not sponsor_approved(crew_only, None)
-    both = _reviews(("crew-reviewer[bot]", "Bot"), ("mquarters", "User"))
-    assert sponsor_approved(both, "mquarters")
-    assert sponsor_approved(both, None)
-    assert not sponsor_approved(_reviews(("someone", "User")), "mquarters")
+
+def _review(login: str, state: str = "APPROVED", at: str = "h2", kind: str = "User") -> dict:
+    return {"state": state, "commit_id": at, "user": {"login": login, "type": kind}}
+
+
+def test_only_the_sponsors_approval_counts_never_another_persons():
+    from crew_org.flows.role_tasks import sponsor_approved
+
+    # Claude's account is a person with Write access: its approval is not the Sponsor's.
+    others = [_review("crew-reviewer[bot]", kind="Bot"), _review("quarters-claude")]
+    assert not sponsor_approved(others, "mquarters", "h2")
+    assert sponsor_approved([*others, _review("mquarters")], "mquarters", "h2")
+    # No Sponsor named: nobody's approval counts.
+    assert not sponsor_approved([*others, _review("mquarters")], "", "h2")
+
+
+def test_an_approval_of_an_older_commit_doesnt_count():
+    from crew_org.flows.role_tasks import sponsor_approved
+
+    assert not sponsor_approved([_review("mquarters", at="h1")], "mquarters", "h2")
+    # Their latest word on the head is what counts.
+    later = [_review("mquarters"), _review("mquarters", state="CHANGES_REQUESTED")]
+    assert not sponsor_approved(later, "mquarters", "h2")
+
+
+def test_with_no_sponsor_set_the_gate_reads_orgs_trust(monkeypatch):
+    from crew_org.flows import role_tasks as rt
+
+    assert rt.the_sponsor("someone") == "someone"
+    assert rt.the_sponsor(None) == "mquarters"
+
+    def missing():
+        raise ValueError("org.yaml has no `trust` section naming the Sponsor")
+
+    monkeypatch.setattr(rt, "load_trust", missing)
+    assert rt.the_sponsor(None) == ""
+
+
+class _ReleasePull:
+    """A release Task's pull request at head `h2`, for the merge step."""
+
+    def __init__(self, reviews):
+        from tests.test_merge import FakeIssues
+
+        self.issues = FakeIssues(reviews=reviews)
+        body = render(DEVOPS, kind="release", key="epic-10", why="w", work="x", done_when=["d"])
+        self.issues.get = lambda repo, number: {"body": body}
+        self.issues.has_comment_marked = lambda repo, number, marker: False
+        self.issues.pull_for_branch = lambda repo, branch, known=None: {
+            "number": 100,
+            "head": {"ref": branch, "sha": "h2"},
+        }
+        self.card = _task(30, "Merging", "devops").model_copy(update={"repo": "sprint-metrics"})
+
+
+def _land(pull, sponsor, tmp_path):
+    from crew_org.flows.merge import merge_approved
+    from tests.test_merge import FakeBoard
+
+    return merge_approved(
+        FakeBoard(),
+        pull.issues,
+        sink(tmp_path),
+        cards=[pull.card],
+        default_repo="sprint-metrics",
+        sponsor=sponsor,
+    )
+
+
+def test_a_release_task_approved_only_by_the_crew_waits_for_the_sponsor(tmp_path):
+    pull = _ReleasePull([_review("crew-reviewer[bot]", kind="Bot"), _review("quarters-claude")])
+    result = _land(pull, None, tmp_path)
+    assert result.awaiting_sponsor == [(30, 100)]
+    assert pull.issues.merged == []
+
+
+def test_a_release_task_with_no_sponsor_named_never_merges(tmp_path, monkeypatch):
+    from crew_org.flows import role_tasks as rt
+
+    monkeypatch.setattr(rt, "load_trust", lambda: (_ for _ in ()).throw(ValueError("none")))
+    pull = _ReleasePull([_review("crew-reviewer[bot]", kind="Bot"), _review("mquarters")])
+    result = _land(pull, None, tmp_path)
+    assert result.no_sponsor == [(30, 100)]
+    assert pull.issues.merged == []
+
+
+def test_a_push_after_the_sponsors_approval_needs_a_new_one(tmp_path):
+    pull = _ReleasePull([_review("crew-reviewer[bot]", kind="Bot"), _review("mquarters", at="h1")])
+    assert _land(pull, "mquarters", tmp_path).awaiting_sponsor == [(30, 100)]
+    pull = _ReleasePull([_review("crew-reviewer[bot]", kind="Bot"), _review("mquarters")])
+    assert _land(pull, "mquarters", tmp_path).awaiting_sponsor == []
 
 
 def _found(owner: str, what: str = "CI never runs the requires_db tests"):
@@ -500,7 +596,7 @@ def test_the_architects_diagram_must_render():
     assert diagram_problems("```mermaid\ngraph TD\n```")
 
 
-def _epic(number: int = 10, labels=()) -> Card:
+def _epic(number: int = 10) -> Card:
     return Card(
         item_id=f"IE{number}",
         number=number,
@@ -509,7 +605,14 @@ def _epic(number: int = 10, labels=()) -> Card:
         work_type="Epic",
         status="Ready",
         state="OPEN",
-        labels=frozenset(labels),
+    )
+
+
+def _split_now(number: int, parent: int) -> Card:
+    from datetime import UTC, datetime
+
+    return _story(number, READY, parent).model_copy(
+        update={"created": datetime(2026, 10, 23, tzinfo=UTC)}
     )
 
 
@@ -526,46 +629,91 @@ def test_a_split_opens_devops_task_for_the_epics_ci_and_release(tmp_path):
     assert "mqucifer/crew#860" in task["body"]
     assert issues.subs[10] == [901]
     assert ("number", "item-N901", "Points", role_tasks.RELEASE_POINTS) in board.done
-    assert ("unlabel", 10, role_tasks.RELEASE_PENDING) in issues.done
 
 
-def test_a_release_task_the_split_couldnt_open_is_opened_next_pass(tmp_path):
+@pytest.mark.parametrize("refused", ["label", "create", "add", "link"])
+def test_any_refusal_at_the_split_leaves_the_release_task_for_the_next_pass(tmp_path, refused):
     issues, board, s = Issues(), Board(), sink(tmp_path)
     issues.add(10)
-    issues.fail = "create"
+    issues.fail = refused if refused != "add" else None
+    board.fail = "add" if refused == "add" else None
     why = role_tasks.epic_release_task(
         issues, board, s, repo="sm", epic=_epic(), stories=[11], cards=[]
     )
     assert "not opened" in why
-    assert ("label", 10, role_tasks.RELEASE_PENDING) in issues.done
-    assert ("unlabel", 10, role_tasks.RELEASE_PENDING) not in issues.done
 
-    issues.fail = None
-    pending = _epic(labels=[role_tasks.RELEASE_PENDING])
-    failed = role_tasks.pending_release_tasks(
-        issues, board, s, cards=[pending, _story(11, READY, 10)], repos={"sm"}
-    )
+    issues.fail = board.fail = None
+    on_board = [c for c in [_epic(), _split_now(11, 10)]]
+    failed = role_tasks.pending_release_tasks(issues, board, s, cards=on_board, repos={"sm"})
     assert failed == []
     assert marked(issues.issues[901]["body"]).key == "epic-10"
     assert "#11" in issues.issues[901]["body"]
+    assert issues.subs[10] == [901]
+    assert len([d for d in issues.done if d[0] == "create"]) == 1
 
 
-def test_the_split_refuses_a_story_that_cuts_the_release():
-    from pydantic import ValidationError
+def test_an_epic_split_before_this_build_gets_no_release_task(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    before = _story(11, READY, 10)  # no creation date on or after RELEASE_TASKS_FROM
+    assert (
+        role_tasks.pending_release_tasks(issues, board, s, cards=[_epic(), before], repos={"sm"})
+        == []
+    )
+    assert 901 not in issues.issues
 
+
+def test_an_epic_with_its_release_task_on_the_board_opens_nothing(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    cards = [_epic(), _split_now(11, 10), _task(30, READY, "devops", parent=10)]
+    role_tasks.pending_release_tasks(issues, board, s, cards=cards, repos={"sm"})
+    assert issues.done == []
+
+
+def _split_story(title: str):
     from crew_org.crews.refinement_crew import AcceptanceCriterion, Story
 
-    def story(title: str) -> Story:
-        criterion = AcceptanceCriterion(given="g", when="w", then="t")
-        return Story(
-            title=title,
-            as_a="a user",
-            i_want="it",
-            so_that="s",
-            acceptance_criteria=[criterion, criterion],
-            points=2,
-        )
+    criterion = AcceptanceCriterion(given="g", when="w", then="t")
+    return Story(
+        title=title,
+        as_a="a user",
+        i_want="it",
+        so_that="s",
+        acceptance_criteria=[criterion, criterion],
+        points=2,
+    )
+
+
+# What the split has written for the project's own release (mqucifer/sprint-metrics).
+RELEASE_STORIES = [
+    "Cut release 1.3.2 with the escalation-rate fix in the changelog",
+    "Cut the 1.0.0 release",
+    "Cut and publish the first versioned release",
+    "Release 1.3.1: the service counts superseded stories",
+    "Bump the version to 1.0.1 and date the changelog section for the next release",
+    "Bump version to 1.1.0 and date the changelog section",
+]
+# Stories that show releases as data, as sprint-metrics and crew-presentation do
+# (the operator's review), and the release check's own epics.
+NOT_RELEASE_STORIES = [
+    "Tag each release in the replay timeline",
+    "Show escalations since release 1.3.2 on the dashboard",
+    "Detect a missing version bump in the release check",
+    "Publish the latest release notes on the site",
+    "Ship the release badge on the home page",
+    "Mark the MAJOR release entries in the changelog view",
+    "Release v1.0.1 published less than the design asks",
+    "Date the 1.3.2 and 1.3.3 changelog sections 2026-10-19",
+]
+
+
+@pytest.mark.parametrize("title", RELEASE_STORIES)
+def test_the_split_refuses_a_story_that_cuts_the_release(title):
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="DevOps"):
-        story("Cut release 1.3.2 with the escalation-rate fix in the changelog")
-    story("Show the release notes on the site")
+        _split_story(title)
+
+
+@pytest.mark.parametrize("title", NOT_RELEASE_STORIES)
+def test_a_story_about_releases_as_data_is_not_the_release(title):
+    _split_story(title)

@@ -59,6 +59,8 @@ class Issues:
         return issue
 
     def ensure_label(self, repo: str, name: str, *, color: str, description: str) -> None:
+        if self.fail == "label":
+            raise RuntimeError("label refused")
         self.done.append(("ensure_label", name))
 
     def create(self, repo: str, title: str, body: str, labels: list[str] | None = None) -> dict:

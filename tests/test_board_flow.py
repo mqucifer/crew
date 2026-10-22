@@ -601,8 +601,6 @@ def test_a_split_opens_devops_task_for_the_epics_release(monkeypatch):
     assert (3, release["id"]) in issues.nested
     assert ("ITEM_N103", "Work Type", "Task") in board.selects
     assert result.failed == []
-    # Opened, so the epic isn't left waiting for it.
-    assert (3, "needs:release-task") in issues.removed_labels
 
 
 def test_a_second_tick_does_not_split_again(monkeypatch):

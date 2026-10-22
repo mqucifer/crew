@@ -17,6 +17,7 @@ import contextlib
 import fnmatch
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from crew_org.columns import NEEDS_REFINEMENT, READY
@@ -24,7 +25,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
-from crew_org.tools.github_issues import IssueClient
+from crew_org.tools.github_issues import IssueClient, load_trust
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.work_types import TASK
 
@@ -68,7 +69,22 @@ DEVOPS = TaskRole(
         "uv.lock",
         "package.json",
         "package-lock.json",
+        "npm-shrinkwrap.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        # How the tests are run, which CI runs too.
+        "pytest.ini",
+        "tox.ini",
+        "setup.cfg",
+        "noxfile.py",
+        # A version file, wherever the package keeps it.
         "VERSION",
+        "version.py",
+        "*/version.py",
+        "_version.py",
+        "*/_version.py",
+        "__version__.py",
+        "*/__version__.py",
         "Dockerfile",
         "*/Dockerfile",
         "compose.yaml",
@@ -427,19 +443,36 @@ def for_the_sponsor(issues: IssueClient, repo: str, card: Card) -> bool:
     return found is not None and found.kind in SPONSOR_APPROVES
 
 
-def sponsor_approved(reviews: list[dict[str, Any]], sponsor: str | None) -> bool:
-    """An approving review from the Sponsor: by their login, or, with none configured,
-    by a person rather than an app. Claude's account never approves (crew's CLAUDE.md)."""
-    for review in reviews:
-        if review.get("state") != "APPROVED":
-            continue
-        user = review.get("user") or {}
-        if sponsor:
-            if user.get("login") == sponsor:
-                return True
-        elif user.get("type") != "Bot":
-            return True
-    return False
+def the_sponsor(configured: str | None) -> str:
+    """The Sponsor's login: `GITHUB_SPONSOR`, else org.yaml's `trust.sponsor`, else "".
+
+    Never "anyone": Claude's account is a person with Write access, so a gate that
+    took any person's approval would take Claude's (the operator's review, crew#839).
+    """
+    if configured:
+        return configured
+    try:
+        return load_trust().sponsor
+    except Exception:  # noqa: BLE001 - no Sponsor named: the gate stays shut
+        return ""
+
+
+def sponsor_approved(reviews: list[dict[str, Any]], sponsor: str, head: str) -> bool:
+    """The Sponsor's latest review on the pull request's current head is an approval.
+
+    An approval of an older commit doesn't count, whatever branch protection does
+    with stale reviews: a push after it needs a new one. No Sponsor, no approval.
+    """
+    if not sponsor or not head:
+        return False
+    theirs = [
+        r
+        for r in reviews
+        if (r.get("user") or {}).get("login") == sponsor
+        and r.get("commit_id") == head
+        and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+    ]
+    return bool(theirs) and theirs[-1].get("state") == "APPROVED"
 
 
 def ask_the_sponsor(
@@ -781,9 +814,11 @@ def first_diagrams(
     return result
 
 
-# On an epic whose release Task the split couldn't open: the next pass opens it.
-RELEASE_PENDING = "needs:release-task"
 RELEASE_POINTS = 3
+# Splits from this build on plan no release story, so only their epics get a release
+# Task: one split before it may already have its release story. Nothing in the worked
+# repositories was created on or after this day when it was set (crew#839).
+RELEASE_TASKS_FROM = datetime(2026, 10, 22, tzinfo=UTC)
 
 
 def epic_release_task(
@@ -801,18 +836,11 @@ def epic_release_task(
 
     Epics release themselves (ADR 0019): this replaces the release story the split
     used to plan. It waits for every story of the epic, whatever their numbers. Returns
-    "" once it's open, or why it isn't: the epic keeps `needs:release-task`, and the
-    next pass tries again.
+    "" once it's open, or why it isn't. Nothing has to be written for the next pass to
+    try again: an epic split since `RELEASE_TASKS_FROM` with no release Task under it on
+    the board is what `pending_release_tasks` looks for.
     """
     number = epic.number or 0
-    issues.ensure_label(
-        repo,
-        RELEASE_PENDING,
-        color="fbca04",
-        description="DevOps's release Task for this epic is still to open (crew#839)",
-    )
-    if RELEASE_PENDING not in epic.labels:
-        issues.add_labels(repo, number, [RELEASE_PENDING])
     body = render(
         DEVOPS,
         kind=RELEASE,
@@ -856,8 +884,6 @@ def epic_release_task(
     except Exception as exc:  # noqa: BLE001
         reraise_if_down(exc)
         return not_opened(sink, repo=repo, role=DEVOPS, kind=RELEASE, card=number, why=exc)
-    with contextlib.suppress(Exception):
-        issues.remove_label(repo, number, RELEASE_PENDING)
     return ""
 
 
@@ -870,15 +896,26 @@ def pending_release_tasks(
     repos: set[str] | None,
 ) -> list[tuple[int, str]]:
     """Open the release Tasks an earlier split couldn't. Returns (epic, why) for each
-    still not open."""
+    still not open.
+
+    Read from the board alone: an open epic with stories split since
+    `RELEASE_TASKS_FROM` and no DevOps Task under it. A Task opened but not yet linked
+    to its epic is linked by `open_task` from its marker, not opened twice.
+    """
     failed: list[tuple[int, str]] = []
     for epic in cards:
         if (
             epic.work_type != "Epic"
             or epic.state == "CLOSED"
-            or RELEASE_PENDING not in epic.labels
             or (repos is not None and epic.repo not in repos)
         ):
+            continue
+        under = [c for c in cards if c.parent == epic.number and c.repo == epic.repo]
+        split_since = any(
+            c.work_type == "Story" and c.created is not None and c.created >= RELEASE_TASKS_FROM
+            for c in under
+        )
+        if not split_since or any(role_of(c) is DEVOPS for c in under):
             continue
         stories = sorted(
             c.number or 0

@@ -189,6 +189,8 @@ class MergeResult:
     # (card, PR) of a role's Task whose work is the Sponsor's to approve, the
     # repository's diagram or a release, approved by the crew and not yet by them.
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) of such a Task with no Sponsor named to approve it: it never merges.
+    no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved by the crew, and GitHub did not count it. A separate list
     # because the Sponsor's response differs: one is waiting, the other is a
     # gate no identity the crew holds can satisfy, and waiting will not fix it.
@@ -285,13 +287,21 @@ def merge_approved(
             held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
-        if role_tasks.for_the_sponsor(issues, repo, card) and not role_tasks.sponsor_approved(
-            reviews, sponsor
-        ):
-            held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
-            role_tasks.ask_the_sponsor(issues, sink, repo=repo, pull=pull["number"], card=number)
-            result.awaiting_sponsor.append((number, pull["number"]))
-            continue
+        if role_tasks.for_the_sponsor(issues, repo, card):
+            login = role_tasks.the_sponsor(sponsor)
+            if not login:
+                # Shut, not open: nobody named means nobody's approval counts.
+                held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
+                result.no_sponsor.append((number, pull["number"]))
+                continue
+            head = (pull.get("head") or {}).get("sha", "")
+            if not role_tasks.sponsor_approved(reviews, login, head):
+                held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
+                role_tasks.ask_the_sponsor(
+                    issues, sink, repo=repo, pull=pull["number"], card=number
+                )
+                result.awaiting_sponsor.append((number, pull["number"]))
+                continue
 
         # An approving review sits on it and GitHub still wants one. That is
         # not slowness: the reviewing identity's approval was recorded and

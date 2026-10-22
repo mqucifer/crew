@@ -649,6 +649,11 @@ def _deliver(crew: Crew) -> PhaseOutcome:
             for n, pr in result.awaiting_sponsor
         ]
         + [
+            f"#{n} — a role's Task: PR #{pr} can't merge: no Sponsor is named "
+            "(GITHUB_SPONSOR in .env, or trust.sponsor in org.yaml)"
+            for n, pr in result.no_sponsor
+        ]
+        + [
             f"#{n} — PR #{pr} was behind main; brought up to date, merges once checks pass"
             for n, pr in result.updating
         ]
