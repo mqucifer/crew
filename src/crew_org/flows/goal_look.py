@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -382,7 +382,7 @@ def look_step(
             result.skipped.append((number, "waits for the Sponsor's answer on the Goal"))
             return False
         settlement = None
-        if look_items(look):
+        if look_items(look, context.looking_at):
             try:
                 settlement = attributed(settle_goal, card=goal, repo=repo)(
                     context, look, reply=reply, reading=reading()
@@ -463,6 +463,7 @@ def rows_from(
     repo: str,
     today: str,
     source: str,
+    looked_at: Sequence[str] = (),
 ) -> tuple[
     list[record_flow.Decision],
     list[record_flow.Question],
@@ -501,6 +502,8 @@ def rows_from(
         )
         wide.append(False)
     for view in look.reader.epics:
+        if looked_at and view.epic not in looked_at:
+            continue  # a delivered epic is shown as background; nothing is split from it
         for criterion in view.criteria:
             decisions.append(
                 record_flow.Decision(
@@ -562,7 +565,13 @@ def _write(
     found = _latest_look_comment(issues, repo, goal)
     source = str(found.get("html_url") or "its comment") if found else "its comment"
     decisions, questions, infra, dismissed, wide = rows_from(
-        look, settlement, owner=issues.owner, repo=repo, today=today, source=source
+        look,
+        settlement,
+        owner=issues.owner,
+        repo=repo,
+        today=today,
+        source=source,
+        looked_at=context.looking_at,
     )
 
     def change(current: record_flow.Record) -> record_flow.Record:

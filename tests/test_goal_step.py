@@ -733,3 +733,24 @@ def test_the_product_owner_answers_a_story_problem_shown_the_goals_rows(monkeypa
     goal_records(gh)
     text = board_flow._with_record(gh, REPO, 684)
     assert text.startswith("The approved text.") and "| R2 |" in text and "| R3 |" not in text
+
+
+def test_what_a_delivered_epic_lacks_is_no_item_and_its_criteria_no_rows():
+    """mqucifer/sprint-metrics#666's real look: the UX Designer also wrote views of two
+    delivered epics, whose items the Product Owner couldn't bind to any epic it read."""
+    found = LookResult(system(callouts=[]), reader(ref(684), ref(685)), {})
+    for view in found.reader.epics:
+        view.missing, view.criteria = "the units", ["The chart's axis says weeks"]
+    assert [text for _, _, text in look_items(found, [ref(684)])] == [
+        f"Missing for the reader of {ref(684)}: the units (the UX Designer)"
+    ]
+    rows = goal_look.rows_from(
+        found,
+        None,
+        owner=OWNER,
+        repo=REPO,
+        today="2026-10-22",
+        source="x",
+        looked_at=[ref(684)],
+    )[0]
+    assert [d.binds for d in rows if d.set_by == record_flow.UX_DESIGNER] == [(ref(684),)]

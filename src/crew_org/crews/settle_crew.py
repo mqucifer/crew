@@ -17,6 +17,7 @@ model's.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -365,12 +366,14 @@ class GoalSettlement(BaseModel):
         return self
 
 
-def look_items(look: LookResult) -> list[tuple[int, str, str]]:
+def look_items(look: LookResult, epics: Sequence[str] = ()) -> list[tuple[int, str, str]]:
     """What the look leaves the Product Owner, in a fixed order, as (number, kind, text).
 
     The Architect's decisions and the reader's criteria aren't here: they go into the
     record as the Architect and the UX Designer set them. What's left is the risks,
-    what's missing for the reader, and the calls outside the Goal.
+    what's missing for the reader, and the calls outside the Goal. What's missing is
+    taken for `epics`, the ones the look read for: on mqucifer/sprint-metrics#666 the
+    UX Designer also said what two delivered epics lacked, which nothing would split.
     """
     found: list[tuple[int, str, str]] = []
 
@@ -382,6 +385,8 @@ def look_items(look: LookResult) -> list[tuple[int, str, str]]:
             add("risk", f"{c.risk} (the Architect; {', '.join(c.epics)})")
     if look.reader is not None:
         for v in look.reader.epics:
+            if epics and v.epic not in epics:
+                continue
             if v.missing.strip().casefold().rstrip(".") not in ("", "nothing", "none"):
                 add("missing", f"Missing for the reader of {v.epic}: {v.missing} (the UX Designer)")
     if look.system is not None:
@@ -493,7 +498,7 @@ def settle_goal(
     intent, an item left unanswered, an epic the look didn't read, and a conclusion
     while a call beyond the Goal waits for the Sponsor.
     """
-    items = look_items(look)
+    items = look_items(look, context.looking_at)
     beyond = [n for n, kind, _ in items if kind == "beyond"]
 
     def check(found: GoalSettlement) -> None:

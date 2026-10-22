@@ -34,6 +34,10 @@ crews.refinement_crew.check_provided:filter:2b3ad7bf:
   if: field not in provided and field.removesuffix('[]').rsplit('.', 1)[-1].removesuffix('[]') not in
     provided
   rule: check.refinement_crew.check
+crews.settle_crew.look_items:skip:5ade22e1:
+  at: crews/settle_crew.py:look_items
+  if: epics and v.epic not in epics
+  not_a_rule: a delivered epic is shown as background; nothing is split from it
 crews.settle_crew.settle_goal:filter:1d545284:
   at: crews/settle_crew.py:settle_goal
   if: kind == 'beyond'
@@ -741,6 +745,10 @@ flows.goal_look.refining:filter:c61bba16:
   at: flows/goal_look.py:refining
   if: _started(self.issues, repo, g)
   rule: skip.goal_look.waits_for_one_goal_refines_at
+flows.goal_look.rows_from:skip:a632648f:
+  at: flows/goal_look.py:rows_from
+  if: looked_at and view.epic not in looked_at
+  not_a_rule: a delivered epic is shown as background; nothing is split from it
 flows.handover.sizes:filter:e25eeafb:
   at: flows/handover.py:sizes
   if: n > QA_FOCUS_ABOVE_CHARS
