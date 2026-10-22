@@ -172,7 +172,8 @@ decision.rework_gate:
   - decision.board_flow.rework_gate
   - skip.board_flow.rework_refused
   - skip.board_flow.already_answered
-  description: An epic the Sponsor sent back is split again only on their word, and once.
+  description: A Goal the Sponsor sent back is decomposed again only on their word, and once, its unstarted
+    epics superseded. An epic sent back goes through decision.resplit.affected (crew#859).
   origin:
   - crew#192
   - crew#440
@@ -266,11 +267,17 @@ hold.wip:
 session.choice:
 session.no_epic:
 skip.board_flow.a_goal_written_by_not_the:
+skip.board_flow.already_split_again:
+  origin:
+  - ADR 0023
+  - crew#189
+  - crew#746
 skip.board_flow.its_criteria_cant_all_pass_to:
   origin:
   - crew#583
   - crew#612
   - sprint-metrics#551
+skip.board_flow.re_split_finished_from_an_earlier:
 skip.board_flow.re_split_times_the_sponsors_to:
 skip.board_flow.waits_for_planned:
 skip.goal_look.waits_for_one_goal_refines_at:

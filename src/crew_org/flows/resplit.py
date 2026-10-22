@@ -74,25 +74,36 @@ class Open:
     body: str
 
 
+# An epic sent back by a problem its first split raised: not a re-split, nor a round.
+FIRST = "first split"
+
+
 @dataclass(frozen=True)
 class Resplit:
     """An epic sent back: what its re-split replaces, its open stories, and why."""
 
     plan: Plan
     stories: dict[int, Open]
-    because: str  # "story problem" or "sponsor"
+    because: str  # "story problem", "sponsor", or FIRST
 
 
-def plan_for(
-    issues: IssueClient, cards: list[Card], epic: Card, repo: str, *, problem: str
-) -> tuple[Plan, dict[int, Open]]:
-    """What a re-split of `epic` replaces, read from GitHub, with the epic's open stories.
+def plan_for(issues: IssueClient, stories: dict[int, Open], repo: str, *, problem: str) -> Plan:
+    """What a re-split replaces of the epic's open stories, given what sent it back."""
+    from crew_org.flows.board_flow import started  # noqa: PLC0415
+
+    return affected(
+        stories,
+        named=named_in(problem, owner=issues.owner, repo=repo, among=stories),
+        started=started(issues, repo, [s.card for s in stories.values()]),
+    )
+
+
+def open_stories(issues: IssueClient, cards: list[Card], epic: Card, repo: str) -> dict[int, Open]:
+    """The epic's open stories, by number, with their bodies.
 
     A role's Task under the epic isn't the split's: DevOps's CI and release stays and
     waits for the new stories (crew#839).
     """
-    from crew_org.flows.board_flow import started  # noqa: PLC0415
-
     number = epic.number or 0
     by_key = {c.key: c for c in cards}
     try:
@@ -106,13 +117,7 @@ def plan_for(
         and card.state != "CLOSED"
         and card.work_type != TASK
     ]
-    stories = {card.number or 0: Open(card, _body(issues, repo, card.number or 0)) for card in live}
-    plan = affected(
-        stories,
-        named=named_in(problem, owner=issues.owner, repo=repo, among=stories),
-        started=started(issues, repo, live),
-    )
-    return plan, stories
+    return {card.number or 0: Open(card, _body(issues, repo, card.number or 0)) for card in live}
 
 
 def _body(issues: IssueClient, repo: str, number: int) -> str:
@@ -148,6 +153,47 @@ ROUND_MARKER = "<!-- crew:resplit round={round} -->"
 _ROUND = re.compile(r"<!-- crew:resplit round=(\d+) -->")
 
 
+# On each story a re-split writes: what the round replaces, and its round ("-" for the
+# Sponsor's own rework). A pass that finds a round's stories with no split comment
+# naming them finishes that round rather than starting another (crew#859).
+WRITTEN_MARKER = "<!-- crew:resplit-of {replaced} round={round} -->"
+_WRITTEN = re.compile(r"<!-- crew:resplit-of ([\d,]*) round=(\d+|-) -->")
+# On every re-split's comment: a `needs:rework` still on after it is spent, not new.
+DONE_MARKER = "<!-- crew:resplit-done -->"
+
+
+def written(plan: Plan, round_: int | None) -> str:
+    """The marker each story a re-split writes carries."""
+    return WRITTEN_MARKER.format(
+        replaced=",".join(str(n) for n in plan.replaced),
+        round="-" if round_ is None else round_,
+    )
+
+
+@dataclass(frozen=True)
+class Unfinished:
+    """A round whose stories exist, but whose last writes didn't happen."""
+
+    new: tuple[int, ...]
+    replaced: tuple[int, ...]
+    round: int | None
+
+
+def unfinished(stories: Mapping[int, Open], splits: list[str]) -> Unfinished | None:
+    """The round an earlier pass wrote stories for, if no split comment names them."""
+    new: list[int] = []
+    replaced: set[int] = set()
+    round_: int | None = None
+    for n in sorted(stories):
+        found = _WRITTEN.search(stories[n].body)
+        if not found or any(re.search(rf"#{n}\b", body) for body in splits):
+            continue
+        new.append(n)
+        replaced |= {int(x) for x in found.group(1).split(",") if x}
+        round_ = None if found.group(2) == "-" else int(found.group(2))
+    return Unfinished(tuple(new), tuple(sorted(replaced)), round_) if new else None
+
+
 def rounds(bodies: Iterable[str]) -> int:
     """How many rounds an epic has had: re-splits after a story problem."""
     return sum(len(_ROUND.findall(body)) for body in bodies)
@@ -158,7 +204,7 @@ def render(plan: Plan, round_: int | None = None) -> str:
 
     `round_` is its round, when a story problem sent the epic back.
     """
-    lines = ["", "", "### Split again: only what the problem affects", ""]
+    lines = ["", "", DONE_MARKER, "### Split again: only what the problem affects", ""]
     if round_ is not None:
         lines = [*lines[:-1], ROUND_MARKER.format(round=round_), f"Round {round_}.", ""]
     lines.append(

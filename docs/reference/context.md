@@ -41,7 +41,8 @@ Every step the plan's table "What each step reads after Part A" names is listed.
 | The Goal's target diagram | `goal_look.diagram_of` | What the stories build: the system once the Goal is delivered (crew#858) |
 | The project's decision log | the project's `docs/decisions/` | Decisions that hold for every epic |
 | Stories other epics plan | `planned_elsewhere` | Not written again, or built on |
-| The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
+| The stories this epic keeps | on a re-split, `resplit.shown` of the stories `resplit.affected` keeps | Built before the new ones, and their rows and tests already covered (crew#859) |
+| The stories this split replaces | on a re-split, the stories the problem names and every later one (`resplit.affected`), whole | Each is accounted for (#248); only these are written again (crew#859) |
 | Why it was sent back | `story_problem_evidence` and the Sponsor's notes | The problem to answer; its answer is in the record |
 | What the project has delivered, as a note | `steps.delivered_section`, from `Delivered.render` | Searched or viewed, not shown: 205k characters for sprint-metrics |
 
@@ -127,7 +128,7 @@ Then the four parts every refinement session's start ends with (below).
 | Its step | `refinement_crew.decompose_opening` | How epics are drawn, and that stories and design are others' |
 | The Goal | the Goal's issue | What the epics deliver |
 | What the Goal still lacks | `board_flow.lacking_notes` | Only for a Goal under way that lacks an epic (crew#429) |
-| Why it was sent back | the Sponsor's notes, `board_flow.rework_gate` | On a rework |
+| Why it was sent back | the Sponsor's notes, `board_flow.rework_gate`, a Goal's gate | On a rework |
 | What the project has delivered, as a note | `steps.delivered_section`, from `Delivered.render` | Searched or viewed, not shown |
 
 Then the four parts every refinement session's start ends with (below). The repository, which it was shown whole (572k characters for sprint-metrics#650), it reads with the tools.

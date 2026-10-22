@@ -208,3 +208,13 @@ def test_a_resplit_stop_that_isnt_a_count_fails_at_startup(tmp_path, stop):
 
 def test_the_shipped_resplit_stop_starts_high():
     assert load_org()["refinement"]["resplit_stop"] == 3
+
+
+def test_an_org_yaml_without_a_resplit_stop_still_stops():
+    """A missing key meant no stop at all (crew#859, the review)."""
+    from crew_org.config import RESPLIT_STOP, resplit_stop_of
+
+    org = yaml.safe_load((CONFIG_DIR / "org.yaml").read_text())
+    del org["refinement"]["resplit_stop"]
+    assert resplit_stop_of(org) == RESPLIT_STOP == 3
+    assert resplit_stop_of({}) == 3

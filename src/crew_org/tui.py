@@ -45,6 +45,7 @@ _KIND_STYLE = {
     EventKind.PRODUCT_ASKED: "yellow",
     EventKind.EPIC_RESPLIT: "cyan",
     EventKind.EPIC_RESPLIT_STOPPED: "yellow",
+    EventKind.GOAL_REWORKED: "cyan",
 }
 
 

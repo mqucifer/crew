@@ -116,6 +116,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `product.asked`
 - `epic.resplit`
 - `epic.resplit_stopped`
+- `goal.reworked`
 - `github.throttled`
 - `files.shown`
 - `files.asked`

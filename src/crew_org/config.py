@@ -14,6 +14,13 @@ import yaml
 
 CONFIG_DIR = Path(__file__).parent / "config"
 ORG_CONFIG = CONFIG_DIR / "org.yaml"
+# `refinement.resplit_stop` when org.yaml doesn't say: an epic always has a stop (crew#859).
+RESPLIT_STOP = 3
+
+
+def resplit_stop_of(org: dict[str, Any]) -> int:
+    """The rounds an epic gets before its next story problem is the Sponsor's (crew#859)."""
+    return int((org.get("refinement") or {}).get("resplit_stop", RESPLIT_STOP))
 
 
 @cache

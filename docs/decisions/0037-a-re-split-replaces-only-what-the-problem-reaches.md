@@ -36,11 +36,16 @@ The Sponsor, 2026-10-21 and 22 (crew#859).
   beside the new ones.
 - **Nothing is closed until the replacements exist.** The replaced stories close as not
   planned, and `needs:rework` comes off, only after the new stories are created. A split
-  that fails leaves the epic as the next pass finds it, with its count unchanged.
+  that fails leaves the epic as the next pass finds it, with its count unchanged. Each new
+  story names what its round replaces, so a pass that stops after writing them (a story
+  that won't close, a comment that fails) is finished by the next, not split again; a
+  `needs:rework` left on after a finished round is spent.
 - **The rounds are counted per epic, on GitHub.** Each re-split after a story problem
-  marks its split comment with its round. The Sponsor's own rework isn't a round.
-- **The stop starts at 3** (`refinement.resplit_stop` in `org.yaml`), and is lowered from
-  evidence. Once an epic has had that many rounds, its next problem isn't the Product
+  marks its split comment with its round. The Sponsor's own rework isn't a round, nor is a
+  problem an epic's first split raised (the criteria check): a round needs a split before
+  it.
+- **The stop starts at 3** (`refinement.resplit_stop` in `org.yaml`, and 3 when it's
+  missing), and is lowered from evidence. Once an epic has had that many rounds, its next problem isn't the Product
   Owner's: the Sponsor gets one question on the epic, two lines first (what keeps failing,
   and the question), with every round folded beneath. Their reply becomes a binding row,
   and the round goes ahead. Every round is an `epic.resplit` event, with what it replaced,
@@ -52,7 +57,7 @@ The Sponsor, 2026-10-21 and 22 (crew#859).
   story, so it's never replaced.
 - **What goes:** closing every unstarted story and splitting the epic again from scratch.
   A Goal sent back with `needs:rework` still supersedes its unstarted epics; that isn't
-  this decision.
+  this decision, and it's its own event (`goal.reworked`), so it isn't counted as a round.
 - **Across epics, nothing new.** A story in another epic whose `Builds on` line names a
   replaced story is left as it is: a closed story counts as landed, so it no longer waits
   for it, as before.

@@ -38,6 +38,9 @@ class Issues(FakeIssues):
         self.children = children
         self._branches = branches
         self.closed: list[tuple[int, str]] = []
+        self.bodies: dict[int, str] = {}
+        # Issues whose next close fails, once.
+        self.stuck: set[int] = set()
 
     def comments(self, repo, number):
         if number != EPIC:
@@ -53,12 +56,18 @@ class Issues(FakeIssues):
         return [{"number": n} for n in self.children] if number == EPIC else []
 
     def get(self, repo, number):
-        return {"body": f"story {number}\n\nFollows the epic's R1."}
+        made = next((i for i in self.created if i["number"] == number), None)
+        if made is not None:
+            return {"body": made["body"]}
+        return {"body": self.bodies.get(number, f"story {number}\n\nFollows the epic's R1.")}
 
     def branches(self, repo):
         return [{"name": b} for b in self._branches]
 
     def close(self, repo, number, *, reason="completed"):
+        if number in self.stuck:
+            self.stuck.discard(number)
+            raise RuntimeError("502")
         self.closed.append((number, reason))
         return {}
 
@@ -88,7 +97,7 @@ def proposal(*, fails=False) -> StoryProposal:
     )
 
 
-def run(monkeypatch, issues, cards, *, fails=False):
+def run(monkeypatch, issues, cards, *, fails=False, org=None):
     asked: list[dict] = []
 
     def split(title, context="", **kw):
@@ -104,7 +113,7 @@ def run(monkeypatch, issues, cards, *, fails=False):
     sink = EventSink(None)
     seen = []
     sink.subscribe(seen.append)
-    tick(FakeBoard(cards), issues, sink, default_repo="sprint-metrics")
+    tick(FakeBoard(cards), issues, sink, default_repo="sprint-metrics", org=org)
     return asked, seen
 
 
@@ -205,3 +214,90 @@ def test_the_sponsors_own_rework_isnt_a_round(monkeypatch):
     run(monkeypatch, issues, [sent_back(), *stories(*FOUR)])
     [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
     assert "crew:resplit round" not in split
+
+
+# --- a round an earlier pass didn't finish (crew#859, the review) -------------------------
+
+WRITTEN = "<!-- crew:resplit-of 700,701 round=1 -->"
+
+
+def test_a_round_whose_split_comment_never_landed_is_finished_not_split_again(monkeypatch):
+    """700 and 701 replaced by 30 and 31, closed, then the split comment failed."""
+    issues = Issues([SPLIT, PROBLEM, ANSWER], children=(698, 699, 700, 701, 30, 31))
+    issues.bodies = {n: f"story {n}\n\n{WRITTEN}" for n in (30, 31)}
+    cards = [
+        sent_back(),
+        *stories(698, 699, 30, 31),
+        *stories(700, 701, state="CLOSED"),
+    ]
+    asked, seen = run(monkeypatch, issues, cards)
+    assert asked == [], "nothing is split again"
+    assert {n for n, _ in issues.closed} == {700, 701}
+    [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
+    assert "#30, #31" in split and "<!-- crew:resplit round=1 -->" in split
+    assert "Kept as they are: #698, #699." in split
+    assert (EPIC, NEEDS_REWORK) in issues.removed_labels
+    [event] = [e for e in seen if e.kind == EventKind.EPIC_RESPLIT]
+    assert event.detail["superseded"] == [700, 701] and event.detail["because"] == "story problem"
+
+
+def test_needs_rework_left_on_after_a_finished_round_is_spent_not_a_new_rework(monkeypatch):
+    done = (
+        f"{STORY_SPLIT_MARKER}\n- one — #30\n- two — #31\n\n<!-- crew:resplit-done -->\n"
+        "<!-- crew:resplit round=1 -->"
+    )
+    issues = Issues([SPLIT, PROBLEM, ANSWER, done], children=(698, 699, 30, 31))
+    issues.bodies = {n: f"story {n}\n\n{WRITTEN}" for n in (30, 31)}
+    asked, _ = run(monkeypatch, issues, [sent_back(), *stories(698, 699, 30, 31)])
+    assert asked == [] and issues.closed == []
+    assert (EPIC, NEEDS_REWORK) in issues.removed_labels
+
+
+def test_a_replaced_story_that_wont_close_holds_the_round_for_the_next_pass(monkeypatch):
+    issues = Issues([SPLIT, PROBLEM, ANSWER])
+    issues.stuck = {701}
+    asked, _ = run(monkeypatch, issues, [sent_back(), *stories(*FOUR)])
+    assert len(asked) == 1 and issues.closed == [(700, "not_planned")]
+    assert not any(STORY_SPLIT_MARKER in b for _, b in issues.posted), "the round isn't over"
+    assert (EPIC, NEEDS_REWORK) not in issues.removed_labels
+    [new] = [i["number"] for i in issues.created]
+    assert WRITTEN in issues.get("sm", new)["body"]
+
+    # The next pass finishes it: 701 closes, and the round is said on the epic.
+    issues.children = (698, 699, 701, new)
+    cards = [sent_back(), *stories(698, 699, 701, new), story(700, EPIC, state="CLOSED")]
+    asked, _ = run(monkeypatch, issues, cards)
+    assert asked == [] and (701, "not_planned") in issues.closed
+    [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
+    assert f"#{new}" in split and "<!-- crew:resplit round=1 -->" in split
+
+
+def test_a_problem_an_epics_first_split_raised_isnt_a_round(monkeypatch):
+    """The criteria check sends back an epic never split: its split is its first."""
+    issues = Issues([PROBLEM, ANSWER], children=())
+    asked, seen = run(monkeypatch, issues, [sent_back()])
+    assert len(asked) == 1
+    [split] = [b for n, b in issues.posted if n == EPIC and STORY_SPLIT_MARKER in b]
+    assert "crew:resplit" not in split
+    assert not [e for e in seen if e.kind == EventKind.EPIC_RESPLIT]
+    assert not any("crew:resplit-of" in i["body"] for i in issues.created)
+    assert (EPIC, NEEDS_REWORK) in issues.removed_labels
+
+
+def test_an_org_yaml_without_a_stop_still_stops_at_three(monkeypatch):
+    import copy
+
+    from crew_org.config import load_org
+    from crew_org.flows.board_flow import PRODUCT_QUESTION_MARKER
+
+    org = copy.deepcopy(load_org())
+    del org["refinement"]["resplit_stop"]
+    done = [f"{STORY_SPLIT_MARKER}\n<!-- crew:resplit round={k} -->" for k in (1, 2, 3)]
+    issues = Issues([SPLIT, *done, PROBLEM])
+    answered = []
+    monkeypatch.setattr(
+        "crew_org.flows.board_flow.answer_story_problem", lambda **kw: answered.append(kw)
+    )
+    asked, _ = run(monkeypatch, issues, [sent_back(), *stories(*FOUR)], org=org)
+    assert answered == [] and asked == [] and issues.closed == []
+    assert any(b.startswith(PRODUCT_QUESTION_MARKER) for n, b in issues.posted if n == EPIC)

@@ -1222,7 +1222,8 @@ def _superseded_because(
 ) -> dict[tuple[str, int], Literal["sponsor", "story_problem"]]:
     """Why each superseded story was, by (repo, number): the last re-split that closed it."""
     out: dict[tuple[str, int], Literal["sponsor", "story_problem"]] = {}
-    resplits = (e for _, e in inputs.events if e.get("kind") == "epic.resplit")
+    # A Goal's epics superseded by its rework, as an epic's stories by its re-split.
+    resplits = (e for _, e in inputs.events if e.get("kind") in ("epic.resplit", "goal.reworked"))
     for event in sorted(resplits, key=lambda e: str(e.get("at") or "")):
         detail = event.get("detail") or {}
         because = _RESPLIT_BECAUSE.get(str(detail.get("because") or ""))
