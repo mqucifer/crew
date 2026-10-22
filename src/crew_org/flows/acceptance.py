@@ -26,7 +26,7 @@ from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews import asks as file_asks
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.history import past_qa
@@ -815,6 +815,19 @@ def run_qa(
                 body=render_qa(verdict, revision),
                 by="QA Engineer",
             )
+            # What QA saw outside this story is filed for its owner (crew#839).
+            if verdict.outside:
+                role_tasks.file_findings(
+                    issues,
+                    board,
+                    sink,
+                    repo=card_repo,
+                    story=card,
+                    found=verdict.outside,
+                    by="QA Engineer",
+                    round_key=revision[:7],
+                    cards=cards,
+                )
 
             if verdict.accepted and done:
                 # Nothing to merge (#221): the story closes, proven against main.
