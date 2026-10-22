@@ -30,7 +30,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.rulebook import says
 from crew_org.rules import Rule
-from crew_org.tools.deploy_evidence import deploy_evidence, deploy_trigger
+from crew_org.tools.deploy_evidence import Trigger, deploy_evidence, deploy_trigger
 from crew_org.tools.github_issues import FAILED_CONCLUSIONS, IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import (
@@ -330,8 +330,9 @@ def review_open_pulls(
             # identity would replace the first as GitHub's decision.
             deploy: ReviewVerdict | None = None
             # The compose file the workspace names, as the base branch has it.
-            named = [p for p in [compose_file(_base_reader(issues, repo, base, clone))] if p]
-            if deploy_trigger(diff, named) is not None:
+            named = list(filter(None, [compose_file(_base_reader(issues, repo, base, clone))]))
+            trigger = deploy_trigger(diff, named)
+            if trigger is not None:
                 try:
                     # The DevOps Engineer's own run, inside the Code Reviewer's.
                     with log.run(
@@ -348,6 +349,7 @@ def review_open_pulls(
                             diff=diff,
                             clone=clone,
                             named=named,
+                            trigger=trigger,
                         )
                 except Exception as exc:  # noqa: BLE001
                     reraise_if_down(exc)
@@ -504,6 +506,7 @@ def _deploy_review(
     diff: str,
     clone: Path | None,
     named: list[str],
+    trigger: Trigger,
 ) -> ReviewVerdict:
     """The DevOps Engineer's verdict on a change to something that runs or deploys (#335)."""
     number = pull["number"]
@@ -514,7 +517,15 @@ def _deploy_review(
             role="DevOps Engineer",
             card=story.number if story is not None else None,
             summary=f"deploy review of PR #{number}",
-            detail={"pr": number},
+            # Why it started, so the trigger can be judged from evidence (crew#861):
+            # paths and kinds of change only, never the code. DevOps's own Task is
+            # reviewed too, as a separate question its author never had in view.
+            detail={
+                "pr": number,
+                "trigger": trigger.on,
+                "matched": trigger.matched,
+                "devops_task": story is not None and role_tasks.role_of(story) is role_tasks.DEVOPS,
+            },
         )
     )
     verdict = attributed(

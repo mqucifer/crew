@@ -9,14 +9,16 @@ could be run as deployed.
 from __future__ import annotations
 
 from crew_org.crews.review_crew import Finding, ReviewVerdict
+from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import review as review_flow
+from crew_org.flows import role_tasks
 from crew_org.tools.deploy_evidence import (
     deploy_evidence,
     deploy_trigger,
     entry_modules,
     is_runnable,
-    touches_runnable,
 )
+from crew_org.work_types import TASK
 from tests.test_review import (
     APPROVAL,
     FakeIssues,
@@ -76,8 +78,8 @@ def test_code_and_docs_are_not():
 
 
 def test_a_diff_is_judged_by_the_paths_it_touches():
-    assert touches_runnable(DOCKERFILE_DIFF)
-    assert not touches_runnable(PYTHON_DIFF)
+    assert deploy_trigger(DOCKERFILE_DIFF) is not None
+    assert deploy_trigger(PYTHON_DIFF) is None
 
 
 def _diff(path: str, *lines: str) -> str:
@@ -100,7 +102,6 @@ def test_a_bind_changed_in_code_starts_the_review():
         "listens src/sprint_metrics/serve.py",
         "address src/sprint_metrics/serve.py",
     ]
-    assert touches_runnable(BIND_DIFF)
 
 
 def test_ports_permissions_and_environment_start_it_too():
@@ -201,7 +202,7 @@ class DiffIssues(FakeIssues):
         return self.diff
 
 
-def reviewed(monkeypatch, diff, deploy, code=APPROVAL):
+def reviewed(monkeypatch, diff, deploy, code=APPROVAL, card=None):
     """One crew pull request through the review pass; what the deploy review was shown."""
     calls: list[dict] = []
 
@@ -213,7 +214,7 @@ def reviewed(monkeypatch, diff, deploy, code=APPROVAL):
 
     monkeypatch.setattr(review_flow, "review_deploy", fake_deploy)
     issues = DiffIssues([crew_pull()], diff)
-    result, board = run_with_board(issues, code, monkeypatch, [waiting_card()])
+    result, board = run_with_board(issues, code, monkeypatch, [card or waiting_card()])
     return issues, result, board, calls
 
 
@@ -273,3 +274,43 @@ def test_a_change_to_the_compose_file_the_workspace_names_gets_one(monkeypatch):
     monkeypatch.setattr(FakeIssues, "file_at", lambda self, repo, path, ref: named.get(path))
     _, _, _, calls = reviewed(monkeypatch, _diff("stack.yml", "+  image: postgres"), APPROVAL)
     assert len(calls) == 1
+
+
+def started(monkeypatch) -> list[CrewEvent]:
+    """The DevOps Engineer's start events, as the run records them."""
+    events: list[CrewEvent] = []
+    monkeypatch.setattr(EventSink, "emit", lambda self, event: events.append(event))
+    return events
+
+
+def deploy_started(events: list[CrewEvent]) -> dict:
+    [event] = [
+        e for e in events if e.kind == EventKind.AGENT_STARTED and e.role == "DevOps Engineer"
+    ]
+    return event.detail
+
+
+def test_a_run_records_that_code_started_it_and_what_matched(monkeypatch):
+    events = started(monkeypatch)
+    reviewed(monkeypatch, BIND_DIFF, APPROVAL)
+    assert deploy_started(events) == {
+        "pr": 14,
+        "trigger": "code",
+        "matched": ["listens src/sprint_metrics/serve.py", "address src/sprint_metrics/serve.py"],
+        "devops_task": False,
+    }
+
+
+def test_devops_own_task_is_reviewed_and_recorded_as_its_own(monkeypatch):
+    task = waiting_card().model_copy(
+        update={"work_type": TASK, "labels": frozenset({role_tasks.DEVOPS.label})}
+    )
+    events = started(monkeypatch)
+    _, _, _, calls = reviewed(monkeypatch, DOCKERFILE_DIFF, APPROVAL, card=task)
+    assert len(calls) == 1
+    detail = deploy_started(events)
+    assert (detail["trigger"], detail["matched"], detail["devops_task"]) == (
+        "files",
+        ["Dockerfile"],
+        True,
+    )

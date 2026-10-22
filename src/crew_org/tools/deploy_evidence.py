@@ -121,11 +121,6 @@ def deploy_trigger(diff: str, named: Collection[str] = ()) -> Trigger | None:
     return Trigger("code", code) if code else None
 
 
-def touches_runnable(diff: str) -> bool:
-    """Does this change add, alter or remove anything that runs or deploys?"""
-    return deploy_trigger(diff) is not None
-
-
 def runnable_paths(root: Path | None, diff: str, named: Collection[str] = ()) -> list[str]:
     """Every runnable file: those in the repository, and those this change adds."""
     found = set(p for p in changed_files(diff) if is_runnable(p) or p in named)
