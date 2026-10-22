@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.columns import READY
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
@@ -37,6 +38,7 @@ def return_to_refinement(
     cards: list[Card],
     comment: str,
     reason: str,
+    round_: int | None = None,
     **detail: Any,
 ) -> bool:
     """Send the story's epic back to be split again. False if it has no epic.
@@ -44,7 +46,8 @@ def return_to_refinement(
     `reason` is why, for the event, from `rules.RETURN_RULES`: "gate round trips"
     (the gates kept returning it, #242), "review conflicts with a criterion",
     "contract ruling", or "session blocked" (crew#778). `detail` goes on the event
-    with it: which kind of `blocked`, or which stop.
+    with it: which kind of `blocked`, or which stop. `round_` is the send-back's round,
+    where the caller counts one.
 
     The story and its unbuilt later siblings go back to Ready, out of their sprint,
     so they stop counting against capacity: they build on it, so the re-split replaces
@@ -115,6 +118,16 @@ def return_to_refinement(
                 **detail,
             },
         )
+    )
+    back_as, by = sendbacks.RETURNS[reason]
+    sendbacks.record(
+        sink,
+        back_as,
+        card=card.number or 0,
+        repo=repo,
+        role=by,
+        round_=round_,
+        stories=len(back),
     )
     return True
 

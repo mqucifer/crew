@@ -693,6 +693,7 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
         cards=board.cards(),
         comment=comment,
         reason="gate round trips",
+        round_=rounds,
     ):
         from crew_org.flows.session_end import blocked_for_a_person  # noqa: PLC0415
 

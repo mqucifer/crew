@@ -43,7 +43,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from crew_org import profiles
+from crew_org import profiles, sendbacks
 from crew_org.crews import epic_rows
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import gates, role_tasks
@@ -410,6 +410,17 @@ def _sessions(
                     else session_end.evidence(ending, leaving, leaving.kept, story_text)
                 ),
             )
+        # Back to a session: the gates' send-back, in the round `session.started` names.
+        sendbacks.record(
+            sink,
+            sendbacks.CONTRACT_REPAIR
+            if routed.rule == sendbacks.CONTRACT_REPAIR.rule
+            else sendbacks.GATE_FINDINGS,
+            card=number,
+            repo=repo,
+            round_=rounds,
+            findings=len(found[-1]),
+        )
         instead = routed.start
 
 

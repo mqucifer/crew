@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from crew_org import log
+from crew_org import log, sendbacks
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
@@ -138,6 +138,25 @@ def approved_at(reviews: list[dict], bot_login: str, head: str) -> bool:
         and r.get("commit_id") == head
     ]
     return bool(ours) and ours[-1].get("state") == "APPROVED"
+
+
+def changes_round(reviews: list[dict], bot_login: str, head: str) -> int:
+    """A return's round: the crew's changes requested on this pull request, this one included.
+
+    From GitHub's own record, read before this verdict was posted. The deploy review's
+    returns count with the Code Reviewer's: both are one verdict on the head. A verdict
+    on a pull request the reviewing identity opened is posted as a comment, so its
+    blocking findings say it was a return where its state can't.
+    """
+    earlier = [
+        r
+        for r in reviews
+        if (r.get("user") or {}).get("login") == bot_login
+        and REVIEW_MARKER in (r.get("body") or "")
+        and (r.get("state") == "CHANGES_REQUESTED" or "## Findings" in (r.get("body") or ""))
+        and r.get("commit_id") != head
+    ]
+    return len(earlier) + 1
 
 
 def cards_by_branch(cards: list[Card]) -> dict[str, Card]:
@@ -470,6 +489,17 @@ def review_open_pulls(
                         finding=next(
                             (f"{f.file}: {f.concern}" for f in verdict.findings if f.blocking), ""
                         )[:300],
+                    )
+                    sendbacks.record(
+                        sink,
+                        sendbacks.REVIEW_CHANGES
+                        if not code.approve
+                        else sendbacks.DEPLOY_REVIEW_CHANGES,
+                        card=card.number or 0,
+                        repo=repo,
+                        role="Code Reviewer" if not code.approve else "DevOps Engineer",
+                        round_=changes_round(reviews, bot_login, head),
+                        findings=sum(f.blocking for f in verdict.findings),
                     )
 
     return result

@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts, role_tasks
@@ -644,6 +645,14 @@ def _conflict(
         card=number,
         frm=MERGING,
         summary=f"approved PR #{pull['number']} conflicts with main — returned for a rebuild",
+    )
+    sendbacks.record(
+        sink,
+        sendbacks.MERGE_CONFLICT,
+        card=number,
+        repo=repo,
+        round_=rebuilt + 1,
+        files=len(files),
     )
     issues.comment(
         repo,

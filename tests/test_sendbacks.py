@@ -17,6 +17,8 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import board_flow
 from tests import test_criteria_check as criteria
 from tests.test_board_flow import FakeBoard, FakeIssues, epic_card
+from tests.test_session_delivery import deliver, ws  # noqa: F401  (fixtures)
+from tests.test_session_end import verdict  # noqa: F401  (a fixture)
 
 
 def sent_back(sink: EventSink) -> list[CrewEvent]:
@@ -201,3 +203,253 @@ def test_an_epic_whose_wait_breaks_is_a_send_back_to_the_split_and_not_the_spons
 
     assert which(seen) == [(waits.EPIC, "refinement", "split", "skip.board_flow.waits_for_planned")]
     assert seen[0].detail["counts"] == {"closed": 1}
+
+
+# --- delivery (D1 to D11) ---
+
+
+@pytest.fixture
+def watched(monkeypatch: pytest.MonkeyPatch) -> list[CrewEvent]:
+    """The send-backs of every sink made while it's on, for harnesses that make their own."""
+    seen: list[CrewEvent] = []
+    made = EventSink.__init__
+
+    def watching(self: EventSink, *args: Any, **kw: Any) -> None:
+        made(self, *args, **kw)
+        self.subscribe(lambda e: seen.append(e) if e.kind == EventKind.WORK_SENT_BACK else None)
+
+    monkeypatch.setattr(EventSink, "__init__", watching)
+    return seen
+
+
+def test_the_gates_findings_at_done_are_a_send_back_to_the_build_in_their_round(
+    ws,  # noqa: F811
+    deliver,  # noqa: F811
+    watched,
+):
+    from crew_org.flows import gates, session_end
+    from tests import test_session_delivery as sessions
+
+    findings = gates.Verdict(findings=[gates.Finding("a.rule", "One."), gates.Finding("b", "Two")])
+    deliver(
+        ws,
+        sessions.Sessions(
+            {"ending": sessions.Ending("done", sessions.DONE)},
+            {"ending": sessions.Ending("done", sessions.DONE)},
+        ),
+        sessions.Routes(
+            session_end.Route(session_end.SESSION, "a.rule", start="x", verdict=findings),
+            session_end.Route(session_end.REVIEW, "decision.delivery.outcome"),
+        ),
+    )
+
+    assert which(watched) == [(662, "gate", "build", "gate.findings_at_done")]
+    assert watched[0].detail["round"] == 1 and watched[0].detail["counts"] == {"findings": 2}
+
+
+def test_the_business_analysts_repair_ruling_is_a_send_back_to_the_build(
+    ws,  # noqa: F811
+    deliver,  # noqa: F811
+    watched,
+):
+    from crew_org.flows import session_end
+    from tests import test_session_delivery as sessions
+
+    deliver(
+        ws,
+        sessions.Sessions(
+            {"ending": sessions.Ending("done", sessions.DONE)},
+            {"ending": sessions.Ending("done", sessions.DONE)},
+        ),
+        sessions.Routes(
+            session_end.Route(
+                session_end.SESSION, "check.gates.the_business_analyst_ruled_that", start="x"
+            ),
+            session_end.Route(session_end.REVIEW, "decision.delivery.outcome"),
+        ),
+    )
+
+    assert which(watched) == [(662, "gate", "build", "check.gates.the_business_analyst_ruled_that")]
+
+
+def test_a_blocked_session_is_a_send_back_to_the_split():
+    from crew_org.session.conversation import Ending
+    from tests import test_session_end as ends
+
+    ending = Ending("blocked", {"missing": "a fact", "kind": "fact"}, evidence=ends.EVIDENCE)
+    _, _, _, seen = ends.route(ending)
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(124, "build", "split", "story.session_blocked")]
+    assert sent[0].role == "Developer" and sent[0].detail["round"] is None
+
+
+def test_a_contract_ruling_to_refinement_is_a_send_back_to_the_split(verdict, monkeypatch):  # noqa: F811
+    from types import SimpleNamespace
+
+    from crew_org.flows import delivery, gates, session_end
+    from crew_org.session.conversation import Ending
+    from tests import test_session_end as ends
+
+    monkeypatch.setattr(
+        delivery,
+        "rule_on_contract",
+        lambda issues, sink, **kw: SimpleNamespace(decision="return", why="No.", tests=[]),
+    )
+    monkeypatch.setattr(session_end, "story_rows", lambda issues, card, repo: "")
+    verdict.verdict = gates.Verdict(disagree={ends.CAPPED: "uncapped"})
+    _, _, _, seen = ends.route(
+        Ending("done", ends.SAID, evidence={"last_run": ends.GREEN}),
+        leaving=session_end.Leaving(lambda: ends.kept({ends.CAPPED: "changed"})),
+    )
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(124, "gate", "split", "story.contract_ruling")]
+
+
+def test_the_round_trip_limit_is_a_send_back_to_the_split_in_its_round(watched):
+    from crew_org.flows.story_problem import MAX_ROUND_TRIPS
+    from tests import test_gate_round_trips as trips
+
+    trips.gates_disagree(trips.Issues(deliveries=MAX_ROUND_TRIPS))
+
+    assert which(watched) == [(145, "build", "split", "story.gate_round_trips")]
+    assert watched[0].detail["round"] == MAX_ROUND_TRIPS
+    assert watched[0].detail["counts"] == {"stories": 2}
+
+
+def test_ci_failing_before_review_is_a_send_back_to_the_build_in_its_round(monkeypatch):
+    from crew_org.flows.ci import CI_MARKER
+    from crew_org.flows.review import review_open_pulls
+    from tests import test_review as reviews
+
+    class Red(reviews.FakeIssues):
+        def comments(self, repo, number):
+            return [{"body": f"{CI_MARKER.format(head='0ld')}\nCI failed"}]
+
+        def comment(self, repo, number, body):
+            return {}
+
+        def job_log(self, repo, job):
+            return ""
+
+    issues = Red([reviews.crew_pull()])
+    issues._pulls[0]["head"]["sha"] = "c0ffee"
+    issues.runs = [{"name": "image", "status": "completed", "conclusion": "failure", "id": 9}]
+    sink, seen = collecting()
+    review_open_pulls(
+        issues,
+        sink,
+        repo="sprint-metrics",
+        bot_login=reviews.BOT,
+        board=reviews.FakeBoard(),
+        cards=[reviews.waiting_card()],
+    )
+
+    assert which(seen) == [(6, "ci", "build", "gate.ci_before_review")]
+    assert seen[0].detail["round"] == 2 and seen[0].detail["counts"] == {"jobs": 1}
+
+
+def review_returned(monkeypatch: pytest.MonkeyPatch, code: Any, deploy: Any = None):
+    from crew_org.flows import review as review_flow
+    from crew_org.flows.review import REVIEW_MARKER, review_open_pulls
+    from tests import test_review as reviews
+
+    monkeypatch.setattr(review_flow, "review_diff", lambda *a, **k: code)
+    if deploy is not None:
+        monkeypatch.setattr(review_flow, "deploy_trigger", lambda diff, named: "compose")
+        monkeypatch.setattr(review_flow, "_deploy_review", lambda *a, **k: deploy)
+    earlier = {
+        "user": {"login": reviews.BOT},
+        "body": f"{REVIEW_MARKER}\nNot yet.\n\n## Findings",
+        "state": "CHANGES_REQUESTED",
+        "commit_id": "0ld",
+    }
+    pull = reviews.crew_pull()
+    pull["head"]["sha"] = "c0ffee"
+    issues = reviews.FakeIssues([pull], reviews={14: [earlier]})
+    sink, seen = collecting()
+    review_open_pulls(
+        issues,
+        sink,
+        repo="sprint-metrics",
+        bot_login=reviews.BOT,
+        board=reviews.FakeBoard(),
+        cards=[reviews.waiting_card()],
+    )
+    return seen
+
+
+def test_changes_requested_are_a_send_back_to_the_build_in_their_round(monkeypatch):
+    from tests import test_review as reviews
+
+    seen = review_returned(monkeypatch, reviews.REJECTION)
+
+    assert which(seen) == [(6, "review", "build", "gate.review_changes_requested")]
+    assert seen[0].role == "Code Reviewer"
+    assert seen[0].detail["round"] == 2 and seen[0].detail["counts"] == {"findings": 1}
+
+
+def test_the_deploy_reviews_changes_alone_are_its_own_send_back(monkeypatch):
+    from tests import test_review as reviews
+
+    seen = review_returned(monkeypatch, reviews.APPROVAL, deploy=reviews.REJECTION)
+
+    assert which(seen) == [(6, "deploy_review", "build", "gate.review_changes_requested")]
+    assert seen[0].role == "DevOps Engineer" and seen[0].detail["round"] == 2
+
+
+def test_a_review_finding_against_a_criterion_is_a_send_back_to_the_split(monkeypatch, watched):
+    from tests import test_review_conflicts as conflicts
+
+    conflicts.review(conflicts.CONFLICT, monkeypatch)
+
+    assert which(watched) == [(6, "review", "split", "story.review_conflicts_with_criterion")]
+    assert watched[0].role == "Code Reviewer"
+
+
+def test_qa_unproven_is_a_send_back_to_the_build_in_its_round(monkeypatch, tmp_path, watched):
+    from crew_org.flows.acceptance import QA_MARKER, qa_marker
+    from tests import test_already_done as done
+
+    earlier = [{"body": f"{QA_MARKER}\n{qa_marker('0ld')}\n## QA — not accepted"}]
+    done.qa(monkeypatch, tmp_path, earlier, accepted=False)
+
+    assert which(watched) == [(143, "qa", "build", "gate.qa_unproven")]
+    assert watched[0].detail["round"] == 2 and watched[0].detail["counts"] == {"unproven": 1}
+
+
+def test_ci_failing_at_merge_is_a_send_back_to_the_build():
+    from tests import test_ci_failure as ci
+    from tests.test_merge import card, run
+
+    _, _, seen = run([card(6)], ci.red_on_head())
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(6, "merge", "build", "gate.merge_ci_failed")]
+    assert sent[0].detail["round"] == 1
+
+
+def test_the_merge_queue_removing_it_for_ci_is_a_send_back_to_the_build():
+    from crew_org.tools.github_issues import QueueState
+    from tests.test_merge import QueueIssues, card, run
+
+    issues = QueueIssues(QueueState(has_queue=True, removed="CI failed"))
+    issues.failed_in_queue = [{"name": "tests", "conclusion": "failure", "id": 77}]
+    _, _, seen = run([card(6)], issues)
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(6, "merge", "build", "gate.merge_ci_failed")]
+
+
+def test_a_conflict_at_merge_is_a_send_back_to_the_build_in_its_round():
+    from crew_org.flows.merge import REBUILD_MARKER
+    from tests.test_merge import FakeIssues, card, run
+
+    issues = FakeIssues(mergeable_state="dirty")
+    issues.earlier = [REBUILD_MARKER.format(head="a")]
+    _, _, seen = run([card(6)], issues)
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(6, "merge", "build", "gate.merge_conflict")]
+    assert sent[0].detail["round"] == 2

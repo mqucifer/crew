@@ -250,6 +250,14 @@ CATALOG = (
     DESIGN_REFUSED,
 )
 
+# A story sent back to refinement, by its `story.returned` reason, and who sent it.
+RETURNS = {
+    "session blocked": (SESSION_BLOCKED, "Developer"),
+    "contract ruling": (CONTRACT_RULING, "Business Analyst"),
+    "gate round trips": (ROUND_TRIPS, None),
+    "review conflicts with a criterion": (REVIEW_CONFLICT, "Code Reviewer"),
+}
+
 
 def record(
     sink: EventSink,
