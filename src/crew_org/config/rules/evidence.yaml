@@ -116,6 +116,16 @@ form.QAVerdict.acceptance_requires_every_criterion:
       proven: by a test, or a doc criterion by the doc.'
   owner: QA Engineer
   told_in: QAVerdict.accepted
+form.TaskTriage.fits_its_outcome:
+  description: 'Refused unless it fits its outcome: an accepted Task says what done means and has a size
+    from the scale, and only it does; a duplicate names its issue.'
+  messages:
+    done_when: only an accepted Task says what done means, not one {outcome}
+    duplicate: a duplicate names the issue it duplicates in duplicate_of
+    no_done_when: an accepted Task needs at least one check of what done means
+    size: an accepted Task's points are one of {sizes}
+  owner: Business Analyst
+  told_in: TaskTriage
 form.Triage.fits_its_outcome:
   description: 'Refused unless it fits its outcome: an accepted bug has criteria and a size from the scale,
     and only it has criteria; a duplicate names its issue; more_information asks its question.'

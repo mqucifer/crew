@@ -63,6 +63,12 @@ check.design.unlocked:
   - crew#690
   owner: Architect
   told_in: DesignProposal.lockfile
+check.role_tasks.diagram_renders:
+  description: The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders,
+    checked as the Goal's target diagram is (crew#839).
+  messages:
+    default: 'The repository''s diagram won''t render: {problems}.'
+  owner: Architect
 config.agents.architect.can:
   owner: Architect
 config.agents.business_analyst.can:
@@ -106,6 +112,13 @@ guard.bounds.out_of_bounds:
     weakened: 'CI would no longer enforce `{check}`, a check the project''s design requires ({record}).
       Workflows may change, but every design check must still run there and still be able to fail: no
       `|| true`, no `continue-on-error`.'
+  owner: Developer
+guard.role_tasks.out_of_scope:
+  description: A role's Task changes only its role's area (crew#839); what else it needs is its own finding,
+    a bug or another Task.
+  messages:
+    default: 'This is the {role}''s Task, which may change only {scope}. It changes {paths}: undo those,
+      and say in `done`''s summary what they were for.'
   owner: Developer
 session.git:
   description: The git tool runs one git command line with no shell, and only the commands that read and

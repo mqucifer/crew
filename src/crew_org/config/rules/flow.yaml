@@ -100,8 +100,8 @@ decision.diagnose.diagnose_blocked:
   - sprint-metrics#200
 decision.github_issues.trust:
 decision.goal_look.look_step:
-  description: An epic under a Goal is split once the Goal's record covers it, written from one look
-    across the Goal's approved epics and its settle.
+  description: An epic under a Goal is split once the Goal's record covers it, written from one look across
+    the Goal's approved epics and its settle.
   origin:
   - crew#858
 decision.land:
@@ -163,6 +163,44 @@ decision.rework_gate:
   origin:
   - crew#192
   - crew#440
+decision.role_tasks.carry_out:
+  description: A role's Task filed from a finding is triaged as a bug is, by the Business Analyst (ADR
+    0027), into Ready with what done means and a size, or closed with why.
+  origin:
+  - crew#839
+decision.role_tasks.epic_split:
+  description: An epic's split opens DevOps's Task for the epic's CI and release, one per epic, in place
+    of a release story (ADR 0019). One the split couldn't open leaves the epic marked, and the next pass
+    opens it.
+  origin:
+  - crew#839
+  - crew#816
+decision.role_tasks.first_diagram:
+  description: A worked repository with no diagram of its system gets the Architect's Task to draw one,
+    once; not one waiting for its walking skeleton.
+  origin:
+  - crew#839
+decision.role_tasks.goal_epics_done:
+  description: A Goal whose epics are all done opens the Architect's Task to make its target diagram the
+    repository's, corrected to what was built, and closes once that Task is done too.
+  origin:
+  - crew#839
+  - crew#858
+decision.role_tasks.no_qa:
+  description: A role's Task skips QA's proof, which has no story criteria to prove; its role's checks
+    ran at done and the Code Reviewer judged it.
+  origin:
+  - crew#839
+decision.role_tasks.not_opened:
+  description: A role's Task an event should open and GitHub refused is recorded, and the next pass tries
+    again; nothing marks it opened until it is.
+  origin:
+  - crew#839
+decision.role_tasks.sponsor_approves:
+  description: A role's Task whose work is the repository's diagram or a release merges only once the
+    Sponsor approves it; a Task from a finding merges after the Code Reviewer, as a bug does.
+  origin:
+  - crew#839
 decision.sprint.capacity:
 decision.sprint.plan_sprint:
 decision.sprint.start_sprint:
@@ -190,13 +228,19 @@ gate.ci_before_review:
 gate.criteria_cannot_all_pass:
 gate.qa_unproven:
 gate.review_changes_requested:
+hold.no_session:
+  description: A role's Task is filed and waits while its role has no session to work it, and says which
+    milestone brings one (the UX Designer's in M8, QA's in M10).
+  origin:
+  - crew#839
 hold.waits_for_earlier_work:
   cases:
   - hold.sibling
   - hold.builds_on
   - decision.sprint.waits_on_work_outside
   description: 'A story waits for the work it builds on: an earlier sibling in its epic, or work it names,
-    outside or inside the sprint.'
+    outside or inside the sprint. A role''s Task under an epic, its CI and release, waits for every story
+    of the epic.'
 hold.wip:
   cases:
   - hold.wip_limit

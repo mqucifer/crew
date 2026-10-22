@@ -71,6 +71,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `hold.sibling` | It waits for an earlier story in the same epic. |
 | `hold.builds_on` | It waits for a story it builds on. |
 | `hold.wip_limit` | The next column is at its limit. |
+| `hold.no_session` | A role's Task waits for the milestone that brings its role's session. |
 
 ## Event names
 
@@ -122,4 +123,7 @@ The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
 - `issue.cites`
 - `reference.unresolved`
 - `comment.ignored`
+- `role_task.opened`
+- `role_task.held`
+- `finding.filed`
 - `note`

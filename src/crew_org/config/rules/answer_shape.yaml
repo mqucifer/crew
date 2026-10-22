@@ -27,7 +27,7 @@ check.goal_look_crew.check_epics:
   description: Refused if it names an epic that isn't the Goal's, or, for the reader, leaves out an epic
     it read.
   messages:
-    missing: 'say what the reader meets in {epics} too'
+    missing: say what the reader meets in {epics} too
     unknown: '{epics} aren''t epics of this Goal: name its epics as owner/repo#number, or `all`'
   origin:
   - crew#858
@@ -173,6 +173,8 @@ form.GoalSettlement.one_or_the_other:
   - crew#858
   owner: Product Owner
   told_in: GoalSettlement
+form.GoalSettlement.stripped:
+  owner: Product Owner
 form.ProcessDefect.short:
   description: Refused if it runs over its length limit.
   messages:
@@ -213,8 +215,6 @@ form.RowNotForStories.row_id:
     default: name the row by its ID, like R3
   owner: Business Analyst
   told_in: RowNotForStories.row
-form.GoalSettlement.stripped:
-  owner: Product Owner
 form.Story.row_ids:
   description: Refused unless each is a row's ID, like R1.
   messages:
@@ -222,8 +222,7 @@ form.Story.row_ids:
   owner: Business Analyst
   told_in: Story.follows
 form.SystemLook.diagram_well_formed:
-  description: Refused if the diagram wouldn't render as Mermaid's C4, or the sequence as a sequence
-    diagram.
+  description: Refused if the diagram wouldn't render as Mermaid's C4, or the sequence as a sequence diagram.
   messages:
     default: 'the diagram doesn''t render as written: {problems}'
   origin:
