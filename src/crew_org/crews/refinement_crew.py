@@ -116,6 +116,16 @@ class AcceptanceCriterion(BaseModel):
         return value
 
 
+# A story whose work is cutting the release: its version bump, its tag or its publishing.
+_RELEASE_STORY = re.compile(
+    r"\b(?:cut|tag|publish|ship)\s+(?:a\s+|the\s+)?(?:new\s+)?(?:\w+\s+)?release\b"
+    r"|\brelease\s+v?\d+\.\d+"
+    r"|\bversion\s+bump\b|\bbump\s+(?:the\s+)?(?:package\s+)?version\b"
+    r"|\b(?:PATCH|MINOR|MAJOR)\s+(?:package\s+)?release\b",
+    re.IGNORECASE,
+)
+
+
 class Story(BaseModel):
     title: str = Field(description="Short imperative title")
     as_a: str = Field(description="The role who wants this")
@@ -193,6 +203,15 @@ class Story(BaseModel):
         if len(value) < MIN_CRITERIA:
             refuse("form.story.enough_criteria", count=MIN_CRITERIA)
         return value
+
+    @model_validator(mode="after")
+    def _not_the_release(self) -> Story:
+        # The epic's release is DevOps's Task, opened by the split (crew#839), so a
+        # story that cuts it would release the epic twice. mqucifer/sprint-metrics#671
+        # was one: "Cut release 1.3.2 with the escalation-rate fix in the changelog".
+        if _RELEASE_STORY.search(f"{self.title}\n{self.i_want}"):
+            refuse("form.Story.not_the_release")
+        return self
 
 
 class Epic(BaseModel):

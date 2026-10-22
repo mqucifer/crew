@@ -2006,6 +2006,22 @@ def refine_epics(
                 by="Business Analyst",
             )
             record_split_tests(issues, sink, repo, number, proposal, numbers)
+            # The split is DevOps's event: the epic's CI and release, one Task per epic,
+            # since epics release themselves (crew#839, ADR 0019).
+            if numbers:
+                why = role_tasks.epic_release_task(
+                    issues,
+                    board,
+                    sink,
+                    repo=repo,
+                    epic=epic_card,
+                    stories=list(numbers.values()),
+                    cards=cards,
+                    rule="decision.role_tasks.epic_split",
+                )
+                if why:
+                    held("decision.role_tasks.not_opened", repo=repo, card=number)
+                    result.failed.append((number, why))
 
             # Moving the card out of the gate *was* the approval. Leaving the label
             # on means the board keeps asking for a decision already made — the same
@@ -2283,6 +2299,8 @@ def tick(
         context=context,
         failed=result.failed,
     )
+    # Release Tasks a split couldn't open, tried again (crew#839).
+    result.failed += role_tasks.pending_release_tasks(issues, board, sink, cards=cards, repos=repos)
     # And Tasks a role filed from its finding, the same way (ADR 0034, crew#839).
     result.tasks_triaged = role_tasks.triage_tasks(
         board,
