@@ -871,7 +871,8 @@ def _sent_back(
         left_out["sent back: unreadable"] = left_out.get("sent back: unreadable", 0) + 1
         return None
     round_ = detail.get("round")
-    counts = detail.get("counts") if isinstance(detail.get("counts"), dict) else {}
+    given = detail.get("counts")
+    counts = given if isinstance(given, dict) else {}
     return SentBack(
         at=at,
         repo=ref.repo if ref is not None else str(where),

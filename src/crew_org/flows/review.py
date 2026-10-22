@@ -12,6 +12,7 @@ import contextlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from crew_org import log, sendbacks
 from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
@@ -140,7 +141,7 @@ def approved_at(reviews: list[dict], bot_login: str, head: str) -> bool:
     return bool(ours) and ours[-1].get("state") == "APPROVED"
 
 
-def changes_round(reviews: list[dict], bot_login: str, head: str) -> int:
+def changes_round(reviews: list[dict[str, Any]], bot_login: str, head: str) -> int:
     """A return's round: the crew's changes requested on this pull request, this one included.
 
     From GitHub's own record, read before this verdict was posted. The deploy review's
