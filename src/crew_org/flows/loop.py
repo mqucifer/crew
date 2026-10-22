@@ -304,6 +304,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
+    from crew_org.flows.role_tasks import first_diagrams  # noqa: PLC0415
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
@@ -314,6 +315,15 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
+    # A project with no diagram of its system gets the Architect's Task to draw one
+    # (crew#839). Not one waiting for its walking skeleton: there's nothing to draw.
+    drawn = first_diagrams(
+        crew.issues,
+        crew.board,
+        crew.sink,
+        repos=watched(repos, crew.skeleton_only),
+        cards=crew.board.cards(),
+    )
     result = revisit_designs(
         crew.issues,
         crew.reviewer,
@@ -336,12 +346,15 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     return PhaseOutcome(
         "revisit",
-        moved=result.moved or logs.moved or bool(red.filed or red.closed or released.filed),
+        moved=result.moved
+        or logs.moved
+        or bool(red.filed or red.closed or released.filed or drawn.opened),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
             + (f", {len(logs.merged)} merged" if logs.merged else "")
         ),
@@ -356,6 +369,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
         + [
             f"{repo} v{version} — waiting on the Sponsor: make the package public "

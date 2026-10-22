@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
@@ -973,6 +974,25 @@ def close_finished_parents(
                     statuses.append(DONE if child.get("state") == "closed" else None)
             if not statuses or any(status != DONE for status in statuses):
                 continue
+            # A Goal's epics done is the Architect's event: its target diagram becomes
+            # the repository's, and the Goal closes once that Task is done too (crew#839).
+            if parent_type == GOAL_TYPE and not _diagram_task_among(children):
+                epics = [c["number"] for c in children if c.get("state_reason") != "not_planned"]
+                try:
+                    role_tasks.goal_diagram_task(
+                        issues, board, sink, repo=parent_repo, goal=card, epics=epics, cards=cards
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    reraise_if_down(exc)
+                    role_tasks.not_opened(
+                        sink,
+                        repo=parent_repo,
+                        role=role_tasks.ARCHITECT,
+                        kind=role_tasks.DIAGRAM,
+                        card=card.number,
+                        why=exc,
+                    )
+                continue
 
             # Bookkeeping, not judgement: no role decided this, so the parent
             # keeps whichever role last worked on it.
@@ -990,6 +1010,15 @@ def close_finished_parents(
             issues.close(parent_repo, card.number or 0)
             closed.append(card.number or 0)
     return closed
+
+
+def _diagram_task_among(children: list[dict[str, Any]]) -> bool:
+    """Is the Architect's diagram Task already one of this Goal's children?"""
+    for child in children:
+        found = role_tasks.marked(child.get("body"))
+        if found is not None and found.kind == role_tasks.DIAGRAM:
+            return True
+    return False
 
 
 def _project_brief(worktree) -> str:
