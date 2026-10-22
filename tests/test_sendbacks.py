@@ -526,11 +526,11 @@ def test_rebuild_strain_and_each_refused_revision_are_send_backs_to_the_design(
     )
 
     assert which(watched) == [
+        (None, "review", "design", "sent_back.design_refused"),
+        (None, "review", "design", "sent_back.design_refused"),
         (None, "revisit", "design", "sent_back.rebuild_strain"),
-        (None, "review", "design", "sent_back.design_refused"),
-        (None, "review", "design", "sent_back.design_refused"),
     ]
-    assert [e.detail["round"] for e in watched[1:]] == [1, 2]
+    assert [e.detail["round"] for e in watched[:2]] == [1, 2]
 
 
 def test_every_declared_send_back_is_run_by_a_test_here():
@@ -613,3 +613,79 @@ def test_every_reason_a_story_is_returned_for_has_its_send_back():
     from crew_org.rules import RETURN_RULES
 
     assert set(sendbacks.RETURNS) == set(RETURN_RULES) - {"pinned tests"}
+
+
+def test_a_broken_wait_split_on_a_later_pass_is_still_not_the_sponsors(monkeypatch):
+    """The wait breaks and the split fails; the next pass splits it, from its label alone."""
+    from crew_org.flows.board_flow import WAITS_FOR
+    from tests import test_resplit_flow as epics
+    from tests.test_planned_elsewhere import story
+
+    issues = epics.Issues([f"{epics.SPLIT}\n{WAITS_FOR.format(numbers=216)}"])
+    gone = story(216, 180, state="CLOSED")
+    others = epics.stories(*epics.FOUR)
+    _, first = epics.run(monkeypatch, issues, [epic_card(epics.EPIC), gone, *others], fails=True)
+    _, second = epics.run(monkeypatch, issues, [epics.sent_back(), gone, *others])
+
+    assert [e for e in second if e.kind == EventKind.EPIC_RESPLIT], "split on the second pass"
+    sent = [e for e in first + second if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(epics.EPIC, "refinement", "split", "skip.board_flow.waits_for_planned")]
+
+
+def test_a_design_fault_whose_revision_fails_to_open_is_sent_back_once(
+    clone,  # noqa: F811
+    monkeypatch,
+    watched,
+):
+    """The design pull request fails to open; the next pass sends the fault again."""
+    from crew_org.flows import revisit
+    from tests import test_design_faults as faults
+    from tests.test_revisit import Architect, proposal
+
+    opened = revisit.open_design_pr
+    tries: list[int] = []
+
+    def open_once_failing(*args: Any, **kw: Any) -> str:
+        tries.append(1)
+        if len(tries) == 1:
+            raise RuntimeError("502")
+        return opened(*args, **kw)
+
+    monkeypatch.setattr(revisit, "open_design_pr", open_once_failing)
+    issues = faults.Labels()
+    issues.comments_on[35] = [faults.FAULT]
+    architect = Architect(proposal(structure="x"), proposal(structure="x"))
+    faults.run(issues, clone, [faults.blocked(35)], architect)
+    faults.run(issues, clone, [faults.blocked(35)], architect)
+
+    assert len(tries) == 2
+    assert which(watched) == [(35, "revisit", "design", "sent_back.design_faults")]
+
+
+def test_rebuild_strain_whose_revision_fails_to_open_is_sent_back_once(
+    clone,  # noqa: F811
+    sprint6,  # noqa: F811
+    monkeypatch,
+    watched,
+):
+    from crew_org.flows import revisit
+    from tests.test_revisit import SPRINT6, Architect, Issues, proposal
+    from tests.test_revisit import revisit as run_revisit
+
+    opened = revisit.open_design_pr
+    tries: list[int] = []
+
+    def open_once_failing(*args: Any, **kw: Any) -> str:
+        tries.append(1)
+        if len(tries) == 1:
+            raise RuntimeError("502")
+        return opened(*args, **kw)
+
+    monkeypatch.setattr(revisit, "open_design_pr", open_once_failing)
+    issues = Issues()
+    architect = Architect(proposal(), proposal())
+    run_revisit(issues, clone, SPRINT6, architect, events_dir=sprint6)
+    run_revisit(issues, clone, SPRINT6, architect, events_dir=sprint6)
+
+    assert len(tries) == 2
+    assert which(watched) == [(None, "revisit", "design", "sent_back.rebuild_strain")]
