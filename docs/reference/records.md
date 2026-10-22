@@ -92,6 +92,12 @@ the same step or an earlier one, to be done again: rework, counted per step
 (crew#862). Each writes one `work.sent_back`, with `sent_from`, `sent_to`, `rule`,
 the card, its `round` where the step knows it, and `counts`.
 
+**Its round** counts from 1, from what the step keeps: the session's round for the
+gates, the rebuilds for a merge conflict, the deliveries for the round-trip limit, and
+for CI, review and QA their returns of the pull request or card on GitHub. CI's
+comment marker is the same before review and at merge, so a CI return's round counts
+both together. None where the step keeps no count.
+
 **Not counted:** a refusal inside a session or a call (`tool.finished`,
 `llm.refused`); a hold, an interruption, or a retry of a step that didn't finish; a
 block for a person (`card.blocked`); a finding filed as a new Task or bug

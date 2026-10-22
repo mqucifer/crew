@@ -142,7 +142,8 @@ def return_for_ci(
         **named,
     )
     # Its round: CI's returns of this pull request, this head's included, as its comments
-    # count them; unknown when they can't be read.
+    # count them; unknown when they can't be read. The marker is the same before review
+    # and at merge, so both kinds count together, as the records reference says.
     sendbacks.record(
         sink,
         sendbacks.CI_BEFORE_REVIEW if rule == Rule.CI_BEFORE_REVIEW else sendbacks.MERGE_CI_FAILED,
