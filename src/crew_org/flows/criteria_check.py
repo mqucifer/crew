@@ -13,7 +13,7 @@ import contextlib
 import contextvars
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -219,8 +219,13 @@ def to_product_owner(
     check: CriteriaCheck,
     marker: str,
     rework: str,
+    replacing: Sequence[int] = (),
 ) -> None:
-    """The conflicts on the epic as a story problem, for the Product Owner to settle."""
+    """The conflicts on the epic as a story problem, for the Product Owner to settle.
+
+    A re-split names the stories it was replacing, so the next round replaces the same
+    ones (crew#859).
+    """
     with contextlib.suppress(Exception):
         issues.ensure_label(
             repo,
@@ -237,7 +242,14 @@ def to_product_owner(
         body=f"{marker}\n"
         "**Not split: its stories' criteria can't all pass, even after a second split.**\n\n"
         f"{described(check)}\n\n"
-        "Settle which outcome holds before this epic is split again. No story was created.",
+        "Settle which outcome holds before this epic is split again. No story was created."
+        + (
+            " It was replacing "
+            + ", ".join(f"#{n}" for n in replacing)
+            + ", which stay open until it's split again."
+            if replacing
+            else ""
+        ),
         by="QA Engineer",
     )
     sink.note(

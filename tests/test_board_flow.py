@@ -895,6 +895,20 @@ def test_a_rework_supersedes_the_cards_it_replaces(monkeypatch):
     assert (1, board_flow.NEEDS_REWORK) in issues.unlabelled, "and the label is spent"
 
 
+def test_a_goals_rework_is_its_own_event_not_an_epics_re_split(monkeypatch):
+    """The stop on an epic's re-splits is set from `epic.resplit` (crew#859): a Goal's
+    rework there would mix into that evidence."""
+    issues = ReworkIssues(
+        comments=[marked(board_flow.EPIC_PROPOSAL_MARKER), sponsor("try again")],
+        children=[7],
+    )
+    _, seen = run(FakeBoard([reworked(1), card(7, status=INBOX)]), issues, monkeypatch)
+
+    assert not [e for e in seen if e.kind == "epic.resplit"]
+    [event] = [e for e in seen if e.kind == "goal.reworked"]
+    assert event.detail["superseded"] == [7] and event.detail["because"] == "sponsor"
+
+
 def test_a_rework_that_would_throw_away_work_is_refused(monkeypatch):
     """Replacing a decomposition while its stories are being built would discard
     work in flight. That is a decision for the person asking."""

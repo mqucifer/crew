@@ -86,6 +86,10 @@ refinement:
   # before any is split (crew#858, which replaced the per-epic panel of
   # crew#440). Off, epics are split with no record.
   look: true
+  # Re-splits after story problems an epic gets before its next problem goes to the
+  # Sponsor as one question, not to the Product Owner (crew#859). It starts high and
+  # is lowered from the `epic.resplit` events, which count every round.
+  resplit_stop: 3
 
 delivery:
   # Repositories the crew may WORK IN. Every phase is bounded by this list —

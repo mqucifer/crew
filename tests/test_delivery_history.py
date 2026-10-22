@@ -433,6 +433,29 @@ def test_a_superseded_story_carries_why_from_the_re_split_that_closed_it():
     assert by_number[501]["superseded_because"] is None
 
 
+def test_an_epic_a_goals_rework_superseded_carries_why_too():
+    """A Goal's rework is its own event since crew#859, and its epics still say why."""
+    epic = board_card("sprint-metrics", 480, work_type="Epic").model_copy(
+        update={"state": "CLOSED", "state_reason": "NOT_PLANNED"}
+    )
+    detail = {"repo": "sprint-metrics", "because": "sponsor", "superseded": [480]}
+    data, _ = built(
+        [
+            (
+                "tick",
+                {
+                    "kind": "goal.reworked",
+                    "at": "2026-10-22T10:00:00Z",
+                    "card": 1,
+                    "detail": detail,
+                },
+            )
+        ],
+        cards=[epic],
+    )
+    assert {c["number"]: c for c in data["cards"]}[480]["superseded_because"] == "sponsor"
+
+
 def test_the_crews_design_decisions_are_read_from_their_labels():
     """A design revision by the label on the issue its pull request closes (crew#192)."""
     pulls = {

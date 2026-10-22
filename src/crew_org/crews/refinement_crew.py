@@ -902,6 +902,8 @@ def split_epic(
     delivered: str = "",
     delivered_numbers: set[int] | None = None,
     superseded: list[tuple[int, str]] | None = None,
+    kept: str = "",
+    replaced: str = "",
     planned: str = "",
     planned_numbers: set[int] | None = None,
     conclusion: str = "",
@@ -925,6 +927,9 @@ def split_epic(
     superseded one, shows a field its package doesn't carry, or doesn't follow the
     record: a binding row (`rows`) no story follows, or a merged test it changes
     (`declared`) no story carries (crew#440). The session answers each.
+
+    On a re-split, `kept` is the epic's stories that stay and `replaced` the ones this
+    split replaces, both whole: it writes only what the replaced ones covered (crew#859).
     """
     from crew_org.flows import conclusion as conclusion_flow  # noqa: PLC0415
 
@@ -946,6 +951,8 @@ def split_epic(
         epic_ref=epic_ref,
         feedback=feedback,
         superseded=superseded,
+        kept=kept,
+        replaced=replaced,
         planned=planned,
         conclusion=conclusion,
         project_log=project_log,
@@ -969,6 +976,8 @@ def split_opening(
     epic_ref: str,
     feedback: str = "",
     superseded: list[tuple[int, str]] | None = None,
+    kept: str = "",
+    replaced: str = "",
     planned: str = "",
     conclusion: str = "",
     project_log: str = "",
@@ -1036,9 +1045,19 @@ def split_opening(
             if planned
             else ""
         ),
+        "kept": (
+            "## The stories this epic keeps, built before yours: they stay as they are, and "
+            f"the rows and tests they follow are covered\n\n{kept}"
+            if kept
+            else ""
+        ),
         "superseded": (
-            "## The stories this split replaces\n\n"
-            + "\n".join(f"- #{n} {t}" for n, t in superseded)
+            (
+                "## The stories this split replaces, the only ones it writes again\n\n"
+                if kept
+                else "## The stories this split replaces\n\n"
+            )
+            + (replaced or "\n".join(f"- #{n} {t}" for n, t in superseded))
             + "\n\nAccount for every one in `accounted`: rewritten here (name the new story), "
             "already delivered (name the story), or dropped (say why). None may be left out."
             if superseded

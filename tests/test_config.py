@@ -193,3 +193,28 @@ def test_the_point_ceiling_must_be_on_the_scale(tmp_path):
     path.write_text(yaml.safe_dump(org), encoding="utf-8")
     with pytest.raises(ValueError, match="max_story_points"):
         load_org(path)
+
+
+@pytest.mark.parametrize("stop", [0, -1, "3", True])
+def test_a_resplit_stop_that_isnt_a_count_fails_at_startup(tmp_path, stop):
+    """A stop of 0 would send every story problem to the Sponsor (crew#859)."""
+    org = yaml.safe_load((CONFIG_DIR / "org.yaml").read_text())
+    org["refinement"]["resplit_stop"] = stop
+    path = tmp_path / "org.yaml"
+    path.write_text(yaml.safe_dump(org))
+    with pytest.raises(ValueError, match="resplit_stop must be"):
+        load_org(path)
+
+
+def test_the_shipped_resplit_stop_starts_high():
+    assert load_org()["refinement"]["resplit_stop"] == 3
+
+
+def test_an_org_yaml_without_a_resplit_stop_still_stops():
+    """A missing key meant no stop at all (crew#859, the review)."""
+    from crew_org.config import RESPLIT_STOP, resplit_stop_of
+
+    org = yaml.safe_load((CONFIG_DIR / "org.yaml").read_text())
+    del org["refinement"]["resplit_stop"]
+    assert resplit_stop_of(org) == RESPLIT_STOP == 3
+    assert resplit_stop_of({}) == 3

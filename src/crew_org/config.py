@@ -14,6 +14,13 @@ import yaml
 
 CONFIG_DIR = Path(__file__).parent / "config"
 ORG_CONFIG = CONFIG_DIR / "org.yaml"
+# `refinement.resplit_stop` when org.yaml doesn't say: an epic always has a stop (crew#859).
+RESPLIT_STOP = 3
+
+
+def resplit_stop_of(org: dict[str, Any]) -> int:
+    """The rounds an epic gets before its next story problem is the Sponsor's (crew#859)."""
+    return int((org.get("refinement") or {}).get("resplit_stop", RESPLIT_STOP))
 
 
 @cache
@@ -77,6 +84,10 @@ def _validate(org: dict[str, Any]) -> None:
     look = (org.get("refinement") or {}).get("look", False)
     if not isinstance(look, bool):
         raise ValueError(f"refinement.look must be true or false, got {look!r}")
+
+    stop = (org.get("refinement") or {}).get("resplit_stop")
+    if stop is not None and (isinstance(stop, bool) or not isinstance(stop, int) or stop < 1):
+        raise ValueError(f"refinement.resplit_stop must be a whole number above 0, got {stop!r}")
 
     sandbox = org.get("sandbox") or {}
     mode = sandbox.get("mode", "required")

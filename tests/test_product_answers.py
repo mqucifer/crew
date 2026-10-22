@@ -211,3 +211,120 @@ def test_an_answer_names_the_story_whose_return_it_answers(monkeypatch):
     step(issues, monkeypatch, reply)
     assert "for mqucifer/sprint-metrics#97." in issues.posted[0]
     assert board_flow.returned_story(EVIDENCE) is None, "raised in refinement: no story"
+
+
+# --- the stop: an epic's rounds are counted, and after the stop its problem is the
+# Sponsor's (crew#859) -----------------------------------------------------------------
+
+
+def rounds(n: int) -> list[str]:
+    out = []
+    for k in range(1, n + 1):
+        out += [
+            f"{STORY_PROBLEM_MARKER}\n**#{100 + k} went back to refinement: round {k}.**",
+            f"{PRODUCT_ANSWER_MARKER}\n**Decided:** answer {k}\n\nFollowing: #100",
+            f"{STORY_SPLIT_MARKER}\nsplit\n\n<!-- crew:resplit round={k} -->\nRound {k}.\n\n"
+            f"Replaced, closed as not planned: #{100 + k}.",
+        ]
+    return out
+
+
+def stopped_step(issues, monkeypatch, stop):
+    calls = []
+    monkeypatch.setattr(board_flow, "answer_story_problem", lambda **kw: calls.append(kw))
+    sink = EventSink()
+    seen = []
+    sink.subscribe(seen.append)
+    result = TickResult()
+    go = product_step(
+        issues, sink, result, epic(), REPO, goal="g", project="p", delivered="d", stop=stop
+    )
+    return go, result, calls, seen
+
+
+def test_a_problem_after_the_third_round_is_the_sponsors_one_question(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", *rounds(3), EVIDENCE)
+    go, result, calls, seen = stopped_step(issues, monkeypatch, stop=3)
+    assert not go and calls == []
+    (question,) = issues.posted
+    lines = question.splitlines()
+    assert lines[0] == PRODUCT_QUESTION_MARKER
+    assert lines[1].startswith("**Epic #54 has been split again 3 times")
+    assert "#97 broke 25 merged tests" in lines[1]
+    assert lines[2].startswith("**Your call:**")
+    assert "<details>" in question and "**Round 2.** The problem: #102 went back" in question
+    assert "- The Product Owner decided: answer 3" in question
+    assert "- Replaced, closed as not planned: #103." in question
+    assert NEEDS_HUMAN in issues.added
+    assert result.skipped == [(54, "re-split 3 times: the Sponsor's to answer")]
+    (event,) = [e for e in seen if e.kind == "epic.resplit_stopped"]
+    assert event.detail["round"] == 3 and event.detail["stop"] == 3
+
+
+def test_before_the_stop_the_product_owner_answers(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", *rounds(2), EVIDENCE)
+    reply = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    monkeypatch.setattr(board_flow, "answer_story_problem", lambda **kw: reply)
+    go = product_step(
+        issues,
+        EventSink(),
+        TickResult(),
+        epic(),
+        REPO,
+        goal="g",
+        project="p",
+        delivered="d",
+        stop=3,
+    )
+    assert go and not any(PRODUCT_QUESTION_MARKER in b for b in issues.posted)
+
+
+def test_the_sponsors_reply_at_the_stop_lets_the_round_go_ahead(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", *rounds(3), EVIDENCE)
+    stopped_step(issues, monkeypatch, stop=3)
+    issues.bodies.append("Drop the Prometheus line; keep the rest.")
+    monkeypatch.setattr(board_flow, "from_sponsor", lambda issues, c: True)
+    go, _, calls, _ = stopped_step(issues, monkeypatch, stop=3)
+    assert go and calls == []
+
+
+def test_the_rounds_are_counted_from_the_marked_splits():
+    assert board_flow.resplit.rounds(rounds(5)) == 5
+
+
+# --- where the answer goes (crew#859, ADR 0036) -------------------------------------------
+
+
+def test_the_answer_goes_into_the_goals_record_binding_that_epic(monkeypatch):
+    from tests.test_record import FIRST, GoalIssues
+
+    class UnderAGoal(GoalIssues):
+        def __init__(self):
+            super().__init__({684: "# First\n\nThe approved text."})
+            self.on_epic = [STORY_SPLIT_MARKER, EVIDENCE]
+
+        def comments(self, repo, number):
+            if number == 684:
+                return [{"body": b} for b in self.on_epic]
+            return super().comments(repo, number)
+
+    issues = UnderAGoal()
+    reply = ProductAnswer(
+        answer="Opt-in.", rows=rows("Flags only with --thresholds"), based_on=["#100"]
+    )
+    go, _, _ = step(issues, monkeypatch, reply, card=epic().model_copy(update={"number": 684}))
+    assert go
+    added = [
+        d
+        for d in record.parse(issues.held).decisions
+        if d.decision == "Flags only with --thresholds"
+    ]
+    assert len(added) == 1 and added[0].binds == (FIRST,)
+    assert issues.on == [684], "the change comment stays on the epic, where its steps look"
+
+
+def test_an_epic_with_no_goal_keeps_the_answer_in_its_own_record(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", EVIDENCE)
+    reply = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    step(issues, monkeypatch, reply)
+    assert record.parse(record.split(issues.body)[1]).row("R2").decision == "Opt-in"

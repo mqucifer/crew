@@ -77,6 +77,13 @@ DETAIL = frozenset(
         "superseded",
         "because",
         "reads_decision",
+        # A re-split of only what a problem affects (crew#859): card numbers and counts.
+        "kept",
+        "named",
+        "positions",
+        "of",
+        "round",
+        "stop",
         # GitHub's limits (#293): how long, what, and the budget left.
         "wait_s",
         "status",

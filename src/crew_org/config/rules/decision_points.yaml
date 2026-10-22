@@ -179,10 +179,22 @@ flows.board_flow.admit_held_stories:skip:1e378846:
   if: card.status != REFINEMENT or card.state == 'CLOSED' or card.work_type != STORY_TYPE or (HELD_FOR_ROOM
     not in card.labels)
   rule: decision.board_flow.admit_held_stories
+flows.board_flow.close_replaced:result:failed:b2ca2038:
+  at: flows/board_flow.py:close_replaced
+  if: stuck
+  rule: decision.resplit.affected
 flows.board_flow.epics_to_split:filter:ac4b49b1:
   at: flows/board_flow.py:epics_to_split
   if: c.status == REFINEMENT and c.state != 'CLOSED' and (c.work_type == EPIC_TYPE)
   rule: decision.board_flow.epics_to_split
+flows.board_flow.finish_round:end:801764e3:
+  at: flows/board_flow.py:finish_round
+  if: not close_replaced(issues, result, repo, number, left.replaced)
+  rule: decision.resplit.affected
+flows.board_flow.finish_round:filter:f890745e:
+  at: flows/board_flow.py:finish_round
+  if: n not in left.new
+  not_a_rule: names the kept stories for the round's comment
 flows.board_flow.goal_cards:filter:68917dfd:
   at: flows/board_flow.py:goal_cards
   if: c.status == INBOX and c.state != 'CLOSED' and (c.work_type == GOAL_TYPE) and set_by_the_sponsor(c,
@@ -218,6 +230,10 @@ flows.board_flow.product_step:end:df353202:
   at: flows/board_flow.py:product_step
   if: NEEDS_REWORK not in epic.labels
   rule: decision.board_flow.product_step
+flows.board_flow.product_step:result:skipped:a9837858:
+  at: flows/board_flow.py:product_step
+  if: stop is not None and done >= stop
+  rule: decision.resplit.stop
 flows.board_flow.record_split_tests:end:e2823bf7:
   at: flows/board_flow.py:record_split_tests
   if: not (changes or proposal.tests_dropped)
@@ -242,14 +258,18 @@ flows.board_flow.record_sponsor_words:filter:642892ad:
   at: flows/board_flow.py:record_sponsor_words
   if: _after(c, began)
   rule: decision.board_flow.sponsor_words
-flows.board_flow.refine_epics:close:895cac16:
-  at: flows/board_flow.py:refine_epics
-  if: not proposal.stories
-  rule: decision.board_flow.already_delivered
 flows.board_flow.refine_epics:filter:33574705:
   at: flows/board_flow.py:refine_epics
   if: s not in named
   rule: gate.criteria_cannot_all_pass
+flows.board_flow.refine_epics:label:b5a14cdf:
+  at: flows/board_flow.py:refine_epics
+  if: again
+  rule: decision.resplit.affected
+flows.board_flow.refine_epics:close:423cf87c:
+  at: flows/board_flow.py:refine_epics
+  if: not proposal.stories and (not kept)
+  rule: decision.board_flow.already_delivered
 flows.board_flow.refine_epics:result:held_for_design:129f578d:
   at: flows/board_flow.py:refine_epics
   if: repo in holds and TECHNICAL not in epic_card.labels
@@ -262,6 +282,10 @@ flows.board_flow.refine_epics:skip:10f3b583:
   at: flows/board_flow.py:refine_epics
   if: waited
   rule: skip.board_flow.waits_for_planned
+flows.board_flow.refine_epics:skip:463c8b3d:
+  at: flows/board_flow.py:refine_epics
+  if: plan and (not close_replaced(issues, result, repo, number, plan.replaced))
+  rule: decision.resplit.affected
 flows.board_flow.refine_epics:skip:593c1e25:
   at: flows/board_flow.py:refine_epics
   if: (_epic_state(issues, repo, number) or '').lower() == 'closed'
@@ -278,6 +302,14 @@ flows.board_flow.refine_epics:skip:e1acdf1c:
   at: flows/board_flow.py:refine_epics
   if: settled != RESPLIT
   rule: decision.board_flow.rework_gate
+flows.board_flow.resplit_gate:filter:405d8045:
+  at: flows/board_flow.py:resplit_gate
+  if: STORY_SPLIT_MARKER in b
+  not_a_rule: reads the epic's split comments for the round check
+flows.board_flow.resplit_gate:end:4d0c06c8:
+  at: flows/board_flow.py:resplit_gate
+  if: (left := resplit.unfinished(stories, splits))
+  rule: decision.resplit.affected
 flows.board_flow.refine_epics:result:failed:728e8688:
   at: flows/board_flow.py:refine_epics
   if: numbers
@@ -293,10 +325,6 @@ flows.board_flow.rework_gate:end:857c696b:
 flows.board_flow.rework_gate:filter:99a5d287:
   at: flows/board_flow.py:rework_gate
   if: (c.repo or repo) == repo
-  rule: decision.board_flow.rework_gate
-flows.board_flow.rework_gate:filter:cc75e0b4:
-  at: flows/board_flow.py:rework_gate
-  if: part
   rule: decision.board_flow.rework_gate
 flows.board_flow.set_by_the_sponsor:end:fa8eb7cc:
   at: flows/board_flow.py:set_by_the_sponsor
@@ -1022,6 +1050,19 @@ flows.release_check.check_releases:result:waiting:81eec5c7:
   at: flows/release_check.py:check_releases
   if: run.get('head_sha') != issues.head_sha(repo, branch)
   rule: decision.release_check.check_releases
+flows.resplit.covered:filter:e64d00f4:
+  at: flows/resplit.py:covered
+  if: ln.startswith(EXISTING_TESTS)
+  not_a_rule: reads a kept story's Existing tests line for the record's checks
+flows.resplit.open_stories:filter:fa2179be:
+  at: flows/resplit.py:open_stories
+  if: (card := by_key.get((repo, child))) is not None and card.state != 'CLOSED' and (card.work_type !=
+    TASK)
+  rule: decision.resplit.affected
+flows.resplit.unfinished:skip:d3466752:
+  at: flows/resplit.py:unfinished
+  if: not found or any((re.search(f'#{n}\\b', body) for body in splits))
+  rule: decision.resplit.affected
 flows.retro._file_recurring:filter:c4b22ebb:
   at: flows/retro.py:_file_recurring
   if: at and at > fixed_at

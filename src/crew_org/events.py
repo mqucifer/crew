@@ -90,6 +90,11 @@ class EventKind(StrEnum):
     PRODUCT_ANSWERED = "product.answered"
     PRODUCT_ASKED = "product.asked"
     EPIC_RESPLIT = "epic.resplit"
+    # An epic re-split as often as `refinement.resplit_stop` allows: its next problem
+    # goes to the Sponsor as one question (crew#859).
+    EPIC_RESPLIT_STOPPED = "epic.resplit_stopped"
+    # A Goal the Sponsor sent back: its unstarted epics superseded, decomposed again.
+    GOAL_REWORKED = "goal.reworked"
 
     # GitHub asked the crew to slow down (#293): waited out, or the tick stopped.
     GITHUB_THROTTLED = "github.throttled"

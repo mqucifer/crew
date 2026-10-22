@@ -35,6 +35,7 @@ config.org.board.columns:
 config.org.board.human_gates:
 config.org.delivery.repos:
 config.org.refinement.look:
+config.org.refinement.resplit_stop:
 config.org.sprint.blocked_aging_days:
 config.org.sprint.capacity_points:
 config.org.sprint.timezone:
@@ -139,6 +140,18 @@ decision.phase_cards:
   - crew#353
   - sprint-metrics#284
 decision.release_check.check_releases:
+decision.resplit.affected:
+  description: An epic sent back is split again only where the problem reaches. The stories it names and
+    every later story of the epic are replaced, once their replacements exist, and the rest stay; a problem
+    that names none replaces every unstarted story.
+  origin:
+  - crew#859
+decision.resplit.stop:
+  description: An epic re-split after story problems as many times as refinement.resplit_stop allows (3
+    to start) sends its next problem to the Sponsor as one question, with every round so far, not to the
+    Product Owner. Every round and every stop is an event, so the stop is lowered from evidence.
+  origin:
+  - crew#859
 decision.revert.refused:
 decision.revert.return_card:
 decision.review.deploy_review:
@@ -159,7 +172,8 @@ decision.rework_gate:
   - decision.board_flow.rework_gate
   - skip.board_flow.rework_refused
   - skip.board_flow.already_answered
-  description: An epic the Sponsor sent back is split again only on their word, and once.
+  description: A Goal the Sponsor sent back is decomposed again only on their word, and once, its unstarted
+    epics superseded. An epic sent back goes through decision.resplit.affected (crew#859).
   origin:
   - crew#192
   - crew#440
@@ -253,11 +267,18 @@ hold.wip:
 session.choice:
 session.no_epic:
 skip.board_flow.a_goal_written_by_not_the:
+skip.board_flow.already_split_again:
+  origin:
+  - ADR 0023
+  - crew#189
+  - crew#746
 skip.board_flow.its_criteria_cant_all_pass_to:
   origin:
   - crew#583
   - crew#612
   - sprint-metrics#551
+skip.board_flow.re_split_finished_from_an_earlier:
+skip.board_flow.re_split_times_the_sponsors_to:
 skip.board_flow.waits_for_planned:
 skip.goal_look.waits_for_one_goal_refines_at:
   description: A Goal's epics wait to be refined while another Goal of the project refines; the one that
