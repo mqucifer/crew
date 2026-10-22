@@ -606,3 +606,10 @@ def test_a_send_back_naming_a_step_it_doesnt_know_is_left_out_and_counted():
 
     assert not [e for e in data["events"] if e["kind"] == "sent_back"]
     assert manifest.left_out == {"sent back: unreadable": 1}
+
+
+def test_every_reason_a_story_is_returned_for_has_its_send_back():
+    """`pinned tests` is declared and never written (parked in crew Discussion 659)."""
+    from crew_org.rules import RETURN_RULES
+
+    assert set(sendbacks.RETURNS) == set(RETURN_RULES) - {"pinned tests"}

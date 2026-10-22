@@ -119,16 +119,17 @@ def return_to_refinement(
             },
         )
     )
-    back_as, by = sendbacks.RETURNS[reason]
-    sendbacks.record(
-        sink,
-        back_as,
-        card=card.number or 0,
-        repo=repo,
-        role=by,
-        round_=round_,
-        stories=len(back),
-    )
+    # Never at the cost of the return: a reason with no send-back declared writes none.
+    if (declared := sendbacks.RETURNS.get(reason)) is not None:
+        sendbacks.record(
+            sink,
+            declared[0],
+            card=card.number or 0,
+            repo=repo,
+            role=declared[1],
+            round_=round_,
+            stories=len(back),
+        )
     return True
 
 
