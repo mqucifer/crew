@@ -134,7 +134,7 @@ QA refuses it, it comes back to be built (crew#221).
 | **Goal** | A Sponsor-written outcome statement. Only the Sponsor authors one. | not estimated |
 | **Epic** | A coherent slice of a Goal delivering visible value. Decomposes into Stories. | not estimated |
 | **Story** | A user-visible behaviour change, independently valuable and testable. | 1–8 points |
-| **Task** | A unit of technical work serving a Story. Not independently valuable. | ≤ 1 day |
+| **Task** | Work a role owns, not an epic: the Architect's, DevOps's, and later the UX Designer's and QA's (ADR 0034). An event or the role's own finding opens it, its `role:` label names the role, and that role's session works it to a pull request. It flows like a Bug and needs no Sponsor approval to start. | 1–5 points |
 | **Bug** | Observed behaviour contradicting accepted acceptance criteria. Filed by a collaborator in the organization: today the Sponsor and Claude's account (ADR 0027). | 1–5 points |
 | **Spike** | A timeboxed investigation answering a specific question. | fixed timebox |
 

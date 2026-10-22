@@ -114,6 +114,14 @@ class EventKind(StrEnum):
     REFERENCE_UNRESOLVED = "reference.unresolved"
     COMMENT_IGNORED = "comment.ignored"
 
+    # A role's own Task (ADR 0034, crew#839): opened by an event or a finding, and
+    # held because its role has no session yet. With the send-backs, they measure
+    # the board's queue.
+    ROLE_TASK_OPENED = "role_task.opened"
+    ROLE_TASK_HELD = "role_task.held"
+    # A role's finding outside the story it was working on, filed as a Task or a bug.
+    FINDING_FILED = "finding.filed"
+
     NOTE = "note"
 
 

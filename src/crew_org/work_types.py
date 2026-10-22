@@ -11,11 +11,14 @@ GOAL = "Goal"
 EPIC = "Epic"
 STORY = "Story"
 BUG = "Bug"
+# Work a role owns, not an epic (ADR 0034): opened by an event or a role's finding,
+# and worked by that role's session. Its role is a `role:` label (`flows.role_tasks`).
+TASK = "Task"
 
-# Work the crew builds, reviews, proves and merges: a story, or a bug a
-# collaborator filed (ADR 0027). A check that means "a story of an epic", such
-# as the split's or the backlog order's, still names STORY.
-DELIVERED = frozenset({STORY, BUG})
+# Work the crew builds, reviews and merges: a story, a bug a collaborator filed
+# (ADR 0027), or a role's own Task (ADR 0034). A check that means "a story of an
+# epic", such as the split's or the backlog order's, still names STORY.
+DELIVERED = frozenset({STORY, BUG, TASK})
 
 
 def open_in(cards: list[Card], status: str, *, repos: set[str] | None = None) -> list[Card]:
