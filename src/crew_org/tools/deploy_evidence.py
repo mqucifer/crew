@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -32,12 +32,13 @@ _LISTENS = re.compile(
 
 
 def is_runnable(path: str) -> bool:
-    """A file that decides how something runs or ships: an image, a stack, a workflow."""
+    """A file that decides how something runs or ships: an image, a stack, a workflow,
+    or the workspace and the services it declares (ADR 0032)."""
     p = PurePosixPath(path)
     name = p.name.lower()
     if name.startswith(("dockerfile", "containerfile")) or name.endswith(".dockerfile"):
         return True
-    if name in {".dockerignore"}:
+    if name in {".dockerignore", ".devcontainer.json"} or p.parts[0] == ".devcontainer":
         return True
     if re.fullmatch(r"(docker-)?compose(\.[\w-]+)?\.ya?ml", name):
         return True
@@ -107,9 +108,13 @@ def code_changes(diff: str) -> list[str]:
     return list(found)
 
 
-def deploy_trigger(diff: str) -> Trigger | None:
-    """Why this change gets a deploy review, or None: runnable files come first."""
-    files = [p for p in changed_files(diff) if is_runnable(p)]
+def deploy_trigger(diff: str, named: Collection[str] = ()) -> Trigger | None:
+    """Why this change gets a deploy review, or None: runnable files come first.
+
+    `named` are runnable whatever they're called: the compose file the workspace
+    names (`services.compose_file`).
+    """
+    files = [p for p in changed_files(diff) if is_runnable(p) or p in named]
     if files:
         return Trigger("files", files)
     code = code_changes(diff)
@@ -121,13 +126,14 @@ def touches_runnable(diff: str) -> bool:
     return deploy_trigger(diff) is not None
 
 
-def runnable_paths(root: Path | None, diff: str) -> list[str]:
+def runnable_paths(root: Path | None, diff: str, named: Collection[str] = ()) -> list[str]:
     """Every runnable file: those in the repository, and those this change adds."""
-    found = set(p for p in changed_files(diff) if is_runnable(p))
+    found = set(p for p in changed_files(diff) if is_runnable(p) or p in named)
     if root is not None:
         for path in root.rglob("*"):
             rel = path.relative_to(root).as_posix()
-            if path.is_file() and not rel.startswith(".git/") and is_runnable(rel):
+            runnable = is_runnable(rel) or rel in named
+            if path.is_file() and not rel.startswith(".git/") and runnable:
                 found.add(rel)
     return sorted(found)
 
@@ -160,7 +166,12 @@ def listening_files(root: Path | None) -> list[str]:
     return found
 
 
-def deploy_evidence(root: Path | None, diff: str, read_head: Callable[[str], str | None]) -> str:
+def deploy_evidence(
+    root: Path | None,
+    diff: str,
+    read_head: Callable[[str], str | None],
+    named: Collection[str] = (),
+) -> str:
     """The runnable files and the code they run, as at the pull request's head.
 
     `root` is the repository at its base branch, for finding files; each is
@@ -173,7 +184,7 @@ def deploy_evidence(root: Path | None, diff: str, read_head: Callable[[str], str
         for path in candidate_paths(module)[:2]
     ] + listening_files(root)
     sections: list[tuple[str, list[str]]] = [
-        ("What runs or deploys, as this change leaves it", runnable_paths(root, diff)),
+        ("What runs or deploys, as this change leaves it", runnable_paths(root, diff, named)),
         ("The code it runs: the console scripts, and anything that listens", code),
     ]
     budget = MAX_DEPLOY_EVIDENCE_CHARS

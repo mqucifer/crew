@@ -30,7 +30,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.rulebook import says
 from crew_org.rules import Rule
-from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
+from crew_org.tools.deploy_evidence import deploy_evidence, deploy_trigger
 from crew_org.tools.github_issues import FAILED_CONCLUSIONS, IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import (
@@ -39,6 +39,7 @@ from crew_org.tools.review_evidence import (
     importers_section,
     undocumented_options,
 )
+from crew_org.tools.services import compose_file
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
@@ -328,7 +329,9 @@ def review_open_pulls(
             # One review carries both verdicts: a later review from the same
             # identity would replace the first as GitHub's decision.
             deploy: ReviewVerdict | None = None
-            if touches_runnable(diff):
+            # The compose file the workspace names, as the base branch has it.
+            named = [p for p in [compose_file(_base_reader(issues, repo, base, clone))] if p]
+            if deploy_trigger(diff, named) is not None:
                 try:
                     # The DevOps Engineer's own run, inside the Code Reviewer's.
                     with log.run(
@@ -337,7 +340,14 @@ def review_open_pulls(
                         repo=repo,
                     ):
                         deploy = _deploy_review(
-                            issues, sink, repo=repo, pull=pull, story=story, diff=diff, clone=clone
+                            issues,
+                            sink,
+                            repo=repo,
+                            pull=pull,
+                            story=story,
+                            diff=diff,
+                            clone=clone,
+                            named=named,
                         )
                 except Exception as exc:  # noqa: BLE001
                     reraise_if_down(exc)
@@ -493,6 +503,7 @@ def _deploy_review(
     story: Card | None,
     diff: str,
     clone: Path | None,
+    named: list[str],
 ) -> ReviewVerdict:
     """The DevOps Engineer's verdict on a change to something that runs or deploys (#335)."""
     number = pull["number"]
@@ -514,7 +525,9 @@ def _deploy_review(
     )(
         pull["title"],
         diff,
-        evidence=deploy_evidence(clone, diff, lambda path: issues.file_at(repo, path, head)),
+        evidence=deploy_evidence(
+            clone, diff, lambda path: issues.file_at(repo, path, head), named=named
+        ),
         acceptance_criteria=story_criteria(issues, story, repo),
         decisions=story_rows(issues, story, repo),
         release=release_brief(issues, repo, head),

@@ -62,6 +62,10 @@ def test_images_stacks_and_workflows_are_runnable():
         "compose.yaml",
         "docker-compose.prod.yml",
         ".github/workflows/tests.yml",
+        # The workspace and the services it declares (ADR 0032).
+        ".devcontainer/devcontainer.json",
+        ".devcontainer/postgres.yml",
+        ".devcontainer.json",
     ]:
         assert is_runnable(path), path
 
@@ -129,6 +133,13 @@ def test_runnable_files_come_first():
     trigger = deploy_trigger(DOCKERFILE_DIFF + BIND_DIFF)
     assert trigger is not None
     assert (trigger.on, trigger.matched) == ("files", ["Dockerfile"])
+
+
+def test_the_compose_file_the_workspace_names_is_runnable_whatever_its_name():
+    stack = _diff("stack.yml", "+  image: postgres")
+    assert deploy_trigger(stack) is None
+    trigger = deploy_trigger(stack, named=["stack.yml"])
+    assert trigger is not None and trigger.matched == ["stack.yml"]
 
 
 def test_console_scripts_name_the_modules_they_run():
@@ -255,3 +266,10 @@ def test_it_is_told_how_the_project_is_released(monkeypatch):
     _, _, _, [kw] = reviewed(monkeypatch, DOCKERFILE_DIFF, APPROVAL)
     assert "a published version: an image on GHCR" in kw["release"]
     assert "tag on merge" in kw["release"] and "`uv run pytest`" in kw["release"]
+
+
+def test_a_change_to_the_compose_file_the_workspace_names_gets_one(monkeypatch):
+    named = {".devcontainer/devcontainer.json": '{"dockerComposeFile": "../stack.yml"}'}
+    monkeypatch.setattr(FakeIssues, "file_at", lambda self, repo, path, ref: named.get(path))
+    _, _, _, calls = reviewed(monkeypatch, _diff("stack.yml", "+  image: postgres"), APPROVAL)
+    assert len(calls) == 1
