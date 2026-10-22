@@ -23,115 +23,365 @@ from pydantic import BaseModel, Field
 
 
 class EventKind(StrEnum):
+    """Every kind of event, each with its meaning under it (crew#870)."""
+
     TICK_STARTED = "tick.started"
+    """A tick began: the board read, and the column counts at its start."""
     TICK_FINISHED = "tick.finished"
+    """A tick ended: what each phase did, and the holds and skips it decided."""
 
     CARD_CLAIMED = "card.claimed"
+    """A role took a card to work on."""
     CARD_MOVED = "card.moved"
+    """The crew moved a card between columns, and by which rule where one decided."""
     CARD_BLOCKED = "card.blocked"
+    """The crew moved a card to Blocked, for a person or the Sponsor."""
     # A move the crew didn't make, seen at the start of a pass (crew#521): a
     # person's, or the board workflow's. Its own kind, so nothing that reads
     # `card.moved` as the crew's own takes it for one.
     CARD_SEEN_MOVED = "card.seen_moved"
+    """A move the crew didn't make, seen at a pass's start: a person's, or the workflow's."""
 
     AGENT_STARTED = "agent.started"
+    """A role began a step's work on a card or pull request."""
     AGENT_FINISHED = "agent.finished"
+    """A role finished a step: its verdict, as flags and counts."""
     AGENT_FAILED = "agent.failed"
+    """A role's step failed before it finished: the call, the form, or the code around it."""
 
     TASK_STARTED = "task.started"
+    """A step began, as CrewAI's bus recorded it before the crew's own calls (ADR 0025)."""
     TASK_COMPLETED = "task.completed"
+    """A step completed, as CrewAI's bus recorded it before the crew's own calls."""
     TASK_FAILED = "task.failed"
+    """A step failed, as CrewAI's bus recorded it before the crew's own calls."""
 
     LLM_CALL_STARTED = "llm.started"
+    """A model call was sent: which model, which prompt and form, and the sizes of its parts."""
     LLM_CALL_FINISHED = "llm.finished"
+    """A model call answered: why it stopped, its tokens and its time."""
     LLM_CALL_FAILED = "llm.failed"
+    """A model call didn't return: a connection, a timeout, a server error."""
     # A call that answered nothing, typically after thinking (#312). CrewAI
     # retries it silently, so without this it's invisible in the log.
     LLM_CALL_EMPTY = "llm.empty"
+    """A model call answered nothing, typically after thinking (#312)."""
     # A model's answer its form refused, with the reason the next attempt is told
     # (crew#583, ADR 0025). Recorded by the crew's own call layer, `calls.py`.
     LLM_CALL_REFUSED = "llm.refused"
+    """A model's answer its form refused, with the reason the next attempt is told (ADR 0025)."""
 
     TOOL_STARTED = "tool.started"
+    """A role's tool call began."""
     TOOL_FINISHED = "tool.finished"
+    """A role's tool call finished: what it was, its sizes, and how it ended."""
     TOOL_FAILED = "tool.failed"
+    """A role's tool call raised, and what the session was told."""
 
     # The Developer's session (crew#778, P5): what it started with, its signals after
     # each call, its compaction, and how it ended. Each tool call is a `tool.finished`.
     SESSION_STARTED = "session.started"
+    """A Developer session began: its start's sizes and its limits."""
     SESSION_TURN = "session.turn"
+    """One model call of a session, with its signals after it."""
     SESSION_COMPACTED = "session.compacted"
+    """A session's history compacted to fit, and what it left."""
     SESSION_ENDED = "session.ended"
+    """A session ended: how, why, and its totals."""
     # The gates' verdict on a session's branch at `done`: whether it passed, and the
     # rules of what sent it back.
     GATE_CHECKED = "gate.checked"
+    """The gates' verdict on a session's branch at `done`, and the rules of what sent it back."""
 
     # A merged change being undone. Each carries the pull request reverted,
     # the card it belonged to and why, so the audit trail can answer all three.
     REVERT_OPENED = "revert.opened"
+    """A revert pull request was opened for a merged change."""
     REVERT_REFUSED = "revert.refused"
+    """A revert couldn't be made or landed, and why."""
     REVERT_LANDED = "revert.landed"
+    """A revert landed: its card goes back to Needs Refinement."""
 
     # The retro, recorded as an issue, and each defect it filed (#50).
     RETRO_RECORDED = "retro.recorded"
+    """The sprint's retro was recorded as an issue, with the defects it filed."""
     STANDUP_WRITTEN = "standup.written"
+    """A standup was written for a project's sprint."""
     DEFECT_FILED = "defect.filed"
+    """The retro filed a defect, in the repository of what it found."""
 
     # The one-call Developer's retries and escalations, written until it retired
     # (crew#778). Nothing writes them now; past logs still hold them, and still read.
     ESCALATION_DECIDED = "escalation.decided"
+    """The one-call Developer's retry or escalation decision (crew#778)."""
     ESCALATED = "escalation.sent"
+    """The one-call Developer's work escalated to the subscription (crew#778)."""
 
     # Breaking a loop, step by step (#189, #242): a story sent back because its
     # failures were the story's, the Product Owner deciding or asking, and the
     # epic split again with that to read. Each its own kind, so the chain can be
     # found, counted and replayed.
     STORY_RETURNED = "story.returned"
+    """A story sent back to refinement, by its reason from a fixed list."""
     PRODUCT_ANSWERED = "product.answered"
+    """The Product Owner answered a story problem, as rows of the record."""
     PRODUCT_ASKED = "product.asked"
+    """The Product Owner asked the Sponsor one question instead of deciding."""
     EPIC_RESPLIT = "epic.resplit"
+    """An epic split again: the stories it replaced and kept, why, and its round."""
     # An epic re-split as often as `refinement.resplit_stop` allows: its next problem
     # goes to the Sponsor as one question (crew#859).
     EPIC_RESPLIT_STOPPED = "epic.resplit_stopped"
+    """An epic re-split as often as its stop allows: its next problem goes to the Sponsor."""
     # Any step's finished work sent back to be done again, in one shape (crew#862): from
     # which step, to which, by which rule, with its round and counts. `sendbacks.py`
     # declares each; the events above still record their own parts beside it.
     WORK_SENT_BACK = "work.sent_back"
+    """Finished work sent back to its own step or an earlier one: see Send-backs above."""
     # A Goal the Sponsor sent back: its unstarted epics superseded, decomposed again.
     GOAL_REWORKED = "goal.reworked"
+    """A Goal the Sponsor sent back: its unstarted epics superseded, decomposed again."""
 
     # GitHub asked the crew to slow down (#293): waited out, or the tick stopped.
     GITHUB_THROTTLED = "github.throttled"
+    """GitHub asked the crew to slow down: waited out, or the tick stopped."""
 
     # What a role was shown, and the files it asked to see (#231, crew#449). They
     # were notes with no role or card, matched to their run by time (discussion 553).
     FILES_SHOWN = "files.shown"
+    """The files a role was shown for a step (#231)."""
     FILES_ASKED = "files.asked"
+    """The files a role asked to see (#231)."""
     # A quote or a block name matched by a fallback the strict rule would refuse
     # (crew#734). Written by the one-call Developer's edits until they retired
     # (crew#778); past logs still hold them.
     EDIT_LOOSE_MATCH = "edit.loose_match"
+    """An edit matched by a fallback the strict rule would refuse (crew#734)."""
     # What the project's own fixers changed before VERIFY (crew#758): the files,
     # the changes outside the attempt undone, and each allowed unsafe fix.
     AUTOFIX_APPLIED = "autofix.applied"
+    """What the project's own fixers changed before the checks, and what was undone."""
 
     # A crew issue and the cards it's about (crew#449, discussion 552): the link
     # from a run's trouble to the issue it led to, as a field, whoever filed it.
     ISSUE_CITES = "issue.cites"
+    """A crew issue and the cards it cites, whoever filed it."""
     # A bare number left unlinked because no such issue exists, and a comment
     # from an account outside `trust` that was ignored (crew#456).
     REFERENCE_UNRESOLVED = "reference.unresolved"
+    """A bare number left unlinked because no such issue exists."""
     COMMENT_IGNORED = "comment.ignored"
+    """A comment from an account outside `trust`, ignored."""
 
     # A role's own Task (ADR 0034, crew#839): opened by an event or a finding, and
     # held because its role has no session yet. With the send-backs, they measure
     # the board's queue.
     ROLE_TASK_OPENED = "role_task.opened"
+    """A role's own Task, opened by an event or a finding (ADR 0034)."""
     ROLE_TASK_HELD = "role_task.held"
+    """A role's Task held because its role has no session yet."""
     # A role's finding outside the story it was working on, filed as a Task or a bug.
     FINDING_FILED = "finding.filed"
+    """A role's finding outside its story, filed as a Task or a bug."""
 
     NOTE = "note"
+    """Anything else a flow records, by the rule it names where it names one."""
+
+
+# The detail fields each kind carries, by name (crew#870). Generated into the records
+# reference; a test holds every field a site writes by name to its kind's list here.
+FIELDS: dict[EventKind, tuple[str, ...]] = {
+    EventKind.TICK_STARTED: ("tick", "sprint", "counts", "github_remaining"),
+    EventKind.TICK_FINISHED: ("held",),
+    EventKind.CARD_CLAIMED: (),
+    EventKind.CARD_MOVED: ("from", "to", "repo", "rule", "finding", "rebuilt"),
+    EventKind.CARD_BLOCKED: ("from", "to", "repo", "rule"),
+    EventKind.CARD_SEEN_MOVED: ("from", "to", "repo", "by"),
+    EventKind.AGENT_STARTED: (
+        "repo",
+        "pr",
+        "stories",
+        "evidence",
+        "trigger",
+        "matched",
+        "devops_task",
+    ),
+    EventKind.AGENT_FINISHED: (
+        "repo",
+        "pr",
+        "rule",
+        "approved",
+        "accepted",
+        "notes",
+        "findings",
+        "unproven",
+        "unproven_numbers",
+        "url",
+    ),
+    EventKind.AGENT_FAILED: ("repo", "pr", "rule"),
+    EventKind.TASK_STARTED: (),
+    EventKind.TASK_COMPLETED: (),
+    EventKind.TASK_FAILED: ("error",),
+    EventKind.LLM_CALL_STARTED: (
+        "model",
+        "call_id",
+        "try",
+        "round",
+        "prompt_hash",
+        "output_schema",
+        "given_rules",
+        "given_hash",
+        "parts",
+    ),
+    EventKind.LLM_CALL_FINISHED: (
+        "model",
+        "call_id",
+        "try",
+        "round",
+        "prompt_hash",
+        "output_schema",
+        "finish_reason",
+        "response_id",
+        "duration_s",
+        "tool_calls",
+        "prompt_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "cached_tokens",
+        "total_tokens",
+    ),
+    EventKind.LLM_CALL_FAILED: (
+        "model",
+        "call_id",
+        "try",
+        "round",
+        "prompt_hash",
+        "output_schema",
+        "error",
+        "duration_s",
+    ),
+    EventKind.LLM_CALL_EMPTY: (),
+    EventKind.LLM_CALL_REFUSED: (
+        "model",
+        "call_id",
+        "try",
+        "reason",
+        "empty",
+        "rules",
+        "finish_reason",
+        "response_id",
+        "duration_s",
+    ),
+    EventKind.TOOL_STARTED: ("tool",),
+    EventKind.TOOL_FINISHED: (
+        "tool",
+        "round",
+        "turn",
+        "chars",
+        "result",
+        "rule",
+        "rules",
+        "step",
+        "args_chars",
+        "reply_chars",
+        "ran_s",
+        "found_nothing",
+    ),
+    EventKind.TOOL_FAILED: ("tool", "step", "turn", "error"),
+    EventKind.SESSION_STARTED: (
+        "step",
+        "head",
+        "round",
+        "base",
+        "story_parts",
+        "start_chars",
+        "limits",
+    ),
+    EventKind.SESSION_TURN: (
+        "turn",
+        "tool_calls",
+        "model_s",
+        "since_action",
+        "most_views",
+        "edits_since_run",
+        "empty_lookups",
+        "reasoning_kept_chars",
+        "reasoning_kept_tokens",
+    ),
+    EventKind.SESSION_COMPACTED: (
+        "compaction",
+        "chars_after",
+        "estimated_tokens",
+        "estimated_after",
+        "turns_masked",
+        "turns_newly_masked",
+        "reasoning_chars_cleared",
+        "reasoning_tokens_cleared",
+    ),
+    EventKind.SESSION_ENDED: (
+        "how",
+        "why",
+        "stop",
+        "said",
+        "evidence",
+        "model_calls",
+        "model_s",
+        "edits_applied",
+        "test_runs",
+        "tools_used",
+        "compactions",
+        "troubles",
+        "after_run_errors",
+        "resetups",
+        "resetups_failed",
+    ),
+    EventKind.GATE_CHECKED: (
+        "repo",
+        "passed",
+        "rules",
+        "already_done",
+        "resetups",
+        "resetups_failed",
+    ),
+    EventKind.REVERT_OPENED: ("repo", "pr", "reverted", "card", "reason"),
+    EventKind.REVERT_REFUSED: ("repo", "pr", "reverted", "card", "reason", "why", "conflict"),
+    EventKind.REVERT_LANDED: ("repo", "pr", "reverted", "card"),
+    EventKind.RETRO_RECORDED: ("repo", "sprint", "filed", "failed", "explained"),
+    EventKind.STANDUP_WRITTEN: ("repo", "sprint", "quiet"),
+    EventKind.DEFECT_FILED: ("repo", "sprint", "about", "cards", "cause", "failure_class"),
+    EventKind.ESCALATION_DECIDED: ("failure_class", "attempt", "error"),
+    EventKind.ESCALATED: (),
+    EventKind.STORY_RETURNED: ("repo", "epic", "reason", "with", "kind", "stop"),
+    EventKind.PRODUCT_ANSWERED: ("repo", "answer", "based_on", "story", "rule"),
+    EventKind.PRODUCT_ASKED: ("repo", "question", "step", "rule", "proposed_goal"),
+    EventKind.EPIC_RESPLIT: (
+        "repo",
+        "superseded",
+        "kept",
+        "named",
+        "positions",
+        "of",
+        "because",
+        "reads_decision",
+        "round",
+        "rule",
+    ),
+    EventKind.EPIC_RESPLIT_STOPPED: ("repo", "round", "stop", "rule"),
+    EventKind.GOAL_REWORKED: ("repo", "superseded", "because"),
+    EventKind.GITHUB_THROTTLED: ("wait_s", "stopped", "status", "resource", "path"),
+    EventKind.FILES_SHOWN: (),
+    EventKind.FILES_ASKED: (),
+    EventKind.EDIT_LOOSE_MATCH: (),
+    EventKind.AUTOFIX_APPLIED: ("fixed", "reverted", "rules", "unsafe"),
+    EventKind.ISSUE_CITES: ("repo", "cites", "labels", "state", "state_reason", "opened", "closed"),
+    EventKind.REFERENCE_UNRESOLVED: ("repo", "number"),
+    EventKind.COMMENT_IGNORED: ("repo", "login"),
+    EventKind.ROLE_TASK_OPENED: ("repo", "task_role", "task_kind", "parent", "event", "rule"),
+    EventKind.ROLE_TASK_HELD: ("repo", "task_role", "waits_for", "rule"),
+    EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error"),
+    EventKind.WORK_SENT_BACK: ("repo", "sent_from", "sent_to", "rule", "round", "counts"),
+    EventKind.NOTE: ("rule", "repo", "card"),
+}
 
 
 class CrewEvent(BaseModel):

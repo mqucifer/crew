@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from crew_org.events import EventKind
+from crew_org import event_list, telemetry
+from crew_org.events import FIELDS, EventKind
 from crew_org.rules import Kind, Rule, meanings
 from crew_org.sendbacks import CATALOG
 
@@ -102,12 +103,39 @@ def render() -> str:
             for b in CATALOG
         ),
         "",
-        "## Event names",
+        "## Events",
         "",
-        "The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as",
-        "`events.<kind>`.",
+        "Every kind of event, in `var/events/*.jsonl` and mirrored into the log as",
+        "`events.<kind>` (crew#870). **Fields** are the detail fields its writers name; the",
+        "**bold** ones leave for telemetry (ADR 0010), the rest stay on this machine.",
+        "**Written in** is the code that writes it today: a kind written nowhere is in past",
+        "logs only. **delivery-history** is what the package makes of it, read from its own",
+        "mapping: the event part it becomes, the function that reads it, or nothing.",
+        "Its parts built from something else, not an event: "
+        + ", ".join(f"`{p}`" for p in event_list.parts_from_elsewhere())
+        + ".",
         "",
-        *(f"- `{kind.value}`" for kind in EventKind),
+        "| Kind | Meaning | Fields | Written in | delivery-history |",
+        "|---|---|---|---|---|",
+        *_event_rows(),
+        "",
+        "### The rules notes name",
+        "",
+        "A `note` names the rule that decided it, where it names one. Each rule a note",
+        "names, what it means, and where those notes are written:",
+        "",
+        "| Rule | Meaning | Written in |",
+        "|---|---|---|",
+        *_note_rule_rows(),
+        "",
+        "### Notes that name no rule",
+        "",
+        "Each, by where it's written, the fixed words of its summary (`…` where a value is",
+        "filled in), and the fields it names.",
+        "",
+        "| Written in | Says | Fields |",
+        "|---|---|---|",
+        *_unruled_note_rows(),
         "",
     ]
     return "\n".join(lines)
@@ -117,3 +145,56 @@ def write(path: Path = PAGE) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(), encoding="utf-8")
     return path
+
+
+def _field(name: str) -> str:
+    return f"**`{name}`**" if name in telemetry.DETAIL else f"`{name}`"
+
+
+def _event_rows() -> list[str]:
+    if missing := event_list.undescribed():
+        raise ValueError(f"event kinds with no meaning under them: {', '.join(missing)}")
+    meant = meanings(EventKind)
+    written = event_list.written()
+    published = event_list.published()
+    rows = []
+    for kind in EventKind:
+        meaning = meant[kind.name]
+        if kind is EventKind.NOTE:
+            meaning += (
+                " See [the rules notes name](#the-rules-notes-name) and"
+                " [notes that name no rule](#notes-that-name-no-rule)."
+            )
+        fields = ", ".join(_field(f) for f in FIELDS[kind]) or "—"
+        sites = written.get(kind)
+        where = (
+            ", ".join(sorted({f"`{s.module}`" for s in sites.sites}))
+            if sites and sites.sites
+            else "nowhere: past logs only"
+        )
+        out = published.get(kind, "stays in the crew's log")
+        rows.append(f"| `{kind.value}` | {meaning} | {fields} | {where} | {out} |")
+    return rows
+
+
+def _note_rule_rows() -> list[str]:
+    by_rule: dict[str, set[str]] = {}
+    for note in event_list.notes():
+        if note.rule is not None:
+            by_rule.setdefault(note.rule, set()).add(f"`{note.site}`")
+    return [
+        f"| `{rule}` | {event_list.rule_meaning(rule)} | {', '.join(sorted(sites))} |"
+        for rule, sites in sorted(by_rule.items())
+    ]
+
+
+def _unruled_note_rows() -> list[str]:
+    def cell(text: str) -> str:
+        return text.replace("|", "\\|").replace("`", "'")
+
+    rows = []
+    for note in event_list.notes():
+        if note.rule is None:
+            fields = ", ".join(_field(f) for f in note.fields) or "—"
+            rows.append(f"| `{note.site}` | {cell(note.words)} | {fields} |")
+    return rows

@@ -131,60 +131,170 @@ block for a person (`card.blocked`); a finding filed as a new Task or bug
 | `revisit` | `design` | `sent_back.rebuild_strain` | Rebuilds kept straining one file: the Architect revises the design. |
 | `review` | `design` | `sent_back.design_refused` | The Code Reviewer refused the Architect's design: it's proposed again. |
 
-## Event names
+## Events
 
-The event log's kinds, in `var/events/*.jsonl` and mirrored into the log as
-`events.<kind>`.
+Every kind of event, in `var/events/*.jsonl` and mirrored into the log as
+`events.<kind>` (crew#870). **Fields** are the detail fields its writers name; the
+**bold** ones leave for telemetry (ADR 0010), the rest stay on this machine.
+**Written in** is the code that writes it today: a kind written nowhere is in past
+logs only. **delivery-history** is what the package makes of it, read from its own
+mapping: the event part it becomes, the function that reads it, or nothing.
+Its parts built from something else, not an event: `pull_merged`.
 
-- `tick.started`
-- `tick.finished`
-- `card.claimed`
-- `card.moved`
-- `card.blocked`
-- `card.seen_moved`
-- `agent.started`
-- `agent.finished`
-- `agent.failed`
-- `task.started`
-- `task.completed`
-- `task.failed`
-- `llm.started`
-- `llm.finished`
-- `llm.failed`
-- `llm.empty`
-- `llm.refused`
-- `tool.started`
-- `tool.finished`
-- `tool.failed`
-- `session.started`
-- `session.turn`
-- `session.compacted`
-- `session.ended`
-- `gate.checked`
-- `revert.opened`
-- `revert.refused`
-- `revert.landed`
-- `retro.recorded`
-- `standup.written`
-- `defect.filed`
-- `escalation.decided`
-- `escalation.sent`
-- `story.returned`
-- `product.answered`
-- `product.asked`
-- `epic.resplit`
-- `epic.resplit_stopped`
-- `work.sent_back`
-- `goal.reworked`
-- `github.throttled`
-- `files.shown`
-- `files.asked`
-- `edit.loose_match`
-- `autofix.applied`
-- `issue.cites`
-- `reference.unresolved`
-- `comment.ignored`
-- `role_task.opened`
-- `role_task.held`
-- `finding.filed`
-- `note`
+| Kind | Meaning | Fields | Written in | delivery-history |
+|---|---|---|---|---|
+| `tick.started` | A tick began: the board read, and the column counts at its start. | **`tick`**, **`sprint`**, **`counts`**, **`github_remaining`** | `cli.py`, `flows/board_flow.py`, `flows/loop.py` | stays in the crew's log |
+| `tick.finished` | A tick ended: what each phase did, and the holds and skips it decided. | `held` | `cli.py`, `flows/board_flow.py`, `flows/loop.py`, `flows/sprint.py` | stays in the crew's log |
+| `card.claimed` | A role took a card to work on. | — | `cli.py`, `flows/board_flow.py` | stays in the crew's log |
+| `card.moved` | The crew moved a card between columns, and by which rule where one decided. | **`from`**, **`to`**, **`repo`**, **`rule`**, `finding`, **`rebuilt`** | `cli.py`, `flows/acceptance.py`, `flows/board_flow.py`, `flows/bugs.py`, `flows/ci.py`, `flows/close.py`, `flows/delivery.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/revert.py`, `flows/review.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/sprint.py`, `flows/story_problem.py` | as `card_moved` |
+| `card.blocked` | The crew moved a card to Blocked, for a person or the Sponsor. | **`from`**, **`to`**, **`repo`**, **`rule`** | `cli.py`, `flows/board_flow.py`, `flows/delivery.py`, `flows/merge.py`, `flows/revert.py`, `flows/session_end.py` | as `blocked` |
+| `card.seen_moved` | A move the crew didn't make, seen at a pass's start: a person's, or the workflow's. | **`from`**, **`to`**, **`repo`**, `by` | `flows/seen_moves.py` | as `card_moved` |
+| `agent.started` | A role began a step's work on a card or pull request. | **`repo`**, **`pr`**, `stories`, `evidence`, `trigger`, `matched`, `devops_task` | `cli.py`, `flows/acceptance.py`, `flows/board_flow.py`, `flows/bugs.py`, `flows/goal_look.py`, `flows/review.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py` | as `work_started` |
+| `agent.finished` | A role finished a step: its verdict, as flags and counts. | **`repo`**, **`pr`**, **`rule`**, **`approved`**, **`accepted`**, **`notes`**, `findings`, `unproven`, `unproven_numbers`, `url` | `cli.py`, `flows/acceptance.py`, `flows/board_flow.py`, `flows/bugs.py`, `flows/review.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py` | as `work_finished` |
+| `agent.failed` | A role's step failed before it finished: the call, the form, or the code around it. | **`repo`**, **`pr`**, **`rule`** | `flows/acceptance.py`, `flows/board_flow.py`, `flows/bugs.py`, `flows/goal_look.py`, `flows/review.py`, `flows/role_tasks.py` | stays in the crew's log |
+| `task.started` | A step began, as CrewAI's bus recorded it before the crew's own calls (ADR 0025). | — | nowhere: past logs only | stays in the crew's log |
+| `task.completed` | A step completed, as CrewAI's bus recorded it before the crew's own calls. | — | nowhere: past logs only | stays in the crew's log |
+| `task.failed` | A step failed, as CrewAI's bus recorded it before the crew's own calls. | `error` | nowhere: past logs only | stays in the crew's log |
+| `llm.started` | A model call was sent: which model, which prompt and form, and the sizes of its parts. | **`model`**, **`call_id`**, `try`, **`round`**, **`prompt_hash`**, **`output_schema`**, `given_rules`, `given_hash`, `parts` | `calls.py`, `cli.py` | stays in the crew's log |
+| `llm.finished` | A model call answered: why it stopped, its tokens and its time. | **`model`**, **`call_id`**, `try`, **`round`**, **`prompt_hash`**, **`output_schema`**, **`finish_reason`**, **`response_id`**, **`duration_s`**, **`tool_calls`**, **`prompt_tokens`**, **`completion_tokens`**, **`reasoning_tokens`**, **`cached_tokens`**, **`total_tokens`** | `calls.py`, `cli.py` | as `model_call` |
+| `llm.failed` | A model call didn't return: a connection, a timeout, a server error. | **`model`**, **`call_id`**, `try`, **`round`**, **`prompt_hash`**, **`output_schema`**, `error`, **`duration_s`** | `calls.py` | as `model_call` |
+| `llm.empty` | A model call answered nothing, typically after thinking (#312). | — | nowhere: past logs only | stays in the crew's log |
+| `llm.refused` | A model's answer its form refused, with the reason the next attempt is told (ADR 0025). | **`model`**, **`call_id`**, `try`, `reason`, `empty`, `rules`, **`finish_reason`**, **`response_id`**, **`duration_s`** | `calls.py` | stays in the crew's log |
+| `tool.started` | A role's tool call began. | **`tool`** | `cli.py` | stays in the crew's log |
+| `tool.finished` | A role's tool call finished: what it was, its sizes, and how it ended. | **`tool`**, **`round`**, **`turn`**, `chars`, `result`, **`rule`**, `rules`, `step`, **`args_chars`**, **`reply_chars`**, **`ran_s`**, **`found_nothing`** | `calls.py`, `cli.py`, `session/conversation.py` | as `tool_call` |
+| `tool.failed` | A role's tool call raised, and what the session was told. | **`tool`**, `step`, **`turn`**, `error` | `cli.py`, `session/conversation.py`, `session/steps.py` | as `tool_call` |
+| `session.started` | A Developer session began: its start's sizes and its limits. | `step`, `head`, **`round`**, `base`, `story_parts`, **`start_chars`**, `limits` | `session/conversation.py`, `session/steps.py` | as `session_started` |
+| `session.turn` | One model call of a session, with its signals after it. | **`turn`**, **`tool_calls`**, **`model_s`**, **`since_action`**, **`most_views`**, **`edits_since_run`**, **`empty_lookups`**, **`reasoning_kept_chars`**, **`reasoning_kept_tokens`** | `session/conversation.py` | as `session_turn` |
+| `session.compacted` | A session's history compacted to fit, and what it left. | **`compaction`**, **`chars_after`**, **`estimated_tokens`**, **`estimated_after`**, **`turns_masked`**, **`turns_newly_masked`**, **`reasoning_chars_cleared`**, **`reasoning_tokens_cleared`** | `session/conversation.py` | as `session_compacted` |
+| `session.ended` | A session ended: how, why, and its totals. | `how`, `why`, **`stop`**, `said`, `evidence`, **`model_calls`**, **`model_s`**, **`edits_applied`**, **`test_runs`**, `tools_used`, `compactions`, `troubles`, `after_run_errors`, **`resetups`**, **`resetups_failed`** | `session/conversation.py` | as `session_ended` |
+| `gate.checked` | The gates' verdict on a session's branch at `done`, and the rules of what sent it back. | **`repo`**, `passed`, `rules`, `already_done`, **`resetups`**, **`resetups_failed`** | `flows/session_end.py` | as `gate_checked` |
+| `revert.opened` | A revert pull request was opened for a merged change. | **`repo`**, **`pr`**, `reverted`, `card`, `reason` | `flows/revert.py` | stays in the crew's log |
+| `revert.refused` | A revert couldn't be made or landed, and why. | **`repo`**, **`pr`**, `reverted`, `card`, `reason`, `why`, `conflict` | `flows/revert.py` | stays in the crew's log |
+| `revert.landed` | A revert landed: its card goes back to Needs Refinement. | **`repo`**, **`pr`**, `reverted`, `card` | `flows/revert.py` | stays in the crew's log |
+| `retro.recorded` | The sprint's retro was recorded as an issue, with the defects it filed. | **`repo`**, **`sprint`**, `filed`, `failed`, `explained` | `flows/retro.py` | stays in the crew's log |
+| `standup.written` | A standup was written for a project's sprint. | **`repo`**, **`sprint`**, **`quiet`** | `flows/standup.py` | stays in the crew's log |
+| `defect.filed` | The retro filed a defect, in the repository of what it found. | **`repo`**, **`sprint`**, **`about`**, `cards`, `cause`, **`failure_class`** | `flows/retro.py` | stays in the crew's log |
+| `escalation.decided` | The one-call Developer's retry or escalation decision (crew#778). | **`failure_class`**, **`attempt`**, `error` | nowhere: past logs only | as `attempt` |
+| `escalation.sent` | The one-call Developer's work escalated to the subscription (crew#778). | — | nowhere: past logs only | as `escalated` |
+| `story.returned` | A story sent back to refinement, by its reason from a fixed list. | **`repo`**, `epic`, `reason`, `with`, `kind`, **`stop`** | `cli.py`, `flows/story_problem.py` | as `returned` |
+| `product.answered` | The Product Owner answered a story problem, as rows of the record. | **`repo`**, `answer`, `based_on`, `story`, **`rule`** | `flows/board_flow.py` | stays in the crew's log |
+| `product.asked` | The Product Owner asked the Sponsor one question instead of deciding. | **`repo`**, `question`, `step`, **`rule`**, `proposed_goal` | `flows/board_flow.py`, `flows/goal_look.py`, `flows/proposed_goal.py` | stays in the crew's log |
+| `epic.resplit` | An epic split again: the stories it replaced and kept, why, and its round. | **`repo`**, **`superseded`**, **`kept`**, **`named`**, **`positions`**, **`of`**, **`because`**, **`reads_decision`**, **`round`**, **`rule`** | `flows/resplit.py` | read by `_superseded_because` |
+| `epic.resplit_stopped` | An epic re-split as often as its stop allows: its next problem goes to the Sponsor. | **`repo`**, **`round`**, **`stop`**, **`rule`** | `flows/resplit.py` | stays in the crew's log |
+| `work.sent_back` | Finished work sent back to its own step or an earlier one: see Send-backs above. | **`repo`**, **`sent_from`**, **`sent_to`**, **`rule`**, **`round`**, **`counts`** | `sendbacks.py` | as `sent_back` |
+| `goal.reworked` | A Goal the Sponsor sent back: its unstarted epics superseded, decomposed again. | **`repo`**, **`superseded`**, **`because`** | `flows/board_flow.py` | read by `_superseded_because` |
+| `github.throttled` | GitHub asked the crew to slow down: waited out, or the tick stopped. | **`wait_s`**, **`stopped`**, **`status`**, **`resource`**, **`path`** | `flows/loop.py` | stays in the crew's log |
+| `files.shown` | The files a role was shown for a step (#231). | — | nowhere: past logs only | stays in the crew's log |
+| `files.asked` | The files a role asked to see (#231). | — | nowhere: past logs only | stays in the crew's log |
+| `edit.loose_match` | An edit matched by a fallback the strict rule would refuse (crew#734). | — | nowhere: past logs only | stays in the crew's log |
+| `autofix.applied` | What the project's own fixers changed before the checks, and what was undone. | `fixed`, `reverted`, `rules`, `unsafe` | `flows/session_delivery.py` | stays in the crew's log |
+| `issue.cites` | A crew issue and the cards it cites, whoever filed it. | **`repo`**, `cites`, `labels`, `state`, `state_reason`, `opened`, `closed` | `flows/citations.py` | read by `_citations` |
+| `reference.unresolved` | A bare number left unlinked because no such issue exists. | **`repo`**, `number` | `flows/citations.py` | stays in the crew's log |
+| `comment.ignored` | A comment from an account outside `trust`, ignored. | **`repo`**, `login` | `flows/citations.py` | stays in the crew's log |
+| `role_task.opened` | A role's own Task, opened by an event or a finding (ADR 0034). | **`repo`**, `task_role`, `task_kind`, `parent`, `event`, **`rule`** | `flows/role_tasks.py` | stays in the crew's log |
+| `role_task.held` | A role's Task held because its role has no session yet. | **`repo`**, `task_role`, `waits_for`, **`rule`** | `flows/sprint.py` | stays in the crew's log |
+| `finding.filed` | A role's finding outside its story, filed as a Task or a bug. | **`repo`**, `owner`, `filed`, **`round`**, `error` | `flows/role_tasks.py` | stays in the crew's log |
+| `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `flows/acceptance.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `session/steps.py` | stays in the crew's log |
+
+### The rules notes name
+
+A `note` names the rule that decided it, where it names one. Each rule a note
+names, what it means, and where those notes are written:
+
+| Rule | Meaning | Written in |
+|---|---|---|
+| `decision.backlog_order.what_is_ordered` | The Product Owner ranks the open epics with no Rank. One it can't place yet is held for the work it builds on, and an order it can't give is recorded as failed. | `flows/backlog_order.py:order_backlogs` |
+| `decision.board_flow.already_delivered` | An epic whose stories would only repeat delivered work is closed as already delivered, naming the stories that delivered it. | `flows/board_flow.py:refine_epics` |
+| `decision.delivery.interrupted` | A delivery a service interrupted, not the story, is tried again next pass; three in a row block it for a person. | `flows/delivery.py:_deliver_and_move` |
+| `decision.delivery.rework` | A story whose pull request was refused at its head goes back to In Progress for re-work, when the column has room. | `flows/delivery.py:deliver` |
+| `decision.delivery.waits_on_files` | A story's rebuild waits while another open pull request changes the same files. | `flows/delivery.py:deliver` |
+| `decision.github_issues.trust` | A comment from an account outside org.yaml's trust list isn't read (crew#399). | `flows/loop.py:run` |
+| `decision.goal_look.look_step` | An epic under a Goal is split once the Goal's record covers it, written from one look across the Goal's approved epics and its settle. | `flows/goal_look.py:_write` |
+| `decision.merge.conflict` | An approved pull request that conflicts with main keeps both sides where both only add; otherwise the crew rebuilds it, up to its limit, then it's blocked for a person. | `flows/merge.py:_conflict` |
+| `decision.merge.merge_approved` | An approved pull request lands through one path, and each way landing ends is handled by the phase that asked. | `flows/merge.py:merge_approved` |
+| `decision.release_check.check_releases` | Each project's current release is checked once its release run for the head has finished: verified, waiting on the Sponsor, or a technical epic for what it's missing. | `flows/release_check.py:check_releases` |
+| `decision.revisit.file_work` | A design revisit ends in a record of what it found: refused, no change, its work filed, or a revision pull request the crew merges. | `flows/revisit.py:_merge` |
+| `decision.role_tasks.not_opened` | A role's Task an event should open and GitHub refused is recorded, and the next pass tries again; nothing marks it opened until it is. | `flows/role_tasks.py:not_opened` |
+| `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. | `flows/session_delivery.py:deliver_by_session` |
+| `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. | `flows/criteria_check.py:to_product_owner` |
+| `hold.builds_on` | It waits for a story it builds on. | `flows/delivery.py:deliver` |
+| `hold.sibling` | It waits for an earlier story in the same epic. | `flows/delivery.py:deliver` |
+| `hold.wip_limit` | The next column is at its limit. | `flows/board_flow.py:refine_epics`, `flows/delivery.py:deliver`, `flows/loop.py:run`, `flows/sprint.py:start_sprint` |
+| `skip.board_flow.rework_refused` | A Goal the Sponsor sent back is decomposed again only on their word, and once, its unstarted epics superseded. An epic sent back goes through decision.resplit.affected (crew#859). | `flows/board_flow.py:resplit_gate`, `flows/board_flow.py:rework_gate` |
+| `skip.board_flow.waits_for_planned` | An epic covered only by planned stories waits for them: it closes when they land, and is split again if one closes undelivered. | `flows/board_flow.py:settle_wait` |
+
+### Notes that name no rule
+
+Each, by where it's written, the fixed words of its summary (`…` where a value is
+filled in), and the fields it names.
+
+| Written in | Says | Fields |
+|---|---|---|
+| `flows/acceptance.py:_judge` | #… QA context: … chars of tests… | `asked`, `context_chars`, `cut`, `focused`, `shown` |
+| `flows/acceptance.py:_judge` | #… QA read … | `read` |
+| `flows/artifacts.py:comment` | commented | **`artifact`**, **`repo`** |
+| `flows/artifacts.py:label` | … | `added`, **`artifact`**, `removed`, **`repo`** |
+| `flows/backlog_order.py:order_backlogs` | … backlog order: … chars of backlog | — |
+| `flows/backlog_order.py:order_backlogs` | …: ordered the backlog: … | `order`, **`repo`** |
+| `flows/board_flow.py:_record` | refining … without its record: … | — |
+| `flows/board_flow.py:admit_held_stories` | waiting for room in …: … | — |
+| `flows/board_flow.py:create_epic_cards` | could not nest under #…: … | — |
+| `flows/board_flow.py:focused_for` | refining … without its code: … | — |
+| `flows/board_flow.py:for_repo` | …: delivered stories unread: … | — |
+| `flows/board_flow.py:reading_for` | …: no checkout to read: … | — |
+| `flows/board_flow.py:reading_for` | …: no coverage map: … | — |
+| `flows/board_flow.py:reading_for` | …: … | — |
+| `flows/board_flow.py:record_split_tests` | #…: the split's tests weren't recorded: … | — |
+| `flows/board_flow.py:refine_epics` | #… closed while it was being split: no stories created | — |
+| `flows/board_flow.py:refine_epics` | #… waits for planned … | — |
+| `flows/board_flow.py:rework_gate` | superseded … | — |
+| `flows/board_flow.py:stamp_goal_work_type` | could not set Work Type: …: … | — |
+| `flows/board_flow.py:stamp_goal_work_type` | typed … from the '…' label | — |
+| `flows/board_flow.py:tick` | ignoring untyped cards in …: … — set Work Type | — |
+| `flows/board_flow.py:tick` | not decomposed — a Goal written by … | — |
+| `flows/board_flow.py:tick` | … cards on the board | **`counts`** |
+| `flows/close.py:_carry_over` | #… not merged by the close: carried to … | — |
+| `flows/close.py:close_sprint` | retro could not be recorded: … | — |
+| `flows/close.py:close_sprint` | retro could not be written: … | — |
+| `flows/decision_log.py:_merge` | … PR #… not merged yet: … | — |
+| `flows/decision_log.py:_merge` | … PR #… not merged yet: … | — |
+| `flows/decision_log.py:_merge` | …: merged the decision log, PR #… | — |
+| `flows/decision_log.py:_write_log` | …: … decisions proposed for the project's log | — |
+| `flows/decision_log.py:write_logs` | …: decision log not written: … | — |
+| `flows/delivery.py:coverage_for` | #… no coverage map: … | — |
+| `flows/delivery.py:deliver` | … cards are outside the crew's repositories: … | — |
+| `flows/delivery.py:rule_on_contract` | #… amendment not written: … | — |
+| `flows/delivery.py:rule_on_contract` | #… contract …: … | `decision`, **`repo`**, `tests` |
+| `flows/delivery.py:rule_on_contract` | #… no contract ruling: … | — |
+| `flows/diagnose.py:diagnose_blocked` | #…: diagnosis failed: … | **`repo`** |
+| `flows/diagnose.py:diagnose_blocked` | #…: the Senior Engineer diagnosed the block, … findings | **`repo`** |
+| `flows/goal_look.py:look_step` | #… look context: … chars of Goal decisions, … of the project's log, … epics | `decisions_chars`, `epics`, `project_log_chars` |
+| `flows/loop.py:_clone` | …: no clone for the review: … | — |
+| `flows/loop.py:run` | citations not recorded: … | — |
+| `flows/loop.py:run` | could not read the board: … | — |
+| `flows/loop.py:run` | diagnosis skipped: … | — |
+| `flows/loop.py:run` | moves by others not recorded: … | — |
+| `flows/loop.py:run` | sprint-metrics not pushed: … | — |
+| `flows/loop.py:run` | waited …s for the merge queue: … of … left it | `left`, `queued`, `waited_s` |
+| `flows/loop.py:run` | … failed: … | — |
+| `flows/main_watch.py:_close_if_untouched` | #… closed: '…' passes again | — |
+| `flows/merge.py:_close_story` | PR #… merged; closing the issue failed: … | — |
+| `flows/merge.py:_close_story` | closed: PR #… merged | — |
+| `flows/merge.py:_conflict` | #… PR #… conflicts in … | `files`, `landed` |
+| `flows/metrics_push.py:push_after_pass` | pushed to sprint-metrics: … sprints, … events… | `events`, `sprints`, `statuses` |
+| `flows/moves.py:move_card` | owner not recorded: … | — |
+| `flows/revisit.py:_give_to_epic` | #… owns design work: … | — |
+| `flows/revisit.py:_merge` | … PR #… not merged yet: … | — |
+| `flows/revisit.py:_merge` | …: merged the Architect's design revision, PR #… | — |
+| `flows/revisit.py:_route` | …: design text only, no work: … | — |
+| `flows/revisit.py:_route` | …: design work not placed, all filed: … | — |
+| `flows/revisit.py:revisit_designs` | …: design revisit failed: … | — |
+| `flows/session_delivery.py:_keep` | #… its work is kept on …, with no pull request | **`kept`** |
+| `flows/session_delivery.py:_say_reworked` | #… re-worked on PR #…, and its comment failed: … | — |
+| `flows/session_delivery.py:after_run` | #… checkpoint after a green 'run …' | `checkpoint` |
+| `flows/session_end.py:note` | #… … | — |
+| `flows/sprint.py:start_sprint` | #… sprint not cleared: … | — |
+| `flows/sprint.py:start_sprint` | could not read sub-issues: … | — |
+| `flows/story_problem.py:record_pinned` | #…: the pinned tests weren't recorded: … | — |
+| `flows/story_problem.py:return_to_refinement` | #… sprint not cleared: … | — |
+| `session/steps.py:at_once` | …: … sessions at once, … minutes | **`completion_tokens`**, `failed`, `sessions`, `step`, `tokens_per_s`, `wall_s` |
