@@ -130,7 +130,7 @@ def record_pinned(
     if not listed:
         return
     try:
-        if not record.has_record(issues.get(repo, epic).get("body") or ""):
+        if not record.text_for(issues, repo, epic):
             return
 
         def change(current: record.Record) -> record.Record:

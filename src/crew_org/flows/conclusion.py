@@ -20,13 +20,15 @@ from crew_org.flows import record
 from crew_org.rulebook import says
 
 FOLLOWS = "Follows the epic's"
-# The line a story carries: `Follows the epic's R1, R4.`
-_FOLLOWS_LINE = re.compile(rf"^{re.escape(FOLLOWS)} (R\d+(?:, R\d+)*)\.\s*$", re.M)
+# A story split from the Goal's record follows the Goal's rows (crew#858).
+FOLLOWS_GOAL = "Follows the Goal's"
+# The line a story carries: `Follows the Goal's R1, R4.`, or the epic's.
+_FOLLOWS_LINE = re.compile(r"^Follows the (?:epic|Goal)'s (R\d+(?:, R\d+)*)\.\s*$", re.M)
 
 
-def follows_line(rows: list[str]) -> str:
-    """The line a story carries naming the epic's rows it follows."""
-    return f"{FOLLOWS} {', '.join(rows)}."
+def follows_line(rows: list[str], *, on_goal: bool = False) -> str:
+    """The line a story carries naming the record's rows it follows."""
+    return f"{FOLLOWS_GOAL if on_goal else FOLLOWS} {', '.join(rows)}."
 
 
 def parse_follows(story_body: str) -> list[str]:
@@ -36,12 +38,13 @@ def parse_follows(story_body: str) -> list[str]:
 
 
 def story_rows(issues: Any, story: Any, default_repo: str) -> str:
-    """The rows of the epic's record this story names, for the steps that build and judge it.
+    """The rows of the record this story names, for the steps that build and judge it.
 
     "Whatever reads a story pulls only the rows it names": a long record doesn't
     bloat a story's context, and nothing the story relies on goes missing. A row
-    replaced since the split comes with the row that replaced it. A story that
-    names none, or an epic with no record, gives nothing.
+    replaced since the split comes with the row that replaced it. The record is its
+    epic's own, or its Goal's (crew#858). A story that names none, or an epic with no
+    record, gives nothing.
     """
     if story is None or story.parent is None or story.number is None:
         return ""
@@ -50,7 +53,7 @@ def story_rows(issues: Any, story: Any, default_repo: str) -> str:
         ids = parse_follows(issues.get(repo, story.number).get("body") or "")
         if not ids:
             return ""
-        _, text = record.split(issues.get(repo, story.parent).get("body") or "")
+        text = record.text_for(issues, repo, story.parent)
     except Exception:  # noqa: BLE001 - context, never a reason to stop the work
         return ""
     return record.rows_for(text, ids)

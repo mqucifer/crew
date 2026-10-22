@@ -1213,7 +1213,7 @@ def record_split_tests(
     if not (changes or proposal.tests_dropped):
         return
     try:
-        if not record_flow.has_record(issues.get(repo, epic).get("body") or ""):
+        if not record_flow.text_for(issues, repo, epic):
             return
 
         def change(current: record_flow.Record) -> record_flow.Record:

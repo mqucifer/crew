@@ -182,13 +182,13 @@ flows.board_flow.product_step:end:df353202:
   at: flows/board_flow.py:product_step
   if: NEEDS_REWORK not in epic.labels
   rule: decision.board_flow.product_step
-flows.board_flow.record_split_tests:end:cbd4d796:
-  at: flows/board_flow.py:record_split_tests
-  if: not record_flow.has_record(issues.get(repo, epic).get('body') or '')
-  not_a_rule: 'nothing to act on: a value is absent'
 flows.board_flow.record_split_tests:end:e2823bf7:
   at: flows/board_flow.py:record_split_tests
   if: not (changes or proposal.tests_dropped)
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.board_flow.record_split_tests:end:ff7d7b2e:
+  at: flows/board_flow.py:record_split_tests
+  if: not record_flow.text_for(issues, repo, epic)
   not_a_rule: 'nothing to act on: a value is absent'
 flows.board_flow.record_split_tests:filter:195eda64:
   at: flows/board_flow.py:record_split_tests
@@ -955,10 +955,30 @@ flows.readiness.check:filter:907b460b:
   at: flows/readiness.py:check
   if: not (run.get('path') or '').endswith(f'/{BOARD_WORKFLOW}')
   not_a_rule: names the board's own workflow file among a project's
+flows.record._locate:end:3e015281:
+  at: flows/record.py:_locate
+  if: text
+  not_a_rule: 'reads where a record is kept: an epic split before the Goal had one keeps its own'
+flows.record._locate:end:c3ef9312:
+  at: flows/record.py:_locate
+  if: found is not None
+  not_a_rule: reads where a record is kept, the Goal's comment
 flows.record.edit:end:fcca2e00:
   at: flows/record.py:edit
   if: after == before
   not_a_rule: 'nothing changed: nothing to write'
+flows.record.goal_record_comment:filter:9e54281c:
+  at: flows/record.py:goal_record_comment
+  if: GOAL_RECORD_MARKER in (c.get('body') or '')
+  not_a_rule: finds the Goal's record comment by its marker
+flows.record.text_for:end:37daa5be:
+  at: flows/record.py:text_for
+  if: not text
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.record.text_for:end:fd1ca5ba:
+  at: flows/record.py:text_for
+  if: not place.on_goal or place.goal == number
+  not_a_rule: reads a record whole when it is the card's own
 flows.record_pr.propose:filter:3d312541:
   at: flows/record_pr.py:propose
   if: p['head']['ref'] == branch
@@ -1456,13 +1476,13 @@ flows.standup.write_standup:filter:8ab5a662:
   at: flows/standup.py:write_standup
   if: v
   not_a_rule: 'a report or a render: lists, decides nothing'
-flows.story_problem.record_pinned:end:4ffffe43:
-  at: flows/story_problem.py:record_pinned
-  if: not record.has_record(issues.get(repo, epic).get('body') or '')
-  not_a_rule: 'nothing to act on: a value is absent'
 flows.story_problem.record_pinned:end:658f3f2d:
   at: flows/story_problem.py:record_pinned
   if: not listed
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.story_problem.record_pinned:end:c643c7b9:
+  at: flows/story_problem.py:record_pinned
+  if: not record.text_for(issues, repo, epic)
   not_a_rule: 'nothing to act on: a value is absent'
 flows.story_problem.return_to_refinement:end:cdf0e957:
   at: flows/story_problem.py:return_to_refinement
