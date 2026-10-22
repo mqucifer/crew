@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from crew_org.columns import DONE
 from crew_org.tools.github_project import Card
+from crew_org.work_types import TASK
 
 STORY_TYPE = "Story"
 
@@ -27,9 +28,14 @@ def unlanded_earlier_siblings(cards: list[Card], story: Card) -> list[Card]:
     proposed the stories: `refine_epics` creates their issues in that order, so the
     numbers ascend in it. Landed means Done or closed: an open pull request is not in
     anyone's base.
+
+    A role's Task under an epic, DevOps's CI and release (crew#839), waits for every
+    story of the epic, whatever its number: a re-split's stories are numbered after it,
+    and the release ships what they add.
     """
     if story.parent is None:
         return []
+    every = story.work_type == TASK
     return [
         c
         for c in cards
@@ -39,7 +45,7 @@ def unlanded_earlier_siblings(cards: list[Card], story: Card) -> list[Card]:
         if c.repo == story.repo
         and c.parent == story.parent
         and c.work_type == STORY_TYPE
-        and (c.number or 0) < (story.number or 0)
+        and (every or (c.number or 0) < (story.number or 0))
         and c.state != "CLOSED"
         and c.status != DONE
     ]

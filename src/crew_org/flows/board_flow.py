@@ -46,7 +46,7 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal
+from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal, role_tasks
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
@@ -190,6 +190,7 @@ class TickResult:
     superseded: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
     # Filed bugs triaged this pass, (number, outcome) (crew#407).
     bugs_triaged: list[tuple[int, str]] = field(default_factory=list)
+    tasks_triaged: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -2269,6 +2270,16 @@ def tick(
     # Filed bugs are triaged into the flow: accepted into Ready, closed with why, or
     # asked about (crew#407, ADR 0027).
     result.bugs_triaged = bugs.triage_bugs(
+        board,
+        issues,
+        sink,
+        cards,
+        default_repo=default_repo,
+        context=context,
+        failed=result.failed,
+    )
+    # And Tasks a role filed from its finding, the same way (ADR 0034, crew#839).
+    result.tasks_triaged = role_tasks.triage_tasks(
         board,
         issues,
         sink,

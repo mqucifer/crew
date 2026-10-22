@@ -444,6 +444,7 @@ def _admit(crew: Crew) -> PhaseOutcome:
     the one hop `tick` refused to make, on a docstring claiming a third human
     gate that section 1 of the constitution does not have.
     """
+    from crew_org.flows.role_tasks import waits_for  # noqa: PLC0415
     from crew_org.flows.sprint import start_sprint  # noqa: PLC0415
 
     closed = _closed(crew)
@@ -479,6 +480,11 @@ def _admit(crew: Crew) -> PhaseOutcome:
             for c in plan.waiting_on_rework
         ]
         + [f"{c.name(qualify=True)} — its epic is parked in Inbox" for c in plan.parked]
+        + [
+            f"{c.name(qualify=True)} — a Task for a role with no session yet; "
+            f"{waits_for(c)} brings it"
+            for c in plan.no_session
+        ]
         + (
             [f"{plan.sprint} is full: {plan.committed} of {plan.capacity} points"]
             if plan.full and any(s.deferred for s in plan.slices)

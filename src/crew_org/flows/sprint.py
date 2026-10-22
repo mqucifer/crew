@@ -31,6 +31,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows.board_flow import NEEDS_REWORK, TECHNICAL
 from crew_org.flows.board_flow import builds_on as builds_on_line
 from crew_org.flows.moves import move_card
+from crew_org.flows.role_tasks import role_of
 from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -90,6 +91,9 @@ class SprintPlan:
     waiting_on_rework: list[Card] = field(default_factory=list)
     # Stories whose epic the Sponsor parked in Inbox (Goals): they wait with it (crew#673).
     parked: list[Card] = field(default_factory=list)
+    # A role's Tasks whose role has no session yet: filed, and waiting for the
+    # milestone that brings one (crew#839).
+    no_session: list[Card] = field(default_factory=list)
     # Points already in the sprint before this run, whatever their column (#222).
     committed: int = 0
 
@@ -173,6 +177,14 @@ def plan_sprint(
         (c for k, c in candidates.items() if k not in ready),
         key=lambda c: (c.repo or "", c.number or 0),
     )
+    # Nothing works a Task whose role has no session: admitted, it would sit in the
+    # sprint unworked and spend its points (crew#839).
+    for key, card in list(ready.items()):
+        role = role_of(card)
+        if role is not None and not role.has_session:
+            held("hold.no_session", repo=card.repo, card=card.number)
+            plan.no_session.append(card)
+            del ready[key]
 
     # Capacity is the sprint's, not this run's. Every pass of every tick runs
     # admission, and each started from the full capacity: Sprint 6, capacity
@@ -486,6 +498,23 @@ def start_sprint(
         held_back = {c.key for c in piece.deferred}
         piece.admitted = [c for c in piece.admitted if c.key not in held_back]
         piece.points = sum(int(c.points or 0) for c in piece.admitted)
+
+    # Each pass, so the queue of Tasks waiting for a session can be measured.
+    for card in plan.no_session:
+        role = role_of(card)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.ROLE_TASK_HELD,
+                card=card.number,
+                summary=f"the {role.name}'s Task waits for {role.waits_for}"[:100] if role else "",
+                detail={
+                    "repo": card.repo,
+                    "task_role": role.name if role else "",
+                    "waits_for": role.waits_for if role else "",
+                    "rule": "hold.no_session",
+                },
+            )
+        )
 
     sink.note(
         EventKind.TICK_FINISHED,
