@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Collection
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from crew_org.tools.review_evidence import candidate_paths
@@ -31,12 +32,13 @@ _LISTENS = re.compile(
 
 
 def is_runnable(path: str) -> bool:
-    """A file that decides how something runs or ships: an image, a stack, a workflow."""
+    """A file that decides how something runs or ships: an image, a stack, a workflow,
+    or the workspace and the services it declares (ADR 0032)."""
     p = PurePosixPath(path)
     name = p.name.lower()
     if name.startswith(("dockerfile", "containerfile")) or name.endswith(".dockerfile"):
         return True
-    if name in {".dockerignore"}:
+    if name in {".dockerignore", ".devcontainer.json"} or p.parts[0] == ".devcontainer":
         return True
     if re.fullmatch(r"(docker-)?compose(\.[\w-]+)?\.ya?ml", name):
         return True
@@ -47,18 +49,88 @@ def changed_files(diff: str) -> list[str]:
     return [p for p in dict.fromkeys(_FILE.findall(diff)) if p != "/dev/null"]
 
 
-def touches_runnable(diff: str) -> bool:
-    """Does this change add, alter or remove anything that runs or deploys?"""
-    return any(is_runnable(p) for p in changed_files(diff))
+# Code that changes how the thing runs, read from a diff's added and removed lines
+# (crew#861). sprint-metrics#67 bound its server to 127.0.0.1 in plain Python, so
+# no runnable file changed and nothing judged it until an image shipped it
+# (sprint-metrics#330). Wide on purpose: a false start costs one review, a miss a
+# broken deploy. On 180 merged pull requests it started on 3 that no file did.
+_RUNS = {
+    "listens": _LISTENS,
+    "address": re.compile(r"""["'](?:0\.0\.0\.0|127\.0\.0\.1|localhost|::1?|\[::1?\])["':]"""),
+    "port": re.compile(r"\b(?:port|PORT|host|HOST)\b\s*[:=]|--(?:port|host|bind)\b|\bEXPOSE\b"),
+    "permissions": re.compile(
+        r"\b(?:chmod|chown|umask|setuid|setgid|S_I[RWX](?:USR|GRP|OTH)|S_IRWX[UGO])\b"
+        r"|\b0o[0-7]{3}\b"
+    ),
+    "environment": re.compile(
+        r"\bos\.environ\b|\bgetenv\(|\benviron\.get\(|\bprocess\.env\b|\bimport\.meta\.env\b"
+        r"|\bDeno\.env\b|\bBaseSettings\b|\benv_prefix\b"
+    ),
+}
+_DIFF_FILE = re.compile(r"^diff --git a/\S+ b/(\S+)$")
+# Neither runs as deployed: what tests and docs say about a port changes nothing.
+_NOT_RUN = {".md", ".rst", ".txt", ".json", ".lock", ".csv", ".svg", ".html", ".css"}
+_TEST_DIRS = {"tests", "test", "__tests__", "fixtures", "docs"}
 
 
-def runnable_paths(root: Path | None, diff: str) -> list[str]:
+@dataclass(frozen=True)
+class Trigger:
+    """Why a change gets a deploy review, recorded so the trigger can be judged."""
+
+    on: str  # "files" or "code"
+    # The runnable files changed, or each kind of code change as "kind path".
+    matched: list[str]
+
+
+def _run_as_deployed(path: str) -> bool:
+    p = PurePosixPath(path)
+    if p.suffix.lower() in _NOT_RUN and p.name != "package.json":
+        return False
+    if set(p.parts[:-1]) & _TEST_DIRS or p.name.startswith("test_"):
+        return False
+    return not re.search(r"(_test\.py|\.test\.\w+|\.spec\.\w+)$", p.name)
+
+
+def code_changes(diff: str) -> list[str]:
+    """Each kind of change to how the thing runs, as "kind path", in the order found."""
+    found: dict[str, None] = {}
+    path: str | None = None
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            # A path this can't read (one with a space) is skipped, not counted
+            # against the file before it.
+            path = m.group(1) if (m := _DIFF_FILE.match(line)) else None
+            continue
+        if path is None or not _run_as_deployed(path) or line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            for kind, pattern in _RUNS.items():
+                if pattern.search(line[1:]):
+                    found[f"{kind} {path}"] = None
+    return list(found)
+
+
+def deploy_trigger(diff: str, named: Collection[str] = ()) -> Trigger | None:
+    """Why this change gets a deploy review, or None: runnable files come first.
+
+    `named` are runnable whatever they're called: the compose file the workspace
+    names (`services.compose_file`).
+    """
+    files = [p for p in changed_files(diff) if is_runnable(p) or p in named]
+    if files:
+        return Trigger("files", files)
+    code = code_changes(diff)
+    return Trigger("code", code) if code else None
+
+
+def runnable_paths(root: Path | None, diff: str, named: Collection[str] = ()) -> list[str]:
     """Every runnable file: those in the repository, and those this change adds."""
-    found = set(p for p in changed_files(diff) if is_runnable(p))
+    found = set(p for p in changed_files(diff) if is_runnable(p) or p in named)
     if root is not None:
         for path in root.rglob("*"):
             rel = path.relative_to(root).as_posix()
-            if path.is_file() and not rel.startswith(".git/") and is_runnable(rel):
+            runnable = is_runnable(rel) or rel in named
+            if path.is_file() and not rel.startswith(".git/") and runnable:
                 found.add(rel)
     return sorted(found)
 
@@ -91,7 +163,12 @@ def listening_files(root: Path | None) -> list[str]:
     return found
 
 
-def deploy_evidence(root: Path | None, diff: str, read_head: Callable[[str], str | None]) -> str:
+def deploy_evidence(
+    root: Path | None,
+    diff: str,
+    read_head: Callable[[str], str | None],
+    named: Collection[str] = (),
+) -> str:
     """The runnable files and the code they run, as at the pull request's head.
 
     `root` is the repository at its base branch, for finding files; each is
@@ -104,7 +181,7 @@ def deploy_evidence(root: Path | None, diff: str, read_head: Callable[[str], str
         for path in candidate_paths(module)[:2]
     ] + listening_files(root)
     sections: list[tuple[str, list[str]]] = [
-        ("What runs or deploys, as this change leaves it", runnable_paths(root, diff)),
+        ("What runs or deploys, as this change leaves it", runnable_paths(root, diff, named)),
         ("The code it runs: the console scripts, and anything that listens", code),
     ]
     budget = MAX_DEPLOY_EVIDENCE_CHARS

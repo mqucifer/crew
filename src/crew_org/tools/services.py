@@ -105,17 +105,36 @@ def ci_only(raw: dict[str, object]) -> list[str]:
     return [r for r in found if isinstance(r, str) and r] if isinstance(found, list) else []
 
 
+def compose_file(read: Callable[[str], str | None]) -> str | None:
+    """The compose file a project's `devcontainer.json` names, from the repository's root."""
+    found = next(((p, t) for p in devcontainer.PATHS if (t := read(p)) is not None), None)
+    if found is None:
+        return None
+    try:
+        raw = json.loads(devcontainer.strip_comments(found[1]))
+    except ValueError:
+        return None
+    return _compose_path(raw, found[0]) if isinstance(raw, dict) else None
+
+
+def _compose_path(raw: dict[str, object], path: str) -> str | None:
+    """`dockerComposeFile`, resolved from the definition's own folder; None unless one file."""
+    named = raw.get("dockerComposeFile")
+    if isinstance(named, list) and len(named) == 1:
+        named = named[0]
+    if not isinstance(named, str):
+        return None
+    return posixpath.normpath(posixpath.join(posixpath.dirname(path), named))
+
+
 def _composed(raw: dict[str, object], path: str, read: Callable[[str], str | None]) -> Declared:
     """The services of a definition that names a compose file."""
     if raw.get("dockerComposeFile") is None:
         return Declared(path=path)
-    named = raw["dockerComposeFile"]
-    if isinstance(named, list) and len(named) == 1:
-        named = named[0]
-    if not isinstance(named, str):
+    compose = _compose_path(raw, path)
+    if compose is None:
         why = f"`{path}`'s `dockerComposeFile` names several files: the crew reads one"
         return Declared(problems={"compose": why}, path=path)
-    compose = posixpath.normpath(posixpath.join(posixpath.dirname(path), named))
     found_compose = read(compose)
     if found_compose is None:
         why = f"`{path}` names `{compose}`, which isn't on the default branch"

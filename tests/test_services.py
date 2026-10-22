@@ -19,7 +19,7 @@ from crew_org.flows import gates
 from crew_org.tools import container, devcontainer
 from crew_org.tools.container import LABEL, Held, sweep
 from crew_org.tools.sandbox import Sandbox
-from crew_org.tools.services import Declared, Service, declared
+from crew_org.tools.services import Declared, Service, compose_file, declared
 from crew_org.tools.workspace import CheckResult, check
 
 WORKSPACE = "ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:" + "e" * 64
@@ -307,3 +307,11 @@ def test_the_checks_carry_the_held_workspaces_down_services(worktree):
             return container.Result(" ".join(command), 0, "")
 
     assert check(worktree, held=Down()).services_down == {"postgres": "it stopped"}
+
+
+def test_the_compose_file_is_named_from_the_definitions_folder():
+    assert compose_file(files().get) == ".devcontainer/compose.yaml"
+    up = files({"dockerComposeFile": ["../stack.yml"]})
+    assert compose_file(up.get) == "stack.yml"
+    assert compose_file(files({"image": WORKSPACE}).get) is None
+    assert compose_file({}.get) is None

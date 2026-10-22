@@ -940,9 +940,18 @@ placement. **SRE** keeps it healthy: alerts, investigations, performance.
 - The board's Release capability, the `Merging` column, which had no owner.
 
 **The deploy review** (crew#335). A pull request that adds, alters or removes
-something that runs or deploys (a Dockerfile, a compose file, a CI workflow)
-is judged by the DevOps Engineer as well as the Code Reviewer, in the same
-review pass. It asks four general things of what the change runs: who uses it
+something that runs or deploys is judged by the DevOps Engineer as well as the
+Code Reviewer, in the same review pass. It starts on files: a Dockerfile, a
+compose file, `.dockerignore`, a CI workflow, the workspace's `.devcontainer/`
+and the compose file it names. It also starts on code that changes how the
+thing runs (crew#861): a line added or removed, outside tests and docs, that
+listens, names a bind address, a port or a host, sets file permissions, or reads
+the environment. sprint-metrics#67 bound its server to loopback in plain code,
+and nothing judged it until an image shipped it. The check is mechanical and
+leans wide, since a false start costs one review and a miss a broken deploy.
+Each run records why it started (`trigger`, `matched`) on its `agent.started`
+event. A DevOps Task's own pull request is reviewed too, and recorded as
+`devops_task`: the Code Reviewer is still the independent approver. It asks four general things of what the change runs: who uses it
 and how they reach it; what it runs as and what it can access; what it depends
 on, and whether it will build and behave the same tomorrow; and how we would
 know it's working, and know when it isn't.

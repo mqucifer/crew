@@ -9,6 +9,7 @@ same property that lets the Sponsor approve the crew's.
 from __future__ import annotations
 
 import contextlib
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse
 from crew_org.rulebook import says
 from crew_org.rules import Rule
-from crew_org.tools.deploy_evidence import deploy_evidence, touches_runnable
+from crew_org.tools.deploy_evidence import Trigger, deploy_evidence, deploy_trigger
 from crew_org.tools.github_issues import FAILED_CONCLUSIONS, IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.review_evidence import (
@@ -39,6 +40,9 @@ from crew_org.tools.review_evidence import (
     importers_section,
     undocumented_options,
 )
+from crew_org.tools.services import compose_file
+
+_log = logging.getLogger(__name__)
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
@@ -328,7 +332,9 @@ def review_open_pulls(
             # One review carries both verdicts: a later review from the same
             # identity would replace the first as GitHub's decision.
             deploy: ReviewVerdict | None = None
-            if touches_runnable(diff):
+            named = _named_compose(issues, repo, base, clone)
+            trigger = deploy_trigger(diff, named)
+            if trigger is not None:
                 try:
                     # The DevOps Engineer's own run, inside the Code Reviewer's.
                     with log.run(
@@ -337,7 +343,15 @@ def review_open_pulls(
                         repo=repo,
                     ):
                         deploy = _deploy_review(
-                            issues, sink, repo=repo, pull=pull, story=story, diff=diff, clone=clone
+                            issues,
+                            sink,
+                            repo=repo,
+                            pull=pull,
+                            story=story,
+                            diff=diff,
+                            clone=clone,
+                            named=named,
+                            trigger=trigger,
                         )
                 except Exception as exc:  # noqa: BLE001
                     reraise_if_down(exc)
@@ -493,6 +507,8 @@ def _deploy_review(
     story: Card | None,
     diff: str,
     clone: Path | None,
+    named: list[str],
+    trigger: Trigger,
 ) -> ReviewVerdict:
     """The DevOps Engineer's verdict on a change to something that runs or deploys (#335)."""
     number = pull["number"]
@@ -503,7 +519,15 @@ def _deploy_review(
             role="DevOps Engineer",
             card=story.number if story is not None else None,
             summary=f"deploy review of PR #{number}",
-            detail={"pr": number},
+            # Why it started, so the trigger can be judged from evidence (crew#861):
+            # paths and kinds of change only, never the code. DevOps's own Task is
+            # reviewed too, as a separate question its author never had in view.
+            detail={
+                "pr": number,
+                "trigger": trigger.on,
+                "matched": trigger.matched,
+                "devops_task": story is not None and role_tasks.role_of(story) is role_tasks.DEVOPS,
+            },
         )
     )
     verdict = attributed(
@@ -514,7 +538,9 @@ def _deploy_review(
     )(
         pull["title"],
         diff,
-        evidence=deploy_evidence(clone, diff, lambda path: issues.file_at(repo, path, head)),
+        evidence=deploy_evidence(
+            clone, diff, lambda path: issues.file_at(repo, path, head), named=named
+        ),
         acceptance_criteria=story_criteria(issues, story, repo),
         decisions=story_rows(issues, story, repo),
         release=release_brief(issues, repo, head),
@@ -575,6 +601,28 @@ def release_brief(issues: IssueClient, repo: str, head: str) -> str:
         if record.design.ci_checks:
             lines += ["- CI proves:", *(f"  - {c}" for c in record.design.ci_checks)]
     return "\n".join(lines)
+
+
+def _named_compose(issues: IssueClient, repo: str, base: str, clone: Path | None) -> list[str]:
+    """The compose file the workspace names, as the base branch has it (crew#861).
+
+    Without a clone it's read through GitHub. A lookup that fails leaves the trigger
+    to the other runnable files and the code, rather than ending the pass for every
+    pull request after this one.
+    """
+    try:
+        found = compose_file(_base_reader(issues, repo, base, clone))
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        log.event(
+            _log,
+            "deploy_review.compose_unread",
+            f"the workspace's compose file couldn't be read: {type(exc).__name__}: {exc}",
+            level=logging.WARNING,
+            repo=repo,
+        )
+        return []
+    return list(filter(None, [found]))
 
 
 def _base_reader(issues: IssueClient, repo: str, base: str, clone: Path | None):

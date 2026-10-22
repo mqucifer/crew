@@ -1180,9 +1180,9 @@ flows.review.review_open_pulls:move:c89f3f40:
   at: flows/review.py:review_open_pulls
   if: card is not None and board is not None and approved_at(reviews, bot_login, head)
   rule: decision.review.verdict
-flows.review.review_open_pulls:result:failed:023dba39:
+flows.review.review_open_pulls:result:failed:b8fab000:
   at: flows/review.py:review_open_pulls
-  if: touches_runnable(diff)
+  if: trigger is not None
   rule: decision.review.deploy_review
 flows.review.review_open_pulls:result:returned:f744e44f:
   at: flows/review.py:review_open_pulls
