@@ -194,6 +194,12 @@ decision.role_tasks.first_diagram:
     once; not one waiting for its walking skeleton.
   origin:
   - crew#839
+decision.role_tasks.first_workspace:
+  description: A worked repository with no workspace file (devcontainer.json) gets DevOps's Task to write
+    it and the services its tests need, and to make CI run the same, once; not one waiting for its walking
+    skeleton.
+  origin:
+  - crew#860
 decision.role_tasks.goal_epics_done:
   description: A Goal whose epics are all done opens the Architect's Task to make its target diagram the
     repository's, corrected to what was built, and closes once that Task is done too.

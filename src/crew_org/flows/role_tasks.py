@@ -93,6 +93,9 @@ DEVOPS = TaskRole(
         "docker-compose.yml",
         "docker-compose.yaml",
         ".dockerignore",
+        # The workspace file and the services it declares (the Sponsor, 2026-10-22).
+        ".devcontainer/*",
+        ".devcontainer.json",
     ),
 )
 # Filed and held: their sessions come with M8's release review (crew#830) and
@@ -109,6 +112,7 @@ LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in R
 # Code Reviewer, as a bug does (ADR 0027).
 DIAGRAM = "diagram"
 FIRST_DIAGRAM = "first-diagram"
+FIRST_WORKSPACE = "first-workspace"
 RELEASE = "release"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
@@ -869,24 +873,110 @@ def first_diagrams(
     A repository that can't be read, or whose Task GitHub refused, is said as held and
     tried again next pass.
     """
+    return _first_tasks(
+        first_diagram_task, ARCHITECT, FIRST_DIAGRAM, issues, board, sink, repos, cards
+    )
+
+
+def _first_tasks(
+    open_one: Any,
+    role: TaskRole,
+    kind: str,
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    repos: set[str],
+    cards: list[Card],
+) -> FirstDiagrams:
+    """A role's first Task in each repository that lacks what it makes, once."""
     result = FirstDiagrams([], [])
     for repo in sorted(repos):
         try:
-            opened = first_diagram_task(issues, board, sink, repo=repo, cards=cards)
+            opened = open_one(issues, board, sink, repo=repo, cards=cards)
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
             result.failed.append(
-                (
-                    repo,
-                    not_opened(
-                        sink, repo=repo, role=ARCHITECT, kind=FIRST_DIAGRAM, card=None, why=exc
-                    ),
-                )
+                (repo, not_opened(sink, repo=repo, role=role, kind=kind, card=None, why=exc))
             )
             continue
         if opened is not None and opened.new:
             result.opened.append((repo, opened.number))
     return result
+
+
+# What DevOps's first workspace Task makes, by the Development Container specification.
+WORKSPACE_PATH = ".devcontainer/devcontainer.json"
+FIRST_WORKSPACE_POINTS = 3
+
+
+def first_workspace_task(
+    issues: IssueClient, board: ProjectClient, sink: EventSink, *, repo: str, cards: list[Card]
+) -> Opened | None:
+    """DevOps's first Task in a repository with no workspace file: write it (crew#860).
+
+    The Sponsor (2026-10-22): DevOps keeps each project's workspace file true, since
+    the workspace has to match CI and DevOps owns CI. ADR 0032 made the file the
+    workspace's one source, but no step ever wrote one. None when the repository has it.
+    """
+    from crew_org.tools.devcontainer import PATHS  # noqa: PLC0415
+
+    branch = issues.default_branch(repo)
+    if any(issues.file_at(repo, path, branch) is not None for path in PATHS):
+        return None
+    body = render(
+        DEVOPS,
+        kind=FIRST_WORKSPACE,
+        key="repository",
+        why=f"`{repo}` has no workspace file. The Developer's workspace runs on the crew's "
+        "fallback image, with no services, so tests that need one (a database) skip there "
+        "and the gate at `done` can't tell a skip CI makes from one it doesn't. The "
+        "workspace has to run what CI runs.",
+        work=f"Write `{WORKSPACE_PATH}` (the Development Container specification), as the "
+        "crew reads it: the workspace's image by digest, one setup command as an array of "
+        "words, and `containerEnv`. Declare each service the tests need in a compose file "
+        "beside it, named by `dockerComposeFile`, with the workspace's own `service`: each "
+        "service's image by digest, a `user` that isn't root, a `healthcheck` in "
+        '["CMD", ...] form and `tmpfs` for its data. Name the skip reasons CI makes too in '
+        "`customizations.crew.ciOnlySkips`. Then make CI's test job run the same services, "
+        "so the workspace and CI run the same tests.",
+        done_when=[
+            f"`{WORKSPACE_PATH}` names the workspace's image by digest and its setup",
+            "Each service the tests need is declared beside it and starts in the workspace",
+            "CI's test job runs the same services, and the tests that need them run there",
+            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
+        ],
+    )
+    return open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=FIRST_WORKSPACE,
+        key="repository",
+        title="Write the workspace file and the services its tests need",
+        body=body,
+        points=FIRST_WORKSPACE_POINTS,
+        cards=cards,
+        event="repository.no_workspace",
+    )
+
+
+def first_workspaces(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repos: set[str],
+    cards: list[Card],
+) -> FirstDiagrams:
+    """Each repository with no workspace file gets DevOps's Task to write it, once.
+
+    Held and tried again next pass, as the first diagram is.
+    """
+    return _first_tasks(
+        first_workspace_task, DEVOPS, FIRST_WORKSPACE, issues, board, sink, repos, cards
+    )
 
 
 RELEASE_POINTS = 3

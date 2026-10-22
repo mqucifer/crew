@@ -100,6 +100,7 @@ config.const.repo_context.WHOLE_FILE_CHARS:
 config.const.retro.MAX_KNOWN_CHARS:
 config.const.role_tasks.DIAGRAM_POINTS:
 config.const.role_tasks.FIRST_DIAGRAM_POINTS:
+config.const.role_tasks.FIRST_WORKSPACE_POINTS:
 config.const.role_tasks.RELEASE_POINTS:
 config.const.session_delivery.GATE_REPEATS:
   origin:

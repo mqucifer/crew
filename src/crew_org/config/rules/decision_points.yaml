@@ -1328,8 +1328,8 @@ flows.role_tasks.first_diagram_task:end:071aea68:
   at: flows/role_tasks.py:first_diagram_task
   if: issues.file_at(repo, DIAGRAM_PATH, issues.default_branch(repo)) is not None
   rule: decision.role_tasks.first_diagram
-flows.role_tasks.first_diagrams:result:opened:7a8b5f05:
-  at: flows/role_tasks.py:first_diagrams
+flows.role_tasks._first_tasks:result:opened:7a8b5f05:
+  at: flows/role_tasks.py:_first_tasks
   if: opened is not None and opened.new
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.role_tasks.for_the_sponsor:end:2546eb7a:
@@ -1660,3 +1660,7 @@ flows.session_end._for_devops:end:0ce39167:
   at: flows/session_end.py:_for_devops
   if: not verdict.for_devops and (not down)
   not_a_rule: nothing to file
+flows.role_tasks.first_workspace_task:end:9910567e:
+  at: flows/role_tasks.py:first_workspace_task
+  if: any((issues.file_at(repo, path, branch) is not None for path in PATHS))
+  rule: decision.role_tasks.first_workspace
