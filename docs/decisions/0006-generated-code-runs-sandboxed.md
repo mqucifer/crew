@@ -31,6 +31,11 @@ a given for all projects honestly."
   dependency files change (crew#814): it's the only command with a network. It's removed at the session's end and
   cleaned up after a crash. The gates at `done` run in it too. Every other check is
   still its own container.
+- **A project's declared services run beside the workspace** (crew#814 part 4,
+  crew#860; ADR 0032). Each is pinned by digest, pulled on the host, read from the
+  default branch, and started by the crew with the hardening above, never root and
+  with no mounts or ports. They and the workspace share an `--internal` network with
+  no route out, in place of none; a project that declares no service changes nothing.
 - **Fail loudly:** no container engine means the check fails. There is never a
   silent fallback to the host.
 - **Refined 2026-09-26:** released, reviewed software the crew built (such as
@@ -61,3 +66,8 @@ a given for all projects honestly."
 - 2026-10-19: setup runs again, with the network, before a session's `run`, the lint
   after an edit, or the gates at `done` when the dependency files have changed since
   it last passed (crew#814). Everything else still runs with none.
+- 2026-10-22: a project's declared services share an internal network, with no route
+  out, with its workspace, in place of none (crew#814 part 4, crew#860). Proved on a
+  test copy of sprint-metrics: from the workspace and from Postgres, 1.1.1.1 and
+  host.docker.internal:4000 were unreachable. Setup is still the only step with a
+  route out.
