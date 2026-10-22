@@ -538,12 +538,62 @@ def test_a_container_thats_gone_interrupts_the_session(root):
     assert (ending.how, ending.why) == ("interrupted", "workspace_gone")
 
 
-def test_the_history_is_compacted_once_when_a_prompt_would_pass_the_limit(root, seen):
-    look = said(("view", {"path": "src/app.py", "from_line": 1, "to_line": 2}))
-    s, ending = run_session(root, Proxy(look, look, look, said(("done", DONE))), compact_at=1)
-    assert ending.how == "done" and s.compacted["turn"] == 2
+class Counting(Proxy):
+    """A model that reports a prompt's tokens as its characters, as the session counts them."""
+
+    def __call__(self, body):
+        answer = super().__call__(body)
+        answer["usage"]["prompt_tokens"] = conversation._chars(body["messages"])
+        return answer
+
+
+BIG = "".join(f"x{i} = {i}\n" for i in range(400))  # a file of about 3,600 characters
+
+
+def at_start(s):
+    return conversation._chars(history.messages(s.system, s.start, []))
+
+
+def test_a_session_compacts_each_time_it_reaches_the_limit_and_carries_on(root, seen):
+    (root / "src" / "big.py").write_text(BIG)
+    # Seven views of one file, a different hundred lines each: a compaction keeps the newest.
+    views = [
+        said(("view", {"path": "src/big.py", "from_line": n, "to_line": n + 99}))
+        for n in range(1, 400, 50)[:7]
+    ]
+    proxy = Counting(*views, said(("done", DONE)))
+    s = conversation.session(root, "# Story\n\nf returns 2.", Fake(), CHECKS, send=proxy)
+    s.compact_at = at_start(s) + 6_000  # room for three views past the start, not four
+    ending = s.run()
+    assert ending.how == "done" and len(proxy.sent) == 8
+    first, second = kinds(seen, EventKind.SESSION_COMPACTED)
+    assert [first.detail["compaction"], second.detail["compaction"]] == [1, 2]
+    assert (first.detail["turn"], second.detail["turn"]) == (5, 7)
+    # The first keeps the 4th view whole, as the newest; the second masks it and the 5th.
+    assert first.detail["turns_newly_masked"] == 3 and second.detail["turns_newly_masked"] == 2
+    assert second.detail["turns_masked"] == 5
+    for each in (first, second):
+        assert each.detail["estimated_after"] < s.compact_at <= each.detail["estimated_tokens"]
+    assert s.compactions == [{k: e.detail[k] for k in s.compactions[0]} for e in (first, second)]
+    (ended,) = kinds(seen, EventKind.SESSION_ENDED)
+    assert [c["turn"] for c in ended.detail["compactions"]] == [5, 7]
+
+
+def test_a_compaction_that_cant_get_back_under_the_limit_stops_the_session(root, seen):
+    # What the model writes is never masked, so compacting can't free it.
+    talk = said(LOOK, content="y" * 20_000)
+    proxy = Counting(talk, said(("done", DONE)))
+    s = conversation.session(root, "# Story\n\nf returns 2.", Fake(), CHECKS, send=proxy)
+    s.compact_at = at_start(s) + 15_000
+    ending = s.run()
+    assert (ending.how, ending.stop, ending.said["kind"]) == ("blocked", "context_full", "stop")
+    assert len(proxy.sent) == 1  # no call was made with a prompt it couldn't hold
     (compacted,) = kinds(seen, EventKind.SESSION_COMPACTED)
-    assert compacted.detail["turn"] == 2 and compacted.detail["estimated_tokens"] >= 1
+    stop = ending.evidence["stop"]
+    assert stop["estimated_after"] == compacted.detail["estimated_after"] >= s.compact_at
+    assert stop["limit"] == s.compact_at
+    (ended,) = kinds(seen, EventKind.SESSION_ENDED)
+    assert ended.detail["stop"] == "context_full" and len(ended.detail["compactions"]) == 1
 
 
 LOOK = ("view", {"path": "src/app.py", "from_line": 1, "to_line": 2})
@@ -578,11 +628,12 @@ def test_compaction_clears_the_field_once_before_the_tail_and_the_masking(root, 
     ]
     s._reasoning_by_item = {0: 3, 1: 5}
     s.compact_at = 1
-    sent = s._messages()
+    sent, _ = s._messages()
     got = [m.get("reasoning_content") for m in sent if m["role"] == "assistant"]
     assert got == ["", "bbbbbb"]  # the newest turn keeps its field, as the masking's tail does
-    assert s.compacted["reasoning_chars_cleared"] == 4
-    assert s.compacted["reasoning_tokens_cleared"] == 3
+    (compacted,) = s.compactions
+    assert compacted["reasoning_chars_cleared"] == 4
+    assert compacted["reasoning_tokens_cleared"] == 3
     # What is kept afterwards is the newest turn's own count, as its chars are.
     assert sum(s._reasoning_by_item.values()) == 5
     assert history.reasoning_size(s.history) == len("bbbbbb")

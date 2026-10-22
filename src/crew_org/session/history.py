@@ -3,7 +3,7 @@
 Kept whole (decision 3, as the replay corrected it): a session only appends, so
 SGLang's prefix cache serves each call's history and only the newest reply is new.
 Pass 3 kept 91% to 97% of its input cached, and its largest prompt was 115k tokens.
-If a prompt would pass the limit, the history is compacted once, all at once, by
+Each time a prompt would pass the limit, the history is compacted, all at once, by
 `compact`; when is the loop's to decide, and how is this module's alone, so the
 form can change without the loop.
 """
@@ -69,8 +69,12 @@ def cleared(history: list[Any]) -> list[Any]:
 
 
 def compact(history: list[Any]) -> list[Any]:
-    """The history compacted, once: every tool reply shrinks to its one line but each
-    file's latest view of it unchanged, the latest run, and the newest turn's replies.
+    """The history compacted: every tool reply shrinks to its one line but each file's
+    latest view of it unchanged, the latest run, and the newest turn's replies.
+
+    It runs again on a history it compacted before (crew#857): what's masked stays
+    masked, and it frees what came since, and what the last pass kept that is no
+    longer the latest (a view, a run, the turn the model has now answered).
 
     Pass 2's masking, a placeholder: the form is still being researched
     (`var/notes/778/research-compaction.md`, the Sponsor, 2026-10-18). Masking keeps
@@ -78,7 +82,7 @@ def compact(history: list[Any]) -> list[Any]:
     "The Complexity Trap" found as good as a model's summary at less cost.
 
     Before the masking, every assistant turn before the kept tail loses its
-    `reasoning_content`, in this one pass: a field cleared a turn at a time would
+    `reasoning_content`, in the same pass: a field cleared a turn at a time would
     change the prefix, and break the cache, on every call.
     """
     history = cleared(history)

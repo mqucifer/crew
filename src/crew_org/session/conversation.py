@@ -11,14 +11,15 @@ Analyst (decision 9):
   no edit between;
 - `no_tool_call`: 3 replies in a row that call no tool. Each gets one line back, since
   a conversation can't go on without a turn: not a nudge about progress (the operator,
-  crew#778).
+  crew#778);
+- `context_full`: a compaction that left the prompt at or over the limit (crew#857).
 
 A model call that fails, or a workspace container that's gone, ends it as
 `interrupted`: nothing about the story, so it's resumed (P3), not returned.
 
 Every call is recorded: its `llm.*` events by the call layer, each tool call as a
-`tool.finished`, the signals after it as a `session.turn`, and a compaction as a
-`session.compacted`. Telemetry gets their counts only (ADR 0010).
+`tool.finished`, the signals after it as a `session.turn`, and each compaction as its
+own `session.compacted`. Telemetry gets their counts only (ADR 0010).
 """
 
 from __future__ import annotations
@@ -52,8 +53,9 @@ REFUSED_DONE = (
     "`done` checked your branch, and the session goes on. Answer each of these, then call "
     "`done` again."
 )
-# A prompt this size or larger is compacted first, once (the Sponsor's 125k): the window
-# is 262,144 tokens, about 196k once 65,536 of output is kept. Pass 3's largest was 115k.
+# A prompt this size or larger is compacted first, each time (the Sponsor's 125k): the
+# window is 262,144 tokens, about 196k once 65,536 of output is kept. Pass 3's largest was
+# 115k. One still this size after compacting stops the session (crew#857).
 COMPACT_AT = 125_000
 # How much of the session's last text its return note quotes (crew#778).
 LAST_WORDS = 600
@@ -114,7 +116,8 @@ class Session:
     usage: Counter[str] = field(default_factory=Counter)
     used: Counter[str] = field(default_factory=Counter)
     watch: Signals = field(default_factory=Signals)
-    compacted: dict[str, Any] = field(default_factory=dict)
+    # Each compaction, in order: a long session compacts each time it reaches the limit.
+    compactions: list[dict[str, Any]] = field(default_factory=list)
     # Each empty, cut-off or malformed answer, with its call's prompt size.
     troubles: list[dict[str, Any]] = field(default_factory=list)
     history: list[Any] = field(default_factory=list)
@@ -135,7 +138,9 @@ class Session:
                     {"model_minutes": minutes},
                 )
                 break
-            sent = self._messages()
+            sent, ending = self._messages()
+            if ending is not None:
+                break
             try:
                 answered = converse(
                     self.role,
@@ -163,36 +168,52 @@ class Session:
         self._ended(ending)
         return ending
 
-    def _messages(self) -> list[dict[str, Any]]:
-        """The conversation to send, compacted first if it would pass the limit."""
+    def _messages(self) -> tuple[list[dict[str, Any]], Ending | None]:
+        """The conversation to send, compacted first each time it would reach the limit;
+        or the stop, when compacting can't bring it back under (crew#857)."""
         sent = messages(self.system, self.start, self.history)
-        if not self.compacted and self._chars_per_token:
-            estimated = int(_chars(sent) / self._chars_per_token)
-            if estimated >= self.compact_at:
-                before = reasoning_size(self.history)
-                self.history = compact(self.history)
-                masked = sum(isinstance(t, Turn) and t.masked for t in self.history)
-                self.compacted = {"turn": self.calls + 1, "estimated_tokens": estimated}
-                self.compacted["turns_masked"] = masked
-                self.compacted["reasoning_chars_cleared"] = before - reasoning_size(self.history)
-                gone = {
-                    i
-                    for i in self._reasoning_by_item
-                    if not (self.history[i].get("reasoning_content") or "")
-                }
-                self.compacted["reasoning_tokens_cleared"] = sum(
-                    self._reasoning_by_item.pop(i) for i in gone
-                )
-                sent = messages(self.system, self.start, self.history)
-                record(
-                    EventKind.SESSION_COMPACTED,
-                    f"compacted before call {self.calls + 1}: {masked} replies masked",
-                    role=self._who(),
-                    **self._named(),
-                    chars_after=_chars(sent),
-                    **self.compacted,
-                )
-        return sent
+        if not self._chars_per_token:
+            return sent, None
+        estimated = int(_chars(sent) / self._chars_per_token)
+        if estimated < self.compact_at:
+            return sent, None
+        before = reasoning_size(self.history)
+        was_masked = _masked(self.history)
+        self.history = compact(self.history)
+        masked = _masked(self.history)
+        sent = messages(self.system, self.start, self.history)
+        after = int(_chars(sent) / self._chars_per_token)
+        compaction: dict[str, Any] = {"turn": self.calls + 1, "estimated_tokens": estimated}
+        compaction["estimated_after"] = after
+        compaction["turns_masked"] = masked
+        compaction["turns_newly_masked"] = masked - was_masked
+        compaction["reasoning_chars_cleared"] = before - reasoning_size(self.history)
+        gone = {
+            i
+            for i in self._reasoning_by_item
+            if not (self.history[i].get("reasoning_content") or "")
+        }
+        compaction["reasoning_tokens_cleared"] = sum(self._reasoning_by_item.pop(i) for i in gone)
+        self.compactions.append(compaction)
+        record(
+            EventKind.SESSION_COMPACTED,
+            f"compacted before call {self.calls + 1}: {masked} replies masked",
+            role=self._who(),
+            **self._named(),
+            chars_after=_chars(sent),
+            compaction=len(self.compactions),
+            **compaction,
+        )
+        if after < self.compact_at:
+            return sent, None
+        # What's left is what masking never shrinks: the start, what the model wrote, and
+        # the replies it still needs. Another call would only reach the window.
+        return sent, self._stopped(
+            "context_full",
+            f"compaction {len(self.compactions)} left about {after} tokens, "
+            f"at or over the limit of {self.compact_at}",
+            {"estimated_tokens": estimated, "estimated_after": after, "limit": self.compact_at},
+        )
 
     def _answer(self, answered: Answered) -> Ending | None:
         """Run what one answer asked for, record it, and say whether the session ends."""
@@ -475,7 +496,7 @@ class Session:
             resetups=len(self.tools.resetups),
             resetups_failed=self.tools.resetups.count(False),
             tools_used=dict(self.used),
-            compaction=self.compacted or None,
+            compactions=self.compactions,
             troubles=self.troubles,
             after_run_errors=self.after_run_errors,
             **{k: v for k, v in self.usage.items() if isinstance(v, int)},
@@ -563,5 +584,19 @@ def _role(key: str = ROLE, step: str | None = None) -> str:
 
 
 def _chars(messages: list[dict[str, Any]]) -> int:
-    """A request's size in characters: its messages' text."""
-    return sum(len(str(m.get("content") or "")) for m in messages)
+    """A request's size in characters: its messages' text, the reasoning sent back with
+    them, and the arguments of the tool calls they made. All three are in the prompt, so
+    a compaction that clears reasoning shows in the next estimate."""
+    return sum(
+        len(str(m.get("content") or ""))
+        + len(str(m.get("reasoning_content") or ""))
+        + sum(
+            len(str((c.get("function") or {}).get("arguments") or ""))
+            for c in m.get("tool_calls") or []
+        )
+        for m in messages
+    )
+
+
+def _masked(history: list[Any]) -> int:
+    return sum(isinstance(t, Turn) and t.masked for t in history)

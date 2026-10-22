@@ -486,3 +486,17 @@ def test_the_ruling_decides_where_a_disagreement_goes(verdict, monkeypatch, deci
         assert "**Its last run:** `run suite`, green." in comment
     if decision != "return":
         assert taken == [], "work that stays in delivery isn't pushed aside"
+
+
+def test_a_full_context_names_what_compacting_left_and_the_limit():
+    evidence = dict(
+        EVIDENCE, stop={"estimated_tokens": 140_000, "estimated_after": 131_000, "limit": 125_000}
+    )
+    ending = Ending(
+        "blocked", {"missing": "full", "kind": "stop"}, "context_full", evidence=evidence
+    )
+    _, _, issues, _ = route(ending)
+    assert (
+        "stopped by a full context: compacting left about 131000 tokens, at or over the "
+        "limit of 125000.**" in issues.posted[0][1]
+    )

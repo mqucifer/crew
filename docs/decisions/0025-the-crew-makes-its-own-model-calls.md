@@ -72,8 +72,8 @@ Sponsor, 2026-10-10 (D5 and D6 of the plan).
     no round limit and no final answer in a form: `done` is itself a tool call, with a
     short structured statement.
   - A refusal is a tool reply the session acts on, not a re-ask of a whole answer.
-  - Every reply stays in the conversation. The conversation is compacted once, only
-    before a prompt would pass 125k tokens.
+  - Every reply stays in the conversation. The conversation is compacted only before
+    a prompt would pass 125k tokens, each time it would (crew#857).
   - The other steps keep their rounds, then an answer in their form.
 
 **The standard.** Structured output with schema validation and a re-ask carrying the
@@ -152,3 +152,4 @@ OpenAI-compatible API LiteLLM serves. All traffic stays on the proxy (ADR 0007).
   refusals, its rounds and its repairs (crew#778, Stage E; the Sponsor's no-fallback
   decision). The other steps keep their rounds and forms.
 - **2026-10-18:** refinement's steps (the panel, the decomposition, the settles, the split, the criteria check and its repair, the UX note) are sessions through `calls.converse`, each ending with its own form as `done` (crew#807, ADR 0033). A refusal is a reply in the session, not a re-ask.
+- **2026-10-22:** a session compacts each time a prompt would pass 125k tokens, not once, and stops as `context_full` when compacting can't bring it under (crew#857, ADR 0032).
