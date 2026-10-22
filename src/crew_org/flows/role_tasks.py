@@ -1020,6 +1020,44 @@ def need_tasks(
     return opened
 
 
+def goals_needs(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repos: set[str],
+    cards: list[Card],
+) -> list[int]:
+    """Each open Goal's needs, from its record, opened as DevOps's Tasks where they aren't.
+
+    The look runs once per epic, so a need Task GitHub refused then would never be
+    opened again: each pass tries, as for the other Tasks, and `open_task` opens none
+    twice (crew#860).
+    """
+    from crew_org.flows import record as record_flow  # noqa: PLC0415
+    from crew_org.work_types import GOAL  # noqa: PLC0415
+
+    opened: list[int] = []
+    for card in cards:
+        repo = card.repo or ""
+        if card.work_type != GOAL or card.state == "CLOSED" or repo not in repos or not card.number:
+            continue
+        try:
+            held = record_flow.goal_record_comment(issues, repo, card.number)
+        except Exception as exc:  # noqa: BLE001 - read again next pass
+            reraise_if_down(exc)
+            not_opened(sink, repo=repo, role=DEVOPS, kind=NEED, card=card.number, why=exc)
+            continue
+        if not held:
+            continue
+        needs = record_flow.parse(record_flow.comment_text(held.get("body") or "")).needs
+        if needs:
+            opened += need_tasks(
+                issues, board, sink, repo=repo, goal=card.number, needs=list(needs)
+            )
+    return opened
+
+
 def first_workspaces(
     issues: IssueClient,
     board: ProjectClient,

@@ -644,6 +644,25 @@ def test_a_need_that_cant_be_opened_is_recorded_and_the_rest_go_on(tmp_path):
     assert any("need task not opened" in e["summary"] for e in events(tmp_path))
 
 
+def test_each_pass_opens_a_goals_needs_from_its_record_once(tmp_path, monkeypatch):
+    """A need Task GitHub refused when the look ran is opened by a later pass (crew#860)."""
+    from crew_org.flows import record as record_flow
+
+    held = {"body": record_flow.render(record_flow.Record(on_goal=True, needs=("a Postgres",)))}
+    monkeypatch.setattr(record_flow, "goal_record_comment", lambda issues, repo, goal: held)
+    monkeypatch.setattr(record_flow, "comment_text", lambda body: body)
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    goal = Card(item_id="G", number=666, repo="sm", work_type="Goal", state="OPEN")
+    closed = Card(item_id="C", number=600, repo="sm", work_type="Goal", state="CLOSED")
+    issues.fail = "create"
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal, closed]) == []
+    issues.fail = None
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal, closed]) == [901]
+    assert role_tasks.goals_needs(issues, board, s, repos={"sm"}, cards=[goal]) == [901]
+    assert len(issues.issues) == 1 and issues.subs[666] == [901]
+
+
 def test_the_architects_diagram_must_render():
     from crew_org.flows.role_tasks import diagram_problems
 

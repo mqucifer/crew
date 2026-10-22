@@ -304,7 +304,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
-    from crew_org.flows.role_tasks import first_diagrams, first_workspaces  # noqa: PLC0415
+    from crew_org.flows.role_tasks import (  # noqa: PLC0415
+        first_diagrams,
+        first_workspaces,
+        goals_needs,
+    )
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
@@ -333,6 +337,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         repos=watched(repos, crew.skeleton_only),
         cards=crew.board.cards(),
     )
+    # A need a Goal's look named whose Task wasn't opened then is opened now (crew#860).
+    goals_needs(crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards())
     result = revisit_designs(
         crew.issues,
         crew.reviewer,

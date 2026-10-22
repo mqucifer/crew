@@ -36,6 +36,7 @@ finds whichever the epic has, so every step reads and edits the one that holds.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -106,6 +107,10 @@ _LOOKED_AT = re.compile(r"<!-- crew:looked-at ([^ ]*) -->")
 # their words, or as the answer its settle read. Kept by the code, so a reply is never
 # taken in twice, whatever a model wrote about it.
 _REPLIES = "<!-- crew:sponsor-replies {} -->"
+# What the Goal's look said it needs, for DevOps's Tasks (crew#860): free text, so JSON,
+# with `--` escaped as an HTML comment needs.
+_NEEDS = "<!-- crew:needs {} -->"
+_NEEDS_IN = re.compile(r"<!-- crew:needs (\[.*?\]) -->")
 _REPLIES_IN = re.compile(r"<!-- crew:sponsor-replies ([^ ]*) -->")
 _GOAL_DECISIONS = (
     "| ID | Status | Context | Decision | Consequences | Set by | Date | Replaces | Source "
@@ -207,6 +212,9 @@ class Record:
     looked_at: tuple[str, ...] = ()
     # The Sponsor's comments it has taken in, by id (the Goal's record only).
     replies: tuple[str, ...] = ()
+    # The services or toolchains the Goal's look said it needs (the Goal's record only):
+    # each opens DevOps's Task under the Goal, and a pass retries one not opened (crew#860).
+    needs: tuple[str, ...] = ()
 
     def for_epic(self, ref: str) -> Record:
         """The Goal's record as one epic sees it: the rows that bind it, or every epic.
@@ -488,6 +496,7 @@ def parse(text: str) -> Record:
     marked = _TO_LOG.search(text)
     looked = _LOOKED_AT.search(text)
     taken = _REPLIES_IN.search(text)
+    needed = _NEEDS_IN.search(text)
     return Record(
         tuple(decisions),
         tuple(questions),
@@ -499,6 +508,7 @@ def parse(text: str) -> Record:
         on_goal=GOAL_HEADER in text,
         looked_at=_binds(looked.group(1)) if looked else (),
         replies=_binds(taken.group(1)) if taken else (),
+        needs=tuple(json.loads(needed.group(1))) if needed else (),
     )
 
 
@@ -609,11 +619,15 @@ def _render_goal(record: Record) -> str:
         lines += [*_INFRA, *(f"| {i.id} | {_cell(i.text)} |" for i in record.for_infra), ""]
     if record.dismissed:
         lines += [*_DISMISSED, *(f"| {n.id} | {_cell(n.text)} |" for n in record.dismissed), ""]
+    if record.needs:
+        lines += ["Needs, for DevOps:", "", *(f"- {_cell(n)}" for n in record.needs), ""]
     lines.append(GOAL_FOOTER)
     if record.looked_at:
         lines.append(_LOOKED.format(",".join(record.looked_at)))
     if record.replies:
         lines.append(_REPLIES.format(",".join(record.replies)))
+    if record.needs:
+        lines.append(_NEEDS.format(json.dumps(list(record.needs)).replace("--", "\\u002d\\u002d")))
     if record.to_log:
         lines.append(TO_LOG.format(",".join(record.to_log)))
     return "\n".join(lines)
