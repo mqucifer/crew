@@ -126,7 +126,7 @@ def main() -> None:
             "usage": dict(session.usage),
             "tools_used": dict(session.used),
             "runs": session.tools.runs,
-            "compacted": session.compacted or None,
+            "compactions": session.compactions,
             "troubles": session.troubles,
         }
         if ending.how == "done":

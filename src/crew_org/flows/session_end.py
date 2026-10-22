@@ -451,6 +451,11 @@ def stopped_by(ending: Ending, leaving: Leaving | None = None) -> str:
         )
     if ending.stop == "no_tool_call":
         return f"{QUIET_LIMIT} replies in a row that called no tool"
+    if ending.stop == "context_full":
+        return (
+            f"a full context: compacting left about {seen.get('estimated_after')} tokens, "
+            f"at or over the limit of {seen.get('limit')}"
+        )
     return ending.stop or "a stop"
 
 

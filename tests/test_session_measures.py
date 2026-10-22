@@ -592,3 +592,12 @@ def test_the_packages_return_reasons_are_the_crews_and_its_rule_ids_fit_the_gate
     assert set(get_args(dh.ReturnReason)) == set(rules.RETURN_RULES)
     for rule in ("guard.bounds.out_of_bounds", "check.gates.the_branch_changes_nothing"):
         assert dh._RULE_ID.fullmatch(rule), rule
+
+
+def test_a_session_stopped_by_a_full_context_is_packaged_with_its_stop():
+    """crew#857: a compaction that can't get back under the limit is a stop of its own."""
+    events = [started(0, 664), ended(1, 664, "blocked", stop="context_full")]
+    history, files, _ = build(events, CARDS)
+    (stopped,) = kinds(files, "session_ended")
+    assert (stopped.how, stopped.blocked_on, stopped.stop) == ("blocked", "stop", "context_full")
+    assert deliveries(history)[(664, 1)].stop == "context_full"

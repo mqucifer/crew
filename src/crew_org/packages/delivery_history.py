@@ -38,7 +38,7 @@ from crew_org.packages.reasons import published_reason
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.8.0"
+SCHEMA_VERSION = "1.9.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -260,7 +260,8 @@ Tool = Literal[
 ]
 # How a session or a delivery was stopped. `gate_repeat` stops a delivery between its
 # sessions, as `backstop` can: the gates' same findings 3 rounds in a row (crew#790).
-Stop = Literal["no_progress", "backstop", "ceiling", "no_tool_call", "gate_repeat"]
+# `context_full`: a compaction that left the prompt at or over its limit (crew#857).
+Stop = Literal["no_progress", "backstop", "ceiling", "no_tool_call", "gate_repeat", "context_full"]
 ToolResult = Literal["ok", "refused", "failed", "passed", "error", "end"]
 How = Literal["done", "blocked", "interrupted"]
 BlockedOn = Literal["file", "fact", "choice", "stop"]
@@ -320,7 +321,8 @@ class ToolCall(_Part):
 
 
 class SessionCompacted(_Part):
-    """A session's history compacted, once, before a prompt would pass its limit."""
+    """A session's history compacted before a prompt would pass its limit: one of these
+    each time, since a long session compacts more than once."""
 
     kind: Literal["session_compacted"] = "session_compacted"
     at: datetime

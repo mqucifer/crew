@@ -204,7 +204,7 @@ Each step reads one checkout of the default branch, `Workspace.at_main`, through
 | Instead of the hints, on a rework or a resume | `session_delivery.returned_start`, `session_delivery.resumed_start`, `session_end.rework_start` | Review's or the gates' findings and the last `done`, or the last checkpoint (P2, P3) |
 | The rules for its tools and its `done` | `start.RULES` | Each told once |
 
-Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's reply stays in the history whole, until one compaction near 125k tokens (ADR 0032).
+Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's reply stays in the history whole, until a compaction near 125k tokens, each time a prompt nears it (ADR 0032).
 
 ## Code Reviewer, judging a diff
 

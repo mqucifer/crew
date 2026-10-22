@@ -101,6 +101,10 @@ DETAIL = frozenset(
         "model_s",
         "estimated_tokens",
         "turns_masked",
+        # Each compaction of a session, counted from 1, and what it left (crew#857).
+        "compaction",
+        "estimated_after",
+        "turns_newly_masked",
         # The kept reasoning field, as counts: never its text (crew#778, ADR 0010).
         "reasoning_kept_chars",
         "reasoning_kept_tokens",

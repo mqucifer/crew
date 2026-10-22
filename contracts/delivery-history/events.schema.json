@@ -585,7 +585,8 @@
                 "backstop",
                 "ceiling",
                 "no_tool_call",
-                "gate_repeat"
+                "gate_repeat",
+                "context_full"
               ],
               "type": "string"
             },
@@ -610,7 +611,7 @@
     },
     "SessionCompacted": {
       "additionalProperties": false,
-      "description": "A session's history compacted, once, before a prompt would pass its limit.",
+      "description": "A session's history compacted before a prompt would pass its limit: one of these\neach time, since a long session compacts more than once.",
       "properties": {
         "at": {
           "format": "date-time",
@@ -894,7 +895,8 @@
                 "backstop",
                 "ceiling",
                 "no_tool_call",
-                "gate_repeat"
+                "gate_repeat",
+                "context_full"
               ],
               "type": "string"
             },
