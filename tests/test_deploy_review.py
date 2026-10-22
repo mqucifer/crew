@@ -12,6 +12,7 @@ from crew_org.crews.review_crew import Finding, ReviewVerdict
 from crew_org.flows import review as review_flow
 from crew_org.tools.deploy_evidence import (
     deploy_evidence,
+    deploy_trigger,
     entry_modules,
     is_runnable,
     touches_runnable,
@@ -73,6 +74,61 @@ def test_code_and_docs_are_not():
 def test_a_diff_is_judged_by_the_paths_it_touches():
     assert touches_runnable(DOCKERFILE_DIFF)
     assert not touches_runnable(PYTHON_DIFF)
+
+
+def _diff(path: str, *lines: str) -> str:
+    body = "\n".join(lines)
+    return f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n{body}\n"
+
+
+# sprint-metrics#338's shape: the bind sprint-metrics#67 wrote, changed in plain code.
+BIND_DIFF = _diff(
+    "src/sprint_metrics/serve.py",
+    '-    server = http.server.HTTPServer(("127.0.0.1", port), MetricsHandler)',
+    '+    server = http.server.HTTPServer(("0.0.0.0", port), MetricsHandler)',
+)
+
+
+def test_a_bind_changed_in_code_starts_the_review():
+    trigger = deploy_trigger(BIND_DIFF)
+    assert trigger is not None and trigger.on == "code"
+    assert trigger.matched == [
+        "listens src/sprint_metrics/serve.py",
+        "address src/sprint_metrics/serve.py",
+    ]
+    assert touches_runnable(BIND_DIFF)
+
+
+def test_ports_permissions_and_environment_start_it_too():
+    cases = {
+        # sprint-metrics#452's shape.
+        "environment": '+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")',
+        "port": '+        "--port",',
+        "permissions": "+    path.chmod(0o600)",
+    }
+    for kind, line in cases.items():
+        trigger = deploy_trigger(_diff("src/app/cli.py", line))
+        assert trigger is not None and f"{kind} src/app/cli.py" in trigger.matched, kind
+    assert deploy_trigger(_diff("web/server.ts", "-const port = process.env.PORT")) is not None
+
+
+def test_a_removed_line_counts_as_much_as_an_added_one():
+    assert deploy_trigger(_diff("src/a.py", '-    host = "127.0.0.1"')) is not None
+
+
+def test_tests_docs_and_unchanged_lines_do_not():
+    bind = '+    HTTPServer(("127.0.0.1", port), H)'
+    for path in ["tests/test_serve.py", "src/a/tests/helpers.py", "README.md", "docs/run.py"]:
+        assert deploy_trigger(_diff(path, bind)) is None, path
+    context = _diff("src/a.py", '     HTTPServer(("127.0.0.1", port), H)', "-x", "+y")
+    assert deploy_trigger(context) is None
+    assert deploy_trigger(PYTHON_DIFF) is None
+
+
+def test_runnable_files_come_first():
+    trigger = deploy_trigger(DOCKERFILE_DIFF + BIND_DIFF)
+    assert trigger is not None
+    assert (trigger.on, trigger.matched) == ("files", ["Dockerfile"])
 
 
 def test_console_scripts_name_the_modules_they_run():

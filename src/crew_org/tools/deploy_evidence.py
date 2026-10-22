@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from crew_org.tools.review_evidence import candidate_paths
@@ -47,9 +48,77 @@ def changed_files(diff: str) -> list[str]:
     return [p for p in dict.fromkeys(_FILE.findall(diff)) if p != "/dev/null"]
 
 
+# Code that changes how the thing runs, read from a diff's added and removed lines
+# (crew#861). sprint-metrics#67 bound its server to 127.0.0.1 in plain Python, so
+# no runnable file changed and nothing judged it until an image shipped it
+# (sprint-metrics#330). Wide on purpose: a false start costs one review, a miss a
+# broken deploy. On 180 merged pull requests it started on 3 that no file did.
+_RUNS = {
+    "listens": _LISTENS,
+    "address": re.compile(r"""["'](?:0\.0\.0\.0|127\.0\.0\.1|localhost|::1?|\[::1?\])["':]"""),
+    "port": re.compile(r"\b(?:port|PORT|host|HOST)\b\s*[:=]|--(?:port|host|bind)\b|\bEXPOSE\b"),
+    "permissions": re.compile(
+        r"\b(?:chmod|chown|umask|setuid|setgid|S_I[RWX](?:USR|GRP|OTH)|S_IRWX[UGO])\b"
+        r"|\b0o[0-7]{3}\b"
+    ),
+    "environment": re.compile(
+        r"\bos\.environ\b|\bgetenv\(|\benviron\.get\(|\bprocess\.env\b|\bimport\.meta\.env\b"
+        r"|\bDeno\.env\b|\bBaseSettings\b|\benv_prefix\b"
+    ),
+}
+_DIFF_FILE = re.compile(r"^diff --git a/\S+ b/(\S+)$")
+# Neither runs as deployed: what tests and docs say about a port changes nothing.
+_NOT_RUN = {".md", ".rst", ".txt", ".json", ".lock", ".csv", ".svg", ".html", ".css"}
+_TEST_DIRS = {"tests", "test", "__tests__", "fixtures", "docs"}
+
+
+@dataclass(frozen=True)
+class Trigger:
+    """Why a change gets a deploy review, recorded so the trigger can be judged."""
+
+    on: str  # "files" or "code"
+    # The runnable files changed, or each kind of code change as "kind path".
+    matched: list[str]
+
+
+def _run_as_deployed(path: str) -> bool:
+    p = PurePosixPath(path)
+    if p.suffix.lower() in _NOT_RUN and p.name != "package.json":
+        return False
+    if set(p.parts[:-1]) & _TEST_DIRS or p.name.startswith("test_"):
+        return False
+    return not re.search(r"(_test\.py|\.test\.\w+|\.spec\.\w+)$", p.name)
+
+
+def code_changes(diff: str) -> list[str]:
+    """Each kind of change to how the thing runs, as "kind path", in the order found."""
+    found: dict[str, None] = {}
+    path: str | None = None
+    for line in diff.splitlines():
+        if m := _DIFF_FILE.match(line):
+            path = m.group(1)
+            continue
+        if path is None or not _run_as_deployed(path) or line.startswith(("+++", "---")):
+            continue
+        if line.startswith(("+", "-")):
+            for kind, pattern in _RUNS.items():
+                if pattern.search(line[1:]):
+                    found[f"{kind} {path}"] = None
+    return list(found)
+
+
+def deploy_trigger(diff: str) -> Trigger | None:
+    """Why this change gets a deploy review, or None: runnable files come first."""
+    files = [p for p in changed_files(diff) if is_runnable(p)]
+    if files:
+        return Trigger("files", files)
+    code = code_changes(diff)
+    return Trigger("code", code) if code else None
+
+
 def touches_runnable(diff: str) -> bool:
     """Does this change add, alter or remove anything that runs or deploys?"""
-    return any(is_runnable(p) for p in changed_files(diff))
+    return deploy_trigger(diff) is not None
 
 
 def runnable_paths(root: Path | None, diff: str) -> list[str]:
