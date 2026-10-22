@@ -131,3 +131,20 @@ def test_the_re_split_reads_the_evidence_given_since_the_last_split():
     )
     assert story_problem_evidence(issues, REPO, 54) == "#97 broke the table's rows"
     assert story_problem_evidence(Comments([f"{STORY_SPLIT_MARKER}"]), REPO, 54) == ""
+
+
+def test_an_earlier_sibling_stays_in_its_sprint():
+    """Only the stories after it build on it, so only they are replaced (crew#859)."""
+    board, issues = Board(), Issues()
+    cards = [story(97, status="Sprint Backlog"), story(98), story(99, status="Sprint Backlog")]
+    return_to_refinement(
+        board,
+        issues,
+        EventSink(),
+        cards[1],
+        repo=REPO,
+        cards=cards,
+        comment="the evidence",
+        reason="gate round trips",
+    )
+    assert board.status == {"S98": "Ready", "S99": "Ready"}

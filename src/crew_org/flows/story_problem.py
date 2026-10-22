@@ -46,9 +46,10 @@ def return_to_refinement(
     "contract ruling", or "session blocked" (crew#778). `detail` goes on the event
     with it: which kind of `blocked`, or which stop.
 
-    The story and its unbuilt siblings go back to Ready, out of their sprint,
-    so the rework supersedes them and they stop counting against capacity. The
-    evidence goes on the epic with `needs:rework`.
+    The story and its unbuilt later siblings go back to Ready, out of their sprint,
+    so they stop counting against capacity: they build on it, so the re-split replaces
+    them (crew#859). Earlier siblings stay in their sprint. The evidence goes on the
+    epic with `needs:rework`.
     """
     epic = card.parent
     # A role's Task isn't split from its epic, so splitting the epic again can't
@@ -69,7 +70,11 @@ def return_to_refinement(
         and c.work_type != TASK
     ]
     busy = started(issues, repo, siblings)
-    back = [card] + [c for c in siblings if c.number not in busy and c.status != READY]
+    back = [card] + [
+        c
+        for c in siblings
+        if c.number not in busy and c.status != READY and (c.number or 0) > (card.number or 0)
+    ]
     for story in back:
         move_card(
             board,

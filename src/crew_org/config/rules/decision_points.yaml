@@ -242,14 +242,22 @@ flows.board_flow.record_sponsor_words:filter:642892ad:
   at: flows/board_flow.py:record_sponsor_words
   if: _after(c, began)
   rule: decision.board_flow.sponsor_words
-flows.board_flow.refine_epics:close:895cac16:
-  at: flows/board_flow.py:refine_epics
-  if: not proposal.stories
-  rule: decision.board_flow.already_delivered
 flows.board_flow.refine_epics:filter:33574705:
   at: flows/board_flow.py:refine_epics
   if: s not in named
   rule: gate.criteria_cannot_all_pass
+flows.board_flow.refine_epics:label:b5a14cdf:
+  at: flows/board_flow.py:refine_epics
+  if: again
+  rule: decision.resplit.affected
+flows.board_flow.refine_epics:close:423cf87c:
+  at: flows/board_flow.py:refine_epics
+  if: not proposal.stories and (not kept)
+  rule: decision.board_flow.already_delivered
+flows.board_flow.refine_epics:close:62d768c1:
+  at: flows/board_flow.py:refine_epics
+  if: plan
+  rule: decision.resplit.affected
 flows.board_flow.refine_epics:result:held_for_design:129f578d:
   at: flows/board_flow.py:refine_epics
   if: repo in holds and TECHNICAL not in epic_card.labels
@@ -1022,6 +1030,15 @@ flows.release_check.check_releases:result:waiting:81eec5c7:
   at: flows/release_check.py:check_releases
   if: run.get('head_sha') != issues.head_sha(repo, branch)
   rule: decision.release_check.check_releases
+flows.resplit.plan_for:filter:fa2179be:
+  at: flows/resplit.py:plan_for
+  if: (card := by_key.get((repo, child))) is not None and card.state != 'CLOSED' and (card.work_type !=
+    TASK)
+  rule: decision.resplit.affected
+flows.resplit.covered:filter:e64d00f4:
+  at: flows/resplit.py:covered
+  if: ln.startswith(EXISTING_TESTS)
+  not_a_rule: reads a kept story's Existing tests line for the record's checks
 flows.retro._file_recurring:filter:c4b22ebb:
   at: flows/retro.py:_file_recurring
   if: at and at > fixed_at

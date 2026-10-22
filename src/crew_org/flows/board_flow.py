@@ -46,7 +46,7 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal, role_tasks
+from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal, resplit, role_tasks
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
@@ -833,7 +833,8 @@ def rework_gate(
     repo: str,
     marker: str,
 ) -> tuple[bool, str]:
-    """(proceed, what the Sponsor said).
+    """(proceed, what the Sponsor said), for a Goal sent back: its unstarted epics are
+    superseded. An epic sent back goes through `resplit_gate` (crew#859).
 
     Three things stopped a decomposition being redone, and only the first is
     the obvious one: the marker made the step one-shot, nothing read comments as
@@ -910,6 +911,52 @@ def rework_gate(
         )
         if part
     )
+
+
+def resplit_gate(
+    issues: IssueClient,
+    sink: EventSink,
+    result: TickResult,
+    cards: list[Card],
+    card: Card,
+    repo: str,
+) -> tuple[bool, str, resplit.Resplit | None]:
+    """(proceed, what the re-split reads, what it replaces of the epic's open stories)
+    for an epic (crew#859).
+
+    An epic split already is skipped unless it was sent back. Sent back, only the
+    stories the problem affects are replaced (`resplit.affected`), and nothing is
+    closed or unlabelled here: that waits for the new stories, so a split that fails
+    leaves the epic as the next pass finds it. Started work is never discarded: a
+    re-split that would replace a started story waits, naming it.
+    """
+    number = card.number or 0
+    if NEEDS_REWORK not in card.labels:
+        if issues.has_comment_marked(repo, number, STORY_SPLIT_MARKER):
+            held("skip.board_flow.already_answered", repo=card.repo or repo, card=number)
+            result.skipped.append((number, "already answered"))
+            return False, "", None
+        return True, "", None
+
+    evidence = story_problem_evidence(issues, repo, number)
+    said = sponsor_notes(issues, repo, number)
+    # The Sponsor's own rework names its stories, or means all of them.
+    plan, stories = resplit.plan_for(issues, cards, card, repo, problem=evidence or said)
+    if plan.started:
+        why = "work already started on " + ", ".join(f"#{n}" for n in plan.started)
+        result.skipped.append((number, f"rework refused — {why}"))
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.NOTE,
+                card=number,
+                summary=f"rework refused — {why}"[:100],
+                detail={"rule": "skip.board_flow.rework_refused"},
+            )
+        )
+        return False, "", None
+    result.superseded[number] = [(n, stories[n].card.title) for n in plan.replaced]
+    again = resplit.Resplit(plan, stories, because="story problem" if evidence else "sponsor")
+    return True, "\n\n".join(part for part in (evidence, said) if part), again
 
 
 def lacking_notes(issues: IssueClient, repo: str, number: int) -> str:
@@ -1699,9 +1746,7 @@ def refine_epics(
                 held("skip.board_flow.waits_for_the_sponsors_answer_on", repo=repo, card=number)
                 continue
 
-            proceed, notes = rework_gate(
-                issues, sink, result, cards, epic_card, repo, STORY_SPLIT_MARKER
-            )
+            proceed, notes, again = resplit_gate(issues, sink, result, cards, epic_card, repo)
             if not proceed:
                 held("decision.board_flow.product_step", repo=repo, card=number)
                 continue
@@ -1767,9 +1812,19 @@ def refine_epics(
                 # Each step reads the code in its own session, over one checkout of the
                 # default branch (crew#807): the split, the criteria check and the repair.
                 reading = context.reading_for(repo)
+                # Sent back, only the affected stories are replaced (crew#859). The ones it
+                # keeps stay as they are: they count for the record's checks, and the
+                # criteria check reads them beside the new ones.
+                plan, stories = (again.plan, again.stories) if again else (None, {})
+                kept = list(plan.kept) if plan else []
+                followed, kept_tests = resplit.covered(stories, kept)
+                rows = [r for r in rows if r not in followed]
+                declared = [t for t in declared if t not in kept_tests]
                 asked_for = dict(
                     epic_ref=f"{issues.owner}/{repo}#{number}",
                     superseded=result.superseded.get(number),
+                    kept=resplit.shown(stories, kept),
+                    replaced=resplit.shown(stories, plan.replaced if plan else ()),
                     feedback=notes,
                     delivered=done.render(),
                     delivered_numbers=done.numbers if known else None,
@@ -1793,7 +1848,9 @@ def refine_epics(
                 # Every criterion has to pass alongside the others and the code, and
                 # that shows before any story exists (#428). One repair of the flagged
                 # stories' criteria; what survives goes to the Product Owner.
-                others = criteria_check.planned_criteria(issues, repo, planned)
+                others = criteria_check.planned_criteria(
+                    issues, repo, planned + [(n, stories[n].card.title, number) for n in kept]
+                )
                 checked = criteria_check.check_each(
                     attributed(check_criteria, card=number, repo=repo),
                     proposal,
@@ -1893,6 +1950,7 @@ def refine_epics(
                     check=checked,
                     marker=STORY_PROBLEM_MARKER,
                     rework=NEEDS_REWORK,
+                    replacing=plan.replaced if plan else (),
                 )
                 result.skipped.append((number, "its criteria can't all pass: to the Product Owner"))
                 continue
@@ -1982,13 +2040,21 @@ def refine_epics(
             # about to supersede both.
             waiting = (
                 sorted({d.by for d in proposal.already_delivered if d.by} - done.numbers)
-                if not proposal.stories
+                if not proposal.stories and not kept
                 else []
             )
+            # The stories it replaces close only now that what replaces them exists
+            # (crew#859).
+            if plan:
+                for child in plan.replaced:
+                    with contextlib.suppress(Exception):
+                        issues.close(repo, child, reason="not_planned")
             drawn = diagram_comment(issues, repo, epic_card.parent) if epic_card.parent else None
             body = render_split(
                 epic_card.title, proposal, numbers, str((drawn or {}).get("html_url") or "")
             )
+            if plan:
+                body += resplit.render(plan)
             if waiting:
                 body += (
                     "\n\n### Waiting, not closed\n\n"
@@ -2006,6 +2072,28 @@ def refine_epics(
                 by="Business Analyst",
             )
             record_split_tests(issues, sink, repo, number, proposal, numbers)
+            if again:
+                # The Sponsor's label, spent now the re-split is on the epic. Nobody's
+                # role to claim.
+                with contextlib.suppress(Exception):
+                    artifacts.label(
+                        issues,
+                        sink,
+                        repo=repo,
+                        number=number,
+                        by=None,
+                        remove=[NEEDS_REWORK],
+                        rule="decision.resplit.affected",
+                    )
+                resplit.emit(
+                    sink,
+                    repo,
+                    number,
+                    again,
+                    reads_decision=record_flow.has_change(
+                        [_all_bodies(issues, repo, number)], ANSWER
+                    ),
+                )
             # The split is DevOps's event: the epic's CI and release, one Task per epic,
             # since epics release themselves (crew#839, ADR 0019).
             if numbers:
@@ -2037,7 +2125,7 @@ def refine_epics(
                     f"#{number} waits for planned " + ", ".join(f"#{n}" for n in waiting),
                     card=number,
                 )
-            elif not proposal.stories:
+            elif not proposal.stories and not kept:
                 issues.close(repo, number, reason="completed")
                 sink.note(
                     EventKind.NOTE,

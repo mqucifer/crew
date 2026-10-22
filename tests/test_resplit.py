@@ -18,7 +18,7 @@ FOUR = {
 
 
 def test_a_problem_on_one_story_replaces_it_and_the_stories_after_it_only():
-    plan = affected(FOUR, named={704}, replaced_rows=set(), started=set())
+    plan = affected(FOUR, named={704}, started=set())
     assert plan.replaced == (704, 705)
     assert plan.kept == (702, 703)
     assert plan.positions == {704: 3}
@@ -26,28 +26,23 @@ def test_a_problem_on_one_story_replaces_it_and_the_stories_after_it_only():
 
 def test_a_problem_on_the_first_story_replaces_them_all():
     """The cost of order as the only link between an epic's stories."""
-    plan = affected(FOUR, named={702, 703}, replaced_rows=set(), started=set())
+    plan = affected(FOUR, named={702, 703}, started=set())
     assert plan.replaced == (702, 703, 704, 705) and plan.kept == ()
     assert plan.positions == {702: 1, 703: 2}
 
 
-def test_a_story_following_a_replaced_row_is_affected_too():
-    plan = affected(FOUR, named={705}, replaced_rows={"R3"}, started=set())
-    assert plan.replaced == (703, 704, 705) and plan.kept == (702,)
-
-
 def test_a_problem_that_names_none_of_them_affects_them_all():
-    plan = affected(FOUR, named=set(), replaced_rows=set(), started=set())
+    plan = affected(FOUR, named=set(), started=set())
     assert plan.replaced == tuple(FOUR) and plan.kept == ()
 
 
 def test_work_started_on_an_affected_story_is_named_and_a_kept_one_isnt():
-    plan = affected(FOUR, named={704}, replaced_rows=set(), started={702, 705})
+    plan = affected(FOUR, named={704}, started={702, 705})
     assert plan.started == (705,)
 
 
 def test_an_epic_with_no_open_stories_replaces_nothing():
-    plan = affected({}, named=set(), replaced_rows=set(), started=set())
+    plan = affected({}, named=set(), started=set())
     assert plan.replaced == () and plan.kept == ()
 
 

@@ -139,6 +139,12 @@ decision.phase_cards:
   - crew#353
   - sprint-metrics#284
 decision.release_check.check_releases:
+decision.resplit.affected:
+  description: An epic sent back is split again only where the problem reaches. The stories it names and
+    every later story of the epic are replaced, once their replacements exist, and the rest stay; a problem
+    that names none replaces every unstarted story.
+  origin:
+  - crew#859
 decision.revert.refused:
 decision.revert.return_card:
 decision.review.deploy_review:
