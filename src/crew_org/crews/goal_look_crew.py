@@ -97,6 +97,15 @@ class SystemLook(BaseModel):
             "interaction between parts; empty otherwise"
         ),
     )
+    needs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Each new service or toolchain the Goal needs that the project's workspace "
+            "doesn't have, by its kind and what it's for: \"a Postgres for the tests\", "
+            '"Node for the site build". Not versions, images or configuration: DevOps\'s '
+            "Task works those out. Empty when the Goal needs none"
+        ),
+    )
 
     @model_validator(mode="after")
     def _diagram_well_formed(self) -> SystemLook:

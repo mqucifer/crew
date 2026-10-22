@@ -621,6 +621,29 @@ def test_devops_may_change_the_workspace_file_and_its_services():
     )
 
 
+def test_each_need_of_a_goal_is_one_devops_task_under_it(tmp_path):
+    from crew_org.columns import NEEDS_REFINEMENT
+
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    needs = ["a Postgres for the tests", "Node for the site build"]
+    opened = role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=needs)
+    assert opened == [901, 902]
+    assert marked(issues.issues[901]["body"]).kind == "need"
+    assert issues.subs[666] == [901, 902]
+    assert ("status", "item-N901", NEEDS_REFINEMENT) in board.done
+    again = role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=needs[:1])
+    assert again == [901] and len(issues.issues) == 2
+
+
+def test_a_need_that_cant_be_opened_is_recorded_and_the_rest_go_on(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    board.cards = lambda: []
+    issues.fail = "create"
+    assert role_tasks.need_tasks(issues, board, s, repo="sm", goal=666, needs=["x"]) == []
+    assert any("need task not opened" in e["summary"] for e in events(tmp_path))
+
+
 def test_the_architects_diagram_must_render():
     from crew_org.flows.role_tasks import diagram_problems
 

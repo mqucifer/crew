@@ -113,6 +113,7 @@ LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in R
 DIAGRAM = "diagram"
 FIRST_DIAGRAM = "first-diagram"
 FIRST_WORKSPACE = "first-workspace"
+NEED = "need"
 RELEASE = "release"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
@@ -960,6 +961,63 @@ def first_workspace_task(
         cards=cards,
         event="repository.no_workspace",
     )
+
+
+def need_tasks(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    goal: int,
+    needs: list[str],
+) -> list[int]:
+    """DevOps's Task under the Goal for each service or toolchain its look says it needs.
+
+    The Sponsor (2026-10-22): the Architect names what the Goal needs, at the level of
+    intent ("a Postgres for the tests"), and DevOps's Task works out the image, the
+    declaration and CI's side (ADR 0035). Keyed by the Goal and the need, so a look
+    read again opens none twice. One that can't be opened is recorded, and the look
+    goes on: the Task is DevOps's, not the Goal's record.
+    """
+    opened: list[int] = []
+    for need in needs:
+        key = f"goal-{goal}-" + hashlib.sha256(need.strip().lower().encode()).hexdigest()[:12]
+        body = render(
+            DEVOPS,
+            kind=NEED,
+            key=key,
+            why=f"The Goal's look on #{goal} says it needs {need.strip().rstrip('.')}, and "
+            "the project's workspace doesn't have it yet.",
+            work="Give the workspace and CI what the Goal needs: declare it in "
+            "`.devcontainer/`, and make CI's test job run the same, so its tests run in "
+            "both.",
+            done_when=["Triaged: the Business Analyst writes what done means."],
+        )
+        try:
+            found = open_task(
+                issues,
+                board,
+                sink,
+                repo=repo,
+                role=DEVOPS,
+                kind=NEED,
+                key=key,
+                title=f"The workspace for Goal #{goal}: {need.strip().rstrip('.')}"[:120],
+                body=body,
+                points=None,
+                cards=board.cards(),
+                parent=goal,
+                column=NEEDS_REFINEMENT,
+                by="Architect",
+                event="goal.needs",
+            )
+        except Exception as exc:  # noqa: BLE001
+            reraise_if_down(exc)
+            not_opened(sink, repo=repo, role=DEVOPS, kind=NEED, card=goal, why=exc)
+            continue
+        opened.append(found.number)
+    return opened
 
 
 def first_workspaces(
