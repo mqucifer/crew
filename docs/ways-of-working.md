@@ -87,7 +87,10 @@ tests pin and doesn't say whether it should (crew#189), the Product Owner
 answers that from what the project already has: the Goal, the record,
 delivered stories. When nothing written down answers it, the Sponsor is asked
 one question on the epic, and the reply is what the re-split reads. No board
-moves are asked of the Sponsor.
+moves are asked of the Sponsor. The re-split replaces only the stories the
+problem names and every later story of the epic; the rest stay. After three
+rounds (`refinement.resplit_stop`), an epic's next problem goes to the Sponsor
+as one question instead (ADR 0037).
 
 The first gate is for *what* to build. Work about *how* a project is built
 never goes through it: a technical epic, filed by the crew from the Architect's

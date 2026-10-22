@@ -67,3 +67,4 @@ decision was first made.
 | [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (M7's share built by crew#839; the deploy and UX review in M8, QA's in M10) |
 | [0035](0035-goals-and-epics-stay-at-the-level-of-intent.md) | Goals and epics stay at the level of intent; each role asks its own question | 2026-10-21 | Accepted (to be built in M7: crew#846, crew#847, crew#815; the questions asked in the Goal's look, ADR 0036) |
 | [0036](0036-one-look-across-a-goals-epics.md) | One look across a Goal's epics, recorded on the Goal; one Goal refines at a time | 2026-10-21 | Accepted (built by crew#858) |
+| [0037](0037-a-re-split-replaces-only-what-the-problem-reaches.md) | A re-split replaces only what the problem reaches, and the rounds are counted | 2026-10-21 | Accepted (built by crew#859) |
