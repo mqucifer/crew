@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import os
 import subprocess
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from crew_org.tools.sandbox import Mode, Sandbox, prepare_home
+from crew_org.tools.sandbox import HOME_DIR, Mode, Sandbox, prepare_home
 
 if TYPE_CHECKING:
     from crew_org.project import Design
@@ -76,6 +77,9 @@ class CheckResult:
     # why (crew#860). Its tests would skip or fail for the workspace's reason, not the
     # story's.
     services_down: dict[str, str] = field(default_factory=dict)
+    # In a held container: each test the checks skipped, by `path::Class.name`, with its
+    # reason, from pytest's report (crew#860). None when there's no report: not pytest.
+    skipped: dict[str, str] | None = None
 
     @property
     def ok(self) -> bool:
@@ -380,6 +384,8 @@ def check(
             reverted = sorted((_changed(worktree, since) or set()) - touched)
             if reverted:
                 _git(worktree, "checkout", "--", *reverted)
+        if held is not None:
+            (worktree / REPORT).unlink(missing_ok=True)
         for command in tools.verify:
             results.append(do(command))
     return CheckResult(
@@ -389,7 +395,49 @@ def check(
         unsafe=unsafe,
         resetup=resetup,
         services_down=dict(getattr(held, "down", None) or {}),
+        skipped=skipped_tests(worktree) if held is not None else None,
     )
+
+
+# The tests' report, written by every pytest run in a held workspace into the worktree's
+# own home, which ignores itself, so it's never committed (crew#860). The checks remove
+# it first, so what's read after them is theirs.
+REPORT = f"{HOME_DIR}/junit.xml"
+
+
+def with_report(env: dict[str, str]) -> dict[str, str]:
+    """A held workspace's environment, with pytest told to write its report."""
+    given = env.get("PYTEST_ADDOPTS", "")
+    return {**env, "PYTEST_ADDOPTS": f"{given} --junitxml=/work/{REPORT}".strip()}
+
+
+def skipped_tests(worktree: Path) -> dict[str, str] | None:
+    """Each test the last pytest run skipped, by `path::Class.name`, with its reason.
+
+    None when there's no report, or it doesn't parse: the checks weren't pytest's.
+    """
+    try:
+        root = ET.parse(worktree / REPORT).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    found: dict[str, str] = {}
+    for case in root.iter("testcase"):
+        skip = case.find("skipped")
+        if skip is None:
+            continue
+        reason = (skip.get("message") or skip.text or "").strip()
+        found[_test_id(worktree, case.get("classname") or "", case.get("name") or "")] = reason
+    return found
+
+
+def _test_id(worktree: Path, classname: str, name: str) -> str:
+    """pytest's dotted `classname` as the file it names, and the classes after it."""
+    parts = classname.split(".")
+    for at in range(len(parts), 0, -1):
+        path = "/".join(parts[:at]) + ".py"
+        if (worktree / path).is_file():
+            return f"{path}::" + ".".join([*parts[at:], name])
+    return f"{classname}::{name}"
 
 
 def _unsafe_fixes(

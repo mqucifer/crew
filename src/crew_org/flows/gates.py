@@ -14,7 +14,10 @@ used to run on an answer before it was applied:
   and is read against the story's **Existing tests** line (decision 6);
 - **the whole checks,** by the runner the caller passes: the session's container,
   once delivery runs sessions, with the services the project declares (crew#860);
-- **a bug's tests** fail without the fix (crew#407).
+- **a bug's tests** fail without the fix (crew#407);
+- **no test CI runs skipped** (crew#860): one the branch adds or changes that skipped
+  for a reason the project doesn't declare CI-only goes back. One already merged isn't
+  the Developer's: it's DevOps's, once the project has a workspace file.
 
 Every gate runs, and every finding goes back together, since a new session starts
 from all of them (P2). A test per criterion and the docs aren't mechanical yet: review
@@ -37,7 +40,7 @@ from crew_org.flows.attempts import repair_report
 from crew_org.profiles import profile_for
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
-from crew_org.tools import bounds, regression, reproduction
+from crew_org.tools import bounds, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, check
@@ -70,6 +73,9 @@ class Verdict:
     check: CheckResult | None = None
     # An empty diff whose criteria existing tests prove: today's already-done path (crew#221).
     already_done: bool = False
+    # Merged tests that skipped for a reason the project doesn't declare CI-only, by
+    # `path::name`, with the reason: DevOps's to look at, not the Developer's (crew#860).
+    for_devops: dict[str, str] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -188,6 +194,8 @@ def at_done(
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.check = run_checks(worktree)
     _checked(verdict)
+    if merged is not None:
+        _skipped(worktree, merged, paths, verdict)
     if card.work_type == BUG and merged is not None:
         _reproduced(worktree, merged, named, verdict, note)
     return verdict
@@ -344,6 +352,57 @@ def _declared_tests(
                 + (f"\n\nAs merged:\n\n{shown}" if shown else ""),
             )
         )
+
+
+def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict) -> None:
+    """The gate refuses a skipped test that CI runs (the Sponsor, 2026-10-21).
+
+    What CI runs is checkable through the project's declaration: a test that skips for
+    a reason its workspace file declares CI-only (Docker, say) is one CI skips too, and
+    anything else would run there. One the branch adds or changes goes back. One already
+    merged isn't this Developer's to fix: it's DevOps's, whose declaration it is. A
+    project with no file can't say what's CI-only yet, so its merged skips wait for
+    DevOps's first workspace Task, which covers them.
+    """
+    skipped = verdict.check.skipped if verdict.check is not None else None
+    if not skipped:
+        return
+    declared = services.at_main(worktree)
+    run_in_ci = {
+        test: reason
+        for test, reason in skipped.items()
+        if not any(ci in reason for ci in declared.ci_only)
+    }
+    touched = added_or_changed(worktree, merged, paths)
+    mine = {t: r for t, r in run_in_ci.items() if t.split("[", 1)[0] in touched}
+    if mine:
+        verdict.findings.append(
+            Finding(
+                "check.gates.these_tests_skipped",
+                says(
+                    "check.gates.these_tests_skipped",
+                    tests="\n".join(f"- `{t}`: {r}" for t, r in sorted(mine.items())),
+                ),
+            )
+        )
+    if declared.path is not None:
+        verdict.for_devops = {t: r for t, r in run_in_ci.items() if t not in mine}
+
+
+def added_or_changed(worktree: Path, merged: regression.Merged, paths: list[str]) -> set[str]:
+    """Each Python test the branch adds or changes, as `path::Class.name`."""
+    found: set[str] = set()
+    for path in paths:
+        if not path.endswith(".py") or not profile_for(path).is_test_path(path):
+            continue
+        target = worktree / path
+        if not target.is_file():
+            continue
+        was = _tests_in(merged.text(path) or "")
+        for name, node in _tests_in(target.read_text(encoding="utf-8", errors="ignore")).items():
+            if name not in was or ast.dump(was[name]) != ast.dump(node):
+                found.add(f"{path}::{name}")
+    return found
 
 
 def _contracts(worktree: Path, merged: regression.Merged | None) -> dict[str, tuple[str, str]]:

@@ -1636,3 +1636,27 @@ flows.session_delivery._record_autofix:end:bb7da915:
   at: flows/session_delivery.py:_record_autofix
   if: not (fixed or reverted or unsafe)
   not_a_rule: 'records what the fixers changed, when they changed anything: no decision'
+flows.gates._skipped:filter:4b9131ff:
+  at: flows/gates.py:_skipped
+  if: not any((ci in reason for ci in declared.ci_only))
+  rule: check.gates.these_tests_skipped
+flows.gates._skipped:filter:04462d0d:
+  at: flows/gates.py:_skipped
+  if: t.split('[', 1)[0] in touched
+  rule: check.gates.these_tests_skipped
+flows.gates._skipped:filter:0eb8726c:
+  at: flows/gates.py:_skipped
+  if: t not in mine
+  not_a_rule: what's left of the skips goes to DevOps, not back to the Developer
+flows.role_tasks.workspace_finding:end:35058eeb:
+  at: flows/role_tasks.py:workspace_finding
+  if: not skipped and (not down)
+  not_a_rule: nothing to file
+flows.role_tasks.workspace_finding:filter:9f647ac6:
+  at: flows/role_tasks.py:workspace_finding
+  if: r == reason
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.session_end._for_devops:end:0ce39167:
+  at: flows/session_end.py:_for_devops
+  if: not verdict.for_devops and (not down)
+  not_a_rule: nothing to file

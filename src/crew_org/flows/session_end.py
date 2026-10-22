@@ -36,11 +36,12 @@ from typing import Any
 
 from crew_org.columns import BLOCKED
 from crew_org.events import CrewEvent, EventKind, EventSink, held
-from crew_org.flows import artifacts, delivery, gates
+from crew_org.flows import artifacts, delivery, gates, role_tasks
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.moves import move_card
 from crew_org.flows.story_problem import return_to_refinement
+from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
 from crew_org.rules import Rule
@@ -125,6 +126,38 @@ class Route:
     verdict: gates.Verdict | None = None
 
 
+def _for_devops(
+    verdict: gates.Verdict,
+    *,
+    repo: str,
+    story: int,
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+) -> None:
+    """What the gates found that's the workspace's, not the story's, filed for DevOps
+    (crew#860). A filing that fails is recorded; the story goes on either way."""
+    down = verdict.check.services_down if verdict.check is not None else {}
+    if not verdict.for_devops and not down:
+        return
+    try:
+        role_tasks.workspace_finding(
+            issues,
+            board,
+            sink,
+            repo=repo,
+            story=story,
+            skipped=verdict.for_devops,
+            down=down,
+            cards=board.cards(),
+        )
+    except Exception as exc:  # noqa: BLE001 - a filing never costs the story
+        reraise_if_down(exc)
+        role_tasks.not_opened(
+            sink, repo=repo, role=role_tasks.DEVOPS, kind=role_tasks.FINDING, card=story, why=exc
+        )
+
+
 def route(
     ending: Ending,
     *,
@@ -171,6 +204,7 @@ def route(
         run_checks=run_checks,
         note=note,
     )
+    _for_devops(verdict, repo=repo, story=number, board=board, issues=issues, sink=sink)
     # Which rules sent a story back, for the measures of decision 8: names only (ADR 0010).
     rules = [finding.rule for finding in verdict.findings]
     # Setup run again before the checks, as the session counts it (crew#814).

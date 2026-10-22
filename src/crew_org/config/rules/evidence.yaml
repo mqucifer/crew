@@ -75,6 +75,24 @@ check.gates.the_branch_changes_nothing:
   - crew#221
   - crew#778
   owner: Developer
+check.gates.these_tests_skipped:
+  description: At `done`, a test the branch adds or changes that skipped for a reason the project doesn't
+    declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor,
+    2026-10-21; crew#860).
+  messages:
+    default: 'These tests you added or changed skipped here, and CI runs them, so they prove nothing at
+      `done`:
+
+      {tests}
+
+
+      Make them run here. If one needs a service the workspace doesn''t have (a database, say), don''t
+      skip or fake it: the project''s `devcontainer.json` declares its services, and that''s DevOps''s.
+      Say so in `done`''s summary.'
+  origin:
+  - mqucifer/sprint-metrics#717
+  - crew#860
+  owner: Developer
 check.review.with_docs_finding:
   description: An option the change adds that no user doc mentions is added as a blocking finding.
   messages:

@@ -18,7 +18,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 14 |
-| A gate at `done` sends a session's branch back | 11 |
+| A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 51 |
@@ -36,7 +36,7 @@ section; one no line holds for is unplaced, never guessed.
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 72 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 65 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 66 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 65 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 111 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
@@ -186,6 +186,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.the_branch_changes_nothing`<br>At `done`, a branch that changes nothing goes on only if an existing test proves each criterion and the checks pass, as an already-done story does (crew#221). | evidence | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#221<br>crew#778 |
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |
 | `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:_declared_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests | crew#778 |
+| `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
 | `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
 

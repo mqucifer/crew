@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import posixpath
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
@@ -61,6 +61,9 @@ class Declared:
     not_honoured: dict[str, str] = field(default_factory=dict)
     # The workspace definition the services came from, if any.
     path: str | None = None
+    # Skip reasons the project declares CI makes too (`customizations.crew.ciOnlySkips`):
+    # a test that skips at `done` for one of these isn't one CI runs (crew#860).
+    ci_only: list[str] = field(default_factory=list)
 
     @property
     def any(self) -> bool:
@@ -85,7 +88,23 @@ def declared(read: Callable[[str], str | None]) -> Declared:
         raw = json.loads(devcontainer.strip_comments(text))
     except ValueError:
         return Declared()  # `devcontainer.read` says it doesn't parse
-    if not isinstance(raw, dict) or raw.get("dockerComposeFile") is None:
+    if not isinstance(raw, dict):
+        return Declared(path=path)
+    return replace(_composed(raw, path, read), ci_only=ci_only(raw))
+
+
+def ci_only(raw: dict[str, object]) -> list[str]:
+    """The skip reasons the project declares CI-only, in the spec's slot for a tool's own
+    settings (`customizations`)."""
+    crew = (raw.get("customizations") or {}) if isinstance(raw.get("customizations"), dict) else {}
+    given = crew.get("crew") if isinstance(crew, dict) else None
+    found = given.get("ciOnlySkips") if isinstance(given, dict) else None
+    return [r for r in found if isinstance(r, str) and r] if isinstance(found, list) else []
+
+
+def _composed(raw: dict[str, object], path: str, read: Callable[[str], str | None]) -> Declared:
+    """The services of a definition that names a compose file."""
+    if raw.get("dockerComposeFile") is None:
         return Declared(path=path)
     named = raw["dockerComposeFile"]
     if isinstance(named, list) and len(named) == 1:
@@ -107,7 +126,8 @@ def declared(read: Callable[[str], str | None]) -> Declared:
         return Declared(problems={"compose": f"`{compose}` has no `services`"}, path=path)
     workspace = raw.get("service")
     wanted = raw.get("runServices")
-    names = [n for n in given if n != workspace and (wanted is None or n in wanted)]
+    started = wanted if isinstance(wanted, list) else None
+    names = [n for n in given if n != workspace and (started is None or n in started)]
     result = Declared(path=path)
     for name in names:
         service, why = _service(str(name), given[name], compose, result.not_honoured)

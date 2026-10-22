@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -616,6 +617,80 @@ def file_findings(
             )
         )
     return filed
+
+
+def workspace_finding(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    story: int,
+    skipped: dict[str, str],
+    down: dict[str, str],
+    cards: list[Card],
+) -> int | None:
+    """DevOps's finding when the gate at `done` finds the workspace isn't what CI runs.
+
+    Merged tests that skipped for a reason the project doesn't declare CI-only, and
+    declared services that wouldn't start (crew#860). Neither is the story's: the
+    workspace file is DevOps's (the Sponsor, 2026-10-22). Keyed by the reasons and the
+    services, not by story, so every story that meets the same cause finds the one
+    Task, open or closed, instead of filing its own. None when there's nothing to file.
+    """
+    if not skipped and not down:
+        return None
+    reasons = sorted(set(skipped.values()))
+    cause = "\n".join([*reasons, *sorted(down)])
+    key = "workspace-" + hashlib.sha256(cause.encode()).hexdigest()[:12]
+    lines = [f"- `{name}`: {why}" for name, why in sorted(down.items())]
+    for reason in reasons:
+        tests = sorted(t for t, r in skipped.items() if r == reason)
+        shown = ", ".join(f"`{t}`" for t in tests[:5]) + (
+            f" and {len(tests) - 5} more" if len(tests) > 5 else ""
+        )
+        lines.append(f'- {len(tests)} skipped for "{reason}": {shown}')
+    why = (
+        f"The gates at `done` on #{story} found the workspace doesn't run what CI runs:\n\n"
+        + "\n".join(lines)
+        + "\n\nNone of it is that story's: the workspace file and its services are DevOps's."
+    )
+    opened = open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=FINDING,
+        key=key,
+        title="The workspace doesn't run what CI runs",
+        body=render(
+            DEVOPS,
+            kind=FINDING,
+            key=key,
+            why=why,
+            work="Make the workspace match CI: declare each service the tests need in "
+            "`.devcontainer/` so they run there, or, where CI skips them too, declare the "
+            "reason in `devcontainer.json`'s `customizations.crew.ciOnlySkips`.",
+            done_when=["Triaged: the Business Analyst writes what done means."],
+        ),
+        points=None,
+        cards=cards,
+        column=NEEDS_REFINEMENT,
+        by="Developer",
+        event="finding",
+        rule="check.gates.these_tests_skipped" if skipped else "check.gates.a_service_wont_start",
+    )
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.FINDING_FILED,
+            role="Developer",
+            card=story,
+            summary=f"devops finding filed as #{opened.number}"[:100],
+            detail={"repo": repo, "owner": DEVOPS.key, "filed": opened.number, "round": key},
+        )
+    )
+    return opened.number
 
 
 def _file_bug(

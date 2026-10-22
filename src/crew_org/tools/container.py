@@ -192,7 +192,8 @@ class Held:
             ["sleep", str(self.lifetime)],
             network=False,
             path=self.sandbox.search_path(),
-            env=self.tools.env,
+            # Every pytest run writes its report, so the gates see what skipped (crew#860).
+            env=workspace.with_report(self.tools.env),
             held=self.name,
             labels=self._labels(),
             attach=self.network,
