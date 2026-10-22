@@ -48,7 +48,9 @@ decision.acceptance.close_finished_parents:
   - crew#187
   - sprint-metrics#184
 decision.backlog_order.what_is_ordered:
+  description: "The Product Owner ranks the open epics with no Rank. One it can't place yet is held for the work it builds on, and an order it can't give is recorded as failed."
 decision.board_flow.already_delivered:
+  description: "An epic whose stories would only repeat delivered work is closed as already delivered, naming the stories that delivered it."
   origin:
   - crew#192
   - crew#440
@@ -86,13 +88,16 @@ decision.close.carry_over:
   origin:
   - crew#389
 decision.delivery.interrupted:
+  description: "A delivery a service interrupted, not the story, is tried again next pass; three in a row block it for a person."
 decision.delivery.limit:
 decision.delivery.outcome:
 decision.delivery.reconcile_orphans:
 decision.delivery.rework:
+  description: "A story whose pull request was refused at its head goes back to In Progress for re-work, when the column has room."
   origin:
   - sprint-metrics#31
 decision.delivery.waits_on_files:
+  description: "A story's rebuild waits while another open pull request changes the same files."
   origin:
   - crew#436
   - sprint-metrics#384
@@ -100,6 +105,7 @@ decision.diagnose.diagnose_blocked:
   origin:
   - sprint-metrics#200
 decision.github_issues.trust:
+  description: "A comment from an account outside org.yaml's trust list isn't read (crew#399)."
 decision.goal_look.look_step:
   description: An epic under a Goal is split once the Goal's record covers it, written from one look across
     the Goal's approved epics and its settle.
@@ -121,6 +127,7 @@ decision.land:
   - crew#436
 decision.main_watch.red_main:
 decision.merge.conflict:
+  description: "An approved pull request that conflicts with main keeps both sides where both only add; otherwise the crew rebuilds it, up to its limit, then it's blocked for a person."
   origin:
   - crew#100
   - crew#158
@@ -140,6 +147,7 @@ decision.phase_cards:
   - crew#353
   - sprint-metrics#284
 decision.release_check.check_releases:
+  description: "Each project's current release is checked once its release run for the head has finished: verified, waiting on the Sponsor, or a technical epic for what it's missing."
 decision.resplit.affected:
   description: An epic sent back is split again only where the problem reaches. The stories it names and
     every later story of the epic are replaced, once their replacements exist, and the rest stay; a problem
@@ -167,6 +175,7 @@ decision.revisit.back_to_work:
   - crew#690
 decision.revisit.design_faults:
 decision.revisit.file_work:
+  description: "A design revisit ends in a record of what it found: refused, no change, its work filed, or a revision pull request the crew merges."
 decision.rework_gate:
   cases:
   - decision.board_flow.rework_gate
@@ -298,6 +307,7 @@ skip.board_flow.its_criteria_cant_all_pass_to:
 skip.board_flow.re_split_finished_from_an_earlier:
 skip.board_flow.re_split_times_the_sponsors_to:
 skip.board_flow.waits_for_planned:
+  description: "An epic covered only by planned stories waits for them: it closes when they land, and is split again if one closes undelivered."
 skip.goal_look.waits_for_one_goal_refines_at:
   description: A Goal's epics wait to be refined while another Goal of the project refines; the one that
     has begun keeps its turn, else the first in admission's order.
