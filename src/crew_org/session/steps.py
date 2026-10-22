@@ -493,10 +493,15 @@ def measured(session: Session, ending: Ending) -> dict[str, Any]:
 
 
 def at_once(
-    step: str, sessions: dict[str, dict[str, Any]], failed: dict[str, str], wall_s: float
+    step: str,
+    sessions: dict[str, dict[str, Any]],
+    failed: dict[str, str],
+    wall_s: float,
+    **found: Any,
 ) -> None:
     """The record of sessions run at once: each one's `measured`, the wall time, and what
-    the Spark served across them, a first measure for mqucifer/crew#790."""
+    the Spark served across them, a first measure for mqucifer/crew#790. `found` is what
+    the step found, such as the criteria check's conflicts per story (crew#860)."""
     served = sum(m["completion_tokens"] for m in sessions.values())
     record(
         EventKind.NOTE,
@@ -508,4 +513,5 @@ def at_once(
         wall_s=round(wall_s, 1),
         completion_tokens=served,
         tokens_per_s=round(served / wall_s, 1) if wall_s else None,
+        **found,
     )
