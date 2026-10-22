@@ -341,7 +341,7 @@ def goal_record_comment(issues: Any, repo: str, goal: int) -> dict[str, Any] | N
     return found[-1] if found else None
 
 
-def _comment_text(body: str) -> str:
+def comment_text(body: str) -> str:
     return body.replace(GOAL_RECORD_MARKER, "", 1).strip()
 
 
@@ -362,7 +362,7 @@ def _locate(issues: Any, repo: str, number: int) -> tuple[Place, str, str]:
     if found is not None:
         held = found.get("body") or ""
         at = goal if goal is not None else number
-        return Place(repo, number, at, int(found["id"])), held, _comment_text(held)
+        return Place(repo, number, at, int(found["id"])), held, comment_text(held)
     return Place(repo, number), body, ""
 
 

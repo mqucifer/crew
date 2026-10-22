@@ -12,9 +12,9 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | Kind | Rules |
 |---|---|
 | The crew's own decisions (`rules.Rule`) | 19 |
-| An answer's form refuses it | 42 |
+| An answer's form refuses it | 44 |
 | The call layer refuses any answer | 4 |
-| A flow's own check sends the answer back | 22 |
+| A flow's own check sends the answer back | 23 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 14 |
@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 10 |
 | The tick decides a card's handling, found by the decision-point audit | 47 |
-| A setting that changes what the tick does | 191 |
+| A setting that changes what the tick does | 197 |
 | Told, and not checked by anything above | 171 |
 
 ## Categories
@@ -33,7 +33,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 76 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:architect.refinement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `design_note_crew`, `panel_crew`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 74 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.panel`, `criteria_crew`, `presentation_note_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 102 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 93 |
+| Unplaced | | 99 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -109,6 +109,8 @@ section; one no line holds for is unplaced, never guessed.
 | `form.Story.row_ids`<br>…: name rows of the conclusion by ID, like R1 | answer_shape | `src/crew_org/crews/refinement_crew.py:Story._row_ids` | Business Analyst | `Story.follows`'s description | src/crew_org/crews/refinement_crew.py:Story._row_ids | — |
 | `form.StoryCriteria.at_least_two`<br>each story gets at least two criteria about what the reader sees | evidence | `src/crew_org/crews/presentation_note_crew.py:StoryCriteria._at_least_two` | UX Designer | `StoryCriteria.criteria`'s description | src/crew_org/crews/presentation_note_crew.py:StoryCriteria._at_least_two | — |
 | `form.StoryProposal.not_empty`<br>an epic must decompose into at least one story | scope | `src/crew_org/crews/refinement_crew.py:StoryProposal._not_empty` | Business Analyst | — | src/crew_org/crews/refinement_crew.py:StoryProposal._not_empty | — |
+| `form.SystemLook.diagram_well_formed`<br>the diagram doesn't render as written: … | answer_shape | `src/crew_org/crews/goal_look_crew.py:SystemLook._diagram_well_formed` | Architect<br>UX Designer | `SystemLook.sequence`'s description | src/crew_org/crews/goal_look_crew.py:SystemLook._diagram_well_formed | crew#858 |
+| `form.SystemLook.new_parts_drawn`<br>… aren't in the diagram: name each new part by its alias there | answer_shape | `src/crew_org/crews/goal_look_crew.py:SystemLook._new_parts_drawn` | Architect<br>UX Designer | — | src/crew_org/crews/goal_look_crew.py:SystemLook._new_parts_drawn | crew#858 |
 | `form.Triage.fits_its_outcome`<br>only an accepted bug has criteria, not one … | evidence | `src/crew_org/crews/bug_triage_crew.py:Triage._fits_its_outcome` | Business Analyst | `Triage.acceptance_criteria`'s description<br>`Triage.duplicate_of`'s description<br>`Triage.points`'s description<br>`Triage.question`'s description | src/crew_org/crews/bug_triage_crew.py:Triage._fits_its_outcome | — |
 | `form.row.an_id`<br>When set, refused unless it's an ID, like R3 or Q1.<br>Cases: `form.AnswerRow.an_id` (src/crew_org/crews/refinement_crew.py:AnswerRow._an_id), `form.SponsorRow.an_id` (src/crew_org/crews/refinement_crew.py:SponsorRow._an_id) | answer_shape | `src/crew_org/crews/refinement_crew.py:AnswerRow._an_id` | Product Owner | — | src/crew_org/crews/refinement_crew.py:AnswerRow._an_id<br>src/crew_org/crews/refinement_crew.py:SponsorRow._an_id | — |
 | `form.story.enough_criteria`<br>Refused if there are fewer.<br>Cases: `form.RepairedStory.enough_criteria` (src/crew_org/crews/refinement_crew.py:RepairedStory._enough_criteria), `form.Story.enough_criteria` (src/crew_org/crews/refinement_crew.py:Story._enough_criteria), `§5.3` (docs/ways-of-working.md:§5) | evidence | `src/crew_org/crews/refinement_crew.py:Story._enough_criteria` | Business Analyst | `RepairedStory.acceptance_criteria`'s description<br>`Story.acceptance_criteria`'s description<br>§5 | src/crew_org/crews/refinement_crew.py:RepairedStory._enough_criteria<br>src/crew_org/crews/refinement_crew.py:Story._enough_criteria | — |
@@ -138,6 +140,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.design.shelled`<br>Why a design whose commands need a shell is refused (§19.4; crew#690). | guards | `src/crew_org/flows/design.py:shelled` | Architect | §19.4 (both cite §19.4; in §19) | src/crew_org/flows/design.py:shelled | crew#690 |
 | `check.design.undeclared`<br>Checks CI doesn't run today that the proposal doesn't state as a change. | guards | `src/crew_org/flows/design.py:undeclared` | Architect | §19.7 (both cite crew#335; in §19)<br>§20 no_paid_services_and_no_inbound (both cite crew#335; in §20)<br>§20 the_deploy_review (both cite crew#335; in §20)<br>§7 so_is_a_ci_workflow_change (both cite crew#335; in §7) | src/crew_org/flows/design.py:undeclared | crew#335 |
 | `check.design.unlocked`<br>Why a design whose lockfile isn't one a tool writes is refused (§19.3, §19.7; crew#690). crew-presentation's design installed from a plain requirements file it called "the lockfile", and the review p… | guards | `src/crew_org/flows/design.py:unlocked` | Architect | §19.3 (both cite §19.3; in §19)<br>§19.7 (both cite §19.7; in §19) | src/crew_org/flows/design.py:unlocked | crew#690 |
+| `check.goal_look_crew.check_epics`<br>Every epic an answer names is one of the Goal's; the UX Designer's covers each it read. | answer_shape | `src/crew_org/crews/goal_look_crew.py:check_epics` | Architect<br>UX Designer | — | src/crew_org/crews/goal_look_crew.py:check_epics | crew#858 |
 | `check.presentation_notes.coverage`<br>… | evidence | `src/crew_org/flows/presentation_notes.py:check` | UX Designer | — | src/crew_org/flows/presentation_notes.py:check | — |
 | `check.record.check_change`<br>Refuse an edit that breaks change control, naming each problem. | contracts | `src/crew_org/flows/record.py:check_change` | Product Owner | — | src/crew_org/flows/record.py:_identified<br>src/crew_org/flows/record.py:check_change | — |
 | `check.refinement_crew.check`<br>Refuse a story that shows a package field its pinned release doesn't define. | scope | `src/crew_org/crews/refinement_crew.py:check_provided` | Business Analyst | — | src/crew_org/crews/refinement_crew.py:check_provided | crew#807 |
@@ -372,6 +375,12 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.llm.DEFAULT_MAX_TOKENS`<br>Reasoning models need headroom ABOVE their thinking, and real refinement work thinks hard: a single "propose epics for this goal" task was measured spending 4,097 reasoning tokens and emitting 0 text… | answer_shape | `src/crew_org/llm.py:DEFAULT_MAX_TOKENS` | — | — | src/crew_org/llm.py:DEFAULT_MAX_TOKENS | — |
 | `config.const.llm.DEFAULT_TIMEOUT`<br>Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s gives ~460s for a full implementation), with headroom for reasoning tokens. | answer_shape | `src/crew_org/llm.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/llm.py:DEFAULT_TIMEOUT | — |
 | `config.const.llm.PROBE_TIMEOUT`<br>Long enough for a cold model's first token, short enough to fail a pre-flight rather than hang it. | answer_shape | `src/crew_org/llm.py:PROBE_TIMEOUT` | — | — | src/crew_org/llm.py:PROBE_TIMEOUT | — |
+| `config.const.look.EXTERNAL_BYTES`<br>EXTERNAL_BYTES = 10000000 | — | `src/crew_org/tools/look.py:EXTERNAL_BYTES` | — | — | src/crew_org/tools/look.py:EXTERNAL_BYTES | crew#846 |
+| `config.const.look.EXTERNAL_COUNT`<br>EXTERNAL_COUNT = 40 | — | `src/crew_org/tools/look.py:EXTERNAL_COUNT` | — | — | src/crew_org/tools/look.py:EXTERNAL_COUNT | crew#846 |
+| `config.const.look.HEIGHT`<br>HEIGHT = 800 | — | `src/crew_org/tools/look.py:HEIGHT` | — | — | src/crew_org/tools/look.py:HEIGHT | crew#846 |
+| `config.const.look.REDIRECTS`<br>REDIRECTS = 5 | — | `src/crew_org/tools/look.py:REDIRECTS` | — | — | src/crew_org/tools/look.py:REDIRECTS | — |
+| `config.const.look.TEXT_CHARS`<br>TEXT_CHARS = 6000 | — | `src/crew_org/tools/look.py:TEXT_CHARS` | — | — | src/crew_org/tools/look.py:TEXT_CHARS | crew#846 |
+| `config.const.look.TIMEOUT`<br>TIMEOUT = 180 | — | `src/crew_org/tools/look.py:TIMEOUT` | — | — | src/crew_org/tools/look.py:TIMEOUT | crew#846 |
 | `config.const.loop.MAX_PASSES`<br>MAX_PASSES = 5 | flow | `src/crew_org/flows/loop.py:MAX_PASSES` | — | — | src/crew_org/flows/loop.py:MAX_PASSES | — |
 | `config.const.loop.QUEUE_POLL`<br>QUEUE_POLL = 15.0 | flow | `src/crew_org/flows/loop.py:QUEUE_POLL` | — | — | src/crew_org/flows/loop.py:QUEUE_POLL | — |
 | `config.const.loop.QUEUE_WAIT`<br>How long a pass that moved nothing waits for pull requests it left in the merge queue (#314). | flow | `src/crew_org/flows/loop.py:QUEUE_WAIT` | — | — | src/crew_org/flows/loop.py:QUEUE_WAIT | crew#314 |

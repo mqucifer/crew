@@ -149,16 +149,22 @@ def role_spec(key: str, step: str | None = None) -> dict[str, Any]:
     return {**spec, **(spec.get(step) or {})} if step else dict(spec)
 
 
+def who(spec: dict[str, Any]) -> str:
+    """Who the role is: its backstory, and the established practice of its field, which
+    it carries into every step it works (ADR 0035, crew#846)."""
+    text = f"You are {spec['role']}. {spec['backstory'].strip()}"
+    if background := str(spec.get("background") or "").strip():
+        text += f"\n\nThe practice of your field: {background}"
+    return text
+
+
 def system_text(spec: dict[str, Any]) -> str:
     """Who the role is: its backstory, its rules from the constitution, and its goal.
 
     The words CrewAI put around the same three, without its framing.
     """
     rules = excerpt(*spec.get("constitution", []), role=spec["role"])
-    return (
-        f"You are {spec['role']}. {spec['backstory'].strip()}\n\n{rules}\n"
-        f"Your personal goal is: {spec['goal'].strip()}"
-    )
+    return f"{who(spec)}\n\n{rules}\nYour personal goal is: {spec['goal'].strip()}"
 
 
 def task_text(
@@ -730,7 +736,7 @@ def _given(
             f"agents.yaml {key}.{step}.{field}"
             if isinstance(own, dict) and field in own
             else f"agents.yaml {key}.{field}"
-            for field in ("backstory", "goal")
+            for field in ("backstory", "background", "goal")
         ]
         forms = [answer.__name__, *(f.__name__ for f in rule_list._nested(answer))]
         rules = rule_list.given(

@@ -50,6 +50,22 @@ config.const.github_project.PAGE_SIZE:
 config.const.github_project.TIMEOUT:
 config.const.history.MAX_VERDICTS:
 config.const.history.MAX_VERDICT_CHARS:
+config.const.look.EXTERNAL_BYTES:
+  origin:
+  - crew#846
+config.const.look.EXTERNAL_COUNT:
+  origin:
+  - crew#846
+config.const.look.HEIGHT:
+  origin:
+  - crew#846
+config.const.look.REDIRECTS:
+config.const.look.TEXT_CHARS:
+  origin:
+  - crew#846
+config.const.look.TIMEOUT:
+  origin:
+  - crew#846
 config.const.remote_errors._SERVER_ERROR:
 config.const.repo_context.CLOSE_LIMIT:
 config.const.repo_context.CONTEXT_CHAR_CEILING:

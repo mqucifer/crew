@@ -23,6 +23,15 @@ call.the_answer_ran_on_as:
 call.the_answer_was_empty_you:
   messages:
     default: 'the answer was empty: you stopped before writing it. Think less and write the whole answer'
+check.goal_look_crew.check_epics:
+  description: Refused if it names an epic that isn't the Goal's, or, for the reader, leaves out an epic
+    it read.
+  messages:
+    missing: 'say what the reader meets in {epics} too'
+    unknown: '{epics} aren''t epics of this Goal: name its epics as owner/repo#number, or `all`'
+  origin:
+  - crew#858
+  told_in: SystemLook, ReaderLook
 check.settle_crew.check_covers:
   description: Refused unless every note, N1 to the last, is answered, and nothing answers a note that
     isn't there.
@@ -233,6 +242,23 @@ form.Story.row_ids:
     default: '{ids}: name rows of the conclusion by ID, like R1'
   owner: Business Analyst
   told_in: Story.follows
+form.SystemLook.diagram_well_formed:
+  description: Refused if the diagram wouldn't render as Mermaid's C4, or the sequence as a sequence
+    diagram.
+  messages:
+    default: 'the diagram doesn''t render as written: {problems}'
+  origin:
+  - crew#858
+  owner: Architect
+  told_in: SystemLook.diagram
+form.SystemLook.new_parts_drawn:
+  description: Refused if a new part isn't an alias the diagram draws.
+  messages:
+    default: '{aliases} aren''t in the diagram: name each new part by its alias there'
+  origin:
+  - crew#858
+  owner: Architect
+  told_in: SystemLook.new
 form.row.an_id:
   cases:
   - form.AnswerRow.an_id

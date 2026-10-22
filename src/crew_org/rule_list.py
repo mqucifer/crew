@@ -577,7 +577,7 @@ def asks() -> tuple[Ask, ...]:
                     if fn is not None and name not in seen:
                         seen.add(name)
                         scope.append(fn)
-            forms = {s.form for s in ran if isinstance(s.form, type)}
+            forms: set[type[BaseModel]] = set()
             for name in seen:
                 fn = _functions(source.tree).get(name) or outer
                 for sub in ast.walk(fn):
@@ -590,12 +590,16 @@ def asks() -> tuple[Ask, ...]:
                         ):
                             forms.add(value)
             check = next((k.value for k in node.keywords if k.arg == "check"), None)
+            # A session's step answers in its own form, told only to its role: the
+            # Goal's look gives each of its two roles one (ADR 0035, crew#858).
             found += [
                 Ask(
                     roles.get(key, key),
                     source,
                     outer.name if outer is not None else "<module>",
-                    frozenset(forms),
+                    frozenset(
+                        forms | {s.form for s in ran if s.role == key and isinstance(s.form, type)}
+                    ),
                     ast.unparse(check) if check is not None else None,
                     _is_session(node),
                 )

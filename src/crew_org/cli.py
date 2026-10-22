@@ -1699,6 +1699,51 @@ def _decision_repos(repo: str, env: dict[str, str]) -> list[str]:
 
 
 @app.command()
+def look(
+    goal: str = typer.Argument(..., help="The Goal, as `repo#n` or `owner/repo#n`."),
+) -> None:
+    """Run the Goal's look: the Architect and the UX Designer read its open epics (crew#858).
+
+    Both at once, each in a session over the code at the default branch, against the
+    Goal, the Sponsor's decisions, the project's log, and the Goal's record and
+    target diagram if it has them. It prints what each found; nothing is written to
+    GitHub. A tick runs the look itself, once the Goal's epics are approved.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.crews.goal_look_crew import run_look
+    from crew_org.events import forward_calls_to, working_on
+    from crew_org.flows import goal_look as flow
+    from crew_org.flows import record as record_flow
+    from crew_org.tools.github_issues import IssueClient
+
+    repo, number = _issue_ref(goal)
+    env = load_env()
+    token, identity = resolve_credentials(env)
+    issues = IssueClient(token, env["GITHUB_OWNER"])
+    held = record_flow.goal_record_comment(issues, repo, number)
+    covered = (
+        set(record_flow.parse(record_flow.comment_text(held["body"])).looked_at) if held else set()
+    )
+    epics = [
+        c["number"]
+        for c in issues.sub_issues(repo, number)
+        if c.get("state") == "open" and f"{issues.owner}/{repo}#{c['number']}" not in covered
+    ]
+    context = flow.gather(issues, repo, number, approved=epics, search=_decision_repos(repo, env))
+    reading = _reading(env, token, identity, repo, issues)
+    console.print(
+        f"Look at {context.goal_ref}: {len(context.looking_at)} epics, "
+        f"{len(context.decisions):,} characters of decisions."
+    )
+    # The look's model calls are recorded like a tick's.
+    forward_calls_to(EventSink(VAR / "events" / "look.jsonl"))
+    with working_on(card=number, repo=repo):
+        result = run_look(context, reading=reading)
+    typer.echo(flow.render(result, context))
+
+
+@app.command()
 def panel(
     epic: str = typer.Argument(..., help="The epic, as `repo#n` or `owner/repo#n`."),
     post: bool = typer.Option(
@@ -1753,7 +1798,7 @@ def _panel_context(
         raise typer.BadParameter(str(exc)) from exc
 
 
-def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
+def _reading(env: dict[str, str], token: Any, identity: Any, repo: str, issues: Any = None) -> Any:
     """The checkout a refinement step reads, at the default branch, as a tick makes it."""
     from crew_org.git_ops import Workspace
     from crew_org.session.steps import Reading
@@ -1765,7 +1810,7 @@ def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
     except CoverageUnavailable as exc:
         console.print(f"[yellow]No coverage map:[/] {escape(str(exc))}")
         coverage = None
-    return Reading.at(root, repo, coverage)
+    return Reading.at(root, repo, coverage, issues)
 
 
 @app.command()

@@ -1318,9 +1318,11 @@ class RepoContext:
     can't be read leaves its step working without it, and says so.
     """
 
-    def __init__(self, ws: Workspace | None, sink: EventSink) -> None:
+    def __init__(self, ws: Workspace | None, sink: EventSink, issues: Any = None) -> None:
         self._ws = ws
         self._sink = sink
+        # What a role's tools read GitHub with (crew#846): the published site.
+        self._issues = issues
         self._reading: dict[str, Reading | None] = {}
 
     def reading_for(self, repo: str) -> Reading | None:
@@ -1345,7 +1347,7 @@ class RepoContext:
                 self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:160])
                 coverage = None
             try:
-                self._reading[repo] = Reading.at(root, repo, coverage)
+                self._reading[repo] = Reading.at(root, repo, coverage, self._issues)
             except NoCheckout as exc:
                 self._sink.note(EventKind.NOTE, f"{repo}: {exc}"[:160])
                 self._reading[repo] = None
@@ -2067,7 +2069,7 @@ def tick(
     design = DesignPolicy.from_config(org)
 
     result = TickResult()
-    context = RepoContext(ws, sink)
+    context = RepoContext(ws, sink, issues)
     known = KnownDelivered(issues, sink)
     sink.note(EventKind.TICK_STARTED, "reading board", tick=1)
 

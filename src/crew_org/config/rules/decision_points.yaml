@@ -21,6 +21,14 @@ cli.export:filter:d354ee08:
   at: cli.py:export
   if: c.sprint == sprint or c.number in returned
   not_a_rule: 'not the tick: a command a person runs'
+cli.look:filter:e2f49d7d:
+  at: cli.py:look
+  if: c.get('state') == 'open' and f"{issues.owner}/{repo}#{c['number']}" not in covered
+  not_a_rule: 'not the tick: a command a person runs'
+crews.goal_look_crew.looking_at:filter:40dcda6e:
+  at: crews/goal_look_crew.py:looking_at
+  if: e.state == APPROVED
+  not_a_rule: names the epics a look reads for among those it's shown
 crews.refinement_crew.check_provided:filter:2b3ad7bf:
   at: crews/refinement_crew.py:check_provided
   if: field not in provided and field.removesuffix('[]').rsplit('.', 1)[-1].removesuffix('[]') not in
@@ -734,6 +742,10 @@ flows.goal_index.render:end:be6225d2:
   at: flows/goal_index.py:render
   if: not rows
   not_a_rule: 'a report or a render: lists, decides nothing'
+flows.goal_look.diagram_comment:filter:5ef6a1d5:
+  at: flows/goal_look.py:diagram_comment
+  if: DIAGRAM_MARKER in (c.get('body') or '')
+  not_a_rule: finds the Goal's target diagram comment by its marker
 flows.handover.sizes:filter:e25eeafb:
   at: flows/handover.py:sizes
   if: n > QA_FOCUS_ABOVE_CHARS

@@ -28,11 +28,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from crew_org import rulebook
-from crew_org.calls import role_spec
+from crew_org.calls import role_spec, who
 from crew_org.cut_text import check_not_cut_at_a_quote
 from crew_org.events import EventKind, record
 from crew_org.project import RECORD_PATH, ProjectRecordError, brief, read_record
-from crew_org.session import signals
+from crew_org.session import role_tools, signals
 from crew_org.session.conversation import COMPACT_AT, QUIET_LIMIT, Ending, Session
 from crew_org.session.git import OUTPUT_CHARS
 from crew_org.session.reading import ReadTools
@@ -155,9 +155,7 @@ def system_text(role: str, step: str | None = None) -> str:
     its goal, a step's own over them. The constitution's sections aren't sent: the
     form's descriptions and the step's own section say what it's held to."""
     spec = role_spec(role, step)
-    return (
-        f"You are {spec['role']}. {spec['backstory'].strip()}\n\nYour goal: {spec['goal'].strip()}"
-    )
+    return f"{who(spec)}\n\nYour goal: {spec['goal'].strip()}"
 
 
 RULES = """\
@@ -291,15 +289,17 @@ class Reading:
     repo: str
     head: str
     coverage: Any = None
+    # The client a role's tools read GitHub with: the published site.
+    github: Any = None
 
     @classmethod
-    def at(cls, root: Path, repo: str, coverage: Any = None) -> Reading:
+    def at(cls, root: Path, repo: str, coverage: Any = None, github: Any = None) -> Reading:
         found = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
         )
         if found.returncode != 0:
             raise NoCheckout(f"{root} has no commit to read: {found.stderr.strip()[:200]}")
-        return cls(root, repo, found.stdout.strip(), coverage)
+        return cls(root, repo, found.stdout.strip(), coverage, github)
 
 
 class NoCheckout(RuntimeError):
@@ -308,8 +308,9 @@ class NoCheckout(RuntimeError):
 
 @dataclass(frozen=True)
 class Step:
-    """One refinement step as a session: who works it, its answer form, and what its
-    hints are picked from, as they say it ("the epic")."""
+    """One refinement step as a session: who works it, its answer form, what its
+    hints are picked from, as they say it ("the epic"), and the tools its role's
+    question needs beside the read tools (`role_tools`)."""
 
     name: str
     role: str
@@ -317,6 +318,7 @@ class Step:
     said: str
     named_in: str
     step: str | None = None
+    tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -437,8 +439,15 @@ def run(
             "quiet_limit": QUIET_LIMIT,
         },
     )
+    tools = ReadTools(
+        reading.root,
+        reading.coverage,
+        begun.notes,
+        given=step.tools,
+        context=role_tools.Context(reading.root, reading.repo, reading.github),
+    )
     session = Session(
-        ReadTools(reading.root, reading.coverage, begun.notes),
+        tools,
         system_text(step.role, step.step),
         begun.text,
         send=send,
@@ -447,13 +456,20 @@ def run(
         role=step.role,
         step=step.step,
         name=step.name,
-        specs=[*reading_specs(reading.head), done_spec(step.form, step.said, head=reading.head)],
+        specs=[
+            *reading_specs(reading.head),
+            *(role_tools.TOOLS[t].spec for t in step.tools),
+            done_spec(step.form, step.said, head=reading.head),
+        ],
         endings=("done",),
         watch=Signals(reading_calls=READING_CALLS),
         quiet=QUIET,
         refused_done=REFUSED_DONE,
     )
-    ending = session.run()
+    try:
+        ending = session.run()
+    finally:
+        tools.stop()
     if on_end is not None:
         try:
             on_end(session, ending)

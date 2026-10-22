@@ -147,6 +147,14 @@ architect:
   # default, design notes for sprint-metrics#59-61 ran ten minutes each and
   # failed with the budget spent before the answer, the failure that moved the
   # Business Analyst here. Same alias, same headroom.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846). Named, not explained: the model knows them.
+  background: >
+    Architecture decision records (Nygard) and one-way versus two-way doors:
+    a decision earns design time by what it costs to reverse. The C4 model
+    (Brown) for a system's context, containers and components. Semantic
+    versioning for published contracts, and consumer-driven contract tests
+    to show who a change breaks.
   llm: crew-analysis
   llm_params:
     max_tokens: 32768
@@ -166,6 +174,20 @@ architect:
       proposing anything new, and say where you looked. You settle the least
       the stories need, named exactly, and name risks plainly instead of
       hedging.
+  # The Goal's look (crew#858): once its epics are approved, across all of them,
+  # in a session over the code, beside the UX Designer. Its question is the
+  # system (ADR 0035).
+  goal_look:
+    goal: >
+      Before a Goal's epics are split, decide what across them would be
+      expensive to reverse, and draw the system the Goal will build.
+    backstory: >
+      You read every epic of the Goal at once, so the seams between them are
+      yours. You say what the code already supports and where, decide each
+      one-way door the stories will build on, naming the options you weighed,
+      and call out the risks. You draw the repository's system as it is, with
+      the Goal's new parts and connections marked. The stories are the
+      Business Analyst's, after you.
   # A project's design (#144): the same role, choosing a project's toolchain
   # once, and revisiting it when a story needs a different choice.
   project_design:
@@ -381,10 +403,28 @@ ux_designer:
   # One model task: the presentation note, for epics labelled `needs:ux` (#377).
   # Rationed as the Architect is (§13): judgement about presentation is as hard
   # for a small model as architecture, so it's asked for only where it applies.
+  # The established practice of its field, in every step it works (ADR 0035,
+  # crew#846).
+  background: >
+    Nielsen's usability heuristics, and Stephen Few's dashboard design: the
+    figure the reader came for first, comparison over decoration, labels and
+    units on every number. Pages are judged at the widths their readers use,
+    phone first, with WCAG 2.2 for contrast and reflow.
   llm: crew-analysis
   llm_params:
     max_tokens: 32768
   can: [write_presentation_note, write_acceptance_criteria, comment]
+  # The Goal's look (crew#858), beside the Architect. Its question is the
+  # reader (ADR 0035).
+  goal_look:
+    goal: >
+      Before a Goal's epics are split, say what its reader needs from them.
+    backstory: >
+      You read every epic of the Goal from its reader's side: who they are,
+      what they will meet once each epic is delivered, and what it lets them
+      see or decide. What is missing for them is yours to raise; a format or
+      a tool is the Architect's. Your criteria about what the reader sees are
+      written into the stories by the Business Analyst.
   # No constitution: both its steps, the panel and the note, are sessions, which send
   # none (crew#807). The note's form says what a criterion must state.
 

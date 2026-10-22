@@ -512,6 +512,40 @@ class IssueClient:
         response.raise_for_status()
         return response.json().get("workflow_runs") or []
 
+    def default_branch(self, repo: str) -> str:
+        """The repository's default branch, as GitHub has it."""
+        found = self._client.get(f"{API}/repos/{self.owner}/{repo}")
+        found.raise_for_status()
+        return str(found.json()["default_branch"])
+
+    def pages_artifact(self, repo: str) -> tuple[dict[str, Any], bytes] | None:
+        """The `github-pages` artifact of the default branch's newest successful run, and
+        its zip: the files the published site serves (crew#846). None when there is none.
+
+        Any branch's run uploads one, and a run that failed to deploy did too, so the
+        newest artifact alone can be a site no reader was ever served.
+        """
+        branch = self.default_branch(repo)
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/actions/artifacts",
+            params={"name": "github-pages", "per_page": 50},
+        )
+        response.raise_for_status()
+        for artifact in response.json().get("artifacts") or []:  # newest first
+            uploaded = artifact.get("workflow_run") or {}
+            if artifact.get("expired") or uploaded.get("head_branch") != branch:
+                continue
+            run = self._client.get(f"{API}/repos/{self.owner}/{repo}/actions/runs/{uploaded['id']}")
+            run.raise_for_status()
+            ran = run.json()
+            if ran.get("conclusion") != "success" or ran.get("event") == "pull_request":
+                continue
+            # A redirect to short-lived storage, as a job's log is.
+            zipped = self._client.get(artifact["archive_download_url"], follow_redirects=True)
+            zipped.raise_for_status()
+            return artifact, zipped.content
+        return None
+
     def pages(self, repo: str) -> dict[str, Any] | None:
         """The repository's GitHub Pages site, or None if it has none."""
         response = self._client.get(f"{API}/repos/{self.owner}/{repo}/pages")
