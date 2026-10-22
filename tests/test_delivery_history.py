@@ -738,6 +738,15 @@ def test_a_retired_rules_message_stays_publishable_for_the_past():
     assert published_reason(said) is None, "still only names fill it in"
 
 
+def test_the_panels_and_settles_messages_stay_publishable_for_the_past():
+    """The per-epic panel and settles left with crew#858; past sprints' events hold them."""
+    from crew_org.packages.reasons import published_reason
+
+    said = "nothing_to_add with notes: give notes, or nothing to add"
+    assert published_reason(said) == said
+    assert published_reason("Q3, Q4 answered more than once") == "Q3, Q4 answered more than once"
+
+
 def test_a_message_from_neither_the_source_nor_the_retired_list_is_withheld():
     from crew_org.packages.reasons import published_reason
 
