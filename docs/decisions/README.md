@@ -49,7 +49,7 @@ decision was first made.
 | [0016](0016-what-the-panel-is-shown.md) | What the refinement panel is shown | 2026-10-05 | Accepted (built by crew#440 and crew#468; the panel replaced by the Goal's look, ADR 0036) |
 | [0017](0017-the-product-builds-to-its-spec-infra-owns-where-it-runs.md) | The product builds to its spec; infra owns where it runs | 2026-10-05 | Accepted (built by crew#440) |
 | [0018](0018-the-product-owner-decides-within-the-goal-and-records-it.md) | The Product Owner decides within the Goal, and the Architect settles design before the split | 2026-10-05 | Accepted (leeway widened to the Goal's intent 2026-10-21, to be built by crew#846; the Architect decides in the Goal's look, ADR 0036) |
-| [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | Each completed epic releases itself, shipping what `[Unreleased]` holds | 2026-10-07 | Accepted (to be built in M8, crew#816) |
+| [0019](0019-an-epic-is-the-smallest-unit-of-release.md) | Each completed epic releases itself, shipping what `[Unreleased]` holds | 2026-10-07 | Accepted (to be built in M8, crew#816; the release is DevOps's Task, crew#839) |
 | [0020](0020-what-the-crew-publishes-about-itself.md) | What the crew publishes about itself | 2026-10-07 | Accepted (to be built by crew#521) |
 | [0021](0021-contracts-between-projects-flow-from-their-source.md) | Contracts between projects flow from their source, and the consumer reviews what it receives | 2026-10-07 | Accepted (the package built by mqucifer/sprint-metrics#461 and crew#521; the consumer's review planned for M10) |
 | [0022](0022-each-projects-part-in-the-delivery-history.md) | Each project's part in the delivery history | 2026-10-07 | Accepted (v1; to be built by mqucifer/sprint-metrics#461, mqucifer/sprint-metrics#462, crew#280 and crew#521) |
@@ -64,6 +64,6 @@ decision was first made.
 | [0031](0031-every-rule-a-role-meets-is-declared-once.md) | Every rule a role meets is declared once, by category | 2026-10-17 | Accepted (built by crew#756 part 3, answer_shape first; each other category in its cleanup; the session's sort applied, ADR 0032) |
 | [0032](0032-the-developer-works-in-a-session.md) | The Developer works in a session | 2026-10-17 | Accepted (built but for the measures, Stage F of `docs/plans/developer-session.md`) |
 | [0033](0033-refinement-works-in-a-session.md) | Refinement works in a session | 2026-10-18 | Accepted (built by crew#807; the narrow checks wait for the Sponsor's OK) |
-| [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (to be built in M8, crew#839) |
+| [0034](0034-roles-open-their-own-tasks.md) | Roles open their own tasks: owned by a role, opened by an event or a finding, flowing like a bug | 2026-10-20 | Accepted (M7's share built by crew#839; the deploy and UX review in M8, QA's in M10) |
 | [0035](0035-goals-and-epics-stay-at-the-level-of-intent.md) | Goals and epics stay at the level of intent; each role asks its own question | 2026-10-21 | Accepted (to be built in M7: crew#846, crew#847, crew#815; the questions asked in the Goal's look, ADR 0036) |
 | [0036](0036-one-look-across-a-goals-epics.md) | One look across a Goal's epics, recorded on the Goal; one Goal refines at a time | 2026-10-21 | Accepted (built by crew#858) |

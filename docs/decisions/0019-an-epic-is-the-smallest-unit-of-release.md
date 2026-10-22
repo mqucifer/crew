@@ -1,7 +1,7 @@
 # 19. Each completed epic releases itself
 
 - **Date:** 2026-10-07
-- **Status:** Accepted (to be built in M8, crew#816)
+- **Status:** Accepted (to be built in M8, crew#816; the release planned at the split as DevOps's Task, crew#839)
 
 ## Context
 
@@ -28,12 +28,11 @@ Two problems showed up with it (crew#816):
 
 ## Decision
 
-- **Every completed epic releases itself** (Sponsor, 2026-10-20). Its last story is
-  a release story, planned at the split with the epic's other stories, so a
-  completed epic is never reopened. The Product Owner sets the SemVer bump from what
-  the epic changes. The Sponsor approves the release PR, once M8 builds that step
-  (crew#816). **Until then the crew merges release PRs itself** like any story, and
-  releases go ahead (Sponsor, 2026-10-20): the missing step is not a reason to hold.
+- **Every completed epic releases itself** (Sponsor, 2026-10-20). Its release is
+  DevOps's Task, opened when the epic is split, which waits for every story of the
+  epic, so a completed epic is never reopened (ADR 0034, crew#839). The Product Owner
+  sets the SemVer bump from what the epic changes. The Sponsor approves the release
+  PR: the Task's pull request merges only after their approving review (crew#839).
 - **A release ships what `[Unreleased]` holds** (Sponsor, 2026-10-20), including
   another epic's merged stories. This is trunk-based development: every merged story
   has passed review, QA and CI. The version is the one the most significant entry
@@ -51,8 +50,9 @@ Two problems showed up with it (crew#816):
 - A release can name entries from an epic that hasn't completed. That epic's own
   release later ships whatever it adds after.
 - Versions follow each project's own versioning rule.
-- Until M8 builds this, the split doesn't plan release stories by rule and the
-  release story still writes a fixed list.
+- The release is DevOps's Task, opened when the epic is split (ADR 0034, crew#839),
+  not a story: the split refuses a story that cuts it. The Sponsor approves the
+  Task's pull request before it merges.
 
 ## Changelog
 
@@ -68,3 +68,5 @@ Two problems showed up with it (crew#816):
 - 2026-10-20: the crew releases until M8 builds the Sponsor's approval of a release
   PR. The Sponsor, after the operator held mqucifer/sprint-metrics#701 for their
   merge: the decision stands, and the missing step was ours, not a reason to hold.
+- 2026-10-22: the release is DevOps's Task, opened by the split, in place of the
+  release story, and it waits for the Sponsor's approving review (crew#839, ADR 0034).

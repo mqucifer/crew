@@ -24,13 +24,13 @@ reads as noise (crew#756).
 | Product Owner | Epics, each naming the reader it serves, and what of the Goal it left out or reshaped, with why (ADR 0035); proposed Goals, when a Goal points elsewhere (ADR 0027); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates |
 | UX Designer | In the Goal's look: who reads the Goal's result, what they meet per epic, what's missing for them, and criteria about what they see, which the Business Analyst writes into the stories (crew#858). It never removes, weakens or re-scopes a criterion |
-| Architect | A project's design; in the Goal's look, the decisions across its epics and the Goal's target C4 diagram (crew#858); technical epics, Tasks, Spikes |
+| Architect | A project's design; in the Goal's look, the decisions across its epics and the Goal's target C4 diagram (crew#858); the repository's diagram, `docs/architecture.md`, as its own Tasks (crew#839); technical epics, Spikes |
 | Developer | Code, tests, docs, PRs, Bugs |
 | QA Engineer | Behaviour verdicts, Bugs |
 | Code Reviewer | Diff verdicts, Bugs |
 | Scrum Master | Standups, retros, defects — in the process or in the product |
 | Senior Engineer | Diagnoses of the crew's own code: at the end of each tick, for each card blocked for a person (up to two a tick, once per card, posted on the card), and on the Sponsor's request (`crew diagnose`). It changes nothing and files nothing; a person decides which findings become crew issues (crew#9) |
-| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project, and the deploy review of any change to something that runs or deploys. Its other duties run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). It proposes; the Sponsor applies |
+| DevOps Engineer | Where things run, and whether they do: the `infra` repository, across every project, and the deploy review of any change to something that runs or deploys. Its other duties run as code: the post-merge watcher, the release publish check and the stack health check (§20, crew#335). Its own Tasks: each epic's CI and release, opened when the epic is split (ADR 0034, crew#839). It proposes; the Sponsor applies |
 
 These boundaries are structural, not prompt wording — a boundary that depends on
 granularity (goal vs epic vs story) or altitude (what vs how) is exactly what a
