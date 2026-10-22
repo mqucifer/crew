@@ -72,6 +72,10 @@ class CheckResult:
     # In a held container: whether setup ran again first, because the dependency files
     # had changed, and passed (crew#814). None when it didn't run.
     resetup: bool | None = None
+    # In a held container: each service the project declares that isn't running, with
+    # why (crew#860). Its tests would skip or fail for the workspace's reason, not the
+    # story's.
+    services_down: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -379,7 +383,12 @@ def check(
         for command in tools.verify:
             results.append(do(command))
     return CheckResult(
-        results=results, fixed=sorted(fixed), reverted=reverted, unsafe=unsafe, resetup=resetup
+        results=results,
+        fixed=sorted(fixed),
+        reverted=reverted,
+        unsafe=unsafe,
+        resetup=resetup,
+        services_down=dict(getattr(held, "down", None) or {}),
     )
 
 

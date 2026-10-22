@@ -13,7 +13,7 @@ used to run on an answer before it was applied:
 - **the declared tests:** each merged test the diff changes is declared in `done`,
   and is read against the story's **Existing tests** line (decision 6);
 - **the whole checks,** by the runner the caller passes: the session's container,
-  once delivery runs sessions;
+  once delivery runs sessions, with the services the project declares (crew#860);
 - **a bug's tests** fail without the fix (crew#407).
 
 Every gate runs, and every finding goes back together, since a new session starts
@@ -356,7 +356,24 @@ def _contracts(worktree: Path, merged: regression.Merged | None) -> dict[str, tu
 
 
 def _checked(verdict: Verdict) -> None:
-    """The whole checks' finding, if they failed: each cause once, every failing test named."""
+    """The whole checks' finding, if they failed: each cause once, every failing test named.
+
+    Before it, each declared service that isn't running (crew#860): its tests skip or
+    fail for the workspace's reason, so that's said first, never left as a skip.
+    """
+    if verdict.check is not None and verdict.check.services_down:
+        verdict.findings.append(
+            Finding(
+                "check.gates.a_service_wont_start",
+                says(
+                    "check.gates.a_service_wont_start",
+                    services="\n".join(
+                        f"- `{name}`: {why}"
+                        for name, why in sorted(verdict.check.services_down.items())
+                    ),
+                ),
+            )
+        )
     if verdict.check is None or verdict.check.ok:
         return
     verdict.findings.append(

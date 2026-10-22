@@ -144,6 +144,7 @@ class Sandbox:
         held: str | None = None,
         labels: dict[str, str] | None = None,
         readonly: dict[Path, str] | None = None,
+        attach: str | None = None,
     ) -> list[str]:
         """Build the container invocation for one command.
 
@@ -157,6 +158,9 @@ class Sandbox:
 
         `readonly` mounts more host directories, each read-only at its path: the
         published site `look` serves (crew#846).
+
+        `attach` names an internal network, with no route out, in place of none: the
+        one a held workspace shares with its project's services (crew#814).
         """
         home = f"/work/{HOME_DIR}"
         found = ["-e", f"PATH={home}/.local/bin:{path}"] if path else []
@@ -178,9 +182,9 @@ class Sandbox:
             "run",
             "--rm",
             *hold,
-            # No network for anything but dependency resolution.
+            # No network for anything but dependency resolution, and the services'.
             "--network",
-            "bridge" if network else "none",
+            "bridge" if network else attach or "none",
             # Files stay owned by the user, and nothing runs as root.
             "--user",
             f"{os.getuid()}:{os.getgid()}",

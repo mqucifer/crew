@@ -49,6 +49,22 @@ check.delivery.these_named_tests_dont_exist:
   - crew#221
   owner: Developer
   told_in: ExistingProof, CriterionMet.test
+check.gates.a_service_wont_start:
+  description: At `done`, a service the project declares for its tests that isn't running is a finding
+    naming it, never a silent skip (crew#860). The declaration is DevOps's to keep true.
+  messages:
+    default: 'A service the project declares for its tests isn''t running in your workspace, so the tests
+      that need it skip or fail there for the workspace''s reason, not your work''s:
+
+      {services}
+
+
+      The project''s `devcontainer.json` and its compose file declare these, and they''re DevOps''s to
+      fix. Don''t work around it in the code or the tests: finish the rest, and call `done` again.'
+  origin:
+  - crew#814
+  - crew#860
+  owner: DevOps Engineer
 check.gates.the_branch_changes_nothing:
   description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion
     and the checks pass, as an already-done story does (crew#221).
