@@ -9,7 +9,7 @@ from crew_org.flows.delivery import sprint_stories
 from crew_org.flows.merge import done_but_open, ready_to_land
 from crew_org.flows.sprint import NO_EPIC, committed_points, plan_sprint, under_a_parked_epic
 from crew_org.tools.github_project import Card
-from crew_org.work_types import BUG, DELIVERED, STORY
+from crew_org.work_types import BUG, DELIVERED, STORY, TASK
 
 REPO = "sm"
 
@@ -28,8 +28,8 @@ def _card(number: int, status: str, work_type: str = BUG, points: int = 2) -> Ca
     )
 
 
-def test_a_story_and_a_bug_are_delivered_and_nothing_else():
-    assert {STORY, BUG} == DELIVERED
+def test_a_story_a_bug_and_a_roles_task_are_delivered_and_nothing_else():
+    assert {STORY, BUG, TASK} == DELIVERED
 
 
 def test_a_bug_in_ready_is_admitted_as_work_with_no_epic():

@@ -17,7 +17,7 @@ from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
 from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import story_problem
+from crew_org.flows import role_tasks, story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.ci import return_for_ci
@@ -361,6 +361,21 @@ def review_open_pulls(
             # reviewing identity opened itself.
             event = "COMMENT" if author == bot_login else verdict.event
             issues.create_review(repo, number, event=event, body=render_review(code, deploy))
+            # What each saw outside this story is filed for its owner (crew#839).
+            if story is not None and board is not None:
+                for by, judged in (("Code Reviewer", code), ("DevOps Engineer", deploy)):
+                    if judged is not None and judged.outside:
+                        role_tasks.file_findings(
+                            writer or issues,
+                            board,
+                            sink,
+                            repo=repo,
+                            story=story,
+                            found=judged.outside,
+                            by=by,
+                            round_key=head[:7],
+                            cards=cards or [],
+                        )
 
             result.reviewed.append(
                 ReviewOutcome(

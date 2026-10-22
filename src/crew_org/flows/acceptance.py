@@ -20,13 +20,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from crew_org import log, profiles
 from crew_org.columns import DONE, IN_PROGRESS, MERGING, QAING
 from crew_org.crews import asks as file_asks
 from crew_org.crews.qa_crew import QAVerdict, verify_story
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.history import past_qa
@@ -49,7 +50,7 @@ from crew_org.tools.repo_context import (
 )
 from crew_org.tools.repo_read import Reader
 from crew_org.tools.sandbox import Sandbox
-from crew_org.work_types import BUG, open_in
+from crew_org.work_types import BUG, TASK, open_in
 
 # QA reasons about the test code, so what it is shown decides its verdict. A
 # 12,000-character slice in the prompt cut story #13's two new tests off the end
@@ -672,6 +673,23 @@ def run_qa(
         with log.run("QA Engineer", card=card.number, repo=card.repo or repo):
             number = card.number or 0
             card_repo = card.repo or repo
+            # A role's Task has no story criteria for QA to prove: its role's checks ran
+            # at `done`, the Code Reviewer judged it, and a release is proven by the
+            # release check once it's out (crew#839). QA's own Tasks wait for M10.
+            if card.work_type == TASK:
+                move_card(
+                    board,
+                    sink,
+                    item_id=card.item_id,
+                    to=MERGING,
+                    by="QA Engineer",
+                    card=number,
+                    frm=QAING,
+                    summary="a role's Task: nothing for QA to prove",
+                    rule="decision.role_tasks.no_qa",
+                )
+                result.verified.append(QAOutcome(card=number, accepted=True))
+                continue
             branch = branch_name(number, card.title)
             # The worktree has to come from the card's own repository too, or QA
             # verifies a branch of the same name in a different codebase.
@@ -798,6 +816,19 @@ def run_qa(
                 body=render_qa(verdict, revision),
                 by="QA Engineer",
             )
+            # What QA saw outside this story is filed for its owner (crew#839).
+            if verdict.outside:
+                role_tasks.file_findings(
+                    issues,
+                    board,
+                    sink,
+                    repo=card_repo,
+                    story=card,
+                    found=verdict.outside,
+                    by="QA Engineer",
+                    round_key=revision[:7],
+                    cards=cards,
+                )
 
             if verdict.accepted and done:
                 # Nothing to merge (#221): the story closes, proven against main.
@@ -943,6 +974,25 @@ def close_finished_parents(
                     statuses.append(DONE if child.get("state") == "closed" else None)
             if not statuses or any(status != DONE for status in statuses):
                 continue
+            # A Goal's epics done is the Architect's event: its target diagram becomes
+            # the repository's, and the Goal closes once that Task is done too (crew#839).
+            if parent_type == GOAL_TYPE and not _diagram_task_among(children):
+                epics = [c["number"] for c in children if c.get("state_reason") != "not_planned"]
+                try:
+                    role_tasks.goal_diagram_task(
+                        issues, board, sink, repo=parent_repo, goal=card, epics=epics, cards=cards
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    reraise_if_down(exc)
+                    role_tasks.not_opened(
+                        sink,
+                        repo=parent_repo,
+                        role=role_tasks.ARCHITECT,
+                        kind=role_tasks.DIAGRAM,
+                        card=card.number,
+                        why=exc,
+                    )
+                continue
 
             # Bookkeeping, not judgement: no role decided this, so the parent
             # keeps whichever role last worked on it.
@@ -960,6 +1010,15 @@ def close_finished_parents(
             issues.close(parent_repo, card.number or 0)
             closed.append(card.number or 0)
     return closed
+
+
+def _diagram_task_among(children: list[dict[str, Any]]) -> bool:
+    """Is the Architect's diagram Task already one of this Goal's children?"""
+    for child in children:
+        found = role_tasks.marked(child.get("body"))
+        if found is not None and found.kind == role_tasks.DIAGRAM:
+            return True
+    return False
 
 
 def _project_brief(worktree) -> str:

@@ -175,6 +175,15 @@ form.SkeletonEpic.decomposed:
       project''s own Goals: leave them out.'
   owner: Product Owner
   told_in: SkeletonEpic.epics
+form.Story.not_the_release:
+  description: Refused if the story cuts the epic's release (its version bump, tag or publishing), which
+    is DevOps's Task, opened by the split (crew#839).
+  messages:
+    default: 'This story cuts the release. The epic''s release is DevOps''s Task, opened when the epic
+      is split (ADR 0034): leave it out of the stories. A story that changes what a user sees adds its
+      `[Unreleased]` changelog entry instead (ADR 0019).'
+  owner: Business Analyst
+  told_in: Story
 form.Story.on_the_scale:
   cases:
   - §5.5

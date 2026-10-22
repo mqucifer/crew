@@ -101,6 +101,8 @@ class Rule(StrEnum):
     """It waits for a story it builds on."""
     HOLD_WIP_LIMIT = "hold.wip_limit"
     """The next column is at its limit."""
+    HOLD_NO_SESSION = "hold.no_session"
+    """A role's Task waits for the milestone that brings its role's session."""
 
 
 # A story's return reason (`story.returned`'s fixed vocabulary) as its rule.

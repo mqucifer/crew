@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from crew_org import calls
 from crew_org.crews import epic_rows
 from crew_org.crews.asks import FileAsk
+from crew_org.crews.outside import OUTSIDE_DESCRIPTION, OutsideFinding
 from crew_org.rulebook import refuse
 from crew_org.tools import repo_read
 
@@ -52,6 +53,7 @@ class QAVerdict(BaseModel):
     criteria: list[CriterionVerdict] = Field(
         default_factory=list, description="One verdict per criterion"
     )
+    outside: list[OutsideFinding] = Field(default_factory=list, description=OUTSIDE_DESCRIPTION)
     # Asking to see more, as the Developer can (#231): a test file listed by
     # name only, needed in full to judge a criterion. An answer that asks is
     # not a verdict; QA is asked again with the files shown.

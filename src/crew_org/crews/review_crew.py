@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
 from crew_org.crews import epic_rows
+from crew_org.crews.outside import OUTSIDE_DESCRIPTION, OutsideFinding
 from crew_org.rulebook import refuse
 
 # The whole diff, or no approval. A head slice of 30,000 characters meant the
@@ -58,6 +59,7 @@ class ReviewVerdict(BaseModel):
     findings: list[Finding] = Field(
         default_factory=list, description="Specific, actionable findings"
     )
+    outside: list[OutsideFinding] = Field(default_factory=list, description=OUTSIDE_DESCRIPTION)
 
     @model_validator(mode="after")
     def _a_rejection_must_say_why(self) -> ReviewVerdict:

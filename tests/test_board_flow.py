@@ -581,6 +581,28 @@ def test_stories_carry_points_and_inherited_priority(monkeypatch):
     assert [m[1] for m in board.moves] == [READY, READY]
 
 
+class TaskIssues(FakeIssues):
+    """The issues a role's Task is opened against (crew#839)."""
+
+    def labelled(self, repo: str, label: str) -> list[dict]:
+        return [i for i in self.created if label in i["labels"]]
+
+    def sub_issues(self, repo: str, number: int) -> list[dict]:
+        return [{"number": c // 1000} for p, c in self.nested if p == number]
+
+
+def test_a_split_opens_devops_task_for_the_epics_release(monkeypatch):
+    board, issues = FakeBoard([epic_card(3)]), TaskIssues()
+    result = run_split(board, issues, monkeypatch)
+    release = issues.created[-1]
+    assert release["labels"] == ["role:devops"]
+    assert "kind=release key=epic-3" in release["body"]
+    assert "#101, #102" in release["body"]
+    assert (3, release["id"]) in issues.nested
+    assert ("ITEM_N103", "Work Type", "Task") in board.selects
+    assert result.failed == []
+
+
 def test_a_second_tick_does_not_split_again(monkeypatch):
     issues = FakeIssues({3: STORY_SPLIT_MARKER})
     result = run_split(FakeBoard([epic_card(3)]), issues, monkeypatch)
@@ -606,7 +628,8 @@ def test_a_full_ready_column_holds_stories_in_refinement(monkeypatch):
     result = run_split(board, issues, monkeypatch)
     assert len(result.stories_created) == 2
     assert [m[1] for m in board.moves] == [REFINEMENT, REFINEMENT]
-    assert issues.added_labels == [(101, HELD_FOR_ROOM), (102, HELD_FOR_ROOM)]
+    held = [(n, label) for n, label in issues.added_labels if label == HELD_FOR_ROOM]
+    assert held == [(101, HELD_FOR_ROOM), (102, HELD_FOR_ROOM)]
 
 
 # --- a story held for room is let in when there is room (#44) -------------

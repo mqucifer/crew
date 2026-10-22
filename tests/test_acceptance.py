@@ -325,9 +325,14 @@ def test_a_parent_outside_the_crews_repositories_is_not_closed():
     assert issues.closed == [] and board.moves == []
 
 
-def test_a_goal_closes_when_its_epics_are_done():
-    cards = [story(1, "Inbox (Goals)", "Goal"), story(3, DONE, "Epic")]
-    issues = FakeIssues({1: [{"number": 3}]})
+def test_a_goal_closes_when_its_epics_and_the_architects_task_are_done():
+    """A Goal's epics done opens the Architect's diagram Task first (crew#839); the Goal
+    closes once that is done too. Opening it is tested in test_role_tasks."""
+    from crew_org.flows.role_tasks import ARCHITECT, render
+
+    task = render(ARCHITECT, kind="diagram", key="goal-1", why="w", work="x", done_when=["d"])
+    cards = [story(1, "Inbox (Goals)", "Goal"), story(3, DONE, "Epic"), story(9, DONE, "Task")]
+    issues = FakeIssues({1: [{"number": 3}, {"number": 9, "body": task}]})
     board = FakeBoard()
     assert close_finished_parents(board, issues, EventSink(None), cards, repo="r") == [1]
 

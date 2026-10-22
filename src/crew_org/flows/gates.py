@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from crew_org.flows import delivery
+from crew_org.flows import delivery, role_tasks
 from crew_org.flows.attempts import repair_report
 from crew_org.profiles import profile_for
 from crew_org.project import ProjectRecord
@@ -148,6 +148,31 @@ def at_done(
                 ),
             )
         )
+    # A role's Task stays in its role's area (crew#839): anything else it needs is
+    # its own finding, a bug or another Task.
+    role = role_tasks.role_of(card)
+    if role is not None and (beyond := role_tasks.outside_scope(role, paths)):
+        verdict.findings.append(
+            Finding(
+                "guard.role_tasks.out_of_scope",
+                says(
+                    "guard.role_tasks.out_of_scope",
+                    role=role.name,
+                    paths=", ".join(f"`{p}`" for p in beyond),
+                    scope=", ".join(f"`{g}`" for g in role.scope),
+                ),
+            )
+        )
+    if role is role_tasks.ARCHITECT and role_tasks.DIAGRAM_PATH in paths:
+        path = worktree / role_tasks.DIAGRAM_PATH
+        drawn = path.read_text(encoding="utf-8") if path.is_file() else None
+        if wrong := role_tasks.diagram_problems(drawn):
+            verdict.findings.append(
+                Finding(
+                    "check.role_tasks.diagram_renders",
+                    says("check.role_tasks.diagram_renders", problems="; ".join(wrong)),
+                )
+            )
     unpushable = delivery.workflows_not_permitted(paths, permissions)
     if unpushable:
         verdict.findings.append(Finding("check.delivery.workflows_not_permitted", unpushable))

@@ -21,7 +21,7 @@ from enum import StrEnum
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink, held
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
@@ -186,6 +186,11 @@ class MergeResult:
     # merge queue: returned to the Developer with the log (#325).
     ci_failed: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) of a role's Task whose work is the Sponsor's to approve, the
+    # repository's diagram or a release, approved by the crew and not yet by them.
+    awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) of such a Task with no Sponsor named to approve it: it never merges.
+    no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved by the crew, and GitHub did not count it. A separate list
     # because the Sponsor's response differs: one is waiting, the other is a
     # gate no identity the crew holds can satisfy, and waiting will not fix it.
@@ -225,8 +230,12 @@ def merge_approved(
     default_repo: str,
     repos: set[str] | None = None,
     keep_both: Callable[[str, str], list[str] | None] | None = None,
+    sponsor: str | None = None,
 ) -> MergeResult:
     """Land every story the Sponsor has approved.
+
+    A role's Task whose work is the repository's diagram or a release waits for the
+    `sponsor`'s own approving review as well (crew#839).
 
     `keep_both(repo, branch)` merges main into an approved branch that
     conflicts, keeping both sides where they only added lines, and pushes it.
@@ -272,13 +281,27 @@ def merge_approved(
                 result.failed.append((number, "no open pull request"))
             continue
 
-        approved = any(
-            r.get("state") == "APPROVED" for r in issues.pull_reviews(repo, pull["number"])
-        )
+        reviews = issues.pull_reviews(repo, pull["number"])
+        approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
             held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
+        if role_tasks.for_the_sponsor(issues, repo, card):
+            login = role_tasks.the_sponsor(sponsor)
+            if not login:
+                # Shut, not open: nobody named means nobody's approval counts.
+                held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
+                result.no_sponsor.append((number, pull["number"]))
+                continue
+            head = (pull.get("head") or {}).get("sha", "")
+            if not role_tasks.sponsor_approved(reviews, login, head):
+                held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
+                role_tasks.ask_the_sponsor(
+                    issues, sink, repo=repo, pull=pull["number"], card=number
+                )
+                result.awaiting_sponsor.append((number, pull["number"]))
+                continue
 
         # An approving review sits on it and GitHub still wants one. That is
         # not slowness: the reviewing identity's approval was recorded and

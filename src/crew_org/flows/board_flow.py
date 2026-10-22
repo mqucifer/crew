@@ -46,7 +46,7 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal
+from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal, role_tasks
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
@@ -76,6 +76,7 @@ from crew_org.tools.repo_context import (
     focused_context,
 )
 from crew_org.tools.repo_read import Reader
+from crew_org.work_types import TASK
 
 # Marks a comment as the crew's, so a repeated tick recognises its own work.
 # Ticks are reconciliation passes and run repeatedly; without this a goal would
@@ -190,6 +191,7 @@ class TickResult:
     superseded: dict[int, list[tuple[int, str]]] = field(default_factory=dict)
     # Filed bugs triaged this pass, (number, outcome) (crew#407).
     bugs_triaged: list[tuple[int, str]] = field(default_factory=list)
+    tasks_triaged: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def quiescent(self) -> bool:
@@ -806,10 +808,14 @@ def unstarted_children(issues: IssueClient, cards: list[Card], repo: str, number
     except Exception:  # noqa: BLE001
         return [], []
 
+    # A role's Task under the epic isn't the split's to supersede: DevOps's CI and
+    # release stays, and waits for the new stories (crew#839).
     live = [
         card
         for child in children
-        if (card := by_key.get((repo, child))) is not None and card.state != "CLOSED"
+        if (card := by_key.get((repo, child))) is not None
+        and card.state != "CLOSED"
+        and card.work_type != TASK
     ]
     busy = started(issues, repo, live)
     closable, in_flight = [], []
@@ -2000,6 +2006,22 @@ def refine_epics(
                 by="Business Analyst",
             )
             record_split_tests(issues, sink, repo, number, proposal, numbers)
+            # The split is DevOps's event: the epic's CI and release, one Task per epic,
+            # since epics release themselves (crew#839, ADR 0019).
+            if numbers:
+                why = role_tasks.epic_release_task(
+                    issues,
+                    board,
+                    sink,
+                    repo=repo,
+                    epic=epic_card,
+                    stories=list(numbers.values()),
+                    cards=cards,
+                    rule="decision.role_tasks.epic_split",
+                )
+                if why:
+                    held("decision.role_tasks.not_opened", repo=repo, card=number)
+                    result.failed.append((number, why))
 
             # Moving the card out of the gate *was* the approval. Leaving the label
             # on means the board keeps asking for a decision already made — the same
@@ -2269,6 +2291,18 @@ def tick(
     # Filed bugs are triaged into the flow: accepted into Ready, closed with why, or
     # asked about (crew#407, ADR 0027).
     result.bugs_triaged = bugs.triage_bugs(
+        board,
+        issues,
+        sink,
+        cards,
+        default_repo=default_repo,
+        context=context,
+        failed=result.failed,
+    )
+    # Release Tasks a split couldn't open, tried again (crew#839).
+    result.failed += role_tasks.pending_release_tasks(issues, board, sink, cards=cards, repos=repos)
+    # And Tasks a role filed from its finding, the same way (ADR 0034, crew#839).
+    result.tasks_triaged = role_tasks.triage_tasks(
         board,
         issues,
         sink,

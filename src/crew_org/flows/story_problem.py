@@ -24,6 +24,7 @@ from crew_org.flows import artifacts
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, started
 from crew_org.flows.moves import move_card
 from crew_org.tools.github_project import Card
+from crew_org.work_types import TASK
 
 
 def return_to_refinement(
@@ -50,7 +51,9 @@ def return_to_refinement(
     evidence goes on the epic with `needs:rework`.
     """
     epic = card.parent
-    if epic is None:
+    # A role's Task isn't split from its epic, so splitting the epic again can't
+    # mend it: it goes to a person, as a story with no epic does (crew#839).
+    if epic is None or card.work_type == TASK:
         return False
     try:
         children = {c["number"] for c in issues.sub_issues(repo, epic)}
@@ -63,6 +66,7 @@ def return_to_refinement(
         and c.number in children
         and c.number != card.number
         and c.state != "CLOSED"
+        and c.work_type != TASK
     ]
     busy = started(issues, repo, siblings)
     back = [card] + [c for c in siblings if c.number not in busy and c.status != READY]

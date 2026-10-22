@@ -261,6 +261,7 @@ def _land(crew: Crew) -> PhaseOutcome:
         default_repo=crew.repo,
         repos=crew.repos,
         keep_both=keeping_both(crew.ws),
+        sponsor=crew.sponsor,
     )
     if landed.merged or landed.conflicted or landed.rebuilding:
         cards = crew.board.cards()
@@ -303,6 +304,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
+    from crew_org.flows.role_tasks import first_diagrams  # noqa: PLC0415
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
@@ -313,6 +315,15 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
+    # A project with no diagram of its system gets the Architect's Task to draw one
+    # (crew#839). Not one waiting for its walking skeleton: there's nothing to draw.
+    drawn = first_diagrams(
+        crew.issues,
+        crew.board,
+        crew.sink,
+        repos=watched(repos, crew.skeleton_only),
+        cards=crew.board.cards(),
+    )
     result = revisit_designs(
         crew.issues,
         crew.reviewer,
@@ -335,12 +346,15 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     return PhaseOutcome(
         "revisit",
-        moved=result.moved or logs.moved or bool(red.filed or red.closed or released.filed),
+        moved=result.moved
+        or logs.moved
+        or bool(red.filed or red.closed or released.filed or drawn.opened),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
             + (f", {len(logs.merged)} merged" if logs.merged else "")
         ),
@@ -355,6 +369,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
         + [
             f"{repo} v{version} — waiting on the Sponsor: make the package public "
@@ -444,6 +459,7 @@ def _admit(crew: Crew) -> PhaseOutcome:
     the one hop `tick` refused to make, on a docstring claiming a third human
     gate that section 1 of the constitution does not have.
     """
+    from crew_org.flows.role_tasks import waits_for  # noqa: PLC0415
     from crew_org.flows.sprint import start_sprint  # noqa: PLC0415
 
     closed = _closed(crew)
@@ -479,6 +495,11 @@ def _admit(crew: Crew) -> PhaseOutcome:
             for c in plan.waiting_on_rework
         ]
         + [f"{c.name(qualify=True)} — its epic is parked in Inbox" for c in plan.parked]
+        + [
+            f"{c.name(qualify=True)} — a Task for a role with no session yet; "
+            f"{waits_for(c)} brings it"
+            for c in plan.no_session
+        ]
         + (
             [f"{plan.sprint} is full: {plan.committed} of {plan.capacity} points"]
             if plan.full and any(s.deferred for s in plan.slices)
@@ -608,6 +629,7 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         repo=crew.repo,
         limit=None,
         repos=crew.repos,
+        sponsor=crew.sponsor,
     )
     reverts = result.reverts
     moved = bool(
@@ -622,6 +644,15 @@ def _deliver(crew: Crew) -> PhaseOutcome:
     # State: still true after this pass.
     held = (
         [f"#{n} — waiting on an approving review (PR #{pr})" for n, pr in result.awaiting_approval]
+        + [
+            f"#{n} — a role's Task: PR #{pr} waits for the Sponsor's approval"
+            for n, pr in result.awaiting_sponsor
+        ]
+        + [
+            f"#{n} — a role's Task: PR #{pr} can't merge: no Sponsor is named "
+            "(GITHUB_SPONSOR in .env, or trust.sponsor in org.yaml)"
+            for n, pr in result.no_sponsor
+        ]
         + [
             f"#{n} — PR #{pr} was behind main; brought up to date, merges once checks pass"
             for n, pr in result.updating
