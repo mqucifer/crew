@@ -14,12 +14,13 @@ from pathlib import Path
 
 from crew_org.flows import role_tasks
 from crew_org.flows.role_tasks import marked
+from crew_org.tools import container
 from crew_org.tools.container import Held
 from crew_org.tools.services import Declared, declared
 from crew_org.tools.workspace import REPORT, CheckResult, CommandResult, skipped_tests, with_report
 from tests.role_task_fakes import Board, Issues, events, sink
 from tests.test_gates import MERGED_TESTS, TESTS, at_done, done, git, repo  # noqa: F401
-from tests.test_services import ran, worktree  # noqa: F401
+from tests.test_services import PROJECT, ran, worktree  # noqa: F401
 
 NEW = "tests/test_store.py"
 DB = "SPRINT_METRICS_DB not set"
@@ -54,6 +55,36 @@ def test_the_report_names_each_skipped_test_by_its_file_and_class(tmp_path):
     assert skipped_tests(tmp_path) == {
         f"{NEW}::test_insert": DB,
         f"{NEW}::TestQuery.test_by_sprint[a]": DB,
+    }
+
+
+def test_each_pytest_command_of_the_checks_is_read(worktree):  # noqa: F811
+    """crew-presentation's checks run pytest three times, each writing the one report."""
+    (worktree / ".crew/project.yaml").write_text(
+        PROJECT.replace(
+            "  - uv run pytest -q\n", "  - uv run pytest -q a\n  - uv run pytest -q b\n"
+        )
+    )
+    (worktree / "tests").mkdir()
+    for name in ("a", "b"):
+        (worktree / f"tests/test_{name}.py").write_text("")
+
+    class Writes:
+        down: dict = {}
+
+        def resync(self):
+            return None
+
+        def exec(self, command, timeout=0):
+            if command[-1] in ("a", "b"):
+                report(worktree, {(f"tests.test_{command[-1]}", "test_x"): DB})
+            return container.Result(" ".join(command), 0, "")
+
+    from crew_org.tools.workspace import check
+
+    assert check(worktree, held=Writes()).skipped == {
+        "tests/test_a.py::test_x": DB,
+        "tests/test_b.py::test_x": DB,
     }
 
 

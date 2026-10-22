@@ -366,6 +366,7 @@ def check(
     fixed: list[str] = []
     reverted: list[str] = []
     unsafe: list[str] = []
+    skipped: dict[str, str] | None = None
     if all(r.ok for r in results):
         touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
@@ -388,6 +389,11 @@ def check(
             (worktree / REPORT).unlink(missing_ok=True)
         for command in tools.verify:
             results.append(do(command))
+            # Each pytest command writes the one report: read after each, so a project
+            # with several (crew-presentation runs three) is read whole.
+            if held is not None and (found := skipped_tests(worktree)) is not None:
+                skipped = {**(skipped or {}), **found}
+                (worktree / REPORT).unlink(missing_ok=True)
     return CheckResult(
         results=results,
         fixed=sorted(fixed),
@@ -395,7 +401,7 @@ def check(
         unsafe=unsafe,
         resetup=resetup,
         services_down=dict(getattr(held, "down", None) or {}),
-        skipped=skipped_tests(worktree) if held is not None else None,
+        skipped=skipped,
     )
 
 
