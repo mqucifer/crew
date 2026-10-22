@@ -117,6 +117,9 @@ def builds_on(body: str) -> set[int]:
 # On a split that wrote no stories because other epics' planned stories cover
 # it: those stories, which the epic waits for rather than closing (#329).
 WAITS_FOR = "<!-- crew:waits-for {numbers} -->"
+# On an epic whose wait broke, so its re-split is told from the Sponsor's from GitHub,
+# whichever pass finishes it (crew#862).
+WAITS_BROKE_MARKER = "<!-- crew:waits-broke -->"
 _WAITS_FOR = re.compile(r"<!-- crew:waits-for ([\d,]+) -->")
 # A story's line saying what it does to merged tests (#189). Delivery reads a
 # declared contract change back from it (#316); the old wording read as "this
@@ -742,6 +745,15 @@ def _all_bodies(issues: IssueClient, repo: str, number: int) -> str:
         return ""
 
 
+def waits_broke(issues: IssueClient, repo: str, number: int) -> bool:
+    """Whether the epic's re-split under way is its broken wait's: marked after its last split."""
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001
+        return False
+    return _last_marked(comments, WAITS_BROKE_MARKER) > _last_marked(comments, STORY_SPLIT_MARKER)
+
+
 def _last_marked(comments: list[dict], marker: str) -> int:
     marked = [i for i, c in enumerate(comments) if marker in (c.get("body") or "")]
     return marked[-1] if marked else -1
@@ -812,6 +824,16 @@ def settle_wait(
             + " closed without being delivered",
             card=number,
             rule="skip.board_flow.waits_for_planned",
+        )
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body=f"{WAITS_BROKE_MARKER}\n**Split again:** "
+            + ", ".join(f"#{n}" for n in gone)
+            + " closed without being delivered, so what this epic waited for won't land.",
+            by=None,
         )
         sendbacks.record(sink, sendbacks.WAITS_FOR_CLOSED, card=number, repo=repo, closed=len(gone))
         return RESPLIT
@@ -1051,6 +1073,8 @@ def finish_round(
         started=(),
         positions={},
     )
+    # Read before the round's split comment lands, which would end the mark.
+    broke = waits_broke(issues, repo, number)
     artifacts.comment(
         issues,
         sink,
@@ -1079,6 +1103,7 @@ def finish_round(
         number,
         resplit.Resplit(plan, stories, "story problem" if left.round else "sponsor"),
         reads_decision=record_flow.has_change(_bodies(issues, repo, number), ANSWER),
+        waits_broke=broke,
     )
     result.skipped.append((number, "re-split finished from an earlier pass"))
 
@@ -1851,14 +1876,12 @@ def refine_epics(
             waited = (
                 waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
             )
-            waits_broke = False
             if waited:
                 held("skip.board_flow.waits_for_planned", repo=repo, card=number)
                 settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
                 if settled != RESPLIT:
                     held("decision.board_flow.rework_gate", repo=repo, card=number)
                     continue
-                waits_broke = True
                 # Something it waited for was superseded: split again, now.
                 epic_card = epic_card.model_copy(
                     update={"labels": frozenset(epic_card.labels) | {NEEDS_REWORK}}
@@ -2128,6 +2151,8 @@ def refine_epics(
             # and marked on each story it writes, so a pass that stops before the round's
             # last writes is finished by the next, not split again (crew#859).
             resplitting = again is not None and again.because != resplit.FIRST
+            # Read before this round's split comment lands, which would end the mark.
+            broke = resplitting and waits_broke(issues, repo, number)
             round_ = (
                 resplit.rounds([_all_bodies(issues, repo, number)]) + 1
                 if again is not None and again.because == "story problem"
@@ -2254,8 +2279,8 @@ def refine_epics(
                         reads_decision=record_flow.has_change(
                             [_all_bodies(issues, repo, number)], ANSWER
                         ),
-                        waits_broke=waits_broke,
                         round_=round_,
+                        waits_broke=broke,
                     )
             # The split is DevOps's event: the epic's CI and release, one Task per epic,
             # since epics release themselves (crew#839, ADR 0019).
