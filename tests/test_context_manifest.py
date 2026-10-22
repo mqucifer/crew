@@ -74,17 +74,17 @@ def test_everything_the_manifest_names_exists_in_the_code(section, name):
 
 
 def test_each_step_the_plan_names_has_its_entry():
-    """Every step of the plan's table \"What each step reads after Part A\" (crew#583, D7)."""
+    """Every step of the plan's table \"What each step reads after Part A\" (crew#583, D7),
+    with the Goal's look and its settle in place of the panel, the settles and the notes
+    they replaced (crew#858)."""
     sections = {line[3:] for line in MANIFEST.read_text().splitlines() if line.startswith("## ")}
     for step in (
-        "Architect, settling the design questions (before the split)",
-        "Architect, the design note (after the split)",
+        "The Goal's look: the Architect and the UX Designer",
+        "Product Owner, settling the Goal's look",
         "Product Owner, answering a story problem",
         "Product Owner, placing the Sponsor's words",
         "Business Analyst, the split",
         "Business Analyst, ruling on a story's contract in delivery",
-        "The refinement panel (four members)",
-        "Product Owner, settling the panel's notes",
         "QA, the criteria check",
         "Developer, delivering a story",
         "Code Reviewer, judging a diff",

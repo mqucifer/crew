@@ -81,12 +81,11 @@ estimation:
   max_story_points: 8           # larger must be split, never admitted
 
 refinement:
-  # Before an approved epic is split, four roles read it and the Product Owner
-  # settles what they raised into a conclusion in the epic's body (crew#440,
-  # docs/plans/refinement-panel-build.md). About fifteen minutes an epic. Off,
-  # epics are split as before. Turned on for the proof on sprint-metrics#406
-  # (step 9), once every step that reads the conclusion was built.
-  panel: true
+  # Once a Goal's epics are approved, the Architect and the UX Designer look
+  # across them and the Product Owner settles that into the Goal's record,
+  # before any is split (crew#858, which replaced the per-epic panel of
+  # crew#440). Off, epics are split with no record.
+  look: true
 
 delivery:
   # Repositories the crew may WORK IN. Every phase is bounded by this list —

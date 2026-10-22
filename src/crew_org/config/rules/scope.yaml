@@ -76,29 +76,15 @@ check.settle_crew.check_grounded:
   - crew#846
   owner: Product Owner
   told_in: Row.serves
-check.settle_crew.check_product_calls:
-  description: Refused if your own call settles a note a member marked for the Architect.
-  messages:
-    default: '{rows} are your own call on a note a member marked for the Architect. That is a design question:
-      list it as an open question for the design note, or give a source that settles it. Your own calls
-      are for what the product does.'
-  origin:
-  - ADR 0018
-  owner: Product Owner
-  told_in: Row.own_call
 config.const.delivered.MAX_THEN:
 config.const.delivered.MAX_WHEN:
 config.const.design.ATTEMPTS:
-config.const.design_notes.ATTEMPTS:
-config.const.presentation_notes.OTHER_STORY_CHARS:
+config.const.epic_notes.OTHER_STORY_CHARS:
 config.const.refinement_crew.MAX_EPICS:
 config.const.refinement_crew.MIN_CRITERIA:
 config.const.refinement_crew.MIN_EPICS:
 config.const.refinement_crew.MIN_JUSTIFICATION:
 config.org.design.force_label:
-config.org.design.min_modules:
-config.org.design.min_points:
-config.org.design.min_stories:
 config.org.design.revisit_conflicts:
 config.org.design.skip_label:
 config.org.estimation.max_story_points:
@@ -216,39 +202,15 @@ told.architect.design_placement.work_filed_as_a_technical_epic:
 told.architect.when_a_decision_genuinely_exceeds_your:
   guidance: true
   owner: Architect
-told.architect.you_are_called_only_for_epics:
-  guidance: true
-  owner: Architect
 told.bug_triage_crew.a_request_for_behaviour_the_project:
   guidance: true
   owner: Business Analyst
 told.design_crew.name_an_epic_only_from_the:
   guidance: true
   owner: Architect
-told.design_note_crew.the_epics_record_is_settled_build:
-  guidance: true
-  owner: Architect
-told.form.DesignAnswer.decision:
-  guidance: true
-  owner: Architect
-told.form.DesignNote.beyond_reach:
-  guidance: true
-  owner: Architect
-told.form.PanelNote.settled_by:
-  guidance: true
 told.form.Row.project_wide:
   guidance: true
   owner: Product Owner
-told.panel_crew.a_problem_wholly_inside_another_epic:
-  guidance: true
-told.panel_crew.dont_ask_the_epic_to_settle:
-  guidance: true
-told.panel_crew.dont_restate_the_epic_propose_stories:
-  guidance: true
-told.panel_crew.if_the_epic_assumes_something_infra:
-  guidance: true
-told.panel_crew.write_every_issue_or_pull_request:
-  guidance: true
 told.product_owner.you_decompose_by_outcome_never_by:
   guidance: true
   owner: Product Owner
@@ -278,32 +240,13 @@ told.refinement_crew.its_rows_are_decided_a_story:
 told.refinement_crew.split_by_workflow_step_by_business:
   guidance: true
   owner: Business Analyst
-told.settle_crew.ask_the_sponsor_one_question_with:
-  guidance: true
-told.settle_crew.dont_ask_what_you_can_decide:
-  guidance: true
-told.settle_crew.it_must_not_contradict_a_sponsor:
-  guidance: true
-told.settle_crew.settle_each_one_now_before_the:
-  guidance: true
-told.ux_designer.you_add_to_a_storys_acceptance:
-  guidance: true
-  owner: UX Designer
 told.ux_designer.you_never_choose_a_tool_a:
   guidance: true
   owner: UX Designer
-§13 how_a_note_happens:
+§13 one_goal_refines_at_a_time:
   guidance: true
   origin:
-  - crew#155
-  owner: Architect
-§13 the_tradeoff_is_real_and_is:
-  guidance: true
-  owner: Architect
-§13 what_the_reader_sees:
-  guidance: true
-  origin:
-  - crew#377
+  - crew#858
   owner: Architect
 §13 when_the_architect_revisits_a_projects:
   guidance: true
@@ -311,8 +254,10 @@ told.ux_designer.you_never_choose_a_tool_a:
   - crew#192
   - crew#306
   owner: Architect
-§13 why_ration_it:
+§13 why_once_per_goal:
   guidance: true
+  origin:
+  - crew#858
   owner: Architect
 §4 e:
   guidance: true

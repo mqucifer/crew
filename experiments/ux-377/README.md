@@ -1,5 +1,7 @@
 # The UX Designer on sprint-metrics#62 (#377)
 
+**Since mqucifer/crew#858:** the presentation note this tries went with the per-epic panel, and the UX Designer reads a Goal's epics in the Goal's look instead, so `run.py` no longer runs. It stays as the record of the trial.
+
 A read-only live run, 2026-09-30, through LiteLLM on the Spark. `run.py` has the
 Business Analyst split #62 in memory, then the UX Designer writes its
 presentation note against those stories. Nothing is posted; the stories get

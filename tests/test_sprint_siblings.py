@@ -108,7 +108,6 @@ class Issues:
 
 
 def test_a_leftover_goes_back_to_ready_and_is_planned_with_its_sibling(monkeypatch):
-    monkeypatch.setattr("crew_org.flows.design_notes.awaiting_design", lambda *a: set())
     board = Board(
         [
             epic(179),

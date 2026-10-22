@@ -1,5 +1,7 @@
 # Why the refinement panel's members repeat each other (mqucifer/crew#828)
 
+**Since mqucifer/crew#858:** the per-epic panel this describes was replaced by the Goal's look, and `crew_org.crews.panel_crew` is gone, so the scripts here no longer run. They stay as the evidence crew#858 and crew#828 cite.
+
 **Status:** analysis, 2026-10-20, from 41 panels' notes in mqucifer/sprint-metrics and mqucifer/crew-presentation since 2026-10-01. No model was run. `analyse.py` reproduces every number. Written for mqucifer/crew#828, part 2 (a panel sized to the epic), while the evidence was fresh.
 
 ## The result

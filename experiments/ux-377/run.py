@@ -17,9 +17,10 @@ import time
 from pathlib import Path
 
 from crew_org.crews.presentation_note_crew import criterion_lines, render, write_note
+from crew_org.flows.presentation_notes import coverage, with_reader_criteria
+
 from crew_org.crews.refinement_crew import split_epic
 from crew_org.flows.board_flow import render_story_body
-from crew_org.flows.presentation_notes import coverage, with_reader_criteria
 from crew_org.project import ProjectRecordError, brief, read_record
 from crew_org.tools.repo_context import repository_context
 

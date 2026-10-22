@@ -45,19 +45,17 @@ from crew_org.crews.refinement_crew import (
     repair_criteria,
     split_epic,
 )
-from crew_org.design import DesignPolicy, EpicShape
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal
 from crew_org.flows import conclusion as conclusion_flow
-from crew_org.flows import panel as panel_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
+from crew_org.flows.goal_look import Turns, diagram_comment, look_step
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
 from crew_org.flows.proposed_goal import PROPOSED_LABEL
 from crew_org.flows.readiness import SKELETON_LABEL
-from crew_org.flows.refine_panel import panel_step
 from crew_org.git_ops import Workspace
 from crew_org.llm import reraise_if_down
 from crew_org.process import ProcessRules
@@ -142,9 +140,7 @@ STORY_PROBLEM_MARKER = "<!-- crew:story-problem -->"
 # The Product Owner's answer to it, or its one question for the Sponsor.
 PRODUCT_ANSWER_MARKER = "<!-- crew:product-answer -->"
 PRODUCT_QUESTION_MARKER = "<!-- crew:product-question -->"
-NEEDS_DESIGN = "needs:design"
 # An epic that changes what a reader sees: the UX Designer writes a note (#377).
-NEEDS_UX = "needs:ux"
 # Above this, a split sees the map plus what its epic names, not every file (#231).
 # Lower than the Developer's (160k): sprint-metrics came to 159k characters for
 # refinement, so the Developer's threshold focused nothing, and the rest of the
@@ -171,7 +167,6 @@ class TickResult:
     epics_created: list[int] = field(default_factory=list)
     epics_refined: list[int] = field(default_factory=list)
     stories_created: list[int] = field(default_factory=list)
-    design_required: list[int] = field(default_factory=list)
     skipped: list[tuple[int, str]] = field(default_factory=list)
     failed: list[tuple[int, str]] = field(default_factory=list)
     # Epics the crew has stopped trying to split. Its own list because a
@@ -453,31 +448,45 @@ def record_sponsor_words(
     Sponsor whose decision is their words as written, so the split and the gates
     read it as they read every other decision. Replies since the record began, each
     once: the row's source names the comment. True when nothing is left to enter.
+
+    Under a Goal's record (crew#858) the replies on the Goal count too, once its record
+    began: one on the epic binds the epic, and one on the Goal binds every epic.
     """
     number = epic.number or 0
-    body = issues.get(repo, number).get("body") or ""
-    if not record_flow.has_record(body):
+    place = record_flow.locate(issues, repo, number)
+    record = record_flow.record_for(issues, repo, number)
+    if record is None:
         return True
     try:
-        comments = issues.comments(repo, number)
+        if place.on_goal and place.goal is not None:
+            began = _record_began(issues, repo, place.goal)
+            waiting = [(c, number) for c in issues.comments(repo, number) if _after(c, began)] + [
+                (c, place.goal) for c in issues.comments(repo, place.goal) if _after(c, began)
+            ]
+            whole = record_flow.comment_text(
+                (record_flow.goal_record_comment(issues, repo, place.goal) or {}).get("body") or ""
+            )
+        else:
+            comments = issues.comments(repo, number)
+            start = next(
+                (i for i, c in enumerate(comments) if _RECORD_CHANGE in (c.get("body") or "")),
+                None,
+            )
+            # A record from before its changes were posted: nothing marks where it began.
+            waiting = [(c, number) for c in comments[start + 1 :]] if start is not None else []
+            whole = record_flow.text_for(issues, repo, number)
     except Exception:  # noqa: BLE001
         return True
-    began = next(
-        (i for i, c in enumerate(comments) if _RECORD_CHANGE in (c.get("body") or "")), None
-    )
-    if began is None:
-        # A record from before its changes were posted: nothing marks where it began.
-        return True
-    sources = " ".join(d.source for d in record_flow.parse(record_flow.split(body)[1]).decisions)
+    sources = " ".join(d.source for d in record_flow.parse(whole).decisions)
     waiting = [
-        c
-        for c in comments[began + 1 :]
+        (c, on)
+        for c, on in waiting
         if "<!-- crew:" not in (c.get("body") or "")
         and (c.get("body") or "").strip()
         and from_sponsor(issues, c)
         and _comment_ref(c) not in sources
     ]
-    for comment in waiting:
+    for comment, on in waiting:
         feedback = ""
         for _attempt in range(ANSWER_ATTEMPTS):
             try:
@@ -486,7 +495,7 @@ def record_sponsor_words(
                     words=(comment.get("body") or "").strip(),
                     feedback=feedback,
                 )
-                _enter_sponsor_words(issues, sink, repo, number, comment, placed)
+                _enter_sponsor_words(issues, sink, repo, on, comment, placed)
             except record_flow.RecordRefused as exc:
                 feedback = f"That placing broke the record's rules: {exc}"
                 continue
@@ -499,6 +508,16 @@ def record_sponsor_words(
             result.failed.append((number, f"the Sponsor's reply wasn't recorded: {feedback}"[:200]))
             return False
     return True
+
+
+def _record_began(issues: IssueClient, repo: str, goal: int) -> str:
+    """When the Goal's record was written: its comment's time."""
+    found = record_flow.goal_record_comment(issues, repo, goal) or {}
+    return str(found.get("created_at") or "")
+
+
+def _after(comment: dict[str, Any], began: str) -> bool:
+    return bool(began) and str(comment.get("created_at") or "") > began
 
 
 _RECORD_CHANGE = record_flow.CHANGE.split("{", 1)[0]
@@ -521,10 +540,14 @@ def _enter_sponsor_words(
 
     words = " ".join((comment.get("body") or "").split())
 
+    # A reply on the Goal binds every epic of it (crew#858); one on an epic, that epic.
+    on_goal = record_flow.locate(issues, repo, number).goal == number
+
     def change(current: record_flow.Record) -> record_flow.Record:
         return current.add(
             record_flow.Decision(
                 id="",
+                binds=(record_flow.ALL,) if on_goal else (),
                 context=cell(placed.context),
                 decision=f'"{words}"',
                 consequences=cell(placed.consequences),
@@ -544,7 +567,7 @@ def _enter_sponsor_words(
         by=record_flow.PRODUCT_OWNER,
         change=change,
         kind=SPONSOR_WORDS,
-        why="The Sponsor's reply on this epic, entered as a row in their words (ADR 0023).",
+        why="The Sponsor's reply, entered as a row in their words (ADR 0023).",
     )
 
 
@@ -1066,7 +1089,7 @@ def create_epic_cards(
             epic.title,
             render_epic_body(epic, goal.number or 0, goal.title),
             # The UX Designer writes its note once the stories are split (#377).
-            labels=[NEEDS_HUMAN, *([NEEDS_UX] if epic.changes_what_readers_see else [])],
+            labels=[NEEDS_HUMAN],
         )
         number = issue["number"]
         created[epic.title] = number
@@ -1249,7 +1272,7 @@ def _delivered_by(done: Any) -> str:
 
 
 def render_split(
-    epic_title: str, proposal: StoryProposal, decision, numbers: dict[str, int]
+    epic_title: str, proposal: StoryProposal, numbers: dict[str, int], diagram: str = ""
 ) -> str:
     """The record of a split, for whoever reads the epic later."""
     total = sum(s.points for s in proposal.stories)
@@ -1272,18 +1295,9 @@ def render_split(
     if proposal.already_delivered:
         lines += ["", "### Already delivered, not written again", ""]
         lines += [f"- {d.title} — {_delivered_by(d)}: {d.why}" for d in proposal.already_delivered]
-    lines += [
-        "",
-        "### Design",
-        "",
-        ("**Required.** " if decision.required else "**Not required.** ") + decision.reason,
-        "",
-    ]
-    if decision.required:
-        lines.append(
-            "Labelled `needs:design`. The Architect writes a design note before "
-            "implementation begins."
-        )
+    if diagram:
+        # The Goal's epics link to its target diagram (crew#858).
+        lines += ["", f"Built against the Goal's record and its [target diagram]({diagram})."]
     return "\n".join(lines)
 
 
@@ -1595,7 +1609,6 @@ def refine_epics(
     issues: IssueClient,
     sink: EventSink,
     rules: ProcessRules,
-    design: DesignPolicy,
     result: TickResult,
     *,
     cards: list[Card],
@@ -1603,12 +1616,12 @@ def refine_epics(
     context: RepoContext,
     holds: dict[str, str] | None = None,
     known: KnownDelivered | None = None,
-    panel_search: list[str] | None = None,
+    look_search: list[str] | None = None,
 ) -> None:
-    """Split approved epics into stories, and decide whether design is warranted.
+    """Split approved epics into stories, once their Goal's record covers them.
 
-    `panel_search` is where the refinement panel looks for the Sponsor's decisions;
-    None leaves the panel off, and epics are split as before (crew#440).
+    `look_search` is where the Goal's look finds the Sponsor's decisions; None leaves
+    the look off, and epics are split with no record (crew#858).
 
     `holds` names the projects whose design is being revisited, and why. Their
     epics wait, so their stories are written against the structure the
@@ -1620,6 +1633,8 @@ def refine_epics(
     # Stories split earlier in this same pass: not on `cards` yet, and exactly
     # what a sibling epic splitting next would otherwise duplicate (#295).
     split_now: list[tuple[str, int, str, int]] = []
+    # Which Goal refines in each project, one at a time (crew#858).
+    turns = Turns(issues, cards, result.epics_refined)
 
     for epic_card in epics_to_split(cards):
         # One Business Analyst run per epic (crew#449).
@@ -1668,25 +1683,22 @@ def refine_epics(
                 held("decision.board_flow.product_step", repo=repo, card=number)
                 continue
 
-            # Four roles read it, the Product Owner settles what they raised into its
-            # record, and the Architect settles the design questions, all before the
-            # split reads it (crew#440, ADR 0018).
-            if panel_search is not None and not panel_step(
+            # Once its Goal's epics are approved, the Architect and the UX Designer look
+            # across them and the Product Owner settles that into the Goal's record,
+            # before any is split (crew#858). One Goal refines at a time per project.
+            if look_search is not None and not look_step(
                 board,
                 issues,
                 sink,
                 result,
                 epic_card,
                 repo,
-                search=panel_search,
+                cards=cards,
+                turns=turns,
+                search=list(dict.fromkeys([repo, *look_search])),
                 reading=partial(context.reading_for, repo),
-                unapproved=frozenset(
-                    c.number
-                    for c in cards
-                    if c.number and c.status == INBOX and (c.repo or repo) == repo
-                ),
             ):
-                held("decision.refine_panel.panel_step", repo=repo, card=number)
+                held("decision.goal_look.look_step", repo=repo, card=number)
                 continue
 
             # The Sponsor's replies on the epic, entered in its record before the split
@@ -1696,10 +1708,10 @@ def refine_epics(
                 continue
 
             # Ready only with no design question open (ADR 0018, Scrum's Definition of
-            # Ready): the split would write criteria on a contract nobody settled.
-            waiting = record_flow.parse(
-                record_flow.split(issues.get(repo, number).get("body") or "")[1]
-            ).for_architect()
+            # Ready): the split would write criteria on a contract nobody settled. Only a
+            # record from before the Goal's look holds one: the look decides them.
+            held_record = record_flow.record_for(issues, repo, number)
+            waiting = held_record.for_architect() if held_record is not None else []
             if waiting:
                 held("skip.board_flow.not_ready_still_open_for_the", repo=repo, card=number)
                 open_ids = ", ".join(q.id for q in waiting)
@@ -1737,15 +1749,6 @@ def refine_epics(
                 goal_text = _goal_body(issues, repo, epic_card.parent) if epic_card.parent else ""
                 # What the project has decided for every epic (crew#468).
                 project_log = read_log(issues, repo)
-                # What the Goal's other epics decided, as rows (crew#611).
-                siblings = (
-                    "\n\n".join(
-                        f"### {s.ref} ({s.state})\n\n{s.text}"
-                        for s in panel_flow.siblings_of(issues, repo, epic_card.parent, number)
-                    )
-                    if epic_card.parent
-                    else ""
-                )
                 planned = planned_elsewhere(cards, split_now, repo=repo, epic=number)
                 # Each step reads the code in its own session, over one checkout of the
                 # default branch (crew#807): the split, the criteria check and the repair.
@@ -1762,7 +1765,6 @@ def refine_epics(
                     planned_numbers={n for n, _t, _e in planned},
                     conclusion=conclusion,
                     project_log=project_log,
-                    siblings=siblings,
                     provided=context.provided_for(repo),
                     # Every settled row is followed by a story, or named as not for
                     # stories (crew#440): refused at `done`, in the session.
@@ -1952,25 +1954,6 @@ def refine_epics(
                     issues.add_sub_issue(repo, number, issue["id"])
                 result.stories_created.append(issue["number"])
 
-            decision = design.decide(
-                EpicShape(
-                    points_total=sum(s.points for s in proposal.stories),
-                    story_count=len(proposal.stories),
-                    labels=frozenset(epic_card.labels),
-                )
-            )
-            if decision.required:
-                artifacts.label(
-                    issues,
-                    sink,
-                    repo=repo,
-                    number=number,
-                    by="Architect",
-                    add=[NEEDS_DESIGN],
-                    rule="decision.board_flow.design_required",
-                )
-                result.design_required.append(number)
-
             # Covered by stories other epics only plan: it waits for them, and
             # closes when they land (#329). Closed at once, sprint-metrics#254 cited
             # two planned stories as its delivery, and their epic's rework was
@@ -1980,7 +1963,10 @@ def refine_epics(
                 if not proposal.stories
                 else []
             )
-            body = render_split(epic_card.title, proposal, decision, numbers)
+            diagram = diagram_comment(issues, repo, epic_card.parent) if epic_card.parent else None
+            body = render_split(
+                epic_card.title, proposal, numbers, str((diagram or {}).get("html_url") or "")
+            )
             if waiting:
                 body += (
                     "\n\n### Waiting, not closed\n\n"
@@ -2027,8 +2013,7 @@ def refine_epics(
                     kind=EventKind.AGENT_FINISHED,
                     role="Business Analyst",
                     card=number,
-                    summary=f"{len(numbers)} stories"
-                    + (" — design required" if decision.required else ""),
+                    summary=f"{len(numbers)} stories",
                 )
             )
 
@@ -2066,7 +2051,6 @@ def tick(
     """
     org = org or load_org()
     rules = ProcessRules.from_config(org)
-    design = DesignPolicy.from_config(org)
 
     result = TickResult()
     context = RepoContext(ws, sink, issues)
@@ -2281,10 +2265,10 @@ def tick(
     # Epics approved in an earlier tick are refined now. Epics created moments
     # ago are not: they are sitting at the Sponsor's gate, unapproved.
     # Where the Sponsor writes about a Goal: the crew's repository and the ones
-    # it works in. None leaves the panel off (`refinement.panel` in org.yaml).
-    panel_search = (
+    # it works in. None leaves the look off (`refinement.look` in org.yaml).
+    look_search = (
         [crew_repo or "crew", *sorted(repos or (org.get("delivery") or {}).get("repos") or [])]
-        if (org.get("refinement") or {}).get("panel")
+        if (org.get("refinement") or {}).get("look")
         else None
     )
     refine_epics(
@@ -2292,14 +2276,13 @@ def tick(
         issues,
         sink,
         rules,
-        design,
         result,
         cards=cards,
         default_repo=default_repo,
         context=context,
         holds=holds,
         known=known,
-        panel_search=panel_search,
+        look_search=look_search,
     )
 
     sink.note(

@@ -38,7 +38,6 @@ PROPOSAL = EpicProposal(
             separately_deliverable=(
                 "The Sponsor can read every metric in the terminal with no other work done."
             ),
-            changes_what_readers_see=True,
         ),
         Epic(
             title="Feed other tools",
@@ -48,7 +47,6 @@ PROPOSAL = EpicProposal(
             separately_deliverable=(
                 "Other tools can consume the metrics even if nobody reads the table."
             ),
-            changes_what_readers_see=False,
         ),
     ],
     ordering_rationale="Table first because it answers the question immediately.",
@@ -116,6 +114,9 @@ class FakeIssues:
     def comment(self, repo: str, number: int, body: str) -> dict:
         self.posted.append((number, body))
         return {}
+
+    def comments(self, repo: str, number: int) -> list[dict]:
+        return []
 
     def get(self, repo: str, number: int) -> dict:
         return {"body": "goal body"}
@@ -278,13 +279,12 @@ def test_a_skeleton_goal_is_proposed_as_one_epic(monkeypatch):
     assert asked == {"Goal 1": True, "Goal 2": False}
 
 
-def test_an_epic_that_changes_what_readers_see_is_labelled_for_the_ux_designer(monkeypatch):
-    """#377: the Product Owner marks it, and the UX Designer writes its note."""
+def test_a_proposed_epic_waits_only_for_the_sponsor(monkeypatch):
+    """The UX Designer reads every epic in the Goal's look now (crew#858): no epic is
+    labelled for a note of its own."""
     issues = FakeIssues()
     run(FakeBoard([card(1)]), issues, monkeypatch)
-    labels = {i["title"]: i["labels"] for i in issues.created}
-    assert labels["Report as a table"] == ["needs:human", "needs:ux"]
-    assert labels["Feed other tools"] == ["needs:human"]
+    assert {tuple(i["labels"]) for i in issues.created} == {("needs:human",)}
 
 
 def test_a_goal_outside_the_crews_repositories_is_not_decomposed(monkeypatch):
@@ -674,21 +674,6 @@ def test_a_story_let_in_counts_against_ready_for_the_rest_of_the_tick(monkeypatc
     result = run_split(board, issues, monkeypatch)
     assert result.admitted == [33]
     assert [m[1] for m in board.moves] == [READY, REFINEMENT, REFINEMENT]
-
-
-def test_design_is_required_when_the_split_trips_the_threshold(monkeypatch):
-    big = StoryProposal(epic_title="Big", stories=[make_story(f"S{i}", 5) for i in range(4)])
-    issues = FakeIssues()
-    result = run_split(FakeBoard([epic_card(3)]), issues, monkeypatch, proposal=big)
-    assert result.design_required == [3]
-    assert (3, "needs:design") in issues.added_labels
-
-
-def test_a_small_split_does_not_require_design(monkeypatch):
-    issues = FakeIssues()
-    result = run_split(FakeBoard([epic_card(3)]), issues, monkeypatch)
-    assert result.design_required == []
-    assert issues.added_labels == []
 
 
 def test_an_approved_epic_stops_asking_for_a_decision(monkeypatch):

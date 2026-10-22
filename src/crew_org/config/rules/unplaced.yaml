@@ -168,9 +168,6 @@ config.const.tools.VIEW_LINES:
   - crew#778
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:
-told.architect.refinement.you_settle_the_least_the_stories:
-  guidance: true
-  owner: Architect (refinement)
 told.form.DoneAnswers.bar:
   guidance: true
   owner: Product Owner
@@ -207,12 +204,6 @@ told.product_owner.onboarding.the_optional_answers_matter_too_what:
 told.product_owner.onboarding.the_record_is_read_by_roles:
   guidance: true
   owner: Product Owner (onboarding)
-told.qa_engineer.panel.a_promise_no_test_could_check:
-  guidance: true
-  owner: QA Engineer (panel)
-told.qa_engineer.panel.you_quote_both_sides_and_you:
-  guidance: true
-  owner: QA Engineer (panel)
 told.refinement_crew.a_story_that_extends_another_must:
   guidance: true
   owner: Business Analyst

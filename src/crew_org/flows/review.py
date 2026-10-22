@@ -22,9 +22,9 @@ from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.conclusion import story_rows
+from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.moves import move_card
-from crew_org.flows.presentation_notes import story_notes
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
 from crew_org.project import DEFAULT_DOCS, RECORD_PATH, parse

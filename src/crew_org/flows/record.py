@@ -61,7 +61,9 @@ SPONSOR = "Sponsor"
 PRODUCT_OWNER = "Product Owner"
 ARCHITECT = "Architect"
 BUSINESS_ANALYST = "Business Analyst"
-AUTHORS = (SPONSOR, PRODUCT_OWNER, ARCHITECT, BUSINESS_ANALYST)
+# What the reader sees, set in the Goal's look and carried into the stories (crew#858).
+UX_DESIGNER = "UX Designer"
+AUTHORS = (SPONSOR, PRODUCT_OWNER, ARCHITECT, BUSINESS_ANALYST, UX_DESIGNER)
 # Who settles an open question: the Architect, or whoever builds it, whose
 # choice no gate checks (Shape Up's latitude for the people doing the work).
 IMPLEMENTER = "Implementer"
@@ -366,6 +368,11 @@ def _locate(issues: Any, repo: str, number: int) -> tuple[Place, str, str]:
     return Place(repo, number), body, ""
 
 
+def locate(issues: Any, repo: str, number: int) -> Place:
+    """Where the record `number` reads is kept (see `_locate`)."""
+    return _locate(issues, repo, number)[0]
+
+
 def text_for(issues: Any, repo: str, number: int) -> str:
     """The record as `number` sees it, rendered: an epic's own, or the rows of its Goal's
     record that bind it. Empty when it has none."""
@@ -619,21 +626,6 @@ def rows_for(text: str, ids: list[str]) -> str:
     return "\n".join([*_DECISIONS, *(_decision_line(d) for d in picked)]) if picked else ""
 
 
-def architect_questions(text: str) -> tuple[list[str], str]:
-    """The questions the record leaves for the Architect: their IDs, and their table.
-
-    A question left to the implementer is not the Architect's: no gate checks it.
-    """
-    asked = parse(text).for_architect()
-    if not asked:
-        return [], ""
-    table = [
-        *_OPEN,
-        *(f"| {q.id} | {_cell(q.question)} | {_cell(q.impact)} | {q.settled_by} |" for q in asked),
-    ]
-    return [q.id for q in asked], "\n".join(table)
-
-
 def check_change(before: Record, after: Record) -> None:
     """Refuse an edit that breaks change control, naming each problem."""
     problems: list[str] = []
@@ -852,9 +844,28 @@ def edit(
         body=change_note(before, after, by=by, ref=ref, why=why, kind=kind),
         by=by,
     )
-    if not place.on_goal:
-        # The Goal's index of every row across its epics follows each change (crew#611).
-        from crew_org.flows.goal_index import refresh_for_epic  # noqa: PLC0415
+    return after
 
-        refresh_for_epic(issues, sink, repo=repo, epic=epic)
+
+def start_goal_record(
+    issues: Any, sink: EventSink, *, repo: str, goal: int, by: str, record: Record, why: str = ""
+) -> Record:
+    """Write the Goal's first record, as its own comment, checked as any edit is.
+
+    Once per Goal: a Goal that has one already is changed through `edit`.
+    """
+    if goal_record_comment(issues, repo, goal) is not None:
+        raise RecordChanged(f"the Goal already has a record: {repo}#{goal}")
+    after = replace(record, on_goal=True)
+    empty = Record(on_goal=True)
+    check_change(empty, after)
+    issues.comment(repo, goal, f"{GOAL_RECORD_MARKER}\n{render(after)}\n")
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=goal,
+        body=change_note(empty, after, by=by, why=why),
+        by=by,
+    )
     return after

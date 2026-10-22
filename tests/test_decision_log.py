@@ -11,11 +11,12 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from crew_org.crews.settle_crew import Conclusion, Row
+from crew_org.crews.settle_crew import Row
 from crew_org.events import EventSink
 from crew_org.flows import decision_log as log
+from crew_org.flows import record as record_flow
 from crew_org.flows.merge import Landed, Landing
-from crew_org.flows.settle import TO_LOG_LABEL, render
+from crew_org.flows.settle import TO_LOG_LABEL, _source
 
 REPO = "sprint-metrics"
 TODAY = date(2026, 10, 8)
@@ -23,7 +24,17 @@ APPROVED = "**Outcome** — trends across sprints."
 
 
 def conclusion_body(*rows: Row) -> str:
-    return f"{APPROVED}\n\n{render(Conclusion(rows=list(rows)), owner='mqucifer', repo=REPO)}\n"
+    """An epic's body carrying its record, as an epic split before the Goal's record has."""
+    record = record_flow.Record(
+        decisions=tuple(
+            record_flow.Decision(
+                f"R{i}", r.context, r.decision, r.consequences, _source(r), "Product Owner", ""
+            )
+            for i, r in enumerate(rows, 1)
+        ),
+        to_log=tuple(f"R{i}" for i, r in enumerate(rows, 1) if r.project_wide),
+    )
+    return f"{APPROVED}\n\n{record_flow.render(record)}\n"
 
 
 def row(context="Counting", *, wide=True, own=False, settles=(1,)) -> Row:

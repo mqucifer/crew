@@ -6,31 +6,8 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows import session_delivery
 from crew_org.flows.board_flow import tick
 from crew_org.flows.delivery import INTERRUPTED_MARKER, DeliveryResult, _work_one_card
-from crew_org.flows.design_notes import needs_note as needs_design_note
-from crew_org.flows.presentation_notes import needs_note as needs_presentation_note
-from crew_org.tools.github_project import Card
 from tests.test_board_flow import SPLIT, FakeBoard, FakeIssues, epic_card
 from tests.test_remote_errors import CARD, Board, Issues, Workspace, _unreadable_reply
-
-
-def epic(*labels):
-    return Card(
-        item_id="E",
-        number=64,
-        title="Surface anomalies",
-        status="Ready",
-        state="OPEN",
-        work_type="Epic",
-        repo="sprint-metrics",
-        labels=frozenset(labels),
-    )
-
-
-def test_an_epic_waiting_for_a_person_gets_no_note_attempt():
-    assert needs_design_note(epic("needs:design"))
-    assert not needs_design_note(epic("needs:design", "needs:human"))
-    assert needs_presentation_note(epic("needs:ux"))
-    assert not needs_presentation_note(epic("needs:ux", "needs:human", "blocked"))
 
 
 def test_no_stories_are_created_under_an_epic_that_closed_mid_split(monkeypatch):

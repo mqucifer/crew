@@ -443,7 +443,7 @@ def test_nothing_queued_ends_the_tick_at_once(crew, monkeypatch):
 
 # The phases that judge a hold: "technical work lands first", "builds on #304",
 # a design under revision, the backlog's order, the sprint's capacity.
-JUDGE_HOLDS = ("revisit", "order", "refine", "design", "admit", "deliver")
+JUDGE_HOLDS = ("revisit", "order", "refine", "admit", "deliver")
 
 
 def test_landing_comes_before_every_phase_that_judges_a_hold():
@@ -464,7 +464,6 @@ def test_a_pass_moves_the_work_nearest_to_done_first():
         "revisit",
         "order",
         "refine",
-        "design",
         "admit",
         "deliver",
     ]

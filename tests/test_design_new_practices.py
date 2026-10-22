@@ -75,9 +75,7 @@ def captured(monkeypatch, **kwargs) -> str:
     return seen["description"]
 
 
-def test_the_reviewer_is_asked_about_new_practices_only_for_a_projects_design(monkeypatch):
+def test_the_reviewer_is_asked_about_new_practices_in_a_projects_design(monkeypatch):
     project = captured(monkeypatch, repository="README says 0.0.0", changes="- none")
     assert "report, in `undeclared`, every choice that introduces a practice" in project
     assert "README says 0.0.0" in project
-    note = captured(monkeypatch, stories="#145 its criteria")
-    assert "undeclared" not in note, "a design note isn't a project's design"

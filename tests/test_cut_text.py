@@ -10,54 +10,54 @@ from __future__ import annotations
 import pytest
 
 from crew_org.crews.settle_crew import (
-    DesignAnswer,
-    DesignSettlement,
+    GoalConclusion,
+    GoalRow,
+    GoalSettlement,
     Unsettled,
-    check_design_cut,
+    check_not_cut,
 )
 from crew_org.cut_text import check_not_cut_at_a_quote, cut_fields
 from tests.test_calls import Proxy, ask
 
-# The answer as it reached the crew on 2026-10-11.
-SPRINT_METRICS_555 = DesignSettlement(
-    settled=[
-        DesignAnswer(
-            question="Q1",
-            decision="because accepts exactly two values: ",
-            consequences="CHECK constraint in DDL, enum in intake schema, GROUP BY in Epic 557",
-            source="Goal example shows ",
-        ),
-        DesignAnswer(
-            question="Q2",
-            decision="Three nullable columns on events table: epic INTEGER, because TEXT",
-            consequences="Upsert adds three nullable fields",
-            source="store.py upsert pattern",
-        ),
-    ]
-)
+
+def settled(decision: str, source: str) -> GoalSettlement:
+    return GoalSettlement(
+        conclusion=GoalConclusion(
+            rows=[
+                GoalRow(
+                    context="Who set it",
+                    decision=decision,
+                    consequences="CHECK constraint in DDL, enum in intake schema",
+                    source=source,
+                    settles=[1],
+                    epics=["all"],
+                )
+            ]
+        )
+    )
+
+
+# The answer as it reached the crew on 2026-10-11, in the form that settles it now.
+SPRINT_METRICS_555 = settled("because accepts exactly two values: ", "Goal example shows ")
 
 
 def test_a_field_cut_at_a_quote_is_named():
-    assert cut_fields(SPRINT_METRICS_555) == ["settled[0].decision", "settled[0].source"]
+    assert cut_fields(SPRINT_METRICS_555) == [
+        "conclusion.rows[0].decision",
+        "conclusion.rows[0].source",
+    ]
 
 
-def test_the_architects_cut_answer_is_sent_back_saying_why():
-    with pytest.raises(Unsettled, match="settled\\[0\\].decision.*single quotes"):
-        check_design_cut(SPRINT_METRICS_555)
+def test_a_cut_answer_is_sent_back_saying_why():
+    with pytest.raises(Unsettled, match="rows\\[0\\].decision.*single quotes"):
+        check_not_cut(SPRINT_METRICS_555)
 
 
 def test_a_finished_answer_passes():
-    whole = DesignSettlement(
-        settled=[
-            DesignAnswer(
-                question="Q1",
-                decision="because accepts exactly two values: 'sponsor' and 'story'",
-                consequences="CHECK constraint in DDL",
-                source="Goal example shows 'sponsor'",
-            )
-        ]
+    whole = settled(
+        "because accepts exactly two values: 'sponsor' and 'story'", "Goal example shows 'sponsor'"
     )
-    check_design_cut(whole)
+    check_not_cut(whole)
     check_not_cut_at_a_quote(whole)
 
 

@@ -75,7 +75,7 @@ def test_each_kind_of_rule_is_found():
     assert "check.design.shelled" in found
     assert "edit.ast_edit.apply_edit" in found
     assert "guard.bounds.out_of_bounds" in found
-    assert "skip.refine_panel.waits_for_to_be_split_it" in found, "a hold said only in words"
+    assert "skip.goal_look.waits_for_one_goal_refines_at" in found, "a hold said only in words"
     assert "session.replace_text" in found, "a session tool's reply (crew#778)"
     assert "check.gates.the_branch_changes_nothing" in found, "a gate at `done` (crew#778)"
     assert any(i.startswith("told.business_analyst.") for i in found)
@@ -133,12 +133,12 @@ def test_every_site_in_the_told_table_places_a_line():
 
 
 def test_a_hold_said_only_in_words_is_checked_by_what_its_branch_tests():
-    """crew#773's hold: an epic waits for a sibling it builds on, by builds_on_unsplit."""
+    """crew#773's shape: a Goal's epics wait for the Goal whose turn it is (crew#858)."""
     hold = next(
-        e for e in rule_list.entries() if e.id == "skip.refine_panel.waits_for_to_be_split_it"
+        e for e in rule_list.entries() if e.id == "skip.goal_look.waits_for_one_goal_refines_at"
     )
-    assert hold.checked == {"src/crew_org/flows/refine_panel.py:builds_on_unsplit"}
-    assert hold.category == "flow" and "crew#773" in hold.origin
+    assert hold.checked == {"src/crew_org/flows/goal_look.py:look_step"}
+    assert hold.category == "flow" and "crew#858" in hold.origin
 
 
 def test_a_merged_rule_is_listed_once_with_each_case_where_the_code_has_it():

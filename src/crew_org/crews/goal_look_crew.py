@@ -21,6 +21,7 @@ since, against the record and diagram the Goal has.
 from __future__ import annotations
 
 import contextvars
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -35,6 +36,14 @@ from crew_org.rulebook import refuse
 from crew_org.session import steps
 
 ALL = record_flow.ALL
+
+# The Goal template's own last line, which is the crew's, not the Sponsor's words.
+_GOAL_FOOTER = re.compile(r"\n-{3,}\s*\n\s*_Set by the Product Sponsor\..*?_\s*$", re.S)
+
+
+def sponsors_words(goal: str) -> str:
+    """A Goal's text without its template's footer (crew#807's prompt review)."""
+    return _GOAL_FOOTER.sub("", goal).rstrip()
 
 
 class Supported(BaseModel):
@@ -220,7 +229,8 @@ def opening(context: GoalContext, role: str) -> dict[str, str]:
         f"settles what you both find into the Goal's record. {later}\n\n{QUESTION[role]}\n\n"
         "Start from what the epics flag as built on, new or risky. Write every issue as "
         "owner/repo#number.",
-        "goal": f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n{context.goal}",
+        "goal": f"## The Goal ({context.goal_ref}), set by the Sponsor\n\n"
+        f"{sponsors_words(context.goal)}",
         "decisions": context.decisions,
         "project_log": context.project_log,
         "record": f"## The Goal's record\n\n{context.record}" if context.record else "",

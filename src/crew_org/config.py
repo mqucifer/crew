@@ -32,6 +32,12 @@ def _validate(org: dict[str, Any]) -> None:
     for key in required:
         if key not in org:
             raise ValueError(f"org.yaml is missing required section: {key!r}")
+    # The per-epic panel went with crew#858: an old key would leave the Goal's look off.
+    if "panel" in (org.get("refinement") or {}):
+        raise ValueError(
+            "org.yaml's refinement.panel is gone: the Goal's look replaced the per-epic "
+            "panel (crew#858). Rename it to refinement.look"
+        )
 
     columns = org["board"]["columns"]
     blocked = org["board"]["blocked_column"]
@@ -68,9 +74,9 @@ def _validate(org: dict[str, Any]) -> None:
             "to allow every repository, or name the ones it may work in."
         )
 
-    panel = (org.get("refinement") or {}).get("panel", False)
-    if not isinstance(panel, bool):
-        raise ValueError(f"refinement.panel must be true or false, got {panel!r}")
+    look = (org.get("refinement") or {}).get("look", False)
+    if not isinstance(look, bool):
+        raise ValueError(f"refinement.look must be true or false, got {look!r}")
 
     sandbox = org.get("sandbox") or {}
     mode = sandbox.get("mode", "required")

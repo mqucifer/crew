@@ -54,7 +54,7 @@ from crew_org.flows.delivery import (
     previous_fate,
     prior_verdicts,
 )
-from crew_org.flows.presentation_notes import story_notes
+from crew_org.flows.epic_notes import story_notes
 from crew_org.git_ops import (
     CHECKPOINT,
     DONE_TRAILER,

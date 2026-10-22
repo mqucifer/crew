@@ -188,8 +188,7 @@ def test_the_implementers_questions_are_not_the_architects():
         base(),
         open=(*base().open, record.Question("Q2", "Log format?", "None", record.IMPLEMENTER)),
     )
-    ids, table = record.architect_questions(record.render(left))
-    assert ids == ["Q1"] and "Q2" not in table
+    assert [q.id for q in record.parse(record.render(left)).for_architect()] == ["Q1"]
 
 
 # --- what a story is shown ------------------------------------------------------------------

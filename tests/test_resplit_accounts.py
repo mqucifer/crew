@@ -38,11 +38,7 @@ def test_a_split_accounting_for_all_passes_and_lists_what_it_dropped():
     )
     check_accounted(split, SUPERSEDED)
 
-    class Decision:
-        required = False
-        reason = "small"
-
-    text = render_split("API", split, Decision(), {"Prior sprint in JSON": 166})
+    text = render_split("API", split, {"Prior sprint in JSON": 166})
     assert "### Dropped from the earlier split" in text
     assert "- #146: the decision keeps stdout empty on errors" in text
 

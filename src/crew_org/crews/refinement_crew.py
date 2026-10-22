@@ -207,13 +207,6 @@ class Epic(BaseModel):
             "the others. Name what its reader could do with only this."
         )
     )
-    changes_what_readers_see: bool = Field(
-        description=(
-            "True if this epic changes what someone reads or sees: a report, a page, "
-            "an output format. The UX Designer then adds criteria about the reader "
-            "(#377)."
-        )
-    )
 
     @field_validator("separately_deliverable")
     @classmethod
@@ -719,7 +712,7 @@ def decompose_opening(
     """The Product Owner's decomposition as a session's start (crew#807). The
     repository it was shown whole, 572k characters for sprint-metrics#650, is read
     through the tools; what's delivered is a note (`steps.delivered_section`)."""
-    from crew_org.crews.panel_crew import sponsors_words  # noqa: PLC0415
+    from crew_org.crews.goal_look_crew import sponsors_words  # noqa: PLC0415
 
     if lacking:
         ask = (
