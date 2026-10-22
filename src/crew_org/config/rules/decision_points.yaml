@@ -712,6 +712,18 @@ flows.goal_look._question_and_reply:filter:968e6c3d:
   at: flows/goal_look.py:_question_and_reply
   if: LOOK_MARKER in (c.get('body') or '')
   not_a_rule: finds the Goal's look comments by their marker
+flows.goal_look._unsettled:end:0f485ca5:
+  at: flows/goal_look.py:_unsettled
+  if: not looks
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.goal_look._unsettled:end:fe258216:
+  at: flows/goal_look.py:_unsettled
+  if: found is not None and set(found[0]) <= covered
+  not_a_rule: reads whether the Goal's latest look is settled into its record
+flows.goal_look._unsettled:filter:968e6c3d:
+  at: flows/goal_look.py:_unsettled
+  if: LOOK_MARKER in (c.get('body') or '')
+  not_a_rule: finds the Goal's look comments by their marker
 flows.goal_look._unsplit:end:22270b4c:
   at: flows/goal_look.py:_unsplit
   if: number in self.split
@@ -732,6 +744,14 @@ flows.goal_look.look_step:end:6deb9fc5:
   at: flows/goal_look.py:look_step
   if: goal is None or record_flow.split(issues.get(repo, number).get('body') or '')[1]
   rule: decision.goal_look.look_step
+flows.goal_look.pending_replies:end:4217eb56:
+  at: flows/goal_look.py:pending_replies
+  if: at is None
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.goal_look.pending_replies:filter:d5c4ad51:
+  at: flows/goal_look.py:pending_replies
+  if: '''<!-- crew:'' not in (c.get(''body'') or '''') and from_sponsor(issues, c)'
+  not_a_rule: finds the Sponsor's replies, as every reader of their words does (crew#399)
 flows.goal_look.refining:filter:9816f3c8:
   at: flows/goal_look.py:refining
   if: c.parent is not None and (c.repo or repo) == repo and (c.work_type == 'Epic') and (c.state != 'CLOSED')
@@ -741,9 +761,9 @@ flows.goal_look.refining:filter:99a5d287:
   at: flows/goal_look.py:refining
   if: (c.repo or repo) == repo
   not_a_rule: finds the Goals' cards, for their admission order
-flows.goal_look.refining:filter:c61bba16:
+flows.goal_look.refining:filter:9dd4d59a:
   at: flows/goal_look.py:refining
-  if: _started(self.issues, repo, g)
+  if: _refining_now(self.issues, repo, g)
   rule: skip.goal_look.waits_for_one_goal_refines_at
 flows.goal_look.rows_from:skip:a632648f:
   at: flows/goal_look.py:rows_from

@@ -102,6 +102,11 @@ ALL = "all"
 # The epics the Goal's look has read, so a later one knows what it still has to read.
 _LOOKED = "<!-- crew:looked-at {} -->"
 _LOOKED_AT = re.compile(r"<!-- crew:looked-at ([^ ]*) -->")
+# The Sponsor's comments the Goal's record has taken in, by their ids: as a row of
+# their words, or as the answer its settle read. Kept by the code, so a reply is never
+# taken in twice, whatever a model wrote about it.
+_REPLIES = "<!-- crew:sponsor-replies {} -->"
+_REPLIES_IN = re.compile(r"<!-- crew:sponsor-replies ([^ ]*) -->")
 _GOAL_DECISIONS = (
     "| ID | Status | Context | Decision | Consequences | Set by | Date | Replaces | Source "
     "| Binds |",
@@ -200,6 +205,8 @@ class Record:
     on_goal: bool = False
     # The epics the Goal's look has read (the Goal's record only).
     looked_at: tuple[str, ...] = ()
+    # The Sponsor's comments it has taken in, by id (the Goal's record only).
+    replies: tuple[str, ...] = ()
 
     def for_epic(self, ref: str) -> Record:
         """The Goal's record as one epic sees it: the rows that bind it, or every epic.
@@ -480,6 +487,7 @@ def parse(text: str) -> Record:
             tests.append(TestRow(cells[0], test, cells[2], cells[3], cells[4]))
     marked = _TO_LOG.search(text)
     looked = _LOOKED_AT.search(text)
+    taken = _REPLIES_IN.search(text)
     return Record(
         tuple(decisions),
         tuple(questions),
@@ -490,6 +498,7 @@ def parse(text: str) -> Record:
         tuple(tests),
         on_goal=GOAL_HEADER in text,
         looked_at=_binds(looked.group(1)) if looked else (),
+        replies=_binds(taken.group(1)) if taken else (),
     )
 
 
@@ -603,6 +612,8 @@ def _render_goal(record: Record) -> str:
     lines.append(GOAL_FOOTER)
     if record.looked_at:
         lines.append(_LOOKED.format(",".join(record.looked_at)))
+    if record.replies:
+        lines.append(_REPLIES.format(",".join(record.replies)))
     if record.to_log:
         lines.append(TO_LOG.format(",".join(record.to_log)))
     return "\n".join(lines)

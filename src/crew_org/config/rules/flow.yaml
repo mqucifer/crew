@@ -214,11 +214,6 @@ skip.board_flow.its_criteria_cant_all_pass_to:
   - crew#583
   - crew#612
   - sprint-metrics#551
-skip.board_flow.not_ready_still_open_for_the:
-  cases:
-  - §5.7
-  origin:
-  - ADR 0018
 skip.board_flow.waits_for_planned:
 skip.goal_look.waits_for_one_goal_refines_at:
   description: A Goal's epics wait to be refined while another Goal of the project refines; the one that
@@ -273,4 +268,9 @@ told.review_crew.do_not_re_litigate_a_point:
   owner: Business Analyst
 §5.6:
   guidance: true
+  owner: Business Analyst
+§5.7:
+  guidance: true
+  origin:
+  - crew#858
   owner: Business Analyst

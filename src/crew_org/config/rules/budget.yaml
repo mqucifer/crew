@@ -10,10 +10,13 @@
 # steps, set at their count; the UX Designer's constitution went, as no step sends it;
 # and the one-call prompts' lines the sessions' starts no longer tell. Lowered by the
 # Goal's look (crew#858): the per-epic panel, the settles and the notes went, with
-# their prompts and role text, and §13's lines on rationed design.
+# their prompts and role text, and §13's lines on rationed design. Raised by one for
+# the Business Analyst: §5.7 (no open question on a card) was checked by the hold on
+# a question left for the Architect, which went with the design settle that answered
+# those questions; the Goal's look decides them now.
 Architect: 17
 Architect (design_placement): 3
-Business Analyst: 25
+Business Analyst: 26
 Business Analyst (bug_triage): 1
 Code Reviewer: 19
 DevOps Engineer: 24

@@ -20,10 +20,10 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A session's tool refuses a call, and says why in its reply | 14 |
 | A gate at `done` sends a session's branch back | 8 |
 | The crew changes the work itself, and records it | 3 |
-| The crew holds work back, said only in words | 10 |
+| The crew holds work back, said only in words | 9 |
 | The tick decides a card's handling, found by the decision-point audit | 42 |
 | A setting that changes what the tick does | 193 |
-| Told, and not checked by anything above | 147 |
+| Told, and not checked by anything above | 148 |
 
 ## Categories
 
@@ -203,7 +203,6 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.rework_gate`<br>An epic the Sponsor sent back is split again only on their word, and once.<br>Cases: `decision.board_flow.rework_gate` (src/crew_org/flows/board_flow.py:refine_epics), `skip.board_flow.already_answered` (src/crew_org/flows/board_flow.py:rework_gate), `skip.board_flow.rework_refused` (src/crew_org/flows/board_flow.py:rework_gate) | flow | `src/crew_org/flows/board_flow.py:rework_gate` | — | — | src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/board_flow.py:rework_gate<br>src/crew_org/flows/board_flow.py:tick<br>src/crew_org/flows/board_flow.py:unstarted_children | crew#192<br>crew#440<br>crew#858 |
 | `skip.board_flow.a_goal_written_by_not_the`<br>a Goal written by …, not the Sponsor | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | — |
 | `skip.board_flow.its_criteria_cant_all_pass_to`<br>its criteria can't all pass: to the Product Owner | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | §16 refinements_steps_read_the_code_in (both cite crew#807; given to no role)<br>§16.1 (both cite crew#583; given to no role) | src/crew_org/events.py:attributed<br>src/crew_org/flows/criteria_check.py:check_each | crew#583<br>crew#612<br>crew#807<br>sprint-metrics#551 |
-| `skip.board_flow.not_ready_still_open_for_the`<br>not ready: … still open for the Architect<br>Cases: `§5.7` (docs/ways-of-working.md:§5) | flow | `src/crew_org/flows/board_flow.py:refine_epics` | Business Analyst | §5 | src/crew_org/flows/board_flow.py:refine_epics | ADR 0018 |
 | `skip.board_flow.waits_for_planned`<br>waits for planned … | flow | `src/crew_org/flows/board_flow.py:settle_wait` | — | — | src/crew_org/flows/board_flow.py:settle_wait | — |
 | `skip.goal_look.waits_for_one_goal_refines_at`<br>waits for …: one Goal refines at a time | flow | `src/crew_org/flows/goal_look.py:look_step` | — | — | src/crew_org/flows/goal_look.py:look_step | crew#858 |
 | `skip.goal_look.waits_for_the_goals_look_still`<br>waits for the Goal's look: … still waits for the Sponsor | flow | `src/crew_org/flows/goal_look.py:look_step` | — | — | src/crew_org/flows/goal_look.py:look_step | crew#858 |
@@ -597,6 +596,7 @@ section; one no line holds for is unplaced, never guessed.
 | `§4 e`<br>Estimable, Small, Testable. | scope | `docs/ways-of-working.md:§4` | Business Analyst | §4 | guidance | — |
 | `§5.4`<br>It satisfies INVEST (§4). | flow | `docs/ways-of-working.md:§5` | Business Analyst | §5 | guidance | — |
 | `§5.6`<br>Dependencies are either resolved or explicitly linked and noted. | flow | `docs/ways-of-working.md:§5` | Business Analyst | §5 | guidance | — |
+| `§5.7`<br>No open clarifying question remains on the card. | flow | `docs/ways-of-working.md:§5` | Business Analyst | §5 | guidance | crew#858 |
 | `§7 documentation_is_the_exception`<br>Documentation is the exception. | evidence | `docs/ways-of-working.md:§7` | Code Reviewer<br>DevOps Engineer<br>QA Engineer | §7 | maybe check.design.undeclared | crew#324 |
 | `§7 done_means_merged_and_green`<br>Done means merged and green. | evidence | `docs/ways-of-working.md:§7` | Code Reviewer<br>DevOps Engineer<br>QA Engineer | §7 | guidance | — |
 | `§7.2`<br>The full test suite passes; linting and type checks pass. | evidence | `docs/ways-of-working.md:§7` | Code Reviewer<br>DevOps Engineer<br>QA Engineer | §7 | guidance | — |

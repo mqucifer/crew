@@ -23,7 +23,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import partial
 from typing import Any
@@ -51,7 +51,13 @@ from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
 from crew_org.flows.delivered import Delivered, delivered
-from crew_org.flows.goal_look import Turns, diagram_comment, diagram_of, look_step
+from crew_org.flows.goal_look import (
+    Turns,
+    diagram_comment,
+    diagram_of,
+    look_step,
+    pending_replies,
+)
 from crew_org.flows.moves import move_card
 from crew_org.flows.project_log import read_log
 from crew_org.flows.proposed_goal import PROPOSED_LABEL
@@ -450,15 +456,19 @@ def record_sponsor_words(
     once: the row's source names the comment. True when nothing is left to enter.
 
     Under a Goal's record (crew#858) the replies on the Goal count too, once its record
-    began: one on the epic binds the epic, and one on the Goal binds every epic.
+    began: one on the epic binds the epic, and one on the Goal binds every epic. Each is
+    entered once by its id, which the record keeps; a reply the Goal's settle reads as
+    its answer is kept there too, and isn't a row of its own.
     """
     number = epic.number or 0
     place = record_flow.locate(issues, repo, number)
     record = record_flow.record_for(issues, repo, number)
     if record is None:
         return True
+    taken: set[str] = set()
     try:
         if place.on_goal and place.goal is not None:
+            taken = set(record.replies) | pending_replies(issues, repo, place.goal)
             began = _record_began(issues, repo, place.goal)
             waiting = [(c, number) for c in issues.comments(repo, number) if _after(c, began)] + [
                 (c, place.goal) for c in issues.comments(repo, place.goal) if _after(c, began)
@@ -485,6 +495,7 @@ def record_sponsor_words(
         and (c.get("body") or "").strip()
         and from_sponsor(issues, c)
         and _comment_ref(c) not in sources
+        and str(c.get("id")) not in taken
     ]
     for comment, on in waiting:
         feedback = ""
@@ -541,9 +552,13 @@ def _enter_sponsor_words(
     words = " ".join((comment.get("body") or "").split())
 
     # A reply on the Goal binds every epic of it (crew#858); one on an epic, that epic.
-    on_goal = record_flow.locate(issues, repo, number).goal == number
+    place = record_flow.locate(issues, repo, number)
+    on_goal = place.goal == number
 
     def change(current: record_flow.Record) -> record_flow.Record:
+        if place.on_goal:
+            # Taken in by its id, which the code keeps: never entered twice (crew#858).
+            current = replace(current, replies=(*current.replies, str(comment.get("id"))))
         return current.add(
             record_flow.Decision(
                 id="",
@@ -1707,19 +1722,6 @@ def refine_epics(
             # reads it (ADR 0023).
             if not record_sponsor_words(issues, sink, result, epic_card, repo):
                 held("decision.board_flow.sponsor_words", repo=repo, card=number)
-                continue
-
-            # Ready only with no design question open (ADR 0018, Scrum's Definition of
-            # Ready): the split would write criteria on a contract nobody settled. Only a
-            # record from before the Goal's look holds one: the look decides them.
-            held_record = record_flow.record_for(issues, repo, number)
-            waiting = held_record.for_architect() if held_record is not None else []
-            if waiting:
-                held("skip.board_flow.not_ready_still_open_for_the", repo=repo, card=number)
-                open_ids = ", ".join(q.id for q in waiting)
-                result.skipped.append(
-                    (number, f"not ready: {open_ids} still open for the Architect")
-                )
                 continue
 
             # What this epic has already failed at. Read before the attempt, so a

@@ -208,22 +208,56 @@ def _epics_of(cards: list[Card], repo: str, goal: int) -> list[Card]:
     ]
 
 
-def _started(issues: IssueClient, repo: str, goal: int) -> bool:
-    """The Goal's look has begun: its comment or the Goal's record is there."""
-    return any(
-        LOOK_MARKER in (c.get("body") or "")
-        or record_flow.GOAL_RECORD_MARKER in (c.get("body") or "")
-        for c in issues.comments(repo, goal)
-    )
+def _record_of(issues: IssueClient, repo: str, goal: int) -> record_flow.Record | None:
+    held = record_flow.goal_record_comment(issues, repo, goal)
+    return record_flow.parse(record_flow.comment_text(held.get("body") or "")) if held else None
+
+
+def _unsettled(issues: IssueClient, repo: str, goal: int) -> int | None:
+    """Where the Goal's latest look sits among its comments, while its settle hasn't
+    written it into the record; None when there's no look or it's settled.
+
+    A look settled is one whose epics the record covers: the settle writes them last.
+    """
+    comments = issues.comments(repo, goal)
+    looks = [i for i, c in enumerate(comments) if LOOK_MARKER in (c.get("body") or "")]
+    if not looks:
+        return None
+    found = read_look(comments[looks[-1]].get("body") or "")
+    record = _record_of(issues, repo, goal)
+    covered = set(record.looked_at) if record is not None else set()
+    if found is not None and set(found[0]) <= covered:
+        return None
+    return looks[-1]
+
+
+def _refining_now(issues: IssueClient, repo: str, goal: int) -> bool:
+    """The Goal is mid-look: a look posted, its settle not written yet (waiting on the
+    Sponsor, or failed and to be tried again). A Goal that refined before doesn't count."""
+    return _unsettled(issues, repo, goal) is not None
+
+
+def pending_replies(issues: IssueClient, repo: str, goal: int) -> set[str]:
+    """The ids of the Sponsor's comments on the Goal since a look its settle hasn't
+    written yet: the settle reads them as its answer, so they aren't rows of their own."""
+    at = _unsettled(issues, repo, goal)
+    if at is None:
+        return set()
+    return {
+        str(c.get("id"))
+        for c in issues.comments(repo, goal)[at + 1 :]
+        if "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
+    }
 
 
 class Turns:
     """Which of a repository's Goals is refining: one at a time (the Sponsor, 2026-10-22).
 
     A Goal refines while it has an approved epic that isn't split. Among the Goals that
-    do, one that has begun keeps its turn, even when a higher-priority Goal is approved
-    meanwhile; otherwise the first in admission's order (Priority, the Product Owner's
-    Rank, number) takes it. A Goal's epics can be proposed and approved while another
+    do, one mid-look (its settle not written yet) keeps its turn, even when a
+    higher-priority Goal is approved meanwhile, or a Goal that refined before gets a new
+    epic; otherwise the first in admission's order (Priority, the Product Owner's Rank,
+    number) takes it. A Goal's epics can be proposed and approved while another
     refines. A technical epic has no Goal, so nothing here holds it.
 
     `split` is the epics split so far this pass, which the board doesn't show yet.
@@ -269,24 +303,28 @@ class Turns:
             card = by_number.get(goal)
             return priority_key(card) if card is not None else (99, float("inf"), goal)
 
-        begun = [g for g in goals if _started(self.issues, repo, g)]
+        begun = [g for g in goals if _refining_now(self.issues, repo, g)]
         return min(begun or goals, key=order)
 
 
-def _question_and_reply(issues: IssueClient, repo: str, goal: int) -> tuple[bool, str]:
-    """(asked since the latest look, the Sponsor's reply). Only the Sponsor's words answer."""
+def _question_and_reply(
+    issues: IssueClient, repo: str, goal: int
+) -> tuple[bool, str, tuple[str, ...]]:
+    """(asked since the latest look, the Sponsor's reply, the ids of the comments it is).
+    Only the Sponsor's words answer."""
     comments = issues.comments(repo, goal)
     looks = [i for i, c in enumerate(comments) if LOOK_MARKER in (c.get("body") or "")]
     since = comments[looks[-1] + 1 :] if looks else comments
     asked = [i for i, c in enumerate(since) if GOAL_QUESTION_MARKER in (c.get("body") or "")]
     if not asked:
-        return False, ""
+        return False, "", ()
     replies = [
-        (c.get("body") or "").strip()
+        c
         for c in since[asked[-1] + 1 :]
         if "<!-- crew:" not in (c.get("body") or "") and from_sponsor(issues, c)
     ]
-    return True, "\n\n".join(r for r in replies if r)
+    text = "\n\n".join(r for c in replies if (r := (c.get("body") or "").strip()))
+    return True, text, tuple(str(c.get("id")) for c in replies)
 
 
 def _latest_look(issues: IssueClient, repo: str, goal: int) -> tuple[list[str], LookResult] | None:
@@ -321,6 +359,12 @@ def look_step(
     if goal is None or record_flow.split(issues.get(repo, number).get("body") or "")[1]:
         return True
     ref = _ref(issues, repo, number)
+    held_record = record_flow.goal_record_comment(issues, repo, goal)
+    record = record_flow.comment_text(held_record.get("body") or "") if held_record else ""
+    covered = set(record_flow.parse(record).looked_at) if record else set()
+    # Covered first: its Goal has refined it, so a re-split waits for no other Goal.
+    if ref in covered:
+        return True
     siblings = _epics_of(cards, repo, goal)
     waiting = [c for c in siblings if c.status == INBOX]
     if waiting:
@@ -337,11 +381,6 @@ def look_step(
             (number, f"waits for {_ref(issues, repo, turn)}: one Goal refines at a time")
         )
         return False
-    held_record = record_flow.goal_record_comment(issues, repo, goal)
-    record = record_flow.comment_text(held_record.get("body") or "") if held_record else ""
-    covered = set(record_flow.parse(record).looked_at) if record else set()
-    if ref in covered:
-        return True
     to_read = sorted(
         c.number or 0 for c in siblings if _ref(issues, repo, c.number or 0) not in covered
     )
@@ -376,7 +415,7 @@ def look_step(
             artifacts.comment(
                 issues, sink, repo=repo, number=goal, body=render(look, context), by=None
             )
-        asked, reply = _question_and_reply(issues, repo, goal)
+        asked, reply, answered = _question_and_reply(issues, repo, goal)
         if asked and not reply:
             held("skip.goal_look.waits_for_the_sponsors_answer_on", repo=repo, card=number)
             result.skipped.append((number, "waits for the Sponsor's answer on the Goal"))
@@ -404,6 +443,7 @@ def look_step(
             look=look,
             settlement=settlement,
             first=not record,
+            answered=answered,
         )
     except Exception as exc:  # noqa: BLE001
         reraise_if_down(exc)
@@ -559,8 +599,13 @@ def _write(
     look: LookResult,
     settlement: GoalSettlement | None,
     first: bool,
+    answered: Sequence[str] = (),
 ) -> None:
-    """The Goal's record and its target diagram, from the look and its settle."""
+    """The Goal's record and its target diagram, from the look and its settle.
+
+    `answered` is the Sponsor's comments the settle read as its answer: the record
+    keeps their ids, so they're never entered again as rows of their own.
+    """
     today = datetime.now(UTC).date().isoformat()
     found = _latest_look_comment(issues, repo, goal)
     source = str(found.get("html_url") or "its comment") if found else "its comment"
@@ -592,6 +637,7 @@ def _write(
             ),
             dismissed=(*current.dismissed, *dismissed),
             looked_at=tuple(dict.fromkeys([*current.looked_at, *context.looking_at])),
+            replies=tuple(dict.fromkeys([*current.replies, *answered])),
             to_log=tuple(logged),
         )
         return current

@@ -754,3 +754,110 @@ def test_what_a_delivered_epic_lacks_is_no_item_and_its_criteria_no_rows():
         looked_at=[ref(684)],
     )[0]
     assert [d.binds for d in rows if d.set_by == record_flow.UX_DESIGNER] == [(ref(684),)]
+
+
+# --- the operator's review of mqucifer/crew#864 ----------------------------------------------
+
+
+def post_look(gh, goal_number, *epic_refs):
+    """A look on the Goal for these epics, as the step posts it."""
+    context = GoalContext(
+        goal_ref=ref(goal_number),
+        goal="G",
+        decisions="",
+        epics=[EpicText(r, APPROVED, "# e") for r in epic_refs],
+    )
+    found = LookResult(system(), reader(*epic_refs), {})
+    gh.comment(REPO, goal_number, goal_look.render(found, context))
+
+
+def post_record(gh, goal_number, *covered):
+    held = record_flow.Record(on_goal=True, looked_at=tuple(covered))
+    gh.comment(REPO, goal_number, f"{record_flow.GOAL_RECORD_MARKER}\n{record_flow.render(held)}\n")
+
+
+def test_an_old_record_with_a_question_for_the_architect_is_split_not_held(monkeypatch):
+    """The design settle that answered such questions is gone; nothing would ever lift a
+    hold on them, so the split goes on and writes no criterion on the question."""
+    from tests.test_split_conclusion import BODY, Concluded, proposal, run_tick, story
+
+    open_for_architect = BODY.replace(
+        "| Q1 | Which key? | The store | Implementer |",
+        "| Q1 | Which key? | The store | Architect |",
+    )
+    assert record_flow.parse(record_flow.split(open_for_architect)[1]).for_architect()
+
+    class Old(Concluded):
+        def get(self, repo, number):
+            return {"body": open_for_architect, "state": "open"}
+
+    result, asked, _ = run_tick(
+        monkeypatch, proposal(story("A", "R1", "R2"), story("B", "R3")), issues=Old()
+    )
+    assert len(asked) == 1 and len(result.stories_created) == 2
+    assert not any("still open for the Architect" in why for _, why in result.skipped)
+
+
+def test_a_goal_mid_look_keeps_its_turn_from_one_that_refined_before():
+    """A refined earlier; a new epic of A, which is higher priority, is approved while B
+    waits on the Sponsor mid-look. B keeps the turn."""
+    gh = GitHub({11: 10, 12: 10, 21: 20})
+    post_look(gh, 10, ref(11))
+    post_record(gh, 10, ref(11))
+    split(gh, 11)
+    post_look(gh, 20, ref(21))
+    gh.comment(REPO, 20, f"{goal_look.GOAL_QUESTION_MARKER}\nWeeks or sprints?")
+    cards = [goal(10, "P0"), goal(20, "P2"), epic(11, 10), epic(12, 10), epic(21, 20)]
+    assert goal_look.Turns(gh, cards, []).refining(REPO) == 20
+    # Once B's settle is written, A's new epic takes the turn.
+    post_record(gh, 20, ref(21))
+    split(gh, 21)
+    assert goal_look.Turns(gh, cards, []).refining(REPO) == 10
+
+
+def test_the_sponsors_answer_to_the_goals_question_is_not_also_a_row_of_their_words(
+    monkeypatch,
+):
+    gh = GitHub({684: 666, 687: 666})
+    roles = Roles(monkeypatch, settlements=[settled()])
+    first = [goal(666), epic(684, 666)]
+    step(gh, first[1], first)
+
+    # A later look asks the Sponsor, and the Sponsor answers on the Goal.
+    roles.settlements.append(GoalSettlement(sponsor_question="Weeks or sprints?"))
+    later = [*first, epic(687, 666)]
+    assert not step(gh, later[2], later)[0]
+    answer = gh.comment(REPO, 666, "Sprints.", by="mquarters")
+    placed = SimpleNamespace(context="Units", consequences="-", replaces="")
+    monkeypatch.setattr(board_flow, "place_sponsor_words", lambda **kw: placed)
+
+    def sponsors_rows():
+        return [d for d in the_record(gh).decisions if d.set_by == record_flow.SPONSOR]
+
+    # A covered epic's pass comes first: the answer waits for the settle that reads it.
+    board_flow.record_sponsor_words(gh, EventSink(None), board_flow.TickResult(), first[1], REPO)
+    assert sponsors_rows() == []
+
+    roles.settlements.append(settled(row(ref(687))))
+    assert step(gh, later[2], later)[0]
+    assert str(answer["id"]) in the_record(gh).replies
+    board_flow.record_sponsor_words(gh, EventSink(None), board_flow.TickResult(), first[1], REPO)
+    assert sponsors_rows() == []
+
+
+def test_a_resplit_of_a_refined_goals_epic_waits_for_no_other_goal(monkeypatch):
+    gh = GitHub({684: 666, 701: 700})
+    roles = Roles(monkeypatch)
+    post_look(gh, 666, ref(684))
+    post_record(gh, 666, ref(684))
+    split(gh, 684)
+    post_look(gh, 700, ref(701))  # Goal 700 is mid-look, so it holds the turn
+    cards = [
+        goal(666, "P0"),
+        goal(700, "P2"),
+        epic(684, 666, labels=("needs:rework",)),
+        epic(701, 700),
+    ]
+    assert goal_look.Turns(gh, cards, []).refining(REPO) == 700
+    ok, result = step(gh, cards[2], cards)
+    assert ok and result.skipped == [] and roles.looks == []
