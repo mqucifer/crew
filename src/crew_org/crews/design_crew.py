@@ -178,15 +178,6 @@ class Conflict(BaseModel):
     guideline: str = Field(description="The guideline it contradicts: §19 rule N, or the project's")
     choice: str = Field(description="The design choice that contradicts it")
     why: str
-    # A criterion is the product's decision, not a guideline: a note that can't
-    # meet it goes to the Product Owner, not a person (#425).
-    story: int | None = Field(
-        default=None,
-        description=(
-            "The story's issue number when it contradicts that story's acceptance criterion; "
-            "null when it contradicts a guideline"
-        ),
-    )
 
 
 class Undeclared(BaseModel):
@@ -256,14 +247,9 @@ def propose_design(
 
 
 def review_design(
-    *, project: str, design: str, stories: str = "", repository: str = "", changes: str = ""
+    *, project: str, design: str, repository: str = "", changes: str = ""
 ) -> DesignReview:
-    """The Code Reviewer's check of a proposed design against the guidelines.
-
-    With `stories`, a design note is also checked against the criteria of the
-    stories it directs (#258). Epic sprint-metrics#59's note told #145's test to
-    leave out the assertion #145's criterion required, and nothing at design
-    review could see it: the reviewer was shown the note, never the stories.
+    """The Code Reviewer's check of a proposed project design against the guidelines.
 
     With `repository`, a project's design is also checked for new practices it
     doesn't declare (#154). sprint-metrics' first design added "the version in
@@ -271,16 +257,6 @@ def review_design(
     new practice arrived looking like a record of existing fact. The role that
     proposes doesn't grade itself.
     """
-    against = (
-        "## The stories this note directs, with their acceptance criteria\n\n"
-        f"{stories}\n\n"
-        "The acceptance criteria are the product's decisions. Also report, as a conflict "
-        "whose `guideline` names the story and quotes its criterion, and whose `story` is "
-        "that story's number, every place the note has a story drop, weaken or defer what "
-        "that story's own criterion requires.\n\n"
-        if stories
-        else ""
-    )
     new = (
         f"## The project's code as it stands\n\n{repository}\n\n"
         f"## The changes the design declares\n\n{changes or '(none)'}\n\n"
@@ -296,7 +272,6 @@ def review_design(
             calls.Part(
                 "task",
                 f"{project}\n\n## The proposed design\n\n```yaml\n{design}\n```\n\n"
-                + against
                 + new
                 + "Check each choice against the crew-wide guidelines (§19, in your rules) and "
                 "the project's own guidelines above. Report every choice that contradicts one, "

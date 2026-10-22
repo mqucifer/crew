@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, Field
 
-from crew_org.crews.panel_crew import PanelAnswer
 from crew_org.crews.refinement_crew import StoryProposal
 from crew_org.events import EventKind
 from crew_org.session import steps
@@ -117,11 +116,25 @@ def test_done_is_the_form_with_its_rules_told_and_no_titles_but_a_field_named_ti
     assert "Refused" in points or "refused" in points
 
 
-def step(form=PanelAnswer, name="panel qa_engineer", role="qa_engineer", sub="panel"):
+class PanelNote(BaseModel):
+    problem: str
+    source: str
+    settle: str
+    settled_by: str
+
+
+class Answer(BaseModel):
+    """A step's answer, as the panel's members once gave it: notes, or nothing to add."""
+
+    nothing_to_add: bool
+    notes: list[PanelNote] = Field(default_factory=list)
+
+
+def step(form=Answer, name="goal look ux_designer", role="ux_designer", sub="goal_look"):
     return steps.Step(name, role, form, "your notes, or nothing to add.", "the epic", step=sub)
 
 
-def run_step(main, proxy, *, check=None, form=PanelAnswer):
+def run_step(main, proxy, *, check=None, form=Answer):
     reading = steps.Reading.at(main, "r")
     parts = {"step": "## Your step: read the epic", "epic": "## The epic\n\nf returns 2."}
     return steps.run(
@@ -138,20 +151,20 @@ def test_a_form_refused_for_its_shape_is_a_reply_and_the_session_answers_it(main
         said(("done", right)),
     )
     answer = run_step(main, proxy)
-    assert isinstance(answer, PanelAnswer) and answer.nothing_to_add
+    assert isinstance(answer, Answer) and answer.nothing_to_add
     refused = proxy.sent[2]["messages"][-1]
     assert refused["role"] == "tool" and refused["content"].startswith("`done` was refused")
     assert "notes.0.source" in refused["content"]
     # The step's own role text, its read tools and its form; nothing that edits or runs.
     sent = proxy.sent[0]
-    assert sent["messages"][0]["content"].startswith("You are QA Engineer. You read an epic")
+    assert sent["messages"][0]["content"].startswith("You are UX Designer. You read every epic")
     assert [t["function"]["name"] for t in sent["tools"]] == [
         *("view", "search", "find", "tests_for", "git", "done")
     ]
 
 
 def test_a_steps_own_check_refuses_done_in_the_session(main, seen):  # noqa: F811
-    def check(answer: PanelAnswer) -> None:
+    def check(answer: Answer) -> None:
         if answer.nothing_to_add:
             raise ValueError("Refused: a member with nothing to add read no file.")
 
@@ -175,14 +188,14 @@ def test_every_call_is_recorded_with_the_step_named_and_the_answer_by_its_shape(
     )
     run_step(main, proxy)
     started = kinds(seen, EventKind.SESSION_STARTED)[0]
-    assert started.detail["step"] == "panel qa_engineer" and started.role == "QA Engineer"
+    assert started.detail["step"] == "goal look ux_designer" and started.role == "UX Designer"
     assert started.detail["start_chars"]["total"] > 0
     assert started.detail["limits"]["backstop_s"] == steps.BACKSTOP_S == 7200
     assert all(
-        e.detail.get("step") == "panel qa_engineer" for e in kinds(seen, EventKind.SESSION_TURN)
+        e.detail.get("step") == "goal look ux_designer" for e in kinds(seen, EventKind.SESSION_TURN)
     )
     tool = kinds(seen, EventKind.TOOL_FINISHED)[0]
-    assert (tool.detail["tool"], tool.detail["step"]) == ("search", "panel qa_engineer")
+    assert (tool.detail["tool"], tool.detail["step"]) == ("search", "goal look ux_designer")
     ended = kinds(seen, EventKind.SESSION_ENDED)[0]
     assert ended.detail["said"] == {"nothing_to_add": False, "notes": 1}
     assert "src/app.py:2" not in json.dumps(ended.detail)
@@ -203,12 +216,12 @@ def test_with_no_checkout_a_step_cant_be_worked():
 def test_a_form_with_every_field_defaulted_is_taken_with_a_nested_form_as_text(main, seen):  # noqa: F811
     """sprint-metrics#667's settle passed its whole `conclusion` as JSON text, to a form
     with no required field, and the session crashed on it (crew#807)."""
-    from crew_org.crews.settle_crew import Settlement
+    from crew_org.crews.settle_crew import GoalSettlement
 
     conclusion = {"dismissed": [{"note": 1, "why": "Already settled by the Goal's D1"}]}
     proxy = Proxy(said(("done", {"conclusion": json.dumps(conclusion)})))
-    answer = run_step(main, proxy, form=Settlement)
-    assert isinstance(answer, Settlement) and answer.conclusion.dismissed[0].note == 1
+    answer = run_step(main, proxy, form=GoalSettlement)
+    assert isinstance(answer, GoalSettlement) and answer.conclusion.dismissed[0].note == 1
 
 
 def test_a_failure_handling_done_is_a_reply_and_the_session_goes_on(main, seen, monkeypatch):  # noqa: F811

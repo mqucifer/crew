@@ -46,6 +46,7 @@ def epic_text(n: int) -> str:
 
 def context(epic: int, project_log: str = ""):
     from crew_org.crews.panel_crew import PanelContext, Sibling
+
     from crew_org.project import brief, parse
 
     return PanelContext(
@@ -66,9 +67,10 @@ def context(epic: int, project_log: str = ""):
 
 
 def main() -> None:
+    from crew_org.crews.panel_crew import run_panel
+
     from crew_org import tracing
     from crew_org.config import load_org
-    from crew_org.crews.panel_crew import run_panel
     from crew_org.events import EventSink, bridge_crewai, flush_bridge, working_on
 
     runs = int(sys.argv[1])

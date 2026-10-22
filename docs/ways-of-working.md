@@ -21,10 +21,10 @@ reads as noise (crew#756).
 | Role | Produces |
 |---|---|
 | Product Sponsor (human) | Goals; epic approval; sprint acceptance |
-| Product Owner | Epics, each naming the reader it serves and marked if it changes what a reader sees (`needs:ux`), and what of the Goal it left out or reshaped, with why (ADR 0035); proposed Goals, when a Goal points elsewhere (ADR 0027); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
+| Product Owner | Epics, each naming the reader it serves, and what of the Goal it left out or reshaped, with why (ADR 0035); proposed Goals, when a Goal points elsewhere (ADR 0027); answers to questions about product intent (crew#189); the order of a repository's open epics (the board's Rank) and the holds new work creates, whenever an epic arrives unranked (crew#358). The Sponsor's Goals and Priority stay the Sponsor's |
 | Business Analyst | Stories, Tasks, acceptance criteria, estimates |
-| UX Designer | Presentation notes for epics labelled `needs:ux`: who reads the output, a sample of it, and criteria about what the reader sees, added to each story's own (crew#377). It adds criteria; it never removes, weakens or re-scopes one |
-| Architect | A project's design, design notes, technical epics, Tasks, Spikes |
+| UX Designer | In the Goal's look: who reads the Goal's result, what they meet per epic, what's missing for them, and criteria about what they see, which the Business Analyst writes into the stories (crew#858). It never removes, weakens or re-scopes a criterion |
+| Architect | A project's design; in the Goal's look, the decisions across its epics and the Goal's target C4 diagram (crew#858); technical epics, Tasks, Spikes |
 | Developer | Code, tests, docs, PRs, Bugs |
 | QA Engineer | Behaviour verdicts, Bugs |
 | Code Reviewer | Diff verdicts, Bugs |
@@ -109,9 +109,9 @@ Engineer never comments on style or structure — that is the Reviewer's finding
 to make. When the two disagree, both findings stand and the card returns to
 `In Progress` carrying each.
 
-The Reviewer is shown the story's acceptance criteria as well as the epic's
-design note. A finding the criteria rule out — asking the author to break a
-criterion, because the note says otherwise — is not a change to request: the
+The Reviewer is shown the story's acceptance criteria as well as the Goal's
+record and target diagram. A finding the criteria rule out — asking the author
+to break a criterion, because the record says otherwise — is not a change to request: the
 Reviewer names the criterion it conflicts with, and the story goes back to
 refinement on that first review, for the Product Owner to settle (crew#252).
 If the gates still disagree, the limit of three round trips (crew#243) sends
@@ -342,48 +342,33 @@ the Sponsor at sprint review.
 
 ## 13. When design happens
 
-Design is **rationed**, not automatic. An Architect's design note is produced
-only for epics above a complexity threshold; thresholds live in
-`config/org.yaml` under `design`.
+Design happens **once per Goal, before its epics are split** (crew#858). Once
+none of a Goal's epics waits for the Sponsor's approval, the Architect and the
+UX Designer read all of them in the Goal's look, each in its own session, at the
+same time. The Architect says what the code already supports, decides each
+decision across the epics that would be expensive to reverse, naming the options
+it weighed, calls out the risks and the seams between epics, and draws the
+Goal's target C4 diagram in Mermaid: the repository's system with the Goal's new
+parts and connections. A call outside the Goal's intent is the Sponsor's, and
+goes to them as a question. The UX Designer says who reads the Goal's result,
+what they meet once each epic is delivered, what's missing for them, and the
+criteria about what they see.
 
-An epic requires a design note when it exceeds **any** of:
+The Product Owner settles both into the **Goal's record**, a comment on the
+Goal: the Architect's decisions and the reader's criteria as they set them, and
+its own rows for the rest, each naming the epics it binds. The target diagram is
+its own comment on the Goal; a change to it is a new version. The Business
+Analyst splits each epic from the rows that bind it, and the Developer, the Code
+Reviewer and QA are shown the record and the diagram. An epic added to the Goal
+later gets the look for that epic only, against the record the Goal has. Nothing
+below the Goal carries a diagram, and no epic gets a design or presentation note
+of its own.
 
-- total story points,
-- number of stories,
-- distinct modules touched.
-
-Two labels override the thresholds in either direction: `needs:design` demands
-a note on an epic that would otherwise skip it, and `no:design` waives one.
-When both are present, `needs:design` wins — demanding design is the safer
-error.
-
-**How a note happens** (crew#155). Refinement labels an epic `needs:design` when
-it crosses a threshold. The tick's design phase then has the Architect write the
-note as a comment on the epic, from the epic, its stories, the project's record
-and the code. The note covers the approach, the interfaces and data shapes the
-stories share, what would be expensive to reverse, the risks, one direction per
-story, and what it looked at. The Code Reviewer checks it against §19 and the
-project's guidelines, as it checks a project's design. A conflict gets one
-retry, then the epic is blocked for a person with the guideline named, and so is
-a decision the Architect names as beyond its reach. Until the note exists,
-planning holds the epic's stories back. Once it does, the Developer building one
-of them and the Code Reviewer judging its diff are both shown it.
-
-**What the reader sees** (crew#377). An epic that changes what someone reads or
-sees (a report, a page, an output format) is labelled `needs:ux` by the Product
-Owner. Once its stories are split, the design phase has the UX Designer write a
-presentation note on the epic: who reads the output and the question they bring,
-a sample of the finished output, and for every story at least two criteria about
-what the reader sees. Those criteria are added to the story's own acceptance
-criteria, in the same Given/When/Then form, so the Developer builds to them, the
-Code Reviewer reads them and QA proves them with tests. A criterion that needs
-judgement ("clear", "at a glance") is refused by the note's schema, not by
-asking: whether it reads well is the Sponsor's call at review. A note that
-doesn't cover every story after a retry blocks the epic for a person. Until the
-note exists, planning holds the epic's stories back, as for a design note, and
-the Developer and Code Reviewer are shown it once it does. It's rationed for the
-same reason design is: presentation judgement is as hard for a small model as
-architecture, so it's asked for only where a reader is affected.
+**One Goal refines at a time in a project.** While one Goal of a project has an
+approved epic that isn't split, the epics of the others wait to be refined; the
+one that has begun keeps its turn, and otherwise the first in admission's order
+goes. The next Goal can be decomposed and approved meanwhile. A technical epic
+has no Goal, and is never held by this.
 
 **When the Architect revisits a project's design** (crew#192). How a project is
 built is the Architect's call, and the Sponsor is never asked whether a
@@ -413,16 +398,10 @@ against the structure the Architect chose, rather than piling into the one it
 replaces. The standup's **Decided by the crew** section says what the Architect
 did and why.
 
-**Why ration it.** Architectural judgment is the work a local model does worst,
-so the Architect is the scarcest role in the org. Requiring a design note on
-every epic would spend it on epics that never needed one. A two-story epic
-costs more to design than to simply build.
-
-**The tradeoff is real and is accepted deliberately.** Skipping design risks a
-developer inventing an approach that later has to be unpicked. The thresholds
-are the dial: raise them to design less, lower them if developers begin
-producing conflicting approaches. If neither setting works, the correct next
-move is a human gate before implementation.
+**Why once per Goal.** Architectural judgment is the work a local model does
+worst, so the Architect is the scarcest role in the org. A look per epic spent it
+on each epic again, and left the seams between them to nobody; one look across
+the Goal spends it where the decisions are shared.
 
 ---
 
@@ -627,7 +606,7 @@ Three rules for every limit on prompt content:
    `read_file`: the whole file, or one definition by name, and a Python file over
    12,000 characters by definition only, its imports and definitions listed when
    it's asked for whole (crew#583, step C4, 2026-10-11). It carries much besides
-   code (pinning tests, the Goal's other records, its own), so its code is sized
+   code (pinning tests, the Goal's record, the stories other epics plan), so its code is sized
    from the rest of its prompt to keep 40,000 characters free to read, within
    175,000 for the whole call, and with under 5,000 free it isn't offered the
    tool: the first real split with it had nothing left, thought 17k tokens
@@ -686,8 +665,8 @@ Three rules for every limit on prompt content:
    is logged, along with what QA read.
 
    **Refinement's steps read the code in a session** (crew#807, ADR 0033,
-   2026-10-18). The panel, the decomposition, the settles, the split, the
-   criteria check and its repair, and the UX Designer's note each work as the
+   2026-10-18). The decomposition, the Goal's look and its settle (crew#858),
+   the split, and the criteria check and its repair each work as the
    Developer does: one conversation of read-only tool calls over a checkout of
    the default branch, starting with what the step decides from, the map and
    the graph's hints, and ending with its own form as `done`. Nothing preloads

@@ -23,6 +23,23 @@ call.the_answer_ran_on_as:
 call.the_answer_was_empty_you:
   messages:
     default: 'the answer was empty: you stopped before writing it. Think less and write the whole answer'
+check.goal_look_crew.check_epics:
+  description: Refused if it names an epic that isn't the Goal's, or, for the reader, leaves out an epic
+    it read.
+  messages:
+    missing: 'say what the reader meets in {epics} too'
+    unknown: '{epics} aren''t epics of this Goal: name its epics as owner/repo#number, or `all`'
+  origin:
+  - crew#858
+  told_in: SystemLook, ReaderLook
+check.settle_crew.asks_beyond_the_goal:
+  description: Refused if it settles a call beyond the Goal before the Sponsor has answered it.
+  messages:
+    default: '{items} reach beyond the Goal: ask the Sponsor, as one question with no conclusion'
+  origin:
+  - crew#858
+  owner: Product Owner
+  told_in: GoalSettlement
 check.settle_crew.check_covers:
   description: Refused unless every note, N1 to the last, is answered, and nothing answers a note that
     isn't there.
@@ -32,15 +49,14 @@ check.settle_crew.check_covers:
     unknown: '{notes} are not notes. '
   owner: Product Owner
   told_in: Settlement
-check.settle_crew.check_design_covers:
-  description: Refused unless it answers each question left for you once, by its ID, and only those.
+check.settle_crew.check_goal_epics:
+  description: Refused if a row or question names an epic the look didn't read.
   messages:
-    asked: 'The questions are {questions}: answer each once, by its ID.'
-    missing: 'You didn''t settle {questions}. '
-    twice: '{questions} answered more than once. '
-    unknown: '{questions} aren''t questions left for you. '
-  owner: Architect
-  told_in: DesignSettlement
+    default: '{epics} aren''t epics the look read: name them as owner/repo#number, or `all`'
+  origin:
+  - crew#858
+  owner: Product Owner
+  told_in: GoalSettlement
 check.settle_crew.cut:
   description: 'Refused if a cell reaches its length limit: one at the limit was cut off.'
   messages:
@@ -128,24 +144,6 @@ config.const.settle_crew.INFRA_CHARS:
 config.const.settle_crew.QUESTION_CHARS:
 config.const.settle_crew.REASON_CHARS:
 config.const.settle_crew.SOURCE_CHARS:
-form.Conclusion.says_something:
-  description: Refused if it has no rows, open questions, items for infra or dismissals.
-  messages:
-    default: 'a conclusion answers the notes: give rows, questions or dismissals'
-  owner: Product Owner
-  told_in: Conclusion
-form.DesignAnswer.an_id:
-  description: Refused if it isn't a question's ID, like Q1.
-  messages:
-    default: name the question by its ID, like Q1
-  owner: Architect
-  told_in: DesignAnswer.question
-form.DesignNote.covers_the_stories:
-  description: Refused if empty.
-  messages:
-    default: a design note gives each story its direction
-  owner: Architect
-  told_in: DesignNote.stories
 form.DesignProposal.enforces_something:
   description: 'Refused if empty: at least one check enforces the definition of done.'
   messages:
@@ -167,18 +165,14 @@ form.Finding.is_actionable:
   messages:
     default: say specifically what to change. A finding an author cannot act on is not a finding.
   told_in: Finding.action
-form.PanelAnswer.one_or_the_other:
-  description: Refused unless it gives notes or says nothing to add, not both.
+form.GoalSettlement.one_or_the_other:
+  description: Refused unless it gives a record or one question for the Sponsor, not both.
   messages:
-    no_notes: 'no notes: give at least one, or say nothing to add'
-    with_notes: 'nothing_to_add with notes: give notes, or nothing to add'
-  told_in: PanelAnswer
-form.PresentationNote.has_a_sample:
-  description: Refused if empty.
-  messages:
-    default: the note carries a sample of the finished output
-  owner: UX Designer
-  told_in: PresentationNote.sample
+    default: give the Goal's record, or one question for the Sponsor, not both and not neither
+  origin:
+  - crew#858
+  owner: Product Owner
+  told_in: GoalSettlement
 form.ProcessDefect.short:
   description: Refused if it runs over its length limit.
   messages:
@@ -219,13 +213,7 @@ form.RowNotForStories.row_id:
     default: name the row by its ID, like R3
   owner: Business Analyst
   told_in: RowNotForStories.row
-form.Settlement.one_or_the_other:
-  description: Refused unless it gives a conclusion or one question for the Sponsor, not both.
-  messages:
-    default: give a conclusion, or one question for the Sponsor; not both
-  owner: Product Owner
-  told_in: Settlement
-form.Settlement.stripped:
+form.GoalSettlement.stripped:
   owner: Product Owner
 form.Story.row_ids:
   description: Refused unless each is a row's ID, like R1.
@@ -233,6 +221,23 @@ form.Story.row_ids:
     default: '{ids}: name rows of the conclusion by ID, like R1'
   owner: Business Analyst
   told_in: Story.follows
+form.SystemLook.diagram_well_formed:
+  description: Refused if the diagram wouldn't render as Mermaid's C4, or the sequence as a sequence
+    diagram.
+  messages:
+    default: 'the diagram doesn''t render as written: {problems}'
+  origin:
+  - crew#858
+  owner: Architect
+  told_in: SystemLook.diagram
+form.SystemLook.new_parts_drawn:
+  description: Refused if a new part isn't an alias the diagram draws.
+  messages:
+    default: '{aliases} aren''t in the diagram: name each new part by its alias there'
+  origin:
+  - crew#858
+  owner: Architect
+  told_in: SystemLook.new
 form.row.an_id:
   cases:
   - form.AnswerRow.an_id

@@ -7,7 +7,7 @@ acceptance criteria.
 
 from __future__ import annotations
 
-from crew_org.flows.presentation_notes import for_story
+from crew_org.flows.epic_notes import for_story
 
 NOTES = """## Design note
 

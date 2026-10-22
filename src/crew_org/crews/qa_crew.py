@@ -93,6 +93,7 @@ def verify_story(
     checks: str = "",
     can_ask: bool = False,
     decisions: str = "",
+    diagram: str = "",
     read: calls.Tool | None = None,
 ) -> QAVerdict:
     """Judge an implementation against its acceptance criteria.
@@ -132,6 +133,11 @@ def verify_story(
                     decisions,
                     "These are decided for the epic. A criterion is proven only by work that also "
                     "keeps to them: hold it unproven if the code does what a row rules out.",
+                )
+                + epic_rows.diagram(
+                    diagram,
+                    "What the system will be once the Goal is delivered: the story's criteria "
+                    "are proven through the parts it draws.",
                 )
                 + f"## The tests that were written\n\n```python\n{test_code}\n```\n\n"
                 f"## What running the suite produced\n\n```\n{test_output}\n```\n\n"

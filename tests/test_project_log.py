@@ -1,4 +1,4 @@
-"""A project's own decision log reaches the panel, the settle step and the split (crew#468).
+"""A project's own decision log reaches the Goal's look, its settle and the split (crew#468).
 
 Decisions that apply to every epic in a project name no Goal, so the Goal-based rule
 never found them, and the panel replay missed the findings they settle.
@@ -10,8 +10,8 @@ import contextlib
 
 import httpx
 
-from crew_org.crews import panel_crew, settle_crew
-from crew_org.crews.panel_crew import PanelAnswer, PanelContext, PanelNote, PanelResult
+from crew_org.crews import goal_look_crew, settle_crew
+from crew_org.crews.goal_look_crew import APPROVED, EpicText, GoalContext, LookResult
 from crew_org.flows import project_log
 from crew_org.flows.project_log import HEADER, accepted, read_log
 from crew_org.tools.github_issues import IssueClient, Trust
@@ -113,12 +113,11 @@ def test_a_directory_is_listed_by_its_file_names():
 
 
 def context(log="## The project's decision log\n\n### 1. Counting\n\nWhere it merges."):
-    return PanelContext(
+    return GoalContext(
         goal_ref="mqucifer/sprint-metrics#174",
         goal="GOAL",
         decisions="DECISIONS",
-        epic_ref="mqucifer/sprint-metrics#406",
-        epic="EPIC",
+        epics=[EpicText("mqucifer/sprint-metrics#406", APPROVED, "EPIC")],
         project_log=log,
     )
 
@@ -128,28 +127,18 @@ def opened(parts: dict[str, str]) -> str:
     return "\n\n".join(p for p in parts.values() if p)
 
 
-def test_every_panel_member_is_shown_the_projects_log():
-    for role in panel_crew.ROLES:
-        text = opened(panel_crew.opening(context(), role))
-        assert "### 1. Counting" in text and "the project's decision log" in text
+def test_both_roles_of_the_look_are_shown_the_projects_log():
+    for role in goal_look_crew.ROLES:
+        assert "### 1. Counting" in opened(goal_look_crew.opening(context(), role))
 
 
-def test_the_settle_step_is_shown_it_as_a_source():
-    notes = PanelResult(
-        {
-            "qa_engineer": PanelAnswer(
-                nothing_to_add=False,
-                notes=[PanelNote(problem="p", source="s", settle="t", settled_by="product_owner")],
-            )
-        },
-        {},
-    )
-    text = opened(settle_crew.opening(context(), notes))
-    assert "### 1. Counting" in text and "the project's decision log, a sibling's" in text
+def test_the_goals_settle_is_shown_it_as_a_source():
+    text = opened(settle_crew.goal_opening(context(), LookResult(None, None), []))
+    assert "### 1. Counting" in text and "the project's log" in text
 
 
 def test_a_project_without_a_log_reads_as_before():
-    assert "decision log\n\n###" not in opened(panel_crew.opening(context(log=""), "architect"))
+    assert "decision log\n\n###" not in opened(goal_look_crew.opening(context(log=""), "architect"))
 
 
 def test_the_split_is_shown_the_log(monkeypatch):
@@ -176,45 +165,6 @@ def test_the_tick_reads_the_log_and_gives_it_to_the_split(monkeypatch):
         monkeypatch, proposal(story("A", "R1", "R2"), story("B", "R3")), issues=WithLog()
     )
     assert "### 1. A card counts where it merges" in asked[0][1]["project_log"]
-
-
-def test_the_panel_step_records_how_big_its_context_is(monkeypatch):
-    from types import SimpleNamespace
-
-    from crew_org.events import EventSink
-    from crew_org.flows import panel as panel_flow
-    from crew_org.flows import refine_panel
-    from crew_org.flows import settle as settle_flow
-
-    ctx = SimpleNamespace(epic_ref="x", decisions="D" * 120, project_log="L" * 45, siblings=[1, 2])
-    monkeypatch.setattr(panel_flow, "gather", lambda *a, **k: ctx)
-    monkeypatch.setattr(
-        panel_flow, "panel_on", lambda *a: SimpleNamespace(answers={"x": 1}, failed={})
-    )
-    monkeypatch.setattr(
-        settle_flow, "settle_epic", lambda *a, **k: settle_flow.Settled(settle_flow.Outcome.WRITTEN)
-    )
-    events = []
-    sink = EventSink(None)
-    sink.subscribe(events.append)
-
-    class Gh:
-        def get(self, repo, number):
-            return {"body": "no conclusion"}
-
-    epic = SimpleNamespace(number=406, title="t", parent=174)
-    refine_panel.panel_step(
-        None,
-        Gh(),
-        sink,
-        SimpleNamespace(failed=[], skipped=[]),
-        epic,
-        "sprint-metrics",
-        search=[],
-    )
-    [note] = [e for e in events if "panel context" in e.summary]
-    assert note.detail["decisions_chars"] == 120 and note.detail["project_log_chars"] == 45
-    assert note.detail["siblings"] == 2
 
 
 def test_the_log_lives_where_the_crew_keeps_its_own():

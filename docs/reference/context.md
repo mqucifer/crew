@@ -2,39 +2,9 @@
 
 The manifest of each step's context (crew#583, ADR 0023): its parts, in the order the step reads them, where each comes from, and why it is there. A step's context is changed here and in the code together. `tests/test_context_manifest.py` reads the tables and checks that every function, class and method they name exists in the code, so a pull request that renames or removes one updates its table too.
 
-This is a drift check, not a gate (the Sponsor, 2026-10-10): no rule here may slow how a team changes software. A new fact goes into the epic's record and into a table here, never into a new reader.
+This is a drift check, not a gate (the Sponsor, 2026-10-10): no rule here may slow how a team changes software. A new fact goes into the record and into a table here, never into a new reader.
 
 Every step the plan's table "What each step reads after Part A" names is listed. A step added later gets its table in the same pull request.
-
-## Architect, settling the design questions (before the split)
-
-`settle_crew.design_opening`, the start of the session `settle_crew.settle_design` runs, called by `settle.settle_design_questions` (ADR 0018, crew#807).
-
-| Part | From | Why |
-|---|---|---|
-| Its step | `settle_crew.design_opening` | What it settles, and that the stories are the Business Analyst's |
-| The Goal | the Goal's issue, `panel.gather` | Each answer stays within it |
-| The project's decision log | the project's `docs/decisions/`, `panel.gather` | Decisions that hold for every epic |
-| The other epics under this Goal, with their records | `panel.siblings_of` | A question another epic already settled is answered the same way, citing its row (crew#611) |
-| The epic | its approved text | What the questions are about |
-| The epic's record, whole | `record.split` | The binding rows each answer must not contradict |
-| The questions left for the Architect | `record.architect_questions` | What to settle, by ID |
-
-Then the four parts every refinement session's start ends with (below). The code it was shown, focused on the questions, it reads with the tools. `done` refuses a cut cell or a question left out, in the session.
-
-## Architect, the design note (after the split)
-
-`design_note_crew.write_note`, called by `design_notes.write_notes` (crew#155).
-
-| Part | From | Why |
-|---|---|---|
-| The project's record | `.crew/project.yaml` | What the project is for and how it is built |
-| The epic, with its record | the epic's body | The settled rows the note builds on, never re-decides |
-| Its stories | the epic's open sub-issues | What the note gives a direction to |
-| The code as it stands | `repository_context` | Which module owns what, where files go |
-| The last refusal | `_write_one` | Why the previous note was refused |
-
-The questions the record leaves open are no longer part of this step: the Architect settles them before the split. Nor is the latest Product Owner answer, read from the comments: every answer is a row of the record (step A3).
 
 ## Product Owner, answering a story problem
 
@@ -45,7 +15,7 @@ The questions the record leaves open are no longer part of this step: the Archit
 | The project's record | `.crew/project.yaml` | What the project is for |
 | What the project has delivered | `Delivered.render` | A choice that contradicts delivered work is caught |
 | The Goal | the Goal's issue | The answer stays within it |
-| The epic, with its record | the epic's body | Every decision so far, its own earlier answers included (ADR 0023) |
+| The epic, with its record | `board_flow._with_record`: its body, with the Goal's rows that bind it | Every decision so far, its own earlier answers included (ADR 0023) |
 | Why it came back | `story_problem_evidence`, the latest story problem | The question to answer |
 | The last refusal | `product_step` | Why the record refused the previous rows |
 
@@ -55,8 +25,8 @@ The questions the record leaves open are no longer part of this step: the Archit
 
 | Part | From | Why |
 |---|---|---|
-| The epic, with its record | the epic's body | Which row or question the words change |
-| The Sponsor's words | the Sponsor's comment on the epic | Quoted as the row's decision, unchanged |
+| The epic, with its record | `board_flow._with_record` | Which row or question the words change |
+| The Sponsor's words | the Sponsor's comment on the epic, or on its Goal once the Goal has a record | Quoted as the row's decision, unchanged |
 | The last refusal | `record_sponsor_words` | Why the record refused the previous placing |
 
 ## Business Analyst, the split
@@ -67,8 +37,8 @@ The questions the record leaves open are no longer part of this step: the Archit
 |---|---|---|
 | Its step | `refinement_crew.split_opening` | How stories are written here, and that the epic's scope is the Product Owner's |
 | The epic | its approved text | What to split |
-| The epic's record, whole | `record.split` | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
-| The other epics under this Goal, with their records | `panel.siblings_of` | A story doesn't contradict a binding row of theirs (crew#611) |
+| The record, as the epic sees it | `record.text_for`: the Goal's rows that bind it, or its own record from before the Goal's look | Rows each story follows, open questions no story settles, and the merged tests (C rows) each story carries or drops |
+| The Goal's target diagram | `goal_look.diagram_of` | What the stories build: the system once the Goal is delivered (crew#858) |
 | The project's decision log | the project's `docs/decisions/` | Decisions that hold for every epic |
 | Stories other epics plan | `planned_elsewhere` | Not written again, or built on |
 | The stories this split replaces | the epic's superseded sub-issues | Each is accounted for (#248) |
@@ -87,34 +57,35 @@ Then the four parts every refinement session's start ends with (below). The repo
 | The rows it follows | `story_rows` | The decisions that may require the change |
 | The merged tests `done` changed where the story says they stay, with `done`'s why | `gates.changed_tests` | What to rule on |
 
-## The refinement panel (four members)
+## The Goal's look: the Architect and the UX Designer
 
-`panel_crew.opening`, the start of each member's session, which `panel_crew.review` runs; `panel_crew.run_panel` runs the four at once, and records each one's model time while they run (crew#440, crew#807).
+`goal_look_crew.opening`, the start of each role's session, which `goal_look_crew.read` runs; `goal_look_crew.run_look` runs the two at once and records each one's model time, called by `goal_look.look_step` once none of the Goal's epics waits for the Sponsor (crew#858).
 
 | Part | From | Why |
 |---|---|---|
-| Its step | `panel_crew.opening`, with the member's `FOCUS` | What it owns, its scope, and that "nothing to add" is an answer |
-| The Goal | the Goal's issue, `panel.gather` | What the epic is for |
-| The Sponsor's decisions for the Goal | `decisions.collect_decisions` | What the Sponsor has already decided (ADR 0015); left out when there are none |
+| Its step | `goal_look_crew.opening`, with the role's `QUESTION` | The system or the reader, across every epic |
+| The Goal | the Goal's issue, `goal_look.gather`, without its template's footer (`sponsors_words`) | What the epics are for |
+| The Sponsor's decisions for the Goal | `decisions.collect_decisions` | What the Sponsor has already decided (ADR 0015) |
 | The project's decision log | `project_log.read_log` | Decisions that hold for every epic |
-| The other epics under this Goal, with their records | `panel.siblings_of` | Where this epic meets its siblings, and what they already decided; a superseded one only by the binding rows it carries (crew#611) |
-| The epic | its approved text | What each member reads, from its own role |
+| The Goal's record and target diagram, for a later look | `record.goal_record_comment`, `goal_look.diagram_of` | What's settled; a later look reads only the epics added since |
+| The Goal's epics | `goal_look.gather`: those it reads for, those the record covers, the delivered ones | What each role reads, from its own question |
 
-Then the four parts every refinement session's start ends with (below).
+Then the four parts every refinement session's start ends with (below). The Architect also has `contracts`, and the UX Designer `look` (`role_tools`). `done` refuses a diagram that wouldn't render (`mermaid.c4_problems`), a new part the diagram doesn't draw, an epic that isn't the Goal's, and a reader's answer that leaves out an epic it read.
 
-## Product Owner, settling the panel's notes
+## Product Owner, settling the Goal's look
 
-`settle_crew.opening`, the start of the session `settle_crew.settle` runs, called by `settle.propose` (crew#440, crew#807).
+`settle_crew.goal_opening`, the start of the session `settle_crew.settle_goal` runs, called by `goal_look.look_step` (crew#858).
 
 | Part | From | Why |
 |---|---|---|
-| Its step | `settle_crew.opening` | The four ways a note is settled, and when to ask the Sponsor |
-| The Goal, the Sponsor's decisions, the decision log, the other epics | `panel.gather` | What settles a note, or what a call must stay within (ADR 0018) |
-| The epic | its approved text | What the notes are about |
-| The panel's notes | `settle_crew.numbered` | What to settle, by number |
-| The Sponsor's answer | `settle._reply` | When the Product Owner asked |
+| Its step | `settle_crew.goal_opening` | The four ways an item is settled, and when to ask the Sponsor |
+| The Goal, the Sponsor's decisions, the decision log | `goal_look.gather` | What settles an item, or what a call must stay within (ADR 0018) |
+| The Goal's record, for a later look | `record.goal_record_comment` | Its rows hold; one an item contradicts is the Sponsor's question |
+| The look, as its comment | `goal_look.render` | What both roles found |
+| The items to settle | `settle_crew.look_items` | The risks, what's missing for the reader, and the calls beyond the Goal, by number |
+| The Sponsor's answer | `goal_look._question_and_reply` | When the Product Owner asked |
 
-Then the four parts every refinement session's start ends with (below). `done` refuses a cut cell, an own call the Goal's words don't hold, a design question decided as a product call, or a note left unanswered, in the session.
+Then the four parts every refinement session's start ends with (below). `done` refuses a cut cell, an own call the Goal's intent doesn't hold, an item left unanswered, an epic the look didn't read, and a record while a call beyond the Goal waits for the Sponsor. The Architect's decisions and the reader's criteria go into the record as they set them (`goal_look.rows_from`).
 
 ## QA, the criteria check
 
@@ -161,20 +132,6 @@ Then the four parts every refinement session's start ends with (below).
 
 Then the four parts every refinement session's start ends with (below). The repository, which it was shown whole (572k characters for sprint-metrics#650), it reads with the tools.
 
-## UX Designer, the presentation note
-
-`presentation_note_crew.opening`, the start of the session `presentation_note_crew.write_note` runs, called by `presentation_notes.write_notes` (#377, crew#807).
-
-| Part | From | Why |
-|---|---|---|
-| Its step | `presentation_note_crew.opening` | What the note holds, and that a criterion already met goes in `already_holds` |
-| The Goal | the Goal's issue | Who the output is for |
-| The other epics under this Goal, with their records | `panel.siblings_of` | crew-presentation#124's "0.5 days" came seconds after its sibling's note asked for hours and minutes |
-| The epic, with its record | `panel._with_record` | What changes for the reader |
-| Its stories | the epic's open sub-issues | What the criteria are added to |
-
-Then the four parts every refinement session's start ends with (below). `done` refuses a note that leaves out a story or names one the epic doesn't have.
-
 ## What every refinement session's start ends with
 
 `steps.start`, after the step's own parts (crew#807).
@@ -196,7 +153,8 @@ Each step reads one checkout of the default branch, `Workspace.at_main`, through
 |---|---|---|
 | The story | its issue, with `session_delivery.story_section` | What to build, and its Existing tests line |
 | The rows it follows | `conclusion.story_rows` | The binding decisions it builds to, and any row that replaced one |
-| The epic's notes | `presentation_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
+| The Goal's target diagram | `conclusion.story_diagram` | The system it builds into (crew#858) |
+| The epic's notes, for an epic split before the Goal's look | `epic_notes.story_notes`, cut by `for_story` | The Architect's design note and the UX Designer's presentation note: the shared parts whole, this story's direction whole, the others' first sentence (L2) |
 | The tests the story declares | `start.declared_tests` | Always shown, as merged at the base commit |
 | How the project works | `start.how_it_works`, from the project's record | Its checks, its parts and its conventions |
 | The map | `start.project_map` | Every file, its size, and a Python file's top-level names |
@@ -213,7 +171,8 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 | Part | From | Why |
 |---|---|---|
 | The story and the rows it follows | its issue, `conclusion.story_rows` | What the change is judged against |
-| The design note | `presentation_notes.story_notes` | The direction the change follows |
+| The Goal's target diagram | `conclusion.story_diagram` | A part or a connection it doesn't draw is a finding (crew#858) |
+| The epic's notes, for an epic split before the Goal's look | `epic_notes.story_notes` | The direction the change follows |
 | The code the diff imports, and who imports what it changes | `review_evidence.importers_section` | What the change can break |
 | The diff | the pull request | What is judged |
 
@@ -224,6 +183,7 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 | Part | From | Why |
 |---|---|---|
 | The story and the rows it follows | its issue, `conclusion.story_rows` | Each criterion is proven or not |
+| The Goal's target diagram | `conclusion.story_diagram` | The parts a criterion is proven through (crew#858) |
 | The tests that were written | the pull request | Which test proves which criterion |
 | What running the suite produced | the sandbox | Proof, not a claim |
 | The docs the change edits | the pull request | A doc criterion is judged by reading the doc |

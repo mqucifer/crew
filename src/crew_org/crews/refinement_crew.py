@@ -207,13 +207,6 @@ class Epic(BaseModel):
             "the others. Name what its reader could do with only this."
         )
     )
-    changes_what_readers_see: bool = Field(
-        description=(
-            "True if this epic changes what someone reads or sees: a report, a page, "
-            "an output format. The UX Designer then adds criteria about the reader "
-            "(#377)."
-        )
-    )
 
     @field_validator("separately_deliverable")
     @classmethod
@@ -719,7 +712,7 @@ def decompose_opening(
     """The Product Owner's decomposition as a session's start (crew#807). The
     repository it was shown whole, 572k characters for sprint-metrics#650, is read
     through the tools; what's delivered is a note (`steps.delivered_section`)."""
-    from crew_org.crews.panel_crew import sponsors_words  # noqa: PLC0415
+    from crew_org.crews.goal_look_crew import sponsors_words  # noqa: PLC0415
 
     if lacking:
         ask = (
@@ -889,7 +882,7 @@ def split_epic(
     planned_numbers: set[int] | None = None,
     conclusion: str = "",
     project_log: str = "",
-    siblings: str = "",
+    diagram: str = "",
     provided: frozenset[str] = frozenset(),
     rows: Sequence[str] = (),
     declared: Sequence[str] = (),
@@ -932,7 +925,7 @@ def split_epic(
         planned=planned,
         conclusion=conclusion,
         project_log=project_log,
-        siblings=siblings,
+        diagram=diagram,
     )
     proposal: StoryProposal = steps.run(
         SPLIT,
@@ -955,7 +948,7 @@ def split_opening(
     planned: str = "",
     conclusion: str = "",
     project_log: str = "",
-    siblings: str = "",
+    diagram: str = "",
 ) -> dict[str, str]:
     """The Business Analyst's split as a session's start (crew#807).
 
@@ -988,11 +981,12 @@ def split_opening(
         "`already_delivered`.",
         "epic": f"## The epic ({epic_ref}): {title}\n\n{context}",
         "conclusion": (
-            f"## The epic's record\n\n{conclusion}\n\n"
-            "Four roles read this epic and the Product Owner settled what they raised, "
-            "before this split. Its rows are decided: a story may not contradict one, and "
-            "each story names the rows it follows in `follows`. The Architect settled the "
-            "design questions before this split, as rows. A question still open (Q) is left "
+            f"## The record this epic follows\n\n{conclusion}\n\n"
+            "The Architect and the UX Designer read this Goal's epics, and the Product Owner "
+            "settled what they found into the Goal's record, before this split: these are "
+            "its rows that bind this epic. Its rows are decided: a story may not contradict "
+            "one, and each story names the rows it follows in `follows`. What the Architect "
+            "decided, and what the reader sees, are rows too. A question still open (Q) is left "
             "to whoever builds it: no story's criterion settles it or waits for it, unless "
             "the epic's own text says so. A row (R) that no story follows goes in "
             "`not_for_stories`, with why. Open questions (Q) and items for infra (I) need no "
@@ -1002,12 +996,11 @@ def split_opening(
             if conclusion
             else ""
         ),
-        "siblings": (
-            "## The other epics under this Goal, with their records\n\n"
-            f"{siblings}\n\n"
-            "What they decided holds here too: a story doesn't contradict a binding row of "
-            "theirs (crew#611)."
-            if siblings
+        "diagram": (
+            f"## The Goal's target diagram\n\n```mermaid\n{diagram}\n```\n\n"
+            "What the system will be once the Goal is delivered, drawn by the Architect: the "
+            "stories build its new parts and connections."
+            if diagram
             else ""
         ),
         "project_log": project_log,

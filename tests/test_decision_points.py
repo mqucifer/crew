@@ -34,15 +34,14 @@ def test_each_entry_is_a_rule_or_says_why_it_isnt():
 
 
 def test_crew773s_hold_is_found_as_a_decision_point():
-    """The shape the list once missed: a hold said only in words."""
+    """The shape the list once missed (crew#773's hold): a hold said only in words, as
+    the Goal's turn is (crew#858)."""
     found = [
         p
         for p in decision_points.points()
-        if p.function == "panel_step"
-        and "builds_on_unsplit" not in p.condition
-        and p.kind == "result:skipped"
+        if p.function == "look_step" and p.kind == "result:skipped"
     ]
-    assert any("skip.refine_panel.waits_for_to_be_split_it" in p.evidence for p in found)
+    assert any("skip.goal_look.waits_for_one_goal_refines_at" in p.evidence for p in found)
 
 
 def test_a_card_filter_is_a_decision_point():

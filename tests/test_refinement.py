@@ -92,7 +92,6 @@ def epic(title: str = "Report performance", **overrides) -> Epic:
         outcome="Sponsor sees metrics",
         rationale="why",
         separately_deliverable="The Sponsor can read the metrics with nothing else built.",
-        changes_what_readers_see=False,
     )
     params.update(overrides)
     return Epic(**params)
@@ -153,7 +152,6 @@ def test_an_epic_names_its_reader():
             outcome="sees metrics",
             rationale="why",
             separately_deliverable="The Sponsor can read the metrics with nothing else built.",
-            changes_what_readers_see=False,
         )
 
 

@@ -109,13 +109,13 @@ def test_rework_notes_are_the_sponsor_s_words_only():
 
 
 def test_a_crew_comment_after_the_ask_does_not_hide_it():
-    # crew-presentation#102: the goal index, posted after the Sponsor's
+    # crew-presentation#102: the Goal's index (since its record), posted after the Sponsor's
     # needs:epic ask, left the Product Owner "(nothing)" (crew#746).
     issues = Issues(
         [
             said("mqucifer-crew[bot]", "<!-- crew:epic-proposal -->"),
             said("mquarters", "Step: one event at a time."),
-            said("mqucifer-crew[bot]", "<!-- crew:goal-index --> What the epics decided"),
+            said("mqucifer-crew[bot]", "<!-- crew:goal-record --> What the epics decided"),
         ]
     )
     notes = board_flow.sponsor_notes(issues, "crew-presentation", 102)

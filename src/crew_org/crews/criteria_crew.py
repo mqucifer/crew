@@ -52,7 +52,7 @@ def opening(
     """QA's criteria check as a session's start (crew#807): its step first, then what the
     story's criteria are checked against. The code it was shown, focused on the story,
     is read through the tools."""
-    from crew_org.crews.panel_crew import sponsors_words  # noqa: PLC0415
+    from crew_org.crews.goal_look_crew import sponsors_words  # noqa: PLC0415
 
     return {
         "step": "## Your step: check one proposed story's criteria before it exists\n\n"

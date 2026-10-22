@@ -577,7 +577,7 @@ def asks() -> tuple[Ask, ...]:
                     if fn is not None and name not in seen:
                         seen.add(name)
                         scope.append(fn)
-            forms = {s.form for s in ran if isinstance(s.form, type)}
+            forms: set[type[BaseModel]] = set()
             for name in seen:
                 fn = _functions(source.tree).get(name) or outer
                 for sub in ast.walk(fn):
@@ -590,12 +590,16 @@ def asks() -> tuple[Ask, ...]:
                         ):
                             forms.add(value)
             check = next((k.value for k in node.keywords if k.arg == "check"), None)
+            # A session's step answers in its own form, told only to its role: the
+            # Goal's look gives each of its two roles one (ADR 0035, crew#858).
             found += [
                 Ask(
                     roles.get(key, key),
                     source,
                     outer.name if outer is not None else "<module>",
-                    frozenset(forms),
+                    frozenset(
+                        forms | {s.form for s in ran if s.role == key and isinstance(s.form, type)}
+                    ),
                     ast.unparse(check) if check is not None else None,
                     _is_session(node),
                 )
@@ -2408,7 +2412,6 @@ _SECTIONS = {
 _TOLD_SITES = {
     "agents.yaml:architect": "scope",
     "agents.yaml:architect.design_placement": "scope",
-    "agents.yaml:architect.refinement": "scope",
     "agents.yaml:business_analyst": "evidence",
     "agents.yaml:business_analyst.bug_triage": "evidence",
     "agents.yaml:code_reviewer": "guidance",
@@ -2416,7 +2419,6 @@ _TOLD_SITES = {
     "agents.yaml:product_owner": "scope",
     "agents.yaml:qa_engineer": "evidence",
     "agents.yaml:qa_engineer.criteria_check": "evidence",
-    "agents.yaml:qa_engineer.panel": "evidence",
     "agents.yaml:scrum_master": "guidance",
     "agents.yaml:senior_engineer": "guidance",
     "agents.yaml:ux_designer": "scope",
@@ -2428,9 +2430,6 @@ _TOLD_SITES = {
     "design_crew:propose_design": "guards",
     "design_crew:review_design": "guards",
     "design_crew:place_changes": "scope",
-    "design_note_crew": "scope",
-    "panel_crew": "scope",
-    "presentation_note_crew": "evidence",
     "qa_crew": "evidence",
     "refinement_crew:AnswerRow": "answer_shape",
     "refinement_crew:RepairedStory": "answer_shape",
@@ -2523,7 +2522,6 @@ PLACEMENT: list[tuple[str, str, Any]] = [
             in (
                 "src/crew_org/flows/attempts.py",
                 "src/crew_org/flows/criteria_check.py",
-                "src/crew_org/flows/presentation_notes.py",
             )
         ),
     ),
@@ -2603,8 +2601,7 @@ _CONFIG_PLACES = {
     "config.const.container.": "guards",
     "config.const.base_images.": "guards",
     "config.const.design.": "scope",
-    "config.const.design_notes.": "scope",
-    "config.const.presentation_notes.": "scope",
+    "config.const.epic_notes.": "scope",
     "config.const.refinement_crew.": "scope",
     "config.const.delivered.": "scope",
     "config.const.settle_crew.": "answer_shape",

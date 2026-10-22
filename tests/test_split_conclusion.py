@@ -2,15 +2,14 @@
 
 The Business Analyst is shown the conclusion apart from the epic's own text, may not
 contradict a row, and names the rows each story follows. Every row reaches a story,
-or is named as one that is not for stories. The panel and the settle step run before
-it when `refinement.panel` is on.
+or is named as one that is not for stories. The Goal's look and its settle run before
+it when `refinement.look` is on (crew#858).
 """
 
 from __future__ import annotations
 
 import contextlib
 import copy
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -24,10 +23,8 @@ from crew_org.crews.refinement_crew import (
     StoryProposal,
 )
 from crew_org.events import EventSink
-from crew_org.flows import board_flow, record, refine_panel
+from crew_org.flows import board_flow, record
 from crew_org.flows import conclusion as flow
-from crew_org.flows import panel as panel_flow
-from crew_org.flows import settle as settle_flow
 from tests import asked
 from tests.test_board_flow import FakeBoard, FakeIssues, epic_card, make_story
 
@@ -141,146 +138,6 @@ def test_what_the_analyst_is_told_names_each_problem():
     assert "No story follows R3." in text and "never contradicts them" in text
 
 
-# --- panel_step: before the split ---------------------------------------------------------
-
-
-class Epic:
-    number = 406
-    title = "Run as a service"
-
-    def __init__(self, parent=174):
-        self.parent = parent
-
-
-class Gh:
-    owner = "mqucifer"
-
-    def __init__(self, body=APPROVED, siblings=(), split=()):
-        self.body = body
-        self.siblings = list(siblings)
-        self.split = set(split)
-
-    def get(self, repo, number):
-        return {"body": self.body}
-
-    def sub_issues(self, repo, number):
-        return self.siblings
-
-    def has_comment_marked(self, repo, number, marker):
-        return number in self.split
-
-
-def stub(monkeypatch, *, notes=None, outcome=settle_flow.Outcome.WRITTEN, fail=None):
-    calls = {"gather": [], "panel": 0, "post": 0, "settle": 0}
-    context = SimpleNamespace(epic_ref="x", decisions="D", project_log="", siblings=[])
-
-    def gather(issues, repo, epic, *, search):
-        calls["gather"].append(search)
-        return context
-
-    def run(ctx, reading=None):
-        calls["panel"] += 1
-        return SimpleNamespace(answers={"architect": object()}, failed={})
-
-    def settle(board, issues, sink, **kw):
-        calls["settle"] += 1
-        calls["known"] = kw["known"]
-        if fail:
-            raise fail
-        return settle_flow.Settled(outcome)
-
-    monkeypatch.setattr(panel_flow, "gather", gather)
-    monkeypatch.setattr(panel_flow, "panel_on", lambda i, r, n: notes)
-    monkeypatch.setattr(panel_flow, "post", lambda *a: calls.__setitem__("post", calls["post"] + 1))
-    monkeypatch.setattr(refine_panel, "run_panel", run)
-    monkeypatch.setattr(settle_flow, "settle_epic", settle)
-    return calls
-
-
-def step(issues=None, epic=None, search=("crew", "sprint-metrics")):
-    result = SimpleNamespace(failed=[], skipped=[])
-    ok = refine_panel.panel_step(
-        None,
-        issues or Gh(),
-        EventSink(None),
-        result,
-        epic or Epic(),
-        "sprint-metrics",
-        search=list(search),
-    )
-    return ok, result
-
-
-def test_an_epic_with_no_goal_is_split_as_before(monkeypatch):
-    calls = stub(monkeypatch)
-    ok, _ = step(epic=Epic(parent=None))
-    assert ok and calls["panel"] == 0 and calls["gather"] == []
-
-
-def test_an_epic_with_a_conclusion_is_left_alone(monkeypatch):
-    calls = stub(monkeypatch)
-    ok, _ = step(issues=Gh(BODY))
-    assert ok and calls["panel"] == 0 and calls["settle"] == 0
-
-
-def test_the_panel_runs_posts_and_is_settled_before_the_split(monkeypatch):
-    calls = stub(monkeypatch)
-    ok, result = step()
-    assert ok and result.failed == [] and result.skipped == []
-    assert (calls["panel"], calls["post"], calls["settle"]) == (1, 1, 1)
-
-
-def test_the_epics_own_repository_is_searched_first_for_the_decisions(monkeypatch):
-    calls = stub(monkeypatch)
-    step(search=["crew", "infra"])
-    assert calls["gather"] == [["sprint-metrics", "crew", "infra"]]
-    assert calls["known"] == {"sprint-metrics", "crew", "infra"}
-
-
-def test_a_panel_already_run_is_not_run_again(monkeypatch):
-    calls = stub(monkeypatch, notes=SimpleNamespace(answers={"architect": object()}, failed={}))
-    ok, _ = step()
-    assert ok and calls["panel"] == 0 and calls["post"] == 0 and calls["settle"] == 1
-
-
-def test_an_epic_waiting_for_the_sponsor_is_not_split(monkeypatch):
-    stub(monkeypatch, outcome=settle_flow.Outcome.WAITING)
-    ok, result = step()
-    assert not ok
-    assert result.skipped == [(406, "waits for the Sponsor's answer on the epic")]
-
-
-def test_a_panel_no_member_of_answered_stops_the_split_and_says_why(monkeypatch):
-    calls = stub(monkeypatch)
-    monkeypatch.setattr(
-        refine_panel,
-        "run_panel",
-        lambda ctx, reading=None: SimpleNamespace(
-            answers={}, failed={"architect": "TimeoutError: slow"}
-        ),
-    )
-    ok, result = step()
-    assert not ok and calls["settle"] == 0
-    assert "architect: TimeoutError: slow" in result.failed[0][1]
-
-
-def test_a_settlement_that_fails_stops_the_split_and_says_why(monkeypatch):
-    stub(monkeypatch, fail=settle_flow.SettleFailed("refused 3 times"))
-    ok, result = step()
-    assert not ok and "refused 3 times" in result.failed[0][1]
-
-
-def test_an_epic_the_panel_cannot_place_under_a_goal_is_split_as_before(monkeypatch):
-    stub(monkeypatch)
-
-    def gather(*a, **kw):
-        raise panel_flow.NotUnderAGoal("no parent")
-
-    monkeypatch.setattr(panel_flow, "gather", gather)
-    ok, _ = step()
-    assert ok
-
-
 # --- the split itself, through the tick -------------------------------------------------------
 
 
@@ -291,7 +148,7 @@ class Concluded(FakeIssues):
         return {"body": BODY, "state": "open"}
 
 
-def run_tick(monkeypatch, *proposals, org_panel=False, issues=None):
+def run_tick(monkeypatch, *proposals, org_look=False, issues=None):
     asked: list[tuple[str, dict]] = []
     queue = list(proposals)
 
@@ -306,7 +163,7 @@ def run_tick(monkeypatch, *proposals, org_panel=False, issues=None):
     monkeypatch.setattr(board_flow, "propose_epics", lambda g, **kw: None)
     # A copy: load_org is cached, and writing to its dict would leak into every test after.
     org = copy.deepcopy(load_org())
-    org["refinement"] = {"panel": org_panel}
+    org["refinement"] = {"look": org_look}
     issues = issues or Concluded()
     result = board_flow.tick(
         FakeBoard([epic_card(3)]),
@@ -391,37 +248,38 @@ def test_an_epic_without_a_conclusion_is_split_exactly_as_before(monkeypatch):
 # --- the switch -------------------------------------------------------------------------------
 
 
-def test_the_panel_runs_only_while_the_org_has_it_on(monkeypatch):
+def test_the_look_runs_only_while_the_org_has_it_on(monkeypatch):
     def boom(*a, **kw):
-        raise AssertionError("the panel ran")
+        raise AssertionError("the look ran")
 
-    monkeypatch.setattr(board_flow, "panel_step", boom)
-    result, _, _ = run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")), org_panel=False)
+    monkeypatch.setattr(board_flow, "look_step", boom)
+    result, _, _ = run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")), org_look=False)
     assert len(result.stories_created) == 1
 
 
-def test_the_panel_is_on_in_the_crews_own_config():
-    assert load_org()["refinement"]["panel"] is True
+def test_the_look_is_on_in_the_crews_own_config():
+    assert load_org()["refinement"]["look"] is True
 
 
-def test_with_the_panel_on_it_runs_first_looking_in_the_crews_and_delivery_repositories(
+def test_with_the_look_on_it_runs_first_looking_in_the_crews_and_delivery_repositories(
     monkeypatch,
 ):
     seen = {}
 
-    def panel_step(board, issues, sink, result, epic, repo, *, search, reading, unapproved):
+    def look_step(board, issues, sink, result, epic, repo, *, cards, turns, search, reading):
         seen.update(repo=repo, search=search, reading=reading)
         return True
 
-    monkeypatch.setattr(board_flow, "panel_step", panel_step)
-    run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")), org_panel=True)
+    monkeypatch.setattr(board_flow, "look_step", look_step)
+    run_tick(monkeypatch, proposal(story("A", "R1", "R2", "R3")), org_look=True)
     assert seen["repo"] == "sprint-metrics"
-    assert seen["search"][0] == "crew" and "sprint-metrics" in seen["search"]
+    # The epic's own repository first: that is where its Goal's cards are.
+    assert seen["search"][:2] == ["sprint-metrics", "crew"]
 
 
-def test_an_epic_the_panel_holds_back_is_not_split(monkeypatch):
-    monkeypatch.setattr(board_flow, "panel_step", lambda *a, **kw: False)
-    result, asked, issues = run_tick(monkeypatch, org_panel=True)
+def test_an_epic_the_look_holds_back_is_not_split(monkeypatch):
+    monkeypatch.setattr(board_flow, "look_step", lambda *a, **kw: False)
+    result, asked, issues = run_tick(monkeypatch, org_look=True)
     assert asked == [] and issues.created == [] and result.stories_created == []
 
 
@@ -429,8 +287,17 @@ def test_the_switch_must_be_true_or_false():
     from crew_org.config import _validate
 
     org = copy.deepcopy(load_org())
-    org["refinement"] = {"panel": "yes"}
-    with pytest.raises(ValueError, match="refinement.panel"):
+    org["refinement"] = {"look": "yes"}
+    with pytest.raises(ValueError, match="refinement.look"):
+        _validate(org)
+
+
+def test_the_old_panel_switch_is_a_startup_error_naming_the_new_one():
+    from crew_org.config import _validate
+
+    org = copy.deepcopy(load_org())
+    org["refinement"] = {"panel": True}
+    with pytest.raises(ValueError, match="Rename it to refinement.look"):
         _validate(org)
 
 
@@ -478,55 +345,4 @@ def test_the_split_is_told_questions_and_infra_items_need_no_entry(monkeypatch):
     assert "Open questions (Q) and items for infra (I) need no entry" in seen["description"]
 
 
-# --- the Architect's questions, before the split (ADR 0018) ----------------------------------
-
 OPEN_FOR_ARCHITECT = BODY.replace("| The store | Implementer |", "| The store | Architect |")
-
-
-class OpenForArchitect(FakeIssues):
-    def get(self, repo: str, number: int) -> dict:
-        return {"body": OPEN_FOR_ARCHITECT, "state": "open"}
-
-
-def test_a_question_open_for_the_architect_holds_the_split(monkeypatch):
-    result, asked, _ = run_tick(
-        monkeypatch, proposal(story("A", "R1", "R2", "R3")), issues=OpenForArchitect()
-    )
-    assert asked == []
-    assert any("Q1 still open for the Architect" in why for _, why in result.skipped)
-
-
-def test_the_architect_settles_an_open_question_before_the_split(monkeypatch):
-    calls = stub(monkeypatch)
-    asked = {}
-
-    def design(issues, sink, **kw):
-        asked.update(kw)
-        return settle_flow.Settled(settle_flow.Outcome.WRITTEN)
-
-    monkeypatch.setattr(settle_flow, "settle_design_questions", design)
-    ok, _ = step(Gh(OPEN_FOR_ARCHITECT))
-    assert ok and calls["settle"] == 0, "the conclusion was already written"
-    assert asked["epic"] == 406 and calls["gather"], "the Architect is shown the Goal"
-
-
-def test_an_epic_whose_design_questions_wait_for_a_person_is_not_split(monkeypatch):
-    stub(monkeypatch)
-    monkeypatch.setattr(
-        settle_flow,
-        "settle_design_questions",
-        lambda *a, **k: settle_flow.Settled(settle_flow.Outcome.WAITING),
-    )
-    ok, result = step(Gh(OPEN_FOR_ARCHITECT))
-    assert not ok and "design questions" in result.skipped[0][1]
-
-
-def test_no_question_for_the_architect_means_no_architect_call(monkeypatch):
-    stub(monkeypatch)
-    monkeypatch.setattr(
-        settle_flow,
-        "settle_design_questions",
-        lambda *a, **k: pytest.fail("the Architect was asked with nothing open"),
-    )
-    ok, _ = step(Gh(BODY))
-    assert ok

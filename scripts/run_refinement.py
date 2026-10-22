@@ -3,10 +3,11 @@
     uv run python scripts/run_refinement.py sprint-metrics 667 --goal 665
 
 For proving refinement's sessions before a tick runs them (crew#807). The epic is
-refined as a tick refines it, as if the Sponsor had approved it: the panel, the
-Product Owner's settle, the Architect's design questions, the split with its
-criteria check and repair, then the UX Designer's note, each a session over a
-checkout of the project at main. `--goal` runs the decomposition on a Goal first.
+refined as a tick refines it, as if the Sponsor had approved it and the other open
+epics of its Goal: the Goal's look by the Architect and the UX Designer, the Product
+Owner's settle into the Goal's record (crew#858), then the split with its criteria
+check and repair, each a session over a checkout of the project at main. `--goal`
+runs the decomposition on a Goal first, and `--look-only` stops after the look.
 
 GitHub is read. Every write (a comment, an edit, a label, a story, a board move) is
 kept here and read back by the steps after, so each reads what the one before
@@ -27,7 +28,6 @@ from typing import Any
 
 from crew_org import events, git_ops
 from crew_org.config import load_org
-from crew_org.design import DesignPolicy
 from crew_org.events import EventSink
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
@@ -51,6 +51,7 @@ class Recorded:
         self._made: dict[tuple[str, int], dict[str, Any]] = {}
         self._children: dict[tuple[str, int], list[int]] = {}
         self._closed: set[tuple[str, int]] = set()
+        self._edited: dict[Any, str] = {}
         self._next = 90_000
 
     def __getattr__(self, name: str) -> Any:
@@ -100,13 +101,30 @@ class Recorded:
     def comments(self, repo: str, number: int) -> list[dict[str, Any]]:
         key = (repo, number)
         before = [] if key in self._made else self.real.comments(repo, number)
+        before = [{**c, "body": self._edited.get(c.get("id"), c.get("body"))} for c in before]
         return before + self._comments.get(key, [])
 
     def comment(self, repo: str, number: int, body: str) -> dict[str, Any]:
-        made = {"body": body, "user": {"login": CREW}, "id": len(self.writes) + 1}
+        made = {
+            "body": body,
+            "user": {"login": CREW},
+            "id": 10**12 + len(self.writes) + 1,
+            "html_url": f"https://github.com/{self.owner}/{repo}/issues/{number}",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
         self._comments.setdefault((repo, number), []).append(made)
         self._wrote("comment", repo, number, body=body)
         return made
+
+    def edit_comment(self, repo: str, comment_id: int, body: str) -> dict[str, Any]:
+        """Kept here, as every write is: one made in this run, or a real one read back edited."""
+        for thread in self._comments.values():
+            for c in thread:
+                if c["id"] == comment_id:
+                    c["body"] = body
+        self._edited[comment_id] = body
+        self._wrote("edit_comment", repo, 0, comment=comment_id, body=body)
+        return {"id": comment_id, "body": body}
 
     def has_comment_marked(self, repo: str, number: int, marker: str) -> bool:
         return any(marker in (c.get("body") or "") for c in self.comments(repo, number))
@@ -219,12 +237,14 @@ def main() -> None:
     parser.add_argument("epic", type=int)
     parser.add_argument("--goal", type=int, help="also decompose this Goal")
     parser.add_argument(
+        "--look-only", action="store_true", help="stop after the Goal's look and its settle"
+    )
+    parser.add_argument(
         "--resume", type=Path, help="an earlier run's folder: its writes are made first"
     )
     args = parser.parse_args()
-    from crew_org.crews import presentation_note_crew as ux  # noqa: PLC0415
     from crew_org.crews.refinement_crew import propose_epics  # noqa: PLC0415
-    from crew_org.flows import board_flow, presentation_notes  # noqa: PLC0415
+    from crew_org.flows import board_flow, goal_look  # noqa: PLC0415
 
     token = os.environ["GH_TOKEN"]
     owner = "mqucifer"
@@ -238,7 +258,13 @@ def main() -> None:
     if args.resume:
         issues.replay(json.loads((args.resume / "writes.json").read_text()))
         summary_from = str(args.resume)
-    board = RecordedBoard(ProjectClient(token, owner, 1), {(args.repo, args.epic)})
+    # The epic and its Goal's other open epics, as approved: the look reads them all.
+    parent = (issues.get(args.repo, args.epic).get("parent_issue_url") or "").rsplit("/", 1)[-1]
+    siblings = issues.sub_issues(args.repo, int(parent)) if parent.isdigit() else []
+    approved = {(args.repo, args.epic)} | {
+        (args.repo, c["number"]) for c in siblings if c.get("state") == "open"
+    }
+    board = RecordedBoard(ProjectClient(token, owner, 1), approved)
     ws = git_ops.Workspace(owner, args.repo, token, git_ops.BotIdentity("quarters-claude", 0))
     context = board_flow.RepoContext(ws, sink)
     known = board_flow.KnownDelivered(issues, sink)
@@ -262,46 +288,41 @@ def main() -> None:
         cards = [c for c in board.cards() if (c.repo or args.repo) == args.repo]
         known.cards = cards
         result = board_flow.TickResult()
+        search = ["crew", *sorted((org.get("delivery") or {}).get("repos") or [])]
         with events.working_on(card=args.epic, repo=args.repo, purpose="refine"):
-            board_flow.refine_epics(
-                board,
-                issues,
-                sink,
-                ProcessRules.from_config(org),
-                DesignPolicy.from_config(org),
-                result,
-                # Only the epic given is approved, so only it is refined.
-                cards=cards,
-                default_repo=args.repo,
-                context=context,
-                known=known,
-                panel_search=["crew", *sorted((org.get("delivery") or {}).get("repos") or [])],
-            )
+            if args.look_only:
+                epic = next(c for c in cards if c.key == (args.repo, args.epic))
+                goal_look.look_step(
+                    board,
+                    issues,
+                    sink,
+                    result,
+                    epic,
+                    args.repo,
+                    cards=cards,
+                    turns=goal_look.Turns(issues, cards, []),
+                    search=list(dict.fromkeys([args.repo, *search])),
+                    reading=lambda: context.reading_for(args.repo),
+                )
+            else:
+                board_flow.refine_epics(
+                    board,
+                    issues,
+                    sink,
+                    ProcessRules.from_config(org),
+                    result,
+                    # The epic given, and its Goal's other open epics, are approved.
+                    cards=cards,
+                    default_repo=args.repo,
+                    context=context,
+                    known=known,
+                    look_search=search,
+                )
         summary["refine"] = {
             "refined": result.epics_refined,
             "stories": result.stories_created,
             "failed": result.failed,
             "skipped": result.skipped,
-        }
-        # The UX Designer's note, as the design phase writes it, on the epic as now.
-        epic = next(c for c in cards if c.key == (args.repo, args.epic))
-        epic = epic.model_copy(update={"labels": frozenset(issues.labels_of(args.repo, args.epic))})
-        with events.working_on(card=args.epic, repo=args.repo, purpose="design"):
-            shown = presentation_notes.write_notes(
-                issues,
-                sink,
-                ws,
-                [epic],
-                default_repo=args.repo,
-                repos={args.repo},
-                write=ux.write_note,
-                render=ux.render,
-                line=ux.criterion_lines,
-            )
-        summary["presentation_note"] = {
-            "written": shown.written,
-            "blocked": shown.blocked,
-            "failed": shown.failed,
         }
     finally:
         summary["wall_minutes"] = round((time.monotonic() - began) / 60, 1)

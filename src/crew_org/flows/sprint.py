@@ -85,8 +85,6 @@ class SprintPlan:
     # the crew's to do, and a card that vanishes from planning without a word
     # is how five of eight admitted points came to be undeliverable.
     not_ours: list[Card] = field(default_factory=list)
-    # Stories whose epic needs a design note it doesn't have yet (#155).
-    waiting_on_design: list[Card] = field(default_factory=list)
     # Stories whose epic is waiting to be split again (`needs:rework`): they're
     # about to be superseded (#189, #242).
     waiting_on_rework: list[Card] = field(default_factory=list)
@@ -114,7 +112,7 @@ class SprintPlan:
         return [c for s in self.slices for c in s.admitted]
 
 
-def _priority_key(card: Card) -> tuple[int, float, int]:
+def priority_key(card: Card) -> tuple[int, float, int]:
     """Priority (the Sponsor's override), then the Product Owner's Rank (#358), then number."""
     rank = card.rank if card.rank is not None else float("inf")
     return (PRIORITY_ORDER.get(card.priority or "", 99), rank, card.number or 0)
@@ -128,7 +126,7 @@ def approved_epics(cards: list[Card]) -> list[Card]:
             for c in cards
             if c.work_type == EPIC_TYPE and c.status != INBOX and c.state != "CLOSED"
         ),
-        key=_priority_key,
+        key=priority_key,
     )
 
 
@@ -139,7 +137,6 @@ def plan_sprint(
     sprint: str,
     capacity: int,
     repos: set[str] | None = None,
-    awaiting_design: set[tuple[str, int]] | None = None,
     builds_on: dict[tuple[str, int], set[int]] | None = None,
 ) -> SprintPlan:
     """Choose the sprint's contents. Pure — no I/O, so it is testable.
@@ -147,10 +144,6 @@ def plan_sprint(
     `builds_on` is each candidate story's `**Builds on** —` line (#295), read
     from its body. A story waits for what it builds on unless that lands this
     sprint too (crew#358).
-
-    `awaiting_design` is the epics labelled `needs:design` with no design note
-    yet (#155). Their stories wait: built without the note, the first story sets
-    the approach and the rest follow it or fight it.
 
     `repos` is the allow-list the crew delivers from, and filling a sprint
     without it spends capacity on work the crew is structurally incapable of
@@ -195,10 +188,6 @@ def plan_sprint(
             key=lambda c: c.number or 0,
         )
         if not stories:
-            continue
-        if epic.key in (awaiting_design or set()):
-            held("decision.sprint.plan_sprint", repo=epic.repo, card=epic.number)
-            plan.waiting_on_design += stories
             continue
         # Sent back to be split again: its stories are about to be superseded.
         # sprint-metrics#59's were re-admitted the tick they went back, and
@@ -248,7 +237,7 @@ def plan_sprint(
         key=lambda c: (c.repo or "", c.number or 0),
     )
     loose = EpicSlice(number=None, title=NO_EPIC)
-    for story in sorted((c for c in parentless if c.points is not None), key=_priority_key):
+    for story in sorted((c for c in parentless if c.points is not None), key=priority_key):
         remaining = _fill(loose, story, remaining)
     if loose.admitted or loose.deferred:
         plan.slices.append(loose)
@@ -437,9 +426,6 @@ def start_sprint(
                 )
             )
 
-    from crew_org.flows.design_notes import awaiting_design  # noqa: PLC0415
-    from crew_org.flows.presentation_notes import awaiting_presentation  # noqa: PLC0415
-
     # What each Ready story builds on, from its body; read only when the sprint
     # has room, since every pass of every tick runs admission.
     builds: dict[tuple[str, int], set[int]] = {}
@@ -465,9 +451,6 @@ def start_sprint(
         sprint=sprint,
         capacity=capacity,
         repos=repos,
-        # Held until their notes exist: the Architect's and the UX Designer's (#377).
-        awaiting_design=awaiting_design(issues, cards, default_repo)
-        | awaiting_presentation(issues, cards, default_repo),
         builds_on=builds,
     )
     counts = board.counts(cards)

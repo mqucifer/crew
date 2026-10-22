@@ -188,8 +188,7 @@ def test_the_implementers_questions_are_not_the_architects():
         base(),
         open=(*base().open, record.Question("Q2", "Log format?", "None", record.IMPLEMENTER)),
     )
-    ids, table = record.architect_questions(record.render(left))
-    assert ids == ["Q1"] and "Q2" not in table
+    assert [q.id for q in record.parse(record.render(left)).for_architect()] == ["Q1"]
 
 
 # --- what a story is shown ------------------------------------------------------------------
@@ -210,7 +209,7 @@ class Issues:
 
     def __init__(self, body, *, moves=()):
         self.body = body
-        self.comments: list[str] = []
+        self.notes: list[str] = []
         self.writes = 0
         # Bodies someone else writes between the edit's reads, in turn.
         self.moves = list(moves)
@@ -224,8 +223,11 @@ class Issues:
         self.body = body
         self.writes += 1
 
+    def comments(self, repo, number):
+        return []
+
     def comment(self, repo, number, body):
-        self.comments.append(body)
+        self.notes.append(body)
 
 
 EPIC = f"# Report points\n\nThe approved text.\n\n{OLD_FORM}\n"
@@ -254,7 +256,7 @@ def test_an_edit_keeps_the_approved_text_and_rewrites_only_the_record():
 def test_each_edit_posts_one_comment_naming_the_rows_who_and_the_card():
     issues = Issues(EPIC)
     edit(issues, lambda r: r.add(decision(replaces="R1")), card=529, why="Answering sm#529.")
-    [note] = issues.comments
+    [note] = issues.notes
     assert note.startswith(record.CHANGE.format("R3"))
     assert "by the Product Owner, for mqucifer/sprint-metrics#529" in note
     assert "**R3** replaces R1: Field names: Flat keys" in note
@@ -264,14 +266,14 @@ def test_each_edit_posts_one_comment_naming_the_rows_who_and_the_card():
 def test_an_edit_that_changes_nothing_writes_nothing():
     issues = Issues(EPIC)
     edit(issues, lambda r: r)
-    assert issues.writes == 0 and issues.comments == []
+    assert issues.writes == 0 and issues.notes == []
 
 
 def test_a_refused_edit_writes_nothing():
     issues = Issues(EPIC)
     with pytest.raises(record.RecordRefused):
         edit(issues, lambda r: replace(r, decisions=r.decisions[1:]))
-    assert issues.writes == 0 and issues.comments == []
+    assert issues.writes == 0 and issues.notes == []
 
 
 def test_a_body_changed_since_the_caller_read_it_is_not_overwritten():
@@ -292,4 +294,145 @@ def test_the_first_record_is_written_as_any_edit_is():
     issues = Issues("# Report points\n\nThe approved text.")
     edit(issues, lambda _: record.Record(decisions=(decision("R1"),)))
     assert record.parse(record.split(issues.body)[1]).binding_ids() == ["R1"]
-    assert issues.comments[0].startswith(record.CHANGE.format("R1"))
+    assert issues.notes[0].startswith(record.CHANGE.format("R1"))
+
+
+# --- the Goal's record (crew#858) -----------------------------------------------------------
+
+FIRST, SECOND = "mqucifer/sprint-metrics#684", "mqucifer/sprint-metrics#685"
+
+
+def goal_record() -> record.Record:
+    return record.Record(
+        decisions=(
+            replace(decision("R1"), binds=(record.ALL,)),
+            replace(decision("R2", text="Nested keys"), binds=(FIRST,)),
+            replace(decision("R3", text="Weekly"), binds=(SECOND,)),
+        ),
+        open=(record.Question("Q4", "Which width?", "The page", record.IMPLEMENTER, (FIRST,)),),
+        tests=(
+            record.TestRow("C5", "tests/test_a.py::test_b", "it holds", "sm#690", binds=(SECOND,)),
+        ),
+        on_goal=True,
+        looked_at=(FIRST, SECOND),
+    )
+
+
+def test_the_goals_record_reads_back_what_it_wrote():
+    text = record.render(goal_record())
+    assert text.startswith(record.GOAL_HEADER)
+    assert "Looked at: mqucifer/sprint-metrics#684, mqucifer/sprint-metrics#685." in text
+    assert record.parse(text) == goal_record()
+
+
+def test_an_epic_sees_the_rows_that_bind_it_or_every_epic():
+    seen = goal_record().for_epic(FIRST)
+    assert seen.binding_ids() == ["R1", "R2"]
+    assert [q.id for q in seen.open] == ["Q4"] and seen.declared_tests() == []
+    assert goal_record().for_epic(SECOND).declared_tests() == ["tests/test_a.py::test_b"]
+
+
+def test_an_epics_own_record_is_all_its_own():
+    assert base().for_epic(FIRST) == base()
+
+
+class GoalIssues(Issues):
+    """A Goal (1) whose record is its comment, and epics under it."""
+
+    def __init__(self, bodies, *, held=None):
+        super().__init__("")
+        self.bodies = dict(bodies)
+        self.held = held if held is not None else record.render(goal_record())
+        self.edits: list[tuple[int, str]] = []
+        self.on: list[int] = []
+
+    def get(self, repo, number):
+        parent = {} if number == 1 else {"parent_issue_url": "https://x/issues/1"}
+        return {"body": self.bodies.get(number, ""), **parent}
+
+    def comments(self, repo, number):
+        if number != 1 or self.held is None:
+            return []
+        return [{"id": 77, "body": f"{record.GOAL_RECORD_MARKER}\n{self.held}\n"}]
+
+    def edit_comment(self, repo, comment_id, body):
+        self.edits.append((comment_id, body))
+        self.held = body.replace(record.GOAL_RECORD_MARKER, "").strip()
+
+    def comment(self, repo, number, body):
+        self.on.append(number)
+        self.notes.append(body)
+
+
+def test_an_epic_under_a_goal_with_a_record_reads_the_rows_that_bind_it():
+    issues = GoalIssues({684: "# First\n\nThe approved text."})
+    shown = record.record_for(issues, "sprint-metrics", 684)
+    assert shown is not None and shown.binding_ids() == ["R1", "R2"]
+
+
+def test_an_epic_split_before_the_goal_had_a_record_keeps_its_own():
+    issues = GoalIssues({684: EPIC})
+    shown = record.record_for(issues, "sprint-metrics", 684)
+    assert shown is not None and not shown.on_goal and shown.binding_ids() == ["R1", "R2"]
+
+
+def test_a_row_added_for_an_epic_goes_to_the_goals_record_and_binds_that_epic():
+    issues = GoalIssues({684: "# First"})
+    record.edit(
+        issues,
+        EventSink(None),
+        repo="sprint-metrics",
+        epic=684,
+        by=record.SPONSOR,
+        change=lambda r: r.add(replace(decision(by=record.SPONSOR), date="2026-10-22")),
+    )
+    [(comment, body)] = issues.edits
+    assert comment == 77 and body.startswith(record.GOAL_RECORD_MARKER)
+    added = record.parse(issues.held).row("R4")
+    assert added is not None and added.binds == (FIRST,)
+    # The audit trail stays on the epic the change was for, where its steps look.
+    assert issues.on == [684] and "**The Goal's record changed**" in issues.notes[0]
+
+
+def test_a_row_that_names_its_epics_keeps_them():
+    issues = GoalIssues({684: "# First"})
+    named = replace(decision(), binds=(record.ALL,))
+    record.edit(
+        issues,
+        EventSink(None),
+        repo="sprint-metrics",
+        epic=684,
+        by=record.PRODUCT_OWNER,
+        change=lambda r: r.add(named),
+    )
+    assert record.parse(issues.held).row("R4").binds == (record.ALL,)
+
+
+def test_the_goals_record_changed_meanwhile_is_not_overwritten():
+    issues = GoalIssues({684: "# First"})
+    with pytest.raises(record.RecordChanged):
+        record.edit(
+            issues,
+            EventSink(None),
+            repo="sprint-metrics",
+            epic=684,
+            by=record.PRODUCT_OWNER,
+            change=lambda r: r.add(decision()),
+            expected="an older record",
+        )
+    assert issues.edits == []
+
+
+def test_a_story_follows_the_goals_rows_and_is_shown_them():
+    from types import SimpleNamespace
+
+    from crew_org.flows import conclusion
+
+    line = conclusion.follows_line(["R2"], on_goal=True)
+    assert line == "Follows the Goal's R2."
+    assert conclusion.parse_follows(f"Text.\n\n{line}\n") == ["R2"]
+    assert conclusion.parse_follows("Follows the epic's R1, R4.") == ["R1", "R4"]
+    issues = GoalIssues({684: "# First", 700: f"A story.\n\n{line}\n"})
+    story = SimpleNamespace(parent=684, number=700, repo="sprint-metrics")
+    shown = conclusion.story_rows(issues, story, "sprint-metrics")
+    assert "| R2 |" in shown and "Nested keys" in shown and "| R3 |" not in shown

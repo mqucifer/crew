@@ -590,7 +590,6 @@ def test_refinement_holds_a_projects_epics_but_not_its_technical_ones(monkeypatc
         Quiet(),
         EventSink(),
         None,
-        None,
         result,
         cards=cards,
         default_repo=REPO,

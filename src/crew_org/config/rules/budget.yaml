@@ -8,20 +8,23 @@
 # lines went with it, and the Senior Engineer's lines on stepped delivery. Refinement in
 # a session (crew#807): the Sponsor's role text for the Architect's and QA's refinement
 # steps, set at their count; the UX Designer's constitution went, as no step sends it;
-# and the one-call prompts' lines the sessions' starts no longer tell.
-Architect: 34
+# and the one-call prompts' lines the sessions' starts no longer tell. Lowered by the
+# Goal's look (crew#858): the per-epic panel, the settles and the notes went, with
+# their prompts and role text, and §13's lines on rationed design. Raised by one for
+# the Business Analyst: §5.7 (no open question on a card) was checked by the hold on
+# a question left for the Architect, which went with the design settle that answered
+# those questions; the Goal's look decides them now.
+Architect: 17
 Architect (design_placement): 3
-Architect (refinement): 1
-Business Analyst: 25
+Business Analyst: 26
 Business Analyst (bug_triage): 1
 Code Reviewer: 19
-DevOps Engineer: 30
+DevOps Engineer: 24
 Developer: 0
-Product Owner: 20
+Product Owner: 17
 Product Owner (onboarding): 8
-QA Engineer: 26
+QA Engineer: 20
 QA Engineer (criteria_check): 2
-QA Engineer (panel): 2
 Scrum Master: 7
 Senior Engineer: 8
-UX Designer: 11
+UX Designer: 1

@@ -102,6 +102,7 @@ def test_qa_is_handed_the_docs(monkeypatch, tmp_path):
         docs="",
         checks="",
         decisions="",
+        diagram="",
     ):
         seen["docs"] = docs
         return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])

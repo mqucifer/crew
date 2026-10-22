@@ -29,9 +29,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
 
-    from crew_org.crews.panel_crew import PanelContext
-    from crew_org.tools.github_issues import IssueClient
-
 
 class CrewTyper(typer.Typer):
     """The crew's command line, which reports a dead model backend in one line (#153).
@@ -1699,61 +1696,51 @@ def _decision_repos(repo: str, env: dict[str, str]) -> list[str]:
 
 
 @app.command()
-def panel(
-    epic: str = typer.Argument(..., help="The epic, as `repo#n` or `owner/repo#n`."),
-    post: bool = typer.Option(
-        False, "--post", help="Post the notes on the epic as one comment. Otherwise they print."
-    ),
+def look(
+    goal: str = typer.Argument(..., help="The Goal, as `repo#n` or `owner/repo#n`."),
 ) -> None:
-    """Run the refinement panel on an epic: Architect, UX Designer, QA and DevOps (crew#440).
+    """Run the Goal's look: the Architect and the UX Designer read its open epics (crew#858).
 
-    Each reads the epic once, all four at once, in a session over the code at the
-    default branch (crew#807), against its Goal, the project's record, the Sponsor's
-    decisions and its sibling epics. Nothing is written to GitHub without --post.
+    Both at once, each in a session over the code at the default branch, against the
+    Goal, the Sponsor's decisions, the project's log, and the Goal's record and
+    target diagram if it has them. It prints what each found; nothing is written to
+    GitHub. A tick runs the look itself, once the Goal's epics are approved.
     """
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.crews.panel_crew import run_panel
+    from crew_org.crews.goal_look_crew import run_look
     from crew_org.events import forward_calls_to, working_on
-    from crew_org.flows import panel as flow
+    from crew_org.flows import goal_look as flow
+    from crew_org.flows import record as record_flow
     from crew_org.tools.github_issues import IssueClient
 
-    repo, number = _issue_ref(epic)
+    repo, number = _issue_ref(goal)
     env = load_env()
     token, identity = resolve_credentials(env)
     issues = IssueClient(token, env["GITHUB_OWNER"])
-
-    context = _panel_context(issues, repo, number, env)
-    reading = _reading(env, token, identity, repo)
-
+    held = record_flow.goal_record_comment(issues, repo, number)
+    covered = (
+        set(record_flow.parse(record_flow.comment_text(held["body"])).looked_at) if held else set()
+    )
+    epics = [
+        c["number"]
+        for c in issues.sub_issues(repo, number)
+        if c.get("state") == "open" and f"{issues.owner}/{repo}#{c['number']}" not in covered
+    ]
+    context = flow.gather(issues, repo, number, approved=epics, search=_decision_repos(repo, env))
+    reading = _reading(env, token, identity, repo, issues)
     console.print(
-        f"Panel on {context.epic_ref}: {len(context.siblings)} sibling epics, "
+        f"Look at {context.goal_ref}: {len(context.looking_at)} epics, "
         f"{len(context.decisions):,} characters of decisions."
     )
-    # The panel's model calls are recorded like a tick's.
-    forward_calls_to(EventSink(VAR / "events" / "panel.jsonl"))
+    # The look's model calls are recorded like a tick's.
+    forward_calls_to(EventSink(VAR / "events" / "look.jsonl"))
     with working_on(card=number, repo=repo):
-        result = run_panel(context, reading=reading)
-    typer.echo(flow.render(result))
-    if post:
-        posted = flow.post(issues, repo, number, result)
-        console.print("[green]Posted.[/]" if posted else "[yellow]Already has a panel comment.[/]")
+        result = run_look(context, reading=reading)
+    typer.echo(flow.render(result, context))
 
 
-def _panel_context(
-    issues: IssueClient, repo: str, number: int, env: dict[str, str]
-) -> PanelContext:
-    """What the panel and the settle step are shown for an epic. The project's record
-    is read from the checkout, in each session's start (crew#807)."""
-    from crew_org.flows import panel as flow
-
-    try:
-        return flow.gather(issues, repo, number, search=_decision_repos(repo, env))
-    except flow.NotUnderAGoal as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-
-def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
+def _reading(env: dict[str, str], token: Any, identity: Any, repo: str, issues: Any = None) -> Any:
     """The checkout a refinement step reads, at the default branch, as a tick makes it."""
     from crew_org.git_ops import Workspace
     from crew_org.session.steps import Reading
@@ -1765,77 +1752,7 @@ def _reading(env: dict[str, str], token: Any, identity: Any, repo: str) -> Any:
     except CoverageUnavailable as exc:
         console.print(f"[yellow]No coverage map:[/] {escape(str(exc))}")
         coverage = None
-    return Reading.at(root, repo, coverage)
-
-
-@app.command()
-def settle(
-    epic: str = typer.Argument(..., help="The epic, as `repo#n` or `owner/repo#n`."),
-    post: bool = typer.Option(
-        False,
-        "--post",
-        help="Write the conclusion into the epic's body, or ask the Sponsor its one question. "
-        "Otherwise it prints.",
-    ),
-) -> None:
-    """Settle an epic's panel notes into its conclusion: the Product Owner's step (crew#440).
-
-    Uses the epic's panel comment if it has one; otherwise runs the panel now (and
-    with --post leaves that comment too). Each note becomes a decision row, an open
-    question for the design note, or a dismissal; or, when nothing written down
-    answers one, the Product Owner asks the Sponsor a single question and the epic
-    waits. Nothing is written to GitHub without --post.
-    """
-    from crew_org.auth import resolve_credentials
-    from crew_org.config import load_env
-    from crew_org.crews.panel_crew import run_panel
-    from crew_org.crews.settle_crew import numbered
-    from crew_org.events import forward_calls_to, working_on
-    from crew_org.flows import panel as panel_flow
-    from crew_org.flows import settle as flow
-    from crew_org.tools.github_issues import IssueClient
-    from crew_org.tools.github_project import ProjectClient
-
-    repo, number = _issue_ref(epic)
-    env = load_env()
-    token, identity = resolve_credentials(env)
-    issues = IssueClient(token, env["GITHUB_OWNER"])
-    context = _panel_context(issues, repo, number, env)
-    reading = _reading(env, token, identity, repo)
-
-    sink = EventSink(VAR / "events" / "settle.jsonl")
-    forward_calls_to(sink)
-    notes = panel_flow.panel_on(issues, repo, number)
-    if notes is None:
-        console.print("No panel comment on the epic: running the panel first.")
-        with working_on(card=number, repo=repo):
-            notes = run_panel(context, reading=reading)
-        if post:
-            panel_flow.post(issues, repo, number, notes)
-    console.print(f"Settling {len(numbered(notes))} notes on {context.epic_ref}.")
-    if post:
-        board = ProjectClient(token, env["GITHUB_OWNER"], int(env["GITHUB_PROJECT_NUMBER"]))
-        done = flow.settle_epic(
-            board,
-            issues,
-            sink,
-            repo=repo,
-            epic=number,
-            context=context,
-            panel=notes,
-            known=set(_decision_repos(repo, env)),
-            reading=reading,
-        )
-        console.print(f"[green]{done.outcome.value}[/]")
-        typer.echo(done.text)
-    else:
-        with working_on(card=number, repo=repo):
-            found = flow.propose(context, notes, "", card=number, repo=repo, reading=reading)
-        typer.echo(
-            flow.render(found.conclusion, owner=issues.owner, repo=repo)
-            if found.conclusion
-            else f"A question for the Sponsor: {found.sponsor_question}"
-        )
+    return Reading.at(root, repo, coverage, issues)
 
 
 @app.command(name="reference")

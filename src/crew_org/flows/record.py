@@ -25,6 +25,13 @@ with its four functions as the checks here:
 
 Conclusions written before this (six columns, "accepted", "Design note") are read
 as they are; nothing is re-settled. The next edit writes them in this form.
+
+**The Goal's record** (crew#858) is the same baseline one level up: one marked
+comment on the Goal, since the Goal's body is the Sponsor's. It is written once by
+the Goal's look and settle, and each of its rows says which epics it binds: all of
+them, or the ones it names. An epic sees the rows that bind it (`Record.for_epic`).
+An epic split before it keeps the record in its own body until it closes: `locate`
+finds whichever the epic has, so every step reads and edits the one that holds.
 """
 
 from __future__ import annotations
@@ -54,7 +61,9 @@ SPONSOR = "Sponsor"
 PRODUCT_OWNER = "Product Owner"
 ARCHITECT = "Architect"
 BUSINESS_ANALYST = "Business Analyst"
-AUTHORS = (SPONSOR, PRODUCT_OWNER, ARCHITECT, BUSINESS_ANALYST)
+# What the reader sees, set in the Goal's look and carried into the stories (crew#858).
+UX_DESIGNER = "UX Designer"
+AUTHORS = (SPONSOR, PRODUCT_OWNER, ARCHITECT, BUSINESS_ANALYST, UX_DESIGNER)
 # Who settles an open question: the Architect, or whoever builds it, whose
 # choice no gate checks (Shape Up's latitude for the people doing the work).
 IMPLEMENTER = "Implementer"
@@ -85,6 +94,35 @@ _TESTS = (
 # A C row's status: a story changes the test, or the split dropped it, with why.
 DECLARED = "declared"
 
+# The Goal's record: a comment on the Goal, its tables with one more column.
+GOAL_RECORD_MARKER = "<!-- crew:goal-record -->"
+GOAL_HEADER = "## The Goal's record"
+# A row that binds every epic of the Goal, those added later too.
+ALL = "all"
+# The epics the Goal's look has read, so a later one knows what it still has to read.
+_LOOKED = "<!-- crew:looked-at {} -->"
+_LOOKED_AT = re.compile(r"<!-- crew:looked-at ([^ ]*) -->")
+# The Sponsor's comments the Goal's record has taken in, by their ids: as a row of
+# their words, or as the answer its settle read. Kept by the code, so a reply is never
+# taken in twice, whatever a model wrote about it.
+_REPLIES = "<!-- crew:sponsor-replies {} -->"
+_REPLIES_IN = re.compile(r"<!-- crew:sponsor-replies ([^ ]*) -->")
+_GOAL_DECISIONS = (
+    "| ID | Status | Context | Decision | Consequences | Set by | Date | Replaces | Source "
+    "| Binds |",
+    "|---|---|---|---|---|---|---|---|---|---|",
+)
+_GOAL_OPEN = ("| ID | Open question | Impact | Settled by | Binds |", "|---|---|---|---|---|")
+_GOAL_TESTS = (
+    "| ID | Test | What it asserts after | Declared by | Status | Binds |",
+    "|---|---|---|---|---|---|",
+)
+GOAL_FOOTER = (
+    "_From the Goal's look by the Architect and the UX Designer, settled by the Product "
+    "Owner. Each row names who set it and which epics it binds; a binding row holds until "
+    "a later row replaces it._"
+)
+
 
 class RecordRefused(Refusal):
     """An edit that breaks the record's change control. Nothing was written."""
@@ -105,6 +143,8 @@ class Decision:
     date: str
     replaces: str = ""
     status: str = BINDING
+    # In the Goal's record, the epics it binds: ALL, or their refs. Empty in an epic's own.
+    binds: tuple[str, ...] = ()
 
     @property
     def binding(self) -> bool:
@@ -121,6 +161,7 @@ class Question:
     question: str
     impact: str
     settled_by: str = ARCHITECT
+    binds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -136,6 +177,7 @@ class TestRow:
     asserts: str
     declared_by: str
     status: str = DECLARED
+    binds: tuple[str, ...] = ()
 
     @property
     def declared(self) -> bool:
@@ -159,6 +201,46 @@ class Record:
     to_log: tuple[str, ...] = ()
     nothing_raised: bool = False
     tests: tuple[TestRow, ...] = ()
+    # The Goal's record, kept in a comment on the Goal, rather than an epic's own.
+    on_goal: bool = False
+    # The epics the Goal's look has read (the Goal's record only).
+    looked_at: tuple[str, ...] = ()
+    # The Sponsor's comments it has taken in, by id (the Goal's record only).
+    replies: tuple[str, ...] = ()
+
+    def for_epic(self, ref: str) -> Record:
+        """The Goal's record as one epic sees it: the rows that bind it, or every epic.
+
+        An epic's own record is all its own, so it comes back whole.
+        """
+        if not self.on_goal:
+            return self
+
+        def binds(row: Decision | Question | TestRow) -> bool:
+            return ALL in row.binds or ref in row.binds
+
+        return replace(
+            self,
+            decisions=tuple(d for d in self.decisions if binds(d)),
+            open=tuple(q for q in self.open if binds(q)),
+            tests=tuple(t for t in self.tests if binds(t)),
+        )
+
+    def bound(self, ref: str) -> Record:
+        """This record with every row that binds nothing yet bound to `ref`.
+
+        A step that adds a row for one epic adds it to the Goal's record, where it binds
+        that epic: a Sponsor's reply, an answer to a story problem, a test a story
+        changes. A row it names epics for keeps them.
+        """
+        if not self.on_goal:
+            return self
+        return replace(
+            self,
+            decisions=tuple(d if d.binds else replace(d, binds=(ref,)) for d in self.decisions),
+            open=tuple(q if q.binds else replace(q, binds=(ref,)) for q in self.open),
+            tests=tuple(t if t.binds else replace(t, binds=(ref,)) for t in self.tests),
+        )
 
     def row(self, row_id: str) -> Decision | None:
         return next((d for d in self.decisions if d.id == row_id), None)
@@ -240,6 +322,81 @@ def split(body: str) -> tuple[str, str]:
     return head.rstrip(), f"{HEADER}{tail}".strip()
 
 
+@dataclass(frozen=True)
+class Place:
+    """Where the record a card reads is kept: its own body, or its Goal's record comment."""
+
+    repo: str
+    # The card the record is read or edited for: an epic, or the Goal itself.
+    number: int
+    goal: int | None = None
+    # The Goal's record comment, when the record is kept there.
+    comment: int | None = None
+
+    @property
+    def on_goal(self) -> bool:
+        return self.comment is not None
+
+
+def goal_of(issue: dict[str, Any]) -> int | None:
+    """The Goal above an epic, from its parent link, or None."""
+    found = re.search(r"/issues/(\d+)$", issue.get("parent_issue_url") or "")
+    return int(found.group(1)) if found else None
+
+
+def goal_record_comment(issues: Any, repo: str, goal: int) -> dict[str, Any] | None:
+    """The Goal's record comment, or None before the Goal's look has settled."""
+    found = [c for c in issues.comments(repo, goal) if GOAL_RECORD_MARKER in (c.get("body") or "")]
+    return found[-1] if found else None
+
+
+def comment_text(body: str) -> str:
+    return body.replace(GOAL_RECORD_MARKER, "", 1).strip()
+
+
+def _locate(issues: Any, repo: str, number: int) -> tuple[Place, str, str]:
+    """Where `number`'s record is kept, what holds it as read now, and the record's text.
+
+    An epic's own body first: one split before the Goal had a record keeps its own
+    until it closes (crew#858). Then its Goal's record comment, or the card's own
+    comment when the card is the Goal. Nowhere yet: the card's body, empty.
+    """
+    issue = issues.get(repo, number)
+    body = issue.get("body") or ""
+    _, text = split(body)
+    if text:
+        return Place(repo, number), body, text
+    goal = goal_of(issue)
+    found = goal_record_comment(issues, repo, goal if goal is not None else number)
+    if found is not None:
+        held = found.get("body") or ""
+        at = goal if goal is not None else number
+        return Place(repo, number, at, int(found["id"])), held, comment_text(held)
+    return Place(repo, number), body, ""
+
+
+def locate(issues: Any, repo: str, number: int) -> Place:
+    """Where the record `number` reads is kept (see `_locate`)."""
+    return _locate(issues, repo, number)[0]
+
+
+def text_for(issues: Any, repo: str, number: int) -> str:
+    """The record as `number` sees it, rendered: an epic's own, or the rows of its Goal's
+    record that bind it. Empty when it has none."""
+    place, _, text = _locate(issues, repo, number)
+    if not text:
+        return ""
+    if not place.on_goal or place.goal == number:
+        return text
+    return render(parse(text).for_epic(f"{issues.owner}/{repo}#{number}"))
+
+
+def record_for(issues: Any, repo: str, number: int) -> Record | None:
+    """The record `number` sees (`text_for`), parsed; None when it has none."""
+    text = text_for(issues, repo, number)
+    return parse(text) if text else None
+
+
 def _cells(line: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in _CELLS.split(line.strip())[1:-1]]
 
@@ -254,8 +411,12 @@ def _settler(cell: str) -> str:
     return IMPLEMENTER if text.lower().startswith("implement") else ARCHITECT
 
 
+def _binds(cell: str) -> tuple[str, ...]:
+    return tuple(r.strip() for r in cell.split(",") if r.strip())
+
+
 def parse(text: str) -> Record:
-    """The record in an epic's body, in either form."""
+    """The record in an epic's body, in either form, or the Goal's record."""
     decisions: list[Decision] = []
     questions: list[Question] = []
     infra: list[Item] = []
@@ -269,7 +430,25 @@ def parse(text: str) -> Record:
         if not found:
             continue
         kind = found.group(1)
-        if kind == "R" and len(cells) == 9:
+        if kind == "R" and len(cells) == 10:
+            row_id, status, context, decision, consequences, set_by, date, replaces, source = cells[
+                :9
+            ]
+            decisions.append(
+                Decision(
+                    row_id,
+                    context,
+                    decision,
+                    consequences,
+                    source,
+                    set_by,
+                    _blank(date),
+                    _blank(replaces),
+                    status,
+                    _binds(cells[9]),
+                )
+            )
+        elif kind == "R" and len(cells) == 9:
             row_id, status, context, decision, consequences, set_by, date, replaces, source = cells
             decisions.append(
                 Decision(
@@ -290,16 +469,25 @@ def parse(text: str) -> Record:
             decisions.append(
                 Decision(row_id, context, decision, consequences, source, PRODUCT_OWNER, "")
             )
+        elif kind == "Q" and len(cells) == 5:
+            questions.append(
+                Question(cells[0], cells[1], cells[2], _settler(cells[3]), _binds(cells[4]))
+            )
         elif kind == "Q" and len(cells) == 4:
             questions.append(Question(cells[0], cells[1], cells[2], _settler(cells[3])))
         elif kind == "I" and len(cells) == 2:
             infra.append(Item(cells[0], cells[1]))
         elif kind == "N" and len(cells) == 2:
             dismissed.append(Item(cells[0], cells[1]))
+        elif kind == "C" and len(cells) == 6:
+            test = cells[1].strip("`")
+            tests.append(TestRow(cells[0], test, cells[2], cells[3], cells[4], _binds(cells[5])))
         elif kind == "C" and len(cells) == 5:
             test = cells[1].strip("`")
             tests.append(TestRow(cells[0], test, cells[2], cells[3], cells[4]))
     marked = _TO_LOG.search(text)
+    looked = _LOOKED_AT.search(text)
+    taken = _REPLIES_IN.search(text)
     return Record(
         tuple(decisions),
         tuple(questions),
@@ -308,6 +496,9 @@ def parse(text: str) -> Record:
         tuple(marked.group(1).split(",")) if marked else (),
         NOTHING_RAISED in text,
         tuple(tests),
+        on_goal=GOAL_HEADER in text,
+        looked_at=_binds(looked.group(1)) if looked else (),
+        replies=_binds(taken.group(1)) if taken else (),
     )
 
 
@@ -316,11 +507,11 @@ def _cell(text: str) -> str:
     return _CELLS.sub(r"\\|", " ".join(text.split()))
 
 
-def _decision_line(d: Decision) -> str:
+def _decision_line(d: Decision, *, on_goal: bool = False) -> str:
     return (
         f"| {d.id} | {d.status} | {_cell(d.context)} | {_cell(d.decision)} | "
         f"{_cell(d.consequences)} | {d.set_by} | {d.date or NONE} | {d.replaces or NONE} | "
-        f"{_cell(d.source)} |"
+        f"{_cell(d.source)} |" + (f" {', '.join(d.binds)} |" if on_goal else "")
     )
 
 
@@ -343,7 +534,9 @@ def bottom_line(record: Record) -> str:
 
 
 def render(record: Record) -> str:
-    """The record as the epic's body carries it."""
+    """The record as the epic's body carries it, or the Goal's record as its comment does."""
+    if record.on_goal:
+        return _render_goal(record)
     if record.nothing_raised:
         return f"{HEADER}\n\n{NOTHING_RAISED}"
     lines = [HEADER, "", bottom_line(record), ""]
@@ -380,6 +573,52 @@ def render(record: Record) -> str:
     return "\n".join(lines)
 
 
+def _render_goal(record: Record) -> str:
+    lines = [GOAL_HEADER, "", bottom_line(record), ""]
+    if record.looked_at:
+        lines += [f"Looked at: {', '.join(record.looked_at)}.", ""]
+    if record.decisions:
+        lines += [
+            *_GOAL_DECISIONS,
+            *(_decision_line(d, on_goal=True) for d in record.decisions),
+            "",
+        ]
+    if record.open:
+        lines += [
+            *_GOAL_OPEN,
+            *(
+                f"| {q.id} | {_cell(q.question)} | {_cell(q.impact)} | {q.settled_by} | "
+                f"{', '.join(q.binds)} |"
+                for q in record.open
+            ),
+            "",
+        ]
+    if record.tests:
+        lines += [
+            "Merged tests the Goal's epics change:",
+            "",
+            *_GOAL_TESTS,
+            *(
+                f"| {t.id} | `{t.test}` | {_cell(t.asserts)} | {_cell(t.declared_by)} | "
+                f"{_cell(t.status)} | {', '.join(t.binds)} |"
+                for t in record.tests
+            ),
+            "",
+        ]
+    if record.for_infra:
+        lines += [*_INFRA, *(f"| {i.id} | {_cell(i.text)} |" for i in record.for_infra), ""]
+    if record.dismissed:
+        lines += [*_DISMISSED, *(f"| {n.id} | {_cell(n.text)} |" for n in record.dismissed), ""]
+    lines.append(GOAL_FOOTER)
+    if record.looked_at:
+        lines.append(_LOOKED.format(",".join(record.looked_at)))
+    if record.replies:
+        lines.append(_REPLIES.format(",".join(record.replies)))
+    if record.to_log:
+        lines.append(TO_LOG.format(",".join(record.to_log)))
+    return "\n".join(lines)
+
+
 def rows_for(text: str, ids: list[str]) -> str:
     """The decisions table with just these rows, and any row that has replaced one.
 
@@ -396,21 +635,6 @@ def rows_for(text: str, ids: list[str]) -> str:
         wanted |= more
     picked = [d for d in record.decisions if d.id in wanted]
     return "\n".join([*_DECISIONS, *(_decision_line(d) for d in picked)]) if picked else ""
-
-
-def architect_questions(text: str) -> tuple[list[str], str]:
-    """The questions the record leaves for the Architect: their IDs, and their table.
-
-    A question left to the implementer is not the Architect's: no gate checks it.
-    """
-    asked = parse(text).for_architect()
-    if not asked:
-        return [], ""
-    table = [
-        *_OPEN,
-        *(f"| {q.id} | {_cell(q.question)} | {_cell(q.impact)} | {q.settled_by} |" for q in asked),
-    ]
-    return [q.id for q in asked], "\n".join(table)
 
 
 def check_change(before: Record, after: Record) -> None:
@@ -574,7 +798,7 @@ def change_note(
     changed += [t.id for t in new_tests + dropped]
     return (
         f"{CHANGE.format(','.join(changed) + (f' {kind}' if kind else ''))}\n"
-        f"**The epic's record changed**, by the {by}"
+        f"**The {'Goal' if after.on_goal else 'epic'}'s record changed**, by the {by}"
         + (f", for {ref}" if ref else "")
         + ".\n\n"
         + "\n".join(lines)
@@ -595,26 +819,33 @@ def edit(
     why: str = "",
     kind: str = "",
 ) -> Record:
-    """Change the epic's record, check the change, write it, and say what changed.
+    """Change the record `epic` reads, check the change, write it, and say what changed.
 
-    `expected` is the body as the caller read it before deciding the change (the
-    model may have thought for minutes): if the body differs now, nothing is
-    written. The body is read once more just before writing, for the same reason.
-    An edit that changes nothing writes nothing. `kind` tags the change comment, so
-    a step can find its own changes without reading what they say.
+    The record is wherever `locate` finds it: the epic's body, or its Goal's record,
+    where a row this edit adds for the epic binds the epic unless it names others.
+    `expected` is what held the record as the caller read it before deciding the
+    change (the model may have thought for minutes): if it differs now, nothing is
+    written. It is read once more just before writing, for the same reason. An edit
+    that changes nothing writes nothing. `kind` tags the change comment, so a step can
+    find its own changes without reading what they say. The comment goes on `epic`.
     """
-    body = issues.get(repo, epic).get("body") or ""
-    if expected is not None and body != expected:
-        raise RecordChanged(f"the epic's body changed while its record was decided: {repo}#{epic}")
-    head, text = split(body)
+    place, held, text = _locate(issues, repo, epic)
+    if expected is not None and held != expected:
+        raise RecordChanged(f"the record changed while it was decided: {repo}#{epic}")
     before = parse(text) if text else Record()
     after = change(before)
+    if place.on_goal and place.goal != epic:
+        after = after.bound(f"{issues.owner}/{repo}#{epic}")
     check_change(before, after)
     if after == before:
         return after
-    if (issues.get(repo, epic).get("body") or "") != body:
-        raise RecordChanged(f"the epic's body changed while its record was edited: {repo}#{epic}")
-    issues.edit_issue(repo, epic, body=f"{head.rstrip()}\n\n{render(after)}\n")
+    if _locate(issues, repo, epic)[1] != held:
+        raise RecordChanged(f"the record changed while it was edited: {repo}#{epic}")
+    if place.comment is not None:
+        issues.edit_comment(repo, place.comment, f"{GOAL_RECORD_MARKER}\n{render(after)}\n")
+    else:
+        head, _ = split(held)
+        issues.edit_issue(repo, epic, body=f"{head.rstrip()}\n\n{render(after)}\n")
     ref = f"{issues.owner}/{repo}#{card}" if card is not None else ""
     artifacts.comment(
         issues,
@@ -624,8 +855,28 @@ def edit(
         body=change_note(before, after, by=by, ref=ref, why=why, kind=kind),
         by=by,
     )
-    # The Goal's index of every row across its epics follows each change (crew#611).
-    from crew_org.flows.goal_index import refresh_for_epic  # noqa: PLC0415
+    return after
 
-    refresh_for_epic(issues, sink, repo=repo, epic=epic)
+
+def start_goal_record(
+    issues: Any, sink: EventSink, *, repo: str, goal: int, by: str, record: Record, why: str = ""
+) -> Record:
+    """Write the Goal's first record, as its own comment, checked as any edit is.
+
+    Once per Goal: a Goal that has one already is changed through `edit`.
+    """
+    if goal_record_comment(issues, repo, goal) is not None:
+        raise RecordChanged(f"the Goal already has a record: {repo}#{goal}")
+    after = replace(record, on_goal=True)
+    empty = Record(on_goal=True)
+    check_change(empty, after)
+    issues.comment(repo, goal, f"{GOAL_RECORD_MARKER}\n{render(after)}\n")
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=goal,
+        body=change_note(empty, after, by=by, why=why),
+        by=by,
+    )
     return after

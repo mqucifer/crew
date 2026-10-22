@@ -59,13 +59,6 @@ check.gates.the_branch_changes_nothing:
   - crew#221
   - crew#778
   owner: Developer
-check.presentation_notes.coverage:
-  description: Refused unless every story of the epic appears once, and only those.
-  messages:
-    missing: '#{n} has no criteria'
-    twice: '#{n} appears more than once'
-    unknown: '#{n} isn''t one of this epic''s stories'
-  told_in: PresentationNote.stories
 check.review.with_docs_finding:
   description: An option the change adds that no user doc mentions is added as a blocking finding.
   messages:
@@ -123,28 +116,6 @@ form.QAVerdict.acceptance_requires_every_criterion:
       proven: by a test, or a doc criterion by the doc.'
   owner: QA Engineer
   told_in: QAVerdict.accepted
-form.ReaderCriterion.observable:
-  description: Refused if it asks for judgement a test can't check.
-  messages:
-    default: '''{word}'' asks for judgement, which a test can''t check. State what the output contains:
-      an order, a position, exact text, a count, a format. Whether it reads well is the Sponsor''s to
-      judge at review.'
-  owner: UX Designer
-  told_in: ReaderCriterion.then
-form.ReaderCriterion.stated:
-  cases:
-  - form.AlreadyHolds.stated
-  description: Refused if its given, when or then is empty.
-  messages:
-    default: every part of a criterion says something
-  owner: UX Designer
-  told_in: ReaderCriterion
-form.StoryCriteria.at_least_two:
-  description: Refused with fewer than two.
-  messages:
-    default: each story gets at least two criteria about what the reader sees
-  owner: UX Designer
-  told_in: StoryCriteria.criteria
 form.Triage.fits_its_outcome:
   description: 'Refused unless it fits its outcome: an accepted bug has criteria and a size from the scale,
     and only it has criteria; a duplicate names its issue; more_information asks its question.'
@@ -219,24 +190,12 @@ told.criteria_crew.every_criterion_of_the_story_under:
 told.criteria_crew.report_every_criterion_of_the_story:
   guidance: true
   owner: QA Engineer
-told.design_note_crew.the_stories_acceptance_criteria_are_the:
-  guidance: true
-  owner: Architect
 told.form.CriteriaCheck.conflicts:
   guidance: true
   owner: QA Engineer
 told.form.CriteriaConflict.story:
   guidance: true
   owner: QA Engineer
-told.form.PresentationNote.beyond_reach:
-  guidance: true
-  owner: UX Designer
-told.form.PresentationNote.stories:
-  guidance: true
-  owner: UX Designer
-told.presentation_note_crew.your_criteria_are_added_to_the:
-  guidance: true
-  owner: UX Designer
 told.product_owner.you_do_not_write_acceptance_criteria:
   guidance: true
   owner: Product Owner

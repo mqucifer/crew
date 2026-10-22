@@ -1,4 +1,4 @@
-"""A re-split epic gets a new design note that follows its latest decision (#244).
+"""An epic's old design note is shown only for the stories it was written for (#244).
 
 sprint-metrics#59's note told the reviewer not to assert stdout was empty,
 while #145's criterion required it; the gates returned #145 six times. The
@@ -9,9 +9,9 @@ told the re-split stories otherwise.
 from __future__ import annotations
 
 from crew_org.flows.board_flow import STORY_SPLIT_MARKER
-from crew_org.flows.design_notes import NOTE_MARKER, note_for
+from crew_org.flows.epic_notes import DESIGN_NOTE_MARKER, note_for
 
-OLD_NOTE = f"{NOTE_MARKER}\nDon't assert stdout is empty."
+OLD_NOTE = f"{DESIGN_NOTE_MARKER}\nDon't assert stdout is empty."
 
 
 class Issues:
@@ -26,12 +26,12 @@ def test_a_note_from_before_the_latest_split_is_stale():
     issues = Issues(
         f"{STORY_SPLIT_MARKER}\nfirst split", OLD_NOTE, f"{STORY_SPLIT_MARKER}\nre-split"
     )
-    assert note_for(issues, "r", 59) == ""
+    assert note_for(issues, "r", 59, DESIGN_NOTE_MARKER) == ""
 
 
 def test_a_note_written_since_the_split_counts():
     issues = Issues(f"{STORY_SPLIT_MARKER}\nsplit", OLD_NOTE)
-    assert note_for(issues, "r", 59) == OLD_NOTE
+    assert note_for(issues, "r", 59, DESIGN_NOTE_MARKER) == OLD_NOTE
 
 
 def test_a_story_sent_back_to_ready_does_not_block_its_epics_re_split():

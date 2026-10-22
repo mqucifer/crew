@@ -47,14 +47,14 @@ from crew_org import profiles
 from crew_org.crews import epic_rows
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import gates
-from crew_org.flows.conclusion import story_rows
+from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.delivery import (
     DeliveryOutcome,
     coverage_for,
     previous_fate,
     prior_verdicts,
 )
-from crew_org.flows.presentation_notes import story_notes
+from crew_org.flows.epic_notes import story_notes
 from crew_org.git_ops import (
     CHECKPOINT,
     DONE_TRAILER,
@@ -178,9 +178,15 @@ def deliver_by_session(
         return outcome
     profiles.set_project(record)
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
-    story = story_section(story_text, note, rows)
+    diagram = story_diagram(issues, card, repo)
+    story = story_section(story_text, note, rows, diagram)
     # The story's part of the start, measured by what it's made of (the operator, crew#778).
-    measured = {"card": len(story_text), "decided": len(rows or ""), "note": len(note or "")}
+    measured = {
+        "card": len(story_text),
+        "decided": len(rows or ""),
+        "note": len(note or ""),
+        "diagram": len(diagram),
+    }
     if checkpoint is not None:
         instead = resumed_start(checkpoint)
     elif live is not None and not rebuilt:
@@ -702,8 +708,9 @@ def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: l
     return signed("\n".join(lines), "Developer")
 
 
-def story_section(story_text: str, note: str, rows: str) -> str:
-    """The story as the session starts with it: the card, then what its epic decided."""
+def story_section(story_text: str, note: str, rows: str, diagram: str = "") -> str:
+    """The story as the session starts with it: the card, then what its epic decided, and
+    the Goal's target diagram (crew#858)."""
     parts = [story_text.strip()]
     decided = epic_rows.block(
         rows,
@@ -713,6 +720,11 @@ def story_section(story_text: str, note: str, rows: str) -> str:
     )
     if decided:
         parts.append(decided.strip())
+    drawn = epic_rows.diagram(
+        diagram, "What the system will be once the Goal is delivered: build to its parts.", level=3
+    )
+    if drawn:
+        parts.append(drawn.strip())
     if note:
         parts.append(f"### The design note for this story's epic\n\n{note.strip()}")
     return "\n\n".join(parts)

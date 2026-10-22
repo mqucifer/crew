@@ -424,6 +424,7 @@ def test_qa_is_shown_what_it_said_about_this_card_before(monkeypatch, tmp_path):
         docs="",
         checks="",
         decisions="",
+        diagram="",
     ):
         seen["prior"] = prior_verdicts
         return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])

@@ -1,5 +1,7 @@
 # The refinement panel test (sprint-metrics Goal #174)
 
+**Since mqucifer/crew#858:** the per-epic panel this describes was replaced by the Goal's look, and `crew_org.crews.panel_crew` is gone, so the scripts here no longer run. They stay as the evidence crew#858 and crew#828 cite.
+
 **Status:** run 2026-10-02 (02:15–07:00Z), all three arms, 108 calls, none failed. Scored by reading every note (269). Results and recommendation below. Part 5 of the plan agreed with the Sponsor on 2026-10-01: Architect, UX Designer, QA and DevOps each take a focused pass on an epic before it's split. This test checks that panel before it's built into the crew.
 
 ## The result

@@ -1,7 +1,7 @@
 # 18. The Product Owner decides within the Goal, and the Architect settles design before the split
 
 - **Date:** 2026-10-05
-- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583; the leeway widened to the Goal's intent on 2026-10-21 and built by crew#846)
+- **Status:** Accepted (built by crew#440, and the Architect's settle before the split by step A2 of `docs/plans/context-record-build.md`, crew#583; the leeway widened to the Goal's intent on 2026-10-21 and built by crew#846; the Architect decides in the Goal's look since crew#858, ADR 0036)
 
 ## Context
 
@@ -41,19 +41,18 @@ Sponsor, 2026-10-05.
   something the Goal's intent doesn't cover, the Product Owner brings it to the
   Sponsor as a question or a proposed Goal (ADR 0027).
   The conclusion's bottom line counts the calls.
-- **The leeway is for what the product does.** A note a member marked for the
-  Architect is a design question (a path, a response shape, a parameter): it stays
-  an open question for the design note unless a source settles it. The code refuses
-  an own call on such a note and sends the conclusion back.
-- **The Architect settles every open question before the split,** in the settle
-  step, right after the Product Owner's conclusion. Each answer is its own call
-  within the Goal and the decided rows, and becomes a decided row the split writes
-  criteria against. It names each question by its ID; one left out is asked for
-  again, and one still left out after the retries is for a person.
-- **The design note, after the split, follows those rows.** It decides what's left
-  to design: which module owns what, and the file layout. A question that can only
-  be answered with the code read stays open, and the split writes no criterion on
-  it until the design note settles it.
+- **The leeway is for what the product does.** A design question (a path, a response
+  shape, a parameter) is the Architect's.
+- **The Architect decides the design before the split,** once for the Goal, in the
+  Goal's look (ADR 0036): each decision across the Goal's epics that would be expensive
+  to reverse, made, with the options it weighed, and recorded as a row of the Goal's
+  record set by the Architect, naming the epics it binds. The split writes criteria
+  against those rows. A question any reasonable choice answers is left to the
+  implementer. A call the Architect can't make within the Goal goes to the Sponsor as
+  the Product Owner's one question.
+- **No design note follows the split.** What's left to design (which module owns
+  what, the file layout) is the Developer's, within the rows and the Goal's target
+  diagram.
 - **The Sponsor is asked only when the Product Owner can't tell which way the Goal
   points**, so that any call it made might contradict it.
 
@@ -72,7 +71,8 @@ Sponsor whenever its written sources ran out.
 - The first run with the leeway had the Product Owner deciding API paths, response
   shapes and parameters. The Sponsor drew the line there (2026-10-05): design goes
   to the Architect.
-- Refinement costs one more Architect call for each epic with open design questions,
+- Refinement costs one Architect session per Goal, in the look (ADR 0036). It cost one
+  more call for each epic with open design questions,
   and saves the story problems and re-splits they caused.
 - A call can narrow an approved epic, as the 406 row did, so long as it stays within
   the Goal and is recorded. If narrowing epics proves to be a problem, that is a
@@ -91,3 +91,7 @@ Sponsor whenever its written sources ran out.
   Architect.
 - **2026-10-18:** the Product Owner's settle and the Architect's design settle each work in a session over the code (crew#807, ADR 0033): a fact about the code is checked in it, and what's decided is binding. Their checks refuse at `done`, in the session.
 - **2026-10-21:** the Product Owner chooses what serves the Goal's reader, within its intent rather than its words; the quotation check becomes a check against the intent; "the Goal points elsewhere" is an answer. Decided by the Sponsor in the overhaul's planning session (ADR 0035, crew#846).
+- **2026-10-22:** the Architect's design settle per epic, and the design note after the
+  split, go: the Architect decides once for the Goal, in the Goal's look, into the Goal's
+  record, and the Product Owner settles the rest of the look there (ADR 0036, crew#858).
+  The leeway and the intent check are unchanged.

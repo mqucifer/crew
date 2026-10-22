@@ -50,6 +50,22 @@ config.const.github_project.PAGE_SIZE:
 config.const.github_project.TIMEOUT:
 config.const.history.MAX_VERDICTS:
 config.const.history.MAX_VERDICT_CHARS:
+config.const.look.EXTERNAL_BYTES:
+  origin:
+  - crew#846
+config.const.look.EXTERNAL_COUNT:
+  origin:
+  - crew#846
+config.const.look.HEIGHT:
+  origin:
+  - crew#846
+config.const.look.REDIRECTS:
+config.const.look.TEXT_CHARS:
+  origin:
+  - crew#846
+config.const.look.TIMEOUT:
+  origin:
+  - crew#846
 config.const.remote_errors._SERVER_ERROR:
 config.const.repo_context.CLOSE_LIMIT:
 config.const.repo_context.CONTEXT_CHAR_CEILING:
@@ -152,9 +168,6 @@ config.const.tools.VIEW_LINES:
   - crew#778
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:
-told.architect.refinement.you_settle_the_least_the_stories:
-  guidance: true
-  owner: Architect (refinement)
 told.form.DoneAnswers.bar:
   guidance: true
   owner: Product Owner
@@ -191,12 +204,6 @@ told.product_owner.onboarding.the_optional_answers_matter_too_what:
 told.product_owner.onboarding.the_record_is_read_by_roles:
   guidance: true
   owner: Product Owner (onboarding)
-told.qa_engineer.panel.a_promise_no_test_could_check:
-  guidance: true
-  owner: QA Engineer (panel)
-told.qa_engineer.panel.you_quote_both_sides_and_you:
-  guidance: true
-  owner: QA Engineer (panel)
 told.refinement_crew.a_story_that_extends_another_must:
   guidance: true
   owner: Business Analyst

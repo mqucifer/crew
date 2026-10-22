@@ -110,7 +110,7 @@ def _write_log(
     rows: list[Row] = []
     for issue in labelled:
         epic = int(issue["number"])
-        mine = to_log(epic, issue.get("title") or "", issue.get("body") or "")
+        mine = to_log(epic, issue.get("title") or "", _record_of(issues, repo, issue))
         new = [r for r in mine if (epic, r.id) not in logged]
         if not new:
             # All in the log already: the label's work is done.
@@ -125,9 +125,19 @@ def _write_log(
     sink.note(EventKind.NOTE, f"{repo}: {len(rows)} decisions proposed for the project's log")
 
 
+def _record_of(issues: Any, repo: str, issue: dict[str, Any]) -> str:
+    """The labelled card's record: an epic's in its body, or a Goal's in its comment."""
+    body = issue.get("body") or ""
+    if record_flow.has_record(body):
+        return body
+    held = record_flow.goal_record_comment(issues, repo, int(issue["number"]))
+    return record_flow.comment_text(held.get("body") or "") if held else ""
+
+
 def to_log(epic: int, title: str, body: str) -> list[Row]:
-    """The binding rows the epic's record marks as deciding something for every epic."""
-    found = record_flow.parse(record_flow.split(body)[1])
+    """The binding rows the record marks as deciding something for every epic: an epic's
+    body, or the Goal's record (crew#858)."""
+    found = record_flow.parse(record_flow.split(body)[1] or body)
     return [
         Row(epic, title, d.id, d.context, d.decision, d.consequences, d.source)
         for d in found.binding()

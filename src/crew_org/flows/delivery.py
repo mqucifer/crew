@@ -522,9 +522,7 @@ def rule_on_contract(
             body=f"**The story's contract, amended in delivery.** {line}\n\n{ruling.why}",
             by="Business Analyst",
         )
-        if card.parent is not None and record.has_record(
-            issues.get(repo, card.parent).get("body") or ""
-        ):
+        if card.parent is not None and record.text_for(issues, repo, card.parent):
 
             def change(current: record.Record) -> record.Record:
                 for test in ruling.tests:
