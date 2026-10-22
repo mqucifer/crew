@@ -545,3 +545,64 @@ def test_every_declared_send_back_is_run_by_a_test_here():
     }
     unrun = [b for b in sendbacks.CATALOG if str(b.rule) not in asserted]
     assert not unrun, unrun
+
+
+# --- what delivery-history publishes (crew#862, ADR 0021) ---
+
+
+def test_a_send_back_reaches_delivery_history_as_names_and_numbers(tmp_path):
+    import json
+
+    from tests import test_delivery_history as history
+
+    sink = EventSink(tmp_path / "events" / "tick.jsonl")
+    sendbacks.record(
+        sink, sendbacks.QA_UNPROVEN, card=455, repo="sprint-metrics", round_=2, unproven=3
+    )
+    sendbacks.record(sink, sendbacks.DESIGN_REFUSED, card=None, repo="sprint-metrics", round_=1)
+    raw = [json.loads(line) for line in sink.path.read_text().splitlines()]
+    for event in raw:
+        event["at"] = history.at(1)
+
+    data, manifest = history.built([("tick", e) for e in raw])
+
+    assert [e for e in data["events"] if e["kind"] == "sent_back"] == [
+        {
+            "kind": "sent_back",
+            "at": "2026-10-07T20:01:00Z",
+            "repo": "sprint-metrics",
+            "card": {"repo": "sprint-metrics", "number": 455},
+            "sent_from": "qa",
+            "sent_to": "build",
+            "rule": "gate.qa_unproven",
+            "round": 2,
+            "counts": {"unproven": 3},
+        },
+        {
+            "kind": "sent_back",
+            "at": "2026-10-07T20:01:00Z",
+            "repo": "sprint-metrics",
+            "card": None,
+            "sent_from": "review",
+            "sent_to": "design",
+            "rule": "sent_back.design_refused",
+            "round": 1,
+            "counts": {},
+        },
+    ]
+    assert not manifest.left_out
+
+
+def test_a_send_back_naming_a_step_it_doesnt_know_is_left_out_and_counted():
+    from tests import test_delivery_history as history
+
+    raw = {
+        "at": history.at(1),
+        "kind": "work.sent_back",
+        "card": 455,
+        "detail": {"repo": "sprint-metrics", "sent_from": "somewhere", "sent_to": "build"},
+    }
+    data, manifest = history.built([("tick", raw)])
+
+    assert not [e for e in data["events"] if e["kind"] == "sent_back"]
+    assert manifest.left_out == {"sent back: unreadable": 1}

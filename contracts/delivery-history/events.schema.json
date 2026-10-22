@@ -609,6 +609,84 @@
       "title": "Returned",
       "type": "object"
     },
+    "SentBack": {
+      "additionalProperties": false,
+      "description": "Finished work sent back to its own step or an earlier one, to be done again (crew#862).\n\nRework, counted per step: which step sent it, which it went back to, and the rule\nthat decided. Every send-back writes one, beside the events that record their own\nparts (`returned`, `gate_checked`, a move's rule). A refusal inside a session, a\nhold, a block for a person and a finding filed as new work aren't send-backs.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CardRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The card sent back; None for a project's design, which no card holds."
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "What it carried back, by name: findings, conflicts, stories, unproven.",
+          "title": "Counts",
+          "type": "object"
+        },
+        "kind": {
+          "const": "sent_back",
+          "default": "sent_back",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repo": {
+          "title": "Repo",
+          "type": "string"
+        },
+        "round": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Its round at that step, counted from 1; None where the step keeps none.",
+          "title": "Round"
+        },
+        "rule": {
+          "description": "The declared rule that decided it (ADR 0031).",
+          "title": "Rule",
+          "type": "string"
+        },
+        "sent_from": {
+          "$ref": "#/$defs/Step",
+          "description": "The step that sent it back."
+        },
+        "sent_to": {
+          "$ref": "#/$defs/Step",
+          "description": "The step it went back to."
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "repo",
+        "card",
+        "sent_from",
+        "sent_to",
+        "rule",
+        "round",
+        "counts"
+      ],
+      "title": "SentBack",
+      "type": "object"
+    },
     "SessionCompacted": {
       "additionalProperties": false,
       "description": "A session's history compacted before a prompt would pass its limit: one of these\neach time, since a long session compacts more than once.",
@@ -1115,6 +1193,31 @@
       "title": "SessionTurn",
       "type": "object"
     },
+    "Step": {
+      "description": "A step of the flow, in its order: where a send-back came from and where it went.",
+      "enum": [
+        "sponsor",
+        "decompose",
+        "refinement",
+        "story_problem",
+        "split",
+        "criteria_check",
+        "build",
+        "gate",
+        "ci",
+        "review",
+        "deploy_review",
+        "qa",
+        "merge",
+        "main",
+        "release_check",
+        "revert",
+        "revisit",
+        "design"
+      ],
+      "title": "Step",
+      "type": "string"
+    },
     "ToolCall": {
       "additionalProperties": false,
       "description": "One tool call of a session: which tool, how it went, and its sizes. Never its\narguments or its reply, a path, a pattern or a command.",
@@ -1416,6 +1519,7 @@
             "model_call": "#/$defs/ModelCall",
             "pull_merged": "#/$defs/PullMerged",
             "returned": "#/$defs/Returned",
+            "sent_back": "#/$defs/SentBack",
             "session_compacted": "#/$defs/SessionCompacted",
             "session_ended": "#/$defs/SessionEnded",
             "session_started": "#/$defs/SessionStarted",
@@ -1471,6 +1575,9 @@
           },
           {
             "$ref": "#/$defs/Returned"
+          },
+          {
+            "$ref": "#/$defs/SentBack"
           }
         ]
       },

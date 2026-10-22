@@ -75,8 +75,11 @@ them: what changed each sprint, what needed attention at its end, and each
 story's pattern. Since 1.6.0 it carries the Developer's sessions (crew#778) by
 their names and counts, never their paths, commands or words, and each story's
 deliveries in them: its sessions, the times it reached review, the gate's rounds
-before that, what it cost and how it ended. The crew's code writes that analysis from fixed
-sentences, never a model. What it may carry is ADR 0020; who does what with it
+before that, what it cost and how it ended. Since 1.10.0 it carries every send-back
+(crew#862): finished work sent back to its own step or an earlier one, by the step that
+sent it, the step it went back to, the rule that decided, and its round. What counts as
+one is in [`docs/reference/records.md`](docs/reference/records.md). The crew's code writes
+that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):

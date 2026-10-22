@@ -137,6 +137,29 @@ def _session(minutes: float, kind: str, card: int, /, **detail: Any) -> Raw:
     )
 
 
+def _sent_back(
+    minutes: float, card: int | None, sent_from: str, sent_to: str, rule: str, **more: Any
+) -> Raw:
+    """A send-back (crew#862), as `sendbacks.record` writes it."""
+    return (
+        "tick",
+        {
+            "at": _at(minutes),
+            "kind": "work.sent_back",
+            "role": more.pop("role", None),
+            "card": card,
+            "detail": {
+                "repo": SM,
+                "sent_from": sent_from,
+                "sent_to": sent_to,
+                "rule": rule,
+                "round": more.pop("round", None),
+                "counts": more,
+            },
+        },
+    )
+
+
 def _tool(
     minutes: float, card: int, turn: int, tool: str, result: str = "ok", **detail: Any
 ) -> Raw:
@@ -346,6 +369,16 @@ def _events() -> list[Raw]:
                 "detail": {"repo": SM, "superseded": [130], "because": "story problem"},
             },
         ),
+        # The design revision the Code Reviewer refused once before the crew merged it.
+        _sent_back(
+            199.5,
+            None,
+            "review",
+            "design",
+            "sent_back.design_refused",
+            role="Code Reviewer",
+            round=1,
+        ),
         _by_person(200, 130, "Ready", "Done", by="platform"),
         # Still going at the sprint's end, and one blocked.
         _moved(220, 129, "Sprint Backlog", "In Progress"),
@@ -367,6 +400,7 @@ def _events() -> list[Raw]:
             rules=["contract.declared_tests"],
             already_done=False,
         ),
+        _sent_back(246, 136, "gate", "build", "gate.findings_at_done", round=1, findings=1),
         *_sessioned(247, 136, rework=True),
         _session(249, "session.compacted", 136, turn=3, estimated_tokens=126000, turns_masked=14),
         _session(252, "gate.checked", 136, passed=True, rules=[], already_done=False),
@@ -383,6 +417,16 @@ def _events() -> list[Raw]:
             },
         ),
         _moved(258, 136, "Reviewing", "In Progress", role="Code Reviewer"),
+        _sent_back(
+            258,
+            136,
+            "review",
+            "build",
+            "gate.review_changes_requested",
+            role="Code Reviewer",
+            round=1,
+            findings=2,
+        ),
         *_sessioned(260, 136, rework=True),
         _session(263, "tool.failed", 136, tool="after_run", turn=2),
         _session(265, "gate.checked", 136, passed=True, rules=[], already_done=False),
@@ -399,6 +443,9 @@ def _events() -> list[Raw]:
         ),
         _session(251, "story.returned", 132, reason="session blocked", kind="stop", stop="ceiling"),
         _moved(251, 132, "In Progress", "Ready"),
+        _sent_back(
+            251, 132, "build", "split", "story.session_blocked", role="Developer", stories=1
+        ),
     ]
     return events
 
