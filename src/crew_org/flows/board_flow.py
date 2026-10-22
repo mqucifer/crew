@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
-from crew_org import log
+from crew_org import log, sendbacks
 from crew_org.columns import BLOCKED, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org, resplit_stop_of
@@ -1989,6 +1989,15 @@ def refine_epics(
                 )
                 named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
                 if named:
+                    sendbacks.record(
+                        sink,
+                        sendbacks.CRITERIA_REPAIR,
+                        card=number,
+                        repo=repo,
+                        role="QA Engineer",
+                        conflicts=len(checked.conflicts),
+                        stories=len(named),
+                    )
                     # Only those stories' criteria are rewritten: a whole re-split fixed
                     # the conflict it was told of and made a new one elsewhere (crew#440).
                     repair = attributed(repair_criteria, card=number, repo=repo)(
@@ -2006,6 +2015,14 @@ def refine_epics(
                     )
                     proposal = criteria_check.with_repairs(proposal, named, repair)
                 elif checked.conflicts:
+                    sendbacks.record(
+                        sink,
+                        sendbacks.CRITERIA_RESPLIT,
+                        card=number,
+                        repo=repo,
+                        role="QA Engineer",
+                        conflicts=len(checked.conflicts),
+                    )
                     asked_for["feedback"] = "\n\n".join(
                         f for f in (asked_for["feedback"], criteria_check.feedback(checked)) if f
                     )

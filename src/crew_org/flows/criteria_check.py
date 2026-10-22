@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.crews.criteria_crew import CriteriaCheck, CriteriaConflict
 from crew_org.crews.refinement_crew import CriteriaRepair, Story, StoryProposal
 from crew_org.events import EventKind, EventSink
@@ -260,4 +261,12 @@ def to_product_owner(
         f"#{number} not split: {len(check.conflicts)} criteria can't all pass",
         card=number,
         rule=Rule.CRITERIA_CANNOT_ALL_PASS,
+    )
+    sendbacks.record(
+        sink,
+        sendbacks.CRITERIA_TO_PRODUCT_OWNER,
+        card=number,
+        repo=repo,
+        role="QA Engineer",
+        conflicts=len(check.conflicts),
     )
