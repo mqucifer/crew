@@ -17,6 +17,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import board_flow
 from tests import test_criteria_check as criteria
 from tests.test_board_flow import FakeBoard, FakeIssues, epic_card
+from tests.test_revisit import clone, sprint6  # noqa: F401  (fixtures)
 from tests.test_session_delivery import deliver, ws  # noqa: F401  (fixtures)
 from tests.test_session_end import verdict  # noqa: F401  (a fixture)
 
@@ -453,3 +454,94 @@ def test_a_conflict_at_merge_is_a_send_back_to_the_build_in_its_round():
     sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
     assert which(sent) == [(6, "merge", "build", "gate.merge_conflict")]
     assert sent[0].detail["round"] == 2
+
+
+# --- after merge (A1 to A5) ---
+
+
+def test_a_red_default_branch_is_a_send_back_to_refinement(watched):
+    from tests import test_main_watch as main
+
+    main.watch(main.Issues({main.RELEASE: main.run("failure")}))
+
+    assert which(watched) == [(300, "main", "refinement", "sent_back.main_red")]
+
+
+def test_a_release_with_gaps_is_a_send_back_to_refinement(watched):
+    from crew_org.tools.registry import Image
+    from tests import test_release_check as release
+
+    image = Image(digest=release.DIGEST, platforms=["linux/amd64", "linux/arm64"], labels={})
+    release.check(release.Issues(attested=False), release.FakeRegistry(image))
+
+    assert which(watched) == [(400, "release_check", "refinement", "sent_back.release_gaps")]
+    assert watched[0].detail["counts"]["gaps"] >= 2
+
+
+def test_a_revert_that_lands_is_a_send_back_to_refinement():
+    from tests import test_revert as revert
+
+    pull = revert.revert_pull()
+    _, _, seen = revert.land(
+        revert.FakeIssues(pulls=[pull], open_=[pull], reviews=revert.APPROVED), [revert.card()]
+    )
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(31, "revert", "refinement", "sent_back.reverted")]
+
+
+def test_design_faults_are_a_send_back_to_the_design(clone, watched):  # noqa: F811
+    from tests import test_design_faults as faults
+    from tests.test_revisit import Architect, proposal
+
+    issues = faults.Labels()
+    issues.comments_on[35] = [faults.FAULT]
+    faults.run(issues, clone, [faults.blocked(35)], Architect(proposal(structure="x")))
+
+    assert which(watched) == [(35, "revisit", "design", "sent_back.design_faults")]
+
+
+def test_rebuild_strain_and_each_refused_revision_are_send_backs_to_the_design(
+    clone,  # noqa: F811
+    sprint6,  # noqa: F811
+    watched,
+):
+    from crew_org.crews.design_crew import Conflict, DesignReview
+    from crew_org.flows.revisit import revisit_designs
+    from tests.test_revisit import REPO, SPRINT6, Architect, Board, Issues, proposal
+
+    issues = Issues()
+    conflict = DesignReview(conflicts=[Conflict(guideline="§19 rule 1", choice="x", why="y")])
+    revisit_designs(
+        issues,
+        issues,
+        Board(),
+        EventSink(),
+        clone,
+        SPRINT6,
+        repos={REPO},
+        events_dir=sprint6,
+        propose_design=Architect(proposal(), proposal()),
+        review_design=lambda **_: conflict,
+    )
+
+    assert which(watched) == [
+        (None, "revisit", "design", "sent_back.rebuild_strain"),
+        (None, "review", "design", "sent_back.design_refused"),
+        (None, "review", "design", "sent_back.design_refused"),
+    ]
+    assert [e.detail["round"] for e in watched[1:]] == [1, 2]
+
+
+def test_every_declared_send_back_is_run_by_a_test_here():
+    """The done-when (crew#862): each send-back, run once, leaves its event."""
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    asserted = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    unrun = [b for b in sendbacks.CATALOG if str(b.rule) not in asserted]
+    assert not unrun, unrun

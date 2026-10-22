@@ -33,6 +33,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from crew_org import sendbacks
 from crew_org.columns import BLOCKED, NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
@@ -371,6 +372,10 @@ def _answer_design_faults(
         reason=reason,
         new=True,
     )
+    # Recorded once the Architect has answered: a design that fails is tried again.
+    for number in sorted(faults):
+        sendbacks.record(sink, sendbacks.DESIGN_FAULTS, card=number, repo=repo, role=BY)
+    _refusals_sent_back(sink, repo, designed)
     if designed.record is None or designed.record.design == record.design:
         why = (
             "the Code Reviewer refused both proposals: " + "; ".join(designed.refused)
@@ -513,6 +518,10 @@ def _revise(
         review_design=review_design,
         reason=reason,
     )
+    sendbacks.record(
+        sink, sendbacks.REBUILD_STRAIN, card=None, repo=repo, role=BY, strains=len(strains)
+    )
+    _refusals_sent_back(sink, repo, designed)
 
     if designed.record is None:
         held("decision.revisit.file_work", repo=repo)
@@ -584,6 +593,19 @@ def _revise(
             detail={"repo": repo, "url": url},
         )
     )
+
+
+def _refusals_sent_back(sink: EventSink, repo: str, designed: Any) -> None:
+    """Each proposal the Code Reviewer refused, a send-back to the Architect in its round."""
+    for round_ in range(1, designed.reviews_refused + 1):
+        sendbacks.record(
+            sink,
+            sendbacks.DESIGN_REFUSED,
+            card=None,
+            repo=repo,
+            role="Code Reviewer",
+            round_=round_,
+        )
 
 
 def _indent(text: str | None) -> str:

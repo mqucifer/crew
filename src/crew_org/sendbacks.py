@@ -263,13 +263,16 @@ def record(
     sink: EventSink,
     back: SendBack,
     *,
-    card: int,
+    card: int | None,
     repo: str | None,
     role: str | None = None,
     round_: int | None = None,
     **counts: int,
 ) -> None:
-    """Write the send-back's event. `round_` only where the site knows it; counts by name."""
+    """Write the send-back's event. `round_` only where the site knows it; counts by name.
+
+    `card` is None for a project's design, which no card holds.
+    """
     detail: dict[str, object] = {
         "repo": repo,
         "sent_from": back.sent_from.value,
@@ -283,7 +286,8 @@ def record(
             kind=EventKind.WORK_SENT_BACK,
             role=role,
             card=card,
-            summary=f"#{card} sent back: {back.sent_from.value} to {back.sent_to.value}",
+            summary=f"{f'#{card}' if card is not None else repo} sent back: "
+            f"{back.sent_from.value} to {back.sent_to.value}",
             detail=detail,
         )
     )
