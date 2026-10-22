@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import posixpath
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -32,7 +33,9 @@ from crew_org.tools import devcontainer
 # What the crew reads of a compose service. Everything else is named as not honoured.
 HONOURED = ("image", "environment", "command", "healthcheck", "tmpfs", "user")
 NOT_HONOURED = "the crew starts the service itself, with the sandbox's hardening"
-ROOT_USERS = {"0", "root"}
+ROOT_NAMES = {"root"}
+# A service's name becomes a container name and a network alias: never an option.
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
 
 @dataclass(frozen=True)
@@ -143,17 +146,21 @@ def _service(
 ) -> tuple[Service | None, str]:
     """One compose service as the crew starts it, or why it can't be."""
     where = f"`{compose}`'s `{name}`"
+    if not NAME.fullmatch(name):
+        return None, f"{where}: a service's name is letters, digits, `_`, `.` and `-`"
     if not isinstance(raw, dict):
         return None, f"{where} isn't an object"
     for key in raw:
         if key not in HONOURED:
             not_honoured[f"{name}.{key}"] = NOT_HONOURED
     image = raw.get("image")
-    if not isinstance(image, str) or "@sha256:" not in image:
+    if not isinstance(image, str) or image.startswith("-") or any(c.isspace() for c in image):
+        return None, f"{where} names no image: one is a name, never an option"
+    if "@sha256:" not in image:
         # The image rule (§19): what the host pulls is pinned, never a tag that can move.
         return None, f"{where} names no image pinned by digest (name@sha256:...)"
     user = raw.get("user")
-    if not isinstance(user, str | int) or str(user).partition(":")[0] in ROOT_USERS:
+    if not isinstance(user, str | int) or _root(str(user)):
         return None, f"{where} names no `user` other than root: a service never runs as root"
     env = raw.get("environment") or {}
     if isinstance(env, list):
@@ -192,6 +199,23 @@ def _service(
         health,
         [str(p).partition(":")[0] for p in tmpfs],
     ), ""
+
+
+def _root(user: str) -> bool:
+    """A user or group that's root, by name or by number however written (`00`, `+0`),
+    or one that names nothing or reads as an option."""
+    if not user.strip() or user.startswith("-"):
+        return True
+    for part in user.split(":"):
+        part = part.strip()
+        if part in ROOT_NAMES:
+            return True
+        try:
+            if int(part) == 0:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def _words(value: object) -> bool:

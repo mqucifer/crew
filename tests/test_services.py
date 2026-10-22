@@ -95,6 +95,12 @@ def test_run_services_chooses_which_start():
         (("image: " + POSTGRES, "image: postgres:16"), "pinned by digest"),
         (('user: "999:999"', 'user: "0:0"'), "never runs as root"),
         (('user: "999:999"', ""), "never runs as root"),
+        (('user: "999:999"', 'user: "00"'), "never runs as root"),
+        (('user: "999:999"', 'user: "+0"'), "never runs as root"),
+        (('user: "999:999"', 'user: "999:0"'), "never runs as root"),
+        (('user: "999:999"', 'user: "root:999"'), "never runs as root"),
+        (('user: "999:999"', 'user: "--privileged"'), "never runs as root"),
+        (("image: " + POSTGRES, "image: --privileged@sha256:1"), "never an option"),
         (('["CMD", "pg_isready", "-U", "postgres"]', '["CMD-SHELL", "pg_isready"]'), "shell"),
         (("POSTGRES_DB: sm", "POSTGRES_DB: ${DB}"), "plain value"),
     ],
@@ -102,6 +108,11 @@ def test_run_services_chooses_which_start():
 def test_a_service_that_cant_be_started_safely_is_a_problem_naming_it(change, said):
     found = declared(files(compose=COMPOSE.replace(*change)).get)
     assert found.services == [] and said in found.problems["postgres"]
+
+
+def test_a_service_named_as_an_option_is_refused_before_any_argv():
+    found = declared(files(compose=COMPOSE.replace("  postgres:", "  --rm:")).get)
+    assert found.services == [] and "a service's name" in found.problems["--rm"]
 
 
 def test_a_missing_compose_file_is_a_problem():
