@@ -13,7 +13,7 @@ the crew runs Mermaid, so this checks the grammar the Architect is asked for, in
 - each alias is defined once, and each relation names aliases the diagram defines.
 
 A sequence diagram, drawn only when a Goal adds an interaction, is checked the same
-way for its own lines and for blocks that open and end.
+way for its own lines, for blocks that open and end, and for a `;`, which ends a line.
 
 What it can't show is that GitHub draws it as intended: layout and Mermaid's own
 quirks. Its tests' diagrams were run once through Mermaid's parser (`tests/test_mermaid.py`).
@@ -194,6 +194,11 @@ def sequence_problems(text: str) -> list[str]:
     for n, line in enumerate(lines[1:], 2):
         word = line.split(" ", 1)[0]
         if not line:
+            continue
+        if ";" in line and not line.startswith("%%"):
+            # Mermaid ends a statement at `;`: the rest of the line doesn't parse. The
+            # first real look's sequence diagram listed its queries with them.
+            problems.append(f"line {n}: a `;` ends the line in Mermaid: write it as a comma")
             continue
         if word in _OPENS:
             depth += 1

@@ -5,7 +5,9 @@ hand, for crew#858's PR), so the check isn't only agreeing with itself. Mermaid
 accepted both well-formed ones and refused every break below, except five it parses
 and then draws wrong or not at all: an open quote, a relation without its label, a
 relation to an alias nobody defined, an alias defined twice, and an alias with a
-space. Those are caught here.
+space. Those are caught here. A `;` in a sequence message, which Mermaid refused on the
+first real look's diagram (mqucifer/sprint-metrics#666) and the check had passed, is
+caught too.
 """
 
 from __future__ import annotations
@@ -81,6 +83,8 @@ def test_a_well_formed_sequence_diagram_has_no_problems():
         (lambda d: d + "end\n", "closes no block"),
         (lambda d: d.replace("T->>G: read", "T => G read"), "isn't a sequence diagram line"),
         (lambda d: d + "else later\n", "outside any block"),
+        # The first real look's line (sprint-metrics#666), which Mermaid refused.
+        (lambda d: d.replace("read the Goal's epics", "distinct stories; reason counts"), "`;`"),
     ],
 )
 def test_what_keeps_a_sequence_diagram_from_rendering_is_named(change, said):
