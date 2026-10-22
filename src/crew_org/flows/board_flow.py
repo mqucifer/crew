@@ -813,6 +813,7 @@ def settle_wait(
             card=number,
             rule="skip.board_flow.waits_for_planned",
         )
+        sendbacks.record(sink, sendbacks.WAITS_FOR_CLOSED, card=number, repo=repo, closed=len(gone))
         return RESPLIT
     result.skipped.append(
         (number, "waits for planned " + ", ".join(f"#{n}" for n in sorted(waited)))
@@ -925,6 +926,7 @@ def rework_gate(
             detail={"repo": repo, "superseded": closable, "because": "sponsor"},
         )
     )
+    sendbacks.record(sink, sendbacks.GOAL_REWORK, card=number, repo=repo, superseded=len(closable))
     return True, sponsor_notes(issues, repo, number)
 
 
@@ -1849,12 +1851,14 @@ def refine_epics(
             waited = (
                 waits_for(issues, repo, number) if NEEDS_REWORK not in epic_card.labels else set()
             )
+            waits_broke = False
             if waited:
                 held("skip.board_flow.waits_for_planned", repo=repo, card=number)
                 settled = settle_wait(issues, sink, result, cards, epic_card, repo, waited, done)
                 if settled != RESPLIT:
                     held("decision.board_flow.rework_gate", repo=repo, card=number)
                     continue
+                waits_broke = True
                 # Something it waited for was superseded: split again, now.
                 epic_card = epic_card.model_copy(
                     update={"labels": frozenset(epic_card.labels) | {NEEDS_REWORK}}
@@ -2250,6 +2254,8 @@ def refine_epics(
                         reads_decision=record_flow.has_change(
                             [_all_bodies(issues, repo, number)], ANSWER
                         ),
+                        waits_broke=waits_broke,
+                        round_=round_,
                     )
             # The split is DevOps's event: the epic's CI and release, one Task per epic,
             # since epics release themselves (crew#839, ADR 0019).
@@ -2521,6 +2527,13 @@ def tick(
                     by=None,
                     remove=[NEEDS_EPIC],
                     rule="decision.board_flow.lacking_goals",
+                )
+                sendbacks.record(
+                    sink,
+                    sendbacks.GOAL_LACKS_EPICS,
+                    card=number,
+                    repo=repo,
+                    epics=len(epic_numbers),
                 )
 
             result.proposed.append(number)

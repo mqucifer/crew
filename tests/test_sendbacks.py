@@ -119,3 +119,85 @@ def test_criteria_that_still_conflict_are_sent_to_the_product_owner(monkeypatch)
         (3, "criteria_check", "split", "gate.criteria_resplit"),
         (3, "criteria_check", "story_problem", "gate.criteria_cannot_all_pass"),
     ]
+
+
+# --- refinement's other send-backs (R1 to R4) ---
+
+
+def test_a_goal_the_sponsor_sends_back_is_a_send_back_to_decompose(monkeypatch):
+    from tests import test_board_flow as goals
+
+    issues = goals.ReworkIssues(
+        comments=[goals.marked(board_flow.EPIC_PROPOSAL_MARKER), goals.sponsor("try again")],
+        children=[7],
+    )
+    board = FakeBoard([goals.reworked(1), goals.card(7, status="Inbox")])
+    _, seen = goals.run(board, issues, monkeypatch)
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(1, "sponsor", "decompose", "decision.board_flow.rework_gate")]
+    assert sent[0].detail["counts"] == {"superseded": 1}
+
+
+def test_a_goal_the_sponsor_says_lacks_an_epic_is_a_send_back_to_decompose(monkeypatch):
+    from tests import test_board_flow as goals
+    from tests import test_goal_lacks_an_epic as lacks
+
+    issues = lacks.Lacking(
+        comments=[goals.marked(board_flow.EPIC_PROPOSAL_MARKER), goals.sponsor("not durable")],
+        children=[7],
+    )
+    monkeypatch.setattr(board_flow, "propose_missing_epics", lambda goal, **kw: lacks.DURABLE)
+    sink, seen = collecting()
+    board_flow.tick(
+        FakeBoard([lacks.asking(1), goals.card(7, status="Inbox")]),
+        issues,
+        sink,
+        default_repo="sprint-metrics",
+        sponsor="mquarters",
+    )
+
+    assert which(seen) == [(1, "sponsor", "decompose", "decision.board_flow.lacking_goals")]
+    assert seen[0].detail["counts"] == {"epics": 1}
+
+
+def test_an_epic_the_sponsor_sends_back_is_a_send_back_to_the_split(monkeypatch):
+    from tests import test_resplit_flow as epics
+
+    issues = epics.Issues([epics.SPLIT, "Split it smaller."])
+    monkeypatch.setattr("crew_org.flows.board_flow.from_sponsor", lambda issues, c: True)
+    _, events = epics.run(monkeypatch, issues, [epics.sent_back(), *epics.stories(*epics.FOUR)])
+
+    sent = [e for e in events if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(epics.EPIC, "sponsor", "split", "sent_back.epic_rework")]
+    assert sent[0].detail["counts"] == {"replaced": 4}
+
+
+def test_a_story_problems_re_split_is_not_the_sponsors_send_back(monkeypatch):
+    """The story's own send-back was recorded where it was sent back."""
+    from tests import test_resplit_flow as epics
+
+    issues = epics.Issues([epics.SPLIT, epics.PROBLEM, epics.ANSWER])
+    _, events = epics.run(monkeypatch, issues, [epics.sent_back(), *epics.stories(*epics.FOUR)])
+
+    assert not [e for e in events if e.kind == EventKind.WORK_SENT_BACK]
+    [resplit] = [e for e in events if e.kind == EventKind.EPIC_RESPLIT]
+    assert resplit.detail["round"] == 1
+
+
+def test_an_epic_whose_wait_breaks_is_a_send_back_to_the_split_and_not_the_sponsors(
+    monkeypatch,
+):
+    from tests import test_waits_for_planned as waits
+
+    issues = waits.Issues(earlier=[waits.SPLIT_BEFORE])
+    cards = [epic_card(waits.EPIC), waits.story(waits.PLANNED, 180, state="CLOSED")]
+    monkeypatch.setattr(
+        "crew_org.flows.board_flow.split_epic",
+        lambda title, context="", **kw: waits.covered_by(waits.PLANNED),
+    )
+    sink, seen = collecting()
+    board_flow.tick(FakeBoard(cards), issues, sink, default_repo="sprint-metrics")
+
+    assert which(seen) == [(waits.EPIC, "refinement", "split", "skip.board_flow.waits_for_planned")]
+    assert seen[0].detail["counts"] == {"closed": 1}
