@@ -646,7 +646,8 @@
                 "backstop",
                 "ceiling",
                 "no_tool_call",
-                "gate_repeat"
+                "gate_repeat",
+                "context_full"
               ],
               "type": "string"
             },
