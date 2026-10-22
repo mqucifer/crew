@@ -290,3 +290,41 @@ def test_the_sponsors_reply_at_the_stop_lets_the_round_go_ahead(monkeypatch):
 
 def test_the_rounds_are_counted_from_the_marked_splits():
     assert board_flow.resplit.rounds(rounds(5)) == 5
+
+
+# --- where the answer goes (crew#859, ADR 0036) -------------------------------------------
+
+
+def test_the_answer_goes_into_the_goals_record_binding_that_epic(monkeypatch):
+    from tests.test_record import FIRST, GoalIssues
+
+    class UnderAGoal(GoalIssues):
+        def __init__(self):
+            super().__init__({684: "# First\n\nThe approved text."})
+            self.on_epic = [STORY_SPLIT_MARKER, EVIDENCE]
+
+        def comments(self, repo, number):
+            if number == 684:
+                return [{"body": b} for b in self.on_epic]
+            return super().comments(repo, number)
+
+    issues = UnderAGoal()
+    reply = ProductAnswer(
+        answer="Opt-in.", rows=rows("Flags only with --thresholds"), based_on=["#100"]
+    )
+    go, _, _ = step(issues, monkeypatch, reply, card=epic().model_copy(update={"number": 684}))
+    assert go
+    added = [
+        d
+        for d in record.parse(issues.held).decisions
+        if d.decision == "Flags only with --thresholds"
+    ]
+    assert len(added) == 1 and added[0].binds == (FIRST,)
+    assert issues.on == [684], "the change comment stays on the epic, where its steps look"
+
+
+def test_an_epic_with_no_goal_keeps_the_answer_in_its_own_record(monkeypatch):
+    issues = Issues(f"{STORY_SPLIT_MARKER}", EVIDENCE)
+    reply = ProductAnswer(answer="Opt-in.", rows=rows("Opt-in"), based_on=["#100"])
+    step(issues, monkeypatch, reply)
+    assert record.parse(record.split(issues.body)[1]).row("R2").decision == "Opt-in"
