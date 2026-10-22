@@ -96,8 +96,10 @@ def code_changes(diff: str) -> list[str]:
     found: dict[str, None] = {}
     path: str | None = None
     for line in diff.splitlines():
-        if m := _DIFF_FILE.match(line):
-            path = m.group(1)
+        if line.startswith("diff --git "):
+            # A path this can't read (one with a space) is skipped, not counted
+            # against the file before it.
+            path = m.group(1) if (m := _DIFF_FILE.match(line)) else None
             continue
         if path is None or not _run_as_deployed(path) or line.startswith(("+++", "---")):
             continue

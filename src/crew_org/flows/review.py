@@ -9,6 +9,7 @@ same property that lets the Sponsor approve the crew's.
 from __future__ import annotations
 
 import contextlib
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -40,6 +41,8 @@ from crew_org.tools.review_evidence import (
     undocumented_options,
 )
 from crew_org.tools.services import compose_file
+
+_log = logging.getLogger(__name__)
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
@@ -329,8 +332,7 @@ def review_open_pulls(
             # One review carries both verdicts: a later review from the same
             # identity would replace the first as GitHub's decision.
             deploy: ReviewVerdict | None = None
-            # The compose file the workspace names, as the base branch has it.
-            named = list(filter(None, [compose_file(_base_reader(issues, repo, base, clone))]))
+            named = _named_compose(issues, repo, base, clone)
             trigger = deploy_trigger(diff, named)
             if trigger is not None:
                 try:
@@ -599,6 +601,28 @@ def release_brief(issues: IssueClient, repo: str, head: str) -> str:
         if record.design.ci_checks:
             lines += ["- CI proves:", *(f"  - {c}" for c in record.design.ci_checks)]
     return "\n".join(lines)
+
+
+def _named_compose(issues: IssueClient, repo: str, base: str, clone: Path | None) -> list[str]:
+    """The compose file the workspace names, as the base branch has it (crew#861).
+
+    Without a clone it's read through GitHub. A lookup that fails leaves the trigger
+    to the other runnable files and the code, rather than ending the pass for every
+    pull request after this one.
+    """
+    try:
+        found = compose_file(_base_reader(issues, repo, base, clone))
+    except Exception as exc:  # noqa: BLE001
+        reraise_if_down(exc)
+        log.event(
+            _log,
+            "deploy_review.compose_unread",
+            f"the workspace's compose file couldn't be read: {type(exc).__name__}: {exc}",
+            level=logging.WARNING,
+            repo=repo,
+        )
+        return []
+    return list(filter(None, [found]))
 
 
 def _base_reader(issues: IssueClient, repo: str, base: str, clone: Path | None):

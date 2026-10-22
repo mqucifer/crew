@@ -130,6 +130,14 @@ def test_tests_docs_and_unchanged_lines_do_not():
     assert deploy_trigger(PYTHON_DIFF) is None
 
 
+def test_a_path_it_cannot_read_is_skipped_not_counted_against_the_last():
+    spaced = (
+        "diff --git a/my app/serve.py b/my app/serve.py\n--- a/my app/serve.py\n"
+        '+++ b/my app/serve.py\n@@ -1 +1 @@\n+    HTTPServer(("127.0.0.1", port), H)\n'
+    )
+    assert deploy_trigger(_diff("src/a.py", "+x = 1") + spaced) is None
+
+
 def test_runnable_files_come_first():
     trigger = deploy_trigger(DOCKERFILE_DIFF + BIND_DIFF)
     assert trigger is not None
@@ -314,3 +322,17 @@ def test_devops_own_task_is_reviewed_and_recorded_as_its_own(monkeypatch):
         ["Dockerfile"],
         True,
     )
+
+
+def test_a_compose_lookup_that_fails_leaves_the_trigger_to_files_and_code(monkeypatch):
+    def unreachable(self, repo, path, ref):
+        if "devcontainer" in path:
+            raise RuntimeError("HTTP 502")
+        return None
+
+    monkeypatch.setattr(FakeIssues, "file_at", unreachable)
+    events = started(monkeypatch)
+    issues, result, _, calls = reviewed(monkeypatch, BIND_DIFF, APPROVAL)
+    assert len(calls) == 1 and result.failed == []
+    assert deploy_started(events)["trigger"] == "code"
+    assert len(issues.submitted) == 1
