@@ -666,11 +666,11 @@
         },
         "sent_from": {
           "$ref": "#/$defs/Step",
-          "description": "The step that sent it back."
+          "description": "The step that sent it back. A later MINOR may add steps: accept one you don't know."
         },
         "sent_to": {
           "$ref": "#/$defs/Step",
-          "description": "The step it went back to."
+          "description": "The step it went back to. A later MINOR may add steps: accept one you don't know."
         }
       },
       "required": [

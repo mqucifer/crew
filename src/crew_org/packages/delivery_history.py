@@ -416,8 +416,14 @@ class SentBack(_Part):
     card: CardRef | None = Field(
         description="The card sent back; None for a project's design, which no card holds."
     )
-    sent_from: Step = Field(description="The step that sent it back.")
-    sent_to: Step = Field(description="The step it went back to.")
+    sent_from: Step = Field(
+        description="The step that sent it back. A later MINOR may add steps: accept one "
+        "you don't know."
+    )
+    sent_to: Step = Field(
+        description="The step it went back to. A later MINOR may add steps: accept one "
+        "you don't know."
+    )
     rule: str = Field(description="The declared rule that decided it (ADR 0031).")
     round: int | None = Field(
         description="Its round at that step, counted from 1; None where the step keeps none."

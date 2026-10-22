@@ -78,7 +78,9 @@ deliveries in them: its sessions, the times it reached review, the gate's rounds
 before that, what it cost and how it ended. Since 1.10.0 it carries every send-back
 (crew#862): finished work sent back to its own step or an earlier one, by the step that
 sent it, the step it went back to, the rule that decided, and its round. What counts as
-one is in [`docs/reference/records.md`](docs/reference/records.md). The crew's code writes
+one is in [`docs/reference/records.md`](docs/reference/records.md). The steps are a closed
+list today, and a later MINOR version may add to it, so read a step you don't know as
+another step rather than refusing the package. The crew's code writes
 that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
