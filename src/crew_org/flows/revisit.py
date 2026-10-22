@@ -372,9 +372,6 @@ def _answer_design_faults(
         reason=reason,
         new=True,
     )
-    # Recorded once the Architect has answered: a design that fails is tried again.
-    for number in sorted(faults):
-        sendbacks.record(sink, sendbacks.DESIGN_FAULTS, card=number, repo=repo, role=BY)
     _refusals_sent_back(sink, repo, designed)
     if designed.record is None or designed.record.design == record.design:
         why = (
@@ -392,6 +389,7 @@ def _answer_design_faults(
                 f"It stays blocked for a person.\n\n{FAULT_SENT}",
                 by=BY,
             )
+            _fault_sent_back(sink, repo, number)
         return False
 
     url = open_design_pr(
@@ -409,6 +407,7 @@ def _answer_design_faults(
             f"When the Sponsor merges it, this story goes back to Ready.\n\n{FAULT_SENT}",
             by=BY,
         )
+        _fault_sent_back(sink, repo, number)
     return True
 
 
@@ -518,9 +517,13 @@ def _revise(
         review_design=review_design,
         reason=reason,
     )
-    sendbacks.record(
-        sink, sendbacks.REBUILD_STRAIN, card=None, repo=repo, role=BY, strains=len(strains)
-    )
+
+    def strain_sent_back() -> None:
+        # Once the revisit is written: one that fails before then is tried again.
+        sendbacks.record(
+            sink, sendbacks.REBUILD_STRAIN, card=None, repo=repo, role=BY, strains=len(strains)
+        )
+
     _refusals_sent_back(sink, repo, designed)
 
     if designed.record is None:
@@ -537,6 +540,7 @@ def _revise(
             + "\n\nNothing changed. New evidence starts another revisit.",
         )
         result.refused.append((repo, why))
+        strain_sent_back()
         return
 
     if designed.record.design == record.design and not designed.proposal.changes:
@@ -550,6 +554,7 @@ def _revise(
             f"It found nothing to change. {designed.proposal.summary}",
         )
         result.unchanged.append((repo, number))
+        strain_sent_back()
         return
 
     # Work declared against a record already saying it: no pull request can
@@ -580,9 +585,11 @@ def _revise(
             ),
         )
         result.unchanged.append((repo, number))
+        strain_sent_back()
         return
 
     url = open_design_pr(ws, issues, repo, designed, base=branch, reason=reason, revisit=True)
+    strain_sent_back()
     result.proposed.append((repo, url))
     result.holds[repo] = f"the Architect's design revision lands first: {url}"
     sink.emit(
@@ -593,6 +600,12 @@ def _revise(
             detail={"repo": repo, "url": url},
         )
     )
+
+
+def _fault_sent_back(sink: EventSink, repo: str, number: int) -> None:
+    """A story's design fault, sent back: written with the comment that marks it answered,
+    so a pass that fails before then sends it again and counts it once."""
+    sendbacks.record(sink, sendbacks.DESIGN_FAULTS, card=number, repo=repo, role=BY)
 
 
 def _refusals_sent_back(sink: EventSink, repo: str, designed: Any) -> None:
