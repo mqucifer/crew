@@ -118,7 +118,11 @@ class CheckResult:
         """A test hung, or a command ran past its bound: either way nothing says how the
         rest would have done (crew#839)."""
         return bool(self.hung) or any(
-            r.timed_out or "(stopped: still running after" in r.output for r in self.results
+            r.timed_out
+            or "(stopped: still running after" in r.output
+            # Any faulthandler dump: a test ran past its bound, named or not.
+            or ("Timeout (" in r.output and "(most recent call first)" in r.output)
+            for r in self.results
         )
 
     @property
@@ -433,7 +437,13 @@ def check(
                 command = [*command, *(a for t in deselect for a in ("--deselect", t))]
             results.append(do(command))
             if held is not None and (hang := hung_test(results[-1].output, worktree)):
-                hung[hang[0]] = hang[1]
+                test, where = hang
+                if not test:
+                    # Hung setting a test up, in a fixture outside its file: the next test
+                    # after those the progress shows finished, in the order pytest collects.
+                    listed = do(collect_command(command))
+                    test = nth_collected(listed.output, finished_tests(results[-1].output))
+                hung[test or "an unnamed test"] = where
             # Each pytest command writes the one report: read after each, so a project
             # with several (crew-presentation runs three) is read whole.
             if held is not None and (found := skipped_tests(worktree)) is not None:
@@ -491,7 +501,8 @@ def hung_test(output: str, worktree: Path) -> tuple[str, str] | None:
     at = output.find("Timeout (")
     if at == -1:
         return None
-    for section in _THREAD.split(output[at:])[1:]:
+    sections = _THREAD.split(output[at:])[1:]
+    for section in sections:
         frames = [m for line in section.splitlines() if (m := _FRAME.match(line))]
         calls = [i for i, m in enumerate(frames) if m["name"] == "pytest_pyfunc_call"]
         if not calls or calls[0] == 0:
@@ -501,9 +512,66 @@ def hung_test(output: str, worktree: Path) -> tuple[str, str] | None:
         if path == test["file"]:
             continue
         own = next((m for m in frames[: calls[0] - 1] if "/site-packages/" not in m["file"]), None)
-        waits = _frame(frames[0]) + (f", from {_frame(own)}" if own is not None else "")
+        waits = _frame(frames[0]) + (
+            f", from {_frame(own)}" if own is not None and own is not frames[0] else ""
+        )
         return _node_id(worktree, path, int(test["line"]), test["name"]), waits
+    return _hung_in_setup(sections, worktree)
+
+
+def _hung_in_setup(sections: list[str], worktree: Path) -> tuple[str, str] | None:
+    """A hang while a test is set up, in a fixture: the dump has no test function, so the
+    test is named by the fixture's file when that's a test file, or left "" for the caller
+    to find from the run's progress (the review of mqucifer/crew#877)."""
+    from crew_org.profiles import profile_for  # noqa: PLC0415
+
+    for section in sections:
+        frames = [m for line in section.splitlines() if (m := _FRAME.match(line))]
+        if not any(m["name"] in ("pytest_runtest_setup", "pytest_fixture_setup") for m in frames):
+            continue
+        own = [
+            m
+            for m in frames
+            if "/site-packages/" not in m["file"] and m["file"].startswith("/work/")
+        ]
+        waits = (
+            _frame(frames[0])
+            + (f", from {_frame(own[0])}" if own and own[0] is not frames[0] else "")
+            + ", setting it up"
+        )
+        for m in own:
+            path = m["file"].removeprefix("/work/")
+            if profile_for(path).is_test_path(path) and not path.endswith("conftest.py"):
+                return path, waits
+        return "", waits
     return None
+
+
+# One mark per finished test in pytest's progress, `-q` or not.
+_PROGRESS = re.compile(r"^(?:\S+\.py )?([.FEsxX]+)\s*(?:\[\s*\d+%\])?$")
+
+
+def finished_tests(output: str) -> int:
+    """How many tests the run finished before its faulthandler dump, from its progress."""
+    # The dump starts on the progress line itself, "....FF..Timeout (0:01:00)!", so the
+    # text before it ends with that line's marks.
+    before = output[: output.find("Timeout (")] if "Timeout (" in output else output
+    return sum(
+        len(m.group(1)) for line in before.splitlines() if (m := _PROGRESS.match(line.strip()))
+    )
+
+
+def nth_collected(output: str, n: int) -> str:
+    """The `n`th test node id, from 0, in `pytest --collect-only -q` output; "" if none."""
+    ids = [line.strip() for line in output.splitlines() if "::" in line and " " not in line.strip()]
+    return ids[n] if 0 <= n < len(ids) else ""
+
+
+def collect_command(command: list[str]) -> list[str]:
+    """`command`, a pytest run, as one that lists the tests it would run, one per line:
+    its own verbosity flags and the project's `addopts` left out, so `-q` lists node ids."""
+    kept = [a for a in command if not (a.startswith("-q") or a.startswith("-v"))]
+    return [*kept, "--collect-only", "-q", "-o", "addopts="]
 
 
 def _frame(m: re.Match[str]) -> str:

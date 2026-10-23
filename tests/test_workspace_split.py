@@ -779,3 +779,77 @@ def test_delivery_records_the_list_for_the_head_it_pushed(repo, tmp_path):  # no
         ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
     ).stdout.strip()
     assert role_tasks.turned_on_at(issues.comments_on[9], head) == ROTTED
+
+
+# --- a hang while a test is set up (the review of mqucifer/crew#877) -------------------
+
+SITE = "/work/.venv/lib/python3.12/site-packages"
+
+
+def fixture_dump(fixture_file: str) -> str:
+    """The dump pytest 9.1.1 printed when a fixture hung, two tests in: its frames, with
+    the fixture in `fixture_file` (made on a scratch project with these options)."""
+    frames = [
+        (f"/work/{fixture_file}", 7, "db"),
+        (f"{SITE}/_pytest/fixtures.py", 1005, "call_fixture_func"),
+        (f"{SITE}/_pytest/fixtures.py", 1328, "pytest_fixture_setup"),
+        (f"{SITE}/pluggy/_callers.py", 121, "_multicall"),
+        (f"{SITE}/_pytest/python.py", 1710, "setup"),
+        (f"{SITE}/_pytest/runner.py", 536, "setup"),
+        (f"{SITE}/_pytest/runner.py", 170, "pytest_runtest_setup"),
+    ]
+    lines = [f'  File "{f}", line {n} in {name}' for f, n, name in frames]
+    return "..Timeout (0:00:02)!\nThread 0x0000000202be3f80 (most recent call first):\n" + (
+        "\n".join(lines) + "\n"
+    )
+
+
+def test_a_hang_in_a_fixture_in_the_test_file_names_that_file(tmp_path):
+    from crew_org.tools.workspace import hung_test
+
+    found = hung_test(fixture_dump("tests/test_a.py"), tmp_path)
+    assert found is not None
+    assert found[0] == "tests/test_a.py"
+    assert found[1].endswith("tests/test_a.py:7 in db, setting it up")
+
+
+def test_a_hang_in_a_conftest_fixture_is_named_from_the_progress_and_the_collection(tmp_path):
+    from crew_org.tools.workspace import check, hung_test
+    from tests.test_services import PROJECT
+
+    assert hung_test(fixture_dump("tests/conftest.py"), tmp_path) == (
+        "",
+        "tests/conftest.py:7 in db, setting it up",
+    )
+    (tmp_path / ".crew").mkdir()
+    (tmp_path / ".crew/project.yaml").write_text(PROJECT)
+    ran = []
+
+    class Held:
+        down: dict = {}
+
+        def resync(self):
+            return None
+
+        def exec(self, command, timeout=0):
+            ran.append(command)
+            if "--collect-only" in command:
+                listed = (
+                    "tests/test_a.py::test_a\ntests/test_a.py::test_b\ntests/test_a.py::test_c\n"
+                )
+                return container.Result(" ".join(command), 0, listed)
+            if "pytest" in command:
+                return container.Result(" ".join(command), 1, fixture_dump("tests/conftest.py"))
+            return container.Result(" ".join(command), 0, "")
+
+    checked = check(tmp_path, held=Held())
+    assert checked.hung == {"tests/test_a.py::test_c": "tests/conftest.py:7 in db, setting it up"}
+    collect = next(c for c in ran if "--collect-only" in c)
+    assert "-q" in collect and "addopts=" in collect
+
+
+def test_any_faulthandler_dump_is_a_timeout_never_a_failed_test():
+    dumped = CheckResult(results=[CommandResult(PYTEST, 1, fixture_dump("tests/conftest.py"))])
+    verdict = gates.Verdict(check=dumped)
+    gates._checked(verdict)
+    assert [f.rule for f in verdict.findings] == ["check.gates.the_checks_timed_out"]
