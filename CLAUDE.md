@@ -91,6 +91,13 @@ request, like any other file.
   subscription. A key bills separately. *Blocked by `scripts/pre-commit`.*
 - **Model traffic around the proxy.** Everything goes via LiteLLM :4000, and
   nothing probes SGLang on the Spark directly.
+- **A secret on a command line, or in a command's output.** A process's
+  arguments show in `ps` and the session's command record, and output reaches
+  the transcript. A secret reaches a process through the environment or a file
+  the process reads itself: `set -a; . ~/Documents/git/crew/.env; set +a`, then
+  crew's own code (or `os.environ` in a script) reads it. A check for a leaked
+  secret matches inside that process, never with `grep "$KEY"`. Never print a
+  `.env`, with Bash or the Read tool. *Guarded by the hook.*
 - **Unvetted generated code run outside the sandbox.** Released crew-built
   software is ordinary software, and is still deployed in a container.
 - **A check weakened to make something pass.** A test deleted to go green counts.
@@ -102,5 +109,5 @@ uv run pytest -q
 uv run ruff check . && uv run ruff format .
 ln -sf ../../scripts/pre-commit .git/hooks/pre-commit # once per clone
 ```
-The guard hook is `scripts/claude_pretool_guard.py`, wired up in
+The guard hook is `scripts/claude_pretool_guard.py`, wired up for Bash and Read in
 `.claude/settings.json`. Its tests are `tests/test_claude_pretool_guard.py`.
