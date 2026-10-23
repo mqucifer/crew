@@ -420,6 +420,9 @@ def test_done_through_every_gate_goes_on_to_review_with_its_sections(verdict):
         "already_done": False,
         "resetups": 0,
         "resetups_failed": 0,
+        "turned_on": 0,
+        "hang_rounds": 0,
+        "hung": 0,
     }
 
 

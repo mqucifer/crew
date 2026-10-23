@@ -44,7 +44,7 @@ from crew_org.rulebook import says
 from crew_org.tools import bounds, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
-from crew_org.tools.workspace import CheckResult, check
+from crew_org.tools.workspace import CheckResult, check, shown_test
 from crew_org.work_types import BUG
 
 
@@ -77,6 +77,9 @@ class Verdict:
     # Merged tests that skipped for a reason the project doesn't declare CI-only, by
     # `path::name`, with the reason: DevOps's to look at, not the Developer's (crew#860).
     for_devops: dict[str, str] = field(default_factory=dict)
+    # Merged tests a workspace Task's services turn on that fail, where the branch caused
+    # none of them: the Developer's bug once it merges, not the Task's (crew#839).
+    for_developer: dict[str, str] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -181,16 +184,17 @@ def at_done(
                 ),
             )
         )
-    if role is role_tasks.ARCHITECT and role_tasks.DIAGRAM_PATH in paths:
-        path = worktree / role_tasks.DIAGRAM_PATH
-        drawn = path.read_text(encoding="utf-8") if path.is_file() else None
-        if wrong := role_tasks.diagram_problems(drawn):
-            verdict.findings.append(
-                Finding(
-                    "check.role_tasks.diagram_renders",
-                    says("check.role_tasks.diagram_renders", problems="; ".join(wrong)),
-                )
+    if (
+        role is role_tasks.ARCHITECT
+        and role_tasks.DIAGRAM_PATH in paths
+        and (wrong := role_tasks.diagram_problems_in(worktree))
+    ):
+        verdict.findings.append(
+            Finding(
+                "check.role_tasks.diagram_renders",
+                says("check.role_tasks.diagram_renders", problems="; ".join(wrong)),
             )
+        )
     unpushable = delivery.workflows_not_permitted(paths, permissions)
     if unpushable:
         verdict.findings.append(Finding("check.delivery.workflows_not_permitted", unpushable))
@@ -205,6 +209,8 @@ def at_done(
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.check = run_checks(worktree)
+    if merged is not None and role_tasks.changes_workspace(role, worktree, paths):
+        _turned_on(worktree, merged, paths, verdict)
     _checked(verdict)
     if merged is not None:
         _skipped(worktree, merged, paths, verdict)
@@ -238,6 +244,13 @@ def pr_sections(verdict: Verdict) -> list[str]:
     if verdict.placeholders:
         lines += ["", delivery.PLACEHOLDERS_HEADING, ""]
         lines += [f"- `{key}`" for key in verdict.placeholders]
+    if verdict.for_developer:
+        lines += ["", role_tasks.TURNED_ON_HEADING, ""]
+        lines += [
+            "Not this Task's: filed for the Developer as one bug when this merges.",
+            "",
+        ]
+        lines += [f"- `{key}`: {line}" for key, line in sorted(verdict.for_developer.items())]
     return lines
 
 
@@ -409,6 +422,58 @@ def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdic
         verdict.for_devops = {t: r for t, r in run_in_ci.items() if t not in mine}
 
 
+def _turned_on(
+    worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict
+) -> None:
+    """A workspace Task's own services turn on merged tests that had skipped, and some
+    fail or hang (the Sponsor, 2026-10-23). Fixing them is the Developer's, outside the
+    Task's scope: on mqucifer/sprint-metrics#739's test copy 41 rotted database tests
+    fail and 4 hang, and would have sent DevOps's Task back for ever. So when only tests
+    failed, the hung ones set aside before the run (`own_checks`), and the branch caused
+    none of them, by the test `_skipped` uses, they're the Developer's bug, not a
+    refusal. One the branch caused, or any other failure, goes back as today's do.
+    """
+    check = verdict.check
+    if check is None or check.hung or not (check.ok or check.only_tests_failed):
+        return
+    # By file, as `own_checks` set them aside: the hung file's other tests didn't all run.
+    hung = {
+        path: f"hung {said}; the file's other tests weren't all run"
+        for path, said in check.deselected.items()
+    }
+    tests = {**check.failed, **hung}
+    if not tests:
+        return
+    branch_caused = caused_by(worktree, merged, paths)
+    if any(branch_caused(t) for t in tests):
+        return
+    # Only what the workspace turned on: each skipped, or never ran, in the default
+    # branch's own workspace. One that passed there the branch broke, through its image,
+    # `containerEnv` or lockfile, and goes back to the Task (the review of crew#877).
+    on_main = check.on_main
+    if not isinstance(on_main, dict):
+        return
+    ran = [*check.failed, *(check.aside.get(path, path) for path in hung)]
+    if any(on_main.get(t) not in ("skipped", "not run") for t in ran):
+        return
+    verdict.for_developer = tests
+
+
+def caused_by(worktree: Path, merged: regression.Merged, paths: list[str]) -> Callable[[str], bool]:
+    """Whether the branch caused a test's outcome, `path::Class.name` or a node id: it adds
+    or changes the test, or changes its module or a `conftest.py` above it (crew#860)."""
+    touched = added_or_changed(worktree, merged, paths)
+    changed = set(paths)
+
+    def caused(test: str) -> bool:
+        shown = shown_test(test)
+        return shown.split("[", 1)[0] in touched or _caused(
+            worktree, shown.partition("::")[0], changed
+        )
+
+    return caused
+
+
 def _caused(worktree: Path, path: str, changed: set[str]) -> bool:
     """Could the branch have made a test in `path` skip, outside the test itself? True
     for a path that names no file in the worktree: the gate refuses rather than hands it
@@ -466,7 +531,36 @@ def _checked(verdict: Verdict) -> None:
                 ),
             )
         )
-    if verdict.check is None or verdict.check.ok:
+    if verdict.check is None or verdict.check.ok or verdict.for_developer:
+        return
+    if verdict.check.timed_out:
+        # Its own finding, never counted as a test that failed (crew#839): a run that
+        # hung says nothing of the tests after the one it hung in.
+        hung = verdict.check.hung
+        aside = verdict.check.deselected
+        lines = [
+            f"- `{shown_test(t)}`: hung, waiting in {where}" for t, where in sorted(hung.items())
+        ]
+        if aside:
+            last = list(aside)[-1]
+            moved = [t for t in hung if t.partition("::")[0] != last]
+            lines += ["", "Set aside before this run, by file:"]
+            lines += [f"- `{path}`: hung {said}" for path, said in aside.items()]
+            if moved:
+                lines += [
+                    "",
+                    f"It hung again in `{moved[0].partition('::')[0]}` after `{last}` was set "
+                    "aside: the test leaving the state may be in an earlier file.",
+                ]
+        verdict.findings.append(
+            Finding(
+                "check.gates.the_checks_timed_out",
+                says(
+                    "check.gates.the_checks_timed_out",
+                    tests="\n".join(lines) or "- no test named: the run stopped at its bound",
+                ),
+            )
+        )
         return
     verdict.findings.append(
         Finding(

@@ -598,7 +598,10 @@ def test_a_repository_with_no_workspace_file_gets_devops_one_task_to_write_it(tm
     task = issues.issues[901]
     assert {lab["name"] for lab in task["labels"]} == {"role:devops"}
     assert marked(task["body"]).kind == "first-workspace"
-    assert "ciOnlySkips" in task["body"] and "CI's test job runs the same services" in task["body"]
+    # The workspace file and its services only: CI is the second Task (the Sponsor,
+    # 2026-10-23, crew#839).
+    assert "image_digest" in task["body"] and "CI isn't changed here" in task["body"]
+    assert "- [ ] CI's test job" not in task["body"]
     again = role_tasks.first_workspaces(
         issues, board, s, repos={"sm"}, cards=[Card(item_id="x", number=901, repo="sm")]
     )

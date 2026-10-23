@@ -257,6 +257,17 @@ session.arguments:
   origin:
   - crew#778
   owner: Developer
+session.image_digest:
+  description: '`image_digest` is given an image as it''s pulled: a name, no digest, no variable.'
+  messages:
+    a_variable: '`{image}` names a variable, not an image.'
+    not_a_name: '`{image}` isn''t an image name: give it as you''d pull it, with no digest.'
+    not_oci: '`{image}` isn''t a name and tag the OCI distribution spec allows: lowercase path parts of
+      letters and digits joined by `.`, `_` or `-`, and a tag of up to 128 letters, digits, `.`, `_` and
+      `-`.'
+  origin:
+  - crew#839
+  owner: Developer
 session.search:
   description: '`search` is given a pattern, and a path there is.'
   messages:

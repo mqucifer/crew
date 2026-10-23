@@ -71,7 +71,9 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
   story and round, every filing recorded, to be tuned from that evidence.
 - **The role's session** works its Task through the Developer's path, with its role in
   the Developer's place and the Developer's tools. It may change only its role's area,
-  checked at `done`; the Architect's diagram must render. The Code Reviewer reviews it,
+  checked at `done`; the Architect's diagram must render. It also has its gate's own
+  checks as a tool, to run before `done`: the Architect's `diagram_check`, DevOps's
+  `workspace_check`. Each calls the gate's code, read-only. The Code Reviewer reviews it,
   and QA has no story criteria to prove. Its Task isn't split, so a blocked one goes
   to a person, not back to refinement.
 - **What the Sponsor approves:** the diagram and the release, by their approving review
@@ -115,3 +117,10 @@ review when a release goes live (crew#830). QA's Tasks wait for M10.
 - **2026-10-22:** DevOps keeps each project's workspace file true (the Sponsor, on
   crew#860): its first Task where there's none, one for each need a Goal's look names,
   and a finding when the gate at `done` finds the workspace isn't what CI runs.
+- **2026-10-23:** a role's Task session can run its gate's checks itself, before
+  `done` (the Sponsor, on crew#839). On mqucifer/sprint-metrics#738 the Architect
+  found out at the gate that its diagram didn't render, and three rounds went on it.
+- **2026-10-23:** a project's first workspace is three steps (the Sponsor, on
+  crew#839; ADR 0032): DevOps's workspace file and services, the Developer's bug for
+  the tests they turn on, then DevOps's Task for CI. A Task in Merging with changes
+  requested on its head goes back to its role for rework.

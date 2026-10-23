@@ -62,9 +62,53 @@ class Definition:
     not_honoured: dict[str, str] = field(default_factory=dict)
 
 
+class Outside(ValueError):
+    """A path the branch names that leads out of the repository, or through a link."""
+
+
+def inside(root: Path, path: str) -> Path:
+    """`path` in the repository at `root`, or `Outside` (crew#839).
+
+    The branch names these paths (`dockerComposeFile`, a file it adds), so an absolute
+    path, one that climbs out, or a symbolic link anywhere on the way would have the
+    crew read a host file, such as a settings file holding a token, and quote it back
+    in a parse error. None of those is followed; the refusal names the path, never what
+    is there.
+    """
+    import posixpath  # noqa: PLC0415
+
+    named = posixpath.normpath(path)
+    if posixpath.isabs(named) or named.startswith("~") or named.split("/")[0] == "..":
+        raise Outside(f"`{path}` is outside the repository: not read")
+    base = root.resolve()
+    target = base
+    for part in named.split("/"):
+        if part in ("", "."):
+            continue
+        target = target / part
+        if target.is_symlink():
+            raise Outside(f"`{path}` goes through a symbolic link: not read")
+    if not target.resolve().is_relative_to(base):
+        raise Outside(f"`{path}` is outside the repository: not read")
+    return target
+
+
+def read_inside(root: Path, path: str) -> str | None:
+    """The text of `path` in the repository at `root`, None when it isn't a text file
+    there, or `Outside` when it leads out of the repository (`inside`)."""
+    target = inside(root, path)
+    if not target.is_file():
+        return None
+    try:
+        return target.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def find(root: Path) -> Path | None:
-    """The project's `devcontainer.json`, or None."""
-    return next((root / p for p in PATHS if (root / p).is_file()), None)
+    """The project's `devcontainer.json`, or None. One that's a link is found, so `read`
+    can refuse it, never followed."""
+    return next((root / p for p in PATHS if (root / p).is_symlink() or (root / p).is_file()), None)
 
 
 def read(root: Path) -> Definition | None:
@@ -74,7 +118,11 @@ def read(root: Path) -> Definition | None:
         return None
     path = found.relative_to(root).as_posix()
     try:
-        raw = json.loads(strip_comments(found.read_text(encoding="utf-8")))
+        text = read_inside(root, path)
+    except Outside as exc:
+        return Definition(path, problems=[str(exc)])
+    try:
+        raw = json.loads(strip_comments(text or ""))
     except (ValueError, UnicodeDecodeError) as exc:
         return Definition(path, problems=[f"`{path}` doesn't parse: {exc}"])
     if not isinstance(raw, dict):
@@ -133,8 +181,14 @@ def _compose_image(root: Path, path: str, raw: dict[str, object]) -> tuple[str |
         return None, f"`{path}` names one compose file and its workspace `service` to use them"
     compose = posixpath.normpath(posixpath.join(posixpath.dirname(path), named))
     try:
-        spec = yaml.safe_load((root / compose).read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
+        text = read_inside(root, compose)
+    except Outside as exc:
+        return None, f"`{path}`'s compose file: {exc}"
+    if text is None:
+        return None, f"`{path}`'s compose file `{compose}` isn't there"
+    try:
+        spec = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
         return None, f"`{path}`'s compose file `{compose}` can't be read: {exc}"
     found = ((spec or {}).get("services") or {}).get(service) if isinstance(spec, dict) else None
     image = found.get("image") if isinstance(found, dict) else None

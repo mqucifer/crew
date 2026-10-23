@@ -36,12 +36,49 @@ def on_diff(
         ).stdout.split()
         before = {p: text for p in listed if (text := merged.text(p)) is not None}
         workflows = (before, _workflows_now(worktree))
-    dockerfiles = {
-        p: (worktree / p).read_text(encoding="utf-8")
-        for p in paths
-        if base_images.is_dockerfile(p) and (worktree / p).is_file()
-    }
-    return judged(paths, record, workflows=workflows, dockerfiles=dockerfiles)
+    outside: list[str] = []
+    dockerfiles = _read(worktree, [p for p in paths if base_images.is_dockerfile(p)], outside)
+    composes = _read(worktree, [p for p in paths if is_compose(worktree, p)], outside)
+    return outside + judged(
+        paths, record, workflows=workflows, dockerfiles=dockerfiles, composes=composes
+    )
+
+
+def _read(worktree: Path, paths: list[str], outside: list[str]) -> dict[str, str]:
+    """Each path's text, never through a link or out of the repository (crew#839): one
+    that would be is a reason, named, and isn't read."""
+    from crew_org.tools.devcontainer import Outside, read_inside  # noqa: PLC0415
+
+    found: dict[str, str] = {}
+    for path in paths:
+        try:
+            text = read_inside(worktree, path)
+        except Outside as exc:
+            outside.append(str(exc))
+            continue
+        if text is not None:
+            found[path] = text
+    return found
+
+
+# The compose file names the specification looks for, beside the one a workspace
+# file names (`services.compose_file`).
+COMPOSE_NAMES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+
+
+def is_compose(worktree: Path, path: str) -> bool:
+    """Is `path` a compose file: by its name, or as the workspace file names it?"""
+    from crew_org.tools import services  # noqa: PLC0415
+
+    if Path(path).name in COMPOSE_NAMES:
+        return True
+
+    def read(name: str) -> str | None:
+        from crew_org.tools.devcontainer import read_inside  # noqa: PLC0415
+
+        return read_inside(worktree, name)
+
+    return services.compose_file(read) == path
 
 
 def judged(
@@ -50,11 +87,13 @@ def judged(
     *,
     workflows: tuple[dict[str, str], dict[str, str]],
     dockerfiles: dict[str, str],
+    composes: dict[str, str] | None = None,
 ) -> list[str]:
     """Why a change to `paths` is out of bounds, one line per reason.
 
     `workflows` is every workflow file before and after the change, and
-    `dockerfiles` what each changed Dockerfile holds after it.
+    `dockerfiles` and `composes` what each changed Dockerfile and compose file
+    holds after it.
     """
     rules = protected(record)
     reasons = [
@@ -95,6 +134,10 @@ def judged(
 
     for path, text in dockerfiles.items():
         reasons += base_images.invented(path, text)
+    # The images a compose file names are pulled by the host, so each is pinned to a
+    # digest its registry has, never a tag (crew#839).
+    for path, text in (composes or {}).items():
+        reasons += base_images.unpinned(path, text)
 
     checks = record.design.checks if record and record.design else []
     if checks and changed:

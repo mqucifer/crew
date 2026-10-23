@@ -180,7 +180,7 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
     may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
     Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
     """
-    from crew_org.session.tools import SPECS  # noqa: PLC0415
+    from crew_org.session.tools import SPECS, TASK_SPECS  # noqa: PLC0415
 
     scope = ", ".join(f"`{g}`" for g in role.scope)
     tests = covers_tests(role)
@@ -190,6 +190,11 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
         else f"the file within {scope} that shows it"
     )
     specs = [copy.deepcopy(s) for s in SPECS]
+    # Its gate's own checks, to run before `done` (crew#839), among the tools before the
+    # endings.
+    if role.key in TASK_SPECS:
+        at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
+        specs.insert(at, copy.deepcopy(TASK_SPECS[role.key]))
     for spec in specs:
         fn = spec["function"]
         if fn["name"] != "done":
@@ -748,6 +753,187 @@ def workspace_finding(
     return opened.number
 
 
+def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) -> bool:
+    """A DevOps Task that changes the workspace file or the compose file it names: its
+    gate at `done` runs the services and setup its own branch declares (crew#839)."""
+    from crew_org.tools import bounds, devcontainer  # noqa: PLC0415
+
+    return role is DEVOPS and any(
+        p in devcontainer.PATHS or bounds.is_compose(worktree, p) for p in paths
+    )
+
+
+def workspace_problems(worktree: Any) -> list[str]:
+    """What the gate at `done` refuses in the workspace file and its compose file, as the
+    worktree has them now: DevOps's `workspace_check` (the Sponsor, 2026-10-23, crew#839).
+
+    The gate's own checks, called as it calls them: the workspace's definition
+    (`workspace.toolchain`), each compose file's images (`base_images.unpinned`) and
+    each service as the crew starts one (`services.declared`). Starting the services
+    stays the gate's: nothing here runs, and only registries are read.
+    """
+    from crew_org.tools import (  # noqa: PLC0415
+        base_images,
+        bounds,
+        devcontainer,
+        services,
+        workspace,
+    )
+
+    def read(path: str) -> str | None:
+        # Never a path out of the repository, nor through a link: the branch names them.
+        return devcontainer.read_inside(worktree, path)
+
+    problems: list[str] = []
+    if problem := workspace.toolchain(worktree).problem:
+        problems.append(problem)
+    named = services.compose_file(read)
+    candidates = [*bounds.COMPOSE_NAMES, *(f".devcontainer/{n}" for n in bounds.COMPOSE_NAMES)]
+    for path in sorted({p for p in [*candidates, named] if p}):
+        try:
+            text = read(path)
+        except devcontainer.Outside as exc:
+            problems.append(str(exc))
+            continue
+        if text is not None:
+            problems += base_images.unpinned(path, text)
+    declared = services.declared(read)
+    problems += [f"`{name}`: {why}" for name, why in declared.problems.items()]
+    return problems
+
+
+# The pull request's section naming the merged tests a workspace Task's services turn
+# on that fail: none is the Task's, and they're filed for the Developer as one bug when
+# it merges, since only then do they fail on main (the operator, crew#839). For people:
+# what's filed is read from the crew's marker below, never from this heading.
+TURNED_ON_HEADING = "## Merged tests the workspace turns on, which fail"
+# The crew's own record of that list, on a comment it writes after each push at `done`,
+# a rework's too: bound to the head it pushed, which the session couldn't know when it
+# wrote its summary, and encoded so no text can end the comment early. A later head
+# makes an earlier record stale by itself (the review of mqucifer/crew#877).
+_TURNED_ON_MARK = re.compile(
+    r"<!-- crew:turned-on head=([0-9a-f]{7,64}) tests=([A-Za-z0-9+/=]*) -->"
+)
+
+
+def turned_on_marker(head: str, tests: dict[str, str]) -> str:
+    import base64  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    data = base64.b64encode(json.dumps(tests, sort_keys=True).encode()).decode()
+    return f"<!-- crew:turned-on head={head} tests={data} -->"
+
+
+def turned_on_at(comments: list[dict[str, Any]], head: str, crew: frozenset[str]) -> dict[str, str]:
+    """The list the crew recorded for `head`, its latest record, or none.
+
+    Only a comment the crew's own App wrote (`crew`, org.yaml's `trust.crew`) that starts
+    with the marker, as `record_turned_on` writes it: the crew's other comments carry
+    model-written text, a rework's summary among them, so a marker quoted inside one
+    never counts (the review of mqucifer/crew#877).
+    """
+    import base64  # noqa: PLC0415
+    import binascii  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    found: dict[str, str] = {}
+    for comment in comments:
+        if not head or ((comment.get("user") or {}).get("login") or "") not in crew:
+            continue
+        mark = _TURNED_ON_MARK.match(comment.get("body") or "")
+        if mark is None or mark.group(1) != head:
+            continue
+        try:
+            given = json.loads(base64.b64decode(mark.group(2), validate=True))
+        except (binascii.Error, ValueError):
+            continue
+        if isinstance(given, dict):
+            found = {str(k): str(v) for k, v in given.items()}
+    return found
+
+
+def record_turned_on(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    pull: int,
+    head: str,
+    tests: dict[str, str],
+    by: str,
+) -> None:
+    """Say on the pull request what its merge will file for the Developer, at `head`."""
+    shown = "\n".join(f"- `{t}`: {line}" for t, line in sorted(tests.items()))
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=pull,
+        body=f"{turned_on_marker(head, tests)}\n**For the Developer when this merges:** "
+        f"the merged tests this workspace turns on that fail, at `{head[:12]}`.\n\n{shown}",
+        by=by,
+    )
+
+
+def changes_workspace_files(paths: list[str]) -> bool:
+    """Do these paths, a merged pull request's, change the workspace file or a compose
+    file? Read from the files alone, with no worktree at merge."""
+    from crew_org.tools import bounds, devcontainer  # noqa: PLC0415
+
+    return any(
+        p in devcontainer.PATHS
+        or p.startswith(".devcontainer/")
+        or p.rsplit("/", 1)[-1] in bounds.COMPOSE_NAMES
+        for p in paths
+    )
+
+
+def turned_on_bug(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    task: int,
+    tests: dict[str, str],
+    cards: list[Card],
+) -> int | None:
+    """The Developer's bug for the merged tests a workspace Task turned on that fail, filed
+    once its pull request merged (crew#839): a finding filed as a bug, as a role's is.
+
+    Keyed by the tests, so the same set is filed once. None when there are none.
+    """
+    if not tests:
+        return None
+    key = "turned-on-" + hashlib.sha256("\n".join(sorted(tests)).encode()).hexdigest()[:12]
+    shown = [f"- `{t}`: {line}" if line else f"- `{t}`" for t, line in sorted(tests.items())]
+    hung = [t for t, line in tests.items() if line.startswith("hung ")]
+    why = (
+        f"#{task} merged the workspace's services, so the workspace now runs tests that "
+        f"used to skip there, and {len(tests) - len(hung)} fail or error"
+        + (f", and {len(hung)} {'file hangs' if len(hung) == 1 else 'files hang'}" if hung else "")
+        + ":\n\n"
+        + "\n".join(shown)
+        + f"\n\nNone was #{task}'s: its branch changed none of them, nor a module or "
+        "`conftest.py` they're in. Fixing them is the Developer's."
+        + (
+            f"\n\n**{len(hung)} {'file hangs' if len(hung) == 1 else 'files hang'}:** the "
+            "gate set each aside so the rest could run, so its other tests weren't all run. "
+            "Each is named with the test it hung in and the frame that test waits in."
+            if hung
+            else ""
+        )
+    )
+    title = (
+        f"{len(tests) - len(hung)} merged tests fail"
+        + (f" and {len(hung)} test files hang" if hung else "")
+        + " now the workspace runs its services"
+    )
+    return _file_bug(
+        issues, board, sink, repo=repo, key=key, title=title, why=why, by=DEVOPS.name, cards=cards
+    )
+
+
 def _file_bug(
     issues: IssueClient,
     board: ProjectClient,
@@ -796,6 +982,17 @@ DIFFERS_HEADING = "## Where the build differs from the target"
 _MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 DIAGRAM_POINTS = 2
 FIRST_DIAGRAM_POINTS = 3
+
+
+def diagram_problems_in(worktree: Any) -> list[str]:
+    """`diagram_problems` of the worktree's diagram file, never read through a link or from
+    outside the repository: one that would be is the problem, named (crew#839)."""
+    from crew_org.tools.devcontainer import Outside, read_inside  # noqa: PLC0415
+
+    try:
+        return diagram_problems(read_inside(worktree, DIAGRAM_PATH))
+    except Outside as exc:
+        return [str(exc)]
 
 
 def diagram_problems(text: str | None) -> list[str]:
@@ -1007,14 +1204,18 @@ def first_workspace_task(
         "words, and `containerEnv`. Declare each service the tests need in a compose file "
         "beside it, named by `dockerComposeFile`, with the workspace's own `service`: each "
         "service's image by digest, a `user` that isn't root, a `healthcheck` in "
-        '["CMD", ...] form and `tmpfs` for its data. Name the skip reasons CI makes too in '
-        "`customizations.crew.ciOnlySkips`. Then make CI's test job run the same services, "
-        "so the workspace and CI run the same tests.",
+        '["CMD", ...] form and `tmpfs` for its data. `image_digest` reads each digest from '
+        "its registry. At `done` the gate starts the services and setup your branch "
+        "declares and runs the whole checks with them. A merged test that skipped or "
+        "didn't run on the default branch, which your services turn on and which fails, "
+        "in a file your branch doesn't change, is the Developer's: it's named in your pull "
+        "request and filed as a bug when it merges. A test that passed on the default "
+        "branch and fails on yours is yours to fix. CI isn't changed here: "
+        "a later Task makes CI's test job run the same services, once the tests pass "
+        "in the workspace on main (the Sponsor, 2026-10-23).",
         done_when=[
             f"`{WORKSPACE_PATH}` names the workspace's image by digest and its setup",
             "Each service the tests need is declared beside it and starts in the workspace",
-            "CI's test job runs the same services, and the tests that need them run there",
-            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
         ],
     )
     return open_task(
@@ -1150,6 +1351,55 @@ RELEASE_POINTS = 3
 # Task: one split before it may already have its release story. Nothing in the worked
 # repositories was created on or after this day when it was set (crew#839).
 RELEASE_TASKS_FROM = datetime(2026, 10, 22, tzinfo=UTC)
+
+CI_SERVICES = "ci-services"
+CI_SERVICES_POINTS = 3
+
+
+def ci_services_task(
+    issues: IssueClient, board: ProjectClient, sink: EventSink, *, repo: str, cards: list[Card]
+) -> Opened | None:
+    """DevOps's second workspace Task: CI's test job runs the workspace's services
+    (the Sponsor, 2026-10-23, crew#839).
+
+    Its caller opens it when the tests that need them pass in the workspace on main: a
+    story's whole checks passed at `done` with the default branch's services up. Only
+    once the first workspace Task is closed, so it follows the workspace onto main
+    rather than racing it. None until then, and once it's opened.
+    """
+    first = existing(issues, repo, DEVOPS, FIRST_WORKSPACE, "repository")
+    if first is None or first.get("state") != "closed":
+        return None
+    body = render(
+        DEVOPS,
+        kind=CI_SERVICES,
+        key="repository",
+        why=f"`{repo}`'s workspace runs the services its tests need, and the tests that need "
+        "them pass there. CI's test job doesn't run them yet, so CI skips what the "
+        "workspace runs.",
+        work="Make CI's test job run the same services as the workspace file's compose "
+        "file: the same images by digest, as the workflow's service containers. Name the "
+        "skip reasons CI still makes, and the workspace makes too, in "
+        "`customizations.crew.ciOnlySkips`.",
+        done_when=[
+            "CI's test job runs the same services, and the tests that need them run there",
+            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
+        ],
+    )
+    return open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=CI_SERVICES,
+        key="repository",
+        title="CI's test job runs the workspace's services",
+        body=body,
+        points=CI_SERVICES_POINTS,
+        cards=cards,
+        event="workspace.tests_pass",
+    )
 
 
 def epic_release_task(

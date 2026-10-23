@@ -82,8 +82,15 @@ def at_main(worktree: Path) -> Declared:
 
 
 def declared(read: Callable[[str], str | None]) -> Declared:
-    """The services a project declares, with `read` giving a file's text by its path."""
-    found = next(((p, t) for p in devcontainer.PATHS if (t := read(p)) is not None), None)
+    """The services a project declares, with `read` giving a file's text by its path.
+
+    `read` may refuse a path that leads out of the repository (`devcontainer.Outside`):
+    the refusal is a problem, named, and nothing is read (crew#839).
+    """
+    try:
+        found = next(((p, t) for p in devcontainer.PATHS if (t := read(p)) is not None), None)
+    except devcontainer.Outside as exc:
+        return Declared(problems={"definition": str(exc)})
     if found is None:
         return Declared()
     path, text = found
@@ -107,7 +114,10 @@ def ci_only(raw: dict[str, object]) -> list[str]:
 
 def compose_file(read: Callable[[str], str | None]) -> str | None:
     """The compose file a project's `devcontainer.json` names, from the repository's root."""
-    found = next(((p, t) for p in devcontainer.PATHS if (t := read(p)) is not None), None)
+    try:
+        found = next(((p, t) for p in devcontainer.PATHS if (t := read(p)) is not None), None)
+    except devcontainer.Outside:
+        return None
     if found is None:
         return None
     try:
@@ -135,9 +145,12 @@ def _composed(raw: dict[str, object], path: str, read: Callable[[str], str | Non
     if compose is None:
         why = f"`{path}`'s `dockerComposeFile` names several files: the crew reads one"
         return Declared(problems={"compose": why}, path=path)
-    found_compose = read(compose)
+    try:
+        found_compose = read(compose)
+    except devcontainer.Outside as exc:
+        return Declared(problems={"compose": f"`{path}`'s compose file: {exc}"}, path=path)
     if found_compose is None:
-        why = f"`{path}` names `{compose}`, which isn't on the default branch"
+        why = f"`{path}` names `{compose}`, which isn't there"
         return Declared(problems={"compose": why}, path=path)
     try:
         spec = yaml.safe_load(found_compose)

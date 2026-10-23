@@ -68,10 +68,12 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
 from crew_org.rules import Rule
 from crew_org.session import conversation
-from crew_org.tools.container import Held
+from crew_org.tools import reproduction
+from crew_org.tools.container import Held, own_services
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.tools.workspace import check
+from crew_org.tools.regression import merged_base
+from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
 
 if TYPE_CHECKING:
     from crew_org.flows import session_end
@@ -283,6 +285,85 @@ def deliver_by_session(
     )
 
 
+def own_checks(worktree: Path, name: str, since: str) -> Any:
+    """The whole checks of a workspace Task, in a container of its own with the services
+    and setup its branch declares (the Sponsor, 2026-10-23, crew#839).
+
+    The session's container has the default branch's services, so on
+    mqucifer/sprint-metrics#739 the Postgres DevOps declared was never there. This one
+    has the branch's, held to the default branch's rules (`own_services`), and runs the
+    branch's setup with the network, as a returned story's session already does. Setup
+    gets the start's second try. A container that won't start, or a setup that fails,
+    is the checks' failure, for the Task to answer.
+    """
+    own = Held(worktree, name, declared=own_services(worktree))
+    try:
+        started = own.start()
+        if not started.ok:
+            failed = CommandResult(started.command, started.code or 1, started.output)
+            return CheckResult(results=[failed], services_down=dict(own.down))
+        setup = own.setup()
+        if setup is not None and not setup.ok:
+            setup = own.setup()
+        if setup is not None and not setup.ok:
+            return CheckResult(
+                results=[CommandResult(setup.command, setup.code, setup.output)],
+                services_down=dict(own.down),
+            )
+        merged = merged_base(worktree)
+        paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
+        caused = gates.caused_by(worktree, merged, paths) if merged is not None else None
+        # Each hung test's file, set aside, with what was seen of it: by file, since the
+        # test that hung waits on state an earlier test left (the operator, crew#839). On
+        # sprint-metrics' test copy setting the waiting test aside hung the next, 13 times.
+        deselected: dict[str, str] = {}
+        aside: dict[str, str] = {}
+        rounds = 0
+        while True:
+            checked = check(worktree, held=own, since=since, deselect=deselected)
+            if own.lost:
+                raise SessionInterrupted("the workspace container", "lost while the gates ran")
+            # A hung file the branch didn't cause is set aside and the rest run again, so
+            # what they turn on can be told apart. One it caused, or one past the bound,
+            # is the gate's finding that the checks timed out.
+            new = {t: w for t, w in checked.hung.items() if t.partition("::")[0] not in deselected}
+            files = {t.partition("::")[0] for t in new}
+            if (
+                not new
+                or caused is None
+                or any(caused(f) for f in files)
+                or len(deselected) + len(files) > HANG_ROUNDS
+            ):
+                checked.hang_rounds, checked.aside = rounds, dict(aside)
+                handed = sorted({*checked.failed, *aside.values()})
+                if merged is not None and handed and not checked.hung:
+                    # Only what the workspace turned on is the Developer's: how each did
+                    # in the default branch's own workspace (the review of crew#877).
+                    checked.on_main = reproduction.on_the_default_branch(
+                        worktree, merged, handed, f"{name}-main"
+                    )
+                return checked
+            for test, where in sorted(new.items()):
+                said = f"in `{shown_test(test)}`, waiting in {where}"
+                if deselected:
+                    # Pollution can cross files: said plainly, not looped to the bound.
+                    said += (
+                        f"; it hung again here after `{list(deselected)[-1]}` was set aside, "
+                        "so the test leaving the state may be in an earlier file"
+                    )
+                deselected[test.partition("::")[0]] = said
+                aside[test.partition("::")[0]] = shown_test(test)
+            rounds += 1
+    finally:
+        own.stop()
+
+
+# How many hung tests' files a workspace Task's gate sets aside before it gives up
+# (crew#839). Started high, 3x the most seen (4 hangs on sprint-metrics' test copy), to be
+# lowered from each gate's `hang_rounds` (the Sponsor, 2026-10-18: start limits high).
+HANG_ROUNDS = 12
+
+
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
     """A Task's work events name its role, so they're placed by its card, not as a review
     of a pull request (delivery-history's DevOps Engineer)."""
@@ -325,6 +406,10 @@ def _sessions(
         return _keep(ws, worktree, since, number, sink)
 
     def run_checks(at: Path) -> Any:
+        merged = merged_base(at)
+        paths = reproduction._changed(at, merged.sha) if merged is not None else []
+        if role_tasks.changes_workspace(task, at, paths):
+            return own_checks(at, f"{repo}-{number}-done", since)
         checked = check(at, held=held, since=since)
         if held.lost:
             # A gate's finding would blame the branch for the infrastructure.
@@ -673,6 +758,7 @@ def _land(
             outcome.ended = False
             return outcome
         outcome.pr = pr["number"]
+    _record_turned_on(issues, sink, repo, outcome.pr, worktree, reached, by)
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
@@ -683,6 +769,35 @@ def _land(
         )
     )
     return outcome
+
+
+def _record_turned_on(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    pull: int | None,
+    worktree: Path,
+    reached: Delivered,
+    by: str,
+) -> None:
+    """The crew's record of what a workspace Task's merge files for the Developer, bound to
+    the head just pushed, after every `done`, a rework's too (crew#839). A failure to write
+    it is noted: with no record for the merged head, nothing is filed."""
+    tests = getattr(reached.verdict, "for_developer", None) or {}
+    if not tests or pull is None:
+        return
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=worktree, capture_output=True, text=True
+    ).stdout.strip()
+    try:
+        role_tasks.record_turned_on(
+            issues, sink, repo=repo, pull=pull, head=head, tests=tests, by=by
+        )
+    except Exception as exc:  # noqa: BLE001 - the push and the pull request stand
+        reraise_if_down(exc)
+        sink.note(
+            EventKind.NOTE, f"PR #{pull}: the tests it turns on weren't recorded: {exc}"[:300]
+        )
 
 
 def _say_reworked(

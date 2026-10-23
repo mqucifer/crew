@@ -32,7 +32,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
 
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
-from crew_org.rulebook import Refusal, refuse
+from crew_org.rulebook import Refusal, refuse, says
 from crew_org.session.container import GONE, Gone, Workspace
 from crew_org.session.enclosing import Enclosing, enclosing
 from crew_org.session.git import INJECTED, OUTPUT_CHARS, Git, parse, restore_args
@@ -52,6 +52,13 @@ SKIPPED = {
 VIEW_LINES = 400
 VIEW_CHARS = 40_000
 SEARCH_HITS = 50
+# The tags `image_digest` shows at most.
+TAG_LINES = 200
+# A repository name and a tag, as the OCI distribution spec writes them.
+_OCI_NAME = re.compile(
+    r"[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*)*"
+)
+_OCI_TAG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
 SEARCH_FILES = 30
 # Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this
 # few (crew#807).
@@ -310,6 +317,16 @@ SPECS = [
         ["command"],
     ),
     _spec(
+        "image_digest",
+        "The digest a registry holds now for an image's tag, to pin it by (`name@sha256:...`): "
+        "Docker Hub or GHCR, read by the crew, since your container has no network. `image` "
+        "as you'd pull it (`postgres`, `ghcr.io/owner/name`), `tag` as given (`latest` if "
+        "none). With `tags: true`, the image's tags instead, those starting with `tag`, up "
+        f"to {TAG_LINES}.",
+        {"image": S, "tag": S, "tags": {"type": "boolean"}},
+        ["image"],
+    ),
+    _spec(
         "done",
         "Finish: the story is done. First `done` checks that each test you name for a "
         "criterion exists; if one doesn't, the reply says so, and you write it or name the "
@@ -346,6 +363,33 @@ SPECS = [
     ),
 ]
 ACCEPTED = {s["function"]["name"]: s["function"]["parameters"] for s in SPECS}
+# A role's Task's own tools: the checks its gate at `done` runs, so its session finds a
+# problem before `done` (the Sponsor, 2026-10-23, crew#839). Each is given only to its
+# role, by `role_tasks.done_specs`.
+TASK_SPECS = {
+    "architect": _spec(
+        "diagram_check",
+        "The check the gate at `done` runs on `docs/architecture.md`, on the file as it is "
+        "now: every Mermaid block is one the crew checks and renders, and one is a C4 "
+        "diagram. The same check, so a pass here passes there.",
+        {},
+        [],
+    ),
+    "devops": _spec(
+        "workspace_check",
+        "The checks the gate at `done` runs on the workspace file and its compose file, as "
+        "they are now: the workspace's image by digest and its setup as words, each "
+        "compose image pinned to a digest its registry has, and each service as the crew "
+        "starts one (a `user` that isn't root, the fields it honours). It doesn't start the "
+        "services: the gate does, with your setup.",
+        {},
+        [],
+    ),
+}
+_ALL_ACCEPTED = {
+    **ACCEPTED,
+    **{s["function"]["name"]: s["function"]["parameters"] for s in TASK_SPECS.values()},
+}
 # The tools that end the session, which the loop answers, not `Tools`.
 ENDINGS = ("done", "blocked")
 EDITS = ("replace_text", "replace_definition", "write_file")
@@ -1093,6 +1137,38 @@ class Tools:
         finally:
             os.close(fd)
 
+    def task_check(self, name: str) -> Reply:
+        """A Task's gate checks, run on the worktree as it is: read-only, the gate's code."""
+        from crew_org.flows import role_tasks  # noqa: PLC0415
+
+        if name == "diagram_check":
+            problems = role_tasks.diagram_problems_in(self.root)
+            # The gate's own rule, so the session's catch and the gate's are counted as one.
+            rule, text = (
+                "check.role_tasks.diagram_renders",
+                says("check.role_tasks.diagram_renders", problems="; ".join(problems)),
+            )
+        else:
+            problems = role_tasks.workspace_problems(self.root)
+            rule, text = (
+                "check.role_tasks.workspace_checks",
+                says(
+                    "check.role_tasks.workspace_checks",
+                    problems="\n".join(f"- {p}" for p in problems),
+                ),
+            )
+        if not problems:
+            return Reply(
+                "Passed: the gate at `done` finds nothing here.", "passed", f"{name}: passed"
+            )
+        return Reply(
+            f"The gate at `done` would refuse it. {text}",
+            "failed",
+            f"{name}: {len(problems)} problems",
+            {"problems": len(problems)},
+            rule=rule,
+        )
+
     def no_progress(self) -> bool:
         """The same first error in the same test after 3 runs with edits between (decision 3)."""
         failed = [r for r in self.runs if not r["ok"]][-3:]
@@ -1105,7 +1181,9 @@ class Tools:
         """One tool call's reply. A refusal is a reply that names its rule; only a
         workspace that's gone raises."""
         try:
-            check_arguments(name, args)
+            # The session's own list, which offers a Task's tool to its role alone, is
+            # checked before this; here, any tool there is.
+            check_arguments(name, args, _ALL_ACCEPTED)
             if name == "view":
                 return self.view(
                     args["path"], args.get("from_line"), args.get("to_line"), args.get("definition")
@@ -1126,6 +1204,10 @@ class Tools:
                 return self.run(args["what"], args.get("tests"))
             if name == "git":
                 return self.git(args["command"])
+            if name == "image_digest":
+                return image_digest(args["image"], args.get("tag"), bool(args.get("tags")))
+            if name in ("diagram_check", "workspace_check"):
+                return self.task_check(name)
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)
@@ -1142,6 +1224,66 @@ class Tools:
             return Reply(
                 f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"
             )
+
+
+def image_digest(image: str, tag: str | None = None, tags: bool = False) -> Reply:
+    """What a registry holds now for an image (crew#839): read by the crew on the host,
+    anonymously, so nothing the model wrote runs and its container stays offline."""
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    given = image.strip()
+    if "@" in given or not given or given.startswith("-") or any(c.isspace() for c in given):
+        refuse("session.image_digest", "not_a_name", image=image)
+    if tag and tag.strip() and not _OCI_TAG.fullmatch(tag.strip()):
+        # Before it's joined to the name, where `a/b` would read as a registry's host.
+        refuse("session.image_digest", "not_oci", image=f"{image}:{tag}")
+    ref = base_images.parse(f"{given}:{tag.strip()}" if tag and tag.strip() else given)
+    if ref is None:
+        refuse("session.image_digest", "a_variable", image=image)
+    # The OCI distribution spec's grammar, checked before anything is asked of a registry.
+    if not (_OCI_NAME.fullmatch(ref.name) and _OCI_TAG.fullmatch(ref.tag)):
+        refuse("session.image_digest", "not_oci", image=image)
+    try:
+        if tags:
+            found, more = base_images.TAGS(ref.host, ref.name)
+            prefix = (tag or "").strip()
+            matching = sorted(t for t in found if t.startswith(prefix))
+            shown = matching[:TAG_LINES]
+            cut = len(matching) > TAG_LINES or more
+            text = (
+                f"{ref.shown.rsplit(':', 1)[0]}'s tags"
+                + (f" starting with `{prefix}`" if prefix else "")
+                + f": {', '.join(shown) if shown else 'none'}"
+                + (
+                    "\n(not all of them: narrow it with `tag`, the start of the ones you want)"
+                    if cut
+                    else ""
+                )
+            )
+            return Reply(
+                text,
+                "ok",
+                f"image_digest {ref.name} tags: {len(shown)}",
+                {"image": ref.name, "tags": len(shown)},
+                empty=not shown,
+            )
+        digest = base_images.lookup(ref.host, ref.name, ref.tag)
+    except base_images.Unreadable as exc:
+        return Reply(f"The registry couldn't be read: {exc}", "failed", "image_digest: unreadable")
+    if digest is None:
+        return Reply(
+            f"The registry has no `{ref.shown}`. `tags: true` lists the tags it has.",
+            "ok",
+            f"image_digest {ref.shown}: none",
+            {"image": ref.name},
+            empty=True,
+        )
+    return Reply(
+        f"`{ref.shown}` is `{digest}` now. Pin it as `{ref.shown}@{digest}`.",
+        "ok",
+        f"image_digest {ref.shown}",
+        {"image": ref.name},
+    )
 
 
 def _grep_notes(notes: dict[str, str], match: Any) -> list[tuple[str, int, str]]:

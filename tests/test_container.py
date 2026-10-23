@@ -312,6 +312,7 @@ def test_with_no_services_the_workspace_is_mains_but_for_the_tests_report(worktr
     argv = next(a for a in ran if a[1] == "run")
     wt = str(worktree.resolve())
     report = f"PYTEST_ADDOPTS=--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    report += " -o faulthandler_timeout=60 -o faulthandler_exit_on_timeout=true"
     assert argv == [
         *("docker", "run", "--rm", "-d", "--name", "crew-workspace-x", "--init"),
         *("--label", "crew.workspace=1", "--label", f"crew.pid={os.getpid()}"),

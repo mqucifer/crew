@@ -69,6 +69,14 @@ check.role_tasks.diagram_renders:
   messages:
     default: 'The repository''s diagram won''t render: {problems}.'
   owner: Architect
+check.role_tasks.workspace_checks:
+  description: DevOps's workspace file and its compose file pass the gate's checks at `done`, run before
+    it by `workspace_check`; starting the services stays the gate's (crew#839).
+  messages:
+    default: 'The workspace file or its compose file won''t pass:
+
+      {problems}'
+  owner: DevOps Engineer
 config.agents.architect.can:
   owner: Architect
 config.agents.business_analyst.can:
@@ -89,6 +97,8 @@ config.agents.senior_engineer.can:
   owner: Senior Engineer
 config.agents.ux_designer.can:
   owner: UX Designer
+config.const.base_images.TAG_PAGE:
+config.const.base_images.TAG_PAGES:
 config.const.base_images.TIMEOUT:
 config.const.container.GRACE:
 config.const.container.LIFETIME:

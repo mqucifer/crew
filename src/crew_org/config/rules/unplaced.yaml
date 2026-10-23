@@ -98,6 +98,7 @@ config.const.repo_context.WHOLE_FILE_CHARS:
   - crew#591
   - sprint-metrics#567
 config.const.retro.MAX_KNOWN_CHARS:
+config.const.role_tasks.CI_SERVICES_POINTS:
 config.const.role_tasks.DIAGRAM_POINTS:
 config.const.role_tasks.FIRST_DIAGRAM_POINTS:
 config.const.role_tasks.FIRST_WORKSPACE_POINTS:
@@ -106,6 +107,9 @@ config.const.session_delivery.GATE_REPEATS:
   origin:
   - crew#790
   - sprint-metrics#671
+config.const.session_delivery.HANG_ROUNDS:
+  origin:
+  - crew#839
 config.const.session_end.FINDING_CHARS:
   origin:
   - crew#778
@@ -164,6 +168,7 @@ config.const.tools.SEARCH_PARTS:
 config.const.tools.SETUP_TAIL:
   origin:
   - crew#814
+config.const.tools.TAG_LINES:
 config.const.tools.VIEW_CHARS:
   origin:
   - crew#778

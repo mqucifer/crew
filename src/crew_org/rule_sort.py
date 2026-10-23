@@ -69,10 +69,15 @@ SORTED: dict[str, tuple[str, str]] = {
     "guard.bounds.out_of_bounds": (GATE, "protected paths and CI weakened, on the diff"),
     "guard.role_tasks.out_of_scope": (GATE, "a role's Task beyond its role's paths, on the diff"),
     "check.role_tasks.diagram_renders": (GATE, "the Architect's diagram renders, at `done`"),
+    "check.role_tasks.workspace_checks": (
+        FEEDBACK,
+        "DevOps's `workspace_check`: the gate's checks on the workspace, before `done`",
+    ),
     "guard.regression.broken_contracts": (GATE, "merged code removed or reshaped, on the diff"),
     "guard.reproduce.check": (GATE, "a bug's tests reproduce it, on the branch"),
     # --- the decisions that end or route a delivery ------------------------------------
     "check.gates.a_service_wont_start": (GATE, "a declared service not running, at `done`"),
+    "check.gates.the_checks_timed_out": (GATE, "the checks hung or ran past their bound"),
     "check.gates.the_branch_changes_nothing": (GATE, "`done` with an empty diff, at `done`"),
     "check.gates.these_tests_skipped": (GATE, "a skipped test CI runs, at `done`"),
     "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
@@ -91,6 +96,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.arguments": (FEEDBACK, "a call's arguments: the reply lists what it takes"),
     "session.view": (FEEDBACK, "no such file or definition, or not text"),
     "session.search": (FEEDBACK, "no pattern, or no such path"),
+    "session.image_digest": (FEEDBACK, "a digest, an option or a variable as the image"),
     "session.path": (
         FEEDBACK,
         "the tools read and write on the host, so their reply holds them to the worktree",
@@ -114,6 +120,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "config.const.sandbox.DEFAULT_TIMEOUT": (WORKSPACE, "a command's limit in the container"),
     "config.const.sandbox.PROBE_TIMEOUT": (WORKSPACE, "the engine's probe"),
     "config.const.workspace.DEFAULT_TIMEOUT": (WORKSPACE, "a test run's limit"),
+    "config.const.workspace.HANG_AFTER": (WORKSPACE, "one test's limit before it's a hang"),
     "config.agents.developer.can": (
         WORKSPACE,
         "what the role may do: in a session, its tool list and the container",

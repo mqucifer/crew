@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
@@ -26,6 +27,8 @@ from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
+from crew_org.llm import reraise_if_down
+from crew_org.rules import Rule
 from crew_org.tools.github_issues import (
     FAILED_CONCLUSIONS,
     BranchUpdateConflict,
@@ -33,7 +36,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED, open_in
+from crew_org.work_types import DELIVERED, TASK, open_in
 
 STORY_TYPE = "Story"
 
@@ -187,6 +190,8 @@ class MergeResult:
     # merge queue: returned to the Developer with the log (#325).
     ci_failed: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) with changes requested on its current head: back to its role for rework.
+    changes_requested: list[tuple[int, int]] = field(default_factory=list)
     # (card, PR) of a role's Task whose work is the Sponsor's to approve, the
     # repository's diagram or a release, approved by the crew and not yet by them.
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
@@ -208,6 +213,21 @@ class MergeResult:
     # (repo, PR, base branch) of each queued pull request, so the tick can
     # wait for the queue rather than stop while it is about to land (#314).
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
+
+
+def changes_requested(reviews: list[dict[str, Any]], head: str) -> list[str]:
+    """Each reviewer whose latest review of `head` that isn't a comment requests changes.
+
+    By reviewer and latest, as GitHub weighs reviews: changes requested and then approved
+    on the same head is approved, and a dismissed request stands no more (the review of
+    mqucifer/crew#877). The reviews come in the order they were given.
+    """
+    latest: dict[str, str] = {}
+    for review in reviews:
+        if review.get("commit_id") != head or review.get("state") == "COMMENTED":
+            continue
+        latest[(review.get("user") or {}).get("login") or ""] = review.get("state") or ""
+    return [who for who, state in latest.items() if state == "CHANGES_REQUESTED"]
 
 
 def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
@@ -283,6 +303,32 @@ def merge_approved(
             continue
 
         reviews = issues.pull_reviews(repo, pull["number"])
+        head = (pull.get("head") or {}).get("sha", "")
+        if head and (requesting := changes_requested(reviews, head)):
+            # Changes asked for on the head that would merge, by anyone: back to its role
+            # for rework, as from Reviewing. mqucifer/sprint-metrics#740 waited here with
+            # the Sponsor's request on it, and the crew asked them to approve it (crew#839).
+            result.changes_requested.append((number, pull["number"]))
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=IN_PROGRESS,
+                by=None,
+                card=number,
+                frm=MERGING,
+                summary=f"PR #{pull['number']}: changes requested on its head — back for rework",
+                rule=Rule.MERGE_CHANGES_REQUESTED,
+            )
+            requests = len(requesting)
+            sendbacks.record(
+                sink,
+                sendbacks.MERGE_CHANGES_REQUESTED,
+                card=number,
+                repo=repo,
+                requests=requests,
+            )
+            continue
         approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
             held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
@@ -295,7 +341,6 @@ def merge_approved(
                 held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
                 result.no_sponsor.append((number, pull["number"]))
                 continue
-            head = (pull.get("head") or {}).get("sha", "")
             if not role_tasks.sponsor_approved(reviews, login, head):
                 held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
                 role_tasks.ask_the_sponsor(
@@ -500,6 +545,68 @@ def _done(
     result.merged.append((number, pull["number"]))
     if card.state != "CLOSED":
         _close_story(issues, sink, card, repo=repo, pull=pull)
+    if card.work_type == TASK:
+        _turned_on(board, sink, card, pull=pull, issues=issues, repo=repo)
+
+
+def _turned_on(
+    board: ProjectClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    pull: dict[str, Any],
+    issues: IssueClient,
+    repo: str,
+) -> None:
+    """The Developer's bug for the merged tests a workspace Task turned on that fail, now
+    they fail on main (crew#839). Only for DevOps's Task whose pull request changed the
+    workspace, read only from the crew's record for the head that merged, never from
+    the body's text, and filed once, by the tests. A filing that fails is recorded."""
+    number = card.number or 0
+    if role_tasks.role_of(card) is not role_tasks.DEVOPS:
+        return
+    try:
+        if not role_tasks.changes_workspace_files(issues.pull_files(repo, pull["number"])):
+            return
+        head = ((issues.pull(repo, pull["number"]).get("head") or {}).get("sha")) or ""
+        # Only the crew's own App's record counts: org.yaml's `trust.crew`, none without it.
+        crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+        tests = role_tasks.turned_on_at(issues.comments(repo, pull["number"]), head, crew)
+        if not tests:
+            return
+        filed = role_tasks.turned_on_bug(
+            issues, board, sink, repo=repo, task=number, tests=tests, cards=board.cards()
+        )
+        # What it was filed from, as counts: the tests' names stay on the bug (ADR 0010).
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.FINDING_FILED,
+                role=role_tasks.DEVOPS.name,
+                card=number,
+                summary=f"bug filed as #{filed}: {len(tests)} tests #{number} turned on fail"[:100],
+                detail={
+                    "repo": repo,
+                    "owner": "bug",
+                    "filed": filed,
+                    "round": f"merged-{pull['number']}",
+                    "counts": {
+                        "tests": len(tests),
+                        "files": len({t.partition("::")[0] for t in tests}),
+                    },
+                },
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - the merge stands either way
+        reraise_if_down(exc)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.FINDING_FILED,
+                role=role_tasks.DEVOPS.name,
+                card=number,
+                summary=f"bug for the tests #{number} turned on not filed: {exc}"[:100],
+                detail={"repo": repo, "owner": "bug", "filed": None, "error": str(exc)[:200]},
+            )
+        )
 
 
 def _close_story(

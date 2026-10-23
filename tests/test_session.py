@@ -827,3 +827,65 @@ def test_a_session_refuses_a_done_naming_a_test_that_isnt_there(root, seen):
     told = proxy.sent[1]["messages"][-1]["content"]
     assert "No test by these names exists: `tests/test_app.py::test_g`." in told
     assert "write one and run it" in told and "`search` for `def test_`" in told
+
+
+# --- image_digest (crew#839) ----------------------------------------------------------------
+
+PG = "sha256:" + "ab" * 32
+
+
+@pytest.fixture
+def registry(monkeypatch):
+    """postgres:16 is PG; its tags are 15, 16 and 16-alpine; nothing else is there."""
+    from crew_org.tools import base_images
+
+    monkeypatch.setattr(base_images, "_READ", {})
+    monkeypatch.setattr(
+        base_images,
+        "LOOKUP",
+        lambda host, name, ref: PG if (name, ref) == ("library/postgres", "16") else None,
+    )
+    monkeypatch.setattr(base_images, "TAGS", lambda host, name: (["16-alpine", "15", "16"], False))
+
+
+def test_image_digest_names_the_digest_held_now_and_how_to_pin_it(root, registry):
+    reply = tools(root).call("image_digest", {"image": "postgres", "tag": "16"})
+    assert reply.kind == "ok" and f"`postgres:16@{PG}`" in reply.text
+
+
+def test_image_digest_says_when_the_registry_has_no_such_tag(root, registry):
+    reply = tools(root).call("image_digest", {"image": "postgres", "tag": "99"})
+    assert reply.empty and "has no `postgres:99`" in reply.text
+
+
+def test_image_digest_lists_the_tags_starting_with_the_tag_given(root, registry):
+    reply = tools(root).call("image_digest", {"image": "postgres", "tag": "16", "tags": True})
+    assert reply.text.endswith(": 16, 16-alpine")
+
+
+def test_image_digest_refuses_a_digest_or_an_option_as_the_image(root, registry):
+    for image in (f"postgres@{PG}", "--help", "${DB}"):
+        reply = tools(root).call("image_digest", {"image": image})
+        assert reply.kind == "refused" and reply.rule == "session.image_digest"
+
+
+def test_image_digest_asks_no_registry_about_a_name_the_oci_spec_doesnt_allow(
+    root, registry, monkeypatch
+):
+    """The review of mqucifer/crew#877: checked before any request."""
+    from crew_org.tools import base_images
+
+    asked = []
+    monkeypatch.setattr(base_images, "LOOKUP", lambda *a: asked.append(a) or PG)
+    for image, tag in (("Postgres", "16"), ("postgres/../x", "16"), ("postgres", "a/b")):
+        reply = tools(root).call("image_digest", {"image": image, "tag": tag})
+        assert reply.kind == "refused" and "OCI distribution spec" in reply.text
+    assert asked == []
+
+
+def test_a_tasks_session_has_image_digest_too():
+    from crew_org.flows import role_tasks
+
+    for role in (role_tasks.DEVOPS, role_tasks.ARCHITECT):
+        names = [s["function"]["name"] for s in role_tasks.done_specs(role)]
+        assert "image_digest" in names

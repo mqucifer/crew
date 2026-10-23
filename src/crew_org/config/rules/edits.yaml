@@ -1,6 +1,9 @@
 # A change applies cleanly. Declared once each (crew#756, ADR 0031): change a rule here.
 config.const.regression.RESTORE_CHAR_CEILING:
 config.const.workspace.DEFAULT_TIMEOUT:
+config.const.workspace.HANG_AFTER:
+  origin:
+  - crew#839
 config.const.workspace.MAX_FAILURE_REPORT_CHARS:
 edit.ast_edit.apply_edit:
   description: Refused if the name is no definition in the file, if the file doesn't parse, or if the

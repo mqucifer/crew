@@ -47,6 +47,7 @@ from crew_org.rulebook import says
 from crew_org.rules import Rule
 from crew_org.session import signals
 from crew_org.session.conversation import BACKSTOP_S, QUIET_LIMIT, Ending
+from crew_org.tools import services
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.workspace import CheckResult, check
@@ -134,27 +135,40 @@ def _for_devops(
     board: ProjectClient,
     issues: IssueClient,
     sink: EventSink,
+    role: role_tasks.TaskRole | None = None,
+    worktree: Path | None = None,
 ) -> None:
     """What the gates found that's the workspace's, not the story's, filed for DevOps
-    (crew#860). A filing that fails is recorded; the story goes on either way."""
-    down = verdict.check.services_down if verdict.check is not None else {}
-    if not verdict.for_devops and not down:
+    (crew#860). A filing that fails is recorded; the story goes on either way.
+
+    Not on DevOps's own Task: the workspace is its work, so the gates' findings go
+    back to it instead (crew#839). And when the whole checks passed with the default
+    branch's services up, the tests that need them pass in the workspace on main:
+    DevOps's second workspace Task, CI's, is opened if it isn't (crew#839).
+    """
+    if role is role_tasks.DEVOPS or verdict.check is None:
         return
+    down = verdict.check.services_down
+    kind = role_tasks.FINDING
     try:
-        role_tasks.workspace_finding(
-            issues,
-            board,
-            sink,
-            repo=repo,
-            story=story,
-            skipped=verdict.for_devops,
-            down=down,
-            cards=board.cards(),
-        )
+        if verdict.for_devops or down:
+            role_tasks.workspace_finding(
+                issues,
+                board,
+                sink,
+                repo=repo,
+                story=story,
+                skipped=verdict.for_devops,
+                down=down,
+                cards=board.cards(),
+            )
+        elif verdict.check.ok and worktree is not None and services.at_main(worktree).services:
+            kind = role_tasks.CI_SERVICES
+            role_tasks.ci_services_task(issues, board, sink, repo=repo, cards=board.cards())
     except Exception as exc:  # noqa: BLE001 - a filing never costs the story
         reraise_if_down(exc)
         role_tasks.not_opened(
-            sink, repo=repo, role=role_tasks.DEVOPS, kind=role_tasks.FINDING, card=story, why=exc
+            sink, repo=repo, role=role_tasks.DEVOPS, kind=kind, card=story, why=exc
         )
 
 
@@ -204,7 +218,16 @@ def route(
         run_checks=run_checks,
         note=note,
     )
-    _for_devops(verdict, repo=repo, story=number, board=board, issues=issues, sink=sink)
+    _for_devops(
+        verdict,
+        repo=repo,
+        story=number,
+        board=board,
+        issues=issues,
+        sink=sink,
+        role=role_tasks.role_of(card),
+        worktree=worktree,
+    )
     # Which rules sent a story back, for the measures of decision 8: names only (ADR 0010).
     rules = [finding.rule for finding in verdict.findings]
     # Setup run again before the checks, as the session counts it (crew#814).
@@ -220,6 +243,14 @@ def route(
                 "passed": verdict.passed,
                 "rules": rules,
                 "already_done": verdict.already_done,
+                # Merged tests a workspace Task turned on that fail, handed to the
+                # Developer rather than refused (crew#839): a count, never names.
+                "turned_on": len(verdict.for_developer),
+                # Hung tests set aside and run again around, and those left hung: the
+                # bound's evidence (crew#839).
+                "hang_rounds": getattr(verdict.check, "hang_rounds", 0),
+                "hung": len(getattr(verdict.check, "hung", None) or {})
+                + len(getattr(verdict.check, "deselected", None) or {}),
                 "resetups": int(resetup is not None),
                 "resetups_failed": int(resetup is False),
             },

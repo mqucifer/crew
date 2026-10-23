@@ -128,6 +128,11 @@ DETAIL = frozenset(
         # (crew#814): on a session's end and the gates' check.
         "resetups",
         "resetups_failed",
+        # Merged tests a workspace Task turned on that fail, handed to the Developer at
+        # its gate (crew#839).
+        "turned_on",
+        "hang_rounds",
+        "hung",
         "start_chars",
     }
 )

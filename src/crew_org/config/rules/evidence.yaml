@@ -75,6 +75,18 @@ check.gates.the_branch_changes_nothing:
   - crew#221
   - crew#778
   owner: Developer
+check.gates.the_checks_timed_out:
+  description: At `done`, checks that hung or ran past their bound are a finding naming the hung test
+    and where it waits, never counted as a test that failed (crew#839).
+  messages:
+    default: 'The checks didn''t finish, so nothing says how the tests after this one do:
+
+      {tests}
+
+      A test that hangs is waiting on something: a lock, a connection, a process. Find what it waits for
+      from the frame named.'
+  origin:
+  - crew#839
 check.gates.these_tests_skipped:
   description: At `done`, a test the branch adds or changes that skipped for a reason the project doesn't
     declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor,

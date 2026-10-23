@@ -89,3 +89,49 @@ def test_a_registry_that_couldnt_be_read_is_asked_again():
     [why] = invented("Dockerfile", f"FROM python:3.12-slim@{FAKE}\n")
     assert "couldn't be checked" in why
     assert ("docker.io", "library/python", "3.12-slim") not in base_images._READ
+
+
+# --- a compose file's images (crew#839) ---------------------------------------------------------
+
+
+def compose(image: str) -> str:
+    return (
+        f"services:\n  workspace:\n    image: python:3.12-slim@{REAL}\n  db:\n    image: {image}\n"
+    )
+
+
+def test_a_compose_image_pinned_by_tag_is_refused_naming_the_digest_held_now(registry):
+    [why] = base_images.unpinned("compose.yaml", compose("python:3.12-slim"))
+    assert "by tag" in why and f"python:3.12-slim@{REAL}" in why
+
+
+def test_a_compose_image_with_an_invented_digest_is_refused(registry):
+    [why] = base_images.unpinned("compose.yaml", compose(f"python:3.12-slim@{FAKE}"))
+    assert "doesn't have" in why and REAL in why
+
+
+def test_a_compose_file_pinned_to_digests_its_registry_has_passes(registry):
+    assert base_images.unpinned("compose.yaml", compose(f"python:3.12-slim@{REAL}")) == []
+
+
+def test_a_compose_service_with_no_image_the_crew_can_read_is_refused(registry):
+    [why] = base_images.unpinned("compose.yaml", compose("${DB_IMAGE}"))
+    assert "`db`" in why
+
+
+def test_the_gates_check_a_compose_file_as_they_check_a_dockerfile(registry, tmp_path):
+    path = ".devcontainer/services.yaml"
+    (tmp_path / ".devcontainer").mkdir()
+    (tmp_path / ".devcontainer/devcontainer.json").write_text(
+        '{"dockerComposeFile": "services.yaml", "service": "workspace"}'
+    )
+    (tmp_path / path).write_text(compose("python:3.12-slim"))
+    assert bounds.is_compose(tmp_path, path)
+    reasons = bounds.judged(
+        [path],
+        None,
+        workflows=({}, {}),
+        dockerfiles={},
+        composes={path: (tmp_path / path).read_text()},
+    )
+    assert any("by tag" in r for r in reasons)
