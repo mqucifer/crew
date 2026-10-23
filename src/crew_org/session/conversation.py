@@ -514,13 +514,16 @@ def session(
     instead_of_hints: str | None = None,
     after_run: Callable[[dict[str, Any]], None] | None = None,
     role: str = ROLE,
+    specs: list[dict[str, Any]] | None = None,
+    scope: tuple[str, ...] = (),
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
 
     `about` goes on the `session.started` event, such as the base commit. `role` is
     agents.yaml's key for who works it: the Developer, or the role whose Task it is
-    (crew#839), with the Developer's tools.
+    (crew#839), with the Developer's tools. A Task's `specs` tell its `done` as a Task's,
+    and its `scope` is what `done` takes as proof besides a test.
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     tools = Tools(worktree, workspace, toolchain, coverage, notes)
@@ -544,18 +547,21 @@ def session(
         opening,
         send=send,
         after_run=after_run,
-        check_done=own_checks(worktree),
+        check_done=own_checks(worktree, scope),
         role=role,
+        specs=SPECS if specs is None else specs,
     )
 
 
-def own_checks(worktree: Path) -> Callable[[dict[str, Any]], list[Any]]:
+def own_checks(
+    worktree: Path, scope: tuple[str, ...] = ()
+) -> Callable[[dict[str, Any]], list[Any]]:
     """`done`'s one check of itself on this worktree: the tests it names exist (crew#778)."""
     # Here, not at the top: delivery, which the gates read, runs the session.
     from crew_org.flows import gates  # noqa: PLC0415
 
     def checked(said: dict[str, Any]) -> list[Any]:
-        return gates.missing_named_tests(worktree, said)
+        return gates.missing_named_tests(worktree, said, scope=scope)
 
     return checked
 

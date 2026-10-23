@@ -14,6 +14,7 @@ kind and what it's for, so the event that opened it never opens a second.
 from __future__ import annotations
 
 import contextlib
+import copy
 import fnmatch
 import hashlib
 import re
@@ -165,6 +166,55 @@ def task_start(role: TaskRole, today: str = "") -> str:
         + ". A change anywhere else is refused at `done`. What else you find isn't this "
         "Task's: leave it, and say it in `done`'s summary."
     )
+
+
+def covers_tests(role: TaskRole) -> bool:
+    """Whether the role's scope takes in test files, so a test can prove its Task."""
+    return any(fnmatch.fnmatch(p, g) for g in role.scope for p in ("tests/test_x.py", "test_x.py"))
+
+
+def done_specs(role: TaskRole) -> list[dict[str, Any]]:
+    """The Developer's tools, with `done` told as a Task's is (crew#839).
+
+    The Developer's `done` asks a test for each criterion and says QA follows. A Task
+    may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
+    Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
+    """
+    from crew_org.session.tools import SPECS  # noqa: PLC0415
+
+    scope = ", ".join(f"`{g}`" for g in role.scope)
+    tests = covers_tests(role)
+    proof = (
+        f"a test that proves it, or the file within {scope} that shows it"
+        if tests
+        else f"the file within {scope} that shows it"
+    )
+    specs = [copy.deepcopy(s) for s in SPECS]
+    for spec in specs:
+        fn = spec["function"]
+        if fn["name"] != "done":
+            continue
+        fn["description"] = (
+            f"Finish: the Task is done. Name in each criterion's `test` what proves it: {proof}. "
+            "First `done` checks that each one you name exists; if one doesn't, the reply says "
+            "so. Then the crew checks your branch, and returns it if any of these fails: it "
+            f"changes nothing outside {scope}; "
+            + ("each merged test you changed or removed is named here, with why; " if tests else "")
+            + "and the project's whole checks pass. Then the Code Reviewer reviews it. QA "
+            "doesn't verify a Task."
+        )
+        properties = fn["parameters"]["properties"]
+        properties["criteria"]["items"]["properties"]["test"] = {
+            "type": "string",
+            "description": f"What proves the criterion: {proof}.",
+        }
+        properties["docs"]["description"] = (
+            f"The files within {scope} you updated, or why none describe this change."
+        )
+        if not tests:
+            # Its scope has no tests to change.
+            del properties["changed_tests"]
+    return specs
 
 
 def waits_for(card: Card) -> str:

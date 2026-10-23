@@ -30,6 +30,7 @@ session can't end with a `done` that fails it (`missing_named_tests`).
 from __future__ import annotations
 
 import ast
+import fnmatch
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -82,7 +83,9 @@ class Verdict:
         return not self.findings
 
 
-def missing_named_tests(worktree: Path, said: dict[str, Any]) -> list[Finding]:
+def missing_named_tests(
+    worktree: Path, said: dict[str, Any], *, scope: tuple[str, ...] = ()
+) -> list[Finding]:
     """`done`'s one check of itself: the tests it names for criteria exist (crew#778).
 
     The Sponsor's decision (2026-10-18): one narrow check inside `done`, a fact and not
@@ -91,8 +94,17 @@ def missing_named_tests(worktree: Path, said: dict[str, Any]) -> list[Finding]:
     writing the test: on mqucifer/sprint-metrics#662 no proving test existed under any
     name, and "name the test" first would push toward the nearest one, which proves
     nothing.
+
+    `scope` is a role's Task's (crew#839): a file there that shows a criterion proves
+    it, since the Task may change nothing else.
     """
-    missing = [t for t in _named(said) if t and not delivery.names_a_test(worktree, t)]
+    missing = [
+        t
+        for t in _named(said)
+        if t
+        and not delivery.names_a_test(worktree, t)
+        and not (any(fnmatch.fnmatch(t, g) for g in scope) and (Path(worktree) / t).is_file())
+    ]
     if not missing:
         return []
     return [
