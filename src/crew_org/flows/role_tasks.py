@@ -153,11 +153,15 @@ def outside_scope(role: TaskRole, paths: list[str]) -> list[str]:
     return [p for p in paths if not any(fnmatch.fnmatch(p, glob) for glob in role.scope)]
 
 
-def task_start(role: TaskRole, today: str = "") -> str:
-    """What a role's session is told its work is, before the Task itself.
+def task_start(role: TaskRole, today: str = "", skills: Any = ()) -> str:
+    """What a role's session is told its work is, before the Task itself, with a line
+    naming the skills it can read (`session/skills.py`).
 
     The date is the crew's: a model never supplies a date on its own (ADR 0019).
     """
+    from crew_org.session import skills as known  # noqa: PLC0415
+
+    offered = known.start_line(list(skills))
     return (
         (f"Today is {today}. " if today else "")
         + f"This is the {role.name}'s own Task (ADR 0034), not a story. You work it as the "
@@ -165,7 +169,7 @@ def task_start(role: TaskRole, today: str = "") -> str:
         + ", ".join(f"`{g}`" for g in role.scope)
         + ". A change anywhere else is refused at `done`. What else you find isn't this "
         "Task's: leave it, and say it in `done`'s summary."
-    )
+    ) + (f"\n\n{offered}" if offered else "")
 
 
 def covers_tests(role: TaskRole) -> bool:
@@ -173,14 +177,14 @@ def covers_tests(role: TaskRole) -> bool:
     return any(fnmatch.fnmatch(p, g) for g in role.scope for p in ("tests/test_x.py", "test_x.py"))
 
 
-def done_specs(role: TaskRole) -> list[dict[str, Any]]:
+def done_specs(role: TaskRole, skills: Any = ()) -> list[dict[str, Any]]:
     """The Developer's tools, with `done` told as a Task's is (crew#839).
 
     The Developer's `done` asks a test for each criterion and says QA follows. A Task
     may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
     Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
     """
-    from crew_org.session.tools import SPECS, TASK_SPECS  # noqa: PLC0415
+    from crew_org.session.tools import SKILL_SPEC, SPECS, TASK_SPECS  # noqa: PLC0415
 
     scope = ", ".join(f"`{g}`" for g in role.scope)
     tests = covers_tests(role)
@@ -195,6 +199,10 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
     if role.key in TASK_SPECS:
         at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
         specs.insert(at, copy.deepcopy(TASK_SPECS[role.key]))
+    if skills:
+        # Only to a Task its skills are for, so another Task's tools are as they were.
+        at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
+        specs.insert(at, copy.deepcopy(SKILL_SPEC))
     for spec in specs:
         fn = spec["function"]
         if fn["name"] != "done":

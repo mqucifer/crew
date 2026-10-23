@@ -1115,3 +1115,20 @@ def test_a_workspace_tasks_failing_setup_it_didnt_write_still_blocks(ws, deliver
     Held.setup_codes = [1, 1]
     outcome = deliver(ws, Sessions(), Routes(), story=devops_task())
     assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY
+
+
+def test_a_workspace_tasks_session_is_offered_the_workspace_skill(
+    ws, deliver, changes_the_workspace
+):
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")), story=devops_task())
+    started = sessions.started[0]
+    assert "Skills for this Task: `workspace`" in started["story"]
+    assert "skill" in [s["function"]["name"] for s in started["specs"]]
+
+
+def test_a_story_is_offered_no_skill(ws, deliver, changes_the_workspace):
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")))
+    assert "Skills" not in sessions.started[0]["story"]
+    assert sessions.started[0]["specs"] is None

@@ -479,6 +479,17 @@ is told the command, exit and output, as a finding at `done` is
 (`check.role_tasks.setup_failed_at_start`; crew#839). It works with nothing
 installed and no network, and its setup is tried again, with the network, at
 `done`.
+
+**DevOps's workspace Tasks have a skill** (the Sponsor, 2026-10-23; crew#839):
+know-how read on demand, not carried as standing context (`session/skills.py`).
+The start names it in one line, and the session reads it with the `skill` tool.
+`workspace` says how the crew runs a workspace: the setup fields it reads, setup's
+one-off container and its limits, the session's lack of network, the services'
+hardening, what isn't honoured and what the checks refuse. It's generated from the
+crew's own constants and the containers' own flags, so it can't drift. It's offered
+for the first workspace file, a Goal's services or toolchain, a workspace finding,
+or any DevOps Task whose branch changes the workspace file. Each call's
+`tool.finished` event records the skill asked for, never its text.
 <!-- /told to -->
 
 **Before the checks, the project's own fixers run, and the attempt answers for

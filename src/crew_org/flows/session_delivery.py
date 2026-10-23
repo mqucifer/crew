@@ -67,7 +67,7 @@ from crew_org.git_ops import (
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
 from crew_org.rules import Rule
-from crew_org.session import conversation
+from crew_org.session import conversation, skills
 from crew_org.tools import reproduction
 from crew_org.tools.container import Held, own_services
 from crew_org.tools.github_issues import IssueClient
@@ -186,10 +186,11 @@ def deliver_by_session(
         outcome.ended = True
         return outcome
     profiles.set_project(record)
+    offered = skills.for_task(role, body, worktree, _branch_paths(worktree)) if role else []
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)
     story = story_section(
-        f"{role_tasks.task_start(role, _today())}\n\n{story_text}" if role else story_text,
+        f"{role_tasks.task_start(role, _today(), offered)}\n\n{story_text}" if role else story_text,
         note,
         rows,
         diagram,
@@ -275,6 +276,7 @@ def deliver_by_session(
             measured=measured,
             role=role.spec if role else conversation.ROLE,
             task=role,
+            skills=offered,
         )
     finally:
         held.stop()
@@ -375,12 +377,16 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
 HANG_ROUNDS = 12
 
 
+def _branch_paths(worktree: Path) -> list[str]:
+    """The paths the branch changes against the default branch it left."""
+    merged = merged_base(worktree)
+    return reproduction._changed(worktree, merged.sha) if merged is not None else []
+
+
 def _own_workspace(task: role_tasks.TaskRole | None, worktree: Path) -> bool:
     """Is the worktree's workspace file the Task's own work: a DevOps Task whose branch
     changes it (`role_tasks.changes_workspace`)?"""
-    merged = merged_base(worktree)
-    paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
-    return role_tasks.changes_workspace(task, worktree, paths)
+    return role_tasks.changes_workspace(task, worktree, _branch_paths(worktree))
 
 
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
@@ -411,6 +417,7 @@ def _sessions(
     measured: dict[str, int],
     role: str = conversation.ROLE,
     task: role_tasks.TaskRole | None = None,
+    skills: list[Any] | None = None,
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -449,7 +456,7 @@ def _sessions(
             round=rounds,
             story_parts=measured,
             role=role,
-            specs=role_tasks.done_specs(task) if task else None,
+            specs=role_tasks.done_specs(task, skills or ()) if task else None,
             scope=task.scope if task else (),
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)

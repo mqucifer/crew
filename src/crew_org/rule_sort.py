@@ -101,6 +101,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.view": (FEEDBACK, "no such file or definition, or not text"),
     "session.search": (FEEDBACK, "no pattern, or no such path"),
     "session.image_digest": (FEEDBACK, "a digest, an option or a variable as the image"),
+    "session.skill": (FEEDBACK, "a skill the start doesn't name, refused with the ones there are"),
     "session.path": (
         FEEDBACK,
         "the tools read and write on the host, so their reply holds them to the worktree",

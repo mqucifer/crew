@@ -17,7 +17,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 17 |
+| A session's tool refuses a call, and says why in its reply | 18 |
 | A gate at `done` sends a session's branch back | 13 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
@@ -33,7 +33,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
@@ -188,6 +188,7 @@ section; one no line holds for is unplaced, never guessed.
 | `session.restore`<br>`git restore` takes `--source=<ref>` and files, and writes text files in the branch only. | edits | `src/crew_org/session/git.py:restore_args` | Developer | — | src/crew_org/session/git.py:restore_args<br>src/crew_org/session/tools.py:Tools._restore | crew#778 |
 | `session.run`<br>`run` of tests names them, and needs the project's checks to run pytest; `run` of lint needs a lint among them. | evidence | `src/crew_org/session/tools.py:Tools.run` | Developer | — | src/crew_org/session/tools.py:Tools.run | crew#778 |
 | `session.search`<br>`search` is given a pattern, and a path there is. | answer_shape | `src/crew_org/session/tools.py:Tools.search` | Developer | — | src/crew_org/session/tools.py:Tools.search | crew#778 |
+| `session.skill`<br>`skill` is given the name of a skill there is. | answer_shape | `src/crew_org/session/tools.py:skill` | Developer | — | src/crew_org/session/tools.py:skill | crew#778<br>crew#839 |
 | `session.tests_for`<br>`tests_for` needs the project's coverage map, which is Python only. | evidence | `src/crew_org/session/tools.py:Tools.tests_for` | Developer | §14 a_project_in_more_than_one (both cite crew#404; in §14) | src/crew_org/session/tools.py:Tools.tests_for | crew#404<br>crew#778 |
 | `session.view`<br>`view` shows a text file there is, or a definition it has. | answer_shape | `src/crew_org/session/tools.py:Tools.view` | Developer | — | src/crew_org/session/tools.py:Tools.view | crew#778 |
 | `session.write_file`<br>`write_file` rewrites an existing file only when told to overwrite it. | edits | `src/crew_org/session/tools.py:Tools.write_file` | Developer | — | src/crew_org/session/tools.py:Tools.write_file | crew#778 |

@@ -83,7 +83,7 @@ check.role_tasks.setup_failed_at_start:
       This session''s container has no setup and no network: the dependencies aren''t installed, and
       a test that needs them fails here. You can read and edit, run `workspace_check`, and run what
       needs nothing installed. Your setup as the branch has it then runs again, with the network, at
-      `done`, which says how it went.'
+      `done`, which says how it went. The `workspace` skill says how the crew runs setup.'
   owner: DevOps Engineer
 check.role_tasks.workspace_checks:
   description: DevOps's workspace file and its compose file pass the gate's checks at `done`, run before

@@ -386,9 +386,18 @@ TASK_SPECS = {
         [],
     ),
 }
+# Know-how the start names, read on demand (`session/skills.py`): offered by
+# `role_tasks.done_specs` to a Task the skills are for.
+SKILL_SPEC = _spec(
+    "skill",
+    "Read a skill the start names: how the crew does one kind of thing, from what it runs.",
+    {"name": S},
+    ["name"],
+)
 _ALL_ACCEPTED = {
     **ACCEPTED,
     **{s["function"]["name"]: s["function"]["parameters"] for s in TASK_SPECS.values()},
+    "skill": SKILL_SPEC["function"]["parameters"],
 }
 # The tools that end the session, which the loop answers, not `Tools`.
 ENDINGS = ("done", "blocked")
@@ -488,6 +497,7 @@ class Tools:
         notes: dict[str, str] | None = None,
         *,
         parse_guard: bool = True,
+        skills: bool = False,
     ) -> None:
         self.root = worktree.resolve()
         self.notes = notes or {}
@@ -499,6 +509,8 @@ class Tools:
         self.parse_guard = parse_guard
         # Whether a search with no path searches the notes too (crew#807).
         self.search_notes = False
+        # Whether the session is offered `skill`, so a check's reply can point to it.
+        self.skills = skills
         self.edited: list[str] = []
         self.read: list[str] = []
         self.runs: list[dict[str, Any]] = []
@@ -1166,6 +1178,8 @@ class Tools:
             if ignored
             else ""
         )
+        if self.skills and name == "workspace_check":
+            aside += "\n\nThe `workspace` skill says how the crew runs a workspace."
         if not problems:
             return Reply(
                 f"Passed: the gate at `done` finds nothing here.{aside}",
@@ -1219,6 +1233,8 @@ class Tools:
                 return image_digest(args["image"], args.get("tag"), bool(args.get("tags")))
             if name in ("diagram_check", "workspace_check"):
                 return self.task_check(name)
+            if name == "skill":
+                return skill(args["name"])
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)
@@ -1235,6 +1251,21 @@ class Tools:
             return Reply(
                 f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"
             )
+
+
+def skill(name: str) -> Reply:
+    """A skill's text, by its name. Its event records the name, never the text."""
+    from crew_org.session import skills  # noqa: PLC0415
+
+    found = skills.SKILLS.get(name)
+    if found is None:
+        refuse(
+            "session.skill",
+            "unknown",
+            name=name[:80],
+            skills=", ".join(f"`{n}`" for n in skills.SKILLS),
+        )
+    return Reply(found.body(), "ok", f"skill: {name}")
 
 
 def image_digest(image: str, tag: str | None = None, tags: bool = False) -> Reply:
