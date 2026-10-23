@@ -9,7 +9,8 @@ nothing read it. Each refinement pass, the Business Analyst triages it
 - more information: the question is asked, and the card waits on `needs:human`.
 
 A bug from anyone who isn't a collaborator is left for a person: ADR 0027 says
-who files one.
+who files one. The crew's own App is no collaborator, and files a bug where a
+decision says so (crew#839), so its bugs are triaged too.
 """
 
 from __future__ import annotations
@@ -93,7 +94,10 @@ def triage_bugs(
         number = card.number or 0
         issue = issues.get(repo, number)
         author = (issue.get("user") or {}).get("login") or ""
-        if issues.permission(repo, author) not in COLLABORATORS:
+        # The crew's own App has no permission on the repository: only org.yaml's
+        # `trust.crew` names it, and none without it (crew#839).
+        crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+        if author not in crew and issues.permission(repo, author) not in COLLABORATORS:
             artifacts.comment(
                 issues, sink, repo=repo, number=number, body=NOT_A_COLLABORATOR, by=ROLE
             )
