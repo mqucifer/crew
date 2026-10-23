@@ -569,7 +569,9 @@ def _turned_on(
         if not role_tasks.changes_workspace_files(issues.pull_files(repo, pull["number"])):
             return
         head = ((issues.pull(repo, pull["number"]).get("head") or {}).get("sha")) or ""
-        tests = role_tasks.turned_on_at(issues.comments(repo, pull["number"]), head)
+        # Only the crew's own App's record counts: org.yaml's `trust.crew`, none without it.
+        crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+        tests = role_tasks.turned_on_at(issues.comments(repo, pull["number"]), head, crew)
         if not tests:
             return
         filed = role_tasks.turned_on_bug(

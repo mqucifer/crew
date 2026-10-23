@@ -824,23 +824,31 @@ def turned_on_marker(head: str, tests: dict[str, str]) -> str:
     return f"<!-- crew:turned-on head={head} tests={data} -->"
 
 
-def turned_on_at(comments: list[dict[str, Any]], head: str) -> dict[str, str]:
-    """The list the crew recorded for `head`, its latest record, or none."""
+def turned_on_at(comments: list[dict[str, Any]], head: str, crew: frozenset[str]) -> dict[str, str]:
+    """The list the crew recorded for `head`, its latest record, or none.
+
+    Only a comment the crew's own App wrote (`crew`, org.yaml's `trust.crew`) that starts
+    with the marker, as `record_turned_on` writes it: the crew's other comments carry
+    model-written text, a rework's summary among them, so a marker quoted inside one
+    never counts (the review of mqucifer/crew#877).
+    """
     import base64  # noqa: PLC0415
     import binascii  # noqa: PLC0415
     import json  # noqa: PLC0415
 
     found: dict[str, str] = {}
     for comment in comments:
-        for at, data in _TURNED_ON_MARK.findall(comment.get("body") or ""):
-            if not head or at != head:
-                continue
-            try:
-                given = json.loads(base64.b64decode(data, validate=True))
-            except (binascii.Error, ValueError):
-                continue
-            if isinstance(given, dict):
-                found = {str(k): str(v) for k, v in given.items()}
+        if not head or ((comment.get("user") or {}).get("login") or "") not in crew:
+            continue
+        mark = _TURNED_ON_MARK.match(comment.get("body") or "")
+        if mark is None or mark.group(1) != head:
+            continue
+        try:
+            given = json.loads(base64.b64decode(mark.group(2), validate=True))
+        except (binascii.Error, ValueError):
+            continue
+        if isinstance(given, dict):
+            found = {str(k): str(v) for k, v in given.items()}
     return found
 
 

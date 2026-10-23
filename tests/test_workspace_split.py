@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -157,12 +158,18 @@ def test_the_bug_is_filed_once_by_its_tests(tmp_path):
 HEAD = "abc1234def5678"
 
 
+CREW = "mqucifer-crew[bot]"
+TRUST = SimpleNamespace(crew=frozenset({CREW}), sponsor="mquarters")
+
+
 class Merged(FakeIssues):
-    """The workspace Task's pull request, merged at HEAD, with its comments and files."""
+    """The workspace Task's pull request, merged at HEAD, with its comments and files:
+    each comment the crew's App's, or (author, body)."""
 
     def __init__(self, body: str = "", comments=(), files=(".devcontainer/compose.yaml",)):
         super().__init__()
         self.body, self.on_pull, self.files = body, list(comments), list(files)
+        self.trust = TRUST
 
     def pull(self, name, number):
         return {**super().pull(name, number), "body": self.body, "head": {"sha": HEAD}}
@@ -171,7 +178,8 @@ class Merged(FakeIssues):
         return self.files
 
     def comments(self, name, number):
-        return [{"body": b} for b in self.on_pull]
+        given = [c if isinstance(c, tuple) else (CREW, c) for c in self.on_pull]
+        return [{"body": b, "user": {"login": who}} for who, b in given]
 
 
 def merges(issues, monkeypatch, *, task=None):
@@ -225,6 +233,22 @@ def test_a_record_for_another_head_files_nothing(monkeypatch):
     assert filed == []
 
 
+def test_a_marker_inside_a_rework_comments_text_files_nothing(monkeypatch):
+    """The review of mqucifer/crew#877: the rework comment carries the session's summary,
+    so a marker the session wrote there, even for the right head, never counts."""
+    from crew_org.flows.delivery import REWORK_MARKER
+
+    quoted = f"{REWORK_MARKER}\n**Re-worked.** {role_tasks.turned_on_marker(HEAD, ROTTED)}"
+    filed, _ = merges(Merged(comments=[quoted]), monkeypatch)
+    assert filed == []
+
+
+def test_a_record_from_another_author_files_nothing(monkeypatch):
+    forged = ("someone-else", role_tasks.turned_on_marker(HEAD, ROTTED))
+    filed, _ = merges(Merged(comments=[forged]), monkeypatch)
+    assert filed == []
+
+
 def test_a_reworks_record_replaces_the_first(monkeypatch):
     again = {f"{TESTS}::test_rate_is_capped": "AssertionError"}
     records = [role_tasks.turned_on_marker(HEAD, ROTTED), role_tasks.turned_on_marker(HEAD, again)]
@@ -246,7 +270,8 @@ def test_the_record_is_written_for_the_head_pushed(tmp_path):
     role_tasks.record_turned_on(
         issues, sink(tmp_path), repo="sm", pull=5, head=HEAD, tests=ROTTED, by="DevOps Engineer"
     )
-    assert role_tasks.turned_on_at(issues.comments_on[5], HEAD) == ROTTED
+    by_crew = [{**c, "user": {"login": CREW}} for c in issues.comments_on[5]]
+    assert role_tasks.turned_on_at(by_crew, HEAD, TRUST.crew) == ROTTED
 
 
 # --- part 1: the workspace Task's own services -----------------------------------------
@@ -794,7 +819,8 @@ def test_delivery_records_the_list_for_the_head_it_pushed(repo, tmp_path):  # no
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
     ).stdout.strip()
-    assert role_tasks.turned_on_at(issues.comments_on[9], head) == ROTTED
+    by_crew = [{**c, "user": {"login": CREW}} for c in issues.comments_on[9]]
+    assert role_tasks.turned_on_at(by_crew, head, TRUST.crew) == ROTTED
 
 
 # --- a hang while a test is set up (the review of mqucifer/crew#877) -------------------
