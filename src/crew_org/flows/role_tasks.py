@@ -772,19 +772,31 @@ def workspace_problems(worktree: Any) -> list[str]:
     each service as the crew starts one (`services.declared`). Starting the services
     stays the gate's: nothing here runs, and only registries are read.
     """
-    from crew_org.tools import base_images, bounds, services, workspace  # noqa: PLC0415
+    from crew_org.tools import (  # noqa: PLC0415
+        base_images,
+        bounds,
+        devcontainer,
+        services,
+        workspace,
+    )
 
     def read(path: str) -> str | None:
-        found = worktree / path
-        return found.read_text(encoding="utf-8") if found.is_file() else None
+        # Never a path out of the repository, nor through a link: the branch names them.
+        return devcontainer.read_inside(worktree, path)
 
     problems: list[str] = []
     if problem := workspace.toolchain(worktree).problem:
         problems.append(problem)
     named = services.compose_file(read)
     candidates = [*bounds.COMPOSE_NAMES, *(f".devcontainer/{n}" for n in bounds.COMPOSE_NAMES)]
-    for path in sorted({p for p in [*candidates, named] if p and read(p) is not None}):
-        problems += base_images.unpinned(path, read(path) or "")
+    for path in sorted({p for p in [*candidates, named] if p}):
+        try:
+            text = read(path)
+        except devcontainer.Outside as exc:
+            problems.append(str(exc))
+            continue
+        if text is not None:
+            problems += base_images.unpinned(path, text)
     declared = services.declared(read)
     problems += [f"`{name}`: {why}" for name, why in declared.problems.items()]
     return problems
@@ -901,6 +913,17 @@ DIFFERS_HEADING = "## Where the build differs from the target"
 _MERMAID = re.compile(r"```mermaid\n(.*?)\n```", re.S)
 DIAGRAM_POINTS = 2
 FIRST_DIAGRAM_POINTS = 3
+
+
+def diagram_problems_in(worktree: Any) -> list[str]:
+    """`diagram_problems` of the worktree's diagram file, never read through a link or from
+    outside the repository: one that would be is the problem, named (crew#839)."""
+    from crew_org.tools.devcontainer import Outside, read_inside  # noqa: PLC0415
+
+    try:
+        return diagram_problems(read_inside(worktree, DIAGRAM_PATH))
+    except Outside as exc:
+        return [str(exc)]
 
 
 def diagram_problems(text: str | None) -> list[str]:

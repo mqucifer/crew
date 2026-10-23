@@ -36,17 +36,29 @@ def on_diff(
         ).stdout.split()
         before = {p: text for p in listed if (text := merged.text(p)) is not None}
         workflows = (before, _workflows_now(worktree))
-    dockerfiles = {
-        p: (worktree / p).read_text(encoding="utf-8")
-        for p in paths
-        if base_images.is_dockerfile(p) and (worktree / p).is_file()
-    }
-    composes = {
-        p: (worktree / p).read_text(encoding="utf-8")
-        for p in paths
-        if is_compose(worktree, p) and (worktree / p).is_file()
-    }
-    return judged(paths, record, workflows=workflows, dockerfiles=dockerfiles, composes=composes)
+    outside: list[str] = []
+    dockerfiles = _read(worktree, [p for p in paths if base_images.is_dockerfile(p)], outside)
+    composes = _read(worktree, [p for p in paths if is_compose(worktree, p)], outside)
+    return outside + judged(
+        paths, record, workflows=workflows, dockerfiles=dockerfiles, composes=composes
+    )
+
+
+def _read(worktree: Path, paths: list[str], outside: list[str]) -> dict[str, str]:
+    """Each path's text, never through a link or out of the repository (crew#839): one
+    that would be is a reason, named, and isn't read."""
+    from crew_org.tools.devcontainer import Outside, read_inside  # noqa: PLC0415
+
+    found: dict[str, str] = {}
+    for path in paths:
+        try:
+            text = read_inside(worktree, path)
+        except Outside as exc:
+            outside.append(str(exc))
+            continue
+        if text is not None:
+            found[path] = text
+    return found
 
 
 # The compose file names the specification looks for, beside the one a workspace
@@ -62,8 +74,9 @@ def is_compose(worktree: Path, path: str) -> bool:
         return True
 
     def read(name: str) -> str | None:
-        found = worktree / name
-        return found.read_text(encoding="utf-8") if found.is_file() else None
+        from crew_org.tools.devcontainer import read_inside  # noqa: PLC0415
+
+        return read_inside(worktree, name)
 
     return services.compose_file(read) == path
 

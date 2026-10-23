@@ -1137,9 +1137,7 @@ class Tools:
         from crew_org.flows import role_tasks  # noqa: PLC0415
 
         if name == "diagram_check":
-            path = self.root / role_tasks.DIAGRAM_PATH
-            drawn = path.read_text(encoding="utf-8") if path.is_file() else None
-            problems = role_tasks.diagram_problems(drawn)
+            problems = role_tasks.diagram_problems_in(self.root)
             # The gate's own rule, so the session's catch and the gate's are counted as one.
             rule, text = (
                 "check.role_tasks.diagram_renders",

@@ -117,7 +117,7 @@ def test_a_service_named_as_an_option_is_refused_before_any_argv():
 
 def test_a_missing_compose_file_is_a_problem():
     found = declared({".devcontainer/devcontainer.json": json.dumps(DEVCONTAINER)}.get)
-    assert "isn't on the default branch" in found.problems["compose"]
+    assert "which isn't there" in found.problems["compose"]
 
 
 def test_the_workspace_image_is_its_compose_services(tmp_path):

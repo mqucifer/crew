@@ -91,12 +91,10 @@ def own_services(worktree: Path) -> Declared:
     never pulled.
     """
     from crew_org.tools import base_images, services  # noqa: PLC0415
+    from crew_org.tools.devcontainer import read_inside  # noqa: PLC0415
 
-    def read(path: str) -> str | None:
-        found = worktree / path
-        return found.read_text(encoding="utf-8") if found.is_file() else None
-
-    declared = services.declared(read)
+    # Never a path out of the repository, nor through a link: the branch names them.
+    declared = services.declared(lambda path: read_inside(worktree, path))
     kept: list[Service] = []
     problems = dict(declared.problems)
     for service in declared.services:

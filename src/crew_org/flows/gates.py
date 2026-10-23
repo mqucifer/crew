@@ -184,16 +184,17 @@ def at_done(
                 ),
             )
         )
-    if role is role_tasks.ARCHITECT and role_tasks.DIAGRAM_PATH in paths:
-        path = worktree / role_tasks.DIAGRAM_PATH
-        drawn = path.read_text(encoding="utf-8") if path.is_file() else None
-        if wrong := role_tasks.diagram_problems(drawn):
-            verdict.findings.append(
-                Finding(
-                    "check.role_tasks.diagram_renders",
-                    says("check.role_tasks.diagram_renders", problems="; ".join(wrong)),
-                )
+    if (
+        role is role_tasks.ARCHITECT
+        and role_tasks.DIAGRAM_PATH in paths
+        and (wrong := role_tasks.diagram_problems_in(worktree))
+    ):
+        verdict.findings.append(
+            Finding(
+                "check.role_tasks.diagram_renders",
+                says("check.role_tasks.diagram_renders", problems="; ".join(wrong)),
             )
+        )
     unpushable = delivery.workflows_not_permitted(paths, permissions)
     if unpushable:
         verdict.findings.append(Finding("check.delivery.workflows_not_permitted", unpushable))

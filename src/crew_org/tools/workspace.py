@@ -509,8 +509,11 @@ def _frame(m: re.Match[str]) -> str:
 def _node_id(worktree: Path, path: str, line: int, name: str) -> str:
     """pytest's node id for the test function `name` at `line`: `path::Class::name` when a
     class holds it in the worktree's file, else `path::name`."""
+    from crew_org.tools.devcontainer import read_inside  # noqa: PLC0415
+
     try:
-        tree = ast.parse((worktree / path).read_text(encoding="utf-8"))
+        # The dump names the path: never followed out of the repository (crew#839).
+        tree = ast.parse(read_inside(worktree, path) or "")
     except (OSError, SyntaxError, ValueError):
         return f"{path}::{name}"
     for node in ast.walk(tree):
