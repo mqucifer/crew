@@ -447,6 +447,15 @@ def _turned_on(
     branch_caused = caused_by(worktree, merged, paths)
     if any(branch_caused(t) for t in tests):
         return
+    # Only what the workspace turned on: each skipped, or never ran, in the default
+    # branch's own workspace. One that passed there the branch broke, through its image,
+    # `containerEnv` or lockfile, and goes back to the Task (the review of crew#877).
+    on_main = check.on_main
+    if not isinstance(on_main, dict):
+        return
+    ran = [*check.failed, *(check.aside.get(path, path) for path in hung)]
+    if any(on_main.get(t) not in ("skipped", "not run") for t in ran):
+        return
     verdict.for_developer = tests
 
 

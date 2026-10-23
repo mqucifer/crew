@@ -85,6 +85,77 @@ def _changed(worktree: Path, sha: str) -> list[str]:
     return sorted(set(diff) | set(new))
 
 
+def on_the_default_branch(
+    worktree: Path, merged: Merged, tests: list[str], name: str
+) -> dict[str, str] | str:
+    """How each test, `path::Class.name`, does in the default branch's own workspace:
+    "passed", "skipped", "failed" or "not run"; or why that couldn't be told (crew#839).
+
+    The review of mqucifer/crew#877: a workspace Task hands the Developer only what its
+    workspace turned on, and a test that passed on the default branch was turned off by
+    the branch instead (its image, `containerEnv` or lockfile). So the tests run as
+    merged, every changed file put back, in a container with the default branch's own
+    services and setup: what a story's session runs.
+    """
+    from crew_org.tools.container import Held  # noqa: PLC0415
+    from crew_org.tools.services import at_main  # noqa: PLC0415
+    from crew_org.tools.workspace import REPORT as HELD_REPORT  # noqa: PLC0415
+    from crew_org.tools.workspace import _test_id  # noqa: PLC0415
+
+    holder = Path(tempfile.mkdtemp(prefix="crew-main-"))
+    copy = holder / worktree.name
+    try:
+        shutil.copytree(worktree, copy, symlinks=True)
+        for path in _changed(worktree, merged.sha):
+            before = merged.text(path)
+            target = copy / path
+            if before is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(before, encoding="utf-8")
+        command = pytest_command(copy)
+        if command is None:
+            return "the default branch's checks don't run pytest"
+        held = Held(copy, name, declared=at_main(worktree))
+        try:
+            if not (started := held.start()).ok:
+                return f"its workspace didn't start: {started.output[-200:]}"
+            setup = held.setup()
+            if setup is not None and not setup.ok:
+                setup = held.setup()
+            if setup is not None and not setup.ok:
+                return f"its setup failed: {setup.output[-200:]}"
+            (copy / HELD_REPORT).unlink(missing_ok=True)
+            held.exec([*command, "-p", "no:cacheprovider", *map(_node_id, tests)])
+            try:
+                cases = ET.parse(copy / HELD_REPORT).getroot().iter("testcase")
+            except (OSError, ET.ParseError):
+                return "pytest wrote no report"
+            seen: dict[str, str] = {}
+            for case in cases:
+                named = (case.get("file"), case.get("classname") or "", case.get("name") or "")
+                if case.find("skipped") is not None:
+                    outcome = "skipped"
+                elif case.find("failure") is not None or case.find("error") is not None:
+                    outcome = "failed"
+                else:
+                    outcome = "passed"
+                seen[_test_id(copy, *named)] = outcome
+            return {t: seen.get(t, "not run") for t in tests}
+        finally:
+            held.stop()
+    finally:
+        shutil.rmtree(holder, ignore_errors=True)
+
+
+def _node_id(test: str) -> str:
+    """`path::Class.name[param]` as pytest's node id, `path::Class::name[param]`."""
+    path, _, rest = test.partition("::")
+    named, bracket, param = rest.partition("[")
+    return f"{path}::{named.replace('.', '::')}{bracket}{param}"
+
+
 def _outcomes(report: Path) -> dict[str, tuple[str, str]]:
     """Each test case's name, as pytest's JUnit report has it: (outcome, message)."""
     found: dict[str, tuple[str, str]] = {}

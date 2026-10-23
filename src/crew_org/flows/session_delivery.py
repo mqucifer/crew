@@ -317,6 +317,7 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
         # test that hung waits on state an earlier test left (the operator, crew#839). On
         # sprint-metrics' test copy setting the waiting test aside hung the next, 13 times.
         deselected: dict[str, str] = {}
+        aside: dict[str, str] = {}
         rounds = 0
         while True:
             checked = check(worktree, held=own, since=since, deselect=deselected)
@@ -333,7 +334,14 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
                 or any(caused(f) for f in files)
                 or len(deselected) + len(files) > HANG_ROUNDS
             ):
-                checked.hang_rounds = rounds
+                checked.hang_rounds, checked.aside = rounds, dict(aside)
+                handed = sorted({*checked.failed, *aside.values()})
+                if merged is not None and handed and not checked.hung:
+                    # Only what the workspace turned on is the Developer's: how each did
+                    # in the default branch's own workspace (the review of crew#877).
+                    checked.on_main = reproduction.on_the_default_branch(
+                        worktree, merged, handed, f"{name}-main"
+                    )
                 return checked
             for test, where in sorted(new.items()):
                 said = f"in `{shown_test(test)}`, waiting in {where}"
@@ -344,6 +352,7 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
                         "so the test leaving the state may be in an earlier file"
                     )
                 deselected[test.partition("::")[0]] = said
+                aside[test.partition("::")[0]] = shown_test(test)
             rounds += 1
     finally:
         own.stop()

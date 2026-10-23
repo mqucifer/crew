@@ -90,8 +90,13 @@ class CheckResult:
     # where it waits; and the hung tests set aside before the run, with theirs (crew#839).
     hung: dict[str, str] = field(default_factory=dict)
     deselected: dict[str, str] = field(default_factory=dict)
-    # The rounds a workspace Task's gate ran again with its hung tests set aside.
+    # The rounds a workspace Task's gate ran again with its hung tests' files set aside,
+    # and the test each file hung in, by file.
     hang_rounds: int = 0
+    aside: dict[str, str] = field(default_factory=dict)
+    # A workspace Task's failing and hung tests as they do in the default branch's own
+    # workspace (`reproduction.on_the_default_branch`), or why that couldn't be told.
+    on_main: dict[str, str] | str | None = None
 
     @property
     def ok(self) -> bool:

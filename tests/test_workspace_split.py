@@ -21,7 +21,7 @@ from crew_org.flows.role_tasks import marked
 from crew_org.tools import base_images, container
 from crew_org.tools.github_project import Card
 from crew_org.tools.services import Declared, Service
-from crew_org.tools.workspace import CheckResult, CommandResult
+from crew_org.tools.workspace import CheckResult, CommandResult, shown_test
 from tests.role_task_fakes import Board, Issues, sink
 from tests.test_gates import TESTS, at_done, done, repo  # noqa: F401
 from tests.test_merge import FakeBoard, FakeIssues, card, run
@@ -65,13 +65,42 @@ def writes_the_workspace(root: Path) -> None:
     )
 
 
-def failing(failed: dict[str, str], *more: CommandResult):
+def failing(failed: dict[str, str], *more: CommandResult, on_main: object = "skipped"):
+    """The workspace Task's checks: `failed` failing, each doing `on_main` in the default
+    branch's own workspace (`reproduction.on_the_default_branch`)."""
+
     def run_checks(at: Path) -> CheckResult:
         return CheckResult(
-            results=[CommandResult(PYTEST, 1, "1 failed"), *more], failed=failed, reported=[PYTEST]
+            results=[CommandResult(PYTEST, 1, "1 failed"), *more],
+            failed=failed,
+            reported=[PYTEST],
+            on_main={t: on_main for t in failed} if isinstance(on_main, str) else on_main,  # type: ignore[arg-type]
         )
 
     return run_checks
+
+
+def test_a_test_that_passed_on_the_default_branch_is_the_tasks_not_the_developers(repo):  # noqa: F811
+    """The review of mqucifer/crew#877: a branch that changes the image, `containerEnv` or
+    the lockfile can break a test that passed on main; that's the Task's to fix."""
+    writes_the_workspace(repo)
+    verdict = at_done(
+        repo, done(), card=devops_task(), run_checks=failing(ROTTED, on_main="passed")
+    )
+    assert "check.delivery.lint_or_tests_failed" in [f.rule for f in verdict.findings]
+    assert verdict.for_developer == {}
+
+
+def test_when_the_default_branch_cant_be_asked_nothing_is_handed_on(repo):  # noqa: F811
+    writes_the_workspace(repo)
+
+    def unchecked(at: Path) -> CheckResult:
+        checked = failing(ROTTED)(at)
+        checked.on_main = "its setup failed: no network"
+        return checked
+
+    verdict = at_done(repo, done(), card=devops_task(), run_checks=unchecked)
+    assert verdict.for_developer == {} and not verdict.passed
 
 
 # --- part 2: what the workspace turns on is the Developer's ----------------------------
@@ -535,7 +564,19 @@ def hangs_then(*results, monkeypatch):
     monkeypatch.setattr(session_delivery, "Held", Own)
     monkeypatch.setattr(session_delivery, "own_services", lambda at: Declared())
     monkeypatch.setattr(session_delivery, "check", checks)
+    # The default branch's workspace, asked about what would be handed on: no container.
+    asked.clear()
+    monkeypatch.setattr(
+        session_delivery.reproduction,
+        "on_the_default_branch",
+        lambda worktree, merged, tests, name: (
+            asked.append(tests) or dict.fromkeys(tests, "skipped")
+        ),
+    )
     return given
+
+
+asked: list[list[str]] = []
 
 
 def hung(test: str) -> CheckResult:
@@ -568,6 +609,9 @@ def test_a_workspace_tasks_gate_sets_each_hung_file_aside_and_runs_the_rest(repo
     checked = session_delivery.own_checks(repo, "x", "base")
     assert given == [{}, {SERVICE: f"in `{HUNG}`, waiting in {WAITS}"}]
     assert checked.hang_rounds == 1
+    # The failures and the test its file hung in, asked of the default branch's workspace.
+    assert asked == [sorted({*ROTTED, shown_test(HUNG)})]
+    assert checked.aside == {SERVICE: shown_test(HUNG)}
 
 
 def test_a_hang_that_moves_to_another_file_says_so(repo, monkeypatch):  # noqa: F811
@@ -619,6 +663,8 @@ def test_the_hung_files_are_the_developers_beside_the_failures(repo):  # noqa: F
             failed=ROTTED,
             reported=[PYTEST],
             deselected=aside,
+            aside={TESTS: CAPPED},
+            on_main={**dict.fromkeys(ROTTED, "skipped"), CAPPED: "skipped"},
         )
 
     verdict = at_done(repo, done(), card=devops_task(), run_checks=run_checks)
@@ -661,3 +707,10 @@ def test_the_bug_names_each_hung_file_with_what_was_seen_and_nothing_more(tmp_pa
     assert "1 fail or error, and 1 file hangs" in bug["body"]
     assert "**1 file hangs:**" in bug["body"]
     assert "1 merged tests fail and 1 test files hang" in bug["title"]
+
+
+def test_a_test_is_asked_of_the_default_branch_by_its_node_id():
+    from crew_org.tools.reproduction import _node_id
+
+    assert _node_id("tests/t.py::TestA.test_b[x.y]") == "tests/t.py::TestA::test_b[x.y]"
+    assert _node_id("tests/t.py::test_c") == "tests/t.py::test_c"
