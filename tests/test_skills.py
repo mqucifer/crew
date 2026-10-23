@@ -161,3 +161,12 @@ def test_a_ci_tasks_own_compose_file_doesnt_offer_the_workspace_skill(tmp_path):
         role_tasks.DEVOPS, body(role_tasks.CI_SERVICES), tmp_path, ["ci/docker-compose.yml"]
     )
     assert found == []
+
+
+def test_the_skill_says_a_failed_setup_isnt_run_again_until_done():
+    """The review of mqucifer/crew#880: resync follows only a setup that passed
+    (`Held.synced`), exactly the case part 2's start points to the skill in."""
+    text = skills.workspace()
+    assert "It runs once the session's container has started" in text
+    assert "Once a setup has passed, it runs again" in text
+    assert "If the start's setup failed, nothing runs it again in the session: only `done`" in text

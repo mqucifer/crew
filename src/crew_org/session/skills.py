@@ -60,11 +60,15 @@ file, and starts every container itself. Nothing in them can loosen a container.
 - One setup command, from exactly one of {words(devcontainer.SETUP_FIELDS)}, as an array \
 of words: a string would run in a shell, which the crew never does. For several steps, \
 one script. A field by any other name is read as nothing.
-- It runs at the start, in a one-off container with the network \
-(`--network {_after(setup, "--network")[0]}`), before the session's container starts; \
-again at `done`; and again when a dependency file changes ({words(container.MANIFESTS)}). \
-It has {container.SETUP_TIMEOUT // 60} minutes.
-- That container runs as the crew's own user (`--user {_after(setup, "--user")[0]}`), \
+- It runs once the session's container has started, in a one-off container of its own \
+with the network (`--network {_after(setup, "--network")[0]}`). It shares only the \
+worktree, so what it installs there is what the session sees. A failure is tried once \
+more. It has {container.SETUP_TIMEOUT // 60} minutes.
+- Once a setup has passed, it runs again before a `run`, the lint after an edit, or the \
+gates, if a dependency file has changed since ({words(container.MANIFESTS)}). If the \
+start's setup failed, nothing runs it again in the session: only `done`, which runs your \
+branch's setup as it is then, with the network, in a container of its own.
+- Setup's container runs as the crew's own user (`--user {_after(setup, "--user")[0]}`), \
 never root, \
 {"with a read-only filesystem, " if read_only else ""}every capability dropped \
 (`--cap-drop {dropped}`, `{secured}`). Only `/work` (the worktree), `/tmp` and the home \
