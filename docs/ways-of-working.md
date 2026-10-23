@@ -451,7 +451,13 @@ environment** (the Sponsor, 2026-10-18; crew#778). The crew reads only the
 Everything that would loosen the container, build an image or run on the host
 (`runArgs`, `mounts`, `privileged`, `capAdd`, features, `build`,
 `initializeCommand` and the like) isn't honoured, and `crew ready` names each
-one. A project without the file uses its design's image and setup, as above.
+one. A field the specification doesn't define at all (`setupCommands`, on
+mqucifer/sprint-metrics#739) is unknown: named, with the fields the crew reads
+instead, by `crew ready`, DevOps's `workspace_check` and the gate at a workspace
+Task's `done`, never silently read as nothing (crew#839). The compose services
+are held to the compose specification's fields the same way, and of the workspace's
+own service only its `image` is read: `workspace_check` names its other fields as
+not honoured. A project without the file uses its design's image and setup, as above.
 Moving the first two projects to the file waits on the Architect's `crew
 design` writing it.
 

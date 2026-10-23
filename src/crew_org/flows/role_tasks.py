@@ -785,8 +785,10 @@ def workspace_problems(worktree: Any) -> list[str]:
         return devcontainer.read_inside(worktree, path)
 
     problems: list[str] = []
-    if problem := workspace.toolchain(worktree).problem:
-        problems.append(problem)
+    tools = workspace.toolchain(worktree)
+    if tools.problem:
+        problems.append(tools.problem)
+    problems += unknown_fields(worktree, tools)
     named = services.compose_file(read)
     candidates = [*bounds.COMPOSE_NAMES, *(f".devcontainer/{n}" for n in bounds.COMPOSE_NAMES)]
     for path in sorted({p for p in [*candidates, named] if p}):
@@ -800,6 +802,37 @@ def workspace_problems(worktree: Any) -> list[str]:
     declared = services.declared(read)
     problems += [f"`{name}`: {why}" for name, why in declared.problems.items()]
     return problems
+
+
+def unknown_fields(worktree: Any, tools: Any = None) -> list[str]:
+    """Each field of the workspace file and its compose file's services that no
+    specification defines: a problem for `workspace_check` and the gate at `done`, never
+    for the container's start (the Sponsor, 2026-10-23, crew#839)."""
+    from crew_org.tools import devcontainer, services, workspace  # noqa: PLC0415
+
+    tools = tools or workspace.toolchain(worktree)
+    declared = services.declared(lambda path: devcontainer.read_inside(worktree, path))
+    compose = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
+    return [
+        *tools.unknown,
+        *(f"`{compose}`: `{name}` {why}" for name, why in declared.unknown.items()),
+    ]
+
+
+def workspace_not_honoured(worktree: Any) -> list[str]:
+    """Each field the workspace file and its compose file name that the crew ignores, with
+    why: told in `workspace_check`'s reply, neither a problem nor a gate's finding (the
+    operator, crew#839)."""
+    from crew_org.tools import devcontainer, services  # noqa: PLC0415
+
+    defined = devcontainer.read(worktree)
+    if defined is None:
+        return []
+    declared = services.declared(lambda path: devcontainer.read_inside(worktree, path))
+    return [
+        *(f"`{name}`: {why}" for name, why in defined.not_honoured.items()),
+        *(f"`{name}`: {why}" for name, why in declared.not_honoured.items()),
+    ]
 
 
 # The pull request's section naming the merged tests a workspace Task's services turn

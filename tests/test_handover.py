@@ -328,6 +328,14 @@ def test_each_field_the_crew_doesn_t_honour_is_named(tmp_path, registry):
     assert "`initializeCommand` isn't honoured (it runs on the host)" in whats(found)
 
 
+def test_a_field_no_specification_defines_is_named(tmp_path, registry):
+    """crew#839: a setup the crew reads as nothing is never handed over quietly."""
+    found = with_file(tmp_path, f'{{"image": "{PINNED}", "setupCommands": [["x"]]}}', setup="null")
+    assert "`.devcontainer/devcontainer.json`: `setupCommands` isn't a devcontainer field" in whats(
+        found
+    )
+
+
 def test_the_file_s_image_follows_the_image_rule(tmp_path):
     found = with_file(tmp_path, '{"image": "node:22"}', setup="null")
     assert "`.devcontainer/devcontainer.json`: the sandbox image `node:22` isn't pinned" in whats(

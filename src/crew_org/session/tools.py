@@ -1157,12 +1157,23 @@ class Tools:
                     problems="\n".join(f"- {p}" for p in problems),
                 ),
             )
+        # What the crew ignores, said either way: a field asking for what it doesn't get
+        # misleads whoever reads it (the operator, crew#839).
+        ignored = role_tasks.workspace_not_honoured(self.root) if name != "diagram_check" else []
+        aside = (
+            "\n\nNot honoured, so ignored (no problem for the gate):\n"
+            + "\n".join(f"- {line}" for line in ignored)
+            if ignored
+            else ""
+        )
         if not problems:
             return Reply(
-                "Passed: the gate at `done` finds nothing here.", "passed", f"{name}: passed"
+                f"Passed: the gate at `done` finds nothing here.{aside}",
+                "passed",
+                f"{name}: passed",
             )
         return Reply(
-            f"The gate at `done` would refuse it. {text}",
+            f"The gate at `done` would refuse it. {text}{aside}",
             "failed",
             f"{name}: {len(problems)} problems",
             {"problems": len(problems)},

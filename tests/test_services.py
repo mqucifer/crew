@@ -315,3 +315,39 @@ def test_the_compose_file_is_named_from_the_definitions_folder():
     assert compose_file(up.get) == "stack.yml"
     assert compose_file(files({"image": WORKSPACE}).get) is None
     assert compose_file({}.get) is None
+
+
+# --- a field no specification defines is named (crew#839) -----------------------------
+
+
+def test_a_field_the_compose_specification_doesnt_have_is_unknown_not_just_ignored():
+    compose = COMPOSE.replace("    ports:", "    setup: [uv, sync]\n    x-note: kept\n    ports:")
+    found = declared(files(compose=compose).get)
+    assert set(found.unknown) == {"postgres.setup"}
+    assert "`image`" in found.unknown["postgres.setup"]
+    # A specification field the crew doesn't read stays not honoured; an extension, ignored.
+    assert set(found.not_honoured) == {"postgres.ports", "postgres.volumes"}
+    assert found.services  # still started
+
+
+def test_every_field_the_crew_reads_is_the_compose_specifications():
+    from crew_org.tools import services
+
+    assert set(services.HONOURED) <= services.SPEC_FIELDS
+
+
+def test_the_workspace_services_own_fields_are_named_since_only_its_image_is_read(tmp_path):
+    """On mqucifer/sprint-metrics#739 its `environment` set HOME and PATH, which did nothing."""
+    compose = COMPOSE.replace(
+        f"    image: {WORKSPACE}\n",
+        f"    image: {WORKSPACE}\n    user: nobody\n    environment:\n      HOME: /tmp\n"
+        "    install: [uv, sync]\n",
+    )
+    for path, text in files(compose=compose).items():
+        (tmp_path / path).parent.mkdir(exist_ok=True)
+        (tmp_path / path).write_text(text)
+    found = devcontainer.read(tmp_path)
+    assert found.image == WORKSPACE and found.problems == []
+    assert "`containerEnv`" in found.not_honoured["workspace.environment"]
+    assert set(found.not_honoured) == {"workspace.user", "workspace.environment"}
+    assert set(found.unknown) == {"workspace.install"}

@@ -116,3 +116,35 @@ def test_the_environment_can_t_read_the_host_s_or_replace_the_crew_s(tmp_path):
 def test_a_file_that_doesn_t_parse_is_a_problem(tmp_path):
     found = read(written(tmp_path, '{"image": '))
     assert found is not None and "doesn't parse" in found.problems[0]
+
+
+# --- a field no specification defines is named (crew#839) -----------------------------
+
+
+def test_a_setup_under_a_name_the_specification_doesnt_have_is_named_with_the_real_ones(
+    tmp_path,
+):
+    """mqucifer/sprint-metrics#739: `setupCommands` was read as nothing, and nothing said so."""
+    found = defined(tmp_path, setupCommands=[["uv", "sync", "--extra", "dev"]])
+    assert found.setup is None
+    said = found.unknown["setupCommands"]
+    assert all(f"`{f}`" in said for f in devcontainer.SETUP_FIELDS)
+    # Ignored, as a field not honoured is: the container still starts.
+    assert found.problems == [] and found.not_honoured == {}
+
+
+def test_any_other_unknown_field_is_named_with_the_fields_the_crew_reads(tmp_path):
+    found = defined(tmp_path, enviroment={"A": "b"})
+    assert "`containerEnv`" in found.unknown["enviroment"]
+
+
+def test_a_specification_field_the_crew_doesnt_read_is_never_unknown(tmp_path):
+    found = defined(tmp_path, remoteUser="vscode", waitFor="postCreateCommand", hostRequirements={})
+    assert found.unknown == {} and found.problems == []
+
+
+def test_every_field_the_crew_reads_or_names_is_the_specifications():
+    """The crew's lists and the specification's can't drift apart."""
+    read = {"image", "dockerComposeFile", "service", "runServices", "containerEnv"}
+    named = read | set(devcontainer.SETUP_FIELDS) | set(devcontainer.NOT_HONOURED)
+    assert named <= devcontainer.SPEC_FIELDS

@@ -9,7 +9,10 @@ workspace (`tools/services.py`, crew#814). Whatever would loosen the container, 
 image or run on the host stays the crew's to set (ADR 0006). Those fields are named
 as not honoured rather than skipped quietly: a file that asks for a feature and
 doesn't get it misleads whoever reads it. The rest (`name`, `customizations`,
-`forwardPorts` and the like) are for a person's editor, and the crew ignores them.
+`forwardPorts` and the like) are for a person's editor, and the crew ignores them. A
+field that isn't the specification's at all is named as unknown, with the fields the
+crew reads instead: on mqucifer/sprint-metrics#739 a setup named `setupCommands` never
+ran, and nothing said so (crew#839).
 
 Without the file, the design's image and setup are used, as before.
 """
@@ -17,6 +20,7 @@ Without the file, the design's image and setup are used, as before.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +51,58 @@ NOT_HONOURED = {
     "postAttachCommand": "the crew runs one setup command, once",
 }
 
+# Every field the specification defines, from its schema (devcontainers/spec,
+# schemas/devContainer.base.schema.json at c95ffee, 2026-10-23): one the crew doesn't
+# read is honoured, named as not honoured, or for a person's editor, never unknown.
+SPEC_FIELDS = frozenset(
+    {
+        "$schema",
+        "appPort",
+        "build",
+        "capAdd",
+        "containerEnv",
+        "containerUser",
+        "context",
+        "customizations",
+        "dockerComposeFile",
+        "dockerFile",
+        "features",
+        "forwardPorts",
+        "hostRequirements",
+        "image",
+        "init",
+        "initializeCommand",
+        "mounts",
+        "name",
+        "onCreateCommand",
+        "otherPortsAttributes",
+        "overrideCommand",
+        "overrideFeatureInstallOrder",
+        "portsAttributes",
+        "postAttachCommand",
+        "postCreateCommand",
+        "postStartCommand",
+        "privileged",
+        "remoteEnv",
+        "remoteUser",
+        "runArgs",
+        "runServices",
+        "secrets",
+        "securityOpt",
+        "service",
+        "shutdownAction",
+        "updateContentCommand",
+        "updateRemoteUserUID",
+        "userEnvProbe",
+        "waitFor",
+        "workspaceFolder",
+        "workspaceMount",
+    }
+)
+# The fields the crew reads, for an unknown field's reply.
+READ = "`image` (or `dockerComposeFile` and `service`), one setup command and `containerEnv`"
+SETUP_LIKE = re.compile(r"setup|command|install|script|bootstrap|create", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class Definition:
@@ -60,6 +116,17 @@ class Definition:
     problems: list[str] = field(default_factory=list)
     # Each field the crew doesn't honour, with why. Ignored, so the workspace is still safe.
     not_honoured: dict[str, str] = field(default_factory=dict)
+    # Each field the specification doesn't define, with what the crew reads instead.
+    # Ignored too, so it's the gate's to refuse, never the start's (crew#839).
+    unknown: dict[str, str] = field(default_factory=dict)
+
+
+def instead(name: str) -> str:
+    """What an unknown field's reply says the crew reads for that purpose."""
+    if SETUP_LIKE.search(name):
+        setup = ", ".join(f"`{f}`" for f in SETUP_FIELDS)
+        return f"isn't a devcontainer field: the crew's setup is one of {setup}, as words"
+    return f"isn't a devcontainer field: the crew reads {READ}"
 
 
 class Outside(ValueError):
@@ -130,9 +197,10 @@ def read(root: Path) -> Definition | None:
 
     problems: list[str] = []
     not_honoured = {name: why for name, why in NOT_HONOURED.items() if raw.get(name) is not None}
+    unknown = {str(name): instead(str(name)) for name in raw if name not in SPEC_FIELDS}
     image = raw.get("image")
     if raw.get("dockerComposeFile") is not None and image is None:
-        image, why = _compose_image(root, path, raw)
+        image, why = _compose_image(root, path, raw, not_honoured, unknown)
         if why:
             problems.append(why)
     elif not isinstance(image, str) or not image.strip():
@@ -166,14 +234,27 @@ def read(root: Path) -> Definition | None:
             not_honoured[f"containerEnv.{name}"] = "the crew sets it"
         else:
             env[name] = value
-    return Definition(path, image, setup, env, problems, not_honoured)
+    return Definition(path, image, setup, env, problems, not_honoured, unknown)
 
 
-def _compose_image(root: Path, path: str, raw: dict[str, object]) -> tuple[str | None, str | None]:
-    """The workspace's image from its service in the compose file, or why there's none."""
+def _compose_image(
+    root: Path,
+    path: str,
+    raw: dict[str, object],
+    not_honoured: dict[str, str],
+    unknown: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """The workspace's image from its service in the compose file, or why there's none.
+
+    Only the image is read of the workspace's service: each other field is named, as not
+    honoured or unknown, since on mqucifer/sprint-metrics#739 the `HOME` and `PATH` its
+    `environment` set did nothing, and nothing said so (the operator, crew#839).
+    """
     import posixpath  # noqa: PLC0415
 
     import yaml  # type: ignore[import-untyped]  # noqa: PLC0415
+
+    from crew_org.tools import services  # noqa: PLC0415
 
     named, service = raw.get("dockerComposeFile"), raw.get("service")
     named = named[0] if isinstance(named, list) and len(named) == 1 else named
@@ -192,9 +273,28 @@ def _compose_image(root: Path, path: str, raw: dict[str, object]) -> tuple[str |
         return None, f"`{path}`'s compose file `{compose}` can't be read: {exc}"
     found = ((spec or {}).get("services") or {}).get(service) if isinstance(spec, dict) else None
     image = found.get("image") if isinstance(found, dict) else None
+    for key in found if isinstance(found, dict) else ():
+        if key == "image" or str(key).startswith("x-"):
+            continue
+        if services.known(str(key)):
+            not_honoured[f"{service}.{key}"] = WORKSPACE_SERVICE.get(
+                str(key), "only the workspace service's `image` is read"
+            )
+        else:
+            unknown[f"{service}.{key}"] = f"in `{compose}` {services.UNKNOWN}"
     if not isinstance(image, str) or not image.strip():
         return None, f"`{compose}`'s `{service}` names no `image`"
     return image, None
+
+
+# Why the workspace service's own fields aren't read, where the specification has a
+# field for it in `devcontainer.json`.
+WORKSPACE_SERVICE = {
+    "environment": "the workspace's environment is `devcontainer.json`'s `containerEnv`",
+    "user": "the crew sets the workspace's user",
+    "command": "the crew starts the workspace itself",
+    "healthcheck": "the crew starts the workspace itself",
+}
 
 
 def _command(value: object) -> tuple[list[str] | None, str | None]:
