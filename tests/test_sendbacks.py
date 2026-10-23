@@ -431,6 +431,18 @@ def test_ci_failing_at_merge_is_a_send_back_to_the_build():
     assert sent[0].detail["round"] == 1
 
 
+def test_changes_requested_in_merging_is_a_send_back_to_the_build():
+    """mqucifer/sprint-metrics#740 waited in Merging with the Sponsor's request (crew#839)."""
+    from tests.test_merge import card, run
+    from tests.test_workspace_split import Requested
+
+    _, _, seen = run([card(740)], Requested(on="abc"))
+
+    sent = [e for e in seen if e.kind == EventKind.WORK_SENT_BACK]
+    assert which(sent) == [(740, "merge", "build", "gate.merge_changes_requested")]
+    assert sent[0].detail["counts"] == {"requests": 1}
+
+
 def test_the_merge_queue_removing_it_for_ci_is_a_send_back_to_the_build():
     from crew_org.tools.github_issues import QueueState
     from tests.test_merge import QueueIssues, card, run

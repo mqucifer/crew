@@ -82,6 +82,8 @@ class Rule(StrEnum):
     """The criteria check flagged stories whose criteria can't all pass: they're rewritten."""
     CRITERIA_RESPLIT = "gate.criteria_resplit"
     """The criteria check's findings named no story to repair: the epic is split again whole."""
+    MERGE_CHANGES_REQUESTED = "gate.merge_changes_requested"
+    """Changes were requested on the head that would merge: back to its role (crew#839)."""
     MERGE_CI_FAILED = "gate.merge_ci_failed"
     """CI failed at merge, or the merge queue removed the pull request: back to the Developer."""
     MERGE_CONFLICT = "gate.merge_conflict"

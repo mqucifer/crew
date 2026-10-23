@@ -69,6 +69,10 @@ SORTED: dict[str, tuple[str, str]] = {
     "guard.bounds.out_of_bounds": (GATE, "protected paths and CI weakened, on the diff"),
     "guard.role_tasks.out_of_scope": (GATE, "a role's Task beyond its role's paths, on the diff"),
     "check.role_tasks.diagram_renders": (GATE, "the Architect's diagram renders, at `done`"),
+    "check.role_tasks.workspace_checks": (
+        FEEDBACK,
+        "DevOps's `workspace_check`: the gate's checks on the workspace, before `done`",
+    ),
     "guard.regression.broken_contracts": (GATE, "merged code removed or reshaped, on the diff"),
     "guard.reproduce.check": (GATE, "a bug's tests reproduce it, on the branch"),
     # --- the decisions that end or route a delivery ------------------------------------

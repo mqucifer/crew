@@ -305,7 +305,18 @@ def merge_approved(
                 card=number,
                 frm=MERGING,
                 summary=f"PR #{pull['number']}: changes requested on its head — back for rework",
-                rule=Rule.REVIEW_CHANGES_REQUESTED,
+                rule=Rule.MERGE_CHANGES_REQUESTED,
+            )
+            requests = sum(
+                r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
+                for r in reviews
+            )
+            sendbacks.record(
+                sink,
+                sendbacks.MERGE_CHANGES_REQUESTED,
+                card=number,
+                repo=repo,
+                requests=requests,
             )
             continue
         approved = any(r.get("state") == "APPROVED" for r in reviews)
@@ -543,10 +554,30 @@ def _turned_on(
     number = card.number or 0
     try:
         tests = role_tasks.turned_on(issues.pull(repo, pull["number"]).get("body"))
-        if tests:
-            role_tasks.turned_on_bug(
-                issues, board, sink, repo=repo, task=number, tests=tests, cards=board.cards()
+        if not tests:
+            return
+        filed = role_tasks.turned_on_bug(
+            issues, board, sink, repo=repo, task=number, tests=tests, cards=board.cards()
+        )
+        # What it was filed from, as counts: the tests' names stay on the bug (ADR 0010).
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.FINDING_FILED,
+                role=role_tasks.DEVOPS.name,
+                card=number,
+                summary=f"bug filed as #{filed}: {len(tests)} tests #{number} turned on fail"[:100],
+                detail={
+                    "repo": repo,
+                    "owner": "bug",
+                    "filed": filed,
+                    "round": f"merged-{pull['number']}",
+                    "counts": {
+                        "tests": len(tests),
+                        "files": len({t.partition("::")[0] for t in tests}),
+                    },
+                },
             )
+        )
     except Exception as exc:  # noqa: BLE001 - the merge stands either way
         reraise_if_down(exc)
         sink.emit(

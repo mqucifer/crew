@@ -344,6 +344,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "already_done",
         "resetups",
         "resetups_failed",
+        "turned_on",
     ),
     EventKind.REVERT_OPENED: ("repo", "pr", "reverted", "card", "reason"),
     EventKind.REVERT_REFUSED: ("repo", "pr", "reverted", "card", "reason", "why", "conflict"),
@@ -380,7 +381,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     EventKind.COMMENT_IGNORED: ("repo", "login"),
     EventKind.ROLE_TASK_OPENED: ("repo", "task_role", "task_kind", "parent", "event", "rule"),
     EventKind.ROLE_TASK_HELD: ("repo", "task_role", "waits_for", "rule"),
-    EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error"),
+    EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error", "counts"),
     EventKind.WORK_SENT_BACK: ("repo", "sent_from", "sent_to", "rule", "round", "counts"),
     EventKind.NOTE: ("rule", "repo", "card"),
 }

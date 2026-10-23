@@ -64,6 +64,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `gate.findings_at_done` | The gates at `done` found problems: the Developer works on in a new session. |
 | `gate.criteria_repair` | The criteria check flagged stories whose criteria can't all pass: they're rewritten. |
 | `gate.criteria_resplit` | The criteria check's findings named no story to repair: the epic is split again whole. |
+| `gate.merge_changes_requested` | Changes were requested on the head that would merge: back to its role (crew#839). |
 | `gate.merge_ci_failed` | CI failed at merge, or the merge queue removed the pull request: back to the Developer. |
 | `gate.merge_conflict` | The pull request conflicts with main at merge: the Developer rebuilds it on main. |
 | `sent_back.epic_rework` | The Sponsor sent an epic back (`needs:rework`): it's split again. |
@@ -123,6 +124,7 @@ block for a person (`card.blocked`); a finding filed as a new Task or bug
 | `review` | `split` | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids: back to refinement. |
 | `qa` | `build` | `gate.qa_unproven` | QA found criteria the work doesn't prove: back to the Developer. |
 | `merge` | `build` | `gate.merge_ci_failed` | CI failed at merge, or the merge queue removed it: back to the Developer. |
+| `merge` | `build` | `gate.merge_changes_requested` | Changes were requested on the head that would merge, by anyone: back to its role. |
 | `merge` | `build` | `gate.merge_conflict` | It conflicts with main at merge: rebuilt on main by the Developer. |
 | `main` | `refinement` | `sent_back.main_red` | The default branch went red after a merge: a technical epic to fix it. |
 | `release_check` | `refinement` | `sent_back.release_gaps` | The release check found gaps: a technical epic to close them. |
@@ -167,7 +169,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `session.turn` | One model call of a session, with its signals after it. | **`turn`**, **`tool_calls`**, **`model_s`**, **`since_action`**, **`most_views`**, **`edits_since_run`**, **`empty_lookups`**, **`reasoning_kept_chars`**, **`reasoning_kept_tokens`** | `session/conversation.py` | as `session_turn` |
 | `session.compacted` | A session's history compacted to fit, and what it left. | **`compaction`**, **`chars_after`**, **`estimated_tokens`**, **`estimated_after`**, **`turns_masked`**, **`turns_newly_masked`**, **`reasoning_chars_cleared`**, **`reasoning_tokens_cleared`** | `session/conversation.py` | as `session_compacted` |
 | `session.ended` | A session ended: how, why, and its totals. | `how`, `why`, **`stop`**, `said`, `evidence`, **`model_calls`**, **`model_s`**, **`edits_applied`**, **`test_runs`**, `tools_used`, `compactions`, `troubles`, `after_run_errors`, **`resetups`**, **`resetups_failed`** | `session/conversation.py` | as `session_ended` |
-| `gate.checked` | The gates' verdict on a session's branch at `done`, and the rules of what sent it back. | **`repo`**, `passed`, `rules`, `already_done`, **`resetups`**, **`resetups_failed`** | `flows/session_end.py` | as `gate_checked` |
+| `gate.checked` | The gates' verdict on a session's branch at `done`, and the rules of what sent it back. | **`repo`**, `passed`, `rules`, `already_done`, **`resetups`**, **`resetups_failed`**, **`turned_on`** | `flows/session_end.py` | as `gate_checked` |
 | `revert.opened` | A revert pull request was opened for a merged change. | **`repo`**, **`pr`**, `reverted`, `card`, `reason` | `flows/revert.py` | stays in the crew's log |
 | `revert.refused` | A revert couldn't be made or landed, and why. | **`repo`**, **`pr`**, `reverted`, `card`, `reason`, `why`, `conflict` | `flows/revert.py` | stays in the crew's log |
 | `revert.landed` | A revert landed: its card goes back to Needs Refinement. | **`repo`**, **`pr`**, `reverted`, `card` | `flows/revert.py` | stays in the crew's log |
@@ -193,7 +195,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `comment.ignored` | A comment from an account outside `trust`, ignored. | **`repo`**, `login` | `flows/citations.py` | stays in the crew's log |
 | `role_task.opened` | A role's own Task, opened by an event or a finding (ADR 0034). | **`repo`**, `task_role`, `task_kind`, `parent`, `event`, **`rule`** | `flows/role_tasks.py` | stays in the crew's log |
 | `role_task.held` | A role's Task held because its role has no session yet. | **`repo`**, `task_role`, `waits_for`, **`rule`** | `flows/sprint.py` | stays in the crew's log |
-| `finding.filed` | A role's finding outside its story, filed as a Task or a bug. | **`repo`**, `owner`, `filed`, **`round`**, `error` | `flows/merge.py`, `flows/role_tasks.py` | stays in the crew's log |
+| `finding.filed` | A role's finding outside its story, filed as a Task or a bug. | **`repo`**, `owner`, `filed`, **`round`**, `error`, **`counts`** | `flows/merge.py`, `flows/role_tasks.py` | stays in the crew's log |
 | `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `flows/acceptance.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `session/steps.py` | stays in the crew's log |
 
 ### The rules notes name

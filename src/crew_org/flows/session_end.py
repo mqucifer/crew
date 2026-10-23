@@ -243,6 +243,9 @@ def route(
                 "passed": verdict.passed,
                 "rules": rules,
                 "already_done": verdict.already_done,
+                # Merged tests a workspace Task turned on that fail, handed to the
+                # Developer rather than refused (crew#839): a count, never names.
+                "turned_on": len(verdict.for_developer),
                 "resetups": int(resetup is not None),
                 "resetups_failed": int(resetup is False),
             },

@@ -11,14 +11,14 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 
 | Kind | Rules |
 |---|---|
-| The crew's own decisions (`rules.Rule`) | 32 |
+| The crew's own decisions (`rules.Rule`) | 33 |
 | An answer's form refuses it | 38 |
 | The call layer refuses any answer | 4 |
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 15 |
-| A gate at `done` sends a session's branch back | 12 |
+| A session's tool refuses a call, and says why in its reply | 17 |
+| A gate at `done` sends a session's branch back | 11 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 53 |
@@ -37,8 +37,8 @@ section; one no line holds for is unplaced, never guessed.
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 66 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 67 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 125 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 68 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 126 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 102 |
@@ -60,10 +60,11 @@ section; one no line holds for is unplaced, never guessed.
 | `gate.criteria_repair`<br>The criteria check flagged stories whose criteria can't all pass: they're rewritten. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
 | `gate.criteria_resplit`<br>The criteria check's findings named no story to repair: the epic is split again whole. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
 | `gate.findings_at_done`<br>The gates at `done` found problems: the Developer works on in a new session. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
+| `gate.merge_changes_requested`<br>Changes were requested on the head that would merge: back to its role (crew#839). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/merge.py:merge_approved<br>src/crew_org/sendbacks.py:<module> | crew#839 |
 | `gate.merge_ci_failed`<br>CI failed at merge, or the merge queue removed the pull request: back to the Developer. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
 | `gate.merge_conflict`<br>The pull request conflicts with main at merge: the Developer rebuilds it on main. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
 | `gate.qa_unproven`<br>QA found criteria the work doesn't prove. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/acceptance.py:run_qa<br>src/crew_org/sendbacks.py:<module> | — |
-| `gate.review_changes_requested`<br>The Code Reviewer or DevOps Engineer requested changes. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/merge.py:merge_approved<br>src/crew_org/flows/review.py:review_open_pulls<br>src/crew_org/sendbacks.py:<module> | — |
+| `gate.review_changes_requested`<br>The Code Reviewer or DevOps Engineer requested changes. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/review.py:review_open_pulls<br>src/crew_org/sendbacks.py:<module> | — |
 | `hold.no_session`<br>A role's Task waits for the milestone that brings its role's session. | flow | `src/crew_org/rules.py:Rule` | — | — | — | crew#839 |
 | `hold.waits_for_earlier_work`<br>A story waits for the work it builds on: an earlier sibling in its epic, or work it names, outside or inside the sprint. A role's Task under an epic, its CI and release, waits for every story of the epic.<br>Cases: `decision.sprint.waits_on_work_outside` (src/crew_org/flows/sprint.py:_waits_on_work_outside), `hold.builds_on` (src/crew_org/rules.py:Rule), `hold.sibling` (src/crew_org/rules.py:Rule) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/sprint.py:_waits_on_work_outside<br>src/crew_org/flows/sprint.py:plan_sprint | — |
 | `hold.wip`<br>A card waits while the column it would enter is at its WIP limit, and is admitted when there's room.<br>Cases: `decision.board_flow.admit_held_stories` (src/crew_org/flows/board_flow.py:admit_held_stories), `hold.wip_limit` (src/crew_org/rules.py:Rule) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/board_flow.py:admit_held_stories<br>src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/delivery.py:deliver | crew#33<br>crew#34 |
@@ -174,6 +175,8 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
+| `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
+| `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/reading.py:ReadTools.call` | Developer | — | src/crew_org/session/reading.py:ReadTools.call<br>src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
 | `session.git`<br>The git tool runs one git command line with no shell, and only the commands that read and `restore`; never an option that writes, reads outside the repository or runs a program. | guards | `src/crew_org/session/git.py:parse` | Developer | — | src/crew_org/session/git.py:_check_option<br>src/crew_org/session/git.py:parse<br>src/crew_org/session/reading.py:ReadTools.git | crew#778 |
@@ -200,7 +203,6 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |
 | `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:_declared_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests | crew#778 |
 | `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
-| `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
 
 {}{} | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |

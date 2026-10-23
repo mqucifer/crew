@@ -151,9 +151,12 @@ def test_the_bug_is_filed_when_the_workspace_tasks_pull_request_merges(monkeypat
             return []
 
     result = merge.MergeResult()
+    seen: list = []
+    events = EventSink(None)
+    events.subscribe(seen.append)
     merge._done(
         WithCards(),
-        EventSink(None),
+        events,
         task,
         pull={"number": 100},
         result=result,
@@ -161,6 +164,10 @@ def test_the_bug_is_filed_when_the_workspace_tasks_pull_request_merges(monkeypat
         repo="sprint-metrics",
     )
     assert [kw["tests"] for kw in filed] == [ROTTED] and filed[0]["task"] == 739
+    # Recorded where it was caught, as counts: the names stay on the bug.
+    (recorded,) = [e for e in seen if e.kind == "finding.filed"]
+    assert recorded.detail["owner"] == "bug"
+    assert recorded.detail["counts"] == {"tests": 1, "files": 1}
 
 
 # --- part 1: the workspace Task's own services -----------------------------------------
@@ -384,6 +391,7 @@ def test_diagram_check_is_the_gates_check_on_the_file_as_it_is(tmp_path):
     (tmp_path / "docs/architecture.md").write_text("```mermaid\nflowchart LR\n```\n")
     failed = session_tools(tmp_path).call("diagram_check", {})
     assert failed.kind == "failed" and "isn't one the crew checks" in failed.text
+    assert failed.rule == "check.role_tasks.diagram_renders"  # the gate's own rule
     (tmp_path / "docs/architecture.md").write_text(GOOD)
     assert session_tools(tmp_path).call("diagram_check", {}).kind == "passed"
 
@@ -395,7 +403,7 @@ def test_workspace_check_finds_what_the_gate_refuses_without_starting_anything(t
         "  db:\n    image: postgres:16\n    user: root\n"
     )
     reply = session_tools(tmp_path).call("workspace_check", {})
-    assert reply.kind == "failed"
+    assert reply.kind == "failed" and reply.rule == "check.role_tasks.workspace_checks"
     assert f"postgres:16@{REAL}" in reply.text  # the tag, with the digest held now
     assert "`db`:" in reply.text  # and the service as the crew would start it
 

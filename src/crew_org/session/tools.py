@@ -32,7 +32,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
 
 from crew_org.flows.attempts import failing_tests, first_error, repair_report
-from crew_org.rulebook import Refusal, refuse
+from crew_org.rulebook import Refusal, refuse, says
 from crew_org.session.container import GONE, Gone, Workspace
 from crew_org.session.enclosing import Enclosing, enclosing
 from crew_org.session.git import INJECTED, OUTPUT_CHARS, Git, parse, restore_args
@@ -1140,17 +1140,30 @@ class Tools:
             path = self.root / role_tasks.DIAGRAM_PATH
             drawn = path.read_text(encoding="utf-8") if path.is_file() else None
             problems = role_tasks.diagram_problems(drawn)
+            # The gate's own rule, so the session's catch and the gate's are counted as one.
+            rule, text = (
+                "check.role_tasks.diagram_renders",
+                says("check.role_tasks.diagram_renders", problems="; ".join(problems)),
+            )
         else:
             problems = role_tasks.workspace_problems(self.root)
+            rule, text = (
+                "check.role_tasks.workspace_checks",
+                says(
+                    "check.role_tasks.workspace_checks",
+                    problems="\n".join(f"- {p}" for p in problems),
+                ),
+            )
         if not problems:
             return Reply(
                 "Passed: the gate at `done` finds nothing here.", "passed", f"{name}: passed"
             )
         return Reply(
-            "The gate at `done` would refuse it:\n" + "\n".join(f"- {p}" for p in problems),
+            f"The gate at `done` would refuse it. {text}",
             "failed",
             f"{name}: {len(problems)} problems",
             {"problems": len(problems)},
+            rule=rule,
         )
 
     def no_progress(self) -> bool:

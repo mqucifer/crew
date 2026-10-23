@@ -271,6 +271,9 @@ gate.criteria_cannot_all_pass:
 gate.criteria_repair:
 gate.criteria_resplit:
 gate.findings_at_done:
+gate.merge_changes_requested:
+  origin:
+  - crew#839
 gate.merge_ci_failed:
 gate.merge_conflict:
 gate.qa_unproven:

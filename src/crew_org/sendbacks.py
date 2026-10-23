@@ -177,6 +177,12 @@ MERGE_CI_FAILED = SendBack(
     Rule.MERGE_CI_FAILED,
     "CI failed at merge, or the merge queue removed it: back to the Developer.",
 )
+MERGE_CHANGES_REQUESTED = SendBack(
+    Step.MERGE,
+    Step.BUILD,
+    Rule.MERGE_CHANGES_REQUESTED,
+    "Changes were requested on the head that would merge, by anyone: back to its role.",
+)
 MERGE_CONFLICT = SendBack(
     Step.MERGE,
     Step.BUILD,
@@ -241,6 +247,7 @@ CATALOG = (
     REVIEW_CONFLICT,
     QA_UNPROVEN,
     MERGE_CI_FAILED,
+    MERGE_CHANGES_REQUESTED,
     MERGE_CONFLICT,
     MAIN_RED,
     RELEASE_GAPS,
