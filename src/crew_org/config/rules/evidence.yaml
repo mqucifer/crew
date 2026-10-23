@@ -198,8 +198,14 @@ guard.reproduce.check:
   messages:
     default: The fix passes the checks, but {why}. Change them so at least one fails against the code
       as merged, for the reason the bug describes.
+    recorded: "The crew filed this bug from the merged tests a workspace turned on, which fail\
+      \ on the code as merged: its record on pull request {pull} names them, and reproduces\
+      \ the bug. On this branch they don't all pass in the workspace yet:\n\n{tests}\n\nEach\
+      \ has to run and pass there, and a file that hung has to run to its end, every test\
+      \ in it passing."
   origin:
   - crew#407
+  - crew#839
   owner: Developer
 session.run:
   description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint

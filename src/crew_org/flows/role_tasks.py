@@ -911,6 +911,66 @@ def turned_on_at(comments: list[dict[str, Any]], head: str, crew: frozenset[str]
     return found
 
 
+@dataclass(frozen=True)
+class TurnedOnRecord:
+    """A bug the crew filed from the tests a workspace turned on: the tests its record
+    names, and the pull request it's on; or, with no tests, why none was found."""
+
+    tests: dict[str, str]
+    pull: int = 0
+    missing: str = ""
+
+
+_TURNED_ON_BUG = re.compile(r"<!-- crew:finding key=(turned-on-[0-9a-f]{12}) -->")
+
+
+def turned_on_record(issues: IssueClient, repo: str, bug: int) -> TurnedOnRecord | None:
+    """The crew's own record of the tests a bug was filed for, when the crew filed it from
+    the tests a workspace turned on (crew#839); None for any other bug.
+
+    Such a bug's tests already fail on main, as recorded at merge, and the corrected test
+    passes as merged, so no honest test reproduces it the usual way. It's one only when
+    its author is the crew's own App (`trust.crew`) and its body starts with the finding's
+    marker, as `turned_on_bug` files it. The tests are read only from the record that
+    `turned_on_at` accepts on a pull request merged within `TURNED_ON_WINDOW` before the
+    bug was filed, at that pull's head, and only when they hash to the marker's key: the
+    body's text names nothing, so a marker quoted or edited in leads at most to another
+    of the crew's own records.
+    """
+    from crew_org.flows.merge import TURNED_ON_WINDOW  # noqa: PLC0415 - merge imports this
+
+    issue = issues.get(repo, bug)
+    crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+    if ((issue.get("user") or {}).get("login") or "") not in crew:
+        return None
+    mark = _TURNED_ON_BUG.match(issue.get("body") or "")
+    if mark is None:
+        return None
+    filed = datetime.fromisoformat(issue["created_at"])
+    pulls = sorted(
+        (
+            p
+            for p in issues.closed_pulls(repo)
+            if p.get("merged_at")
+            and filed - TURNED_ON_WINDOW <= datetime.fromisoformat(p["merged_at"]) <= filed
+        ),
+        key=lambda p: p["merged_at"],
+        reverse=True,
+    )
+    for pull in pulls:
+        head = (pull.get("head") or {}).get("sha") or ""
+        tests = turned_on_at(issues.comments(repo, pull["number"]), head, crew)
+        if tests and _turned_on_key(tests) == mark.group(1):
+            return TurnedOnRecord(tests=tests, pull=int(pull["number"]))
+    days = TURNED_ON_WINDOW.days
+    return TurnedOnRecord(
+        tests={},
+        missing=f"The crew filed this bug from the tests a workspace turned on, but no pull "
+        f"request merged within {days} days before it was filed has the crew's record of "
+        "them, so the record can't stand in for the reproduction",
+    )
+
+
 def record_turned_on(
     issues: IssueClient,
     sink: EventSink,

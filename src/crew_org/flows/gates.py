@@ -132,11 +132,14 @@ def at_done(
     run_checks: Callable[[Path], CheckResult] = check,
     permissions: dict[str, str] | None = None,
     note: Callable[[str], None] | None = None,
+    recorded: role_tasks.TurnedOnRecord | None = None,
 ) -> Verdict:
     """Run every gate on the branch in `worktree`, given what `done` said.
 
     `said` is `done`'s statement: `criteria` [{criterion, test}], `changed_tests`
     [{test, why}], `docs` and `summary`. `note` hears what a gate couldn't check.
+    `recorded` is a bug's own record, when the crew filed it from the tests a workspace
+    turned on (`role_tasks.turned_on_record`).
     That the tests it names exist is `done`'s own check, not the gate's.
     """
     verdict = Verdict()
@@ -227,7 +230,12 @@ def at_done(
     if merged is not None:
         _skipped(worktree, merged, paths, verdict)
     if card.work_type == BUG and merged is not None:
-        _reproduced(worktree, merged, named, verdict, note)
+        name = f"reproduce-{card.repo or ''}-{card.number}"
+        if recorded is not None and recorded.tests:
+            _as_recorded(worktree, recorded, name, verdict)
+        else:
+            missing = recorded.missing if recorded is not None else ""
+            _reproduced(worktree, merged, named, verdict, note, name=name, missing=missing)
     return verdict
 
 
@@ -593,21 +601,49 @@ def _reproduced(
     named: list[str],
     verdict: Verdict,
     note: Callable[[str], None] | None,
+    *,
+    name: str = "",
+    missing: str = "",
 ) -> None:
-    """A bug's criteria tests have to fail on the merged code (crew#407, B3)."""
+    """A bug's criteria tests have to fail on the merged code (crew#407, B3), run in the
+    default branch's workspace when it has one (crew#839). `missing` says why a bug the
+    crew filed from turned-on tests has no record to stand in."""
     tests = [profile_for(t.partition("::")[0]).split_test_id(t) for t in named if t]
     if not tests:
         return
-    found = reproduction.reproduces(worktree, merged, tests)
+    found = reproduction.reproduces(worktree, merged, tests, name=name)
     if found.unchecked:
         if note is not None:
             note(f"reproduction not checked: {found.unchecked}")
         return
     refusal = found.refusal()
     if refusal:
+        why = f"{refusal}. {missing}" if missing else refusal
         verdict.findings.append(
-            Finding("guard.reproduce.check", says("guard.reproduce.check", why=refusal))
+            Finding("guard.reproduce.check", says("guard.reproduce.check", why=why))
         )
+
+
+def _as_recorded(
+    worktree: Path, recorded: role_tasks.TurnedOnRecord, name: str, verdict: Verdict
+) -> None:
+    """A bug the crew filed from the tests a workspace turned on is reproduced by its own
+    record: they fail on the merged code, as recorded at merge (crew#839). The branch has
+    to make each pass in the workspace, a hung file's tests every one."""
+    wrong = reproduction.on_the_branch(worktree, sorted(recorded.tests), name)
+    if not wrong:
+        return
+    tests = (
+        f"- they couldn't be run: {wrong}"
+        if isinstance(wrong, str)
+        else "\n".join(f"- `{entry}`: {why}" for entry, why in sorted(wrong.items()))
+    )
+    verdict.findings.append(
+        Finding(
+            "guard.reproduce.check",
+            says("guard.reproduce.check", "recorded", pull=recorded.pull, tests=tests),
+        )
+    )
 
 
 def _is_test(key: str) -> bool:

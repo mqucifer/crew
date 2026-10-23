@@ -27,7 +27,7 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 - **The gate is the one a drafted Goal already has** (ADR 0003). A proposed Goal is filed as a draft in `Inbox (Goals)`, without the `goal` label. The Sponsor approves it by applying the label, edits it first, or closes it. Approving one is no new step.
 - **A proposed Goal's decision rows stay the Product Owner's,** binding under ADR 0018. Only what the Sponsor adds under their own heading is the Sponsor's (ADR 0015), so the crew's words never count as the Sponsor's.
 
-**How a bug flows** (built by crew#407): refined if needed, sized 1–5, admitted to a sprint, fixed with a test that reproduces it and then passes, reviewed, and proven by QA.
+**How a bug flows** (built by crew#407): refined if needed, sized 1–5, admitted to a sprint, fixed with a test that reproduces it and then passes, reviewed, and proven by QA. The test runs where the project's tests can: in the default branch's workspace, with its services, when it declares one (crew#839). A bug the crew filed from the tests a workspace turned on is already reproduced: the crew's own record, made at merge, names the tests that fail on main. Its fix makes each of them pass in the workspace, and a hung file runs to its end.
 
 ## Consequences
 
@@ -42,3 +42,4 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 - **2026-10-17:** the Product Owner may propose a Goal, which the Sponsor approves by applying the `goal` label; its rows stay the Product Owner's. "A Goal stays the Sponsor's alone" no longer holds. Decided by the Sponsor in the M6 planning session (crew#755).
 - **2026-10-21:** a proposed Goal is also how the Product Owner says "the Goal points elsewhere" (ADR 0018), so it's built in M7 (crew#846) rather than waiting for the consumer review. Decided by the Sponsor in the overhaul's planning session.
 - **2026-10-23:** a bug the crew's own App files (org.yaml's `trust.crew`) is triaged like a collaborator's. The first, mqucifer/sprint-metrics#742, was refused as "not a collaborator"; mqucifer/crew#839 had already decided the crew files it.
+- **2026-10-23:** a bug's test runs in the default branch's workspace, not the networkless sandbox, where a database test could only skip. A bug the crew filed from turned-on tests is reproduced by its own record, read only from the crew's comment at the merged head. mqucifer/sprint-metrics#742 was refused three rounds running for a database test the sandbox skipped (crew#839).

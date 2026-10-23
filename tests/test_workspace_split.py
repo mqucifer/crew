@@ -1084,3 +1084,158 @@ def test_only_the_workspace_file_or_the_compose_file_it_names_is_the_tasks_own(t
     assert not owns(role_tasks.DEVOPS, tmp_path, ["ci/docker-compose.yml"])
     assert not owns(role_tasks.DEVOPS, tmp_path, ["docker-compose.yml"])  # not the one named
     assert not owns(role_tasks.ARCHITECT, tmp_path, [".devcontainer/devcontainer.json"])
+
+
+# --- a turned-on bug is reproduced by the crew's own record ------------------------------
+
+BUG_FILED = "2026-10-23T20:00:00Z"
+
+
+class Filed:
+    """A bug, by `author`, and the repository's closed pull requests, each (number, merged
+    at, head, comments), a comment the crew's App's or (author, body)."""
+
+    trust = TRUST
+
+    def __init__(self, author: str = CREW, body: str | None = None, pulls=()) -> None:
+        self.author = author
+        self.body = body if body is not None else _bug_body(ROTTED)
+        self.pulls = list(pulls)
+
+    def get(self, name: str, number: int) -> dict:
+        return {"user": {"login": self.author}, "body": self.body, "created_at": BUG_FILED}
+
+    def closed_pulls(self, name: str) -> list[dict]:
+        return [
+            {"number": n, "merged_at": at, "head": {"sha": head}} for n, at, head, _ in self.pulls
+        ]
+
+    def comments(self, name: str, number: int) -> list[dict]:
+        (said,) = [c for n, _, _, c in self.pulls if n == number]
+        return [
+            {
+                "user": {"login": c[0] if isinstance(c, tuple) else CREW},
+                "body": c[1] if isinstance(c, tuple) else c,
+            }
+            for c in said
+        ]
+
+
+def _bug_body(tests: dict[str, str]) -> str:
+    key = role_tasks._turned_on_key(tests)
+    return f"{role_tasks._FINDING_BUG.format(key=key)}\n\n**What happens:** 1 merged test fails"
+
+
+def _merged(number: int = 741, at: str = "2026-10-23T19:00:00Z", head: str = HEAD, comments=None):
+    return (
+        number,
+        at,
+        head,
+        [role_tasks.turned_on_marker(HEAD, ROTTED)] if comments is None else comments,
+    )
+
+
+def test_a_bug_the_crew_filed_from_turned_on_tests_is_read_from_its_record():
+    """mqucifer/sprint-metrics#742: the tests fail on main as the record says at merge."""
+    unrelated = _merged(740, "2026-10-23T19:30:00Z", "fff0000", comments=[])
+    found = role_tasks.turned_on_record(Filed(pulls=[unrelated, _merged()]), "sm", 742)
+    assert found == role_tasks.TurnedOnRecord(tests=ROTTED, pull=741)
+
+
+def test_a_strangers_bug_that_quotes_the_marker_gets_no_record():
+    assert role_tasks.turned_on_record(Filed(author="someone", pulls=[_merged()]), "sm", 9) is None
+
+
+def test_any_other_bug_of_the_crews_gets_no_record():
+    other = Filed(body="<!-- crew:finding key=qa-1234 -->\n\nA role's finding", pulls=[_merged()])
+    assert role_tasks.turned_on_record(other, "sm", 9) is None
+
+
+@pytest.mark.parametrize(
+    "pull",
+    [
+        # The record of other tests: its hash isn't the bug's key.
+        _merged(comments=[role_tasks.turned_on_marker(HEAD, {"tests/test_x.py::test_y": "x"})]),
+        # Merged past the window before the bug was filed.
+        _merged(at="2026-10-01T19:00:00Z"),
+        # A record for a head that isn't the one that merged.
+        _merged(head="0ld0ld0ld0ld"),
+        # Written by someone else than the crew's App.
+        _merged(comments=[("someone", role_tasks.turned_on_marker(HEAD, ROTTED))]),
+    ],
+    ids=["other-tests", "past-the-window", "stale-head", "not-the-crews"],
+)
+def test_a_turned_on_bug_without_its_own_record_gets_none_and_says_so(pull):
+    found = role_tasks.turned_on_record(Filed(pulls=[pull]), "sm", 742)
+    assert found is not None and found.tests == {}
+    assert f"within {merge.TURNED_ON_WINDOW.days} days" in found.missing
+
+
+def test_only_a_bug_has_its_record_looked_up():
+    asked = []
+    issues = SimpleNamespace(get=lambda *a: asked.append(a))
+    assert session_end._turned_on_record(issues, "sm", card(662), print) is None
+    assert asked == []
+
+
+def _bug_card() -> Card:
+    from tests.test_gates import card as gate_card
+
+    return gate_card("Bug")
+
+
+def _no_reproduction(monkeypatch) -> None:
+    from crew_org.tools import reproduction
+
+    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: pytest.fail("reproduced"))
+
+
+def test_a_turned_on_bug_passes_on_its_record_when_the_branch_passes_its_tests(repo, monkeypatch):  # noqa: F811
+    from crew_org.tools import reproduction
+    from tests.test_gates import uncap
+
+    asked = []
+    monkeypatch.setattr(
+        reproduction, "on_the_branch", lambda w, entries, name: asked.append(entries) or {}
+    )
+    _no_reproduction(monkeypatch)
+    uncap(repo)
+    recorded = role_tasks.TurnedOnRecord(tests=ROTTED, pull=741)
+    said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
+    verdict = at_done(repo, said, card=_bug_card(), recorded=recorded)
+    assert "guard.reproduce.check" not in [f.rule for f in verdict.findings]
+    assert asked == [sorted(ROTTED)]
+
+
+def test_a_turned_on_bug_whose_recorded_file_still_hangs_goes_back(repo, monkeypatch):  # noqa: F811
+    from crew_org.tools import reproduction
+    from tests.test_gates import uncap
+
+    hung = {SERVICE: f"`{shown_test(HUNG)}` hung, waiting in {WAITS}: the run stopped there"}
+    monkeypatch.setattr(reproduction, "on_the_branch", lambda *a: hung)
+    _no_reproduction(monkeypatch)
+    uncap(repo)
+    recorded = role_tasks.TurnedOnRecord(tests={SERVICE: "hung in ..."}, pull=741)
+    said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
+    verdict = at_done(repo, said, card=_bug_card(), recorded=recorded)
+    (finding,) = [f for f in verdict.findings if f.rule == "guard.reproduce.check"]
+    assert "its record on pull request 741" in finding.says
+    assert f"- `{SERVICE}`: `{shown_test(HUNG)}` hung" in finding.says
+
+
+def test_a_turned_on_bug_with_no_record_is_reproduced_as_any_and_says_why(repo, monkeypatch):  # noqa: F811
+    from crew_org.tools import reproduction
+    from tests.test_gates import uncap
+
+    monkeypatch.setattr(
+        reproduction,
+        "reproduces",
+        lambda *a, **kw: reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"]),
+    )
+    uncap(repo)
+    missing = role_tasks.TurnedOnRecord(tests={}, missing="No record within 14 days")
+    said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
+    verdict = at_done(repo, said, card=_bug_card(), recorded=missing)
+    (finding,) = [f for f in verdict.findings if f.rule == "guard.reproduce.check"]
+    assert "none of the tests reproduces the bug" in finding.says
+    assert "once it's fixed. No record within 14 days." in finding.says

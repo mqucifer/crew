@@ -1726,3 +1726,23 @@ flows.role_tasks.goals_needs:skip:4804524e:
   at: flows/role_tasks.py:goals_needs
   if: not held
   not_a_rule: a Goal with no record has no needs yet
+flows.role_tasks.turned_on_record:end:585ba3d5:
+  at: flows/role_tasks.py:turned_on_record
+  if: '((issue.get(''user'') or {}).get(''login'') or '''') not in crew'
+  rule: guard.reproduce.check
+flows.role_tasks.turned_on_record:end:c49e04b9:
+  at: flows/role_tasks.py:turned_on_record
+  if: 'mark is None'
+  rule: guard.reproduce.check
+flows.role_tasks.turned_on_record:filter:a3f63e72:
+  at: flows/role_tasks.py:turned_on_record
+  if: 'p.get(''merged_at'') and filed - TURNED_ON_WINDOW <= datetime.fromisoformat(p[''merged_at'']) <= filed'
+  rule: guard.reproduce.check
+flows.role_tasks.turned_on_record:end:257c2401:
+  at: flows/role_tasks.py:turned_on_record
+  if: 'tests and _turned_on_key(tests) == mark.group(1)'
+  rule: guard.reproduce.check
+flows.session_end._turned_on_record:end:1836ae22:
+  at: flows/session_end.py:_turned_on_record
+  if: 'card.work_type != BUG'
+  rule: guard.reproduce.check
