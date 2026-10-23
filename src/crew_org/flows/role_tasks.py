@@ -180,7 +180,7 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
     may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
     Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
     """
-    from crew_org.session.tools import SPECS  # noqa: PLC0415
+    from crew_org.session.tools import SPECS, TASK_SPECS  # noqa: PLC0415
 
     scope = ", ".join(f"`{g}`" for g in role.scope)
     tests = covers_tests(role)
@@ -190,6 +190,11 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
         else f"the file within {scope} that shows it"
     )
     specs = [copy.deepcopy(s) for s in SPECS]
+    # Its gate's own checks, to run before `done` (crew#839), among the tools before the
+    # endings.
+    if role.key in TASK_SPECS:
+        at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
+        specs.insert(at, copy.deepcopy(TASK_SPECS[role.key]))
     for spec in specs:
         fn = spec["function"]
         if fn["name"] != "done":
@@ -756,6 +761,33 @@ def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) ->
     return role is DEVOPS and any(
         p in devcontainer.PATHS or bounds.is_compose(worktree, p) for p in paths
     )
+
+
+def workspace_problems(worktree: Any) -> list[str]:
+    """What the gate at `done` refuses in the workspace file and its compose file, as the
+    worktree has them now: DevOps's `workspace_check` (the Sponsor, 2026-10-23, crew#839).
+
+    The gate's own checks, called as it calls them: the workspace's definition
+    (`workspace.toolchain`), each compose file's images (`base_images.unpinned`) and
+    each service as the crew starts one (`services.declared`). Starting the services
+    stays the gate's: nothing here runs, and only registries are read.
+    """
+    from crew_org.tools import base_images, bounds, services, workspace  # noqa: PLC0415
+
+    def read(path: str) -> str | None:
+        found = worktree / path
+        return found.read_text(encoding="utf-8") if found.is_file() else None
+
+    problems: list[str] = []
+    if problem := workspace.toolchain(worktree).problem:
+        problems.append(problem)
+    named = services.compose_file(read)
+    candidates = [*bounds.COMPOSE_NAMES, *(f".devcontainer/{n}" for n in bounds.COMPOSE_NAMES)]
+    for path in sorted({p for p in [*candidates, named] if p and read(p) is not None}):
+        problems += base_images.unpinned(path, read(path) or "")
+    declared = services.declared(read)
+    problems += [f"`{name}`: {why}" for name, why in declared.problems.items()]
+    return problems
 
 
 # The pull request's section naming the merged tests a workspace Task's services turn

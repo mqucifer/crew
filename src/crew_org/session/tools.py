@@ -358,6 +358,33 @@ SPECS = [
     ),
 ]
 ACCEPTED = {s["function"]["name"]: s["function"]["parameters"] for s in SPECS}
+# A role's Task's own tools: the checks its gate at `done` runs, so its session finds a
+# problem before `done` (the Sponsor, 2026-10-23, crew#839). Each is given only to its
+# role, by `role_tasks.done_specs`.
+TASK_SPECS = {
+    "architect": _spec(
+        "diagram_check",
+        "The check the gate at `done` runs on `docs/architecture.md`, on the file as it is "
+        "now: every Mermaid block is one the crew checks and renders, and one is a C4 "
+        "diagram. The same check, so a pass here passes there.",
+        {},
+        [],
+    ),
+    "devops": _spec(
+        "workspace_check",
+        "The checks the gate at `done` runs on the workspace file and its compose file, as "
+        "they are now: the workspace's image by digest and its setup as words, each "
+        "compose image pinned to a digest its registry has, and each service as the crew "
+        "starts one (a `user` that isn't root, the fields it honours). It doesn't start the "
+        "services: the gate does, with your setup.",
+        {},
+        [],
+    ),
+}
+_ALL_ACCEPTED = {
+    **ACCEPTED,
+    **{s["function"]["name"]: s["function"]["parameters"] for s in TASK_SPECS.values()},
+}
 # The tools that end the session, which the loop answers, not `Tools`.
 ENDINGS = ("done", "blocked")
 EDITS = ("replace_text", "replace_definition", "write_file")
@@ -1105,6 +1132,27 @@ class Tools:
         finally:
             os.close(fd)
 
+    def task_check(self, name: str) -> Reply:
+        """A Task's gate checks, run on the worktree as it is: read-only, the gate's code."""
+        from crew_org.flows import role_tasks  # noqa: PLC0415
+
+        if name == "diagram_check":
+            path = self.root / role_tasks.DIAGRAM_PATH
+            drawn = path.read_text(encoding="utf-8") if path.is_file() else None
+            problems = role_tasks.diagram_problems(drawn)
+        else:
+            problems = role_tasks.workspace_problems(self.root)
+        if not problems:
+            return Reply(
+                "Passed: the gate at `done` finds nothing here.", "passed", f"{name}: passed"
+            )
+        return Reply(
+            "The gate at `done` would refuse it:\n" + "\n".join(f"- {p}" for p in problems),
+            "failed",
+            f"{name}: {len(problems)} problems",
+            {"problems": len(problems)},
+        )
+
     def no_progress(self) -> bool:
         """The same first error in the same test after 3 runs with edits between (decision 3)."""
         failed = [r for r in self.runs if not r["ok"]][-3:]
@@ -1117,7 +1165,9 @@ class Tools:
         """One tool call's reply. A refusal is a reply that names its rule; only a
         workspace that's gone raises."""
         try:
-            check_arguments(name, args)
+            # The session's own list, which offers a Task's tool to its role alone, is
+            # checked before this; here, any tool there is.
+            check_arguments(name, args, _ALL_ACCEPTED)
             if name == "view":
                 return self.view(
                     args["path"], args.get("from_line"), args.get("to_line"), args.get("definition")
@@ -1140,6 +1190,8 @@ class Tools:
                 return self.git(args["command"])
             if name == "image_digest":
                 return image_digest(args["image"], args.get("tag"), bool(args.get("tags")))
+            if name in ("diagram_check", "workspace_check"):
+                return self.task_check(name)
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)

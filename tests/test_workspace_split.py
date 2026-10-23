@@ -350,3 +350,70 @@ def test_changes_requested_on_an_older_head_dont():
     issues = Requested(on="older")
     result, board, _ = run([card(740)], issues)
     assert result.changes_requested == [] and issues.merged == [100]
+
+
+# --- a Task's session runs its gate's checks itself (the Sponsor, 2026-10-23) ----------
+
+GOOD = '```mermaid\nC4Context\nPerson(u, "User")\nSystem(s, "S")\nRel(u, s, "uses")\n```\n'
+
+
+def names(specs):
+    return [s["function"]["name"] for s in specs]
+
+
+def test_each_role_has_its_own_gates_check_and_the_developer_neither():
+    from crew_org.session.tools import SPECS
+
+    architect = names(role_tasks.done_specs(role_tasks.ARCHITECT))
+    devops = names(role_tasks.done_specs(role_tasks.DEVOPS))
+    assert "diagram_check" in architect and "workspace_check" not in architect
+    assert "workspace_check" in devops and "diagram_check" not in devops
+    assert not {"diagram_check", "workspace_check"} & set(names(SPECS))
+    assert devops.index("workspace_check") < devops.index("done")
+
+
+def session_tools(root: Path):
+    from crew_org.session.tools import Tools
+    from tests.test_session import CHECKS, Fake
+
+    return Tools(root, Fake(), CHECKS)
+
+
+def test_diagram_check_is_the_gates_check_on_the_file_as_it_is(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/architecture.md").write_text("```mermaid\nflowchart LR\n```\n")
+    failed = session_tools(tmp_path).call("diagram_check", {})
+    assert failed.kind == "failed" and "isn't one the crew checks" in failed.text
+    (tmp_path / "docs/architecture.md").write_text(GOOD)
+    assert session_tools(tmp_path).call("diagram_check", {}).kind == "passed"
+
+
+def test_workspace_check_finds_what_the_gate_refuses_without_starting_anything(tmp_path):
+    writes_the_workspace(tmp_path)
+    (tmp_path / ".devcontainer/compose.yaml").write_text(
+        f"services:\n  workspace:\n    image: python@{REAL}\n"
+        "  db:\n    image: postgres:16\n    user: root\n"
+    )
+    reply = session_tools(tmp_path).call("workspace_check", {})
+    assert reply.kind == "failed"
+    assert f"postgres:16@{REAL}" in reply.text  # the tag, with the digest held now
+    assert "`db`:" in reply.text  # and the service as the crew would start it
+
+
+def test_workspace_check_passes_a_workspace_the_gate_would_pass(tmp_path):
+    from tests.test_services import PROJECT
+
+    (tmp_path / ".crew").mkdir()
+    (tmp_path / ".crew/project.yaml").write_text(PROJECT)  # its design names the checks
+    writes_the_workspace(tmp_path)
+    (tmp_path / ".devcontainer/devcontainer.json").write_text(
+        json.dumps(
+            {
+                "dockerComposeFile": "compose.yaml",
+                "service": "workspace",
+                "postCreateCommand": ["uv", "sync"],
+            }
+        )
+    )
+    reply = session_tools(tmp_path).call("workspace_check", {})
+    assert reply.kind == "passed", reply.text
