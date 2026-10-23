@@ -1206,9 +1206,11 @@ def first_workspace_task(
         "service's image by digest, a `user` that isn't root, a `healthcheck` in "
         '["CMD", ...] form and `tmpfs` for its data. `image_digest` reads each digest from '
         "its registry. At `done` the gate starts the services and setup your branch "
-        "declares and runs the whole checks with them. A merged test they turn on that "
-        "fails, in a file your branch doesn't change, is the Developer's: it's named in "
-        "your pull request and filed as a bug when it merges. CI isn't changed here: "
+        "declares and runs the whole checks with them. A merged test that skipped or "
+        "didn't run on the default branch, which your services turn on and which fails, "
+        "in a file your branch doesn't change, is the Developer's: it's named in your pull "
+        "request and filed as a bug when it merges. A test that passed on the default "
+        "branch and fails on yours is yours to fix. CI isn't changed here: "
         "a later Task makes CI's test job run the same services, once the tests pass "
         "in the workspace on main (the Sponsor, 2026-10-23).",
         done_when=[
