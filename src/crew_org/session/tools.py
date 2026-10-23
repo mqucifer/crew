@@ -54,6 +54,11 @@ VIEW_CHARS = 40_000
 SEARCH_HITS = 50
 # The tags `image_digest` shows at most.
 TAG_LINES = 200
+# A repository name and a tag, as the OCI distribution spec writes them.
+_OCI_NAME = re.compile(
+    r"[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*(?:/[a-z0-9]+(?:(?:\.|_|__|-+)[a-z0-9]+)*)*"
+)
+_OCI_TAG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,127}")
 SEARCH_FILES = 30
 # Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this
 # few (crew#807).
@@ -1229,9 +1234,15 @@ def image_digest(image: str, tag: str | None = None, tags: bool = False) -> Repl
     given = image.strip()
     if "@" in given or not given or given.startswith("-") or any(c.isspace() for c in given):
         refuse("session.image_digest", "not_a_name", image=image)
+    if tag and tag.strip() and not _OCI_TAG.fullmatch(tag.strip()):
+        # Before it's joined to the name, where `a/b` would read as a registry's host.
+        refuse("session.image_digest", "not_oci", image=f"{image}:{tag}")
     ref = base_images.parse(f"{given}:{tag.strip()}" if tag and tag.strip() else given)
     if ref is None:
         refuse("session.image_digest", "a_variable", image=image)
+    # The OCI distribution spec's grammar, checked before anything is asked of a registry.
+    if not (_OCI_NAME.fullmatch(ref.name) and _OCI_TAG.fullmatch(ref.tag)):
+        refuse("session.image_digest", "not_oci", image=image)
     try:
         if tags:
             found, more = base_images.TAGS(ref.host, ref.name)

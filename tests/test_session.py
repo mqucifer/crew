@@ -869,6 +869,20 @@ def test_image_digest_refuses_a_digest_or_an_option_as_the_image(root, registry)
         assert reply.kind == "refused" and reply.rule == "session.image_digest"
 
 
+def test_image_digest_asks_no_registry_about_a_name_the_oci_spec_doesnt_allow(
+    root, registry, monkeypatch
+):
+    """The review of mqucifer/crew#877: checked before any request."""
+    from crew_org.tools import base_images
+
+    asked = []
+    monkeypatch.setattr(base_images, "LOOKUP", lambda *a: asked.append(a) or PG)
+    for image, tag in (("Postgres", "16"), ("postgres/../x", "16"), ("postgres", "a/b")):
+        reply = tools(root).call("image_digest", {"image": image, "tag": tag})
+        assert reply.kind == "refused" and "OCI distribution spec" in reply.text
+    assert asked == []
+
+
 def test_a_tasks_session_has_image_digest_too():
     from crew_org.flows import role_tasks
 
