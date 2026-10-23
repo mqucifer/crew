@@ -728,3 +728,9 @@ def blocked_for_a_person(
 
 def _quoted(text: str) -> str:
     return "\n".join(f"> {line}" for line in (text.strip() or "(nothing said)").splitlines())
+
+
+def setup_failed_at_start(ran: str) -> str:
+    """What a DevOps workspace Task's session is told when its own branch's setup failed
+    at the start: its work, worded as a finding at `done` is (crew#839)."""
+    return says("check.role_tasks.setup_failed_at_start", ran=ran)

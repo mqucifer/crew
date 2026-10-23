@@ -298,6 +298,8 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "story_parts",
         "start_chars",
         "limits",
+        # Whether `skill` was offered, for the count of who reads one (crew#839).
+        "skill_offered",
     ),
     EventKind.SESSION_TURN: (
         "turn",

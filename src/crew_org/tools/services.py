@@ -10,7 +10,8 @@ The crew never runs `docker compose`. It reads a subset of each service and star
 it itself, so nothing in the file can loosen the sandbox (ADR 0006): no ports, no
 mounts, no capabilities, never root, read-only but for the tmpfs paths it names, on
 a network with no route out that only the workspace shares. What it doesn't honour
-is named, as `devcontainer.py` names what it doesn't.
+is named, as `devcontainer.py` names what it doesn't, and a field that isn't the compose
+specification's is named as unknown (crew#839).
 
 They're read from the default branch, never the story's worktree: otherwise a
 story's generated code would choose what the host pulls and runs (the operator,
@@ -33,6 +34,108 @@ from crew_org.tools import devcontainer
 # What the crew reads of a compose service. Everything else is named as not honoured.
 HONOURED = ("image", "environment", "command", "healthcheck", "tmpfs", "user")
 NOT_HONOURED = "the crew starts the service itself, with the sandbox's hardening"
+UNKNOWN = "isn't a compose service field: the crew reads " + ", ".join(f"`{f}`" for f in HONOURED)
+# Every field of a compose service, from its schema (compose-spec/compose-go,
+# schema/compose-spec.json at 52eea9f, 2026-10-23), besides `x-` extensions: one the crew
+# doesn't read is not honoured, never unknown.
+SPEC_FIELDS = frozenset(
+    {
+        "annotations",
+        "attach",
+        "blkio_config",
+        "build",
+        "cap_add",
+        "cap_drop",
+        "cgroup",
+        "cgroup_parent",
+        "command",
+        "configs",
+        "container_name",
+        "cpu_count",
+        "cpu_percent",
+        "cpu_period",
+        "cpu_quota",
+        "cpu_rt_period",
+        "cpu_rt_runtime",
+        "cpu_shares",
+        "cpus",
+        "cpuset",
+        "credential_spec",
+        "depends_on",
+        "deploy",
+        "develop",
+        "device_cgroup_rules",
+        "devices",
+        "dns",
+        "dns_opt",
+        "dns_search",
+        "domainname",
+        "entrypoint",
+        "env_file",
+        "environment",
+        "expose",
+        "extends",
+        "external_links",
+        "extra_hosts",
+        "gpus",
+        "group_add",
+        "healthcheck",
+        "hostname",
+        "image",
+        "init",
+        "ipc",
+        "isolation",
+        "label_file",
+        "labels",
+        "links",
+        "logging",
+        "mac_address",
+        "mem_limit",
+        "mem_reservation",
+        "mem_swappiness",
+        "memswap_limit",
+        "models",
+        "network_mode",
+        "networks",
+        "oom_kill_disable",
+        "oom_score_adj",
+        "pid",
+        "pids_limit",
+        "platform",
+        "ports",
+        "post_start",
+        "pre_start",
+        "pre_stop",
+        "privileged",
+        "profiles",
+        "provider",
+        "pull_policy",
+        "pull_refresh_after",
+        "read_only",
+        "restart",
+        "runtime",
+        "scale",
+        "secrets",
+        "security_opt",
+        "shm_size",
+        "stdin_open",
+        "stop_grace_period",
+        "stop_signal",
+        "storage_opt",
+        "sysctls",
+        "tmpfs",
+        "tty",
+        "ulimits",
+        "umask",
+        "use_api_socket",
+        "user",
+        "userns_mode",
+        "uts",
+        "volumes",
+        "volumes_from",
+        "working_dir",
+    }
+)
 ROOT_NAMES = {"root"}
 # A service's name becomes a container name and a network alias: never an option.
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
@@ -62,6 +165,8 @@ class Declared:
     problems: dict[str, str] = field(default_factory=dict)
     # Each field not honoured, as `service.field`, with why.
     not_honoured: dict[str, str] = field(default_factory=dict)
+    # Each field the compose specification doesn't define, as `service.field`.
+    unknown: dict[str, str] = field(default_factory=dict)
     # The workspace definition the services came from, if any.
     path: str | None = None
     # Skip reasons the project declares CI makes too (`customizations.crew.ciOnlySkips`):
@@ -165,7 +270,9 @@ def _composed(raw: dict[str, object], path: str, read: Callable[[str], str | Non
     names = [n for n in given if n != workspace and (started is None or n in started)]
     result = Declared(path=path)
     for name in names:
-        service, why = _service(str(name), given[name], compose, result.not_honoured)
+        service, why = _service(
+            str(name), given[name], compose, result.not_honoured, result.unknown
+        )
         if service is not None:
             result.services.append(service)
         else:
@@ -173,8 +280,14 @@ def _composed(raw: dict[str, object], path: str, read: Callable[[str], str | Non
     return result
 
 
+def known(key: str) -> bool:
+    """A compose service field, or an extension the specification allows (`x-`), which
+    is for other tools and ignored."""
+    return key in SPEC_FIELDS or key.startswith("x-")
+
+
 def _service(
-    name: str, raw: object, compose: str, not_honoured: dict[str, str]
+    name: str, raw: object, compose: str, not_honoured: dict[str, str], unknown: dict[str, str]
 ) -> tuple[Service | None, str]:
     """One compose service as the crew starts it, or why it can't be."""
     where = f"`{compose}`'s `{name}`"
@@ -183,7 +296,9 @@ def _service(
     if not isinstance(raw, dict):
         return None, f"{where} isn't an object"
     for key in raw:
-        if key not in HONOURED:
+        if not known(str(key)):
+            unknown[f"{name}.{key}"] = UNKNOWN
+        elif key not in HONOURED and not str(key).startswith("x-"):
             not_honoured[f"{name}.{key}"] = NOT_HONOURED
     image = raw.get("image")
     if not isinstance(image, str) or image.startswith("-") or any(c.isspace() for c in image):

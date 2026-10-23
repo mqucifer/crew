@@ -895,3 +895,88 @@ def test_any_faulthandler_dump_is_a_timeout_never_a_failed_test():
     verdict = gates.Verdict(check=dumped)
     gates._checked(verdict)
     assert [f.rule for f in verdict.findings] == ["check.gates.the_checks_timed_out"]
+
+
+# --- a field no specification defines is the gate's problem (crew#839) -----------------
+
+
+def writes_setup_commands(root: Path) -> None:
+    """mqucifer/sprint-metrics#739's file, kept on crew/kept/739-20261023-1413."""
+    writes_the_workspace(root)
+    (root / ".devcontainer/devcontainer.json").write_text(
+        json.dumps(
+            {
+                "dockerComposeFile": "compose.yaml",
+                "service": "workspace",
+                "setupCommands": [["uv", "sync", "--extra", "dev"]],
+            }
+        )
+    )
+
+
+def test_workspace_check_names_a_field_no_specification_defines(tmp_path):
+    writes_setup_commands(tmp_path)
+    reply = session_tools(tmp_path).call("workspace_check", {})
+    assert reply.kind == "failed" and reply.rule == "check.role_tasks.workspace_checks"
+    assert "`setupCommands`" in reply.text and "`postCreateCommand`" in reply.text
+
+
+def test_workspace_check_says_what_it_ignores_even_when_it_passes(tmp_path):
+    from tests.test_services import PROJECT
+
+    (tmp_path / ".crew").mkdir()
+    (tmp_path / ".crew/project.yaml").write_text(PROJECT)
+    writes_the_workspace(tmp_path)
+    (tmp_path / ".devcontainer/devcontainer.json").write_text(
+        json.dumps(
+            {
+                "dockerComposeFile": "compose.yaml",
+                "service": "workspace",
+                "postCreateCommand": ["uv", "sync"],
+            }
+        )
+    )
+    (tmp_path / ".devcontainer/compose.yaml").write_text(
+        f"services:\n  workspace:\n    image: python@{REAL}\n    environment:\n      HOME: /tmp\n"
+        f"  db:\n    image: postgres:16@{REAL}\n    user: postgres\n"
+    )
+    reply = session_tools(tmp_path).call("workspace_check", {})
+    assert reply.kind == "passed", reply.text
+    assert "Not honoured" in reply.text and "`workspace.environment`" in reply.text
+
+
+def test_the_gate_refuses_a_workspace_tasks_unknown_field(repo):  # noqa: F811
+    writes_setup_commands(repo)
+    verdict = at_done(repo, done(), card=devops_task(), run_checks=failing({}))
+    found = [f for f in verdict.findings if f.rule == "check.role_tasks.workspace_checks"]
+    assert found and "`setupCommands`" in found[0].says
+
+
+def test_a_storys_gate_doesnt_check_the_workspace_file(repo):  # noqa: F811
+    writes_setup_commands(repo)
+    verdict = at_done(repo, done(), run_checks=failing({}))
+    assert "check.role_tasks.workspace_checks" not in [f.rule for f in verdict.findings]
+
+
+def test_a_task_owns_its_workspace_once_its_branch_changes_the_file(repo):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    assert not session_delivery._own_workspace(role_tasks.DEVOPS, repo)
+    writes_setup_commands(repo)
+    git = ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t"]
+    import subprocess
+
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "the workspace"], check=True)
+    assert session_delivery._own_workspace(role_tasks.DEVOPS, repo)
+    assert not session_delivery._own_workspace(None, repo)  # a story's never is
+
+
+def test_only_the_workspace_file_or_the_compose_file_it_names_is_the_tasks_own(tmp_path):
+    writes_the_workspace(tmp_path)
+    owns = role_tasks.owns_workspace_file
+    assert owns(role_tasks.DEVOPS, tmp_path, [".devcontainer/devcontainer.json"])
+    assert owns(role_tasks.DEVOPS, tmp_path, [".devcontainer/compose.yaml"])  # named by it
+    assert not owns(role_tasks.DEVOPS, tmp_path, ["ci/docker-compose.yml"])
+    assert not owns(role_tasks.DEVOPS, tmp_path, ["docker-compose.yml"])  # not the one named
+    assert not owns(role_tasks.ARCHITECT, tmp_path, [".devcontainer/devcontainer.json"])

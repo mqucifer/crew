@@ -526,12 +526,16 @@ def session(
     and its `scope` is what `done` takes as proof besides a test.
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
-    tools = Tools(worktree, workspace, toolchain, coverage, notes)
+    offered = any(s["function"]["name"] == "skill" for s in specs or ())
+    tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=offered)
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
         role=_role(role),
         start_chars=sizes,
+        # Whether `skill` was offered: the count of who reads a skill needs who could
+        # (M11's skills pilot, crew#839).
+        skill_offered=offered,
         limits={
             "backstop_s": BACKSTOP_S,
             "compact_at": COMPACT_AT,

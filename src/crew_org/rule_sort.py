@@ -69,6 +69,10 @@ SORTED: dict[str, tuple[str, str]] = {
     "guard.bounds.out_of_bounds": (GATE, "protected paths and CI weakened, on the diff"),
     "guard.role_tasks.out_of_scope": (GATE, "a role's Task beyond its role's paths, on the diff"),
     "check.role_tasks.diagram_renders": (GATE, "the Architect's diagram renders, at `done`"),
+    "check.role_tasks.setup_failed_at_start": (
+        FEEDBACK,
+        "a DevOps workspace Task's own failing setup, told at its session's start",
+    ),
     "check.role_tasks.workspace_checks": (
         FEEDBACK,
         "DevOps's `workspace_check`: the gate's checks on the workspace, before `done`",
@@ -97,6 +101,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.view": (FEEDBACK, "no such file or definition, or not text"),
     "session.search": (FEEDBACK, "no pattern, or no such path"),
     "session.image_digest": (FEEDBACK, "a digest, an option or a variable as the image"),
+    "session.skill": (FEEDBACK, "a skill the start doesn't name, refused with the ones there are"),
     "session.path": (
         FEEDBACK,
         "the tools read and write on the host, so their reply holds them to the worktree",

@@ -182,6 +182,9 @@ def workspace_file(
         Missing(f"`{path}`: `{name}` isn't honoured ({why}); remove it", builder)
         for name, why in defined.not_honoured.items()
     ]
+    found += [
+        Missing(f"`{path}`: `{name}` {why}", builder) for name, why in defined.unknown.items()
+    ]
     if defined.image:
         found += [
             Missing(f"`{path}`: {reason}", builder)

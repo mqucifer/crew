@@ -211,6 +211,18 @@ def at_done(
     verdict.check = run_checks(worktree)
     if merged is not None and role_tasks.changes_workspace(role, worktree, paths):
         _turned_on(worktree, merged, paths, verdict)
+        # Ignored by the start, so only here does a field no specification defines stop
+        # it: `setupCommands` was read as nothing, 8 rounds running (crew#839).
+        if unknown := role_tasks.unknown_fields(worktree):
+            verdict.findings.append(
+                Finding(
+                    "check.role_tasks.workspace_checks",
+                    says(
+                        "check.role_tasks.workspace_checks",
+                        problems="\n".join(f"- {p}" for p in unknown),
+                    ),
+                )
+            )
     _checked(verdict)
     if merged is not None:
         _skipped(worktree, merged, paths, verdict)

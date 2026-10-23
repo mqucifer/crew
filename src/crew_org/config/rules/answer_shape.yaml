@@ -268,6 +268,13 @@ session.image_digest:
   origin:
   - crew#839
   owner: Developer
+session.skill:
+  description: '`skill` is given the name of a skill there is.'
+  messages:
+    unknown: 'There''s no skill `{name}`: there''s {skills}.'
+  origin:
+  - crew#839
+  owner: DevOps Engineer
 session.search:
   description: '`search` is given a pattern, and a path there is.'
   messages:

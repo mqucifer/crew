@@ -165,7 +165,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `tool.started` | A role's tool call began. | **`tool`** | `cli.py` | stays in the crew's log |
 | `tool.finished` | A role's tool call finished: what it was, its sizes, and how it ended. | **`tool`**, **`round`**, **`turn`**, `chars`, `result`, **`rule`**, `rules`, `step`, **`args_chars`**, **`reply_chars`**, **`ran_s`**, **`found_nothing`** | `calls.py`, `cli.py`, `session/conversation.py` | as `tool_call` |
 | `tool.failed` | A role's tool call raised, and what the session was told. | **`tool`**, `step`, **`turn`**, `error` | `cli.py`, `session/conversation.py`, `session/steps.py` | as `tool_call` |
-| `session.started` | A Developer session began: its start's sizes and its limits. | `step`, `head`, **`round`**, `base`, `story_parts`, **`start_chars`**, `limits` | `session/conversation.py`, `session/steps.py` | as `session_started` |
+| `session.started` | A Developer session began: its start's sizes and its limits. | `step`, `head`, **`round`**, `base`, `story_parts`, **`start_chars`**, `limits`, `skill_offered` | `session/conversation.py`, `session/steps.py` | as `session_started` |
 | `session.turn` | One model call of a session, with its signals after it. | **`turn`**, **`tool_calls`**, **`model_s`**, **`since_action`**, **`most_views`**, **`edits_since_run`**, **`empty_lookups`**, **`reasoning_kept_chars`**, **`reasoning_kept_tokens`** | `session/conversation.py` | as `session_turn` |
 | `session.compacted` | A session's history compacted to fit, and what it left. | **`compaction`**, **`chars_after`**, **`estimated_tokens`**, **`estimated_after`**, **`turns_masked`**, **`turns_newly_masked`**, **`reasoning_chars_cleared`**, **`reasoning_tokens_cleared`** | `session/conversation.py` | as `session_compacted` |
 | `session.ended` | A session ended: how, why, and its totals. | `how`, `why`, **`stop`**, `said`, `evidence`, **`model_calls`**, **`model_s`**, **`edits_applied`**, **`test_runs`**, `tools_used`, `compactions`, `troubles`, `after_run_errors`, **`resetups`**, **`resetups_failed`** | `session/conversation.py` | as `session_ended` |
@@ -205,6 +205,7 @@ names, what it means, and where those notes are written:
 
 | Rule | Meaning | Written in |
 |---|---|---|
+| `check.role_tasks.setup_failed_at_start` | A DevOps workspace Task whose own branch's setup fails at the session's start is told it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839). | `flows/session_delivery.py:deliver_by_session` |
 | `decision.backlog_order.what_is_ordered` | The Product Owner ranks the open epics with no Rank. One it can't place yet is held for the work it builds on, and an order it can't give is recorded as failed. | `flows/backlog_order.py:order_backlogs` |
 | `decision.board_flow.already_delivered` | An epic whose stories would only repeat delivered work is closed as already delivered, naming the stories that delivered it. | `flows/board_flow.py:refine_epics` |
 | `decision.delivery.interrupted` | A delivery a service interrupted, not the story, is tried again next pass; three in a row block it for a person. | `flows/delivery.py:_deliver_and_move` |

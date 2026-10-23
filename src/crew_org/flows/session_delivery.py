@@ -67,7 +67,7 @@ from crew_org.git_ops import (
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
 from crew_org.rules import Rule
-from crew_org.session import conversation
+from crew_org.session import conversation, skills
 from crew_org.tools import reproduction
 from crew_org.tools.container import Held, own_services
 from crew_org.tools.github_issues import IssueClient
@@ -186,10 +186,11 @@ def deliver_by_session(
         outcome.ended = True
         return outcome
     profiles.set_project(record)
+    offered = skills.for_task(role, body, worktree, _branch_paths(worktree)) if role else []
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)
     story = story_section(
-        f"{role_tasks.task_start(role, _today())}\n\n{story_text}" if role else story_text,
+        f"{role_tasks.task_start(role, _today(), offered)}\n\n{story_text}" if role else story_text,
         note,
         rows,
         diagram,
@@ -239,10 +240,21 @@ def deliver_by_session(
             # Once more: a fetch can fail for a moment.
             setup = held.setup()
         if setup is not None and not setup.ok:
-            # As a failed setup is reported today, so a design's fault is still found
-            # as one (crew#690).
             ran = f"$ {setup.command}\n(exit {setup.code})\n{setup.output[-1500:]}"
-            return _unready(outcome, Rule.WORKSPACE_UNREADY, ran)
+            if not _own_workspace(role, worktree):
+                # As a failed setup is reported today, so a design's fault is still found
+                # as one (crew#690).
+                return _unready(outcome, Rule.WORKSPACE_UNREADY, ran)
+            # The setup is the Task's own work, as at `done`: told to its session, which
+            # still has to pass it there (crew#839, mqucifer/sprint-metrics#739).
+            story += "\n\n" + session_end.setup_failed_at_start(ran)
+            sink.note(
+                EventKind.NOTE,
+                f"#{number}'s own setup failed at the start: told to its session",
+                repo=repo,
+                card=number,
+                rule="check.role_tasks.setup_failed_at_start",
+            )
         reached = _sessions(
             card,
             story=story,
@@ -264,6 +276,7 @@ def deliver_by_session(
             measured=measured,
             role=role.spec if role else conversation.ROLE,
             task=role,
+            skills=offered,
         )
     finally:
         held.stop()
@@ -364,6 +377,18 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
 HANG_ROUNDS = 12
 
 
+def _branch_paths(worktree: Path) -> list[str]:
+    """The paths the branch changes against the default branch it left."""
+    merged = merged_base(worktree)
+    return reproduction._changed(worktree, merged.sha) if merged is not None else []
+
+
+def _own_workspace(task: role_tasks.TaskRole | None, worktree: Path) -> bool:
+    """Is the worktree's workspace file the Task's own work: a DevOps Task whose branch
+    changes it, or the compose file it names (`role_tasks.owns_workspace_file`)?"""
+    return role_tasks.owns_workspace_file(task, worktree, _branch_paths(worktree))
+
+
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
     """A Task's work events name its role, so they're placed by its card, not as a review
     of a pull request (delivery-history's DevOps Engineer)."""
@@ -392,6 +417,7 @@ def _sessions(
     measured: dict[str, int],
     role: str = conversation.ROLE,
     task: role_tasks.TaskRole | None = None,
+    skills: list[Any] | None = None,
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -430,7 +456,7 @@ def _sessions(
             round=rounds,
             story_parts=measured,
             role=role,
-            specs=role_tasks.done_specs(task) if task else None,
+            specs=role_tasks.done_specs(task, skills or ()) if task else None,
             scope=task.scope if task else (),
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)

@@ -451,7 +451,13 @@ environment** (the Sponsor, 2026-10-18; crew#778). The crew reads only the
 Everything that would loosen the container, build an image or run on the host
 (`runArgs`, `mounts`, `privileged`, `capAdd`, features, `build`,
 `initializeCommand` and the like) isn't honoured, and `crew ready` names each
-one. A project without the file uses its design's image and setup, as above.
+one. A field the specification doesn't define at all (`setupCommands`, on
+mqucifer/sprint-metrics#739) is unknown: named, with the fields the crew reads
+instead, by `crew ready`, DevOps's `workspace_check` and the gate at a workspace
+Task's `done`, never silently read as nothing (crew#839). The compose services
+are held to the compose specification's fields the same way, and of the workspace's
+own service only its `image` is read: `workspace_check` names its other fields as
+not honoured. A project without the file uses its design's image and setup, as above.
 Moving the first two projects to the file waits on the Architect's `crew
 design` writing it.
 
@@ -466,6 +472,24 @@ protection in the table, with an init process, and runs each command with
 session's end; a tick's start removes those whose crew process has gone; and one
 the crew forgets ends itself after 4 hours, past the 3-hour backstop, and is
 removed. `crew ready <project> --setup` starts the project's workspace this way.
+A setup that fails twice at the start leaves the story's workspace not ready
+(`delivery.workspace_unready`), except on a DevOps workspace Task whose own branch
+changes the workspace file: there the setup is its work, so its session starts and
+is told the command, exit and output, as a finding at `done` is
+(`check.role_tasks.setup_failed_at_start`; crew#839). It works with nothing
+installed and no network, and its setup is tried again, with the network, at
+`done`.
+
+**DevOps's workspace Tasks have a skill** (the Sponsor, 2026-10-23; crew#839):
+know-how read on demand, not carried as standing context (`session/skills.py`).
+The start names it in one line, and the session reads it with the `skill` tool.
+`workspace` says how the crew runs a workspace: the setup fields it reads, setup's
+one-off container and its limits, the session's lack of network, the services'
+hardening, what isn't honoured and what the checks refuse. It's generated from the
+crew's own constants and the containers' own flags, so it can't drift. It's offered
+for the first workspace file, a Goal's services or toolchain, a workspace finding,
+or any DevOps Task whose branch changes the workspace file. Each call's
+`tool.finished` event records the skill asked for, never its text.
 <!-- /told to -->
 
 **Before the checks, the project's own fixers run, and the attempt answers for

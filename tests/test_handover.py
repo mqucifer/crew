@@ -328,6 +328,14 @@ def test_each_field_the_crew_doesn_t_honour_is_named(tmp_path, registry):
     assert "`initializeCommand` isn't honoured (it runs on the host)" in whats(found)
 
 
+def test_a_field_no_specification_defines_is_named(tmp_path, registry):
+    """crew#839: a setup the crew reads as nothing is never handed over quietly."""
+    found = with_file(tmp_path, f'{{"image": "{PINNED}", "setupCommands": [["x"]]}}', setup="null")
+    assert "`.devcontainer/devcontainer.json`: `setupCommands` isn't a devcontainer field" in whats(
+        found
+    )
+
+
 def test_the_file_s_image_follows_the_image_rule(tmp_path):
     found = with_file(tmp_path, '{"image": "node:22"}', setup="null")
     assert "`.devcontainer/devcontainer.json`: the sandbox image `node:22` isn't pinned" in whats(
@@ -506,3 +514,22 @@ def test_crew_onboard_goes_on_at_level_2_and_with_skeleton(takeover):
     assert onboard_cli().exit_code == 1 and asked == ["model"]
     at(0, [Missing("no record", SPONSOR)])
     assert onboard_cli("--skeleton").exit_code == 1 and asked == ["model", "model"]
+
+
+def test_the_usual_compose_workspace_service_passes_the_handover(tmp_path, registry):
+    """The review of mqucifer/crew#880: `command: sleep infinity` and `volumes` are the
+    specification's own compose shape, ignored by the crew, and never "remove it"."""
+    compose = (
+        f"services:\n  workspace:\n    image: {PINNED}\n    command: sleep infinity\n"
+        "    volumes: [..:/workspaces:cached]\n"
+    )
+    found = check(
+        tmp_path,
+        {
+            ".devcontainer/devcontainer.json": '{"dockerComposeFile": "compose.yaml", '
+            '"service": "workspace"}',
+            ".devcontainer/compose.yaml": compose,
+        },
+        setup="null",
+    )
+    assert "workspace.command" not in whats(found) and "workspace.volumes" not in whats(found)

@@ -1058,3 +1058,88 @@ def test_a_storys_pull_request_is_still_the_developers(ws, deliver):
     work = [e for e in seen if e.kind in ("agent.started", "agent.finished")]
     assert {e.role for e in work} == {"Developer"}
     assert not any("task_role" in e.detail for e in work)
+
+
+# --- a workspace Task's own setup failure is its session's work (crew#839) -------------
+
+
+def devops_task() -> Card:
+    return Card(
+        item_id="T739",
+        number=739,
+        title="Write the workspace file and the services its tests need",
+        status="In Progress",
+        state="OPEN",
+        work_type="Task",
+        repo="sprint-metrics",
+        labels=frozenset({"role:devops"}),
+    )
+
+
+@pytest.fixture
+def changes_the_workspace(monkeypatch):
+    """The branch changes the workspace file, as a resumed mqucifer/sprint-metrics#739's did."""
+    from crew_org.tools import reproduction
+
+    monkeypatch.setattr(
+        reproduction, "_changed", lambda at, sha: [".devcontainer/devcontainer.json"]
+    )
+
+
+def test_a_workspace_tasks_own_failing_setup_starts_its_session_told_why(
+    ws, deliver, changes_the_workspace
+):
+    Held.setup_codes = [1, 1]
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    outcome = deliver(
+        ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")), story=devops_task()
+    )
+    assert outcome.blocked_rule is None
+    told = sessions.started[0]["story"]
+    assert "Your branch's setup failed at the start" in told
+    assert "$ uv sync\n(exit 1)\nno network" in told
+    assert "`workspace_check`" in told and "`done`" in told
+    assert Held.instances[0].setups == 2
+
+
+def test_a_storys_failing_setup_still_blocks_whatever_its_branch_changes(
+    ws, deliver, changes_the_workspace
+):
+    Held.setup_codes = [1, 1]
+    outcome = deliver(ws, Sessions(), Routes())
+    assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY
+
+
+def test_a_workspace_tasks_failing_setup_it_didnt_write_still_blocks(ws, deliver):
+    """A Task on main's workspace file: the setup isn't its work, so it isn't its to answer."""
+    Held.setup_codes = [1, 1]
+    outcome = deliver(ws, Sessions(), Routes(), story=devops_task())
+    assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY
+
+
+def test_a_workspace_tasks_session_is_offered_the_workspace_skill(
+    ws, deliver, changes_the_workspace
+):
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")), story=devops_task())
+    started = sessions.started[0]
+    assert "Skills for this Task: `workspace`" in started["story"]
+    assert "skill" in [s["function"]["name"] for s in started["specs"]]
+
+
+def test_a_story_is_offered_no_skill(ws, deliver, changes_the_workspace):
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")))
+    assert "Skills" not in sessions.started[0]["story"]
+    assert sessions.started[0]["specs"] is None
+
+
+def test_a_ci_tasks_compose_file_doesnt_make_mains_failing_setup_its_own(ws, deliver, monkeypatch):
+    """The review of mqucifer/crew#880: a ci-services Task editing `ci/docker-compose.yml`
+    with main's setup broken goes to workspace_unready, not round after round of gates."""
+    from crew_org.tools import reproduction
+
+    monkeypatch.setattr(reproduction, "_changed", lambda at, sha: ["ci/docker-compose.yml"])
+    Held.setup_codes = [1, 1]
+    outcome = deliver(ws, Sessions(), Routes(), story=devops_task())
+    assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY

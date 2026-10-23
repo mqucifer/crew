@@ -875,7 +875,7 @@ def test_a_tasks_session_is_given_its_own_done(tmp_path, monkeypatch):
 
     monkeypatch.setattr(conversation, "record", lambda *a, **k: None)
     monkeypatch.setattr(conversation, "start", lambda *a: ("start", {"total": 5}, []))
-    monkeypatch.setattr(conversation, "Tools", lambda *a: None)
+    monkeypatch.setattr(conversation, "Tools", lambda *a, **k: None)
     specs = role_tasks.done_specs(ARCHITECT)
     task = conversation.session(tmp_path, "s", None, None, specs=specs, scope=ARCHITECT.scope)
     assert task.specs is specs

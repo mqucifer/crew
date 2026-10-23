@@ -153,11 +153,15 @@ def outside_scope(role: TaskRole, paths: list[str]) -> list[str]:
     return [p for p in paths if not any(fnmatch.fnmatch(p, glob) for glob in role.scope)]
 
 
-def task_start(role: TaskRole, today: str = "") -> str:
-    """What a role's session is told its work is, before the Task itself.
+def task_start(role: TaskRole, today: str = "", skills: Any = ()) -> str:
+    """What a role's session is told its work is, before the Task itself, with a line
+    naming the skills it can read (`session/skills.py`).
 
     The date is the crew's: a model never supplies a date on its own (ADR 0019).
     """
+    from crew_org.session import skills as known  # noqa: PLC0415
+
+    offered = known.start_line(list(skills))
     return (
         (f"Today is {today}. " if today else "")
         + f"This is the {role.name}'s own Task (ADR 0034), not a story. You work it as the "
@@ -165,7 +169,7 @@ def task_start(role: TaskRole, today: str = "") -> str:
         + ", ".join(f"`{g}`" for g in role.scope)
         + ". A change anywhere else is refused at `done`. What else you find isn't this "
         "Task's: leave it, and say it in `done`'s summary."
-    )
+    ) + (f"\n\n{offered}" if offered else "")
 
 
 def covers_tests(role: TaskRole) -> bool:
@@ -173,14 +177,14 @@ def covers_tests(role: TaskRole) -> bool:
     return any(fnmatch.fnmatch(p, g) for g in role.scope for p in ("tests/test_x.py", "test_x.py"))
 
 
-def done_specs(role: TaskRole) -> list[dict[str, Any]]:
+def done_specs(role: TaskRole, skills: Any = ()) -> list[dict[str, Any]]:
     """The Developer's tools, with `done` told as a Task's is (crew#839).
 
     The Developer's `done` asks a test for each criterion and says QA follows. A Task
     may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
     Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
     """
-    from crew_org.session.tools import SPECS, TASK_SPECS  # noqa: PLC0415
+    from crew_org.session.tools import SKILL_SPEC, SPECS, TASK_SPECS  # noqa: PLC0415
 
     scope = ", ".join(f"`{g}`" for g in role.scope)
     tests = covers_tests(role)
@@ -195,6 +199,10 @@ def done_specs(role: TaskRole) -> list[dict[str, Any]]:
     if role.key in TASK_SPECS:
         at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
         specs.insert(at, copy.deepcopy(TASK_SPECS[role.key]))
+    if skills:
+        # Only to a Task its skills are for, so another Task's tools are as they were.
+        at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
+        specs.insert(at, copy.deepcopy(SKILL_SPEC))
     for spec in specs:
         fn = spec["function"]
         if fn["name"] != "done":
@@ -763,6 +771,22 @@ def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) ->
     )
 
 
+def owns_workspace_file(role: TaskRole | None, worktree: Any, paths: list[str]) -> bool:
+    """A DevOps Task whose branch changes the workspace file itself, or the compose file
+    it names: its setup is then the Task's own work (crew#839).
+
+    Narrower than `changes_workspace`, which takes any compose file by its name: a CI
+    Task editing `ci/docker-compose.yml` doesn't make a broken setup on main its own
+    (the review of mqucifer/crew#880).
+    """
+    from crew_org.tools import devcontainer, services  # noqa: PLC0415
+
+    if role is not DEVOPS:
+        return False
+    named = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
+    return any(p in devcontainer.PATHS or (named is not None and p == named) for p in paths)
+
+
 def workspace_problems(worktree: Any) -> list[str]:
     """What the gate at `done` refuses in the workspace file and its compose file, as the
     worktree has them now: DevOps's `workspace_check` (the Sponsor, 2026-10-23, crew#839).
@@ -785,8 +809,10 @@ def workspace_problems(worktree: Any) -> list[str]:
         return devcontainer.read_inside(worktree, path)
 
     problems: list[str] = []
-    if problem := workspace.toolchain(worktree).problem:
-        problems.append(problem)
+    tools = workspace.toolchain(worktree)
+    if tools.problem:
+        problems.append(tools.problem)
+    problems += unknown_fields(worktree, tools)
     named = services.compose_file(read)
     candidates = [*bounds.COMPOSE_NAMES, *(f".devcontainer/{n}" for n in bounds.COMPOSE_NAMES)]
     for path in sorted({p for p in [*candidates, named] if p}):
@@ -800,6 +826,39 @@ def workspace_problems(worktree: Any) -> list[str]:
     declared = services.declared(read)
     problems += [f"`{name}`: {why}" for name, why in declared.problems.items()]
     return problems
+
+
+def unknown_fields(worktree: Any, tools: Any = None) -> list[str]:
+    """Each field of the workspace file and its compose file's services that no
+    specification defines: a problem for `workspace_check` and the gate at `done`, never
+    for the container's start (the Sponsor, 2026-10-23, crew#839)."""
+    from crew_org.tools import devcontainer, services, workspace  # noqa: PLC0415
+
+    tools = tools or workspace.toolchain(worktree)
+    declared = services.declared(lambda path: devcontainer.read_inside(worktree, path))
+    compose = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
+    return [
+        *tools.unknown,
+        *(f"`{compose}`: `{name}` {why}" for name, why in declared.unknown.items()),
+    ]
+
+
+def workspace_not_honoured(worktree: Any) -> list[str]:
+    """Each field the workspace file and its compose file name that the crew ignores, with
+    why: told in `workspace_check`'s reply, neither a problem nor a gate's finding (the
+    operator, crew#839)."""
+    from crew_org.tools import devcontainer, services  # noqa: PLC0415
+
+    defined = devcontainer.read(worktree)
+    if defined is None:
+        return []
+    declared = services.declared(lambda path: devcontainer.read_inside(worktree, path))
+    compose = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
+    return [
+        *(f"`{name}`: {why}" for name, why in defined.not_honoured.items()),
+        *(f"`{name}` in `{compose}`: {why}" for name, why in defined.service_ignored.items()),
+        *(f"`{name}`: {why}" for name, why in declared.not_honoured.items()),
+    ]
 
 
 # The pull request's section naming the merged tests a workspace Task's services turn

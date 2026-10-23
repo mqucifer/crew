@@ -266,6 +266,9 @@ class Toolchain:
     python: bool = True
     # The project's own environment, from its devcontainer.json.
     env: dict[str, str] = field(default_factory=dict)
+    # Each field of the workspace file, or its service, the specifications don't define,
+    # said as the gate says it. Ignored, so the container still starts (crew#839).
+    unknown: list[str] = field(default_factory=list)
 
 
 def toolchain(worktree: Path) -> Toolchain:
@@ -333,6 +336,9 @@ def toolchain(worktree: Path) -> Toolchain:
         problem=problem,
         python=python,
         env=dict(defined.env) if defined is not None else {},
+        unknown=[f"`{defined.path}`: `{name}` {why}" for name, why in defined.unknown.items()]
+        if defined is not None
+        else [],
     )
 
 

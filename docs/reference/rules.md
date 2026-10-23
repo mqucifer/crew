@@ -17,8 +17,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 17 |
-| A gate at `done` sends a session's branch back | 12 |
+| A session's tool refuses a call, and says why in its reply | 18 |
+| A gate at `done` sends a session's branch back | 13 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 54 |
@@ -33,11 +33,11 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 68 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 127 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
@@ -176,7 +176,7 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|---|---|---|---|
 | `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
 | `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
-| `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/session/tools.py:Tools.task_check | crew#778 |
+| `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/reading.py:ReadTools.call` | Developer | — | src/crew_org/session/reading.py:ReadTools.call<br>src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
 | `session.git`<br>The git tool runs one git command line with no shell, and only the commands that read and `restore`; never an option that writes, reads outside the repository or runs a program. | guards | `src/crew_org/session/git.py:parse` | Developer | — | src/crew_org/session/git.py:_check_option<br>src/crew_org/session/git.py:parse<br>src/crew_org/session/reading.py:ReadTools.git | crew#778 |
@@ -188,6 +188,7 @@ section; one no line holds for is unplaced, never guessed.
 | `session.restore`<br>`git restore` takes `--source=<ref>` and files, and writes text files in the branch only. | edits | `src/crew_org/session/git.py:restore_args` | Developer | — | src/crew_org/session/git.py:restore_args<br>src/crew_org/session/tools.py:Tools._restore | crew#778 |
 | `session.run`<br>`run` of tests names them, and needs the project's checks to run pytest; `run` of lint needs a lint among them. | evidence | `src/crew_org/session/tools.py:Tools.run` | Developer | — | src/crew_org/session/tools.py:Tools.run | crew#778 |
 | `session.search`<br>`search` is given a pattern, and a path there is. | answer_shape | `src/crew_org/session/tools.py:Tools.search` | Developer | — | src/crew_org/session/tools.py:Tools.search | crew#778 |
+| `session.skill`<br>`skill` is given the name of a skill there is. | answer_shape | `src/crew_org/session/tools.py:skill` | Developer | — | src/crew_org/session/tools.py:skill | crew#778<br>crew#839 |
 | `session.tests_for`<br>`tests_for` needs the project's coverage map, which is Python only. | evidence | `src/crew_org/session/tools.py:Tools.tests_for` | Developer | §14 a_project_in_more_than_one (both cite crew#404; in §14) | src/crew_org/session/tools.py:Tools.tests_for | crew#404<br>crew#778 |
 | `session.view`<br>`view` shows a text file there is, or a definition it has. | answer_shape | `src/crew_org/session/tools.py:Tools.view` | Developer | — | src/crew_org/session/tools.py:Tools.view | crew#778 |
 | `session.write_file`<br>`write_file` rewrites an existing file only when told to overwrite it. | edits | `src/crew_org/session/tools.py:Tools.write_file` | Developer | — | src/crew_org/session/tools.py:Tools.write_file | crew#778 |
@@ -204,6 +205,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.the_checks_timed_out`<br>At `done`, checks that hung or ran past their bound are a finding naming the hung test and where it waits, never counted as a test that failed (crew#839). | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778<br>crew#839 |
 | `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:_declared_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests | crew#778 |
 | `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
+| `check.role_tasks.setup_failed_at_start`<br>A DevOps workspace Task whose own branch's setup fails at the session's start is told it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839). | guards | `src/crew_org/flows/session_end.py:setup_failed_at_start` | Developer | — | src/crew_org/flows/session_end.py:setup_failed_at_start | crew#778 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
 
 {}{} | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
