@@ -853,8 +853,10 @@ def workspace_not_honoured(worktree: Any) -> list[str]:
     if defined is None:
         return []
     declared = services.declared(lambda path: devcontainer.read_inside(worktree, path))
+    compose = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
     return [
         *(f"`{name}`: {why}" for name, why in defined.not_honoured.items()),
+        *(f"`{name}` in `{compose}`: {why}" for name, why in defined.service_ignored.items()),
         *(f"`{name}`: {why}" for name, why in declared.not_honoured.items()),
     ]
 

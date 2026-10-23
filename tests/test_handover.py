@@ -514,3 +514,22 @@ def test_crew_onboard_goes_on_at_level_2_and_with_skeleton(takeover):
     assert onboard_cli().exit_code == 1 and asked == ["model"]
     at(0, [Missing("no record", SPONSOR)])
     assert onboard_cli("--skeleton").exit_code == 1 and asked == ["model", "model"]
+
+
+def test_the_usual_compose_workspace_service_passes_the_handover(tmp_path, registry):
+    """The review of mqucifer/crew#880: `command: sleep infinity` and `volumes` are the
+    specification's own compose shape, ignored by the crew, and never "remove it"."""
+    compose = (
+        f"services:\n  workspace:\n    image: {PINNED}\n    command: sleep infinity\n"
+        "    volumes: [..:/workspaces:cached]\n"
+    )
+    found = check(
+        tmp_path,
+        {
+            ".devcontainer/devcontainer.json": '{"dockerComposeFile": "compose.yaml", '
+            '"service": "workspace"}',
+            ".devcontainer/compose.yaml": compose,
+        },
+        setup="null",
+    )
+    assert "workspace.command" not in whats(found) and "workspace.volumes" not in whats(found)

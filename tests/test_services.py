@@ -348,6 +348,8 @@ def test_the_workspace_services_own_fields_are_named_since_only_its_image_is_rea
         (tmp_path / path).write_text(text)
     found = devcontainer.read(tmp_path)
     assert found.image == WORKSPACE and found.problems == []
-    assert "`containerEnv`" in found.not_honoured["workspace.environment"]
-    assert set(found.not_honoured) == {"workspace.user", "workspace.environment"}
+    assert "`containerEnv`" in found.service_ignored["workspace.environment"]
+    assert set(found.service_ignored) == {"workspace.user", "workspace.environment"}
+    # Told in workspace_check's reply only: never a problem, nor what handover refuses.
+    assert found.not_honoured == {}
     assert set(found.unknown) == {"workspace.install"}

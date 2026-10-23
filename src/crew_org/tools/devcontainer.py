@@ -119,6 +119,11 @@ class Definition:
     # Each field the specification doesn't define, with what the crew reads instead.
     # Ignored too, so it's the gate's to refuse, never the start's (crew#839).
     unknown: dict[str, str] = field(default_factory=dict)
+    # Each of the workspace's own compose service's fields besides `image`, as
+    # `service.field`, with why: ignored, and only told in `workspace_check`'s reply. A
+    # devcontainer's usual compose service (`command: sleep infinity`, `volumes`) is no
+    # problem, so nothing refuses these (the review of mqucifer/crew#880).
+    service_ignored: dict[str, str] = field(default_factory=dict)
 
 
 def instead(name: str) -> str:
@@ -198,9 +203,10 @@ def read(root: Path) -> Definition | None:
     problems: list[str] = []
     not_honoured = {name: why for name, why in NOT_HONOURED.items() if raw.get(name) is not None}
     unknown = {str(name): instead(str(name)) for name in raw if name not in SPEC_FIELDS}
+    ignored: dict[str, str] = {}
     image = raw.get("image")
     if raw.get("dockerComposeFile") is not None and image is None:
-        image, why = _compose_image(root, path, raw, not_honoured, unknown)
+        image, why = _compose_image(root, path, raw, ignored, unknown)
         if why:
             problems.append(why)
     elif not isinstance(image, str) or not image.strip():
@@ -234,20 +240,20 @@ def read(root: Path) -> Definition | None:
             not_honoured[f"containerEnv.{name}"] = "the crew sets it"
         else:
             env[name] = value
-    return Definition(path, image, setup, env, problems, not_honoured, unknown)
+    return Definition(path, image, setup, env, problems, not_honoured, unknown, ignored)
 
 
 def _compose_image(
     root: Path,
     path: str,
     raw: dict[str, object],
-    not_honoured: dict[str, str],
+    ignored: dict[str, str],
     unknown: dict[str, str],
 ) -> tuple[str | None, str | None]:
     """The workspace's image from its service in the compose file, or why there's none.
 
-    Only the image is read of the workspace's service: each other field is named, as not
-    honoured or unknown, since on mqucifer/sprint-metrics#739 the `HOME` and `PATH` its
+    Only the image is read of the workspace's service: each other field is named, as
+    ignored or unknown, since on mqucifer/sprint-metrics#739 the `HOME` and `PATH` its
     `environment` set did nothing, and nothing said so (the operator, crew#839).
     """
     import posixpath  # noqa: PLC0415
@@ -277,7 +283,7 @@ def _compose_image(
         if key == "image" or str(key).startswith("x-"):
             continue
         if services.known(str(key)):
-            not_honoured[f"{service}.{key}"] = WORKSPACE_SERVICE.get(
+            ignored[f"{service}.{key}"] = WORKSPACE_SERVICE.get(
                 str(key), "only the workspace service's `image` is read"
             )
         else:
