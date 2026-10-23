@@ -139,6 +139,7 @@ def test_its_event_records_the_name_asked_for_never_the_text(tmp_path, seen):  #
         ("nope", "refused", "session.skill"),
     ]
     assert all("How the crew runs" not in json.dumps(e) for e in finished)
+    assert kinds(seen, EventKind.SESSION_STARTED)[0].detail["skill_offered"] is True
 
 
 def test_workspace_check_points_to_the_skill_when_its_offered(tmp_path):

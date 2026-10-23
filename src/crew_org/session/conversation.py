@@ -533,6 +533,9 @@ def session(
         f"session: {sizes['total']} characters to start",
         role=_role(role),
         start_chars=sizes,
+        # Whether `skill` was offered: the count of who reads a skill needs who could
+        # (M11's skills pilot, crew#839).
+        skill_offered=offered,
         limits={
             "backstop_s": BACKSTOP_S,
             "compact_at": COMPACT_AT,
