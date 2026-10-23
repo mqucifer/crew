@@ -794,3 +794,55 @@ def test_the_split_refuses_a_story_that_cuts_the_release(title):
 @pytest.mark.parametrize("title", NOT_RELEASE_STORIES)
 def test_a_story_about_releases_as_data_is_not_the_release(title):
     _split_story(title)
+
+
+def _done(specs):
+    return next(s["function"] for s in specs if s["function"]["name"] == "done")
+
+
+def test_a_tasks_done_says_its_proof_is_its_scope_and_no_qa_follows():
+    """On mqucifer/sprint-metrics#738 the Developer's `done` asked the Architect for a
+    test per criterion, and it wrote one outside its scope (crew#839)."""
+    from crew_org.session.tools import SPECS
+
+    done = _done(role_tasks.done_specs(ARCHITECT))
+    assert "`docs/architecture.md`" in done["description"]
+    assert "review and QA follow" not in done["description"]
+    assert "QA doesn't verify a Task" in done["description"]
+    assert "changed_tests" not in done["parameters"]["properties"]
+    proof = done["parameters"]["properties"]["criteria"]["items"]["properties"]["test"]
+    assert "`docs/architecture.md`" in proof["description"]
+    # The Developer's own `done` is told as before.
+    assert "Then review and QA follow." in _done(SPECS)["description"]
+    assert "changed_tests" in _done(SPECS)["parameters"]["properties"]
+
+
+def test_neither_tasks_scope_takes_in_tests():
+    assert not role_tasks.covers_tests(ARCHITECT)
+    assert not role_tasks.covers_tests(DEVOPS)
+
+
+def test_done_takes_a_file_in_the_tasks_scope_as_a_criterions_proof(tmp_path):
+    from crew_org.flows import gates
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "architecture.md").write_text("# Architecture\n")
+    said = {"criteria": [{"criterion": "draws it", "test": "docs/architecture.md"}]}
+    assert gates.missing_named_tests(tmp_path, said, scope=ARCHITECT.scope) == []
+    # Outside a Task, or a file it doesn't have, it's still a missing test.
+    assert gates.missing_named_tests(tmp_path, said) != []
+    gone = {"criteria": [{"criterion": "draws it", "test": "docs/other.md"}]}
+    assert gates.missing_named_tests(tmp_path, gone, scope=ARCHITECT.scope) != []
+
+
+def test_a_tasks_session_is_given_its_own_done(tmp_path, monkeypatch):
+    from crew_org.session import conversation
+
+    monkeypatch.setattr(conversation, "record", lambda *a, **k: None)
+    monkeypatch.setattr(conversation, "start", lambda *a: ("start", {"total": 5}, []))
+    monkeypatch.setattr(conversation, "Tools", lambda *a: None)
+    specs = role_tasks.done_specs(ARCHITECT)
+    task = conversation.session(tmp_path, "s", None, None, specs=specs, scope=ARCHITECT.scope)
+    assert task.specs is specs
+    story = conversation.session(tmp_path, "s", None, None)
+    assert story.specs is conversation.SPECS

@@ -258,6 +258,7 @@ def deliver_by_session(
             route=session_end.route,
             measured=measured,
             role=role.spec if role else conversation.ROLE,
+            task=role,
         )
     finally:
         held.stop()
@@ -299,6 +300,7 @@ def _sessions(
     route: Any,
     measured: dict[str, int],
     role: str = conversation.ROLE,
+    task: role_tasks.TaskRole | None = None,
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -333,6 +335,8 @@ def _sessions(
             round=rounds,
             story_parts=measured,
             role=role,
+            specs=role_tasks.done_specs(task) if task else None,
+            scope=task.scope if task else (),
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(
