@@ -135,7 +135,7 @@ def for_task(role: Any, body: str | None, worktree: Path, paths: list[str]) -> l
     if (
         kind in (role_tasks.FIRST_WORKSPACE, role_tasks.NEED)
         or (kind == role_tasks.FINDING and key.startswith("workspace-"))
-        or role_tasks.changes_workspace(role, worktree, paths)
+        or role_tasks.owns_workspace_file(role, worktree, paths)
     ):
         return [SKILLS["workspace"]]
     return []

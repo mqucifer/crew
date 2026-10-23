@@ -1132,3 +1132,14 @@ def test_a_story_is_offered_no_skill(ws, deliver, changes_the_workspace):
     deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")))
     assert "Skills" not in sessions.started[0]["story"]
     assert sessions.started[0]["specs"] is None
+
+
+def test_a_ci_tasks_compose_file_doesnt_make_mains_failing_setup_its_own(ws, deliver, monkeypatch):
+    """The review of mqucifer/crew#880: a ci-services Task editing `ci/docker-compose.yml`
+    with main's setup broken goes to workspace_unready, not round after round of gates."""
+    from crew_org.tools import reproduction
+
+    monkeypatch.setattr(reproduction, "_changed", lambda at, sha: ["ci/docker-compose.yml"])
+    Held.setup_codes = [1, 1]
+    outcome = deliver(ws, Sessions(), Routes(), story=devops_task())
+    assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY

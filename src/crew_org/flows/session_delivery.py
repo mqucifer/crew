@@ -385,8 +385,8 @@ def _branch_paths(worktree: Path) -> list[str]:
 
 def _own_workspace(task: role_tasks.TaskRole | None, worktree: Path) -> bool:
     """Is the worktree's workspace file the Task's own work: a DevOps Task whose branch
-    changes it (`role_tasks.changes_workspace`)?"""
-    return role_tasks.changes_workspace(task, worktree, _branch_paths(worktree))
+    changes it, or the compose file it names (`role_tasks.owns_workspace_file`)?"""
+    return role_tasks.owns_workspace_file(task, worktree, _branch_paths(worktree))
 
 
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:

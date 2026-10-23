@@ -970,3 +970,13 @@ def test_a_task_owns_its_workspace_once_its_branch_changes_the_file(repo):  # no
     subprocess.run([*git, "commit", "-qm", "the workspace"], check=True)
     assert session_delivery._own_workspace(role_tasks.DEVOPS, repo)
     assert not session_delivery._own_workspace(None, repo)  # a story's never is
+
+
+def test_only_the_workspace_file_or_the_compose_file_it_names_is_the_tasks_own(tmp_path):
+    writes_the_workspace(tmp_path)
+    owns = role_tasks.owns_workspace_file
+    assert owns(role_tasks.DEVOPS, tmp_path, [".devcontainer/devcontainer.json"])
+    assert owns(role_tasks.DEVOPS, tmp_path, [".devcontainer/compose.yaml"])  # named by it
+    assert not owns(role_tasks.DEVOPS, tmp_path, ["ci/docker-compose.yml"])
+    assert not owns(role_tasks.DEVOPS, tmp_path, ["docker-compose.yml"])  # not the one named
+    assert not owns(role_tasks.ARCHITECT, tmp_path, [".devcontainer/devcontainer.json"])

@@ -771,6 +771,22 @@ def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) ->
     )
 
 
+def owns_workspace_file(role: TaskRole | None, worktree: Any, paths: list[str]) -> bool:
+    """A DevOps Task whose branch changes the workspace file itself, or the compose file
+    it names: its setup is then the Task's own work (crew#839).
+
+    Narrower than `changes_workspace`, which takes any compose file by its name: a CI
+    Task editing `ci/docker-compose.yml` doesn't make a broken setup on main its own
+    (the review of mqucifer/crew#880).
+    """
+    from crew_org.tools import devcontainer, services  # noqa: PLC0415
+
+    if role is not DEVOPS:
+        return False
+    named = services.compose_file(lambda path: devcontainer.read_inside(worktree, path))
+    return any(p in devcontainer.PATHS or (named is not None and p == named) for p in paths)
+
+
 def workspace_problems(worktree: Any) -> list[str]:
     """What the gate at `done` refuses in the workspace file and its compose file, as the
     worktree has them now: DevOps's `workspace_check` (the Sponsor, 2026-10-23, crew#839).

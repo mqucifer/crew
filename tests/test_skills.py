@@ -154,3 +154,10 @@ def test_a_failed_setup_at_the_start_points_to_the_skill():
     from crew_org.flows import session_end
 
     assert "The `workspace` skill" in session_end.setup_failed_at_start("$ x\n(exit 1)\n")
+
+
+def test_a_ci_tasks_own_compose_file_doesnt_offer_the_workspace_skill(tmp_path):
+    found = skills.for_task(
+        role_tasks.DEVOPS, body(role_tasks.CI_SERVICES), tmp_path, ["ci/docker-compose.yml"]
+    )
+    assert found == []
