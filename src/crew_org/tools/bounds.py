@@ -41,7 +41,31 @@ def on_diff(
         for p in paths
         if base_images.is_dockerfile(p) and (worktree / p).is_file()
     }
-    return judged(paths, record, workflows=workflows, dockerfiles=dockerfiles)
+    composes = {
+        p: (worktree / p).read_text(encoding="utf-8")
+        for p in paths
+        if is_compose(worktree, p) and (worktree / p).is_file()
+    }
+    return judged(paths, record, workflows=workflows, dockerfiles=dockerfiles, composes=composes)
+
+
+# The compose file names the specification looks for, beside the one a workspace
+# file names (`services.compose_file`).
+COMPOSE_NAMES = ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+
+
+def is_compose(worktree: Path, path: str) -> bool:
+    """Is `path` a compose file: by its name, or as the workspace file names it?"""
+    from crew_org.tools import services  # noqa: PLC0415
+
+    if Path(path).name in COMPOSE_NAMES:
+        return True
+
+    def read(name: str) -> str | None:
+        found = worktree / name
+        return found.read_text(encoding="utf-8") if found.is_file() else None
+
+    return services.compose_file(read) == path
 
 
 def judged(
@@ -50,11 +74,13 @@ def judged(
     *,
     workflows: tuple[dict[str, str], dict[str, str]],
     dockerfiles: dict[str, str],
+    composes: dict[str, str] | None = None,
 ) -> list[str]:
     """Why a change to `paths` is out of bounds, one line per reason.
 
     `workflows` is every workflow file before and after the change, and
-    `dockerfiles` what each changed Dockerfile holds after it.
+    `dockerfiles` and `composes` what each changed Dockerfile and compose file
+    holds after it.
     """
     rules = protected(record)
     reasons = [
@@ -95,6 +121,10 @@ def judged(
 
     for path, text in dockerfiles.items():
         reasons += base_images.invented(path, text)
+    # The images a compose file names are pulled by the host, so each is pinned to a
+    # digest its registry has, never a tag (crew#839).
+    for path, text in (composes or {}).items():
+        reasons += base_images.unpinned(path, text)
 
     checks = record.design.checks if record and record.design else []
     if checks and changed:

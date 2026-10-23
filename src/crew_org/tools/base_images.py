@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+import yaml  # type: ignore[import-untyped]
 
 from crew_org.tools.repo_context import is_text
 
@@ -151,22 +152,69 @@ def invented(path: str, dockerfile: str) -> list[str]:
     """A reason for each digest this Dockerfile pins that its registry doesn't have."""
     reasons: list[str] = []
     for ref in base_images(dockerfile):
-        if ref.digest is None:
-            continue
-        if not _DIGEST.match(ref.digest):
-            reasons.append(f"{path} pins `{ref.shown}@{ref.digest}`, which isn't a sha256 digest")
-            continue
-        try:
-            found = lookup(ref.host, ref.name, ref.digest)
-            current = lookup(ref.host, ref.name, ref.tag)
-        except Unreadable as exc:
-            reasons.append(
-                f"{path}: the digest pinned for `{ref.shown}` couldn't be checked ({exc})"
-            )
-            continue
-        if found is None:
-            reasons.append(
-                f"{path} pins `{ref.shown}@{ref.digest}`, which its registry doesn't have: it "
-                f"was worked out, not read. `{ref.shown}` is `{current}` now; pin that."
-            )
+        if ref.digest is not None:
+            reasons += _unread(path, ref, ref.digest)
     return reasons
+
+
+def compose_images(compose: str) -> dict[str, str | None]:
+    """Each compose service's image, by service; None for one that names none."""
+    try:
+        spec = yaml.safe_load(compose)
+    except yaml.YAMLError:
+        return {}  # `services.declared` says it doesn't parse
+    given = spec.get("services") if isinstance(spec, dict) else None
+    if not isinstance(given, dict):
+        return {}
+    return {
+        str(name): image if isinstance(image := (raw or {}).get("image"), str) else None
+        for name, raw in given.items()
+        if isinstance(raw, dict | None)
+    }
+
+
+def unpinned(path: str, compose: str) -> list[str]:
+    """A reason for each image a compose file names that isn't pinned to a digest its
+    registry has (crew#839).
+
+    The host pulls these, so a tag that can move is refused as well as a digest that
+    was worked out: either way the reason names the digest the registry holds now,
+    since the session can't read a registry itself.
+    """
+    reasons: list[str] = []
+    for service, image in compose_images(compose).items():
+        ref = parse(image) if image else None
+        if ref is None:
+            reasons.append(f"{path}'s `{service}` names no image the crew can read a registry for")
+        elif ref.digest is None:
+            try:
+                current = lookup(ref.host, ref.name, ref.tag)
+            except Unreadable as exc:
+                reasons.append(f"{path} pins `{ref.shown}` by tag, and it couldn't be read ({exc})")
+                continue
+            held = (
+                f"`{ref.shown}` is `{current}` now; pin `{ref.shown}@{current}`"
+                if current
+                else (f"its registry has no `{ref.shown}`")
+            )
+            reasons.append(f"{path} pins `{ref.shown}` by tag, which can move: {held}.")
+        else:
+            reasons += _unread(path, ref, ref.digest)
+    return reasons
+
+
+def _unread(path: str, ref: Ref, digest: str) -> list[str]:
+    """Why the digest `path` pins for `ref` wasn't read from its registry, or nothing."""
+    if not _DIGEST.match(digest):
+        return [f"{path} pins `{ref.shown}@{digest}`, which isn't a sha256 digest"]
+    try:
+        found = lookup(ref.host, ref.name, digest)
+        current = lookup(ref.host, ref.name, ref.tag)
+    except Unreadable as exc:
+        return [f"{path}: the digest pinned for `{ref.shown}` couldn't be checked ({exc})"]
+    if found is None:
+        return [
+            f"{path} pins `{ref.shown}@{digest}`, which its registry doesn't have: it "
+            f"was worked out, not read. `{ref.shown}` is `{current}` now; pin that."
+        ]
+    return []
