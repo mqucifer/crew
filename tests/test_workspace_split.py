@@ -440,6 +440,22 @@ def test_changes_requested_on_an_older_head_dont():
     assert result.changes_requested == [] and issues.merged == [100]
 
 
+def test_changes_requested_then_approved_on_one_head_merges_and_isnt_reworked():
+    """The review of mqucifer/crew#877: each reviewer's latest review counts, so the
+    Sponsor's later approval of the same head isn't sent back round again."""
+    from crew_org.flows import delivery
+
+    issues = Requested(on="abc")
+    issues._reviews = [
+        *issues._reviews,
+        {"state": "COMMENTED", "commit_id": "abc", "user": {"login": "mquarters"}},
+        {"state": "APPROVED", "commit_id": "abc", "user": {"login": "mquarters"}},
+    ]
+    result, _, _ = run([card(740)], issues)
+    assert result.changes_requested == [] and issues.merged == [100]
+    assert delivery.awaiting_rework(issues, "sprint-metrics", "feat/740-x") is None
+
+
 # --- a Task's session runs its gate's checks itself (the Sponsor, 2026-10-23) ----------
 
 GOOD = '```mermaid\nC4Context\nPerson(u, "User")\nSystem(s, "S")\nRel(u, s, "uses")\n```\n'

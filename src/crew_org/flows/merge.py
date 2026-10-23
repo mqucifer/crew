@@ -215,6 +215,21 @@ class MergeResult:
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
 
 
+def changes_requested(reviews: list[dict[str, Any]], head: str) -> list[str]:
+    """Each reviewer whose latest review of `head` that isn't a comment requests changes.
+
+    By reviewer and latest, as GitHub weighs reviews: changes requested and then approved
+    on the same head is approved, and a dismissed request stands no more (the review of
+    mqucifer/crew#877). The reviews come in the order they were given.
+    """
+    latest: dict[str, str] = {}
+    for review in reviews:
+        if review.get("commit_id") != head or review.get("state") == "COMMENTED":
+            continue
+        latest[(review.get("user") or {}).get("login") or ""] = review.get("state") or ""
+    return [who for who, state in latest.items() if state == "CHANGES_REQUESTED"]
+
+
 def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card]:
     """Stories that have passed QA and are waiting to land, oldest card first.
 
@@ -289,9 +304,7 @@ def merge_approved(
 
         reviews = issues.pull_reviews(repo, pull["number"])
         head = (pull.get("head") or {}).get("sha", "")
-        if head and any(
-            r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head for r in reviews
-        ):
+        if head and (requesting := changes_requested(reviews, head)):
             # Changes asked for on the head that would merge, by anyone: back to its role
             # for rework, as from Reviewing. mqucifer/sprint-metrics#740 waited here with
             # the Sponsor's request on it, and the crew asked them to approve it (crew#839).
@@ -307,10 +320,7 @@ def merge_approved(
                 summary=f"PR #{pull['number']}: changes requested on its head — back for rework",
                 rule=Rule.MERGE_CHANGES_REQUESTED,
             )
-            requests = sum(
-                r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
-                for r in reviews
-            )
+            requests = len(requesting)
             sendbacks.record(
                 sink,
                 sendbacks.MERGE_CHANGES_REQUESTED,

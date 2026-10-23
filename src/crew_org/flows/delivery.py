@@ -21,7 +21,13 @@ from crew_org.flows import artifacts, story_problem
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, qa_marker
 from crew_org.flows.artifacts import signed
 from crew_org.flows.ci import CI_MARKER, latest_ci_verdict
-from crew_org.flows.merge import REBUILD_MARKER, keeping_both, merge_approved, rebuild_files
+from crew_org.flows.merge import (
+    REBUILD_MARKER,
+    changes_requested,
+    keeping_both,
+    merge_approved,
+    rebuild_files,
+)
 from crew_org.flows.moves import move_card
 from crew_org.flows.revert import RevertLanding, land_reverts
 from crew_org.flows.siblings import unlanded_earlier_siblings
@@ -156,10 +162,7 @@ def awaiting_rework(
         if not head:
             return None
         refused = (
-            any(
-                r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head
-                for r in issues.pull_reviews(repo, pull["number"])
-            )
+            bool(changes_requested(issues.pull_reviews(repo, pull["number"]), head))
             or any(
                 # Approved, but conflicting with main at merge: returned for a
                 # rebuild. Or a CI check failed on this head (#325).

@@ -1661,6 +1661,10 @@ flows.session_end._for_devops:end:e553e9b3:
   if: role is role_tasks.DEVOPS or verdict.check is None
   not_a_rule: DevOps's own Task's findings go back to it by the gates' rules, and no checks is nothing
     to file
+flows.merge.changes_requested:filter:ff1f2df5:
+  at: flows/merge.py:changes_requested
+  if: state == 'CHANGES_REQUESTED'
+  rule: gate.merge_changes_requested
 flows.merge._turned_on:end:eff8cc10:
   at: flows/merge.py:_turned_on
   if: role_tasks.role_of(card) is not role_tasks.DEVOPS
