@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
@@ -528,7 +529,13 @@ def _done(
 
 
 def _turned_on(
-    board: ProjectClient, sink: EventSink, card: Card, *, pull: dict, issues: IssueClient, repo: str
+    board: ProjectClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    pull: dict[str, Any],
+    issues: IssueClient,
+    repo: str,
 ) -> None:
     """The Developer's bug for the merged tests a workspace Task turned on that fail, now
     they fail on main (crew#839). Read from the pull request, where its gate named them,
