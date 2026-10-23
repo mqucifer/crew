@@ -170,3 +170,29 @@ def test_the_skill_says_a_failed_setup_isnt_run_again_until_done():
     assert "It runs once the session's container has started" in text
     assert "Once a setup has passed, it runs again" in text
     assert "If the start's setup failed, nothing runs it again in the session: only `done`" in text
+
+
+def test_each_flag_the_skill_reads_is_in_the_argv_it_reads_it_from():
+    """The review of mqucifer/crew#880: the text says what runs only while each is there."""
+    argv = skills.containers()
+    for name, flags in skills.READS.items():
+        for flag in flags:
+            assert flag in argv[name], (name, flag)
+
+
+def test_a_flag_taken_out_changes_the_text_never_breaks_the_tool(tmp_path, monkeypatch):
+    real = container.service_command
+
+    def bare(*a, **k):
+        return [f for f in real(*a, **k) if not f.startswith("--tmpfs") and "nosuid" not in f]
+
+    monkeypatch.setattr(container, "service_command", bare)
+    read = Tools(tmp_path, Fake(), CHECKS).call("skill", {"name": "workspace"})
+    assert read.kind == "ok" and "not set" in read.text
+
+
+def test_the_text_is_the_same_on_any_machine():
+    import os
+
+    assert f"{os.getuid()}:{os.getgid()}" not in skills.workspace()
+    assert "the host's user, never root" in skills.workspace()

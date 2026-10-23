@@ -32,19 +32,46 @@ def _after(argv: list[str], flag: str) -> list[str]:
     return [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == flag]
 
 
+def _first(argv: list[str], flag: str) -> str:
+    """The first value `flag` has, or a word that says it has none: a flag taken out of
+    the argv changes the text, never breaks the tool (the review of mqucifer/crew#880)."""
+    return next(iter(_after(argv, flag)), "not set")
+
+
+# Each flag the workspace skill reads, by the container it reads it from: a test holds
+# each one in its argv, so the text says what runs.
+READS = {
+    "setup": ("--network", "--user", "--cap-drop", "--security-opt", "--read-only"),
+    "held": ("--network",),
+    "service": ("--user", "--cap-drop", "--tmpfs", "--read-only"),
+}
+
+
+def containers() -> dict[str, list[str]]:
+    """The argv of setup's container, the session's, and a sample service's."""
+    from crew_org.tools import container, services  # noqa: PLC0415
+    from crew_org.tools.sandbox import Sandbox  # noqa: PLC0415
+
+    root = Path("/work")
+    sample = services.Service("db", "db@sha256:0", "999:999", tmpfs=["/data"])
+    return {
+        "setup": Sandbox().command(root, ["setup"], network=True),
+        "held": Sandbox().command(root, ["sleep"], network=False, held="session"),
+        "service": container.service_command("docker", sample, "db", "internal", []),
+    }
+
+
 def workspace() -> str:
     """How the crew runs a workspace, read from what it runs."""
     from crew_org.tools import container, devcontainer, services, workspace  # noqa: PLC0415
-    from crew_org.tools.sandbox import HOME_DIR, OWN_ENV, Sandbox  # noqa: PLC0415
+    from crew_org.tools.sandbox import HOME_DIR, OWN_ENV  # noqa: PLC0415
 
     def words(names: Any) -> str:
         return ", ".join(f"`{n}`" for n in names)
 
-    root = Path("/work")
-    setup = Sandbox().command(root, ["setup"], network=True)
-    held = Sandbox().command(root, ["sleep"], network=False, held="session")
-    sample = services.Service("db", "db@sha256:0", "999:999", tmpfs=["/data"])
-    service = container.service_command("docker", sample, "db", "internal", [])
+    argv = containers()
+    setup, held, service = argv["setup"], argv["held"], argv["service"]
+    owner = _first(service, "--user")
     mounted = [*_after(service, "-v"), *_after(service, "--mount")]
     tmpfs = _after(service, "--tmpfs")
     dropped = " ".join(_after(setup, "--cap-drop"))
@@ -61,15 +88,14 @@ file, and starts every container itself. Nothing in them can loosen a container.
 of words: a string would run in a shell, which the crew never does. For several steps, \
 one script. A field by any other name is read as nothing.
 - It runs once the session's container has started, in a one-off container of its own \
-with the network (`--network {_after(setup, "--network")[0]}`). It shares only the \
+with the network (`--network {_first(setup, "--network")}`). It shares only the \
 worktree, so what it installs there is what the session sees. A failure is tried once \
 more. It has {container.SETUP_TIMEOUT // 60} minutes.
 - Once a setup has passed, it runs again before a `run`, the lint after an edit, or the \
 gates, if a dependency file has changed since ({words(container.MANIFESTS)}). If the \
 start's setup failed, nothing runs it again in the session: only `done`, which runs your \
 branch's setup as it is then, with the network, in a container of its own.
-- Setup's container runs as the crew's own user (`--user {_after(setup, "--user")[0]}`), \
-never root, \
+- Setup's container runs as the host's user, never root (`--user`), \
 {"with a read-only filesystem, " if read_only else ""}every capability dropped \
 (`--cap-drop {dropped}`, `{secured}`). Only `/work` (the worktree), `/tmp` and the home \
 (`/work/{HOME_DIR}`) can be written. So nothing installs into the image: no `apt-get`, \
@@ -80,7 +106,7 @@ no `sudo`. Name an image, pinned by digest, that already has what the project ne
 
 ## The session
 - After setup the session's container has no network \
-(`--network {_after(held, "--network")[0]}`, or its services' network, which has no \
+(`--network {_first(held, "--network")}`, or its services' network, which has no \
 route out). Whatever a command would fetch then fails: a `uv run` that resolves a \
 package, a test that downloads. Setup has to leave it installed.
 
@@ -94,8 +120,8 @@ by digest; its `user` isn't root; its `healthcheck.test` is `["CMD", ...]`, with
 `--cap-drop {" ".join(_after(service, "--cap-drop"))}`, \
 {"with no mounts" if not mounted else "with only the crew's mounts"}, on an internal \
 network the workspace shares, reached by the service's name. Only `/tmp` and its \
-`tmpfs` paths can be written, each owned by its user (for `user: "{sample.user}"`, \
-`{tmpfs[-1].partition(":")[2]}`): a database \
+`tmpfs` paths can be written, each owned by its user (for `user: "{owner}"`, \
+`{(tmpfs or ["none:not set"])[-1].partition(":")[2]}`): a database \
 needs its data and socket directories there (Postgres: `PGDATA`'s directory and \
 `/var/run/postgresql`).
 
