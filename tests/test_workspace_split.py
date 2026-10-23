@@ -528,7 +528,9 @@ def hangs_then(*results, monkeypatch):
 
     def checks(at, held, since, deselect):
         given.append(dict(deselect))
-        return answers.pop(0)
+        answer = answers.pop(0)
+        answer.deselected = dict(deselect)  # as `check` records it
+        return answer
 
     monkeypatch.setattr(session_delivery, "Held", Own)
     monkeypatch.setattr(session_delivery, "own_services", lambda at: Declared())
@@ -540,29 +542,61 @@ def hung(test: str) -> CheckResult:
     return CheckResult(results=[CommandResult(PYTEST, 1, DUMP)], hung={test: WAITS})
 
 
-def test_a_workspace_tasks_gate_sets_each_hang_aside_and_runs_the_rest(repo, monkeypatch):  # noqa: F811
+def never_caused(monkeypatch):
+    """The branch caused nothing: the loop's own steps, apart from `caused_by`'s."""
+    from crew_org.flows import session_delivery
+
+    monkeypatch.setattr(session_delivery.gates, "caused_by", lambda *a: lambda test: False)
+
+
+SERVICE = "tests/test_service.py"
+OTHER_FILE = "tests/test_store.py"
+ELSEWHERE = f"{OTHER_FILE}::test_upsert"
+
+
+def test_a_workspace_tasks_gate_sets_each_hung_file_aside_and_runs_the_rest(repo, monkeypatch):  # noqa: F811
+    """On sprint-metrics' test copy setting the waiting test aside hung the next, 13 times:
+    the test leaving the lock ran earlier in the file (the operator, crew#839)."""
     from crew_org.flows import session_delivery
 
     writes_the_workspace(repo)
-    other = "tests/test_metrics.py::test_rate_is_capped"
+    never_caused(monkeypatch)
     last = CheckResult(
         results=[CommandResult(PYTEST, 1, "1 failed")], failed=ROTTED, reported=[PYTEST]
     )
-    given = hangs_then(hung(STUCK), hung(other), last, monkeypatch=monkeypatch)
+    given = hangs_then(hung(HUNG), last, monkeypatch=monkeypatch)
     checked = session_delivery.own_checks(repo, "x", "base")
-    assert given == [{}, {STUCK: WAITS}, {STUCK: WAITS, other: WAITS}]
-    assert checked.hang_rounds == 2
+    assert given == [{}, {SERVICE: f"in `{HUNG}`, waiting in {WAITS}"}]
+    assert checked.hang_rounds == 1
+
+
+def test_a_hang_that_moves_to_another_file_says_so(repo, monkeypatch):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    writes_the_workspace(repo)
+    never_caused(monkeypatch)
+    last = CheckResult(results=[CommandResult(PYTEST, 0, "")])
+    given = hangs_then(hung(HUNG), hung(ELSEWHERE), last, monkeypatch=monkeypatch)
+    session_delivery.own_checks(repo, "x", "base")
+    said = given[-1][OTHER_FILE]
+    assert f"hung again here after `{SERVICE}` was set aside" in said
+    assert "the test leaving the state may be in an earlier file" in said
 
 
 def test_past_the_bound_the_hang_is_left_for_the_gates_finding(repo, monkeypatch):  # noqa: F811
     from crew_org.flows import session_delivery
 
     writes_the_workspace(repo)
+    never_caused(monkeypatch)
     monkeypatch.setattr(session_delivery, "HANG_ROUNDS", 1)
-    other = "tests/test_metrics.py::test_rate_is_capped"
-    hangs_then(hung(STUCK), hung(other), monkeypatch=monkeypatch)
+    hangs_then(hung(HUNG), hung(ELSEWHERE), monkeypatch=monkeypatch)
     checked = session_delivery.own_checks(repo, "x", "base")
-    assert checked.hung == {other: WAITS} and checked.hang_rounds == 1
+    assert checked.hung == {ELSEWHERE: WAITS} and checked.hang_rounds == 1
+    verdict = gates.Verdict(check=checked)
+    gates._checked(verdict)
+    (finding,) = verdict.findings
+    assert finding.rule == "check.gates.the_checks_timed_out"
+    assert f"It hung again in `{OTHER_FILE}` after `{SERVICE}` was set aside" in finding.says
 
 
 def test_a_hang_the_branch_caused_is_never_set_aside(repo, monkeypatch):  # noqa: F811
@@ -570,26 +604,29 @@ def test_a_hang_the_branch_caused_is_never_set_aside(repo, monkeypatch):  # noqa
 
     writes_the_workspace(repo)
     (repo / TESTS).write_text((repo / TESTS).read_text() + "\n# touched\n")
-    mine = f"{TESTS}::test_rate_is_capped"
-    given = hangs_then(hung(mine), monkeypatch=monkeypatch)
+    given = hangs_then(hung(CAPPED), monkeypatch=monkeypatch)
     checked = session_delivery.own_checks(repo, "x", "base")
-    assert given == [{}] and checked.hung == {mine: WAITS}
+    assert given == [{}] and checked.hung == {CAPPED: WAITS}
 
 
-def test_the_hangs_set_aside_are_the_developers_beside_the_failures(repo):  # noqa: F811
+def test_the_hung_files_are_the_developers_beside_the_failures(repo):  # noqa: F811
     writes_the_workspace(repo)
+    aside = {TESTS: f"in `{CAPPED}`, waiting in {WAITS}"}
 
     def run_checks(at):
         return CheckResult(
             results=[CommandResult(PYTEST, 1, "1 failed")],
             failed=ROTTED,
             reported=[PYTEST],
-            deselected={CAPPED: WAITS},
+            deselected=aside,
         )
 
     verdict = at_done(repo, done(), card=devops_task(), run_checks=run_checks)
     assert verdict.passed, verdict.findings
-    assert verdict.for_developer == {**ROTTED, CAPPED: f"hung: waiting in {WAITS}"}
+    assert verdict.for_developer == {
+        **ROTTED,
+        TESTS: f"hung in `{CAPPED}`, waiting in {WAITS}; the file's other tests weren't all run",
+    }
 
 
 def test_a_hang_is_its_own_finding_never_a_failed_test(repo):  # noqa: F811
@@ -612,12 +649,15 @@ def test_a_run_stopped_at_its_bound_is_the_same_finding():
     assert [f.rule for f in verdict.findings] == ["check.gates.the_checks_timed_out"]
 
 
-def test_the_bug_says_how_to_read_a_hang(tmp_path):
+def test_the_bug_names_each_hung_file_with_what_was_seen_and_nothing_more(tmp_path):
     issues = Issues()
-    tests = {**ROTTED, HUNG: f"hung: waiting in {WAITS}"}
+    line = f"hung in `{HUNG}`, waiting in {WAITS}; the file's other tests weren't all run"
+    tests = {**ROTTED, SERVICE: line}
     number = role_tasks.turned_on_bug(
         issues, Board(), sink(tmp_path), repo="sm", task=739, tests=tests, cards=[]
     )
-    body = issues.issues[number]["body"]
-    assert f"- `{HUNG}`: hung: waiting in {WAITS}" in body
-    assert "The 1 that hang" in body and "2 fail, error or hang" in body
+    bug = issues.issues[number]
+    assert f"- `{SERVICE}`: {line}" in bug["body"]
+    assert "1 fail or error, and 1 file hangs" in bug["body"]
+    assert "**1 file hangs:**" in bug["body"]
+    assert "1 merged tests fail and 1 test files hang" in bug["title"]

@@ -73,7 +73,7 @@ from crew_org.tools.container import Held, own_services
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.regression import merged_base
-from crew_org.tools.workspace import CheckResult, CommandResult, check
+from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
 
 if TYPE_CHECKING:
     from crew_org.flows import session_end
@@ -313,33 +313,45 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
         merged = merged_base(worktree)
         paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
         caused = gates.caused_by(worktree, merged, paths) if merged is not None else None
+        # Each hung test's file, set aside, with what was seen of it: by file, since the
+        # test that hung waits on state an earlier test left (the operator, crew#839). On
+        # sprint-metrics' test copy setting the waiting test aside hung the next, 13 times.
         deselected: dict[str, str] = {}
         rounds = 0
         while True:
             checked = check(worktree, held=own, since=since, deselect=deselected)
             if own.lost:
                 raise SessionInterrupted("the workspace container", "lost while the gates ran")
-            # A hung test the branch didn't cause is set aside and the rest run again, so
-            # what they turn on can be told apart (the operator, crew#839). One it caused,
-            # or one past the bound, is the gate's finding that the checks timed out.
-            new = {t: w for t, w in checked.hung.items() if t not in deselected}
+            # A hung file the branch didn't cause is set aside and the rest run again, so
+            # what they turn on can be told apart. One it caused, or one past the bound,
+            # is the gate's finding that the checks timed out.
+            new = {t: w for t, w in checked.hung.items() if t.partition("::")[0] not in deselected}
+            files = {t.partition("::")[0] for t in new}
             if (
                 not new
                 or caused is None
-                or any(caused(t) for t in new)
-                or len(deselected) + len(new) > HANG_ROUNDS
+                or any(caused(f) for f in files)
+                or len(deselected) + len(files) > HANG_ROUNDS
             ):
                 checked.hang_rounds = rounds
                 return checked
-            deselected.update(new)
+            for test, where in sorted(new.items()):
+                said = f"in `{shown_test(test)}`, waiting in {where}"
+                if deselected:
+                    # Pollution can cross files: said plainly, not looped to the bound.
+                    said += (
+                        f"; it hung again here after `{list(deselected)[-1]}` was set aside, "
+                        "so the test leaving the state may be in an earlier file"
+                    )
+                deselected[test.partition("::")[0]] = said
             rounds += 1
     finally:
         own.stop()
 
 
-# How many hung tests a workspace Task's gate sets aside before it gives up (crew#839).
-# Started high, 3x the most seen (4 on sprint-metrics' test copy), to be lowered from
-# each gate's `hang_rounds` (the Sponsor, 2026-10-18: start limits high).
+# How many hung tests' files a workspace Task's gate sets aside before it gives up
+# (crew#839). Started high, 3x the most seen (4 hangs on sprint-metrics' test copy), to be
+# lowered from each gate's `hang_rounds` (the Sponsor, 2026-10-18: start limits high).
 HANG_ROUNDS = 12
 
 

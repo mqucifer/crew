@@ -435,7 +435,11 @@ def _turned_on(
     check = verdict.check
     if check is None or check.hung or not (check.ok or check.only_tests_failed):
         return
-    hung = {shown_test(t): f"hung: waiting in {where}" for t, where in check.deselected.items()}
+    # By file, as `own_checks` set them aside: the hung file's other tests didn't all run.
+    hung = {
+        path: f"hung {said}; the file's other tests weren't all run"
+        for path, said in check.deselected.items()
+    }
     tests = {**check.failed, **hung}
     if not tests:
         return
@@ -523,16 +527,27 @@ def _checked(verdict: Verdict) -> None:
         # Its own finding, never counted as a test that failed (crew#839): a run that
         # hung says nothing of the tests after the one it hung in.
         hung = verdict.check.hung
+        aside = verdict.check.deselected
+        lines = [
+            f"- `{shown_test(t)}`: hung, waiting in {where}" for t, where in sorted(hung.items())
+        ]
+        if aside:
+            last = list(aside)[-1]
+            moved = [t for t in hung if t.partition("::")[0] != last]
+            lines += ["", "Set aside before this run, by file:"]
+            lines += [f"- `{path}`: hung {said}" for path, said in aside.items()]
+            if moved:
+                lines += [
+                    "",
+                    f"It hung again in `{moved[0].partition('::')[0]}` after `{last}` was set "
+                    "aside: the test leaving the state may be in an earlier file.",
+                ]
         verdict.findings.append(
             Finding(
                 "check.gates.the_checks_timed_out",
                 says(
                     "check.gates.the_checks_timed_out",
-                    tests="\n".join(
-                        f"- `{shown_test(t)}`: hung, waiting in {where}"
-                        for t, where in sorted(hung.items())
-                    )
-                    or "- no test named: the run stopped at its bound",
+                    tests="\n".join(lines) or "- no test named: the run stopped at its bound",
                 ),
             )
         )

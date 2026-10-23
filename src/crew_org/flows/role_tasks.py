@@ -826,23 +826,28 @@ def turned_on_bug(
         return None
     key = "turned-on-" + hashlib.sha256("\n".join(sorted(tests)).encode()).hexdigest()[:12]
     shown = [f"- `{t}`: {line}" if line else f"- `{t}`" for t, line in sorted(tests.items())]
-    hung = [t for t, line in tests.items() if line.startswith("hung:")]
+    hung = [t for t, line in tests.items() if line.startswith("hung ")]
     why = (
         f"#{task} merged the workspace's services, so the workspace now runs tests that "
-        f"used to skip there, and these {len(tests)} fail, error or hang:\n\n"
+        f"used to skip there, and {len(tests) - len(hung)} fail or error"
+        + (f", and {len(hung)} {'file hangs' if len(hung) == 1 else 'files hang'}" if hung else "")
+        + ":\n\n"
         + "\n".join(shown)
         + f"\n\nNone was #{task}'s: its branch changed none of them, nor a module or "
         "`conftest.py` they're in. Fixing them is the Developer's."
         + (
-            f"\n\n**The {len(hung)} that hang** were set aside by the gate so the rest could "
-            "run: each is named with the frame it waits in. A test waiting there is waiting "
-            "on something a test before it left behind, or on the code under test: find "
-            "what holds it before changing the test."
+            f"\n\n**{len(hung)} {'file hangs' if len(hung) == 1 else 'files hang'}:** the "
+            "gate set each aside so the rest could run, so its other tests weren't all run. "
+            "Each is named with the test it hung in and the frame that test waits in."
             if hung
             else ""
         )
     )
-    title = f"{len(tests)} merged tests fail now the workspace runs its services"
+    title = (
+        f"{len(tests) - len(hung)} merged tests fail"
+        + (f" and {len(hung)} test files hang" if hung else "")
+        + " now the workspace runs its services"
+    )
     return _file_bug(
         issues, board, sink, repo=repo, key=key, title=title, why=why, by=DEVOPS.name, cards=cards
     )
