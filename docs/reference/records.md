@@ -205,6 +205,7 @@ names, what it means, and where those notes are written:
 
 | Rule | Meaning | Written in |
 |---|---|---|
+| `check.role_tasks.setup_failed_at_start` | A DevOps workspace Task whose own branch's setup fails at the session's start is told it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839). | `flows/session_delivery.py:deliver_by_session` |
 | `decision.backlog_order.what_is_ordered` | The Product Owner ranks the open epics with no Rank. One it can't place yet is held for the work it builds on, and an order it can't give is recorded as failed. | `flows/backlog_order.py:order_backlogs` |
 | `decision.board_flow.already_delivered` | An epic whose stories would only repeat delivered work is closed as already delivered, naming the stories that delivered it. | `flows/board_flow.py:refine_epics` |
 | `decision.delivery.interrupted` | A delivery a service interrupted, not the story, is tried again next pass; three in a row block it for a person. | `flows/delivery.py:_deliver_and_move` |

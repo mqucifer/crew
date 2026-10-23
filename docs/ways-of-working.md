@@ -472,6 +472,13 @@ protection in the table, with an init process, and runs each command with
 session's end; a tick's start removes those whose crew process has gone; and one
 the crew forgets ends itself after 4 hours, past the 3-hour backstop, and is
 removed. `crew ready <project> --setup` starts the project's workspace this way.
+A setup that fails twice at the start leaves the story's workspace not ready
+(`delivery.workspace_unready`), except on a DevOps workspace Task whose own branch
+changes the workspace file: there the setup is its work, so its session starts and
+is told the command, exit and output, as a finding at `done` is
+(`check.role_tasks.setup_failed_at_start`; crew#839). It works with nothing
+installed and no network, and its setup is tried again, with the network, at
+`done`.
 <!-- /told to -->
 
 **Before the checks, the project's own fixers run, and the attempt answers for

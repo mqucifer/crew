@@ -69,6 +69,22 @@ check.role_tasks.diagram_renders:
   messages:
     default: 'The repository''s diagram won''t render: {problems}.'
   owner: Architect
+check.role_tasks.setup_failed_at_start:
+  description: A DevOps workspace Task whose own branch's setup fails at the session's start is told
+    it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839).
+  messages:
+    default: 'Your branch''s setup failed at the start, after a second try. The workspace is yours, so
+      this is your Task''s work, not a reason to stop:
+
+
+      {ran}
+
+
+      This session''s container has no setup and no network: the dependencies aren''t installed, and
+      a test that needs them fails here. You can read and edit, run `workspace_check`, and run what
+      needs nothing installed. Your setup as the branch has it then runs again, with the network, at
+      `done`, which says how it went.'
+  owner: DevOps Engineer
 check.role_tasks.workspace_checks:
   description: DevOps's workspace file and its compose file pass the gate's checks at `done`, run before
     it by `workspace_check`; starting the services stays the gate's (crew#839).

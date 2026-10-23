@@ -956,3 +956,17 @@ def test_a_storys_gate_doesnt_check_the_workspace_file(repo):  # noqa: F811
     writes_setup_commands(repo)
     verdict = at_done(repo, done(), run_checks=failing({}))
     assert "check.role_tasks.workspace_checks" not in [f.rule for f in verdict.findings]
+
+
+def test_a_task_owns_its_workspace_once_its_branch_changes_the_file(repo):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    assert not session_delivery._own_workspace(role_tasks.DEVOPS, repo)
+    writes_setup_commands(repo)
+    git = ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t"]
+    import subprocess
+
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "the workspace"], check=True)
+    assert session_delivery._own_workspace(role_tasks.DEVOPS, repo)
+    assert not session_delivery._own_workspace(None, repo)  # a story's never is

@@ -239,10 +239,21 @@ def deliver_by_session(
             # Once more: a fetch can fail for a moment.
             setup = held.setup()
         if setup is not None and not setup.ok:
-            # As a failed setup is reported today, so a design's fault is still found
-            # as one (crew#690).
             ran = f"$ {setup.command}\n(exit {setup.code})\n{setup.output[-1500:]}"
-            return _unready(outcome, Rule.WORKSPACE_UNREADY, ran)
+            if not _own_workspace(role, worktree):
+                # As a failed setup is reported today, so a design's fault is still found
+                # as one (crew#690).
+                return _unready(outcome, Rule.WORKSPACE_UNREADY, ran)
+            # The setup is the Task's own work, as at `done`: told to its session, which
+            # still has to pass it there (crew#839, mqucifer/sprint-metrics#739).
+            story += "\n\n" + session_end.setup_failed_at_start(ran)
+            sink.note(
+                EventKind.NOTE,
+                f"#{number}'s own setup failed at the start: told to its session",
+                repo=repo,
+                card=number,
+                rule="check.role_tasks.setup_failed_at_start",
+            )
         reached = _sessions(
             card,
             story=story,
@@ -362,6 +373,14 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
 # (crew#839). Started high, 3x the most seen (4 hangs on sprint-metrics' test copy), to be
 # lowered from each gate's `hang_rounds` (the Sponsor, 2026-10-18: start limits high).
 HANG_ROUNDS = 12
+
+
+def _own_workspace(task: role_tasks.TaskRole | None, worktree: Path) -> bool:
+    """Is the worktree's workspace file the Task's own work: a DevOps Task whose branch
+    changes it (`role_tasks.changes_workspace`)?"""
+    merged = merged_base(worktree)
+    paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
+    return role_tasks.changes_workspace(task, worktree, paths)
 
 
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
