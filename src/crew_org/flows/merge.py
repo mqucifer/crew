@@ -17,6 +17,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -286,6 +287,16 @@ def merge_approved(
         if merged is not None:
             _close_story(issues, sink, card, repo=repo, pull=merged)
 
+    # DevOps's Task in Done and closed, however it got there: the board's own workflow
+    # moves a card the queue merged to Done before this pass sees it in Merging, so
+    # `_done` never ran for mqucifer/sprint-metrics#739 (crew#839). Its bug is filed
+    # here, once: one already filed, open or closed, is left alone.
+    for card in done_devops_tasks(cards, repos):
+        repo = card.repo or default_repo
+        merged = _merged_pull(issues, repo, branch_name(card.number or 0, card.title))
+        if merged is not None:
+            _turned_on(board, sink, card, pull=merged, issues=issues, repo=repo)
+
     for card in ready_to_land(cards, repos):
         number = card.number or 0
         repo = card.repo or default_repo
@@ -513,6 +524,29 @@ def done_but_open(cards: list[Card], repos: set[str] | None = None) -> list[Card
     return open_in(cards, DONE, repos=repos)
 
 
+# How long after it closed a DevOps Task in Done is still checked for its bug: far
+# longer than any gap seen between a merge and the next tick (crew#839), so the
+# check's cost doesn't grow with every Task the project ever closed.
+TURNED_ON_WINDOW = timedelta(days=14)
+
+
+def done_devops_tasks(
+    cards: list[Card], repos: set[str] | None = None, *, now: datetime | None = None
+) -> list[Card]:
+    """DevOps's Tasks in Done whose card closed within `TURNED_ON_WINDOW`."""
+    since = (now or datetime.now(UTC)) - TURNED_ON_WINDOW
+    return [
+        c
+        for c in cards
+        if c.status == DONE
+        and c.state == "CLOSED"
+        and c.closed is not None
+        and c.closed >= since
+        and role_tasks.role_of(c) is role_tasks.DEVOPS
+        and (repos is None or c.repo in repos)
+    ]
+
+
 def _merged_pull(issues: IssueClient, repo: str, branch: str) -> dict | None:
     """The pull request from `branch` that merged, if one did."""
     return next(
@@ -561,7 +595,8 @@ def _turned_on(
     """The Developer's bug for the merged tests a workspace Task turned on that fail, now
     they fail on main (crew#839). Only for DevOps's Task whose pull request changed the
     workspace, read only from the crew's record for the head that merged, never from
-    the body's text, and filed once, by the tests. A filing that fails is recorded."""
+    the body's text, and filed once, by the tests: one already filed, open or closed,
+    files and records nothing. A filing that fails is recorded."""
     number = card.number or 0
     if role_tasks.role_of(card) is not role_tasks.DEVOPS:
         return
@@ -572,7 +607,7 @@ def _turned_on(
         # Only the crew's own App's record counts: org.yaml's `trust.crew`, none without it.
         crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
         tests = role_tasks.turned_on_at(issues.comments(repo, pull["number"]), head, crew)
-        if not tests:
+        if not tests or role_tasks.turned_on_filed(issues, repo, tests) is not None:
             return
         filed = role_tasks.turned_on_bug(
             issues, board, sink, repo=repo, task=number, tests=tests, cards=board.cards()

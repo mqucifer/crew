@@ -246,7 +246,8 @@ decision.role_tasks.sponsor_approves:
 decision.role_tasks.turned_on:
   description: The Developer's bug for the merged tests a workspace Task turned on is filed when it merges,
     only for DevOps's Task whose pull request changed the workspace, and only from the crew's record for
-    the head that merged.
+    the head that merged. Filed however the card reached Done, the board's workflow included, while it
+    closed within the last 14 days, and once, by its tests, a closed bug counting as filed.
   origin:
   - crew#839
 decision.sprint.capacity:

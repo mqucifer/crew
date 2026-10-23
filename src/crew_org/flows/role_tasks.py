@@ -964,7 +964,7 @@ def turned_on_bug(
     """
     if not tests:
         return None
-    key = "turned-on-" + hashlib.sha256("\n".join(sorted(tests)).encode()).hexdigest()[:12]
+    key = _turned_on_key(tests)
     shown = [f"- `{t}`: {line}" if line else f"- `{t}`" for t, line in sorted(tests.items())]
     hung = [t for t, line in tests.items() if line.startswith("hung ")]
     why = (
@@ -991,6 +991,24 @@ def turned_on_bug(
     return _file_bug(
         issues, board, sink, repo=repo, key=key, title=title, why=why, by=DEVOPS.name, cards=cards
     )
+
+
+def turned_on_filed(issues: IssueClient, repo: str, tests: dict[str, str]) -> int | None:
+    """The bug already filed for these tests, open or closed, or None: a bug the Developer
+    fixed and closed is still filed, so the Task's later passes file nothing again."""
+    wanted = _FINDING_BUG.format(key=_turned_on_key(tests))
+    return next(
+        (
+            int(i["number"])
+            for i in issues.labelled(repo, BUG_LABEL)
+            if wanted in (i.get("body") or "")
+        ),
+        None,
+    )
+
+
+def _turned_on_key(tests: dict[str, str]) -> str:
+    return "turned-on-" + hashlib.sha256("\n".join(sorted(tests)).encode()).hexdigest()[:12]
 
 
 def _file_bug(
