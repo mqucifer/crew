@@ -50,6 +50,14 @@ NOT_HONOURED = {
     "postStartCommand": "the crew runs one setup command, once",
     "postAttachCommand": "the crew runs one setup command, once",
 }
+# Fields the specification had before tools' settings moved under `customizations`: no
+# longer in its schema, still in many files, and never unknown (the review of
+# mqucifer/crew#880).
+LEGACY = {
+    "extensions": "moved to `customizations.vscode`, for a person's editor",
+    "settings": "moved to `customizations.vscode`, for a person's editor",
+}
+NOT_HONOURED.update(LEGACY)
 
 # Every field the specification defines, from its schema (devcontainers/spec,
 # schemas/devContainer.base.schema.json at c95ffee, 2026-10-23): one the crew doesn't
@@ -202,7 +210,11 @@ def read(root: Path) -> Definition | None:
 
     problems: list[str] = []
     not_honoured = {name: why for name, why in NOT_HONOURED.items() if raw.get(name) is not None}
-    unknown = {str(name): instead(str(name)) for name in raw if name not in SPEC_FIELDS}
+    unknown = {
+        str(name): instead(str(name))
+        for name in raw
+        if name not in SPEC_FIELDS and name not in LEGACY
+    }
     ignored: dict[str, str] = {}
     image = raw.get("image")
     if raw.get("dockerComposeFile") is not None and image is None:

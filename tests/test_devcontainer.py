@@ -147,4 +147,13 @@ def test_every_field_the_crew_reads_or_names_is_the_specifications():
     """The crew's lists and the specification's can't drift apart."""
     read = {"image", "dockerComposeFile", "service", "runServices", "containerEnv"}
     named = read | set(devcontainer.SETUP_FIELDS) | set(devcontainer.NOT_HONOURED)
-    assert named <= devcontainer.SPEC_FIELDS
+    assert named - set(devcontainer.LEGACY) <= devcontainer.SPEC_FIELDS
+    assert not set(devcontainer.LEGACY) & devcontainer.SPEC_FIELDS  # gone from the schema
+
+
+def test_the_older_editor_fields_are_not_honoured_never_unknown(tmp_path):
+    """`extensions` and `settings` moved to `customizations.vscode`; many files keep them."""
+    found = defined(tmp_path, extensions=["ms-python.python"], settings={"a": 1})
+    assert found.unknown == {} and found.problems == []
+    assert "`customizations.vscode`" in found.not_honoured["extensions"]
+    assert set(found.not_honoured) == {"extensions", "settings"}
