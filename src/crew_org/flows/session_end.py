@@ -51,6 +51,7 @@ from crew_org.tools import services
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.workspace import CheckResult, check
+from crew_org.work_types import BUG
 
 REVIEW = "review"
 QA = "qa"
@@ -172,6 +173,24 @@ def _for_devops(
         )
 
 
+def _turned_on_record(
+    issues: IssueClient, repo: str, card: Card, note: Callable[[str], None]
+) -> role_tasks.TurnedOnRecord | None:
+    """A bug's own record, when the crew filed it from the tests a workspace turned on
+    (crew#839). One that can't be read stands in for nothing: the bug is reproduced as
+    any other is, and the gate says why."""
+    if card.work_type != BUG:
+        return None
+    try:
+        return role_tasks.turned_on_record(issues, repo, card.number or 0)
+    except Exception as exc:  # noqa: BLE001 - the gate runs either way
+        reraise_if_down(exc)
+        note(f"its turned-on record couldn't be read: {exc}"[:200])
+        return role_tasks.TurnedOnRecord(
+            tests={}, missing=f"The crew's record of this bug's tests couldn't be read: {exc}"
+        )
+
+
 def route(
     ending: Ending,
     *,
@@ -217,6 +236,7 @@ def route(
         record=record,
         run_checks=run_checks,
         note=note,
+        recorded=_turned_on_record(issues, repo, card, note),
     )
     _for_devops(
         verdict,

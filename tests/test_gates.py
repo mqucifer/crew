@@ -266,7 +266,7 @@ def test_an_empty_diff_that_doesnt_prove_each_criterion_goes_back(repo):
 def test_a_bugs_tests_must_fail_without_the_fix(repo, monkeypatch):
     seen = []
 
-    def reproduces(worktree, merged, tests):
+    def reproduces(worktree, merged, tests, **kw):
         seen.append(tests)
         return reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"])
 
