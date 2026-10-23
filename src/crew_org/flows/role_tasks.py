@@ -748,6 +748,65 @@ def workspace_finding(
     return opened.number
 
 
+def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) -> bool:
+    """A DevOps Task that changes the workspace file or the compose file it names: its
+    gate at `done` runs the services and setup its own branch declares (crew#839)."""
+    from crew_org.tools import bounds, devcontainer  # noqa: PLC0415
+
+    return role is DEVOPS and any(
+        p in devcontainer.PATHS or bounds.is_compose(worktree, p) for p in paths
+    )
+
+
+# The pull request's section naming the merged tests a workspace Task's services turn
+# on that fail: none is the Task's, and they're filed for the Developer as one bug when
+# it merges, since only then do they fail on main (the operator, crew#839).
+TURNED_ON_HEADING = "## Merged tests the workspace turns on, which fail"
+_TURNED_ON = re.compile(r"^- `([^`]+)`: ?(.*)$", re.M)
+
+
+def turned_on(body: str | None) -> dict[str, str]:
+    """The tests a merged pull request's `TURNED_ON_HEADING` names, with each one's line."""
+    text = body or ""
+    at = text.find(TURNED_ON_HEADING)
+    if at == -1:
+        return {}
+    section = text[at + len(TURNED_ON_HEADING) :].split("\n## ", 1)[0]
+    return dict(_TURNED_ON.findall(section))
+
+
+def turned_on_bug(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    task: int,
+    tests: dict[str, str],
+    cards: list[Card],
+) -> int | None:
+    """The Developer's bug for the merged tests a workspace Task turned on that fail, filed
+    once its pull request merged (crew#839): a finding filed as a bug, as a role's is.
+
+    Keyed by the tests, so the same set is filed once. None when there are none.
+    """
+    if not tests:
+        return None
+    key = "turned-on-" + hashlib.sha256("\n".join(sorted(tests)).encode()).hexdigest()[:12]
+    shown = [f"- `{t}`: {line}" if line else f"- `{t}`" for t, line in sorted(tests.items())]
+    why = (
+        f"#{task} merged the workspace's services, so the workspace now runs tests that "
+        f"used to skip there, and these {len(tests)} fail or error:\n\n"
+        + "\n".join(shown)
+        + f"\n\nNone was #{task}'s: its branch changed none of them, nor a module or "
+        "`conftest.py` they're in. Fixing them is the Developer's."
+    )
+    title = f"{len(tests)} merged tests fail now the workspace runs its services"
+    return _file_bug(
+        issues, board, sink, repo=repo, key=key, title=title, why=why, by=DEVOPS.name, cards=cards
+    )
+
+
 def _file_bug(
     issues: IssueClient,
     board: ProjectClient,
@@ -1007,14 +1066,16 @@ def first_workspace_task(
         "words, and `containerEnv`. Declare each service the tests need in a compose file "
         "beside it, named by `dockerComposeFile`, with the workspace's own `service`: each "
         "service's image by digest, a `user` that isn't root, a `healthcheck` in "
-        '["CMD", ...] form and `tmpfs` for its data. Name the skip reasons CI makes too in '
-        "`customizations.crew.ciOnlySkips`. Then make CI's test job run the same services, "
-        "so the workspace and CI run the same tests.",
+        '["CMD", ...] form and `tmpfs` for its data. `image_digest` reads each digest from '
+        "its registry. At `done` the gate starts the services and setup your branch "
+        "declares and runs the whole checks with them. A merged test they turn on that "
+        "fails, in a file your branch doesn't change, is the Developer's: it's named in "
+        "your pull request and filed as a bug when it merges. CI isn't changed here: "
+        "a later Task makes CI's test job run the same services, once the tests pass "
+        "in the workspace on main (the Sponsor, 2026-10-23).",
         done_when=[
             f"`{WORKSPACE_PATH}` names the workspace's image by digest and its setup",
             "Each service the tests need is declared beside it and starts in the workspace",
-            "CI's test job runs the same services, and the tests that need them run there",
-            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
         ],
     )
     return open_task(
@@ -1150,6 +1211,55 @@ RELEASE_POINTS = 3
 # Task: one split before it may already have its release story. Nothing in the worked
 # repositories was created on or after this day when it was set (crew#839).
 RELEASE_TASKS_FROM = datetime(2026, 10, 22, tzinfo=UTC)
+
+CI_SERVICES = "ci-services"
+CI_SERVICES_POINTS = 3
+
+
+def ci_services_task(
+    issues: IssueClient, board: ProjectClient, sink: EventSink, *, repo: str, cards: list[Card]
+) -> Opened | None:
+    """DevOps's second workspace Task: CI's test job runs the workspace's services
+    (the Sponsor, 2026-10-23, crew#839).
+
+    Its caller opens it when the tests that need them pass in the workspace on main: a
+    story's whole checks passed at `done` with the default branch's services up. Only
+    once the first workspace Task is closed, so it follows the workspace onto main
+    rather than racing it. None until then, and once it's opened.
+    """
+    first = existing(issues, repo, DEVOPS, FIRST_WORKSPACE, "repository")
+    if first is None or first.get("state") != "closed":
+        return None
+    body = render(
+        DEVOPS,
+        kind=CI_SERVICES,
+        key="repository",
+        why=f"`{repo}`'s workspace runs the services its tests need, and the tests that need "
+        "them pass there. CI's test job doesn't run them yet, so CI skips what the "
+        "workspace runs.",
+        work="Make CI's test job run the same services as the workspace file's compose "
+        "file: the same images by digest, as the workflow's service containers. Name the "
+        "skip reasons CI still makes, and the workspace makes too, in "
+        "`customizations.crew.ciOnlySkips`.",
+        done_when=[
+            "CI's test job runs the same services, and the tests that need them run there",
+            "Every skip left in the workspace is one CI makes too, declared in `ciOnlySkips`",
+        ],
+    )
+    return open_task(
+        issues,
+        board,
+        sink,
+        repo=repo,
+        role=DEVOPS,
+        kind=CI_SERVICES,
+        key="repository",
+        title="CI's test job runs the workspace's services",
+        body=body,
+        points=CI_SERVICES_POINTS,
+        cards=cards,
+        event="workspace.tests_pass",
+    )
 
 
 def epic_release_task(

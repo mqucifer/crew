@@ -26,6 +26,7 @@ from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
+from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import (
     FAILED_CONCLUSIONS,
     BranchUpdateConflict,
@@ -33,7 +34,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED, open_in
+from crew_org.work_types import DELIVERED, TASK, open_in
 
 STORY_TYPE = "Story"
 
@@ -500,6 +501,34 @@ def _done(
     result.merged.append((number, pull["number"]))
     if card.state != "CLOSED":
         _close_story(issues, sink, card, repo=repo, pull=pull)
+    if card.work_type == TASK:
+        _turned_on(board, sink, card, pull=pull, issues=issues, repo=repo)
+
+
+def _turned_on(
+    board: ProjectClient, sink: EventSink, card: Card, *, pull: dict, issues: IssueClient, repo: str
+) -> None:
+    """The Developer's bug for the merged tests a workspace Task turned on that fail, now
+    they fail on main (crew#839). Read from the pull request, where its gate named them,
+    and filed once, by the tests. A filing that fails is recorded, never raised."""
+    number = card.number or 0
+    try:
+        tests = role_tasks.turned_on(issues.pull(repo, pull["number"]).get("body"))
+        if tests:
+            role_tasks.turned_on_bug(
+                issues, board, sink, repo=repo, task=number, tests=tests, cards=board.cards()
+            )
+    except Exception as exc:  # noqa: BLE001 - the merge stands either way
+        reraise_if_down(exc)
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.FINDING_FILED,
+                role=role_tasks.DEVOPS.name,
+                card=number,
+                summary=f"bug for the tests #{number} turned on not filed: {exc}"[:100],
+                detail={"repo": repo, "owner": "bug", "filed": None, "error": str(exc)[:200]},
+            )
+        )
 
 
 def _close_story(

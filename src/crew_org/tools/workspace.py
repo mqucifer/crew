@@ -80,10 +80,25 @@ class CheckResult:
     # In a held container: each test the checks skipped, by `path::Class.name`, with its
     # reason, from pytest's report (crew#860). None when there's no report: not pytest.
     skipped: dict[str, str] | None = None
+    # In a held container: each test that failed or errored, by `path::Class.name`, with
+    # its first line, and the commands whose report named them (crew#839).
+    failed: dict[str, str] = field(default_factory=dict)
+    reported: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return all(r.ok for r in self.results)
+
+    @property
+    def only_tests_failed(self) -> bool:
+        """Every failing command is a pytest run that finished and named what failed in its
+        report: exit 1, which is tests failing, never an interrupted or broken run."""
+        bad = [r for r in self.results if not r.ok]
+        return (
+            bool(bad)
+            and bool(self.failed)
+            and all(r.code == 1 and not r.timed_out and r.command in self.reported for r in bad)
+        )
 
     @property
     def failure_report(self) -> str:
@@ -367,6 +382,8 @@ def check(
     reverted: list[str] = []
     unsafe: list[str] = []
     skipped: dict[str, str] | None = None
+    failed: dict[str, str] = {}
+    reported: list[str] = []
     if all(r.ok for r in results):
         touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
@@ -393,6 +410,8 @@ def check(
             # with several (crew-presentation runs three) is read whole.
             if held is not None and (found := skipped_tests(worktree)) is not None:
                 skipped = {**(skipped or {}), **found}
+                failed.update(failed_tests(worktree) or {})
+                reported.append(results[-1].command)
                 (worktree / REPORT).unlink(missing_ok=True)
     return CheckResult(
         results=results,
@@ -402,6 +421,8 @@ def check(
         resetup=resetup,
         services_down=dict(getattr(held, "down", None) or {}),
         skipped=skipped,
+        failed=failed,
+        reported=reported,
     )
 
 
@@ -438,6 +459,26 @@ def skipped_tests(worktree: Path) -> dict[str, str] | None:
         reason = (skip.get("message") or skip.text or "").strip()
         named = (case.get("file"), case.get("classname") or "", case.get("name") or "")
         found[_test_id(worktree, *named)] = reason
+    return found
+
+
+def failed_tests(worktree: Path) -> dict[str, str] | None:
+    """Each test the last pytest run failed or errored on, by `path::Class.name`, with its
+    message's first line. None when there's no report, as `skipped_tests`."""
+    try:
+        root = ET.parse(worktree / REPORT).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    found: dict[str, str] = {}
+    for case in root.iter("testcase"):
+        bad = case.find("failure")
+        if bad is None:
+            bad = case.find("error")
+        if bad is None:
+            continue
+        said = (bad.get("message") or bad.text or "").strip().splitlines()
+        named = (case.get("file"), case.get("classname") or "", case.get("name") or "")
+        found[_test_id(worktree, *named)] = (said[0] if said else "")[:200]
     return found
 
 

@@ -21,8 +21,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 52 |
-| A setting that changes what the tick does | 202 |
+| The tick decides a card's handling, found by the decision-point audit | 53 |
+| A setting that changes what the tick does | 203 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -38,10 +38,10 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 66 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 67 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 124 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 125 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 101 |
+| Unplaced | | 102 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -278,9 +278,10 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.revisit.design_faults`<br>Send the skeleton's design faults back to the Architect. | flow | `src/crew_org/flows/revisit.py:_answer_design_faults` | — | — | src/crew_org/flows/revisit.py:_answer_design_faults<br>src/crew_org/flows/revisit.py:_blocks | — |
 | `decision.revisit.file_work`<br>Add the work to the epic's own text, under the Architect's heading, once. | flow | `src/crew_org/flows/revisit.py:_give_to_epic` | — | — | src/crew_org/flows/revisit.py:_give_to_epic<br>src/crew_org/flows/revisit.py:_merge<br>src/crew_org/flows/revisit.py:_product_epics<br>src/crew_org/flows/revisit.py:_revise<br>src/crew_org/flows/revisit.py:_revisit<br>src/crew_org/flows/revisit.py:_route<br>src/crew_org/flows/revisit.py:file_technical_epics<br>src/crew_org/flows/revisit.py:file_unchanged_design_work | — |
 | `decision.role_tasks.carry_out`<br>Do what the triage decided, on the issue and the board. | flow | `src/crew_org/flows/role_tasks.py:carry_out` | — | — | src/crew_org/flows/role_tasks.py:carry_out<br>src/crew_org/flows/role_tasks.py:tasks_to_triage | crew#839 |
+| `decision.role_tasks.ci_services`<br>DevOps's second workspace Task: CI's test job runs the workspace's services (the Sponsor, 2026-10-23, crew#839). | flow | `src/crew_org/flows/role_tasks.py:ci_services_task` | — | — | src/crew_org/flows/role_tasks.py:ci_services_task | crew#839 |
 | `decision.role_tasks.epic_split`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/role_tasks.py:pending_release_tasks | crew#192<br>crew#816<br>crew#839<br>crew#858<br>crew#859 |
 | `decision.role_tasks.first_diagram`<br>The Architect's first Task in a repository with no diagram: draw it (crew#839). | flow | `src/crew_org/flows/role_tasks.py:first_diagram_task` | — | — | src/crew_org/flows/role_tasks.py:first_diagram_task | crew#839 |
-| `decision.role_tasks.first_workspace`<br>DevOps's first Task in a repository with no workspace file: write it (crew#860). | flow | `src/crew_org/flows/role_tasks.py:first_workspace_task` | — | — | src/crew_org/flows/role_tasks.py:first_workspace_task | ADR 0032<br>crew#860 |
+| `decision.role_tasks.first_workspace`<br>DevOps's first Task in a repository with no workspace file: write it (crew#860). | flow | `src/crew_org/flows/role_tasks.py:first_workspace_task` | — | — | src/crew_org/flows/role_tasks.py:first_workspace_task | ADR 0032<br>crew#839<br>crew#860 |
 | `decision.role_tasks.goal_epics_done`<br>Close an epic when its stories are Done, and a goal when its epics are. | flow | `src/crew_org/flows/acceptance.py:close_finished_parents` | — | — | src/crew_org/flows/acceptance.py:close_finished_parents | crew#174<br>crew#185<br>crew#187<br>crew#839<br>crew#858<br>sprint-metrics#184 |
 | `decision.role_tasks.no_qa`<br>Verify everything sitting in QAing. | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa | crew#839 |
 | `decision.role_tasks.not_opened`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#839<br>crew#858<br>crew#859 |
@@ -430,6 +431,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.review_crew.MAX_DIFF_CHARS`<br>The whole diff, or no approval. | evidence | `src/crew_org/crews/review_crew.py:MAX_DIFF_CHARS` | — | — | src/crew_org/crews/review_crew.py:MAX_DIFF_CHARS | — |
 | `config.const.review_crew.MIN_ACTION_CHARS`<br>MIN_ACTION_CHARS = 15 | evidence | `src/crew_org/crews/review_crew.py:MIN_ACTION_CHARS` | — | — | src/crew_org/crews/review_crew.py:MIN_ACTION_CHARS | — |
 | `config.const.review_evidence.MAX_IMPORTED_CHARS`<br>The code a diff leans on can be large; this is a guard, not a budget (§16). | evidence | `src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS` | — | — | src/crew_org/tools/review_evidence.py:MAX_IMPORTED_CHARS | — |
+| `config.const.role_tasks.CI_SERVICES_POINTS`<br>CI_SERVICES_POINTS = 3 | — | `src/crew_org/flows/role_tasks.py:CI_SERVICES_POINTS` | — | — | src/crew_org/flows/role_tasks.py:CI_SERVICES_POINTS | — |
 | `config.const.role_tasks.DIAGRAM_POINTS`<br>DIAGRAM_POINTS = 2 | — | `src/crew_org/flows/role_tasks.py:DIAGRAM_POINTS` | — | — | src/crew_org/flows/role_tasks.py:DIAGRAM_POINTS | — |
 | `config.const.role_tasks.FIRST_DIAGRAM_POINTS`<br>FIRST_DIAGRAM_POINTS = 3 | — | `src/crew_org/flows/role_tasks.py:FIRST_DIAGRAM_POINTS` | — | — | src/crew_org/flows/role_tasks.py:FIRST_DIAGRAM_POINTS | — |
 | `config.const.role_tasks.FIRST_WORKSPACE_POINTS`<br>FIRST_WORKSPACE_POINTS = 3 | — | `src/crew_org/flows/role_tasks.py:FIRST_WORKSPACE_POINTS` | — | — | src/crew_org/flows/role_tasks.py:FIRST_WORKSPACE_POINTS | — |
@@ -618,7 +620,7 @@ section; one no line holds for is unplaced, never guessed.
 | `§16 why_this_is_a_rule_and`<br>Why this is a rule and not a lesson learned. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |
 | `§16.2`<br>A ceiling is a guard, not a budget. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |
 | `§16.3`<br>When it fires, fail loudly. | — | `docs/ways-of-working.md:§16` | — | — | guidance | — |
-| `§19 a_digest_cant_be_invented`<br>A digest can't be invented. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Product Owner (onboarding) | §19 | maybe check.design.image_problems | crew#364 |
+| `§19 a_digest_cant_be_invented`<br>A digest can't be invented. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Product Owner (onboarding) | §19 | guidance | crew#364 |
 | `§19.1`<br>Generated code runs sandboxed. §14 applies to every project. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Product Owner (onboarding) | §19 | maybe guard.bounds.out_of_bounds<br>named in the text: `tools/sandbox.py`. | — |
 | `§19.5`<br>Checks are never weakened to make a change pass. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Product Owner (onboarding) | §19 | maybe session.run<br>named in the text: merged definitions and their tests can't disappear silently (§15). | crew#140 |
 | `§19.6`<br>Failure is loud. | guards | `docs/ways-of-working.md:§19` | Architect<br>Code Reviewer<br>DevOps Engineer<br>Product Owner (onboarding) | §19 | guidance | — |

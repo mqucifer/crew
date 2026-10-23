@@ -77,6 +77,9 @@ class Verdict:
     # Merged tests that skipped for a reason the project doesn't declare CI-only, by
     # `path::name`, with the reason: DevOps's to look at, not the Developer's (crew#860).
     for_devops: dict[str, str] = field(default_factory=dict)
+    # Merged tests a workspace Task's services turn on that fail, where the branch caused
+    # none of them: the Developer's bug once it merges, not the Task's (crew#839).
+    for_developer: dict[str, str] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -205,6 +208,8 @@ def at_done(
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.check = run_checks(worktree)
+    if merged is not None and role_tasks.changes_workspace(role, worktree, paths):
+        _turned_on(worktree, merged, paths, verdict)
     _checked(verdict)
     if merged is not None:
         _skipped(worktree, merged, paths, verdict)
@@ -238,6 +243,13 @@ def pr_sections(verdict: Verdict) -> list[str]:
     if verdict.placeholders:
         lines += ["", delivery.PLACEHOLDERS_HEADING, ""]
         lines += [f"- `{key}`" for key in verdict.placeholders]
+    if verdict.for_developer:
+        lines += ["", role_tasks.TURNED_ON_HEADING, ""]
+        lines += [
+            "Not this Task's: filed for the Developer as one bug when this merges.",
+            "",
+        ]
+        lines += [f"- `{key}`: {line}" for key, line in sorted(verdict.for_developer.items())]
     return lines
 
 
@@ -409,6 +421,29 @@ def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdic
         verdict.for_devops = {t: r for t, r in run_in_ci.items() if t not in mine}
 
 
+def _turned_on(
+    worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict
+) -> None:
+    """A workspace Task's own services turn on merged tests that had skipped, and some
+    fail (the Sponsor, 2026-10-23). Fixing them is the Developer's, outside the Task's
+    scope: on mqucifer/sprint-metrics#739 some 180 rotted database tests would have sent
+    DevOps's Task back for ever. So when only tests failed and the branch caused none of
+    them, by the test `_skipped` uses, they're the Developer's bug, not a refusal. One
+    the branch caused, or any other failure, goes back as today's do.
+    """
+    check = verdict.check
+    if check is None or not check.only_tests_failed:
+        return
+    touched = added_or_changed(worktree, merged, paths)
+    changed = set(paths)
+    if any(
+        t.split("[", 1)[0] in touched or _caused(worktree, t.partition("::")[0], changed)
+        for t in check.failed
+    ):
+        return
+    verdict.for_developer = dict(check.failed)
+
+
 def _caused(worktree: Path, path: str, changed: set[str]) -> bool:
     """Could the branch have made a test in `path` skip, outside the test itself? True
     for a path that names no file in the worktree: the gate refuses rather than hands it
@@ -466,7 +501,7 @@ def _checked(verdict: Verdict) -> None:
                 ),
             )
         )
-    if verdict.check is None or verdict.check.ok:
+    if verdict.check is None or verdict.check.ok or verdict.for_developer:
         return
     verdict.findings.append(
         Finding(

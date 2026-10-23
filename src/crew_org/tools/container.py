@@ -81,6 +81,38 @@ class Result:
         return self.code == 0
 
 
+def own_services(worktree: Path) -> Declared:
+    """The services the worktree's own branch declares, for a workspace Task's gate at
+    `done` (the Sponsor, 2026-10-23, crew#839).
+
+    The same reading as the default branch's (`services.declared`), so each is held to
+    the same rules, and one more first: its image's digest is read from its registry,
+    as the gates read a compose file's. One its registry doesn't have is a problem and
+    never pulled.
+    """
+    from crew_org.tools import base_images, services  # noqa: PLC0415
+
+    def read(path: str) -> str | None:
+        found = worktree / path
+        return found.read_text(encoding="utf-8") if found.is_file() else None
+
+    declared = services.declared(read)
+    kept: list[Service] = []
+    problems = dict(declared.problems)
+    for service in declared.services:
+        ref = base_images.parse(service.image)
+        unread = (
+            base_images.unread(f"`{service.name}`", ref, ref.digest)
+            if ref is not None and ref.digest is not None
+            else [f"`{service.name}` names no image pinned by digest"]
+        )
+        if unread:
+            problems[service.name] = "; ".join(unread)
+        else:
+            kept.append(service)
+    return replace(declared, services=kept, problems=problems)
+
+
 def manifests(worktree: Path) -> dict[str, str]:
     """The dependency files at the worktree's root (`MANIFESTS`), each by name to its digest."""
     found = {p for pattern in MANIFESTS for p in worktree.glob(pattern) if p.is_file()}

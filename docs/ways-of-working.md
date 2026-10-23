@@ -906,6 +906,10 @@ the wording here.
    branch pins that the registry doesn't have for that image, resolved
    anonymously outside the sandbox, sends it back from the gates at `done`,
    the finding naming the real one, the way an unsafe CI workflow is (§19.2).
+   A compose file's images are pulled by the host, so a tag-only pin there
+   goes back too, naming the digest the tag resolves to now. A session reads
+   what a registry holds with its `image_digest` tool, which the crew answers
+   on the host, anonymously, from Docker Hub or GHCR.
 
 9. **A release can be run again.** Running the release for a version again
    completes whatever that version is missing (its tag, its Release, its image

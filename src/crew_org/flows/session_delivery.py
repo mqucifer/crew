@@ -68,10 +68,12 @@ from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
 from crew_org.rules import Rule
 from crew_org.session import conversation
-from crew_org.tools.container import Held
+from crew_org.tools import reproduction
+from crew_org.tools.container import Held, own_services
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.tools.workspace import check
+from crew_org.tools.regression import merged_base
+from crew_org.tools.workspace import CheckResult, CommandResult, check
 
 if TYPE_CHECKING:
     from crew_org.flows import session_end
@@ -283,6 +285,39 @@ def deliver_by_session(
     )
 
 
+def own_checks(worktree: Path, name: str, since: str) -> Any:
+    """The whole checks of a workspace Task, in a container of its own with the services
+    and setup its branch declares (the Sponsor, 2026-10-23, crew#839).
+
+    The session's container has the default branch's services, so on
+    mqucifer/sprint-metrics#739 the Postgres DevOps declared was never there. This one
+    has the branch's, held to the default branch's rules (`own_services`), and runs the
+    branch's setup with the network, as a returned story's session already does. Setup
+    gets the start's second try. A container that won't start, or a setup that fails,
+    is the checks' failure, for the Task to answer.
+    """
+    own = Held(worktree, name, declared=own_services(worktree))
+    try:
+        started = own.start()
+        if not started.ok:
+            failed = CommandResult(started.command, started.code or 1, started.output)
+            return CheckResult(results=[failed], services_down=dict(own.down))
+        setup = own.setup()
+        if setup is not None and not setup.ok:
+            setup = own.setup()
+        if setup is not None and not setup.ok:
+            return CheckResult(
+                results=[CommandResult(setup.command, setup.code, setup.output)],
+                services_down=dict(own.down),
+            )
+        checked = check(worktree, held=own, since=since)
+        if own.lost:
+            raise SessionInterrupted("the workspace container", "lost while the gates ran")
+        return checked
+    finally:
+        own.stop()
+
+
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
     """A Task's work events name its role, so they're placed by its card, not as a review
     of a pull request (delivery-history's DevOps Engineer)."""
@@ -325,6 +360,10 @@ def _sessions(
         return _keep(ws, worktree, since, number, sink)
 
     def run_checks(at: Path) -> Any:
+        merged = merged_base(at)
+        paths = reproduction._changed(at, merged.sha) if merged is not None else []
+        if role_tasks.changes_workspace(task, at, paths):
+            return own_checks(at, f"{repo}-{number}-done", since)
         checked = check(at, held=held, since=since)
         if held.lost:
             # A gate's finding would blame the branch for the infrastructure.

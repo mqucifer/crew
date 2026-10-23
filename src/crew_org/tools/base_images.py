@@ -190,7 +190,7 @@ def invented(path: str, dockerfile: str) -> list[str]:
     reasons: list[str] = []
     for ref in base_images(dockerfile):
         if ref.digest is not None:
-            reasons += _unread(path, ref, ref.digest)
+            reasons += unread(path, ref, ref.digest)
     return reasons
 
 
@@ -236,11 +236,11 @@ def unpinned(path: str, compose: str) -> list[str]:
             )
             reasons.append(f"{path} pins `{ref.shown}` by tag, which can move: {held}.")
         else:
-            reasons += _unread(path, ref, ref.digest)
+            reasons += unread(path, ref, ref.digest)
     return reasons
 
 
-def _unread(path: str, ref: Ref, digest: str) -> list[str]:
+def unread(path: str, ref: Ref, digest: str) -> list[str]:
     """Why the digest `path` pins for `ref` wasn't read from its registry, or nothing."""
     if not _DIGEST.match(digest):
         return [f"{path} pins `{ref.shown}@{digest}`, which isn't a sha256 digest"]
