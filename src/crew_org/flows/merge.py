@@ -27,6 +27,7 @@ from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
 from crew_org.llm import reraise_if_down
+from crew_org.rules import Rule
 from crew_org.tools.github_issues import (
     FAILED_CONCLUSIONS,
     BranchUpdateConflict,
@@ -188,6 +189,8 @@ class MergeResult:
     # merge queue: returned to the Developer with the log (#325).
     ci_failed: list[tuple[int, int]] = field(default_factory=list)
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR) with changes requested on its current head: back to its role for rework.
+    changes_requested: list[tuple[int, int]] = field(default_factory=list)
     # (card, PR) of a role's Task whose work is the Sponsor's to approve, the
     # repository's diagram or a release, approved by the crew and not yet by them.
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
@@ -284,6 +287,26 @@ def merge_approved(
             continue
 
         reviews = issues.pull_reviews(repo, pull["number"])
+        head = (pull.get("head") or {}).get("sha", "")
+        if head and any(
+            r.get("state") == "CHANGES_REQUESTED" and r.get("commit_id") == head for r in reviews
+        ):
+            # Changes asked for on the head that would merge, by anyone: back to its role
+            # for rework, as from Reviewing. mqucifer/sprint-metrics#740 waited here with
+            # the Sponsor's request on it, and the crew asked them to approve it (crew#839).
+            result.changes_requested.append((number, pull["number"]))
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=IN_PROGRESS,
+                by=None,
+                card=number,
+                frm=MERGING,
+                summary=f"PR #{pull['number']}: changes requested on its head — back for rework",
+                rule=Rule.REVIEW_CHANGES_REQUESTED,
+            )
+            continue
         approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
             held("decision.merge.merge_approved", repo=card.repo or repo, card=number)
@@ -296,7 +319,6 @@ def merge_approved(
                 held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
                 result.no_sponsor.append((number, pull["number"]))
                 continue
-            head = (pull.get("head") or {}).get("sha", "")
             if not role_tasks.sponsor_approved(reviews, login, head):
                 held("decision.role_tasks.sponsor_approves", repo=card.repo or repo, card=number)
                 role_tasks.ask_the_sponsor(

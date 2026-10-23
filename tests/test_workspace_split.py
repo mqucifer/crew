@@ -24,7 +24,7 @@ from crew_org.tools.services import Declared, Service
 from crew_org.tools.workspace import CheckResult, CommandResult
 from tests.role_task_fakes import Board, Issues, sink
 from tests.test_gates import TESTS, at_done, done, repo  # noqa: F401
-from tests.test_merge import FakeBoard, FakeIssues, card
+from tests.test_merge import FakeBoard, FakeIssues, card, run
 
 REAL = "sha256:" + "f7" * 32
 FAKE = "sha256:" + "0e" * 32
@@ -320,3 +320,33 @@ def test_a_story_passing_with_mains_services_up_opens_cis_task(tmp_path, monkeyp
         worktree=tmp_path,
     )
     assert len(opened) == 1
+
+
+# --- part 6: changes requested in Merging ----------------------------------------------
+
+
+class Requested(FakeIssues):
+    def __init__(self, on: str):
+        super().__init__(
+            reviews=[
+                {"state": "APPROVED", "commit_id": "abc", "user": {"login": "reviewer"}},
+                {"state": "CHANGES_REQUESTED", "commit_id": on, "user": {"login": "mquarters"}},
+            ]
+        )
+
+    def pull_for_branch(self, name, branch, *, known=None):
+        return {"number": 100, "head": {"sha": "abc"}}
+
+
+def test_changes_requested_on_the_head_send_a_merging_card_back_for_rework():
+    """mqucifer/sprint-metrics#740 waited in Merging with the Sponsor's request on it."""
+    issues = Requested(on="abc")
+    result, board, seen = run([card(740)], issues)
+    assert result.changes_requested == [(740, 100)] and issues.merged == []
+    assert board.moves == [("C740", "In Progress")]
+
+
+def test_changes_requested_on_an_older_head_dont():
+    issues = Requested(on="older")
+    result, board, _ = run([card(740)], issues)
+    assert result.changes_requested == [] and issues.merged == [100]
