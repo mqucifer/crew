@@ -181,6 +181,9 @@ class Merged(FakeIssues):
         given = [c if isinstance(c, tuple) else (CREW, c) for c in self.on_pull]
         return [{"body": b, "user": {"login": who}} for who, b in given]
 
+    def labelled(self, name, label):
+        return []
+
 
 def merges(issues, monkeypatch, *, task=None):
     """The Task's merge recorded, and what it filed for the Developer, with the events."""
@@ -263,6 +266,107 @@ def test_only_a_workspace_task_files_the_bug(monkeypatch):
     assert filed == []
     filed, _ = merges(Merged(comments=record, files=["CHANGELOG.md"]), monkeypatch)
     assert filed == []
+
+
+class Landed(Merged):
+    """The Task's pull request merged, with the bugs filed so far (open or closed), as
+    `role_task_fakes.Issues` keeps them, so the real filing and its lookup run."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.filed = Issues()
+        self.merged_pulls = [{"number": 741, "merged_at": "2026-10-22T17:17:47Z"}]
+
+    def labelled(self, name, label):
+        return self.filed.labelled(name, label)
+
+    def create(self, name, title, body, labels=None):
+        return self.filed.create(name, title, body, labels)
+
+
+class BoardOfCards(FakeBoard):
+    def cards(self):
+        return []
+
+    def add_issue(self, node_id):
+        return f"item-{node_id}"
+
+
+def queued_then_done(**kw) -> Card:
+    """mqucifer/sprint-metrics#739 as the board had it: the queue merged it at 17:17:47Z
+    and the board's workflow moved it to Done, closed, at 17:17:59Z, before any pass
+    saw it in Merging."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    task = card(739, status="Done")
+    task.work_type, task.labels, task.state = "Task", ["role:devops"], "CLOSED"
+    task.closed = kw.pop("closed", datetime.now(UTC))
+    for name, value in kw.items():
+        setattr(task, name, value)
+    return task
+
+
+def passes(issues, *cards, times=1):
+    """`merge_approved` run `times`, with the bugs and events it filed."""
+    seen: list = []
+    events = EventSink(None)
+    events.subscribe(seen.append)
+    for _ in range(times):
+        merge.merge_approved(
+            BoardOfCards(), issues, events, cards=list(cards), default_repo="sprint-metrics"
+        )
+    return [e for e in seen if e.kind == "finding.filed"]
+
+
+def test_a_task_the_board_moved_to_done_still_files_its_bug():
+    """The real order (crew#839): queue merge, then the board's Done, then the pass."""
+    issues = Landed(comments=[role_tasks.turned_on_marker(HEAD, ROTTED)])
+    (recorded,) = passes(issues, queued_then_done())
+    assert recorded.detail["filed"] in issues.filed.issues
+    assert [i["title"] for i in issues.filed.issues.values()] == [
+        "1 merged tests fail now the workspace runs its services"
+    ]
+
+
+def test_the_bug_is_filed_once_across_passes_and_the_crews_own_landing(monkeypatch):
+    issues = Landed(comments=[role_tasks.turned_on_marker(HEAD, ROTTED)])
+    landing = queued_then_done(status="Merging")
+    merge._done(
+        BoardOfCards(),
+        EventSink(None),
+        landing,
+        pull={"number": 741},
+        result=merge.MergeResult(),
+        issues=issues,
+        repo="sprint-metrics",
+    )
+    assert passes(issues, queued_then_done(), times=2) == []
+    # Fixed by the Developer and closed: still filed, so never filed again.
+    for bug in issues.filed.issues.values():
+        bug["state"] = "closed"
+    assert passes(issues, queued_then_done()) == []
+    assert len(issues.filed.issues) == 1
+
+
+def test_a_done_card_that_isnt_a_workspace_tasks_merge_files_nothing():
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    record = [role_tasks.turned_on_marker(HEAD, ROTTED)]
+    story = queued_then_done(work_type="Story", labels=[])
+    architect = queued_then_done(labels=["role:architect"])
+    open_task = queued_then_done(state="OPEN")
+    old = queued_then_done(closed=datetime.now(UTC) - merge.TURNED_ON_WINDOW - timedelta(hours=1))
+    for done_card in (story, architect, open_task, old):
+        issues = Landed(comments=record)
+        assert passes(issues, done_card) == [] and issues.filed.issues == {}, done_card
+    for issues in (
+        Landed(comments=record, files=["CHANGELOG.md"]),
+        Landed(comments=[role_tasks.turned_on_marker("0ld0ld0ld0ld", ROTTED)]),
+    ):
+        assert passes(issues, queued_then_done()) == [] and issues.filed.issues == {}
+    nothing_merged = Landed(comments=record)
+    nothing_merged.merged_pulls = [{"number": 741, "merged_at": None}]
+    assert passes(nothing_merged, queued_then_done()) == []
 
 
 def test_the_record_is_written_for_the_head_pushed(tmp_path):

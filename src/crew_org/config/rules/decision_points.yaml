@@ -1685,10 +1685,19 @@ flows.session_delivery._record_turned_on:end:fafbc128:
   at: flows/session_delivery.py:_record_turned_on
   if: not tests or pull is None
   not_a_rule: nothing to record
-flows.merge._turned_on:end:7f2ee007:
+flows.merge._turned_on:end:f5f3b880:
   at: flows/merge.py:_turned_on
-  if: not tests
-  not_a_rule: nothing to file
+  if: not tests or role_tasks.turned_on_filed(issues, repo, tests) is not None
+  rule: decision.role_tasks.turned_on
+flows.merge.done_devops_tasks:filter:fb1b4695:
+  at: flows/merge.py:done_devops_tasks
+  if: c.status == DONE and c.state == 'CLOSED' and (c.closed is not None) and (c.closed >= since)
+    and (role_tasks.role_of(c) is role_tasks.DEVOPS) and (repos is None or c.repo in repos)
+  rule: decision.role_tasks.turned_on
+flows.role_tasks.turned_on_filed:filter:158652dc:
+  at: flows/role_tasks.py:turned_on_filed
+  if: wanted in (i.get('body') or '')
+  rule: decision.role_tasks.turned_on
 flows.role_tasks.turned_on_bug:filter:61f26815:
   at: flows/role_tasks.py:turned_on_bug
   if: line.startswith('hung ')
