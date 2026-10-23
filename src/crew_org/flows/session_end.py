@@ -246,6 +246,11 @@ def route(
                 # Merged tests a workspace Task turned on that fail, handed to the
                 # Developer rather than refused (crew#839): a count, never names.
                 "turned_on": len(verdict.for_developer),
+                # Hung tests set aside and run again around, and those left hung: the
+                # bound's evidence (crew#839).
+                "hang_rounds": getattr(verdict.check, "hang_rounds", 0),
+                "hung": len(getattr(verdict.check, "hung", None) or {})
+                + len(getattr(verdict.check, "deselected", None) or {}),
                 "resetups": int(resetup is not None),
                 "resetups_failed": int(resetup is False),
             },

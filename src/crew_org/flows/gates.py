@@ -44,7 +44,7 @@ from crew_org.rulebook import says
 from crew_org.tools import bounds, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
-from crew_org.tools.workspace import CheckResult, check
+from crew_org.tools.workspace import CheckResult, check, shown_test
 from crew_org.work_types import BUG
 
 
@@ -425,23 +425,39 @@ def _turned_on(
     worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict
 ) -> None:
     """A workspace Task's own services turn on merged tests that had skipped, and some
-    fail (the Sponsor, 2026-10-23). Fixing them is the Developer's, outside the Task's
-    scope: on mqucifer/sprint-metrics#739 some 180 rotted database tests would have sent
-    DevOps's Task back for ever. So when only tests failed and the branch caused none of
-    them, by the test `_skipped` uses, they're the Developer's bug, not a refusal. One
-    the branch caused, or any other failure, goes back as today's do.
+    fail or hang (the Sponsor, 2026-10-23). Fixing them is the Developer's, outside the
+    Task's scope: on mqucifer/sprint-metrics#739's test copy 41 rotted database tests
+    fail and 4 hang, and would have sent DevOps's Task back for ever. So when only tests
+    failed, the hung ones set aside before the run (`own_checks`), and the branch caused
+    none of them, by the test `_skipped` uses, they're the Developer's bug, not a
+    refusal. One the branch caused, or any other failure, goes back as today's do.
     """
     check = verdict.check
-    if check is None or not check.only_tests_failed:
+    if check is None or check.hung or not (check.ok or check.only_tests_failed):
         return
+    hung = {shown_test(t): f"hung: waiting in {where}" for t, where in check.deselected.items()}
+    tests = {**check.failed, **hung}
+    if not tests:
+        return
+    branch_caused = caused_by(worktree, merged, paths)
+    if any(branch_caused(t) for t in tests):
+        return
+    verdict.for_developer = tests
+
+
+def caused_by(worktree: Path, merged: regression.Merged, paths: list[str]) -> Callable[[str], bool]:
+    """Whether the branch caused a test's outcome, `path::Class.name` or a node id: it adds
+    or changes the test, or changes its module or a `conftest.py` above it (crew#860)."""
     touched = added_or_changed(worktree, merged, paths)
     changed = set(paths)
-    if any(
-        t.split("[", 1)[0] in touched or _caused(worktree, t.partition("::")[0], changed)
-        for t in check.failed
-    ):
-        return
-    verdict.for_developer = dict(check.failed)
+
+    def caused(test: str) -> bool:
+        shown = shown_test(test)
+        return shown.split("[", 1)[0] in touched or _caused(
+            worktree, shown.partition("::")[0], changed
+        )
+
+    return caused
 
 
 def _caused(worktree: Path, path: str, changed: set[str]) -> bool:
@@ -502,6 +518,24 @@ def _checked(verdict: Verdict) -> None:
             )
         )
     if verdict.check is None or verdict.check.ok or verdict.for_developer:
+        return
+    if verdict.check.timed_out:
+        # Its own finding, never counted as a test that failed (crew#839): a run that
+        # hung says nothing of the tests after the one it hung in.
+        hung = verdict.check.hung
+        verdict.findings.append(
+            Finding(
+                "check.gates.the_checks_timed_out",
+                says(
+                    "check.gates.the_checks_timed_out",
+                    tests="\n".join(
+                        f"- `{shown_test(t)}`: hung, waiting in {where}"
+                        for t, where in sorted(hung.items())
+                    )
+                    or "- no test named: the run stopped at its bound",
+                ),
+            )
+        )
         return
     verdict.findings.append(
         Finding(

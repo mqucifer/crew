@@ -8,7 +8,9 @@ container — see docs/ways-of-working.md and the note in `check`.
 
 from __future__ import annotations
 
+import ast
 import os
+import re
 import subprocess
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -84,6 +86,12 @@ class CheckResult:
     # its first line, and the commands whose report named them (crew#839).
     failed: dict[str, str] = field(default_factory=dict)
     reported: list[str] = field(default_factory=list)
+    # In a held container: the test a run's faulthandler dump shows hung, by node id, with
+    # where it waits; and the hung tests set aside before the run, with theirs (crew#839).
+    hung: dict[str, str] = field(default_factory=dict)
+    deselected: dict[str, str] = field(default_factory=dict)
+    # The rounds a workspace Task's gate ran again with its hung tests set aside.
+    hang_rounds: int = 0
 
     @property
     def ok(self) -> bool:
@@ -98,6 +106,14 @@ class CheckResult:
             bool(bad)
             and bool(self.failed)
             and all(r.code == 1 and not r.timed_out and r.command in self.reported for r in bad)
+        )
+
+    @property
+    def timed_out(self) -> bool:
+        """A test hung, or a command ran past its bound: either way nothing says how the
+        rest would have done (crew#839)."""
+        return bool(self.hung) or any(
+            r.timed_out or "(stopped: still running after" in r.output for r in self.results
         )
 
     @property
@@ -331,6 +347,7 @@ def check(
     timeout: int = DEFAULT_TIMEOUT,
     held: Any = None,
     since: str | None = None,
+    deselect: dict[str, str] | None = None,
 ) -> CheckResult:
     """Format what a formatter owns, then lint and test what is left.
 
@@ -384,6 +401,7 @@ def check(
     skipped: dict[str, str] | None = None
     failed: dict[str, str] = {}
     reported: list[str] = []
+    hung: dict[str, str] = {}
     if all(r.ok for r in results):
         touched = _changed(worktree, since)
         kept = {p: _read(worktree / p) for p in touched or ()}
@@ -405,7 +423,12 @@ def check(
         if held is not None:
             (worktree / REPORT).unlink(missing_ok=True)
         for command in tools.verify:
+            if deselect and "pytest" in " ".join(command):
+                # A workspace Task's hung tests, set aside to run the rest (crew#839).
+                command = [*command, *(a for t in deselect for a in ("--deselect", t))]
             results.append(do(command))
+            if held is not None and (hang := hung_test(results[-1].output, worktree)):
+                hung[hang[0]] = hang[1]
             # Each pytest command writes the one report: read after each, so a project
             # with several (crew-presentation runs three) is read whole.
             if held is not None and (found := skipped_tests(worktree)) is not None:
@@ -423,6 +446,8 @@ def check(
         skipped=skipped,
         failed=failed,
         reported=reported,
+        hung=hung,
+        deselected=dict(deselect or {}),
     )
 
 
@@ -438,7 +463,71 @@ def with_report(env: dict[str, str]) -> dict[str, str]:
     # The root pinned to the worktree, and xunit1, whose test cases name their file: a
     # test is then named by its path, whatever dots its directories have.
     ours = f"--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    # A test that hangs dumps every thread's stack and ends the run (crew#839), so the
+    # gate can name it rather than wait out the whole bound with nothing to show.
+    ours += f" -o faulthandler_timeout={HANG_AFTER} -o faulthandler_exit_on_timeout=true"
     return {**env, "PYTEST_ADDOPTS": f"{given} {ours}".strip()}
+
+
+# How long one test runs before it's a hang (crew#839). Started high, 200x the slowest
+# test seen (0.29 s, sprint-metrics with its Postgres), to be lowered from the records.
+HANG_AFTER = 60
+_THREAD = re.compile(r"^(?:Current thread|Thread) 0x[0-9a-f]+ \(most recent call first\):$", re.M)
+_FRAME = re.compile(r'^\s+File "(?P<file>[^"]+)", line (?P<line>\d+) in (?P<name>\S+)$')
+
+
+def hung_test(output: str, worktree: Path) -> tuple[str, str] | None:
+    """The test a run's faulthandler dump shows hung, as its node id, and where it waits.
+
+    Read from the thread running a test (`pytest_pyfunc_call` below it): the test is its
+    frame above pytest's, and it waits in the innermost frame, said with the innermost
+    of the project's own. None when the output has no dump, or no test in it.
+    """
+    at = output.find("Timeout (")
+    if at == -1:
+        return None
+    for section in _THREAD.split(output[at:])[1:]:
+        frames = [m for line in section.splitlines() if (m := _FRAME.match(line))]
+        calls = [i for i, m in enumerate(frames) if m["name"] == "pytest_pyfunc_call"]
+        if not calls or calls[0] == 0:
+            continue
+        test = frames[calls[0] - 1]
+        path = test["file"].removeprefix("/work/")
+        if path == test["file"]:
+            continue
+        own = next((m for m in frames[: calls[0] - 1] if "/site-packages/" not in m["file"]), None)
+        waits = _frame(frames[0]) + (f", from {_frame(own)}" if own is not None else "")
+        return _node_id(worktree, path, int(test["line"]), test["name"]), waits
+    return None
+
+
+def _frame(m: re.Match[str]) -> str:
+    where = m["file"].removeprefix("/work/").split("/site-packages/")[-1]
+    return f"{where}:{m['line']} in {m['name']}"
+
+
+def _node_id(worktree: Path, path: str, line: int, name: str) -> str:
+    """pytest's node id for the test function `name` at `line`: `path::Class::name` when a
+    class holds it in the worktree's file, else `path::name`."""
+    try:
+        tree = ast.parse((worktree / path).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return f"{path}::{name}"
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ClassDef) and node.lineno <= line <= (node.end_lineno or 0)):
+            continue
+        if any(
+            isinstance(c, ast.FunctionDef | ast.AsyncFunctionDef) and c.name == name
+            for c in node.body
+        ):
+            return f"{path}::{node.name}::{name}"
+    return f"{path}::{name}"
+
+
+def shown_test(node_id: str) -> str:
+    """A node id as the gates name a test: `path::Class.name`."""
+    path, _, rest = node_id.partition("::")
+    return f"{path}::{rest.replace('::', '.')}"
 
 
 def skipped_tests(worktree: Path) -> dict[str, str] | None:

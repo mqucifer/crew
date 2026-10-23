@@ -131,6 +131,8 @@ DETAIL = frozenset(
         # Merged tests a workspace Task turned on that fail, handed to the Developer at
         # its gate (crew#839).
         "turned_on",
+        "hang_rounds",
+        "hung",
         "start_chars",
     }
 )

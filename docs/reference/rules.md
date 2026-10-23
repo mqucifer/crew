@@ -18,11 +18,11 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 17 |
-| A gate at `done` sends a session's branch back | 11 |
+| A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 53 |
-| A setting that changes what the tick does | 203 |
+| A setting that changes what the tick does | 205 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -35,13 +35,13 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
-| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 66 |
+| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 68 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 126 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 102 |
+| Unplaced | | 103 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -201,6 +201,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.a_service_wont_start`<br>At `done`, a service the project declares for its tests that isn't running is a finding naming it, never a silent skip (crew#860). The declaration is DevOps's to keep true. | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778<br>crew#814<br>crew#860 |
 | `check.gates.the_branch_changes_nothing`<br>At `done`, a branch that changes nothing goes on only if an existing test proves each criterion and the checks pass, as an already-done story does (crew#221). | evidence | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#221<br>crew#778 |
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |
+| `check.gates.the_checks_timed_out`<br>At `done`, checks that hung or ran past their bound are a finding naming the hung test and where it waits, never counted as a test that failed (crew#839). | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778<br>crew#839 |
 | `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:_declared_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests | crew#778 |
 | `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
@@ -441,6 +442,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.sandbox.DEFAULT_TIMEOUT`<br>DEFAULT_TIMEOUT = 300 | guards | `src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:DEFAULT_TIMEOUT | — |
 | `config.const.sandbox.PROBE_TIMEOUT`<br>PROBE_TIMEOUT = 15 | guards | `src/crew_org/tools/sandbox.py:PROBE_TIMEOUT` | — | — | src/crew_org/tools/sandbox.py:PROBE_TIMEOUT | — |
 | `config.const.session_delivery.GATE_REPEATS`<br>The gates' same findings this many rounds in a row end the delivery: the in-session no-progress stop's count, which a new session starts again (the Sponsor, crew#790). sprint-metrics#671's gates refu… | — | `src/crew_org/flows/session_delivery.py:GATE_REPEATS` | — | — | src/crew_org/flows/session_delivery.py:GATE_REPEATS | crew#790<br>sprint-metrics#671 |
+| `config.const.session_delivery.HANG_ROUNDS`<br>How many hung tests a workspace Task's gate sets aside before it gives up (crew#839). | — | `src/crew_org/flows/session_delivery.py:HANG_ROUNDS` | — | — | src/crew_org/flows/session_delivery.py:HANG_ROUNDS | crew#839 |
 | `config.const.session_end.FINDING_CHARS`<br>How much of a gate's finding the note quotes: its first paragraph, cut to this (crew#778). | — | `src/crew_org/flows/session_end.py:FINDING_CHARS` | — | — | src/crew_org/flows/session_end.py:FINDING_CHARS | crew#778 |
 | `config.const.session_end.FINDING_LINES`<br>A finding's first lines, by which the gates' rounds are compared for the same findings again, and quoted when they stop a delivery (crew#790): its command, exit and first error lines. | — | `src/crew_org/flows/session_end.py:FINDING_LINES` | — | — | src/crew_org/flows/session_end.py:FINDING_LINES | crew#790 |
 | `config.const.settle_crew.ASK_CHARS`<br>ASK_CHARS = 300 | answer_shape | `src/crew_org/crews/settle_crew.py:ASK_CHARS` | — | — | src/crew_org/crews/settle_crew.py:ASK_CHARS | — |
@@ -476,6 +478,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
 | `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |
+| `config.const.workspace.HANG_AFTER`<br>How long one test runs before it's a hang (crew#839). | edits | `src/crew_org/tools/workspace.py:HANG_AFTER` | — | — | src/crew_org/tools/workspace.py:HANG_AFTER | crew#839 |
 | `config.const.workspace.MAX_FAILURE_REPORT_CHARS`<br>What a command produced, kept whole. | edits | `src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS` | — | — | src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS | — |
 | `config.org.board.blocked_column`<br>board.blocked_column = Blocked | flow | `src/crew_org/config/org.yaml:board.blocked_column` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.columns`<br>board.columns = ['Inbox (Goals)', 'Needs Refinement', 'Ready', 'Sprint Backlog', 'In Progress', 'Reviewing', 'QAing', 'Merging', 'Done'] | flow | `src/crew_org/config/org.yaml:board.columns` | — | — | src/crew_org/config/org.yaml | — |

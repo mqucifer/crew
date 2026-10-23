@@ -1665,6 +1665,14 @@ flows.merge._turned_on:end:7f2ee007:
   at: flows/merge.py:_turned_on
   if: not tests
   not_a_rule: nothing to file
+flows.role_tasks.turned_on_bug:filter:2f73a844:
+  at: flows/role_tasks.py:turned_on_bug
+  if: line.startswith('hung:')
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.session_delivery.own_checks:filter:9ccf4732:
+  at: flows/session_delivery.py:own_checks
+  if: t not in deselected
+  rule: check.gates.the_checks_timed_out
 flows.role_tasks.turned_on_bug:end:7f2ee007:
   at: flows/role_tasks.py:turned_on_bug
   if: not tests

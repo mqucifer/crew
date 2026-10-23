@@ -229,7 +229,9 @@ def test_a_workspace_tasks_gate_runs_in_a_container_with_its_branchs_services(
     branch = Declared(services=[Service("db", f"postgres@{REAL}", "postgres")])
     monkeypatch.setattr(session_delivery, "Held", Own)
     monkeypatch.setattr(session_delivery, "own_services", lambda at: branch)
-    monkeypatch.setattr(session_delivery, "check", lambda at, held, since: CheckResult([]))
+    monkeypatch.setattr(
+        session_delivery, "check", lambda at, held, since, deselect: CheckResult([])
+    )
     session_delivery.own_checks(tmp_path, "sm-739-done", "base")
     assert made == [("sm-739-done", branch), "stopped"]
 
@@ -425,3 +427,197 @@ def test_workspace_check_passes_a_workspace_the_gate_would_pass(tmp_path):
     )
     reply = session_tools(tmp_path).call("workspace_check", {})
     assert reply.kind == "passed", reply.text
+
+
+# --- a hang names itself, and a workspace Task's gate runs the rest (crew#839) ---------
+
+# The dump faulthandler printed on sprint-metrics' test copy, its other threads trimmed:
+# a test's `init_db` waited on a lock a reconnected service connection held.
+HUNG = "tests/test_service.py::test_post_events_503_content_type_is_application_json"
+DUMP = """tests/test_service.py ....FF..Timeout (0:01:00)!
+Thread 0x0000ffff8cf2f180 (most recent call first):
+  File "/usr/local/lib/python3.12/selectors.py", line 415 in select
+  File "/usr/local/lib/python3.12/socketserver.py", line 235 in serve_forever
+  File "/usr/local/lib/python3.12/threading.py", line 1012 in run
+
+Thread 0x0000ffff91954020 (most recent call first):
+  File "/work/.venv/lib/python3.12/site-packages/psycopg/connection.py", line 495 in wait
+  File "/work/.venv/lib/python3.12/site-packages/psycopg/cursor.py", line 113 in execute
+  File "/work/src/sprint_metrics/store.py", line 72 in init_db
+  File "/work/tests/test_service.py", line 3208 in {name}
+  File "/work/.venv/lib/python3.12/site-packages/_pytest/python.py", line 167 in pytest_pyfunc_call
+  File "/work/.venv/lib/python3.12/site-packages/pluggy/_callers.py", line 121 in _multicall
+""".replace("{name}", HUNG.partition("::")[2])
+WAITS = "psycopg/connection.py:495 in wait, from src/sprint_metrics/store.py:72 in init_db"
+# Tests the `repo` fixture has, so the gate can tell the branch didn't cause them.
+STUCK = f"{TESTS}::test_rate_of_nothing"
+CAPPED = f"{TESTS}::test_rate_is_capped"
+
+
+def test_a_hung_test_is_named_by_its_dump_with_where_it_waits(tmp_path):
+    from crew_org.tools.workspace import hung_test
+
+    assert hung_test(DUMP, tmp_path) == (HUNG, WAITS)
+    assert hung_test("1 failed in 0.2s", tmp_path) is None
+
+
+def test_a_hung_method_is_named_by_its_class(tmp_path):
+    from crew_org.tools.workspace import hung_test
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_service.py").write_text(
+        "class TestPost:\n" + "\n" * 3204 + "    def test_post_events_503_content_type_is_"
+        "application_json(self):\n" + "        pass\n" * 5
+    )
+    found = hung_test(DUMP, tmp_path)
+    assert found is not None
+    assert (
+        found[0]
+        == "tests/test_service.py::TestPost::test_post_events_503_content_type_is_application_json"
+    )
+
+
+def test_the_checks_set_hung_tests_aside_when_asked(tmp_path):
+    from crew_org.tools.workspace import check
+
+    ran = []
+
+    class Held:
+        down: dict = {}
+
+        def resync(self):
+            return None
+
+        def exec(self, command, timeout=0):
+            ran.append(command)
+            return container.Result(" ".join(command), 0, "")
+
+    from tests.test_services import PROJECT
+
+    (tmp_path / ".crew").mkdir()
+    (tmp_path / ".crew/project.yaml").write_text(PROJECT)
+    writes_the_workspace(tmp_path)
+    check(tmp_path, held=Held(), deselect={HUNG: WAITS})
+    pytest_runs = [c for c in ran if "pytest" in c]
+    assert pytest_runs and all(c[-2:] == ["--deselect", HUNG] for c in pytest_runs)
+
+
+def hangs_then(*results, monkeypatch):
+    """`own_checks` with a container that starts, and checks that answer `results` in turn."""
+    from crew_org.flows import session_delivery
+
+    given = []
+
+    class Own:
+        down: dict = {}
+        lost = False
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def start(self):
+            return container.Result("start", 0, "")
+
+        def setup(self):
+            return None
+
+        def stop(self):
+            pass
+
+    answers = list(results)
+
+    def checks(at, held, since, deselect):
+        given.append(dict(deselect))
+        return answers.pop(0)
+
+    monkeypatch.setattr(session_delivery, "Held", Own)
+    monkeypatch.setattr(session_delivery, "own_services", lambda at: Declared())
+    monkeypatch.setattr(session_delivery, "check", checks)
+    return given
+
+
+def hung(test: str) -> CheckResult:
+    return CheckResult(results=[CommandResult(PYTEST, 1, DUMP)], hung={test: WAITS})
+
+
+def test_a_workspace_tasks_gate_sets_each_hang_aside_and_runs_the_rest(repo, monkeypatch):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    writes_the_workspace(repo)
+    other = "tests/test_metrics.py::test_rate_is_capped"
+    last = CheckResult(
+        results=[CommandResult(PYTEST, 1, "1 failed")], failed=ROTTED, reported=[PYTEST]
+    )
+    given = hangs_then(hung(STUCK), hung(other), last, monkeypatch=monkeypatch)
+    checked = session_delivery.own_checks(repo, "x", "base")
+    assert given == [{}, {STUCK: WAITS}, {STUCK: WAITS, other: WAITS}]
+    assert checked.hang_rounds == 2
+
+
+def test_past_the_bound_the_hang_is_left_for_the_gates_finding(repo, monkeypatch):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    writes_the_workspace(repo)
+    monkeypatch.setattr(session_delivery, "HANG_ROUNDS", 1)
+    other = "tests/test_metrics.py::test_rate_is_capped"
+    hangs_then(hung(STUCK), hung(other), monkeypatch=monkeypatch)
+    checked = session_delivery.own_checks(repo, "x", "base")
+    assert checked.hung == {other: WAITS} and checked.hang_rounds == 1
+
+
+def test_a_hang_the_branch_caused_is_never_set_aside(repo, monkeypatch):  # noqa: F811
+    from crew_org.flows import session_delivery
+
+    writes_the_workspace(repo)
+    (repo / TESTS).write_text((repo / TESTS).read_text() + "\n# touched\n")
+    mine = f"{TESTS}::test_rate_is_capped"
+    given = hangs_then(hung(mine), monkeypatch=monkeypatch)
+    checked = session_delivery.own_checks(repo, "x", "base")
+    assert given == [{}] and checked.hung == {mine: WAITS}
+
+
+def test_the_hangs_set_aside_are_the_developers_beside_the_failures(repo):  # noqa: F811
+    writes_the_workspace(repo)
+
+    def run_checks(at):
+        return CheckResult(
+            results=[CommandResult(PYTEST, 1, "1 failed")],
+            failed=ROTTED,
+            reported=[PYTEST],
+            deselected={CAPPED: WAITS},
+        )
+
+    verdict = at_done(repo, done(), card=devops_task(), run_checks=run_checks)
+    assert verdict.passed, verdict.findings
+    assert verdict.for_developer == {**ROTTED, CAPPED: f"hung: waiting in {WAITS}"}
+
+
+def test_a_hang_is_its_own_finding_never_a_failed_test(repo):  # noqa: F811
+    """Stories are refused with it, no loosening; so is a Task whose hang stayed."""
+    writes_the_workspace(repo)
+    for task in (devops_task(), None):
+        kw = {"card": task} if task else {}
+        verdict = at_done(repo, done(), run_checks=lambda at: hung(HUNG), **kw)
+        (finding,) = [f for f in verdict.findings if f.rule == "check.gates.the_checks_timed_out"]
+        assert f"`{HUNG}`: hung, waiting in {WAITS}" in finding.says
+        assert "check.delivery.lint_or_tests_failed" not in [f.rule for f in verdict.findings]
+
+
+def test_a_run_stopped_at_its_bound_is_the_same_finding():
+    stopped = CheckResult(
+        results=[CommandResult(PYTEST, 124, "(stopped: still running after 300s)")]
+    )
+    verdict = gates.Verdict(check=stopped)
+    gates._checked(verdict)
+    assert [f.rule for f in verdict.findings] == ["check.gates.the_checks_timed_out"]
+
+
+def test_the_bug_says_how_to_read_a_hang(tmp_path):
+    issues = Issues()
+    tests = {**ROTTED, HUNG: f"hung: waiting in {WAITS}"}
+    number = role_tasks.turned_on_bug(
+        issues, Board(), sink(tmp_path), repo="sm", task=739, tests=tests, cards=[]
+    )
+    body = issues.issues[number]["body"]
+    assert f"- `{HUNG}`: hung: waiting in {WAITS}" in body
+    assert "The 1 that hang" in body and "2 fail, error or hang" in body

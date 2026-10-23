@@ -310,12 +310,37 @@ def own_checks(worktree: Path, name: str, since: str) -> Any:
                 results=[CommandResult(setup.command, setup.code, setup.output)],
                 services_down=dict(own.down),
             )
-        checked = check(worktree, held=own, since=since)
-        if own.lost:
-            raise SessionInterrupted("the workspace container", "lost while the gates ran")
-        return checked
+        merged = merged_base(worktree)
+        paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
+        caused = gates.caused_by(worktree, merged, paths) if merged is not None else None
+        deselected: dict[str, str] = {}
+        rounds = 0
+        while True:
+            checked = check(worktree, held=own, since=since, deselect=deselected)
+            if own.lost:
+                raise SessionInterrupted("the workspace container", "lost while the gates ran")
+            # A hung test the branch didn't cause is set aside and the rest run again, so
+            # what they turn on can be told apart (the operator, crew#839). One it caused,
+            # or one past the bound, is the gate's finding that the checks timed out.
+            new = {t: w for t, w in checked.hung.items() if t not in deselected}
+            if (
+                not new
+                or caused is None
+                or any(caused(t) for t in new)
+                or len(deselected) + len(new) > HANG_ROUNDS
+            ):
+                checked.hang_rounds = rounds
+                return checked
+            deselected.update(new)
+            rounds += 1
     finally:
         own.stop()
+
+
+# How many hung tests a workspace Task's gate sets aside before it gives up (crew#839).
+# Started high, 3x the most seen (4 on sprint-metrics' test copy), to be lowered from
+# each gate's `hang_rounds` (the Sponsor, 2026-10-18: start limits high).
+HANG_ROUNDS = 12
 
 
 def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:

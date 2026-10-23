@@ -345,6 +345,8 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "resetups",
         "resetups_failed",
         "turned_on",
+        "hang_rounds",
+        "hung",
     ),
     EventKind.REVERT_OPENED: ("repo", "pr", "reverted", "card", "reason"),
     EventKind.REVERT_REFUSED: ("repo", "pr", "reverted", "card", "reason", "why", "conflict"),

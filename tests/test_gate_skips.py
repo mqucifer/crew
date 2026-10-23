@@ -116,6 +116,7 @@ def test_every_pytest_run_in_the_workspace_writes_the_report(worktree, ran):  # 
     Held(worktree, "x", declared=Declared()).start()
     argv = next(a for a in ran if a[1] == "run")
     ours = f"--rootdir=/work --junitxml=/work/{REPORT} -o junit_family=xunit1"
+    ours += " -o faulthandler_timeout=60 -o faulthandler_exit_on_timeout=true"
     assert f"PYTEST_ADDOPTS={ours}" in argv
     assert with_report({"PYTEST_ADDOPTS": "-x"})["PYTEST_ADDOPTS"] == f"-x {ours}"
 

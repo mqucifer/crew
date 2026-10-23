@@ -107,6 +107,9 @@ config.const.session_delivery.GATE_REPEATS:
   origin:
   - crew#790
   - sprint-metrics#671
+config.const.session_delivery.HANG_ROUNDS:
+  origin:
+  - crew#839
 config.const.session_end.FINDING_CHARS:
   origin:
   - crew#778
