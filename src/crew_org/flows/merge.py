@@ -549,11 +549,17 @@ def _turned_on(
     repo: str,
 ) -> None:
     """The Developer's bug for the merged tests a workspace Task turned on that fail, now
-    they fail on main (crew#839). Read from the pull request, where its gate named them,
-    and filed once, by the tests. A filing that fails is recorded, never raised."""
+    they fail on main (crew#839). Only for DevOps's Task whose pull request changed the
+    workspace, read only from the crew's record for the head that merged, never from
+    the body's text, and filed once, by the tests. A filing that fails is recorded."""
     number = card.number or 0
+    if role_tasks.role_of(card) is not role_tasks.DEVOPS:
+        return
     try:
-        tests = role_tasks.turned_on(issues.pull(repo, pull["number"]).get("body"))
+        if not role_tasks.changes_workspace_files(issues.pull_files(repo, pull["number"])):
+            return
+        head = ((issues.pull(repo, pull["number"]).get("head") or {}).get("sha")) or ""
+        tests = role_tasks.turned_on_at(issues.comments(repo, pull["number"]), head)
         if not tests:
             return
         filed = role_tasks.turned_on_bug(

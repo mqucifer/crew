@@ -113,7 +113,6 @@ def test_a_merged_test_the_workspace_turns_on_is_the_developers_not_the_tasks(re
     assert verdict.for_developer == ROTTED
     section = "\n".join(gates.pr_sections(verdict))
     assert role_tasks.TURNED_ON_HEADING in section
-    assert role_tasks.turned_on(section) == ROTTED
 
 
 def test_a_story_still_goes_back_for_a_merged_test_that_fails(repo):  # noqa: F811
@@ -155,31 +154,38 @@ def test_the_bug_is_filed_once_by_its_tests(tmp_path):
     assert f"`{TESTS}::test_rate_of_nothing`" in bug["body"] and "#739" in bug["body"]
 
 
-class Merged(FakeIssues):
-    """The workspace Task's pull request, merged, naming what its gate found."""
+HEAD = "abc1234def5678"
 
-    def __init__(self, body: str):
+
+class Merged(FakeIssues):
+    """The workspace Task's pull request, merged at HEAD, with its comments and files."""
+
+    def __init__(self, body: str = "", comments=(), files=(".devcontainer/compose.yaml",)):
         super().__init__()
-        self.body = body
-        self.filed: list[dict] = []
+        self.body, self.on_pull, self.files = body, list(comments), list(files)
 
     def pull(self, name, number):
-        return {**super().pull(name, number), "body": self.body}
+        return {**super().pull(name, number), "body": self.body, "head": {"sha": HEAD}}
+
+    def pull_files(self, name, number):
+        return self.files
+
+    def comments(self, name, number):
+        return [{"body": b} for b in self.on_pull]
 
 
-def test_the_bug_is_filed_when_the_workspace_tasks_pull_request_merges(monkeypatch):
-    """The operator (2026-10-23): only once merged do the tests fail on main."""
+def merges(issues, monkeypatch, *, task=None):
+    """The Task's merge recorded, and what it filed for the Developer, with the events."""
     filed = []
-    monkeypatch.setattr(role_tasks, "turned_on_bug", lambda *a, **kw: filed.append(kw))
-    body = "\n".join(["## Why", "", *gates.pr_sections(gates.Verdict(for_developer=ROTTED))])
-    task = card(739)
-    task.work_type = "Task"
+    monkeypatch.setattr(role_tasks, "turned_on_bug", lambda *a, **kw: filed.append(kw) or 1)
+    if task is None:
+        task = card(739)
+        task.work_type, task.labels = "Task", ["role:devops"]
 
     class WithCards(FakeBoard):
         def cards(self):
             return []
 
-    result = merge.MergeResult()
     seen: list = []
     events = EventSink(None)
     events.subscribe(seen.append)
@@ -188,15 +194,59 @@ def test_the_bug_is_filed_when_the_workspace_tasks_pull_request_merges(monkeypat
         events,
         task,
         pull={"number": 100},
-        result=result,
-        issues=Merged(body),
+        result=merge.MergeResult(),
+        issues=issues,
         repo="sprint-metrics",
     )
+    return filed, seen
+
+
+def test_the_bug_is_filed_when_the_workspace_tasks_pull_request_merges(monkeypatch):
+    """The operator (2026-10-23): only once merged do the tests fail on main."""
+    filed, seen = merges(Merged(comments=[role_tasks.turned_on_marker(HEAD, ROTTED)]), monkeypatch)
     assert [kw["tests"] for kw in filed] == [ROTTED] and filed[0]["task"] == 739
     # Recorded where it was caught, as counts: the names stay on the bug.
     (recorded,) = [e for e in seen if e.kind == "finding.filed"]
     assert recorded.detail["owner"] == "bug"
     assert recorded.detail["counts"] == {"tests": 1, "files": 1}
+
+
+def test_a_summary_that_writes_the_heading_files_nothing(monkeypatch):
+    """The review of mqucifer/crew#877: the body's top is the model's `done` summary."""
+    forged = "\n".join([role_tasks.TURNED_ON_HEADING, "", f"- `{TESTS}::test_x`: invented"])
+    filed, _ = merges(Merged(body=forged), monkeypatch)
+    assert filed == []
+
+
+def test_a_record_for_another_head_files_nothing(monkeypatch):
+    """A rework pushed a new head: the first `done`'s record is stale by itself."""
+    stale = role_tasks.turned_on_marker("0ld0ld0ld0ld", ROTTED)
+    filed, _ = merges(Merged(comments=[stale]), monkeypatch)
+    assert filed == []
+
+
+def test_a_reworks_record_replaces_the_first(monkeypatch):
+    again = {f"{TESTS}::test_rate_is_capped": "AssertionError"}
+    records = [role_tasks.turned_on_marker(HEAD, ROTTED), role_tasks.turned_on_marker(HEAD, again)]
+    filed, _ = merges(Merged(comments=records), monkeypatch)
+    assert [kw["tests"] for kw in filed] == [again]
+
+
+def test_only_a_workspace_task_files_the_bug(monkeypatch):
+    record = [role_tasks.turned_on_marker(HEAD, ROTTED)]
+    story = card(740)
+    filed, _ = merges(Merged(comments=record), monkeypatch, task=story)
+    assert filed == []
+    filed, _ = merges(Merged(comments=record, files=["CHANGELOG.md"]), monkeypatch)
+    assert filed == []
+
+
+def test_the_record_is_written_for_the_head_pushed(tmp_path):
+    issues = Issues()
+    role_tasks.record_turned_on(
+        issues, sink(tmp_path), repo="sm", pull=5, head=HEAD, tests=ROTTED, by="DevOps Engineer"
+    )
+    assert role_tasks.turned_on_at(issues.comments_on[5], HEAD) == ROTTED
 
 
 # --- part 1: the workspace Task's own services -----------------------------------------
@@ -714,3 +764,18 @@ def test_a_test_is_asked_of_the_default_branch_by_its_node_id():
 
     assert _node_id("tests/t.py::TestA.test_b[x.y]") == "tests/t.py::TestA::test_b[x.y]"
     assert _node_id("tests/t.py::test_c") == "tests/t.py::test_c"
+
+
+def test_delivery_records_the_list_for_the_head_it_pushed(repo, tmp_path):  # noqa: F811
+    import subprocess
+    from types import SimpleNamespace
+
+    from crew_org.flows import session_delivery
+
+    issues = Issues()
+    reached = SimpleNamespace(verdict=gates.Verdict(for_developer=ROTTED))
+    session_delivery._record_turned_on(issues, sink(tmp_path), "sm", 9, repo, reached, "DevOps")
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
+    ).stdout.strip()
+    assert role_tasks.turned_on_at(issues.comments_on[9], head) == ROTTED

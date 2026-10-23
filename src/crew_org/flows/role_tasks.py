@@ -804,19 +804,80 @@ def workspace_problems(worktree: Any) -> list[str]:
 
 # The pull request's section naming the merged tests a workspace Task's services turn
 # on that fail: none is the Task's, and they're filed for the Developer as one bug when
-# it merges, since only then do they fail on main (the operator, crew#839).
+# it merges, since only then do they fail on main (the operator, crew#839). For people:
+# what's filed is read from the crew's marker below, never from this heading.
 TURNED_ON_HEADING = "## Merged tests the workspace turns on, which fail"
-_TURNED_ON = re.compile(r"^- `([^`]+)`: ?(.*)$", re.M)
+# The crew's own record of that list, on a comment it writes after each push at `done`,
+# a rework's too: bound to the head it pushed, which the session couldn't know when it
+# wrote its summary, and encoded so no text can end the comment early. A later head
+# makes an earlier record stale by itself (the review of mqucifer/crew#877).
+_TURNED_ON_MARK = re.compile(
+    r"<!-- crew:turned-on head=([0-9a-f]{7,64}) tests=([A-Za-z0-9+/=]*) -->"
+)
 
 
-def turned_on(body: str | None) -> dict[str, str]:
-    """The tests a merged pull request's `TURNED_ON_HEADING` names, with each one's line."""
-    text = body or ""
-    at = text.find(TURNED_ON_HEADING)
-    if at == -1:
-        return {}
-    section = text[at + len(TURNED_ON_HEADING) :].split("\n## ", 1)[0]
-    return dict(_TURNED_ON.findall(section))
+def turned_on_marker(head: str, tests: dict[str, str]) -> str:
+    import base64  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    data = base64.b64encode(json.dumps(tests, sort_keys=True).encode()).decode()
+    return f"<!-- crew:turned-on head={head} tests={data} -->"
+
+
+def turned_on_at(comments: list[dict[str, Any]], head: str) -> dict[str, str]:
+    """The list the crew recorded for `head`, its latest record, or none."""
+    import base64  # noqa: PLC0415
+    import binascii  # noqa: PLC0415
+    import json  # noqa: PLC0415
+
+    found: dict[str, str] = {}
+    for comment in comments:
+        for at, data in _TURNED_ON_MARK.findall(comment.get("body") or ""):
+            if not head or at != head:
+                continue
+            try:
+                given = json.loads(base64.b64decode(data, validate=True))
+            except (binascii.Error, ValueError):
+                continue
+            if isinstance(given, dict):
+                found = {str(k): str(v) for k, v in given.items()}
+    return found
+
+
+def record_turned_on(
+    issues: IssueClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    pull: int,
+    head: str,
+    tests: dict[str, str],
+    by: str,
+) -> None:
+    """Say on the pull request what its merge will file for the Developer, at `head`."""
+    shown = "\n".join(f"- `{t}`: {line}" for t, line in sorted(tests.items()))
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=pull,
+        body=f"{turned_on_marker(head, tests)}\n**For the Developer when this merges:** "
+        f"the merged tests this workspace turns on that fail, at `{head[:12]}`.\n\n{shown}",
+        by=by,
+    )
+
+
+def changes_workspace_files(paths: list[str]) -> bool:
+    """Do these paths, a merged pull request's, change the workspace file or a compose
+    file? Read from the files alone, with no worktree at merge."""
+    from crew_org.tools import bounds, devcontainer  # noqa: PLC0415
+
+    return any(
+        p in devcontainer.PATHS
+        or p.startswith(".devcontainer/")
+        or p.rsplit("/", 1)[-1] in bounds.COMPOSE_NAMES
+        for p in paths
+    )
 
 
 def turned_on_bug(

@@ -243,6 +243,12 @@ decision.role_tasks.sponsor_approves:
     Sponsor approves it; a Task from a finding merges after the Code Reviewer, as a bug does.
   origin:
   - crew#839
+decision.role_tasks.turned_on:
+  description: The Developer's bug for the merged tests a workspace Task turned on is filed when it merges,
+    only for DevOps's Task whose pull request changed the workspace, and only from the crew's record for
+    the head that merged.
+  origin:
+  - crew#839
 decision.sprint.capacity:
 decision.sprint.plan_sprint:
 decision.sprint.start_sprint:

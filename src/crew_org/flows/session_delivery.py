@@ -758,6 +758,7 @@ def _land(
             outcome.ended = False
             return outcome
         outcome.pr = pr["number"]
+    _record_turned_on(issues, sink, repo, outcome.pr, worktree, reached, by)
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
@@ -768,6 +769,35 @@ def _land(
         )
     )
     return outcome
+
+
+def _record_turned_on(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    pull: int | None,
+    worktree: Path,
+    reached: Delivered,
+    by: str,
+) -> None:
+    """The crew's record of what a workspace Task's merge files for the Developer, bound to
+    the head just pushed, after every `done`, a rework's too (crew#839). A failure to write
+    it is noted: with no record for the merged head, nothing is filed."""
+    tests = getattr(reached.verdict, "for_developer", None) or {}
+    if not tests or pull is None:
+        return
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=worktree, capture_output=True, text=True
+    ).stdout.strip()
+    try:
+        role_tasks.record_turned_on(
+            issues, sink, repo=repo, pull=pull, head=head, tests=tests, by=by
+        )
+    except Exception as exc:  # noqa: BLE001 - the push and the pull request stand
+        reraise_if_down(exc)
+        sink.note(
+            EventKind.NOTE, f"PR #{pull}: the tests it turns on weren't recorded: {exc}"[:300]
+        )
 
 
 def _say_reworked(

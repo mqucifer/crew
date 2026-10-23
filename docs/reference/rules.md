@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 53 |
+| The tick decides a card's handling, found by the decision-point audit | 54 |
 | A setting that changes what the tick does | 205 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 68 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 126 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 127 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 103 |
@@ -289,6 +289,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.role_tasks.no_qa`<br>Verify everything sitting in QAing. | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa | crew#839 |
 | `decision.role_tasks.not_opened`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#839<br>crew#858<br>crew#859 |
 | `decision.role_tasks.sponsor_approves`<br>Land every story the Sponsor has approved. | flow | `src/crew_org/flows/merge.py:merge_approved` | — | — | src/crew_org/flows/merge.py:merge_approved<br>src/crew_org/flows/role_tasks.py:for_the_sponsor | crew#436<br>crew#839 |
+| `decision.role_tasks.turned_on`<br>The Developer's bug for the merged tests a workspace Task turned on that fail, now they fail on main (crew#839). | flow | `src/crew_org/flows/merge.py:_turned_on` | — | — | src/crew_org/flows/merge.py:_turned_on<br>src/crew_org/flows/role_tasks.py:turned_on_at | crew#839 |
 | `decision.sprint.capacity`<br>Admit a story whole if it fits, defer it if not. | flow | `src/crew_org/flows/sprint.py:_fill` | — | — | src/crew_org/flows/sprint.py:_fill<br>src/crew_org/flows/sprint.py:committed_points | — |
 | `decision.sprint.plan_sprint`<br>Epics past the Sponsor's gate — approving them was the scope decision. | flow | `src/crew_org/flows/sprint.py:approved_epics` | — | — | src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | — |
 | `decision.sprint.start_sprint`<br>Admit the planned stories into the sprint. | flow | `src/crew_org/flows/sprint.py:start_sprint` | — | — | src/crew_org/flows/sprint.py:start_sprint | — |

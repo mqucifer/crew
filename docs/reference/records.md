@@ -292,6 +292,7 @@ filled in), and the fields it names.
 | `flows/revisit.py:_route` | …: design work not placed, all filed: … | — |
 | `flows/revisit.py:revisit_designs` | …: design revisit failed: … | — |
 | `flows/session_delivery.py:_keep` | #… its work is kept on …, with no pull request | **`kept`** |
+| `flows/session_delivery.py:_record_turned_on` | PR #…: the tests it turns on weren't recorded: … | — |
 | `flows/session_delivery.py:_say_reworked` | #… re-worked on PR #…, and its comment failed: … | — |
 | `flows/session_delivery.py:after_run` | #… checkpoint after a green 'run …' | `checkpoint` |
 | `flows/session_end.py:note` | #… … | — |
