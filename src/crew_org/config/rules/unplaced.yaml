@@ -164,6 +164,7 @@ config.const.tools.SEARCH_PARTS:
 config.const.tools.SETUP_TAIL:
   origin:
   - crew#814
+config.const.tools.TAG_LINES:
 config.const.tools.VIEW_CHARS:
   origin:
   - crew#778

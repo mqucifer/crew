@@ -91,6 +91,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.arguments": (FEEDBACK, "a call's arguments: the reply lists what it takes"),
     "session.view": (FEEDBACK, "no such file or definition, or not text"),
     "session.search": (FEEDBACK, "no pattern, or no such path"),
+    "session.image_digest": (FEEDBACK, "a digest, an option or a variable as the image"),
     "session.path": (
         FEEDBACK,
         "the tools read and write on the host, so their reply holds them to the worktree",

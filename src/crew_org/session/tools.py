@@ -52,6 +52,8 @@ SKIPPED = {
 VIEW_LINES = 400
 VIEW_CHARS = 40_000
 SEARCH_HITS = 50
+# The tags `image_digest` shows at most.
+TAG_LINES = 200
 SEARCH_FILES = 30
 # Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this
 # few (crew#807).
@@ -308,6 +310,16 @@ SPECS = [
         f"repository or runs a program. Output past {OUTPUT_CHARS} characters is cut.",
         {"command": S},
         ["command"],
+    ),
+    _spec(
+        "image_digest",
+        "The digest a registry holds now for an image's tag, to pin it by (`name@sha256:...`): "
+        "Docker Hub or GHCR, read by the crew, since your container has no network. `image` "
+        "as you'd pull it (`postgres`, `ghcr.io/owner/name`), `tag` as given (`latest` if "
+        "none). With `tags: true`, the image's tags instead, those starting with `tag`, up "
+        f"to {TAG_LINES}.",
+        {"image": S, "tag": S, "tags": {"type": "boolean"}},
+        ["image"],
     ),
     _spec(
         "done",
@@ -1126,6 +1138,8 @@ class Tools:
                 return self.run(args["what"], args.get("tests"))
             if name == "git":
                 return self.git(args["command"])
+            if name == "image_digest":
+                return image_digest(args["image"], args.get("tag"), bool(args.get("tags")))
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)
@@ -1142,6 +1156,60 @@ class Tools:
             return Reply(
                 f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"
             )
+
+
+def image_digest(image: str, tag: str | None = None, tags: bool = False) -> Reply:
+    """What a registry holds now for an image (crew#839): read by the crew on the host,
+    anonymously, so nothing the model wrote runs and its container stays offline."""
+    from crew_org.tools import base_images  # noqa: PLC0415
+
+    given = image.strip()
+    if "@" in given or not given or given.startswith("-") or any(c.isspace() for c in given):
+        refuse("session.image_digest", "not_a_name", image=image)
+    ref = base_images.parse(f"{given}:{tag.strip()}" if tag and tag.strip() else given)
+    if ref is None:
+        refuse("session.image_digest", "a_variable", image=image)
+    try:
+        if tags:
+            found, more = base_images.TAGS(ref.host, ref.name)
+            prefix = (tag or "").strip()
+            matching = sorted(t for t in found if t.startswith(prefix))
+            shown = matching[:TAG_LINES]
+            cut = len(matching) > TAG_LINES or more
+            text = (
+                f"{ref.shown.rsplit(':', 1)[0]}'s tags"
+                + (f" starting with `{prefix}`" if prefix else "")
+                + f": {', '.join(shown) if shown else 'none'}"
+                + (
+                    "\n(not all of them: narrow it with `tag`, the start of the ones you want)"
+                    if cut
+                    else ""
+                )
+            )
+            return Reply(
+                text,
+                "ok",
+                f"image_digest {ref.name} tags: {len(shown)}",
+                {"image": ref.name, "tags": len(shown)},
+                empty=not shown,
+            )
+        digest = base_images.lookup(ref.host, ref.name, ref.tag)
+    except base_images.Unreadable as exc:
+        return Reply(f"The registry couldn't be read: {exc}", "failed", "image_digest: unreadable")
+    if digest is None:
+        return Reply(
+            f"The registry has no `{ref.shown}`. `tags: true` lists the tags it has.",
+            "ok",
+            f"image_digest {ref.shown}: none",
+            {"image": ref.name},
+            empty=True,
+        )
+    return Reply(
+        f"`{ref.shown}` is `{digest}` now. Pin it as `{ref.shown}@{digest}`.",
+        "ok",
+        f"image_digest {ref.shown}",
+        {"image": ref.name},
+    )
 
 
 def _grep_notes(notes: dict[str, str], match: Any) -> list[tuple[str, int, str]]:

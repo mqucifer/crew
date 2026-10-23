@@ -17,12 +17,12 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 14 |
+| A session's tool refuses a call, and says why in its reply | 15 |
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 52 |
-| A setting that changes what the tick does | 199 |
+| A setting that changes what the tick does | 202 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -33,15 +33,15 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 72 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 12 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 66 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 65 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 67 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 124 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 100 |
+| Unplaced | | 101 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -177,6 +177,7 @@ section; one no line holds for is unplaced, never guessed.
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/reading.py:ReadTools.call` | Developer | — | src/crew_org/session/reading.py:ReadTools.call<br>src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
 | `session.git`<br>The git tool runs one git command line with no shell, and only the commands that read and `restore`; never an option that writes, reads outside the repository or runs a program. | guards | `src/crew_org/session/git.py:parse` | Developer | — | src/crew_org/session/git.py:_check_option<br>src/crew_org/session/git.py:parse<br>src/crew_org/session/reading.py:ReadTools.git | crew#778 |
+| `session.image_digest`<br>`image_digest` is given an image as it's pulled: a name, no digest, no variable. | answer_shape | `src/crew_org/session/tools.py:image_digest` | Developer | — | src/crew_org/session/tools.py:image_digest | crew#778<br>crew#839 |
 | `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |
 | `session.path`<br>A tool reads and writes only the worktree, never the crew's own folders or what tools make, and never through a symbolic link that leads out of it. | guards | `src/crew_org/session/git.py:outside` | Developer | — | src/crew_org/session/git.py:outside<br>src/crew_org/session/tools.py:Tools._open<br>src/crew_org/session/tools.py:Tools._path | crew#778 |
 | `session.replace_definition`<br>`replace_definition` changes an existing Python file. | edits | `src/crew_org/session/tools.py:Tools.replace_definition` | Developer | — | src/crew_org/session/tools.py:Tools.replace_definition | crew#778 |
@@ -344,6 +345,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.attempts.RECURRING_CARDS`<br>A cause seen on this many of a sprint's cards is the crew's, not the card's. | — | `src/crew_org/flows/attempts.py:RECURRING_CARDS` | — | — | src/crew_org/flows/attempts.py:RECURRING_CARDS | — |
 | `config.const.attempts.REPAIR_REPORT_CHARS`<br>What a repair is shown of a failure report (crew#591). sprint-metrics#567's first attempt broke 50 merged tests on 2026-10-11; the report was 352,767 characters, cut to 200,000, and the repair it fed… | — | `src/crew_org/flows/attempts.py:REPAIR_REPORT_CHARS` | — | — | src/crew_org/flows/attempts.py:REPAIR_REPORT_CHARS | crew#591<br>sprint-metrics#567 |
 | `config.const.backlog_order.MAX_STORIES`<br>Past this many unstarted stories the list is cut, and the cut is said (#358). | flow | `src/crew_org/flows/backlog_order.py:MAX_STORIES` | — | — | src/crew_org/flows/backlog_order.py:MAX_STORIES | crew#358 |
+| `config.const.base_images.TAG_PAGE`<br>A page of tags, and how many pages are read: postgres has thousands, in the registry's lexical order, so a prefix is matched across all of them. | guards | `src/crew_org/tools/base_images.py:TAG_PAGE` | — | — | src/crew_org/tools/base_images.py:TAG_PAGE | — |
+| `config.const.base_images.TAG_PAGES`<br>TAG_PAGES = 10 | guards | `src/crew_org/tools/base_images.py:TAG_PAGES` | — | — | src/crew_org/tools/base_images.py:TAG_PAGES | — |
 | `config.const.base_images.TIMEOUT`<br>TIMEOUT = 15.0 | guards | `src/crew_org/tools/base_images.py:TIMEOUT` | — | — | src/crew_org/tools/base_images.py:TIMEOUT | — |
 | `config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS`<br>An epic that changes what a reader sees: the UX Designer writes a note (#377). | flow | `src/crew_org/flows/board_flow.py:REFINE_FOCUS_ABOVE_CHARS` | — | — | src/crew_org/flows/board_flow.py:REFINE_FOCUS_ABOVE_CHARS | crew#231<br>crew#377<br>crew#62 |
 | `config.const.calls.ATTEMPTS`<br>Three attempts, as CrewAI gave: the first, and two that are told why. | answer_shape | `src/crew_org/calls.py:ATTEMPTS` | — | — | src/crew_org/calls.py:ATTEMPTS | — |
@@ -465,6 +468,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.tools.SEARCH_HITS`<br>SEARCH_HITS = 50 | — | `src/crew_org/session/tools.py:SEARCH_HITS` | — | — | src/crew_org/session/tools.py:SEARCH_HITS | crew#778 |
 | `config.const.tools.SEARCH_PARTS`<br>Past `SEARCH_HITS`, a file's count names the parts its lines are in when they're this few (crew#807). | — | `src/crew_org/session/tools.py:SEARCH_PARTS` | — | — | src/crew_org/session/tools.py:SEARCH_PARTS | crew#807 |
 | `config.const.tools.SETUP_TAIL`<br>How much of a failed setup's output a run's reply shows: its end, as the start does. | — | `src/crew_org/session/tools.py:SETUP_TAIL` | — | — | src/crew_org/session/tools.py:SETUP_TAIL | crew#814 |
+| `config.const.tools.TAG_LINES`<br>The tags `image_digest` shows at most. | — | `src/crew_org/session/tools.py:TAG_LINES` | — | — | src/crew_org/session/tools.py:TAG_LINES | — |
 | `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
 | `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |

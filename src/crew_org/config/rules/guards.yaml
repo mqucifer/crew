@@ -89,6 +89,8 @@ config.agents.senior_engineer.can:
   owner: Senior Engineer
 config.agents.ux_designer.can:
   owner: UX Designer
+config.const.base_images.TAG_PAGE:
+config.const.base_images.TAG_PAGES:
 config.const.base_images.TIMEOUT:
 config.const.container.GRACE:
 config.const.container.LIFETIME:
