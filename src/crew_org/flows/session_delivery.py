@@ -140,6 +140,8 @@ def deliver_by_session(
 
     number = card.number or 0
     role = role_tasks.role_of(card)
+    # Who the work is the crew's record of: a Task's own role, or the Developer (crew#839).
+    by = role.name if role else "Developer"
     outcome = DeliveryOutcome(card=number)
     body = issues.get(repo, number).get("body") or ""
     story_text = f"{card.title}\n\n{body}"
@@ -208,9 +210,10 @@ def deliver_by_session(
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_STARTED,
-            role=role.name if role else "Developer",
+            role=by,
             card=number,
             summary=branch,
+            detail=_task_detail(role),
         )
     )
 
@@ -276,7 +279,14 @@ def deliver_by_session(
         rebuilt=rebuilt,
         since=since,
         worktree=worktree,
+        task=role,
     )
+
+
+def _task_detail(task: role_tasks.TaskRole | None) -> dict[str, Any]:
+    """A Task's work events name its role, so they're placed by its card, not as a review
+    of a pull request (delivery-history's DevOps Engineer)."""
+    return {"task_role": task.name} if task else {}
 
 
 def _sessions(
@@ -562,12 +572,14 @@ def _land(
     rebuilt: bool,
     since: str,
     worktree: Path,
+    task: role_tasks.TaskRole | None = None,
 ) -> DeliveryOutcome:
     """Push and open for review, or for QA, as today; a story the route moved is done here."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
 
     number = card.number or 0
+    by = task.name if task else "Developer"
     outcome.ended = True
     if reached.to == UNROUTED:
         # Delivery blocks it, labels it and says why, wherever the route's moves stopped.
@@ -596,7 +608,7 @@ def _land(
         outcome.blocked_rule = reached.rule
         outcome.rejected_diff = _diff(worktree, since)
         return outcome
-    _record_autofix(getattr(reached.verdict, "check", None), outcome, sink, number)
+    _record_autofix(getattr(reached.verdict, "check", None), outcome, sink, number, task)
     try:
         # The gates ran the project's fixers on the branch, after the commit at `done`:
         # what they changed is part of what passed, and lands with it (crew#758).
@@ -634,16 +646,16 @@ def _land(
         sink.emit(
             CrewEvent(
                 kind=EventKind.AGENT_FINISHED,
-                role="Developer",
+                role=by,
                 card=number,
                 summary=f"already done: {len(outcome.already_done)} criteria met by existing code",
-                detail={"rule": "decision.delivery.outcome"},
+                detail={"rule": "decision.delivery.outcome", **_task_detail(task)},
             )
         )
         return outcome
     if live is not None:
         outcome.pr = live["number"]
-        _say_reworked(issues, sink, repo, number, live["number"], summary, reached, rebuilt)
+        _say_reworked(issues, sink, repo, number, live["number"], summary, reached, rebuilt, by)
     else:
         try:
             pr = issues.create_pull(
@@ -651,7 +663,7 @@ def _land(
                 title=card.title,
                 head=outcome.branch or "",
                 base=default_branch,
-                body=pr_body(card, reached, outcome, _changes(worktree, since)),
+                body=pr_body(card, reached, outcome, _changes(worktree, since), by=by),
             )
         except Exception as exc:  # noqa: BLE001 - pushed, so the clone's branch is kept
             if transient_remote(exc):
@@ -664,9 +676,10 @@ def _land(
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_FINISHED,
-            role="Developer",
+            role=by,
             card=number,
             summary=f"PR #{outcome.pr}",
+            detail=_task_detail(task),
         )
     )
     return outcome
@@ -681,6 +694,7 @@ def _say_reworked(
     summary: str,
     reached: Delivered,
     rebuilt: bool,
+    by: str = "Developer",
 ) -> None:
     """The rework, said on its pull request, as today. The push already updated it."""
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
@@ -696,7 +710,7 @@ def _say_reworked(
                 + (rebuilt_line if rebuilt else "")
                 + "Lint and the full test suite pass in the story's workspace."
                 + "\n".join(reached.sections),
-                "Developer",
+                by,
             ),
         )
     except Exception as exc:  # noqa: BLE001 - a missing comment doesn't undo the push
@@ -716,8 +730,16 @@ def _today() -> str:
     return sprint_today(load_org()).isoformat()
 
 
-def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: list[str]) -> str:
-    """The pull request: what `done` said, how it was checked, and what the gates noted."""
+def pr_body(
+    card: Card,
+    reached: Delivered,
+    outcome: DeliveryOutcome,
+    changes: list[str],
+    *,
+    by: str = "Developer",
+) -> str:
+    """The pull request: what `done` said, how it was checked, and what the gates noted,
+    signed by the role whose sessions did the work."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
 
@@ -728,7 +750,7 @@ def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: l
         "",
         "Lint and the full test suite pass in the story's workspace container.",
         "",
-        f"- Developer sessions: {outcome.attempts}",
+        f"- {by} sessions: {outcome.attempts}",
         "",
         "## Changes",
         "",
@@ -746,7 +768,7 @@ def pr_body(card: Card, reached: Delivered, outcome: DeliveryOutcome, changes: l
         ]
     lines += reached.sections
     lines += ["", f"Closes #{card.number}"]
-    return signed("\n".join(lines), "Developer")
+    return signed("\n".join(lines), by)
 
 
 def story_section(story_text: str, note: str, rows: str, diagram: str = "") -> str:
@@ -832,7 +854,13 @@ def checkpointed(ws: Workspace, sink: EventSink, number: int) -> Any:
     return after_run
 
 
-def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, number: int) -> None:
+def _record_autofix(
+    check: Any,
+    outcome: DeliveryOutcome,
+    sink: EventSink,
+    number: int,
+    task: role_tasks.TaskRole | None = None,
+) -> None:
     """What the project's fixers changed in the gates' last checks, for review and QA (crew#758)."""
     fixed = list(getattr(check, "fixed", None) or [])
     reverted = list(getattr(check, "reverted", None) or [])
@@ -843,7 +871,7 @@ def _record_autofix(check: Any, outcome: DeliveryOutcome, sink: EventSink, numbe
     sink.emit(
         CrewEvent(
             kind=EventKind.AUTOFIX_APPLIED,
-            role="Developer",
+            role=task.name if task else "Developer",
             card=number,
             summary=f"#{number} autofix: {len(fixed)} fixed, {len(reverted)} undone, "
             f"{len(unsafe)} unsafe",

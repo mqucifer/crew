@@ -1005,3 +1005,56 @@ def test_a_record_that_can_t_be_read_blocks_before_any_container(ws, deliver):
     on_origin(ws, "main", {".crew/project.yaml": "version: [unclosed\n"})
     outcome = deliver(ws, Sessions(), Routes())
     assert outcome.blocked_rule == Rule.RECORD_UNREADABLE and Held.instances == []
+
+
+def test_a_roles_task_is_signed_and_recorded_as_its_role_not_the_developer(
+    ws, deliver, monkeypatch
+):
+    """mqucifer/sprint-metrics#740, the Architect's Task, was signed Developer (crew#839)."""
+    monkeypatch.setattr(session_delivery, "_today", lambda: "2026-10-23")
+    task = Card(
+        item_id="I662",
+        number=662,
+        title="Show the rate",
+        status="In Progress",
+        state="OPEN",
+        work_type="Task",
+        repo="sprint-metrics",
+        labels=frozenset({"role:architect"}),
+    )
+    seen: list[Any] = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    issues = Issues()
+    deliver(
+        ws,
+        Sessions({"writes": {"rate.py": "RATE = 1\n"}, "ending": Ending("done", DONE)}),
+        Routes(session_end.Route(session_end.REVIEW, "decision.delivery.outcome")),
+        issues,
+        story=task,
+        sink=sink,
+    )
+    body = issues.pulls[0]["body"]
+    assert "<!-- crew:by Architect -->" in body and "- Architect sessions: 1" in body
+    assert "Developer" not in body
+    work = [e for e in seen if e.kind in ("agent.started", "agent.finished")]
+    assert {e.role for e in work} == {"Architect"}
+    assert all(e.detail.get("task_role") == "Architect" for e in work)
+
+
+def test_a_storys_pull_request_is_still_the_developers(ws, deliver):
+    seen: list[Any] = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    issues = Issues()
+    deliver(
+        ws,
+        Sessions({"writes": {"rate.py": "RATE = 1\n"}, "ending": Ending("done", DONE)}),
+        Routes(session_end.Route(session_end.REVIEW, "decision.delivery.outcome")),
+        issues,
+        sink=sink,
+    )
+    assert "<!-- crew:by Developer -->" in issues.pulls[0]["body"]
+    work = [e for e in seen if e.kind in ("agent.started", "agent.finished")]
+    assert {e.role for e in work} == {"Developer"}
+    assert not any("task_role" in e.detail for e in work)
