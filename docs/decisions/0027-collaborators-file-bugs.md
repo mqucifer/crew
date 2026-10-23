@@ -33,7 +33,7 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 
 - People have a way to report a defect besides writing a Goal, and a bug isn't dressed up as one.
 - Bugs don't hold the critical path (the Sponsor, 2026-10-12).
-- Whether a role's own finding is filed as a bug, rather than as a retro finding, isn't decided here. crew#407 proposes it.
+- **The crew files a bug from its own finding where a decision says so,** rather than as a retro finding: so far, the Developer's bug for the merged tests a workspace turns on that fail (the Sponsor's decision on mqucifer/crew#839). Its App isn't a collaborator, so triage reads org.yaml's `trust.crew` for it, and those bugs are triaged like any other. Anyone else without access still waits on a person.
 - **Work a consumer finds can become a Goal without the Sponsor writing it.** It still waits on the Sponsor's label, and what the Sponsor decided stays distinguishable from what the Product Owner proposed.
 
 ## Changelog
@@ -41,3 +41,4 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 - **2026-10-12:** decided by the Sponsor in chat, while crew#407 was raised to P1.
 - **2026-10-17:** the Product Owner may propose a Goal, which the Sponsor approves by applying the `goal` label; its rows stay the Product Owner's. "A Goal stays the Sponsor's alone" no longer holds. Decided by the Sponsor in the M6 planning session (crew#755).
 - **2026-10-21:** a proposed Goal is also how the Product Owner says "the Goal points elsewhere" (ADR 0018), so it's built in M7 (crew#846) rather than waiting for the consumer review. Decided by the Sponsor in the overhaul's planning session.
+- **2026-10-23:** a bug the crew's own App files (org.yaml's `trust.crew`) is triaged like a collaborator's. The first, mqucifer/sprint-metrics#742, was refused as "not a collaborator"; mqucifer/crew#839 had already decided the crew files it.

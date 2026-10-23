@@ -404,9 +404,9 @@ flows.bugs.carry_out:move:7d7d054f:
   at: flows/bugs.py:carry_out
   if: triage.outcome == 'accepted'
   rule: decision.bugs.carry_out
-flows.bugs.triage_bugs:label:75023923:
+flows.bugs.triage_bugs:label:dce22a8a:
   at: flows/bugs.py:triage_bugs
-  if: issues.permission(repo, author) not in COLLABORATORS
+  if: author not in crew and issues.permission(repo, author) not in COLLABORATORS
   rule: decision.bugs.collaborators_only
 flows.capability.measure:skip:796e82ae:
   at: flows/capability.py:measure

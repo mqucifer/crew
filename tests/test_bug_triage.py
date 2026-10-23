@@ -12,6 +12,7 @@ from crew_org.crews import bug_triage_crew
 from crew_org.crews.bug_triage_crew import Triage, triage_bug
 from crew_org.crews.refinement_crew import AcceptanceCriterion
 from crew_org.flows import bugs
+from crew_org.tools.github_issues import Trust
 from crew_org.tools.github_project import Card
 from tests.asked import capture
 
@@ -69,12 +70,17 @@ class Board:
 
 
 class Issues:
-    def __init__(self, permission: str = "write") -> None:
+    def __init__(
+        self, permission: str = "write", *, author: str = "quarters-claude", trust: Any = None
+    ) -> None:
         self.granted = permission
+        self.author = author
+        if trust is not None:
+            self.trust = trust
         self.done: list[tuple] = []
 
     def get(self, repo: str, number: int) -> dict:
-        return {"body": REPORT, "user": {"login": "quarters-claude"}}
+        return {"body": REPORT, "user": {"login": self.author}}
 
     def permission(self, repo: str, user: str) -> str:
         return self.granted
@@ -192,6 +198,44 @@ def test_a_bug_from_someone_not_a_collaborator_is_left_for_a_person(monkeypatch)
     )
     assert done == [(593, "not a collaborator")]
     assert "only a collaborator files a bug" in issues.done[0][1]
+    assert issues.done[-1] == ("label", "needs:human")
+
+
+APP = "mqucifer-crew[bot]"
+
+
+def _trust(*crew: str) -> Trust:
+    return Trust(sponsor="mquarters", crew=frozenset(crew), tools=frozenset())
+
+
+def test_a_bug_the_crews_own_app_filed_is_triaged(monkeypatch):
+    """crew#839: the App has no permission, so its first bug went to a person."""
+    monkeypatch.setattr(bugs, "triage_bug", lambda *a, **kw: _triage("not_a_bug"))
+    issues = Issues(permission="none", author=APP, trust=_trust(APP))
+    done = bugs.triage_bugs(
+        Board(), issues, Sink(), [_card()], default_repo="sm", context=Context(), failed=[]
+    )
+    assert done == [(593, "not_a_bug")]
+    assert ("label", "needs:human") not in issues.done
+
+
+def test_a_strangers_bug_still_waits_on_a_person_beside_the_crews_app(monkeypatch):
+    monkeypatch.setattr(bugs, "triage_bug", lambda *a, **kw: _triage("not_a_bug"))
+    issues = Issues(permission="read", author="someone", trust=_trust(APP))
+    done = bugs.triage_bugs(
+        Board(), issues, Sink(), [_card()], default_repo="sm", context=Context(), failed=[]
+    )
+    assert done == [(593, "not a collaborator")]
+    assert issues.done[-1] == ("label", "needs:human")
+
+
+def test_an_empty_crew_trusts_no_app(monkeypatch):
+    monkeypatch.setattr(bugs, "triage_bug", lambda *a, **kw: _triage("not_a_bug"))
+    issues = Issues(permission="none", author=APP, trust=_trust())
+    done = bugs.triage_bugs(
+        Board(), issues, Sink(), [_card()], default_repo="sm", context=Context(), failed=[]
+    )
+    assert done == [(593, "not a collaborator")]
     assert issues.done[-1] == ("label", "needs:human")
 
 
