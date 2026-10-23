@@ -673,6 +673,38 @@ def test_the_architects_diagram_must_render():
     assert diagram_problems("```mermaid\ngraph TD\n```")
 
 
+def test_every_block_of_the_architects_diagram_must_render():
+    """mqucifer/sprint-metrics#740 passed with its second and third blocks broken: only
+    the first was checked (crew#839)."""
+    from crew_org.flows.role_tasks import diagram_problems
+
+    context = 'C4Context\nPerson(u, "User")\nSystem(s, "S")\nRel(u, s, "uses")'
+    containers = (
+        'C4Container\nPerson(u, "User")\n'
+        'Container_Boundary(b, "S")\nContainer(c, "C", "py", "does")\nEnd_Boundary\n'
+        'Rel(u, c, "uses")'
+    )
+    sequence = "sequenceDiagram\nA->>B: asks"
+    fenced = "\n\n".join(f"```mermaid\n{b}\n```" for b in (context, sequence, containers))
+
+    found = diagram_problems(fenced)
+
+    assert found and all(p.startswith("block 3, C4Container: ") for p in found)
+    assert any("`Container_Boundary` opens no `{`" in p for p in found)
+    assert any("`End_Boundary` isn't a C4 macro" in p for p in found)
+    assert diagram_problems(f"```mermaid\n{context}\n```\n\n```mermaid\n{sequence}\n```") == []
+    broken_sequence = f"```mermaid\n{context}\n```\n\n```mermaid\nsequenceDiagram\nA->>B: a; b\n```"
+    assert diagram_problems(broken_sequence)[0].startswith("block 2, sequenceDiagram: ")
+    flowchart = f"```mermaid\n{context}\n```\n\n```mermaid\ngraph TD\nA-->B\n```"
+    assert diagram_problems(flowchart)[0].startswith("block 2, graph TD: ")
+    only_sequence = f"```mermaid\n{sequence}\n```"
+    assert diagram_problems(only_sequence) == [
+        "no block is a C4 diagram ("
+        + ", ".join(("C4Context", "C4Container", "C4Component", "C4Dynamic", "C4Deployment"))
+        + ")"
+    ]
+
+
 def _epic(number: int = 10) -> Card:
     return Card(
         item_id=f"IE{number}",

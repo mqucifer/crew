@@ -963,7 +963,8 @@ def _event(
         # A review names its pull request in `pr` and its card as the card (crew#449).
         # Before that, a reviewer's number was the pull request's.
         pr = detail.get("pr") if "pr" in detail else number
-        if role in REVIEWERS and isinstance(pr, int):
+        # A role's Task is its card's work, even a reviewer's (crew#839).
+        if role in REVIEWERS and isinstance(pr, int) and not detail.get("task_role"):
             # Placed by its pull request, never as a card: a pull request it can't
             # place could share its number with another repository's card.
             reviewed = placer.pull(pr, where, at)

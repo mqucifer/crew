@@ -315,6 +315,27 @@ def test_a_reviewers_number_no_pull_request_fits_is_left_out_not_taken_for_a_car
     assert manifest.left_out == {"work: pull request unknown": 1}
 
 
+def test_a_devops_tasks_work_is_its_cards_not_a_review_of_a_pull_request():
+    """DevOps Engineer reviews pull requests, but its Task's work is the card's (crew#839)."""
+    work = (
+        "tick",
+        {
+            "at": at(0),
+            "kind": "agent.finished",
+            "role": "DevOps Engineer",
+            "card": 455,
+            "detail": {"repo": "sprint-metrics", "task_role": "DevOps Engineer"},
+        },
+    )
+
+    data, manifest = built([work])
+
+    [finished] = [e for e in data["events"] if e["kind"] == "work_finished"]
+    assert finished["card"] == {"repo": "sprint-metrics", "number": 455}
+    assert finished["pull"] is None and finished["role"] == "DevOps Engineer"
+    assert "work: pull request unknown" not in manifest.left_out
+
+
 # --- placing a card ---------------------------------------------------------------
 
 

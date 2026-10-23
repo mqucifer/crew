@@ -205,11 +205,13 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "trigger",
         "matched",
         "devops_task",
+        "task_role",
     ),
     EventKind.AGENT_FINISHED: (
         "repo",
         "pr",
         "rule",
+        "task_role",
         "approved",
         "accepted",
         "notes",
