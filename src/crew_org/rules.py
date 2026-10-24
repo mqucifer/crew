@@ -57,6 +57,8 @@ class Rule(StrEnum):
     """A pull request is still open on the branch; re-delivering would overwrite it."""
     PUSH_FAILED = "delivery.push_failed"
     """The work was done, and the branch couldn't be pushed."""
+    RESUME_KEPT = "delivery.resume_kept"
+    """It resumes the card's newest kept work, when it's the crew's (crew#839)."""
     WORKSPACE_UNREADY = "delivery.workspace_unready"
     """The story's workspace container didn't start, or its setup failed (crew#778)."""
     ROUND_TRIPS_NO_EPIC = "delivery.round_trips_no_epic"

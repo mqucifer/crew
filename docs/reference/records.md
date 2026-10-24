@@ -53,6 +53,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.record_unreadable` | The project's record can't be read, so its rules are unknown. |
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
+| `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
 | `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
 | `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
@@ -219,6 +220,7 @@ names, what it means, and where those notes are written:
 | `decision.revisit.file_work` | A design revisit ends in a record of what it found: refused, no change, its work filed, or a revision pull request the crew merges. | `flows/revisit.py:_merge` |
 | `decision.role_tasks.not_opened` | A role's Task an event should open and GitHub refused is recorded, and the next pass tries again; nothing marks it opened until it is. | `flows/role_tasks.py:not_opened` |
 | `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. | `flows/session_delivery.py:deliver_by_session` |
+| `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). | `flows/session_delivery.py:kept_work` |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. | `flows/criteria_check.py:to_product_owner` |
 | `hold.builds_on` | It waits for a story it builds on. | `flows/delivery.py:deliver` |
 | `hold.sibling` | It waits for an earlier story in the same epic. | `flows/delivery.py:deliver` |

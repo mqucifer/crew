@@ -261,6 +261,14 @@ delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
+delivery.resume_kept:
+  description: A delivery with no checkpoint and no returned pull request starts from the card's newest
+    kept branch not yet in main, only when its newest push is by the crew's own App and left it at the
+    tip it has now, and only when it merges cleanly with main. Otherwise, or when who pushed it can't be
+    checked, it starts from main, and the session's start says the kept branch exists and why it wasn't
+    used.
+  origin:
+  - crew#839
 delivery.round_trips_no_epic:
   origin:
   - crew#778

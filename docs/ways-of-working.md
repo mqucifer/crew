@@ -298,6 +298,7 @@ and nothing is left In Progress with nobody to act:
 | The gates at `done` find something | A new session with every finding, within the delivery's three hours of model time; past them, back to the Business Analyst |
 | Review or QA return it | A new session; after three round trips, back to the Business Analyst |
 | A model call fails, or the workspace is lost | Resumed from the last checkpoint on the next pass; three in a row, blocked for a person |
+| A story with kept work is delivered again | Resumed from its newest `crew/kept/` branch, brought up to date with main, and told the last `done`'s findings; from main, saying why, when the branch conflicts with main or can't be shown to be the crew's |
 | The workspace won't start or set up, the project's record can't be read, or the push fails | Blocked for a person, with the reason |
 | Any of these for a story with no epic to be split again | Blocked for a person, with the same evidence |
 

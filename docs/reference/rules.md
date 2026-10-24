@@ -11,7 +11,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 
 | Kind | Rules |
 |---|---|
-| The crew's own decisions (`rules.Rule`) | 33 |
+| The crew's own decisions (`rules.Rule`) | 34 |
 | An answer's form refuses it | 38 |
 | The call layer refuses any answer | 4 |
 | A flow's own check sends the answer back | 22 |
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 127 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 128 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 103 |
@@ -52,6 +52,7 @@ section; one no line holds for is unplaced, never guessed.
 | `delivery.pull_request_failed`<br>The branch was pushed, and its pull request couldn't be opened. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land | — |
 | `delivery.push_failed`<br>The work was done, and the branch couldn't be pushed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | crew#10 |
 | `delivery.record_unreadable`<br>The project's record can't be read, so its rules are unknown. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | — |
+| `delivery.resume_kept`<br>It resumes the card's newest kept work, when it's the crew's (crew#839). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:kept_work | crew#839 |
 | `delivery.round_trips_no_epic`<br>The gates kept returning it, and it has no epic to be split again: for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:_gates_disagree | crew#778 |
 | `delivery.route_failed`<br>Where a session's ending sends the story couldn't be settled: blocked for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | — |
 | `delivery.workspace_unready`<br>The story's workspace container didn't start, or its setup failed (crew#778). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | crew#690<br>crew#778 |

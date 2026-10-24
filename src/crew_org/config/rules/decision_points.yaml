@@ -1689,6 +1689,22 @@ flows.role_tasks.turned_on_at:skip:b2b2cd5a:
   at: flows/role_tasks.py:turned_on_at
   if: mark is None or mark.group(1) != head
   rule: decision.role_tasks.turned_on
+flows.session_delivery.kept_work:end:9540548c:
+  at: flows/session_delivery.py:kept_work
+  if: found is None
+  rule: delivery.resume_kept
+flows.session_delivery.kept_work:end:3505fce9:
+  at: flows/session_delivery.py:kept_work
+  if: push.get('after') != sha
+  rule: delivery.resume_kept
+flows.session_delivery.kept_note:filter:8398f214:
+  at: flows/session_delivery.py:kept_note
+  if: ((c.get('user') or {}).get('login') or '') in crew and linked in (c.get('body') or '')
+  not_a_rule: 'reads where a record is kept: the crew''s own note on the card that links the kept branch'
+flows.session_delivery.kept_note:end:d6ff3548:
+  at: flows/session_delivery.py:kept_note
+  if: not notes
+  not_a_rule: no note to read; the start says so
 flows.session_delivery._record_turned_on:end:fafbc128:
   at: flows/session_delivery.py:_record_turned_on
   if: not tests or pull is None
