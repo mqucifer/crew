@@ -188,7 +188,7 @@ def test_a_secret_in_a_process_s_arguments_is_refused(tmp_path, command):
     done = run_guard(command, tmp_path)
     assert done.returncode == 2
     assert "ps shows it" in done.stderr
-    assert "set -a" in done.stderr
+    assert "load_env" in done.stderr
 
 
 @pytest.mark.parametrize(
@@ -249,9 +249,9 @@ def test_a_literal_token_is_refused(tmp_path, literal):
         "[[ -z $FAKE_TOKEN ]] || echo set",
         'test -n "$FAKE_SECRET"',
         ': "${FAKE_TOKEN:?unset}"',
-        # The safe route.
-        "set -a; . ~/Documents/git/crew/.env; set +a",
-        "source .env && uv run crew doctor",
+        # Sourcing a file that isn't a .env.
+        ". ~/.zshrc",
+        "source .venv/bin/activate",
         # Never expanded, or not the value.
         "echo '$FAKE_TOKEN'",
         'echo "\\$FAKE_TOKEN"',
@@ -329,3 +329,47 @@ def test_the_read_tool_on_a_env_file_is_refused():
 @pytest.mark.parametrize("path", ["/x/.env.example", "/x/.env.local", "/x/crew/llm.py"])
 def test_the_read_tool_on_other_files_is_allowed(path):
     assert run_read(path).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "set -a; . ~/Documents/git/crew/.env; set +a",
+        "source .env && uv run crew doctor",
+        "(set -a; . /abs/path/.env; set +a; uv run python x.py)",
+        "if true; then source ./.env; fi",
+    ],
+)
+def test_sourcing_a_env_file_is_refused(tmp_path, command):
+    done = run_guard(command, tmp_path)
+    assert done.returncode == 2
+    assert "runs its values as commands" in done.stderr
+    assert "load_env" in done.stderr and "Never source a .env" in done.stderr
+
+
+def test_the_route_the_guard_names_reads_a_value_the_shell_would_print(tmp_path):
+    """crew#458, 2026-10-24: `GRAFANA_OTLP_AUTH=Basic glc_...` is valid dotenv. The shell
+    sets `GRAFANA_OTLP_AUTH=Basic` for one command, `glc_...`, and its error prints it."""
+    import sys
+
+    env = tmp_path / ".env"
+    env.write_text("FAKE_OTLP_AUTH=Basic fake_glc_value\n")
+    sourced = subprocess.run(
+        ["sh", "-c", f"set -a; . {env}; set +a"], capture_output=True, text=True
+    )
+    assert "fake_glc_value" in sourced.stdout + sourced.stderr, "the leak, as it happened"
+    assert run_guard(f"set -a; . {env}; set +a", tmp_path).returncode == 2
+    read = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from crew_org.config import load_env; "
+            "v = load_env(__import__('pathlib').Path(sys.argv[1])); "
+            "assert v['FAKE_OTLP_AUTH'] == 'Basic fake_glc_value'",
+            str(env),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert read.returncode == 0, read.stderr
+    assert "fake_glc_value" not in read.stdout + read.stderr, "parsed, never printed"

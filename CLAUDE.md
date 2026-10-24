@@ -93,11 +93,13 @@ request, like any other file.
   nothing probes SGLang on the Spark directly.
 - **A secret on a command line, or in a command's output.** A process's
   arguments show in `ps` and the session's command record, and output reaches
-  the transcript. A secret reaches a process through the environment or a file
-  the process reads itself: `set -a; . ~/Documents/git/crew/.env; set +a`, then
-  crew's own code (or `os.environ` in a script) reads it. A check for a leaked
-  secret matches inside that process, never with `grep "$KEY"`. Never print a
-  `.env`, with Bash or the Read tool. *Guarded by the hook.*
+  the transcript. A secret is read inside the process that needs it:
+  `crew_org.config.load_env(<path to .env>)` parses the file and exports
+  nothing, or `os.environ` where it's already set. Never source a `.env` with a
+  shell: an unquoted value with a space runs as a command, and its error prints
+  the value. A check for a leaked secret matches inside that process, never
+  with `grep "$KEY"`. Never print a `.env`, with Bash or the Read tool.
+  *Guarded by the hook.*
 - **Unvetted generated code run outside the sandbox.** Released crew-built
   software is ordinary software, and is still deployed in a container.
 - **A check weakened to make something pass.** A test deleted to go green counts.
