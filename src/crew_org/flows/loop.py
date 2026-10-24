@@ -302,6 +302,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     from crew_org.flows.ci_from_main import ci_services_from_main  # noqa: PLC0415
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
+    from crew_org.flows.deploy import deploy_releases  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
@@ -320,6 +321,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
+    # A verified release deploys itself on the Mac, from infra's compose files: its
+    # merge was the Sponsor's only approval (crew#829).
+    deployed = deploy_releases(
+        crew.issues, crew.board, crew.sink, crew.ws, verified=released.verified
+    )
     # A project with no diagram of its system gets the Architect's Task to draw one
     # (crew#839). Not one waiting for its walking skeleton: there's nothing to draw.
     drawn = first_diagrams(
@@ -375,13 +381,21 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         moved=result.moved
         or logs.moved
         or bool(
-            red.filed or red.closed or released.filed or drawn.opened or housed.opened or ci.opened
+            red.filed
+            or red.closed
+            or released.filed
+            or deployed.moved
+            or drawn.opened
+            or housed.opened
+            or ci.opened
         ),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (f", {len(deployed.healthy)} deployed" if deployed.healthy else "")
+            + (f", {len(deployed.rolled_back)} rolled back" if deployed.rolled_back else "")
             + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(housed.opened)} first workspaces for DevOps" if housed.opened else "")
             + (f", {len(ci.opened)} CI services Tasks for DevOps" if ci.opened else "")
@@ -399,6 +413,12 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} {version} — not deployed: {why}" for repo, version, why in deployed.held]
+        + [f"{repo} — deploy failed: {why}" for repo, why in deployed.failed]
+        + [
+            f"{repo} {version} — for the Sponsor: the deploy and its rollback failed (#{task})"
+            for repo, version, task in deployed.rollback_failed
+        ]
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]

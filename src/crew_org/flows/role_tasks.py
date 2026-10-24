@@ -116,6 +116,8 @@ FIRST_DIAGRAM = "first-diagram"
 FIRST_WORKSPACE = "first-workspace"
 NEED = "need"
 RELEASE = "release"
+# A verified release's deploy on the Mac, which the tick runs with no model (crew#829).
+DEPLOY = "deploy"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 

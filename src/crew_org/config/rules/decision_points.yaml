@@ -722,6 +722,46 @@ flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
   rule: story.contract_ruling
+flows.deploy._deploy:result:held:32de8da5:
+  at: flows/deploy.py:_deploy
+  if: reader is not None
+  rule: decision.deploy.held
+flows.deploy._deploy:result:held:7081e8c5:
+  at: flows/deploy.py:_deploy
+  if: not env_file.is_file()
+  rule: decision.deploy.held
+flows.deploy._deploy:result:opened:c1a81f37:
+  at: flows/deploy.py:_deploy
+  if: opened.new
+  rule: decision.deploy.opened
+flows.deploy._end:close:93811dce:
+  at: flows/deploy.py:_end
+  if: to == DONE
+  not_a_rule: a Task its outcome moved to Done is closed with it
+flows.deploy._end:filter:76cb97b9:
+  at: flows/deploy.py:_end
+  if: c.repo == repo and c.number == task
+  not_a_rule: finds the deploy Task's own card, to move it
+flows.deploy._end:move:7b97e35b:
+  at: flows/deploy.py:_end
+  if: card is not None and card.status != to
+  not_a_rule: moves the Task once, to where its outcome's rule put it
+flows.deploy._run:result:healthy:acdcc4c0:
+  at: flows/deploy.py:_run
+  if: checked.healthy
+  rule: decision.deploy.healthy
+flows.deploy._run:result:rolled_back:2eb56c3d:
+  at: flows/deploy.py:_run
+  if: back.healthy
+  rule: decision.deploy.failed
+flows.deploy.merge_records:result:merged:1569bfb1:
+  at: flows/deploy.py:merge_records
+  if: landed.how == Landing.MERGED
+  rule: decision.deploy.record
+flows.deploy.merge_records:skip:7696eed6:
+  at: flows/deploy.py:merge_records
+  if: not _RECORD_PR.search(pull.get('body') or '')
+  rule: decision.deploy.record
 flows.diagnose.diagnose_blocked:filter:d19a63d0:
   at: flows/diagnose.py:diagnose_blocked
   if: c.status == BLOCKED and 'needs:human' in c.labels and (c.state != 'CLOSED') and c.number and (c.repo

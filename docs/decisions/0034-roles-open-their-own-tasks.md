@@ -1,7 +1,7 @@
 # 34. Roles open their own tasks
 
 - **Date:** 2026-10-20
-- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; the deploy and the UX review are M8's, QA's Tasks M10's)
+- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; the deploy built in M8 by crew#829; the UX review is M8's, QA's Tasks M10's)
 
 ## Context
 
@@ -90,8 +90,28 @@ Checklist: every Task names its role and the event or finding that opened it; ea
 event opens at most one; a Task flows through triage, admission, the session, review
 and merge like a bug; and nothing a role finds is dropped as pre-existing.
 
-**Left for M8:** the deploy Task on a release's merge (crew#829) and the UX Designer's
-review when a release goes live (crew#830). QA's Tasks wait for M10.
+## The deploy (M8, crew#829)
+
+- **A verified release opens DevOps's deploy Task,** once per repository and version,
+  when infra's inventory declares a service its repository deploys and the version
+  is newer than the tag infra pins. What the service is and how its health is told
+  are declared there, in its `deploy:` block, not in the crew's code (mqucifer/project-print
+  ADR 0002).
+- **The tick runs it, with no model.** It bumps the tag in infra's compose file,
+  pulls, restarts and checks the health. A failure rolls back to the release that was
+  running, read from the container, and files DevOps's finding with the log, every
+  settings value taken out. The Task never waits in a column a session claims from: it
+  ends in `Done`, or in `Blocked` with `needs:human` when the rollback failed too.
+- **A MAJOR ahead of a reader waits.** Each reader the block names pins a release; a
+  release at another MAJOR opens no Task, and is recorded and said on the standup until
+  the reader moves on purpose.
+- **The new tag reaches infra by pull request,** which the crew merges itself once
+  infra's guard checks pass: the release's merge was the approval.
+- **Each run is recorded:** `deploy.started`, `deploy.healthy`, `deploy.rolled_back`,
+  `deploy.rollback_failed` and `deploy.held`.
+
+**Left for M8:** the UX Designer's review when a release goes live (crew#830). QA's
+Tasks wait for M10.
 
 ## Consequences
 
@@ -124,3 +144,6 @@ review when a release goes live (crew#830). QA's Tasks wait for M10.
   crew#839; ADR 0032): DevOps's workspace file and services, the Developer's bug for
   the tests they turn on, then DevOps's Task for CI. A Task in Merging with changes
   requested on its head goes back to its role for rework.
+- **2026-10-24:** the deploy Task is built (crew#829), with the operator's answers: a
+  MAJOR ahead of the release a reader pins waits, and the crew merges the infra pull
+  request recording a healthy deploy's tag itself.

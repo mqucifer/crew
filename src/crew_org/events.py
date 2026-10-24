@@ -187,6 +187,18 @@ class EventKind(StrEnum):
     # A role's finding outside the story it was working on, filed as a Task or a bug.
     FINDING_FILED = "finding.filed"
     """A role's finding outside its story, filed as a Task or a bug."""
+    # A verified release's deploy on the Mac, which the tick runs (crew#829): each
+    # ending its own kind, so a deploy's outcome is counted without reading its Task.
+    DEPLOY_STARTED = "deploy.started"
+    """A verified release's deploy began: the service, and the release it replaces."""
+    DEPLOY_HEALTHY = "deploy.healthy"
+    """A deploy's health check passed: its attempts, its seconds, and the infra record."""
+    DEPLOY_ROLLED_BACK = "deploy.rolled_back"
+    """A deploy failed at a stage, and the release that was running runs again."""
+    DEPLOY_ROLLBACK_FAILED = "deploy.rollback_failed"
+    """A deploy failed and so did its rollback: the Task goes to the Sponsor."""
+    DEPLOY_HELD = "deploy.held"
+    """A release not deployed: a reader pins another MAJOR, or its settings aren't there."""
 
     NOTE = "note"
     """Anything else a flow records, by the rule it names where it names one."""
@@ -394,6 +406,29 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     EventKind.ROLE_TASK_OPENED: ("repo", "task_role", "task_kind", "parent", "event", "rule"),
     EventKind.ROLE_TASK_HELD: ("repo", "task_role", "waits_for", "rule"),
     EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error", "counts"),
+    EventKind.DEPLOY_STARTED: ("repo", "service", "from", "to", "rule"),
+    EventKind.DEPLOY_HEALTHY: ("repo", "service", "from", "to", "attempts", "seconds", "pr"),
+    EventKind.DEPLOY_ROLLED_BACK: (
+        "repo",
+        "service",
+        "from",
+        "to",
+        "attempts",
+        "seconds",
+        "stage",
+        "finding",
+    ),
+    EventKind.DEPLOY_ROLLBACK_FAILED: (
+        "repo",
+        "service",
+        "from",
+        "to",
+        "attempts",
+        "seconds",
+        "stage",
+        "finding",
+    ),
+    EventKind.DEPLOY_HELD: ("repo", "version", "reader", "pinned", "missing", "rule"),
     EventKind.WORK_SENT_BACK: ("repo", "sent_from", "sent_to", "rule", "round", "counts"),
     EventKind.NOTE: ("rule", "repo", "card"),
 }

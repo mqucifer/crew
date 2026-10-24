@@ -23,6 +23,7 @@ config.const.conversation.QUIET_LIMIT:
   origin:
   - crew#778
 config.const.coverage_map.TIMEOUT:
+config.const.deploy.LOG_LINES:
 config.const.diagnose.MAX_CHARS:
 config.const.diagnose.MAX_COMMENT:
 config.const.diagnose.MAX_EVENTS:
