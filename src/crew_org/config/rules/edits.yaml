@@ -82,6 +82,14 @@ session.restore:
   origin:
   - crew#778
   owner: Developer
+session.delete_file:
+  description: '`delete_file` deletes one existing file, never a folder.'
+  messages:
+    folder: '`{path}` is a folder: delete the files in it, one call each.'
+    no_file: 'There''s no file `{path}` to delete.'
+  origin:
+  - crew#839
+  owner: Developer
 session.write_file:
   description: '`write_file` rewrites an existing file only when told to overwrite it.'
   messages:
