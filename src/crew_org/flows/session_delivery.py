@@ -30,12 +30,20 @@ against, first pushes its work to a branch of its own, `crew/kept/<n>-<when>`, w
 any edits since the last checkpoint as one more commit, and no pull request. Its note
 links it (`session_end.Leaving`). sprint-metrics#662 lost two hours of green work
 without it. A push that fails is handled as any failed push, and the clone keeps the
-work. Resuming from kept work is for later (the Sponsor, crew#778): a fresh delivery
-starts from main.
+work.
+
+**Resuming kept work:** a delivery with no checkpoint and no returned pull request
+starts from the card's newest kept branch, when the crew's own App pushed it and it
+hasn't moved since (`kept_work`), brought up to date with main as a checkpoint is. Its
+session is told where the last delivery stopped (`kept_start`). One that conflicts with
+main, or can't be shown to be the crew's, isn't used: the delivery starts from main, and
+the start says why (the Sponsor, 2026-10-24: "Resume first", crew#839). Each delivery
+still gets its own 3 hours.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -158,7 +166,18 @@ def deliver_by_session(
     coverage = coverage_for(ws, repo, sink, number)
 
     checkpoint = ws.checkpoint_on(branch)
-    worktree = ws.open(branch, resume=live is not None, checkpoint=checkpoint is not None)
+    # A checkpoint or a returned story's branch is newer than any kept work.
+    kept, unused = (
+        kept_work(ws, issues, sink, repo, number)
+        if checkpoint is None and live is None
+        else (None, "")
+    )
+    worktree = ws.open(
+        branch,
+        resume=live is not None,
+        checkpoint=checkpoint is not None,
+        kept=kept.sha if kept else None,
+    )
     rebuilt = False
     if ws.resumed:
         try:
@@ -168,6 +187,13 @@ def deliver_by_session(
             # rebuilt on current main, as today's rework is (#158).
             worktree = ws.open(branch, resume=False)
             checkpoint, rebuilt = None, True
+            if kept is not None:
+                unused = not_resumed(
+                    kept,
+                    "it conflicts with main in "
+                    + (", ".join(f"`{f}`" for f in conflict.files) or "unknown files"),
+                )
+                kept = None
             sink.note(
                 EventKind.NOTE,
                 f"#{number} rebuilt from main: its branch conflicted in "
@@ -195,6 +221,8 @@ def deliver_by_session(
         rows,
         diagram,
     )
+    if unused:
+        story += "\n\n" + unused
     # The story's part of the start, measured by what it's made of (the operator, crew#778).
     measured = {
         "card": len(story_text),
@@ -202,14 +230,16 @@ def deliver_by_session(
         "note": len(note or ""),
         "diagram": len(diagram),
     }
+    # After a catch-up, the branch's base is main as it is now.
+    since = _merge_base(worktree) or "origin/HEAD"
     if checkpoint is not None:
         instead = resumed_start(checkpoint)
     elif live is not None and not rebuilt:
         instead = returned_start(issues, repo, number, branch, worktree, known=card)
+    elif kept is not None:
+        instead = kept_start(issues, repo, number, kept, worktree, since, link=ws)
     else:
         instead = None
-    # After a catch-up, the branch's base is main as it is now.
-    since = _merge_base(worktree) or "origin/HEAD"
     sink.emit(
         CrewEvent(
             kind=EventKind.AGENT_STARTED,
@@ -944,6 +974,157 @@ def resumed_start(checkpoint: str) -> str:
         "is a `done`, the gates didn't finish with it: check the work and call `done` "
         "again. Its last checkpoint:\n\n" + _quoted(checkpoint)
     )
+
+
+@dataclass(frozen=True)
+class KeptWork:
+    """A kept branch a delivery resumes: its name, and the tip the crew pushed."""
+
+    branch: str
+    sha: str
+
+
+def kept_work(
+    ws: Workspace, issues: IssueClient, sink: EventSink, repo: str, number: int
+) -> tuple[KeptWork | None, str]:
+    """The card's newest kept branch to resume, or why it isn't used (crew#839).
+
+    Used only when its newest push is by the crew's own App (`trust.crew`) and left it
+    at the tip it has now: a branch anyone else moved is code no gate has read. A check
+    that fails or finds no push trusts nothing: the delivery starts from main, as for a
+    branch someone else pushed, and never fails over it (the operator, crew#839).
+    """
+    found = ws.kept_for(number)
+    if found is None:
+        return None, ""
+    name, sha = found
+    crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+    try:
+        push = issues.last_push(repo, name)
+    except Exception as exc:  # noqa: BLE001 - a failed check starts from main
+        why = f"who pushed it couldn't be checked: {str(exc)[:200]}"
+    else:
+        actor = ((push or {}).get("actor") or {}).get("login") or ""
+        if push is None:
+            why = "GitHub has no record of who pushed it"
+        elif actor not in crew:
+            why = f"its last push was by `{actor or 'someone unnamed'}`, not the crew"
+        elif push.get("after") != sha:
+            why = "it has moved since the crew pushed it"
+        else:
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} resumes its kept work on {name}",
+                repo=repo,
+                card=number,
+                kept=name,
+                rule=Rule.RESUME_KEPT,
+            )
+            return KeptWork(name, sha), ""
+    kept = KeptWork(name, sha)
+    sink.note(
+        EventKind.NOTE,
+        f"#{number} starts from main, not its kept work on {name}: {why}",
+        repo=repo,
+        card=number,
+        kept=name,
+        rule=Rule.RESUME_KEPT,
+    )
+    return None, not_resumed(kept, why)
+
+
+def not_resumed(kept: KeptWork, why: str) -> str:
+    """The start's line on kept work that exists and wasn't used, so nothing is lost."""
+    return (
+        "## Kept work this session doesn't start from\n\n"
+        f"The last delivery's work is kept on `{kept.branch}`, but this session starts "
+        f"from main: {why}. Its files aren't below; read them with "
+        f"`git show {kept.sha[:12]}:<path>` if they help."
+    )
+
+
+def kept_start(
+    issues: IssueClient,
+    repo: str,
+    number: int,
+    kept: KeptWork,
+    worktree: Path,
+    since: str,
+    *,
+    link: Workspace,
+) -> str:
+    """What a session resuming kept work is told, in place of the hints (crew#839).
+
+    The branch, the files it changes against main, and the last gates' findings and
+    run from the crew's own note on the card that links it, so it doesn't find them
+    again. The note's findings are already cut to `session_end.FINDING_CHARS`.
+    """
+    url = f"https://github.com/{link.owner}/{link.repo}/compare/{since}...{kept.branch}"
+    parts = [
+        "## Where the last delivery stopped\n\n"
+        f"It left its work kept on [`{kept.branch}`]({url}), and this session starts "
+        "from it, brought up to date with main. Its work is in the files below, "
+        "committed: carry on from it, and leave what's done."
+    ]
+    if _git(worktree, "log", "-1", "--format=%s", kept.sha).startswith(STOPPED.split("{", 1)[0]):
+        parts.append(
+            "Its last commit holds edits made after its last green run, which no run "
+            "proved: run the checks before you build on them."
+        )
+    files = _changes(worktree, since)
+    parts.append(
+        "**What it changes against main:** " + (", ".join(files) if files else "nothing") + "."
+    )
+    said = kept_note(issues, repo, number, kept.branch)
+    if said:
+        parts.append(said)
+    else:
+        parts.append(
+            "The crew's note on why it stopped couldn't be read, so the gates' findings "
+            "aren't here: run the checks to see where it stands."
+        )
+    return "\n\n".join(parts)
+
+
+# A round of findings in a note on work that left (`session_end.evidence`).
+_ROUND = re.compile(r"^- At `done` (\d+): (.+)$", re.MULTILINE)
+_LAST_RUN = re.compile(r"^\*\*Its last run:\*\* .+$", re.MULTILINE)
+
+
+def kept_note(issues: IssueClient, repo: str, number: int, branch: str) -> str:
+    """The last gates' findings and last run, from the crew's newest note linking `branch`.
+
+    Only a comment by the crew's own App (`trust.crew`) counts. Empty when none is found
+    or the comments can't be read: the start says so.
+    """
+    crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+    try:
+        comments = issues.comments(repo, number)
+    except Exception:  # noqa: BLE001 - the start says the note wasn't read
+        return ""
+    linked = f"[`{branch}`]("
+    notes = [
+        c.get("body") or ""
+        for c in comments
+        if ((c.get("user") or {}).get("login") or "") in crew and linked in (c.get("body") or "")
+    ]
+    if not notes:
+        return ""
+    note = notes[-1]
+    rounds = [(int(n), said) for n, said in _ROUND.findall(note)]
+    parts = []
+    if rounds:
+        last = max(n for n, _ in rounds)
+        listed = "\n".join(f"- {said}" for n, said in rounds if n == last)
+        parts.append(f"**The gates' findings at its last `done`, the {_nth(last)}:**\n\n{listed}")
+    ran = _LAST_RUN.search(note)
+    if ran:
+        parts.append(ran.group(0))
+    return "\n\n".join(parts)
+
+
+def _nth(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
 def returned_start(

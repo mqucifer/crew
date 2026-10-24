@@ -1143,3 +1143,192 @@ def test_a_ci_tasks_compose_file_doesnt_make_mains_failing_setup_its_own(ws, del
     Held.setup_codes = [1, 1]
     outcome = deliver(ws, Sessions(), Routes(), story=devops_task())
     assert outcome.blocked_rule == Rule.WORKSPACE_UNREADY
+
+
+# --- a delivery resumes from its kept work (crew#839) --------------------------------
+
+CREW = "mqucifer-crew[bot]"
+KEPT = "crew/kept/662-20261024-0128"
+
+
+def origin_sha(ws, ref: str) -> str:
+    return subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "rev-parse", ref], capture_output=True, text=True
+    ).stdout.strip()
+
+
+def note_linking(branch: str) -> str:
+    """The crew's note on work that left, as `session_end.evidence` writes it: here
+    mqucifer/sprint-metrics#742's, cut to its rounds, its last run and its link."""
+    return (
+        "**#662 went back to refinement: its Developer session was stopped by the "
+        "backstop: 181 minutes of model time over 5 sessions, the delivery's 3 hours.**\n\n"
+        "**Its last run:** `run suite` failed: E           assert 0 >= 1 (failing: "
+        "`tests/test_service.py::test_post_invalid_type_emits_error_log_record`).\n\n"
+        "**The gates' findings at its earlier `done`s:**\n\n"
+        "- At `done` 1: These merged tests changed, and `done` doesn't declare them: …\n"
+        "- At `done` 2: Lint or tests failed:\n"
+        "- At `done` 3: These merged tests changed, and `done` doesn't declare them: "
+        "`tests/test_service.py::test_get_sprint_free_form_label_only_started_event` "
+        "(changed).\n"
+        "- At `done` 4: The crew filed this bug from the merged tests a workspace turned "
+        "on, which fail on the code as merged: its record on pull request 741 names them, "
+        "and reproduces the bug. On this branch they don't all pass in the workspace yet:\n\n"
+        f"**Its work is kept** on [`{branch}`](https://github.com/x/y/compare/a...{branch}), "
+        "with no pull request."
+    )
+
+
+class KeptIssues(Issues):
+    """GitHub's side of kept work: who pushed each branch, and the crew's notes."""
+
+    def __init__(self, pushes=None, notes=(), *, fails: Exception | None = None) -> None:
+        super().__init__()
+        self.trust = SimpleNamespace(crew=frozenset({CREW}))
+        self.pushes = pushes or {}
+        self.notes = list(notes)
+        self.fails = fails
+        self.asked: list[str] = []
+        del self.comments  # the method below, not the list the base keeps
+
+    def last_push(self, repo, branch):
+        self.asked.append(branch)
+        if self.fails:
+            raise self.fails
+        return self.pushes.get(branch)
+
+    def comments(self, repo, number):
+        return [{"user": {"login": who}, "body": body} for who, body in self.notes]
+
+
+def by_crew(ws, *branches: str, actor: str = CREW) -> dict[str, Any]:
+    return {b: {"actor": {"login": actor}, "after": origin_sha(ws, b)} for b in branches}
+
+
+def resumes(ws, deliver, issues, **kw) -> Sessions:
+    sessions = Sessions({"ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")), issues, **kw)
+    return sessions
+
+
+def test_a_delivery_resumes_from_the_crew_s_newest_kept_work(ws, deliver):
+    on_origin(ws, "crew/kept/662-20261023-0900", {"rate.py": "RATE = 1\n"})
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    issues = KeptIssues(by_crew(ws, KEPT), [(CREW, note_linking(KEPT))])
+    seen: list[Any] = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    sessions = resumes(ws, deliver, issues, sink=sink)
+    assert issues.asked == [KEPT], "only the newest is asked about"
+    assert (Held.instances[-1].worktree / "rate.py").read_text() == "RATE = 2\n"
+    told = sessions.started[0]["instead_of_hints"]
+    assert told.startswith("## Where the last delivery stopped")
+    assert f"[`{KEPT}`](https://github.com/mqucifer/sprint-metrics/compare/" in told
+    assert "**What it changes against main:** `rate.py` (new)." in told
+    assert "**The gates' findings at its last `done`, the 4th:**\n\n- The crew filed" in told
+    assert "At `done` 3" not in told and "doesn't declare them" not in told
+    assert "**Its last run:** `run suite` failed: E           assert 0 >= 1" in told
+    assert any(e.detail.get("rule") == "delivery.resume_kept" for e in seen)
+    assert "on crew/kept/662-20261024-0128" in pushed(ws), "the PR carries the kept work"
+
+
+def test_resumed_kept_work_is_brought_up_to_date_with_main(ws, deliver):
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    on_origin(ws, "main", {"other.py": "x = 1\n"})
+    sessions = resumes(ws, deliver, KeptIssues(by_crew(ws, KEPT)))
+    worktree = Held.instances[-1].worktree
+    assert (worktree / "other.py").exists() and (worktree / "rate.py").exists()
+    told = sessions.started[0]["instead_of_hints"]
+    assert "**What it changes against main:** `rate.py` (new)." in told
+    assert "The crew's note on why it stopped couldn't be read" in told, "no note found"
+
+
+def test_kept_work_that_conflicts_with_main_starts_from_main_and_says_so(ws, deliver):
+    on_origin(ws, KEPT, {"README.md": "kept\n"})
+    on_origin(ws, "main", {"README.md": "main\n"})
+    sessions = resumes(ws, deliver, KeptIssues(by_crew(ws, KEPT)))
+    assert (Held.instances[-1].worktree / "README.md").read_text() == "main\n"
+    started = sessions.started[0]
+    assert started["instead_of_hints"] is None, "the hints, as any fresh start"
+    assert "## Kept work this session doesn't start from" in started["story"]
+    assert (
+        f"`{KEPT}`" in started["story"] and "conflicts with main in `README.md`" in started["story"]
+    )
+    assert KEPT in kept_on_origin(ws), "nothing on the kept branch is lost"
+
+
+@pytest.mark.parametrize(
+    ("pushes", "fails", "why"),
+    [
+        ("other", None, "its last push was by `someone[bot]`, not the crew"),
+        ("moved", None, "it has moved since the crew pushed it"),
+        ("none", None, "GitHub has no record of who pushed it"),
+        ("crew", RuntimeError("403 rate limit"), "who pushed it couldn't be checked: 403"),
+    ],
+)
+def test_kept_work_not_shown_to_be_the_crew_s_is_never_resumed(ws, deliver, pushes, fails, why):
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    given = {
+        "other": by_crew(ws, KEPT, actor="someone[bot]"),
+        "moved": {KEPT: {"actor": {"login": CREW}, "after": "0" * 40}},
+        "none": {},
+        "crew": by_crew(ws, KEPT),
+    }[pushes]
+    sessions = resumes(ws, deliver, KeptIssues(given, fails=fails))
+    assert not (Held.instances[-1].worktree / "rate.py").exists(), "started from main"
+    started = sessions.started[0]
+    assert started["instead_of_hints"] is None
+    assert why in started["story"] and f"`{KEPT}`" in started["story"]
+
+
+def test_a_merged_kept_branch_isn_t_resumed(ws, deliver):
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "update-ref", "refs/heads/main", origin_sha(ws, KEPT)],
+        check=True,
+    )
+    issues = KeptIssues(by_crew(ws, KEPT))
+    sessions = resumes(ws, deliver, issues)
+    assert issues.asked == [] and sessions.started[0]["instead_of_hints"] is None
+
+
+def test_a_checkpoint_comes_before_kept_work(ws, deliver):
+    lost = Ending("interrupted", {"error": "No such container"}, why="workspace_gone")
+    green = {"what": "tests", "ok": True, "commands": [{"command": "pytest", "code": 0}]}
+    with pytest.raises(SessionInterrupted):
+        deliver(
+            ws, Sessions({"writes": {"a.py": "a = 1\n"}, "runs": [green], "ending": lost}), Routes()
+        )
+    ws.close()
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    issues = KeptIssues(by_crew(ws, KEPT))
+    sessions = resumes(ws, deliver, issues)
+    assert issues.asked == [], "kept work isn't looked at"
+    assert sessions.started[0]["instead_of_hints"].startswith("## Where the last session stopped")
+
+
+def test_a_returned_pull_request_comes_before_kept_work(ws, deliver):
+    on_origin(ws, BRANCH, {"rate.py": "RATE = 1\n"})
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    issues = KeptIssues(by_crew(ws, KEPT))
+    issues.live = {"number": 700, "head": {"sha": origin_sha(ws, BRANCH)}}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            session_delivery, "returned_start", lambda *a, **k: "## Why this is a new session"
+        )
+        resumes(ws, deliver, issues, rework=True)
+    assert issues.asked == []
+    assert (Held.instances[-1].worktree / "rate.py").read_text() == "RATE = 1\n"
+
+
+def test_a_resumed_delivery_that_leaves_keeps_a_newer_branch_the_next_resume_takes(ws, deliver):
+    on_origin(ws, KEPT, {"rate.py": "RATE = 2\n"})
+    sessions = Sessions({"writes": {"rate.py": "RATE = 3\n"}, "ending": STOP, "model_s": 60.0})
+    deliver(ws, sessions, Leaves(), KeptIssues(by_crew(ws, KEPT)))
+    newer = [k for k in kept_on_origin(ws) if k != KEPT]
+    assert len(newer) == 1 and newer[0] > KEPT
+    ws.close()
+    issues = KeptIssues(by_crew(ws, KEPT, newer[0]))
+    resumes(ws, deliver, issues)
+    assert issues.asked == newer
+    assert (Held.instances[-1].worktree / "rate.py").read_text() == "RATE = 3\n"
