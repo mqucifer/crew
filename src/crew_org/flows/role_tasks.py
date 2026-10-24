@@ -99,9 +99,10 @@ DEVOPS = TaskRole(
         ".devcontainer.json",
     ),
 )
-# Filed and held: their sessions come with M8's release review (crew#830) and
+# The UX Designer's Tasks are worked by its release review's session, which changes no
+# file (`flows/ux_review.py`, crew#830). QA's are filed and held: its session comes with
 # M10's test repository (mqucifer/project-print#12).
-UX = TaskRole("ux", "UX Designer", "ux_designer", waits_for="M8")
+UX = TaskRole("ux", "UX Designer", "ux_designer")
 QA = TaskRole("qa", "QA Engineer", "qa_engineer", waits_for="M10")
 
 ROLES: dict[str, TaskRole] = {r.key: r for r in (ARCHITECT, DEVOPS, UX, QA)}

@@ -314,7 +314,7 @@ gate.qa_unproven:
 gate.review_changes_requested:
 hold.no_session:
   description: A role's Task is filed and waits while its role has no session to work it, and says which
-    milestone brings one (the UX Designer's in M8, QA's in M10).
+    milestone brings one (QA's in M10; the UX Designer's came in M8, crew#830).
   origin:
   - crew#839
 hold.waits_for_earlier_work:
