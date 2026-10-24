@@ -254,6 +254,60 @@ def test_a_goal_typed_from_its_label_is_still_checked_for_authorship(monkeypatch
     assert [n for n, _ in result.skipped] == [1]
 
 
+# --- a parked Goal, released by its `goal` label (crew#829) ---------------
+#
+# sm#659 was filed with `needs:human` and no `goal`, and waited in Inbox after the
+# board's automation put it in Needs Refinement. Releasing it took a label swap and
+# a move; now the label is the one action.
+
+
+def test_a_parked_goal_given_its_label_is_released_wherever_it_waits():
+    cards = [
+        card(1, status=REFINEMENT, work_type=None, labels=frozenset({"goal", "needs:human"})),
+        card(2, status="Blocked", work_type=None, labels=frozenset({"goal"})),
+        card(3, status=None, work_type=None, labels=frozenset({"goal"})),
+    ]
+    assert [c.number for c in board_flow.parked_goals_released(cards)] == [1, 2, 3]
+
+
+def test_a_card_still_parked_or_typed_otherwise_is_not_released():
+    cards = [
+        card(1, status=REFINEMENT, work_type=None, labels=frozenset({"needs:human"})),
+        card(2, status=REFINEMENT, work_type="Epic", labels=frozenset({"goal"})),
+        card(3, status="Done", work_type=None, labels=frozenset({"goal"})),
+        card(4, status=REFINEMENT, state="CLOSED", work_type=None, labels=frozenset({"goal"})),
+        card(5, work_type=None, labels=frozenset({"goal"})),  # in Inbox: typed as today
+    ]
+    assert board_flow.parked_goals_released(cards) == []
+
+
+def test_a_released_goal_is_moved_cleared_typed_and_decomposed_on_the_same_tick(monkeypatch):
+    issues = FakeIssues()
+    board = FakeBoard(
+        [card(1, status=REFINEMENT, work_type=None, labels=frozenset({"goal", "needs:human"}))]
+    )
+    result, seen = run(board, issues, monkeypatch)
+    assert board.moves[0] == ("I1", INBOX)
+    assert (1, "needs:human") in issues.removed_labels
+    assert ("I1", "Work Type", "Goal") in board.selects
+    assert result.proposed == [1]
+    (moved,) = [e for e in seen if e.kind == EventKind.CARD_MOVED and e.card == 1][:1]
+    assert moved.detail["rule"] == "decision.board_flow.parked_goals_released"
+    assert moved.detail["from"] == REFINEMENT
+
+
+def test_a_released_goal_that_can_t_be_moved_waits_for_the_next_pass(monkeypatch):
+    class Stuck(FakeBoard):
+        def set_status(self, item_id, column):
+            raise RuntimeError("502")
+
+    issues = FakeIssues()
+    board = Stuck([card(1, status=REFINEMENT, work_type=None, labels=frozenset({"goal"}))])
+    result, seen = run(board, issues, monkeypatch)
+    assert result.proposed == [] and issues.removed_labels == []
+    assert any("parked Goal not moved" in e.summary for e in seen if e.kind == EventKind.NOTE)
+
+
 # --- the tick ------------------------------------------------------------
 
 
