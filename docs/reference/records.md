@@ -198,7 +198,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `role_task.opened` | A role's own Task, opened by an event or a finding (ADR 0034). | **`repo`**, `task_role`, `task_kind`, `parent`, `event`, **`rule`** | `flows/role_tasks.py` | stays in the crew's log |
 | `role_task.held` | A role's Task held because its role has no session yet. | **`repo`**, `task_role`, `waits_for`, **`rule`** | `flows/sprint.py` | stays in the crew's log |
 | `finding.filed` | A role's finding outside its story, filed as a Task or a bug. | **`repo`**, `owner`, `filed`, **`round`**, `error`, **`counts`** | `flows/merge.py`, `flows/role_tasks.py` | stays in the crew's log |
-| `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `crews/refinement_crew.py`, `flows/acceptance.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/ci_from_main.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `session/steps.py` | stays in the crew's log |
+| `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `crews/refinement_crew.py`, `flows/acceptance.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/ci_from_main.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `flows/template.py`, `session/steps.py` | stays in the crew's log |
 
 ### The rules notes name
 
@@ -306,4 +306,6 @@ filled in), and the fields it names.
 | `flows/sprint.py:start_sprint` | could not read sub-issues: … | — |
 | `flows/story_problem.py:record_pinned` | #…: the pinned tests weren't recorded: … | — |
 | `flows/story_problem.py:return_to_refinement` | #… sprint not cleared: … | — |
+| `flows/template.py:_propose` | …: template changes proposed: … | **`repo`** |
+| `flows/template.py:propose_changes` | …: template changes not proposed: … | **`repo`** |
 | `session/steps.py:at_once` | …: … sessions at once, … minutes | **`completion_tokens`**, `failed`, `sessions`, `step`, `tokens_per_s`, `wall_s` |

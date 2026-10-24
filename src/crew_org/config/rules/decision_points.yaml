@@ -1615,10 +1615,22 @@ flows.strain.strained:filter:b7cb0b9d:
   at: flows/strain.py:strained
   if: c.repo and c.repo != repo and (repos is None or c.repo in repos)
   rule: decision.strain.strained
+flows.template._propose:result:held:d165742d:
+  at: flows/template.py:_propose
+  if: 'planned.held'
+  not_a_rule: the crew's own upkeep, no card's handling
+flows.template._propose:skip:f6d86a84:
+  at: flows/template.py:_propose
+  if: 'text is None'
+  not_a_rule: the crew's own upkeep, no card's handling
 flows.template.files:skip:b5a049af:
   at: flows/template.py:files
   if: path in NOT_COPIED
   not_a_rule: 'not the tick: a command a person runs'
+flows.template.take:filter:0efc2909:
+  at: flows/template.py:take
+  if: '(merged / path).exists() or not is_protected(path, list(PROJECT_CI))'
+  not_a_rule: the crew's own upkeep, no card's handling
 flows.template.wanted:filter:9f3abb91:
   at: flows/template.py:wanted
   if: not (merged / path).exists() or (is_protected(path, list(CREW_FILES)) and (merged / path).read_text(encoding='utf-8')
