@@ -406,12 +406,43 @@ class Workspace:
             _run(["branch", "-D", name], cwd=self.path)
         return sha
 
+    def kept_for(self, issue: int) -> tuple[str, str] | None:
+        """The newest `crew/kept/<issue>-<when>` on the remote, as (branch, tip), or None.
+
+        Newest by the name's UTC stamp, which sorts as text. One already in the default
+        branch is passed over: resuming it would re-apply work that landed (crew#839).
+        """
+        self._ensure_clone()
+        listed = _run(
+            [
+                "for-each-ref",
+                "--sort=-refname",
+                "--format=%(refname:strip=3) %(objectname)",
+                f"refs/remotes/origin/{KEPT}{issue}-*",
+            ],
+            cwd=self.clone,
+        )
+        for line in listed.splitlines():
+            name, sha = line.split()
+            try:
+                _run(["merge-base", "--is-ancestor", sha, "origin/HEAD"], cwd=self.clone)
+            except GitError:
+                return name, sha
+        return None
+
     def forget(self, branch: str) -> None:
         """Drop the clone's own copy of `branch`, and any checkpoint on it, once closed."""
         with contextlib.suppress(GitError):
             _run(["branch", "-D", branch], cwd=self.clone)
 
-    def open(self, branch: str, *, resume: bool = False, checkpoint: bool = False) -> Path:
+    def open(
+        self,
+        branch: str,
+        *,
+        resume: bool = False,
+        checkpoint: bool = False,
+        kept: str | None = None,
+    ) -> Path:
         """Create a worktree on `branch`.
 
         Off `origin/HEAD` by default: a story being delivered for the first
@@ -426,6 +457,9 @@ class Workspace:
 
         `checkpoint` starts from the clone's own `branch`, which `checkpoint_on`
         found ending in a session's checkpoint.
+
+        `kept` starts from that commit, a kept branch's tip (`kept_for`), when the
+        story's work left for a rewrite and comes back to be resumed (crew#839).
         """
         assert_writable(branch)
         validate_branch_name(branch)
@@ -444,6 +478,8 @@ class Workspace:
 
         self.resumed = checkpoint or (bool(resume) and self.unfinished_work_on(branch))
         base = branch if checkpoint else f"origin/{branch}" if self.resumed else "origin/HEAD"
+        if kept and not self.resumed:
+            self.resumed, base = True, kept
         _run(
             ["worktree", "add", "-B", branch, str(path), base],
             cwd=self.clone,

@@ -327,6 +327,20 @@ class IssueClient:
             "PATCH", f"/repos/{self.owner}/{repo}/issues/comments/{comment_id}", body=body
         )
 
+    def last_push(self, repo: str, branch: str) -> dict[str, Any] | None:
+        """The newest push to `branch`, as GitHub's activity records it, or None.
+
+        Who pushed a branch isn't in git: the activity's `actor` is (crew#839). Its
+        `after` is the commit that push left the branch at.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/activity",
+            params={"ref": f"refs/heads/{branch}", "per_page": 1},
+        )
+        response.raise_for_status()
+        found = response.json()
+        return found[0] if found else None
+
     def comments(self, repo: str, number: int) -> list[dict[str, Any]]:
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/issues/{number}/comments?per_page=100"
