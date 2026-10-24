@@ -177,6 +177,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `retro.recorded` | The sprint's retro was recorded as an issue, with the defects it filed. | **`repo`**, **`sprint`**, `filed`, `failed`, `explained` | `flows/retro.py` | stays in the crew's log |
 | `standup.written` | A standup was written for a project's sprint. | **`repo`**, **`sprint`**, **`quiet`** | `flows/standup.py` | stays in the crew's log |
 | `defect.filed` | The retro filed a defect, in the repository of what it found. | **`repo`**, **`sprint`**, **`about`**, `cards`, `cause`, **`failure_class`** | `flows/retro.py` | stays in the crew's log |
+| `release.failed` | A sprint's package wasn't released: why, and that the next tick tries again. | **`repo`**, **`sprint`**, `error` | `cli.py` | stays in the crew's log |
 | `escalation.decided` | The one-call Developer's retry or escalation decision (crew#778). | **`failure_class`**, **`attempt`**, `error` | nowhere: past logs only | as `attempt` |
 | `escalation.sent` | The one-call Developer's work escalated to the subscription (crew#778). | — | nowhere: past logs only | as `escalated` |
 | `story.returned` | A story sent back to refinement, by its reason from a fixed list. | **`repo`**, `epic`, `reason`, `with`, `kind`, **`stop`** | `cli.py`, `flows/story_problem.py` | as `returned` |

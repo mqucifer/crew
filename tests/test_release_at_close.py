@@ -6,6 +6,7 @@ through two sprint closes, so crew-presentation's site showed nothing newer.
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -32,13 +33,23 @@ class Issues:
     def __init__(self, tags, retro=12):
         self.tags = tags
         self.retro = retro
-        self.comments: list[tuple[str, int, str]] = []
+        self.posted: list[tuple[str, int, str]] = []
 
     def releases(self, repo):
         return [{"tag_name": t} for t in self.tags]
 
     def comment(self, repo, number, body):
-        self.comments.append((repo, number, body))
+        self.posted.append((repo, number, body))
+
+    def comments(self, repo, number):
+        return [{"body": body} for r, n, body in self.posted if (r, n) == (repo, number)]
+
+
+@pytest.fixture(autouse=True)
+def var(monkeypatch, tmp_path):
+    """The events a release writes, in a directory of the test's own."""
+    monkeypatch.setattr(cli, "VAR", tmp_path)
+    return tmp_path
 
 
 class Board:
@@ -158,7 +169,7 @@ def test_the_retro_says_what_was_released(monkeypatch):
     )
     monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
     cli._release_after_close(issues, sprint="Sprint 25", crew_repo="crew", through=ENDED)
-    assert issues.comments and "`delivery-history-x` is released" in issues.comments[0][2]
+    assert issues.posted and "`delivery-history-x` is released" in issues.posted[0][2]
 
 
 def test_the_retro_says_why_nothing_was_released(monkeypatch):
@@ -167,7 +178,7 @@ def test_the_retro_says_why_nothing_was_released(monkeypatch):
     monkeypatch.setattr(cli, "_release_package", lambda dry_run, through: ("t", refused, None))
     monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
     cli._release_after_close(issues, sprint="Sprint 25", crew_repo="crew", through=ENDED)
-    assert refused in issues.comments[0][2] and "next tick tries again" in issues.comments[0][2]
+    assert refused in issues.posted[0][2] and "next tick tries again" in issues.posted[0][2]
 
 
 def test_a_release_that_errors_never_fails_the_close(monkeypatch):
@@ -179,4 +190,80 @@ def test_a_release_that_errors_never_fails_the_close(monkeypatch):
     monkeypatch.setattr(cli, "_release_package", boom)
     monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
     cli._release_after_close(issues, sprint="Sprint 25", crew_repo="crew", through=ENDED)
-    assert "ConnectionError" in issues.comments[0][2]
+    assert "ConnectionError" in issues.posted[0][2]
+
+
+def failures(var):
+    path = var / "events" / "close.jsonl"
+    lines = path.read_text().splitlines() if path.exists() else []
+    return [e for e in map(json.loads, lines) if e["kind"] == "release.failed"]
+
+
+def missing(dry_run, through):
+    raise ModuleNotFoundError("No module named 'jsonschema'")
+
+
+def test_a_release_that_fails_is_recorded_and_returned_for_the_standup(monkeypatch, var):
+    """It printed one line a tick for two sprints and nobody saw it (crew#889)."""
+    monkeypatch.setattr(cli, "_release_package", missing)
+    monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
+    said = cli._release_after_close(Issues([]), sprint="Sprint 33", crew_repo="crew", through=ENDED)
+    assert said == (
+        "the package for Sprint 33 not released: ModuleNotFoundError: No module named 'jsonschema'"
+    )
+    [event] = failures(var)
+    assert event["detail"] == {
+        "repo": "crew",
+        "sprint": "Sprint 33",
+        "error": "ModuleNotFoundError: No module named 'jsonschema'",
+    }
+
+
+def test_a_refused_release_is_recorded_too(monkeypatch, var):
+    refused = "sprint-metrics hasn't answered for Sprint 25"
+    monkeypatch.setattr(cli, "_release_package", lambda dry_run, through: ("t", refused, None))
+    monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
+    said = cli._release_after_close(Issues([]), sprint="Sprint 25", crew_repo="crew", through=ENDED)
+    assert said and refused in said
+    assert [e["detail"]["error"] for e in failures(var)] == [refused]
+
+
+def test_a_release_records_no_failure(monkeypatch, var):
+    monkeypatch.setattr(cli, "_release_package", lambda dry_run, through: ("t", None, "u"))
+    monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
+    assert cli._release_after_close(Issues([]), sprint="S", crew_repo="crew", through=ENDED) is None
+    assert failures(var) == []
+
+
+def test_the_retro_is_told_a_reason_once(monkeypatch, var):
+    """crew#878 holds the same reason once a tick; each tick still records the event."""
+    issues = Issues([])
+    monkeypatch.setattr(cli, "_release_package", missing)
+    monkeypatch.setattr("crew_org.flows.retro.existing_retro", lambda *a: 12)
+    for _ in range(3):
+        cli._release_after_close(issues, sprint="Sprint 33", crew_repo="crew", through=ENDED)
+    assert len(issues.posted) == 1 and len(failures(var)) == 3
+    monkeypatch.setattr(cli, "_release_package", lambda dry_run, through: ("t", None, "u"))
+    cli._release_after_close(issues, sprint="Sprint 33", crew_repo="crew", through=ENDED)
+    assert len(issues.posted) == 2 and "is released" in issues.posted[1][2]
+
+
+def test_a_roll_over_that_errors_before_the_release_is_returned(rolled, monkeypatch, var):
+    _, state = rolled
+    state["due"], state["closed"] = False, True
+
+    def broken(*a, **k):
+        raise RuntimeError("GitHub is down")
+
+    monkeypatch.setattr("crew_org.flows.rollover.ended_on", broken)
+    said = cli._roll_over(Board(), Issues([]), org={}, sprint="Sprint 25", owner="o", env={})
+    assert said == "the package for Sprint 25 not released: RuntimeError: GitHub is down"
+    assert [e["detail"]["error"] for e in failures(var)] == ["RuntimeError: GitHub is down"]
+
+
+def test_a_roll_over_returns_what_its_release_said(rolled, monkeypatch):
+    roll, state = rolled
+    state["due"], state["closed"] = False, True
+    monkeypatch.setattr(cli, "_release_after_close", lambda *a, **k: "not released: why")
+    said = cli._roll_over(Board(), Issues([]), org={}, sprint="Sprint 25", owner="o", env={})
+    assert said == "not released: why"

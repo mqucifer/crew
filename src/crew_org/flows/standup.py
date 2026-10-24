@@ -116,8 +116,14 @@ def write_standup(
     not_ready: dict[str, str] | None = None,
     skeleton_only: dict[str, str] | None = None,
     stack: list[str] = (),
+    released: str | None = None,
 ) -> Standup:
-    """The Scrum Master's standup for one tick, from the tick's own result."""
+    """The Scrum Master's standup for one tick, from the tick's own result.
+
+    `released` is why a package that was due wasn't released (crew#889). It's said
+    beside the stack's health and is never quiet, so a run of quiet ticks can't hide
+    it: one yellow line a tick in the console went unseen for two sprints.
+    """
     from crew_org.flows.loop import PHASES  # noqa: PLC0415
 
     names = [name for name, _run in PHASES]
@@ -135,7 +141,7 @@ def write_standup(
         for column, (count, limit) in sorted(result.over_limit.items())
     ]
     decided = decided_by_crew(result)
-    quiet = not (moved or blocked or failed or decided)
+    quiet = not (moved or blocked or failed or decided or released)
 
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
     state = "settled" if result.settled else "stopped at the pass cap"
@@ -167,7 +173,7 @@ def write_standup(
             [f"- {repo}: {why}" for repo, why in sorted((skeleton_only or {}).items())],
         ),
         # What the crew runs on, when something isn't healthy (#335).
-        ("Stack health", list(stack)),
+        ("Stack health", [*stack, *([f"- **release**: {released}"] if released else [])]),
     ]
     for title, items in sections:
         if items:

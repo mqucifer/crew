@@ -109,6 +109,10 @@ class EventKind(StrEnum):
     """A standup was written for a project's sprint."""
     DEFECT_FILED = "defect.filed"
     """The retro filed a defect, in the repository of what it found."""
+    # A sprint's package that wasn't released at a tick (crew#889): an error, or the
+    # release's own refusal. It printed one line a tick and nobody saw it for two sprints.
+    RELEASE_FAILED = "release.failed"
+    """A sprint's package wasn't released: why, and that the next tick tries again."""
 
     # The one-call Developer's retries and escalations, written until it retired
     # (crew#778). Nothing writes them now; past logs still hold them, and still read.
@@ -357,6 +361,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     EventKind.RETRO_RECORDED: ("repo", "sprint", "filed", "failed", "explained"),
     EventKind.STANDUP_WRITTEN: ("repo", "sprint", "quiet"),
     EventKind.DEFECT_FILED: ("repo", "sprint", "about", "cards", "cause", "failure_class"),
+    EventKind.RELEASE_FAILED: ("repo", "sprint", "error"),
     EventKind.ESCALATION_DECIDED: ("failure_class", "attempt", "error"),
     EventKind.ESCALATED: (),
     EventKind.STORY_RETURNED: ("repo", "epic", "reason", "with", "kind", "stop"),

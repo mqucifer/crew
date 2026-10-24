@@ -90,6 +90,16 @@ def test_a_tick_that_only_blocked_is_not_quiet():
     assert not standup(run(PhaseOutcome("qa", blocked=["#9 — failed"]))).quiet
 
 
+def test_a_package_not_released_is_said_and_never_quiet():
+    """It printed one console line a tick for two sprints, unseen (crew#889)."""
+    why = "the package for Sprint 33 not released: ModuleNotFoundError: No module named 'x'"
+    s = write_standup(
+        run(PhaseOutcome("deliver")), sprint=SPRINT, at=AT, waiting=[], aging=[], released=why
+    )
+    assert not s.quiet
+    assert f"**Stack health**\n- **release**: {why}" in s.text
+
+
 def test_a_failed_phase_and_a_wip_breach_are_reported():
     s = standup(run(PhaseOutcome("review", error="rate limited"), over={"In Progress": (4, 3)}))
     assert "**review**: rate limited" in s.text
