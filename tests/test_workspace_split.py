@@ -495,13 +495,13 @@ def test_cis_task_waits_for_the_first_workspace_task_to_close(tmp_path):
     issues, board, s = Issues(), Board(), sink(tmp_path)
     first = role_tasks.marker(role_tasks.DEVOPS, role_tasks.FIRST_WORKSPACE, "repository")
     issues.add(739, body=first, labels=("role:devops",))
-    assert role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[]) is None
+    assert role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[], path="story") is None
     issues.issues[739]["state"] = "closed"
-    opened = role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[])
+    opened = role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[], path="story")
     assert opened is not None and opened.new
     body = issues.issues[opened.number]["body"]
     assert marked(body).kind == role_tasks.CI_SERVICES and "ciOnlySkips" in body
-    again = role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[])
+    again = role_tasks.ci_services_task(issues, board, s, repo="sm", cards=[], path="story")
     assert again is not None and again.number == opened.number and not again.new
 
 

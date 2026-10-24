@@ -199,8 +199,10 @@ decision.role_tasks.carry_out:
   origin:
   - crew#839
 decision.role_tasks.ci_services:
-  description: Once a story's whole checks pass with the default branch's services up, and the first workspace
-    Task is closed, DevOps gets its Task to make CI's test job run the same services, once.
+  description: Once the first workspace Task is closed, and a story's whole checks pass with the default
+    branch's services up or main's own do in a container with them, DevOps gets its Task to make CI's
+    test job run the same services, once. Main's are run at most once per head commit, and only while
+    the Task isn't opened.
   origin:
   - crew#839
 decision.role_tasks.epic_split:
