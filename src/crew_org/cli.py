@@ -192,7 +192,7 @@ def tick(
     # here, the last one to end, if nothing has closed it yet.
     from crew_org.flows.rollover import last_ended  # noqa: PLC0415
 
-    _roll_over(
+    released = _roll_over(
         board,
         IssueClient(token, owner),
         org=org,
@@ -265,7 +265,9 @@ def tick(
     log.shutdown()
 
     _render_tick(result)
-    _take_standup(crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner)
+    _take_standup(
+        crew, result, crew_repo=env.get("CREW_REPO", "crew"), owner=owner, released=released
+    )
     # And at its end: the sprint it worked, if its time ran out while it did.
     _roll_over(board, crew.issues, org=org, sprint=sprint, owner=owner, env=env)
 
@@ -278,12 +280,13 @@ def _roll_over(
     sprint: str | None,
     owner: str,
     env: dict[str, str],
-) -> None:
+) -> str | None:
     """Close `sprint` if its time is up and nothing has closed it (ADR 0028).
 
     Never fails a tick: a close that can't finish is said, and the next tick's
     start tries again, since the sprint still has no retro. Once it's closed, a
     package is released for it, and each tick tries until one is (crew#724).
+    A release that didn't happen is returned, for the standup (crew#889).
     """
     from crew_org.flows.rollover import due  # noqa: PLC0415
 
@@ -305,7 +308,7 @@ def _roll_over(
             f"[yellow]{escape(sprint or '')} not closed:[/] {escape(str(exc))}. "
             "The next tick tries again."
         )
-        return
+        return None
     # A package for every sprint once it has closed (crew#724): released here, and
     # again at each tick's start until one is out after the sprint's last day.
     try:
@@ -320,16 +323,23 @@ def _roll_over(
             and release.due([str(r["tag_name"]) for r in issues.releases(crew_repo)], ended)
         ):
             console.print(f"\n[bold]Releasing the package for {escape(sprint or '')}.[/]")
-            _release_after_close(issues, sprint=sprint or "", crew_repo=crew_repo, through=ended)
+            return _release_after_close(
+                issues, sprint=sprint or "", crew_repo=crew_repo, through=ended
+            )
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]Package not released:[/] {escape(str(exc))}")
+        error = f"{type(exc).__name__}: {exc}"
+        _release_failed(None, sprint=sprint or "", crew_repo=crew_repo, error=error)
+        return f"the package for {sprint} not released: {error}"
+    return None
 
 
-def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
+def _take_standup(crew, result, *, crew_repo: str, owner: str, released: str | None = None) -> None:
     """Every tick ends with a standup (#79), recorded on the sprint's issue.
 
     A standup that cannot be recorded is reported and does not fail the tick:
-    the work the tick did has already happened.
+    the work the tick did has already happened. `released` is why the tick's start
+    released no package that was due, said beside the stack's health (crew#889).
     """
     from datetime import UTC, datetime  # noqa: PLC0415
 
@@ -362,6 +372,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str) -> None:
             not_ready=crew.not_ready,
             skeleton_only=crew.skeleton_only,
             stack=stack_problems(),
+            released=released,
         )
         number, commented = record_standup(
             crew.issues,
@@ -2556,15 +2567,24 @@ def _release_package(
     return tag, None, str(published["html_url"])
 
 
-def _release_after_close(issues: Any, *, sprint: str, crew_repo: str, through: date | None) -> None:
+def _release_after_close(
+    issues: Any,
+    *,
+    sprint: str,
+    crew_repo: str,
+    through: date | None,
+    sink: EventSink | None = None,
+) -> str | None:
     """Release a package after a sprint's close, and say so on its retro (crew#724).
 
     The site changes when its data does (Goal mqucifer/crew-presentation#10), and
     nothing released one: the first package stayed the only one for two sprints.
     It carries the sprints through the closed one, `through` its last day, and
     none after (crew#738).
-    Never fails what called it: a release that can't happen is said, and the
-    next tick tries again (`release.due`).
+    Never fails what called it: a release that can't happen is said, recorded as
+    `release.failed` and returned for the standup, and the next tick tries again
+    (`release.due`). Said once on the retro: a reason repeated every tick buried
+    it there (crew#889).
     """
     from crew_org.flows.retro import existing_retro  # noqa: PLC0415
 
@@ -2573,6 +2593,8 @@ def _release_after_close(issues: Any, *, sprint: str, crew_repo: str, through: d
     except Exception as exc:  # noqa: BLE001
         tag, refused, url = "", f"{type(exc).__name__}: {exc}", None
         console.print(f"[yellow]Package not released:[/] {escape(refused)}")
+    if not url:
+        _release_failed(sink, sprint=sprint, crew_repo=crew_repo, error=refused or "")
     body = (
         f"**The package for this sprint:** `{tag}` is released ({url}), and proposed to "
         "its consumers as a pull request changing their tag file (crew#724)."
@@ -2582,10 +2604,27 @@ def _release_after_close(issues: Any, *, sprint: str, crew_repo: str, through: d
     )
     try:
         number = existing_retro(issues, crew_repo, sprint)
-        if number is not None:
+        if number is not None and not any(
+            c.get("body") == body for c in issues.comments(crew_repo, number)
+        ):
             issues.comment(crew_repo, number, body)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[yellow]Retro not told of the release:[/] {escape(str(exc))}")
+    return None if url else f"the package for {sprint} not released: {refused}"
+
+
+def _release_failed(sink: EventSink | None, *, sprint: str, crew_repo: str, error: str) -> None:
+    """Record a release that didn't happen (crew#889), never at the cost of the tick."""
+    try:
+        (sink or EventSink(VAR / "events" / "close.jsonl")).emit(
+            CrewEvent(
+                kind=EventKind.RELEASE_FAILED,
+                summary=f"package for {sprint} not released",
+                detail={"repo": crew_repo, "sprint": sprint, "error": error},
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]Release failure not recorded:[/] {escape(str(exc))}")
 
 
 @package_app.command("push")
