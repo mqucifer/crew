@@ -63,6 +63,13 @@ decision.board_flow.parked:
   origin:
   - crew#192
   - crew#440
+decision.board_flow.parked_goals_released:
+  description: A Goal the Sponsor parked, filed without the `goal` label and with no Work Type, is released
+    by adding the label. The tick moves it to Inbox (Goals) from wherever it waits, clears its `needs:human`,
+    and types it, so it's decomposed that pass.
+  origin:
+  - crew#829
+  - mqucifer/sprint-metrics#659
 decision.board_flow.points_elsewhere:
   origin:
   - crew#846

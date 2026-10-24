@@ -1,4 +1,20 @@
 # What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
+check.gates.no_changelog_entry:
+  description: At `done`, a story or a bug whose branch changes what the project ships adds a line under
+    `## [Unreleased]` in `CHANGELOG.md`, since a release ships what `[Unreleased]` holds. Tests, docs,
+    the repository's settings and a project with no changelog are left out.
+  messages:
+    default: 'This branch changes what the project ships ({paths}), and `CHANGELOG.md` gains no entry
+      under `## [Unreleased]`. A release ships what `[Unreleased]` holds, so add one line there, under
+      the subheading it fits (Added, Changed, Fixed or Removed), saying what changed for someone using
+      the project.'
+    done: 'Your branch changes what the project ships ({paths}), and `CHANGELOG.md` has no new line under
+      `## [Unreleased]`. Add one there, under the subheading it fits (Added, Changed, Fixed or Removed),
+      saying what changed for someone using the project: a release ships what `[Unreleased]` holds.'
+  origin:
+  - crew#816
+  - ADR 0019
+  owner: Developer
 check.gates.the_business_analyst_ruled_that:
   description: At `done`, merged tests changed where the story says they stay unchanged go back when the
     Business Analyst rules the story doesn't change them.
