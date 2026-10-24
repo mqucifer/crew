@@ -11,7 +11,8 @@ they hold whether or not the rule is remembered:
   that number in whichever repository it is posted in;
 - a secret on a command line or in a command's output: arguments show in `ps`
   and the session's command record (CWE-214), output reaches the transcript
-  (CWE-532). It also runs before the Read tool, which would print a `.env`.
+  (CWE-532). It also runs before the Read tool, which would print a `.env`, and
+  refuses sourcing one, which runs a value with a space as a command.
 
 Exit 2 refuses the command, with the reason on stderr for Claude to read.
 Anything this script can't parse is allowed: it is a guard, not a gate.
@@ -183,9 +184,10 @@ STDOUT_REDIRECTS = {">", ">>", ">|", "&>", "&>>"}
 
 SECRET_RULE = "CLAUDE.md, Never: a secret on a command line, or in a command's output."
 SAFE_ROUTE = (
-    "Use the environment: `set -a; . <path>/.env; set +a`, then read os.environ (or "
-    "crew's llm settings) in the process; a leak check matches inside Python, reading "
-    "both files itself."
+    "Read the secret inside the process that needs it: `crew_org.config.load_env(<path to "
+    ".env>)` parses the file and exports nothing, or `os.environ` where it's already set. "
+    "Never source a .env with a shell. A leak check matches inside Python, reading both "
+    "files itself."
 )
 
 
@@ -464,6 +466,12 @@ def check_command(cmd: Command, captured: bool) -> bool:
             refuse_secret(f"{what} prints a secret into the transcript")
         return True
 
+    # `Path(".").name` is "", so the dot is matched on the word itself.
+    sourced = cmd.words[start].text
+    if sourced in (".", "source") and any(Path(t).name.endswith(".env") for t in texts):
+        # A dotenv value with a space, unquoted, is valid dotenv, and the shell runs its
+        # second word as a command whose error prints it (crew#458, 2026-10-24).
+        refuse_secret(f"`{sourced}` on a .env file runs its values as commands, which print them")
     if leaked and name in PRINTERS:
         return prints(f"`{name}` with {leaked}")
     if leaked and name not in NO_PROCESS:
