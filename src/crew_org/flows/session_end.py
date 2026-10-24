@@ -165,7 +165,9 @@ def _for_devops(
             )
         elif verdict.check.ok and worktree is not None and services.at_main(worktree).services:
             kind = role_tasks.CI_SERVICES
-            role_tasks.ci_services_task(issues, board, sink, repo=repo, cards=board.cards())
+            role_tasks.ci_services_task(
+                issues, board, sink, repo=repo, cards=board.cards(), path="story"
+            )
     except Exception as exc:  # noqa: BLE001 - a filing never costs the story
         reraise_if_down(exc)
         role_tasks.not_opened(

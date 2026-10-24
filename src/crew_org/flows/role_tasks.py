@@ -290,6 +290,7 @@ def open_task(
     by: str | None = None,
     event: str = "",
     rule: str = "",
+    detail: dict[str, Any] | None = None,
 ) -> Opened:
     """Open the Task once, or finish placing one an earlier pass opened.
 
@@ -338,6 +339,7 @@ def open_task(
                     "parent": parent,
                     "event": event or kind,
                     **({"rule": rule} if rule else {}),
+                    **(detail or {}),
                 },
             )
         )
@@ -1496,13 +1498,20 @@ CI_SERVICES_POINTS = 3
 
 
 def ci_services_task(
-    issues: IssueClient, board: ProjectClient, sink: EventSink, *, repo: str, cards: list[Card]
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    cards: list[Card],
+    path: str,
 ) -> Opened | None:
     """DevOps's second workspace Task: CI's test job runs the workspace's services
     (the Sponsor, 2026-10-23, crew#839).
 
-    Its caller opens it when the tests that need them pass in the workspace on main: a
-    story's whole checks passed at `done` with the default branch's services up. Only
+    Its callers open it when the tests that need them pass in the workspace on main:
+    `path` "story" when a story's whole checks passed at `done` with the default branch's
+    services up, "main" when main's own did (`ci_from_main`). Only
     once the first workspace Task is closed, so it follows the workspace onto main
     rather than racing it. None until then, and once it's opened.
     """
@@ -1538,6 +1547,7 @@ def ci_services_task(
         points=CI_SERVICES_POINTS,
         cards=cards,
         event="workspace.tests_pass",
+        detail={"path": path},
     )
 
 

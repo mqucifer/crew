@@ -1734,6 +1734,14 @@ flows.role_tasks.turned_on_bug:end:7f2ee007:
   at: flows/role_tasks.py:turned_on_bug
   if: not tests
   not_a_rule: nothing to file
+flows.ci_from_main.ci_services_from_main:result:held:705cf4f7:
+  at: flows/ci_from_main.py:ci_services_from_main
+  if: why
+  rule: decision.role_tasks.ci_services
+flows.ci_from_main.ci_services_from_main:result:opened:7a8b5f05:
+  at: flows/ci_from_main.py:ci_services_from_main
+  if: opened is not None and opened.new
+  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.role_tasks.ci_services_task:end:c1c40860:
   at: flows/role_tasks.py:ci_services_task
   if: first is None or first.get('state') != 'closed'

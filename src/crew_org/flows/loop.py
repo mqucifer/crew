@@ -300,6 +300,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         propose_design,
         review_design,
     )
+    from crew_org.flows.ci_from_main import ci_services_from_main  # noqa: PLC0415
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
@@ -337,6 +338,16 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         repos=watched(repos, crew.skeleton_only),
         cards=crew.board.cards(),
     )
+    # And once that's closed, CI's Task when main's own checks pass with its services:
+    # its stories wait on it in the reset, so a story's `done` can't open it (crew#839).
+    ci = ci_services_from_main(
+        crew.issues,
+        crew.board,
+        crew.sink,
+        crew.ws,
+        repos=watched(repos, crew.skeleton_only),
+        cards=crew.board.cards(),
+    )
     # A need a Goal's look named whose Task wasn't opened then is opened now (crew#860).
     goals_needs(crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards())
     result = revisit_designs(
@@ -363,7 +374,9 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         "revisit",
         moved=result.moved
         or logs.moved
-        or bool(red.filed or red.closed or released.filed or drawn.opened or housed.opened),
+        or bool(
+            red.filed or red.closed or released.filed or drawn.opened or housed.opened or ci.opened
+        ),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
@@ -371,6 +384,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
             + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(housed.opened)} first workspaces for DevOps" if housed.opened else "")
+            + (f", {len(ci.opened)} CI services Tasks for DevOps" if ci.opened else "")
             + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
             + (f", {len(logs.merged)} merged" if logs.merged else "")
         ),
