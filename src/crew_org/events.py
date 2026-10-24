@@ -283,6 +283,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "result",
         "rule",
         "rules",
+        "counts",
         "step",
         "args_chars",
         "reply_chars",

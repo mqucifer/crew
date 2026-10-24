@@ -15,8 +15,11 @@ check.gates.these_merged_tests_changed:
   messages:
     default: 'These merged tests changed, and `done` doesn''t declare them: {tests}. Declare each in `done`''s
       changed tests with why, or put it back as it was.'
+    done: 'Your branch changed these merged tests, and `done` doesn''t declare them: {tests}. Add each
+      to `done` as `changed_tests: [{{test, why}}]`, with why, or put it back as it was.'
   origin:
   - crew#778
+  - crew#839
   owner: Developer
 check.record.check_change:
   description: 'Refused if it changes or deletes a row in place, or settles a question it may not: a later

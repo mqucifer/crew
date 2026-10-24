@@ -54,6 +54,8 @@ class Finding:
 
     rule: str
     says: str
+    # How many things it names, where the retro counts them (crew#839's tests at `done`).
+    count: int = 0
 
 
 @dataclass
@@ -357,19 +359,16 @@ def _declared_tests(
     """
     if merged is None:
         return
-    why = {
-        _as_key(t.get("test") or ""): t.get("why") or "" for t in said.get("changed_tests") or []
-    }
-    why.pop("", None)
+    why = _declared_why(said)
     changes = delivery.declares_a_change(story)
     named = {_as_key(t) for t in delivery.declared_contract(story)}
-    undeclared: dict[str, str] = {}
+    changed = changed_tests(worktree, merged, paths)
+    undeclared = {key: f"`{key}` ({how})" for key, how in _undeclared(changed, why).items()}
     matched: set[str] = set()
-    for key, how in sorted(changed_tests(worktree, merged, paths).items()):
-        declared = [entry for entry in why if _names(entry, key)]
-        if not declared:
-            undeclared[key] = f"`{key}` ({how})"
+    for key, how in sorted(changed.items()):
+        if key in undeclared:
             continue
+        declared = [entry for entry in why if _names(entry, key)]
         matched.update(declared)
         reason = why[declared[0]]
         if changes and any(_names(entry, key) for entry in named):
@@ -397,6 +396,54 @@ def _declared_tests(
                 + (f"\n\nAs merged:\n\n{shown}" if shown else ""),
             )
         )
+
+
+def _declared_why(said: dict[str, Any]) -> dict[str, str]:
+    """`done`'s changed tests, by key, each with its why. One with no why isn't declared."""
+    why = {
+        _as_key(t.get("test") or ""): (t.get("why") or "").strip()
+        for t in said.get("changed_tests") or []
+    }
+    return {key: reason for key, reason in why.items() if key and reason}
+
+
+def _undeclared(changed: dict[str, str], why: dict[str, str]) -> dict[str, str]:
+    """The changed merged tests no declared entry names, `key` -> "changed" or "removed".
+
+    The gate's check and `done`'s own both ask this, so a `done` that passes its own
+    passes the gate's (crew#839).
+    """
+    return {
+        key: how
+        for key, how in sorted(changed.items())
+        if not any(_names(entry, key) for entry in why)
+    }
+
+
+def undeclared_changed_tests(worktree: Path, said: dict[str, Any]) -> list[Finding]:
+    """`done`'s check of itself: each merged test the branch changed is declared (crew#839).
+
+    The gate's own computation, asked before the gate runs, so a session declares
+    them or puts them back without spending a gate round. The gate still checks.
+    """
+    merged = regression.merged_base(worktree)
+    if merged is None:
+        return []
+    changed = changed_tests(worktree, merged, reproduction._changed(worktree, merged.sha))
+    undeclared = _undeclared(changed, _declared_why(said))
+    if not undeclared:
+        return []
+    return [
+        Finding(
+            "check.gates.these_merged_tests_changed",
+            says(
+                "check.gates.these_merged_tests_changed",
+                "done",
+                tests=", ".join(f"`{key}` ({how})" for key, how in undeclared.items()),
+            ),
+            count=len(undeclared),
+        )
+    ]
 
 
 def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict) -> None:

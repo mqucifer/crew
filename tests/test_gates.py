@@ -139,6 +139,42 @@ def test_a_test_only_reformatted_hasnt_changed(repo):
     assert verdict.passed, verdict.findings
 
 
+def test_a_changed_test_declared_with_no_why_goes_back(repo):
+    """Declared without why is undeclared, at the gate as at `done` (crew#839)."""
+    uncap(repo)
+    verdict = at_done(repo, done((f"{TESTS}::test_rate_is_capped", "  ")))
+    assert [f.rule for f in verdict.findings] == ["check.gates.these_merged_tests_changed"]
+    assert gates.undeclared_changed_tests(repo, done((f"{TESTS}::test_rate_is_capped", "")))
+
+
+def test_done_names_the_changed_tests_it_doesnt_declare(repo):
+    """`done`'s own check, before the gate (crew#839): one line that teaches the field."""
+    uncap(repo)
+    (repo / TESTS).write_text(
+        (repo / TESTS).read_text().split("\n\n\ndef test_rate_of_nothing")[0] + "\n"
+    )
+    [finding] = gates.undeclared_changed_tests(repo, done())
+    assert finding.rule == "check.gates.these_merged_tests_changed"
+    assert finding.count == 2
+    assert f"`{TESTS}::test_rate_is_capped` (changed)" in finding.says
+    assert f"`{TESTS}::test_rate_of_nothing` (removed)" in finding.says
+    assert "`changed_tests: [{test, why}]`" in finding.says
+    assert "\n" not in finding.says.strip()
+
+
+def test_a_done_that_passes_its_own_check_passes_the_gates(repo):
+    uncap(repo)
+    said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
+    assert gates.undeclared_changed_tests(repo, said) == []
+    assert at_done(repo, said).passed
+
+
+def test_done_has_nothing_to_declare_with_no_merged_test_changed(repo):
+    (repo / MODULE).write_text((repo / MODULE).read_text() + "\n\ndef other():\n    return 1\n")
+    (repo / "tests/test_other.py").write_text("def test_other():\n    assert True\n")
+    assert gates.undeclared_changed_tests(repo, done()) == []
+
+
 def test_one_the_changes_line_doesnt_name_is_a_question_for_review(repo):
     """The operator's call inside decision 6 (crew#778), on mqucifer/sprint-metrics#662's test."""
     uncap(repo)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -827,6 +828,48 @@ def test_a_session_refuses_a_done_naming_a_test_that_isnt_there(root, seen):
     told = proxy.sent[1]["messages"][-1]["content"]
     assert "No test by these names exists: `tests/test_app.py::test_g`." in told
     assert "write one and run it" in told and "`search` for `def test_`" in told
+
+
+def merged(root):
+    """`root` as a clone of its default branch, on a story's branch."""
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+    who = ("-c", "user.email=t@t", "-c", "user.name=t")
+    git("init", "-q", "-b", "main")
+    git(*who, "add", "-A")
+    git(*who, "commit", "-qm", "merged")
+    git("update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    git("checkout", "-qb", "feat/1-f")
+
+
+def test_a_session_refuses_a_done_that_doesnt_declare_a_changed_merged_test(root, seen):
+    """The gate's check, asked first (crew#839): 11 of 61 gate rounds were this one field."""
+    merged(root)
+    (root / "tests" / "test_app.py").write_text(TEST.replace("== 1", "== 2"))
+    declared = {**DONE, "changed_tests": [{"test": "tests/test_app.py::test_f", "why": "f is 2"}]}
+    proxy = Proxy(said(("done", DONE)), said(("done", declared)))
+    _, ending = run_session(root, proxy)
+    assert ending.how == "done" and ending.said["changed_tests"] == declared["changed_tests"]
+    refused = kinds(seen, EventKind.TOOL_FINISHED)[0].detail
+    assert refused["rule"] == "check.gates.these_merged_tests_changed"
+    assert refused["counts"] == {"check.gates.these_merged_tests_changed": 1}
+    told = proxy.sent[1]["messages"][-1]["content"]
+    assert "`tests/test_app.py::test_f` (changed)" in told
+    assert "`changed_tests: [{test, why}]`" in told
+
+
+def test_a_done_with_no_changed_tests_field_isnt_asked_for_them(root):
+    """A role's Task whose scope has no tests can't declare any (crew#839)."""
+    merged(root)
+    (root / "tests" / "test_app.py").write_text(TEST.replace("== 1", "== 2"))
+    assert conversation.own_checks(root, changed_tests=False)(DONE) == []
+    assert conversation.own_checks(root)(DONE)
+    done = next(s for s in conversation.SPECS if s["function"]["name"] == "done")
+    without = {"function": {**done["function"], "parameters": {"properties": {}}}}
+    assert conversation._takes_changed_tests(None)
+    assert not conversation._takes_changed_tests([without])
 
 
 # --- image_digest (crew#839) ----------------------------------------------------------------
