@@ -19,6 +19,7 @@ offline (`tools.look`).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -43,6 +44,10 @@ class Context:
     github: Any = None
     # What the session's `look`s fetched, until it ends (`ReadTools.stop`).
     looked: Fetched = field(default_factory=Fetched, compare=False)
+    # Where a release review keeps each published page's screenshots (crew#830), and
+    # which it took, by page and width: a correction is filed with its own.
+    keep: Path | None = None
+    shots: dict[tuple[str, int], Path] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True)
@@ -142,7 +147,13 @@ def look(context: Context, args: dict[str, Any]) -> str:
         if not (files / page).is_file():
             pages = sorted(str(p.relative_to(files)) for p in files.rglob("*.html"))[:40]
             return f"`{page}` isn't in `{source}`. Its pages: {', '.join(pages)}"
-        return looking.look(files, page, widths[:4], base=base, fetched=context.looked).text()
+        # Only the published site's: a mock isn't what a reader meets.
+        keep = None
+        if context.keep is not None and source == "published":
+            keep = context.keep / re.sub(r"[^A-Za-z0-9]+", "-", page).strip("-")
+        seen = looking.look(files, page, widths[:4], base=base, fetched=context.looked, keep=keep)
+        context.shots.update({(page, w): shot for w, shot in seen.shots.items()})
+        return seen.text()
     except looking.NotLooked as exc:
         return f"Couldn't look: {exc}"
 

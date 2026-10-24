@@ -252,10 +252,21 @@ decision.role_tasks.turned_on:
     closed within the last 14 days, and once, by its tests, a closed bug counting as filed.
   origin:
   - crew#839
+decision.ux_review.blocked:
+  description: A UX Designer's review that couldn't be worked (no live release, its session stopped, or
+    GitHub refused) is blocked for a person with why, as a Task is; it isn't split.
+  origin:
+  - crew#830
 decision.ux_review.release_review_tasks:
   description: A release whose site is live (a Pages deployment succeeded after its GitHub Release) opens
     the UX Designer's review Task, once per repository and version; only for a project GitHub has a Pages
     site for and whose record names a reader.
+  origin:
+  - crew#830
+decision.ux_review.reviewed:
+  description: A UX Designer's Task is worked by its review session, not the Developer's path. Its
+    corrections are filed as bugs or Tasks, up to ten per owner, each with its page, width, standard and
+    screenshot; then it's closed and Done, with no pull request. It never blocks a merge.
   origin:
   - crew#830
 decision.sprint.capacity:

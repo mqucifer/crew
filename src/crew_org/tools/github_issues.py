@@ -640,14 +640,22 @@ class IssueClient:
             make_latest="false",
         )
 
-    def upload_release_asset(self, release: dict[str, Any], path: Path) -> dict[str, Any]:
-        """Attach the file at `path` to `release`, under its own name."""
+    def upload_release_asset(
+        self,
+        release: dict[str, Any],
+        path: Path,
+        *,
+        name: str = "",
+        content_type: str = "application/gzip",
+    ) -> dict[str, Any]:
+        """Attach the file at `path` to `release`, under `name` or its own. A screenshot
+        is sent as an image, so a page that embeds it shows it (crew#830)."""
         url = str(release["upload_url"]).split("{", 1)[0]
         response = self._client.post(
             url,
-            params={"name": path.name},
+            params={"name": name or path.name},
             content=path.read_bytes(),
-            headers={"Content-Type": "application/gzip"},
+            headers={"Content-Type": content_type},
         )
         if response.status_code >= 400:
             detail = response.json().get("message", response.text[:120])

@@ -175,6 +175,7 @@ config.const.tools.VIEW_CHARS:
 config.const.tools.VIEW_LINES:
   origin:
   - crew#778
+config.const.ux_review.CORRECTIONS_PER_OWNER:
 config.const.ux_review.REVIEW_POINTS:
 config.org.sprint_metrics.url:
 config.org.telemetry.otlp_endpoint:

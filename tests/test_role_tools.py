@@ -443,7 +443,7 @@ def test_the_look_tool_serves_a_directory_of_the_checkout_or_the_published_site(
     monkeypatch.setattr(
         looking,
         "look",
-        lambda files, page, widths, base, fetched: (
+        lambda files, page, widths, base, fetched, keep: (
             seen.append((files, page, widths, base)) or looked()
         ),
     )
@@ -456,6 +456,30 @@ def test_the_look_tool_serves_a_directory_of_the_checkout_or_the_published_site(
         context(repo), {"source": "../"}
     )
     assert "no GitHub client" in role_tools.look(context(repo), {})
+
+
+def test_a_release_review_keeps_each_published_pages_screenshots(repo, tmp_path, monkeypatch):
+    """crew#830: a correction is filed with the screenshot of its page at its width."""
+    kept = []
+
+    def look(files, page, widths, base, fetched, keep):
+        kept.append(keep)
+        shots = {w: keep / f"{w}.png" for w in widths} if keep else {}
+        return looking.Looked(page, {w: looked().widths[375] for w in widths}, shots)
+
+    monkeypatch.setattr(looking, "look", look)
+    monkeypatch.setattr(role_tools.Fetched, "site", lambda self, github, repo: (repo_site, "/"))
+    repo_site = repo / "site"
+    seeing = role_tools.Context(repo, "s", github=object(), keep=tmp_path / "shots")
+    role_tools.look(seeing, {"page": "index.html", "widths": [375, 768]})
+    assert kept == [tmp_path / "shots" / "index-html"]
+    assert seeing.shots == {
+        ("index.html", 375): tmp_path / "shots" / "index-html" / "375.png",
+        ("index.html", 768): tmp_path / "shots" / "index-html" / "768.png",
+    }
+    # A mock in the checkout isn't what a reader meets: nothing kept for a correction.
+    role_tools.look(seeing, {"source": "site", "page": "index.html", "widths": [320]})
+    assert kept[-1] is None and ("index.html", 320) not in seeing.shots
 
 
 def test_the_published_site_is_served_under_the_path_github_serves_it_under():
