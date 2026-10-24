@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -24,6 +25,7 @@ from crew_org.crews.settle_crew import (
     Elsewhere,
     aim,
 )
+from crew_org.events import EventKind, record
 from crew_org.rulebook import Refusal, refuse
 from crew_org.session import steps
 
@@ -932,6 +934,11 @@ def split_epic(
     split replaces, both whole: it writes only what the replaced ones covered (crew#859).
     """
     from crew_org.flows import conclusion as conclusion_flow  # noqa: PLC0415
+    from crew_org.flows import removed_tests  # noqa: PLC0415
+
+    # Merged tests that use what a story removes, refused once (crew#839).
+    root = getattr(reading, "root", None)
+    once = removed_tests.Once(removed_tests.Index.of(root)) if isinstance(root, Path) else None
 
     def check(proposal: StoryProposal) -> None:
         check_delivered(proposal, delivered_numbers, planned_numbers or frozenset())
@@ -940,6 +947,8 @@ def split_epic(
         check_provided(proposal, provided)
         if found := conclusion_flow.problems(proposal, list(rows), declared):
             raise Refusal(conclusion_flow.feedback(found), rule="check.conclusion.problems")
+        if once is not None:
+            removed_tests.refuse_once(once, proposal)
 
     shown, notes = steps.delivered_section(
         delivered,
@@ -966,6 +975,13 @@ def split_epic(
         check=check,
         notes=notes,
     )
+    if once is not None and once.refused:
+        record(
+            EventKind.NOTE,
+            "split: the pre-check's merged tests, declared or passed",
+            rule="check.removed_tests.undeclared",
+            counts=once.outcome(proposal),
+        )
     return proposal
 
 

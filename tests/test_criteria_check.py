@@ -213,7 +213,8 @@ def test_the_check_reads_each_proposed_criterion_and_what_other_epics_plan():
             return {"body": body}
 
     planned = criteria_check.planned_criteria(Planned(), "r", [(397, "Schema", 185)])
-    assert "#397 Schema (epic #185)" in planned and "**Given** x" in planned
+    assert "### Epic #185" in planned and "#### #397 Schema" in planned
+    assert "**Given** x" in planned
     assert "Estimate" not in planned
 
 

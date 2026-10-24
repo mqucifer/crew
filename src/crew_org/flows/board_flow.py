@@ -21,12 +21,14 @@ the state, and a single linear pass needs no more (ADR 0025).
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from crew_org import log, sendbacks
@@ -47,7 +49,15 @@ from crew_org.crews.refinement_crew import (
     split_epic,
 )
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import artifacts, bugs, criteria_check, proposed_goal, resplit, role_tasks
+from crew_org.flows import (
+    artifacts,
+    bugs,
+    criteria_check,
+    proposed_goal,
+    removed_tests,
+    resplit,
+    role_tasks,
+)
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
@@ -1350,6 +1360,16 @@ def epics_to_split(cards: list[Card]) -> list[Card]:
     ]
 
 
+def _proposal_comment(issues: Any, repo: str, goal: int) -> str:
+    """The Product Owner's latest epic proposal on the Goal, or nothing."""
+    try:
+        comments = issues.comments(repo, goal)
+    except Exception:  # noqa: BLE001 - the order is shown from the board instead
+        return ""
+    bodies = [c.get("body") or "" for c in comments]
+    return next((b for b in reversed(bodies) if EPIC_PROPOSAL_MARKER in b), "")
+
+
 def planned_elsewhere(
     cards: list[Card], split_now: list[tuple[str, int, str, int]], *, repo: str, epic: int
 ) -> list[tuple[int, str, int]]:
@@ -2002,17 +2022,38 @@ def refine_epics(
                 # Every criterion has to pass alongside the others and the code, and
                 # that shows before any story exists (#428). One repair of the flagged
                 # stories' criteria; what survives goes to the Product Owner.
+                # Each planned story under its epic, with their statuses, the Goal's
+                # epics in order, and the merged tests that use what a story removes,
+                # found in code (crew#839).
+                shown_planned = planned + [(n, stories[n].card.title, number) for n in kept]
                 others = criteria_check.planned_criteria(
-                    issues, repo, planned + [(n, stories[n].card.title, number) for n in kept]
+                    issues, repo, shown_planned, cards=cards, goal=epic_card.parent, epic=number
                 )
-                checked = criteria_check.check_each(
-                    attributed(check_criteria, card=number, repo=repo),
-                    proposal,
+                order = (
+                    criteria_check.goal_order(
+                        _proposal_comment(issues, repo, epic_card.parent),
+                        cards,
+                        goal=epic_card.parent,
+                        epic=number,
+                        conclusion=conclusion,
+                    )
+                    if epic_card.parent
+                    else ""
+                )
+                root = getattr(reading, "root", None)
+                tests = removed_tests.Index.of(root) if isinstance(root, Path) else None
+                shown_too: dict[str, Any] = dict(
+                    precheck=functools.partial(removed_tests.undeclared, tests) if tests else None,
+                    planned_in={n: e for n, _t, e in shown_planned if e != number},
                     planned=others,
+                    order=order,
                     conclusion=conclusion,
                     goal=goal_text,
                     project_log=project_log,
                     reading=reading,
+                )
+                checked = criteria_check.check_each(
+                    attributed(check_criteria, card=number, repo=repo), proposal, **shown_too
                 )
                 named = criteria_check.flagged(proposal, checked) if checked.conflicts else None
                 if named:
@@ -2040,6 +2081,7 @@ def refine_epics(
                         project_log=project_log,
                         reading=reading,
                     )
+                    before = criteria_check.earlier(named, checked)
                     proposal = criteria_check.with_repairs(proposal, named, repair)
                 elif checked.conflicts:
                     sendbacks.record(
@@ -2060,15 +2102,14 @@ def refine_epics(
                     # After a repair, only the stories it changed: each is still
                     # checked against all the others (crew#612). A whole re-split is
                     # checked whole.
+                    # A re-check is told what it found and what the repair changed, and
+                    # a story the repair left as it was keeps its conflicts (crew#839).
                     checked = criteria_check.check_each(
                         attributed(check_criteria, card=number, repo=repo),
                         proposal,
                         only=named or None,
-                        planned=others,
-                        conclusion=conclusion,
-                        goal=goal_text,
-                        project_log=project_log,
-                        reading=reading,
+                        before=before if named else None,
+                        **shown_too,
                     )
             except Exception as exc:  # noqa: BLE001
                 reraise_if_down(exc)
