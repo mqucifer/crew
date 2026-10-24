@@ -85,6 +85,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "check.gates.the_branch_changes_nothing": (GATE, "`done` with an empty diff, at `done`"),
     "check.gates.these_tests_skipped": (GATE, "a skipped test CI runs, at `done`"),
     "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
+    "check.gates.no_changelog_entry": (GATE, "a story's `[Unreleased]` entry, at `done`"),
     "check.gates.the_business_analyst_ruled_that": (
         GATE,
         "the contract ruling, at `done`, when declaration and story disagree",

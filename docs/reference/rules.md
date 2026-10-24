@@ -17,7 +17,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 24 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 19 |
+| A session's tool refuses a call, and says why in its reply | 20 |
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
@@ -39,7 +39,7 @@ section; one no line holds for is unplaced, never guessed.
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 129 |
-| What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
+| What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 103 |
 
@@ -178,6 +178,7 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
+| `check.gates.no_changelog_entry`<br>At `done`, a story or a bug whose branch changes what the project ships adds a line under `## [Unreleased]` in `CHANGELOG.md`, since a release ships what `[Unreleased]` holds. Tests, docs, the repository's settings and a project with no changelog are left out. | contracts | `src/crew_org/flows/gates.py:no_changelog_entry` | Developer | — | src/crew_org/flows/gates.py:no_changelog_entry | ADR 0019<br>crew#778<br>crew#816 |
 | `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:undeclared_changed_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests<br>src/crew_org/flows/gates.py:undeclared_changed_tests | crew#778<br>crew#839 |
 | `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |

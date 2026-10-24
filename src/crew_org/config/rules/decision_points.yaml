@@ -787,6 +787,26 @@ flows.gates.at_done:filter:cbd17a84:
   at: flows/gates.py:at_done
   if: 'not _is_test(key)'
   rule: guard.regression.broken_contracts
+flows.gates.no_changelog_entry:end:1b91f4fa:
+  at: flows/gates.py:no_changelog_entry
+  if: 'card is not None and (role_tasks.role_of(card) or card.work_type not in (STORY, BUG))'
+  rule: check.gates.no_changelog_entry
+flows.gates.no_changelog_entry:end:5813bad3:
+  at: flows/gates.py:no_changelog_entry
+  if: 'before is None'
+  rule: check.gates.no_changelog_entry
+flows.gates.no_changelog_entry:end:75512e86:
+  at: flows/gates.py:no_changelog_entry
+  if: 'Counter(unreleased(after)) - Counter(unreleased(before))'
+  rule: check.gates.no_changelog_entry
+flows.gates.no_changelog_entry:end:988b1ee5:
+  at: flows/gates.py:no_changelog_entry
+  if: 'merged is None'
+  rule: check.gates.no_changelog_entry
+flows.gates.no_changelog_entry:end:b99b3d40:
+  at: flows/gates.py:no_changelog_entry
+  if: 'not shipped'
+  rule: check.gates.no_changelog_entry
 flows.goal_look._epics_of:filter:8c34d0ac:
   at: flows/goal_look.py:_epics_of
   if: c.parent == goal and (c.repo or repo) == repo and (c.work_type == 'Epic') and (c.state != 'CLOSED')
