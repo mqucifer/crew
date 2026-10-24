@@ -329,14 +329,16 @@ SPECS = [
     _spec(
         "done",
         "Finish: the story is done. First `done` checks that each test you name for a "
-        "criterion exists, and that each merged test your branch changed or removed is in "
-        "`changed_tests`, with why; if not, the reply says which, and you fix that, then "
-        "call `done` again. Then the crew checks your branch, and returns it if any "
-        "of these fails: each acceptance criterion has a test that proves it and passes (a "
-        "criterion about what a user doc says is proven by that doc); the docs that describe "
-        "what you changed are updated on the same branch; each merged test you changed or "
-        "removed is named here, with why; and the project's whole checks pass. Then review "
-        "and QA follow.",
+        "criterion exists, that each merged test your branch changed or removed is in "
+        "`changed_tests`, with why, and that a branch changing what the project ships adds "
+        "its `CHANGELOG.md` line under `## [Unreleased]`; if not, the reply says which, and "
+        "you fix that, then call `done` again. Then the crew checks your branch, and returns "
+        "it if any of these fails: each acceptance criterion has a test that proves it and "
+        "passes (a criterion about what a user doc says is proven by that doc); the docs that "
+        "describe what you changed are updated on the same branch; each merged test you "
+        "changed or removed is named here, with why; a change to anything but tests, docs and "
+        "the repository's settings has its `[Unreleased]` entry, where the project keeps a "
+        "changelog; and the project's whole checks pass. Then review and QA follow.",
         {
             "criteria": {
                 "type": "array",

@@ -311,6 +311,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         goals_needs,
     )
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
+    from crew_org.flows.template import propose_changes  # noqa: PLC0415
     from crew_org.flows.ux_review import release_review_tasks  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
@@ -375,10 +376,13 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     logs = write_logs(
         crew.issues, crew.reviewer, crew.sink, crew.ws, repos=repos, today=sprint_today(crew.org)
     )
+    # The template's later changes reach each project as its own pull request (crew#829).
+    taken = propose_changes(crew.issues, crew.sink, crew.ws, repos=repos)
     return PhaseOutcome(
         "revisit",
         moved=result.moved
         or logs.moved
+        or bool(taken.opened)
         or bool(
             red.filed or red.closed or released.filed or drawn.opened or housed.opened or ci.opened
         )
@@ -398,6 +402,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             + (f", {len(ci.opened)} CI services Tasks for DevOps" if ci.opened else "")
             + (f", {len(logs.opened)} decision logs proposed" if logs.opened else "")
             + (f", {len(logs.merged)} merged" if logs.merged else "")
+            + (f", {len(taken.opened)} template pull requests" if taken.opened else "")
         ),
         result=result,
         counts={
@@ -414,6 +419,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
+        + [f"{repo} — {why}" for repo, why in taken.held]
+        + [f"{repo} — template changes not proposed: {why}" for repo, why in taken.failed]
         + [
             f"{repo} v{version} — waiting on the Sponsor: make the package public "
             "(its settings page; crew#386)"
