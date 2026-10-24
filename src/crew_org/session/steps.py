@@ -402,8 +402,12 @@ def run(
     notes: dict[str, str] | None = None,
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     on_end: Callable[[Session, Ending], None] | None = None,
+    noted: dict[str, Any] | None = None,
 ) -> Any:
     """The step's answer, from a session over `reading`, or `StepStopped`.
+
+    `noted` goes on the session's start event, in counts: whether a criteria check was a
+    re-check, for one (crew#839).
 
     `on_end` is given the session and its ending once it ends, as the panel measures
     its members (crew#807). One that fails is recorded, and costs the step nothing.
@@ -431,6 +435,7 @@ def run(
         step=step.name,
         start_chars=begun.sizes,
         head=reading.head,
+        **(noted or {}),
         limits={
             "backstop_s": BACKSTOP_S,
             "compact_at": COMPACT_AT,

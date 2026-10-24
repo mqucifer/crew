@@ -48,10 +48,17 @@ def opening(
     conclusion: str = "",
     goal: str = "",
     project_log: str = "",
+    order: str = "",
+    recheck: str = "",
+    facts: str = "",
 ) -> dict[str, str]:
     """QA's criteria check as a session's start (crew#807): its step first, then what the
     story's criteria are checked against. The code it was shown, focused on the story,
-    is read through the tools."""
+    is read through the tools.
+
+    A re-check is told what it found and what the repair changed, right after its step;
+    the Goal's epics come in their order; and the merged tests code found using what the
+    story removes come after the story, as facts (crew#839)."""
     from crew_org.crews.goal_look_crew import sponsors_words  # noqa: PLC0415
 
     return {
@@ -72,7 +79,9 @@ def opening(
         + ".\n\nQuote both sides. A criterion that is merely vague, large or worded "
         "differently from how you would write it is not a conflict. The stories and their "
         "repair are the Business Analyst's.",
+        "recheck": recheck,
         "goal": f"## The Goal, set by the Sponsor\n\n{sponsors_words(goal)}" if goal else "",
+        "order": order,
         "project_log": project_log,
         "conclusion": f"## The epic's record, decided before the split\n\n{conclusion}"
         if conclusion
@@ -80,10 +89,12 @@ def opening(
         "siblings": f"## The other stories in this split, with their criteria\n\n{siblings}"
         if siblings
         else "",
-        "planned": f"## Stories other epics already plan, with their criteria\n\n{planned}"
+        "planned": "## Stories other epics already plan, by epic, with their criteria\n\n"
+        "A conflict with an epic's stories is kept once, for that epic.\n\n" + planned
         if planned
         else "",
         "stories": f"## The story under check\n\n{stories}",
+        "facts": facts,
     }
 
 
@@ -105,7 +116,11 @@ def check_criteria(
     conclusion: str = "",
     goal: str = "",
     project_log: str = "",
+    order: str = "",
+    recheck: str = "",
+    facts: str = "",
     reading: steps.Reading | None = None,
+    noted: dict[str, Any] | None = None,
     on_end: Any = None,
     send: Any = None,
 ) -> CriteriaCheck:
@@ -127,9 +142,13 @@ def check_criteria(
             conclusion=conclusion,
             goal=goal,
             project_log=project_log,
+            order=order,
+            recheck=recheck,
+            facts=facts,
         ),
         reading,
         about=stories,
+        noted=noted,
         on_end=on_end,
         send=send,
     )

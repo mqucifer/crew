@@ -8,6 +8,17 @@ check.acceptance.held_to_what_it_read:
   - crew#768
   owner: QA Engineer
   told_in: CriterionVerdict.evidence
+check.criteria_check.check_each:
+  exempt: runs QA's criteria check one story per session and returns its conflicts; refuses nothing.
+    Its text is a re-check's start, told to QA, and the conflicts reach the Business Analyst by check.criteria_check.feedback
+  origin:
+  - crew#583
+  - crew#612
+  - crew#807
+  - crew#839
+  - sprint-metrics#551
+  - sprint-metrics#752
+  owner: Business Analyst
 check.criteria_check.feedback:
   description: Sent back once if its criteria can't all pass, together and with the project's code.
   messages:
@@ -127,7 +138,6 @@ config.const.acceptance.QA_OUTPUT_CHAR_CEILING:
 config.const.ci.LOG_TAIL_CHARS:
 config.const.ci.MAX_JOBS:
 config.const.ci.SERVICE_LOG_LINES:
-config.const.criteria_check.CRITERIA_LIMIT:
 config.const.criteria_check.PLANNED_LIMIT:
 config.const.deploy_evidence.MAX_DEPLOY_EVIDENCE_CHARS:
 config.const.qa_crew.MIN_EVIDENCE_CHARS:

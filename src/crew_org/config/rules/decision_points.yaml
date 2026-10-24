@@ -524,6 +524,34 @@ flows.criteria_check.planned_criteria:skip:2ea28daf:
   at: flows/criteria_check.py:planned_criteria
   if: start == -1
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.criteria_check.planned_criteria:filter:bf53555b:
+  at: flows/criteria_check.py:planned_criteria
+  if: c.number
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check._epic_heading:end:724ec544:
+  at: flows/criteria_check.py:_epic_heading
+  if: number == epic
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check._epic_heading:end:5815ecc1:
+  at: flows/criteria_check.py:_epic_heading
+  if: card is None
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check.record_for_story:end:53fc724f:
+  at: flows/criteria_check.py:record_for_story
+  if: not record.decisions
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check.goal_order:filter:bf53555b:
+  at: flows/criteria_check.py:goal_order
+  if: c.number
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check.goal_order:filter:81f7fbdf:
+  at: flows/criteria_check.py:goal_order
+  if: c.parent == goal and c.work_type == 'Epic' and (c.number not in known)
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.criteria_check.goal_order:end:d22330d2:
+  at: flows/criteria_check.py:goal_order
+  if: not proposed
+  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.decision_log._merge:end:c2fd9666:
   at: flows/decision_log.py:_merge
   if: landed.how != Landing.MERGED
@@ -1778,3 +1806,19 @@ flows.session_end._turned_on_record:end:1836ae22:
   at: flows/session_end.py:_turned_on_record
   if: 'card.work_type != BUG'
   rule: guard.reproduce.check
+flows.removed_tests.undeclared:end:c4358e51:
+  at: flows/removed_tests.py:undeclared
+  if: not names
+  not_a_rule: 'nothing to act on: a value is absent'
+flows.removed_tests.refuse_once:filter:58d872c7:
+  at: flows/removed_tests.py:refuse_once
+  if: (found := undeclared(once.index, s))
+  rule: check.removed_tests.undeclared
+flows.removed_tests.refuse_once:filter:e512e361:
+  at: flows/removed_tests.py:refuse_once
+  if: k not in once.refused.get(s.title, set())
+  rule: check.removed_tests.undeclared
+flows.removed_tests.refuse_once:filter:5fd5ee1c:
+  at: flows/removed_tests.py:refuse_once
+  if: found
+  rule: check.removed_tests.undeclared

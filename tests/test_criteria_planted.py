@@ -115,3 +115,40 @@ def test_a_check_not_shown_the_other_story_goes_silent_and_is_counted(main: Path
     assert found.conflicts == [] and len(model.shown) == 2
     noted = checked(seen)
     assert noted[-1].detail["conflicts"] == {s.title: 0 for s in PLANTED.stories}
+
+
+def test_a_recheck_starts_from_what_it_found_and_a_story_left_as_it_was_keeps_it(
+    main: Path,  # noqa: F811
+    seen,  # noqa: F811
+):
+    """After a repair (crew#839): the repaired story's session start carries its conflict
+    and the criterion before and after; the story the repair left alone isn't checked
+    again and keeps its conflict; and the session's start event says it's a re-check."""
+    reading = steps.Reading.at(main, "r")
+    first = check_with(Fake(), reading)
+    before = criteria_check.earlier(list(PLANTED.stories), first)
+    repaired = PLANTED.stories[1].model_copy(
+        update={
+            "acceptance_criteria": [
+                AcceptanceCriterion(given=DOWN, when="the service is running", then=EXITS),
+                *PLANTED.stories[1].acceptance_criteria[1:],
+            ]
+        }
+    )
+    proposal = PLANTED.model_copy(update={"stories": [PLANTED.stories[0], repaired]})
+    model = Fake()
+
+    def check(**shown):
+        return check_criteria(**shown, send=model)
+
+    again = criteria_check.check_each(
+        check, proposal, only=list(proposal.stories), before=before, reading=reading
+    )
+    [start] = model.shown
+    assert "## This is a re-check" in start and "GET /health answers 503" in start
+    assert f"after: Given {DOWN} / When the service is running / Then {EXITS}" in start
+    assert [c.story for c in again.conflicts] == ["Exit without a database"]
+    started = [e for e in seen if e.kind == EventKind.SESSION_STARTED][-1]
+    assert started.detail["recheck"] is True and started.detail["story"] == repaired.title
+    assert started.detail["start_chars"]["recheck"] > 0
+    assert checked(seen)[-1].detail["unchanged"] == {"Exit without a database": 1}
