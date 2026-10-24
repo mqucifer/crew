@@ -4,9 +4,11 @@ sprint-metrics keeps and computes; the crew asks it for its answers and carries
 them unchanged (ADR 0022). One `GET /range` from the package's first sprint to
 its last returns each sprint's numbers with the sprint before it as `prior`.
 
-**The release the crew runs is `RELEASE`,** the tag pinned in
-deploy/sprint-metrics, and its answers follow sprint-metrics' published schema at
-that tag. `crew package schema` fetches that schema once into `upstream/`, and
+**The release the crew reads is `RELEASE`,** and its answers follow
+sprint-metrics' published schema at that tag. The service may run a later release
+at the same MAJOR: mqucifer/infra's inventory names the crew as its reader at this
+constant, so a release's deploy never moves it to another MAJOR before this does
+(crew#829). `crew package schema` fetches that schema once into `upstream/`, and
 the package's own schema embeds it (`contract.schemas()`): a consumer validates
 sprint-metrics' part against sprint-metrics' own contract, through the crew's.
 Raising `RELEASE` and regenerating changes the package's schema, so its version
@@ -30,7 +32,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-# The sprint-metrics release the crew runs: deploy/sprint-metrics pins the same tag.
+# The sprint-metrics release the crew reads; the service's deploy keeps to its MAJOR.
 RELEASE = "1.3.1"
 UPSTREAM = Path(__file__).resolve().parent / "upstream"
 SCHEMA_URL = (

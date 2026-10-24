@@ -2630,7 +2630,9 @@ def _release_failed(sink: EventSink | None, *, sprint: str, crew_repo: str, erro
 @package_app.command("push")
 def package_push(
     url: str = typer.Option(
-        "http://127.0.0.1:8080", "--url", help="The sprint-metrics service (deploy/sprint-metrics)."
+        "http://127.0.0.1:8080",
+        "--url",
+        help="The sprint-metrics service (mqucifer/infra compose/mac/sprint-metrics).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Say what would go; send nothing."),
 ) -> None:

@@ -15,7 +15,7 @@ free plan keeps 7 days.
 - `var/telemetry/*.jsonl` is an allow-list projection of every event
   (`crew_org/telemetry.py`), with no summaries, errors, output, criteria or
   prompts. `var/events` stays the crew's full record.
-- **The OTel Collector is the Sponsor's** (`deploy/telemetry`). Its
+- **The OTel Collector is the Sponsor's** (mqucifer/infra `compose/mac/telemetry`). Its
   `transform/no-content` step deletes content attributes before export.
 - The export settings use their own names (`GRAFANA_OTLP_*`), never the
   standard `OTEL_EXPORTER_OTLP_*`, which any SDK would read and so bypass the

@@ -35,6 +35,6 @@ The 27B arms are written up in `docs/runbooks/empty-model-answers.md`.
 
 ## Things to know before the next experiment
 - **TensorFold samples with a fixed default seed.** Identical requests return identical output: the three unseeded runs above were token-for-token the same, and each took the full 6 minutes, so this isn't a cache. Use `replay_request.py … --seed` (each run sends its number) or a seed per call.
-- **It ignores `response_format`** and a top-level `reasoning_effort`. Effort goes in `chat_template_kwargs`, as the commented `crew-flash-next` alias in `deploy/litellm/config.yaml` does.
+- **It ignores `response_format`** and a top-level `reasoning_effort`. Effort goes in `chat_template_kwargs`, as the commented `crew-flash-next` alias in mqucifer/infra `compose/mac/litellm/config.yaml` does (the crew's `deploy/litellm` when this ran).
 - **It takes the whole Spark and port 8888,** so production's 27B must be stopped first, and restarted, with the alias commented out again, before any tick.
 - **One request is one data point.** #268 is the 27B's hardest known case. A fair comparison needs the crew's ordinary stories too, and the DevOps team's experiment design (crew#422).

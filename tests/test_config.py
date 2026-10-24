@@ -29,7 +29,6 @@ def tracked_files() -> list[Path]:
 
 
 AGENTS = CONFIG_DIR / "agents.yaml"
-LITELLM = ROOT / "deploy" / "litellm" / "config.yaml"
 CONSTITUTION = ROOT / "docs" / "ways-of-working.md"
 
 
@@ -52,13 +51,6 @@ def test_blocked_is_off_flow_not_a_column():
 def test_wip_limits_only_name_real_columns():
     org = load_org()
     assert set(org["wip_limits"]) <= set(org["board"]["columns"])
-
-
-def test_every_agent_llm_alias_exists_in_the_litellm_config(agents):
-    """A typo'd alias would otherwise surface as a confusing runtime failure."""
-    declared = {m["model_name"] for m in yaml.safe_load(LITELLM.read_text())["model_list"]}
-    used = {a["llm"] for a in agents.values()}
-    assert used <= declared, f"undeclared model aliases: {sorted(used - declared)}"
 
 
 def test_no_anthropic_api_key_anywhere_in_the_repo():

@@ -9,7 +9,7 @@ from pathlib import Path
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.telemetry import backfill, path_for, view
 
-EXPORTER = Path(__file__).parents[1] / "deploy" / "telemetry" / "exporter.py"
+EXPORTER = Path(__file__).parents[1] / "src" / "crew_org" / "telemetry_exporter.py"
 _spec = importlib.util.spec_from_file_location("exporter", EXPORTER)
 exporter = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(exporter)

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, NEEDS_REFINEMENT
 from crew_org.config import load_env

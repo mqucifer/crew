@@ -90,8 +90,9 @@ is ADR 0022.
   Both are generated from the code that builds it (`crew package schema`), and
   `versions.json` lists every schema version. `schema.json` embeds
   sprint-metrics' own schema for its answers, from the release the crew runs:
-  `RELEASE` in `src/crew_org/packages/sprint_metrics_answers.py`, the tag
-  `deploy/sprint-metrics` pins.
+  `RELEASE` in `src/crew_org/packages/sprint_metrics_answers.py`. The service
+  runs a release at the same MAJOR, which a release's deploy keeps it to
+  (crew#829).
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first

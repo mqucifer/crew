@@ -5,7 +5,7 @@ Roles name a LiteLLM alias (`crew-local`, `crew-analysis`, `crew-code-think`,
 crew at different hardware is a config change rather than a code change.
 
 Thinking is set per alias, and so is how much: `reasoning_effort` and the
-vendor's sampling live in `deploy/litellm/config.yaml`. Every role now thinks;
+vendor's sampling live in mqucifer/infra `compose/mac/litellm/config.yaml`. Every role now thinks;
 turning it off was a workaround for near-greedy sampling (#213).
 """
 
@@ -107,14 +107,14 @@ def health() -> tuple[bool, str]:
     except Exception:  # noqa: BLE001
         return False, (
             f"LiteLLM proxy is not answering at {url}.\n"
-            "  Start it with:  cd deploy/litellm && "
-            "docker compose --env-file ../../.env up -d"
+            "  Start it from mqucifer/infra compose/mac/litellm with:\n"
+            "  docker compose --env-file ~/.config/infra/secrets/litellm.env up -d"
         )
     if r.status_code in (401, 403):
         return False, (
             f"LiteLLM proxy is up at {url} but rejected the credential.\n"
-            "  It was started with LITELLM_MASTER_KEY, so the crew needs that key:\n"
-            "  set CREW_LLM_API_KEY in .env to the proxy's master key."
+            "  Set CREW_LLM_API_KEY in .env to the crew's own virtual key, `crew`, made in\n"
+            "  LiteLLM's admin UI (mqucifer/infra runbooks/mac-services-from-infra.md)."
         )
     try:
         r.raise_for_status()
