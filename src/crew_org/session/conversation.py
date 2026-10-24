@@ -522,6 +522,7 @@ def session(
     role: str = ROLE,
     specs: list[dict[str, Any]] | None = None,
     scope: tuple[str, ...] = (),
+    skills: tuple[str, ...] = (),
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
@@ -533,7 +534,7 @@ def session(
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     offered = any(s["function"]["name"] == "skill" for s in specs or ())
-    tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=offered)
+    tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=skills)
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
@@ -542,6 +543,8 @@ def session(
         # Whether `skill` was offered: the count of who reads a skill needs who could
         # (M11's skills pilot, crew#839).
         skill_offered=offered,
+        # Which, by name: a Task may be offered more than one (crew#839).
+        skills=list(skills),
         limits={
             "backstop_s": BACKSTOP_S,
             "compact_at": COMPACT_AT,
