@@ -17,6 +17,8 @@ dependencies = [
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-exporter-otlp-proto-http>=1.44.0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
+    # Checks a package's sprint-metrics answers as it's built (crew#889).
+    "jsonschema>=4.20",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +27,6 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
     "mypy>=1.11",
-    "jsonschema>=4.20",
 ]
 
 [project.scripts]
