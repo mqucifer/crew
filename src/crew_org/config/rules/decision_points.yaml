@@ -1624,6 +1624,10 @@ flows.template.wanted:filter:9f3abb91:
   if: not (merged / path).exists() or (is_protected(path, list(CREW_FILES)) and (merged / path).read_text(encoding='utf-8')
     != text)
   not_a_rule: 'not the tick: a command a person runs'
+flows.ux_review.release_review_tasks:result:opened:c1a81f37:
+  at: flows/ux_review.py:release_review_tasks
+  if: opened.new
+  rule: decision.ux_review.release_review_tasks
 tools.github_issues.comments:ignore:b30b67ad:
   at: tools/github_issues.py:comments
   if: login in self.trust.readable

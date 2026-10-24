@@ -116,6 +116,8 @@ FIRST_DIAGRAM = "first-diagram"
 FIRST_WORKSPACE = "first-workspace"
 NEED = "need"
 RELEASE = "release"
+# The UX Designer's review of a release once its site is live (crew#830).
+REVIEW = "review"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 

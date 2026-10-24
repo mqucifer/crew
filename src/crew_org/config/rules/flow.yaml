@@ -252,6 +252,12 @@ decision.role_tasks.turned_on:
     closed within the last 14 days, and once, by its tests, a closed bug counting as filed.
   origin:
   - crew#839
+decision.ux_review.release_review_tasks:
+  description: A release whose site is live (a Pages deployment succeeded after its GitHub Release) opens
+    the UX Designer's review Task, once per repository and version; only for a project GitHub has a Pages
+    site for and whose record names a reader.
+  origin:
+  - crew#830
 decision.sprint.capacity:
 decision.sprint.plan_sprint:
 decision.sprint.start_sprint:

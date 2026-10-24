@@ -569,6 +569,25 @@ class IssueClient:
         site: dict[str, Any] = response.json()
         return site
 
+    def pages_live_since(self, repo: str) -> str | None:
+        """When the site readers are served now went live: the time of the newest
+        `github-pages` deployment whose last status is a success, or None (crew#830).
+
+        A deployment that failed leaves the one before it served, so it's passed over.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/deployments",
+            params={"environment": "github-pages", "per_page": 20},
+        )
+        response.raise_for_status()
+        for deployment in response.json() or []:  # newest first
+            statuses = self._client.get(str(deployment["statuses_url"]), params={"per_page": 1})
+            statuses.raise_for_status()
+            last = next(iter(statuses.json() or []), None)
+            if last is not None and last.get("state") == "success":
+                return str(last["created_at"])
+        return None
+
     def head_sha(self, repo: str, branch: str) -> str:
         """The commit `branch` points at."""
         response = self._client.get(f"{API}/repos/{self.owner}/{repo}/commits/{branch}")

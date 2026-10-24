@@ -21,8 +21,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 54 |
-| A setting that changes what the tick does | 205 |
+| The tick decides a card's handling, found by the decision-point audit | 55 |
+| A setting that changes what the tick does | 206 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -38,10 +38,10 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 128 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 129 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 103 |
+| Unplaced | | 104 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -299,6 +299,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.sprint.plan_sprint`<br>Epics past the Sponsor's gate — approving them was the scope decision. | flow | `src/crew_org/flows/sprint.py:approved_epics` | — | — | src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | — |
 | `decision.sprint.start_sprint`<br>Admit the planned stories into the sprint. | flow | `src/crew_org/flows/sprint.py:start_sprint` | — | — | src/crew_org/flows/sprint.py:start_sprint | — |
 | `decision.strain.strained`<br>The files in `repo` that `threshold` stories of one sprint collided in. | flow | `src/crew_org/flows/strain.py:strained` | — | — | src/crew_org/flows/strain.py:strained | — |
+| `decision.ux_review.release_review_tasks`<br>Each repository whose release went live gets the UX Designer's review Task, once per version. | flow | `src/crew_org/flows/ux_review.py:release_review_tasks` | — | — | src/crew_org/flows/ux_review.py:release_review_tasks | crew#830 |
 
 ## A setting that changes what the tick does
 
@@ -483,6 +484,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.tools.TAG_LINES`<br>The tags `image_digest` shows at most. | — | `src/crew_org/session/tools.py:TAG_LINES` | — | — | src/crew_org/session/tools.py:TAG_LINES | — |
 | `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
 | `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
+| `config.const.ux_review.REVIEW_POINTS`<br>REVIEW_POINTS = 2 | — | `src/crew_org/flows/ux_review.py:REVIEW_POINTS` | — | — | src/crew_org/flows/ux_review.py:REVIEW_POINTS | — |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |
 | `config.const.workspace.HANG_AFTER`<br>How long one test runs before it's a hang (crew#839). | edits | `src/crew_org/tools/workspace.py:HANG_AFTER` | — | — | src/crew_org/tools/workspace.py:HANG_AFTER | crew#839 |
 | `config.const.workspace.MAX_FAILURE_REPORT_CHARS`<br>What a command produced, kept whole. | edits | `src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS` | — | — | src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS | — |
