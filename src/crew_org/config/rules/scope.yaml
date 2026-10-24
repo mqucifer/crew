@@ -62,6 +62,23 @@ check.refinement_crew.check:
   - crew#807
   owner: Business Analyst
   told_in: StoryProposal
+check.removed_tests.undeclared:
+  description: Sent back once if a merged test uses what a story's criteria remove and the story's Existing
+    tests line doesn't name it.
+  messages:
+    default: 'These merged tests use what a story''s criteria remove, and its Existing tests line doesn''t
+      name them:
+
+
+      {tests}
+
+
+      Name each in that story''s Existing tests line, or call done again if one doesn''t pin what the story
+      removes.'
+  origin:
+  - crew#839
+  owner: Business Analyst
+  told_in: StoryProposal
 check.settle_crew.check_grounded:
   description: Refused if the words aren't the Goal's reader or what they should see or decide, or if
     they're what the Goal rules out.
