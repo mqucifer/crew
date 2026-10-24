@@ -75,6 +75,19 @@ def probe_models(base_url: str) -> tuple[ProbeResult, str | None]:
             ),
             None,
         )
+    from crew_org.llm import unserved, unserved_message  # noqa: PLC0415
+
+    if missing := unserved([str(m.get("id")) for m in data]):
+        # Every role's alias, not only the one probed: a missing one fails mid-tick.
+        return (
+            ProbeResult(
+                check="crew aliases served",
+                status=Status.FAIL,
+                detail=unserved_message(missing).splitlines()[0],
+                hint=" ".join(line.strip() for line in unserved_message(missing).splitlines()[1:]),
+            ),
+            None,
+        )
     served = data[0].get("id")
     return (
         ProbeResult(

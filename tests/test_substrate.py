@@ -24,6 +24,12 @@ def chat_response(message: dict) -> httpx.Response:
     return httpx.Response(200, json={"choices": [{"message": message}]}, request=REQUEST)
 
 
+@pytest.fixture(autouse=True)
+def roles_call_the_probed_model(monkeypatch):
+    """The probes below are about the model; the crew's own aliases are tested apart."""
+    monkeypatch.setattr("crew_org.llm.crew_aliases", lambda: {MODEL})
+
+
 @pytest.fixture
 def server(monkeypatch):
     """Install a fake OpenAI-compatible server. Handlers keyed by endpoint."""
@@ -34,7 +40,7 @@ def server(monkeypatch):
             raise httpx.ConnectError("refused")
         return httpx.Response(
             200,
-            json={"data": [{"id": MODEL}]},
+            json={"data": [{"id": m} for m in state.get("served", [MODEL])]},
             request=httpx.Request("GET", f"{BASE}/models"),
         )
 
@@ -67,6 +73,17 @@ def test_served_model_name_is_discovered(server, monkeypatch):
     result, served = sub.probe_models(BASE)
     assert result.status is Status.PASS
     assert served == MODEL
+
+
+def test_an_alias_a_role_calls_that_the_key_isnt_served_stops_the_doctor(server, monkeypatch):
+    """The crew's key serves only the models it's allowed (crew#829): a role's alias
+    missing from the answer would fail mid-tick, so the rest isn't probed."""
+    monkeypatch.setattr("crew_org.llm.crew_aliases", lambda: {MODEL, "crew-code-think"})
+    results = sub.run_all(BASE)
+    assert results[0].check == "crew aliases served"
+    assert results[0].status is Status.FAIL
+    assert "crew-code-think" in results[0].detail
+    assert all(r.status is Status.SKIP for r in results[1:])
 
 
 # --- tool calling (0c) ---------------------------------------------------

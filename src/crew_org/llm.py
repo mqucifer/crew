@@ -56,6 +56,32 @@ def api_key() -> str:
     return _setting("CREW_LLM_API_KEY", PLACEHOLDER_KEY)
 
 
+def crew_aliases() -> set[str]:
+    """Every alias a role calls, as agents.yaml names them."""
+    from crew_org.permissions import load_agents  # noqa: PLC0415
+
+    return {str(a["llm"]) for a in load_agents().values() if a.get("llm")}
+
+
+def unserved(served: list[str]) -> list[str]:
+    """The crew's aliases the proxy doesn't serve to its key (crew#829).
+
+    The proxy's config moved to mqucifer/infra, where no crew test can read it, and the
+    crew calls with its own virtual key, which serves only the models it's allowed. So
+    the proxy's own answer is what's checked: an alias missing from it fails a role's
+    first call mid-tick, and it's caught here, before any call is made.
+    """
+    return sorted(crew_aliases() - set(served))
+
+
+def unserved_message(missing: list[str]) -> str:
+    return (
+        f"The proxy doesn't serve {', '.join(missing)} to the crew's key.\n"
+        "  Allow them on the `crew` virtual key in LiteLLM's admin UI, or declare them in\n"
+        "  mqucifer/infra compose/mac/litellm/config.yaml."
+    )
+
+
 def health() -> tuple[bool, str]:
     """Is the proxy up?
 
@@ -97,6 +123,8 @@ def health() -> tuple[bool, str]:
     aliases = [m["id"] for m in r.json().get("data", [])]
     if "crew-local" not in aliases:
         return False, f"Proxy is up but has no 'crew-local' alias. Serving: {aliases}"
+    if missing := unserved(aliases):
+        return False, unserved_message(missing)
     # The model list comes from the proxy's own config, whether or not the model
     # server behind it is up. On 2026-09-25 SGLang on the Spark was stopped, this
     # passed, and `crew design` failed inside its first model call with a
