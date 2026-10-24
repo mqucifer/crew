@@ -349,7 +349,10 @@ class Session:
             + "\n\n".join(f"{i}. {f.says.strip()}" for i, f in enumerate(findings, 1)),
             "refused",
             f"done: refused by its own checks ({len(findings)})",
-            detail={"rules": [f.rule for f in findings]},
+            detail={
+                "rules": [f.rule for f in findings],
+                "counts": {f.rule: f.count for f in findings if getattr(f, "count", 0)},
+            },
             rule=findings[0].rule,
         )
 
@@ -401,6 +404,9 @@ class Session:
             detail["rule"] = reply.rule
         if name == "done" and reply.detail.get("rules"):
             detail["rules"] = reply.detail["rules"]  # every check `done` failed
+            if reply.detail.get("counts"):
+                # How many each named, such as the undeclared merged tests (crew#839).
+                detail["counts"] = reply.detail["counts"]
         if reply.empty:
             detail["found_nothing"] = True
             if isinstance(args, dict) and args.get("pattern"):
@@ -551,23 +557,35 @@ def session(
         opening,
         send=send,
         after_run=after_run,
-        check_done=own_checks(worktree, scope),
+        check_done=own_checks(worktree, scope, changed_tests=_takes_changed_tests(specs)),
         role=role,
         specs=SPECS if specs is None else specs,
     )
 
 
 def own_checks(
-    worktree: Path, scope: tuple[str, ...] = ()
+    worktree: Path, scope: tuple[str, ...] = (), *, changed_tests: bool = True
 ) -> Callable[[dict[str, Any]], list[Any]]:
-    """`done`'s one check of itself on this worktree: the tests it names exist (crew#778)."""
+    """`done`'s checks of itself on this worktree: the tests it names exist (crew#778),
+    and, where its `done` can declare them, the merged tests it changed are (crew#839)."""
     # Here, not at the top: delivery, which the gates read, runs the session.
     from crew_org.flows import gates  # noqa: PLC0415
 
     def checked(said: dict[str, Any]) -> list[Any]:
-        return gates.missing_named_tests(worktree, said, scope=scope)
+        found = gates.missing_named_tests(worktree, said, scope=scope)
+        if changed_tests:
+            found += gates.undeclared_changed_tests(worktree, said)
+        return found
 
     return checked
+
+
+def _takes_changed_tests(specs: list[dict[str, Any]] | None) -> bool:
+    """Whether `done` has `changed_tests`: a Task whose scope has no tests has none."""
+    for spec in SPECS if specs is None else specs:
+        if spec["function"]["name"] == "done":
+            return "changed_tests" in spec["function"]["parameters"]["properties"]
+    return False
 
 
 def unfit(worktree: Path) -> str | None:

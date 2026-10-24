@@ -209,8 +209,10 @@ def done_specs(role: TaskRole, skills: Any = ()) -> list[dict[str, Any]]:
             continue
         fn["description"] = (
             f"Finish: the Task is done. Name in each criterion's `test` what proves it: {proof}. "
-            "First `done` checks that each one you name exists; if one doesn't, the reply says "
-            "so. Then the crew checks your branch, and returns it if any of these fails: it "
+            "First `done` checks that each one you name exists"
+            + (", and that each merged test you changed or removed is named here" if tests else "")
+            + "; if not, the reply says so. Then the crew checks your branch, and returns it if "
+            "any of these fails: it "
             f"changes nothing outside {scope}; "
             + ("each merged test you changed or removed is named here, with why; " if tests else "")
             + "and the project's whole checks pass. Then the Code Reviewer reviews it. QA "

@@ -329,9 +329,9 @@ SPECS = [
     _spec(
         "done",
         "Finish: the story is done. First `done` checks that each test you name for a "
-        "criterion exists; if one doesn't, the reply says so, and you write it or name the "
-        "right one, then call `done` again. Then the crew checks your branch, and returns "
-        "it if any "
+        "criterion exists, and that each merged test your branch changed or removed is in "
+        "`changed_tests`, with why; if not, the reply says which, and you fix that, then "
+        "call `done` again. Then the crew checks your branch, and returns it if any "
         "of these fails: each acceptance criterion has a test that proves it and passes (a "
         "criterion about what a user doc says is proven by that doc); the docs that describe "
         "what you changed are updated on the same branch; each merged test you changed or "

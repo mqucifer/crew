@@ -17,8 +17,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 22 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 18 |
-| A gate at `done` sends a session's branch back | 13 |
+| A session's tool refuses a call, and says why in its reply | 19 |
+| A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 54 |
@@ -175,6 +175,7 @@ section; one no line holds for is unplaced, never guessed.
 | Rule | Category | Where | Roles | Told | Checked by | From |
 |---|---|---|---|---|---|---|
 | `check.delivery.these_named_tests_dont_exist`<br>Refused if a test it names doesn't exist in the repository. | evidence | `src/crew_org/flows/gates.py:missing_named_tests` | Developer | §7.1 (both cite crew#217; in §7) | src/crew_org/flows/gates.py:missing_named_tests | crew#217<br>crew#221<br>crew#778 |
+| `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:undeclared_changed_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests<br>src/crew_org/flows/gates.py:undeclared_changed_tests | crew#778<br>crew#839 |
 | `check.role_tasks.diagram_renders`<br>The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders, checked as the Goal's target diagram is (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
@@ -203,7 +204,6 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.the_branch_changes_nothing`<br>At `done`, a branch that changes nothing goes on only if an existing test proves each criterion and the checks pass, as an already-done story does (crew#221). | evidence | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#221<br>crew#778 |
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |
 | `check.gates.the_checks_timed_out`<br>At `done`, checks that hung or ran past their bound are a finding naming the hung test and where it waits, never counted as a test that failed (crew#839). | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778<br>crew#839 |
-| `check.gates.these_merged_tests_changed`<br>At `done`, a merged test the branch changes or removes is declared in `done`'s changed tests, with why. | contracts | `src/crew_org/flows/gates.py:_declared_tests` | Developer | — | src/crew_org/flows/gates.py:_declared_tests | crew#778 |
 | `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
 | `check.role_tasks.setup_failed_at_start`<br>A DevOps workspace Task whose own branch's setup fails at the session's start is told it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839). | guards | `src/crew_org/flows/session_end.py:setup_failed_at_start` | Developer | — | src/crew_org/flows/session_end.py:setup_failed_at_start | crew#778 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
@@ -613,7 +613,7 @@ section; one no line holds for is unplaced, never guessed.
 | `§14 when_no_container_engine_is_available`<br>When no container engine is available, the check fails. | guards | `docs/ways-of-working.md:§14` | DevOps Engineer | §14 | guidance | — |
 | `§15 a_move_is_one_step_not`<br>A move is one step, not a delete and an add (crew#241). | contracts | `docs/ways-of-working.md:§15` | — | — | guidance | crew#241 |
 | `§15 a_name_a_module_passes_along`<br>A name a module passes along is protected too (sprint-metrics#129). | contracts | `docs/ways-of-working.md:§15` | — | — | guidance | sprint-metrics#129 |
-| `§15 a_story_can_declare_it_too`<br>A story can declare it too (crew#316). | contracts | `docs/ways-of-working.md:§15` | — | — | maybe story.contract_ruling | crew#316<br>sprint-metrics#200 |
+| `§15 a_story_can_declare_it_too`<br>A story can declare it too (crew#316). | contracts | `docs/ways-of-working.md:§15` | — | — | maybe check.gates.these_merged_tests_changed | crew#316<br>sprint-metrics#200 |
 | `§15 moving_a_definition_is_not_deleting`<br>Moving a definition is not deleting it (crew#202). | contracts | `docs/ways-of-working.md:§15` | — | — | guidance | crew#202 |
 | `§15 retiring_on_purpose`<br>Retiring on purpose (sprint-metrics#132). | contracts | `docs/ways-of-working.md:§15` | — | — | maybe check.gates.these_merged_tests_changed | ADR 0032<br>sprint-metrics#132 |
 | `§15 why_this_is_a_check_and`<br>Why this is a check and not an instruction. | contracts | `docs/ways-of-working.md:§15` | — | — | guidance | — |
