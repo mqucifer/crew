@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 54 |
-| A setting that changes what the tick does | 205 |
+| A setting that changes what the tick does | 206 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -36,7 +36,7 @@ section; one no line holds for is unplaced, never guessed.
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 53 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 128 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
@@ -365,6 +365,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.calls.TOOL_ROUNDS`<br>How many rounds of tool calls a step may make before it answers: enough to read the few files a step finds it needs, not a crawl of the repository. | answer_shape | `src/crew_org/calls.py:TOOL_ROUNDS` | — | — | src/crew_org/calls.py:TOOL_ROUNDS | sprint-metrics#567 |
 | `config.const.ci.LOG_TAIL_CHARS`<br>Generous, not a budget (§16): the end of a log is where the failure is. | evidence | `src/crew_org/flows/ci.py:LOG_TAIL_CHARS` | — | — | src/crew_org/flows/ci.py:LOG_TAIL_CHARS | — |
 | `config.const.ci.MAX_JOBS`<br>MAX_JOBS = 3 | evidence | `src/crew_org/flows/ci.py:MAX_JOBS` | — | — | src/crew_org/flows/ci.py:MAX_JOBS | — |
+| `config.const.ci.SERVICE_LOG_LINES`<br>What the runner logs of a job's service containers (crew#839). | evidence | `src/crew_org/flows/ci.py:SERVICE_LOG_LINES` | — | — | src/crew_org/flows/ci.py:SERVICE_LOG_LINES | crew#839 |
 | `config.const.container.GONE`<br>A container that's gone answers every command with this code: Docker's own for "the engine failed, not the command", which the held container also returns when it finds its container missing. | — | `src/crew_org/session/container.py:GONE` | — | — | src/crew_org/session/container.py:GONE | crew#778 |
 | `config.const.container.GRACE`<br>How long a command has to stop after its timeout, before it's killed. | guards | `src/crew_org/tools/container.py:GRACE` | — | — | src/crew_org/tools/container.py:GRACE | — |
 | `config.const.container.LIFETIME`<br>How long a container keeps itself alive. | guards | `src/crew_org/tools/container.py:LIFETIME` | — | — | src/crew_org/tools/container.py:LIFETIME | crew#778 |

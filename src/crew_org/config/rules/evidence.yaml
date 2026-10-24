@@ -126,6 +126,7 @@ config.const.acceptance.QA_FOCUS_ABOVE_CHARS:
 config.const.acceptance.QA_OUTPUT_CHAR_CEILING:
 config.const.ci.LOG_TAIL_CHARS:
 config.const.ci.MAX_JOBS:
+config.const.ci.SERVICE_LOG_LINES:
 config.const.criteria_check.CRITERIA_LIMIT:
 config.const.criteria_check.PLANNED_LIMIT:
 config.const.deploy_evidence.MAX_DEPLOY_EVIDENCE_CHARS:

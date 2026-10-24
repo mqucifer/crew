@@ -489,7 +489,15 @@ one-off container and its limits, the session's lack of network, the services'
 hardening, what isn't honoured and what the checks refuse. It's generated from the
 crew's own constants and the containers' own flags, so it can't drift. It's offered
 for the first workspace file, a Goal's services or toolchain, a workspace finding,
-or any DevOps Task whose branch changes the workspace file. Each call's
+or any DevOps Task whose branch changes the workspace file. **Its CI Tasks have
+`ci`** (the Sponsor, 2026-10-24): how GitHub Actions runs a job's services, how a
+job reaches them on the runner and in a container, their health checks and
+`options`, and where a job's log and a service's own log are. It's written from
+GitHub's documentation, each point linking its page, after
+mqucifer/sprint-metrics#747 reached a service by its name from a job on the runner,
+three times. It's offered for CI's services, the gate's finding that the workspace
+doesn't run what CI runs (which gets both), or any DevOps Task whose branch changes
+a workflow. `session.started` records the skills offered, by name, and each call's
 `tool.finished` event records the skill asked for, never its text.
 <!-- /told to -->
 

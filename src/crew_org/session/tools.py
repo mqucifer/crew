@@ -497,7 +497,7 @@ class Tools:
         notes: dict[str, str] | None = None,
         *,
         parse_guard: bool = True,
-        skills: bool = False,
+        skills: tuple[str, ...] = (),
     ) -> None:
         self.root = worktree.resolve()
         self.notes = notes or {}
@@ -509,7 +509,7 @@ class Tools:
         self.parse_guard = parse_guard
         # Whether a search with no path searches the notes too (crew#807).
         self.search_notes = False
-        # Whether the session is offered `skill`, so a check's reply can point to it.
+        # The skills the session is offered, so a check's reply can point to its own.
         self.skills = skills
         self.edited: list[str] = []
         self.read: list[str] = []
@@ -1178,7 +1178,7 @@ class Tools:
             if ignored
             else ""
         )
-        if self.skills and name == "workspace_check":
+        if "workspace" in self.skills and name == "workspace_check":
             aside += "\n\nThe `workspace` skill says how the crew runs a workspace."
         if not problems:
             return Reply(

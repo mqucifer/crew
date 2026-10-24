@@ -8,9 +8,12 @@ was rebuilt from `main` like a conflict, and a red check on the head just sat.
 
 from __future__ import annotations
 
+import gzip
+from pathlib import Path
+
 import httpx
 
-from crew_org.flows.ci import CI_MARKER, job_id, log_tail
+from crew_org.flows.ci import CI_MARKER, LOG_TAIL_CHARS, SERVICE_LOG_LINES, job_id, log_tail
 from crew_org.flows.delivery import awaiting_rework, prior_verdicts
 from crew_org.tools.github_issues import IssueClient, QueueState
 from tests import asked
@@ -139,6 +142,87 @@ def test_the_failing_step_is_shown_not_the_cleanup_after_it():
     assert shown.startswith("##[group]Run uv run ruff check .")
     assert "invalid-syntax" in shown and shown.endswith("exit code 1.")
     assert "pytest==" not in shown and "Post job cleanup" not in shown
+
+
+# --- what the job's services did (crew#839) --------------------------------------------------
+
+REAL_LOG = Path(__file__).parent / "fixtures/ci_logs/sprint-metrics-748-tests.log.gz"
+
+
+def test_a_real_log_keeps_the_services_start_up_and_own_log_before_the_failure():
+    """mqucifer/sprint-metrics#748's third run, as the crew reads it: Postgres started
+    healthy, then every test failed to resolve `postgres` from the runner. The failing
+    step alone read as a container that hadn't started."""
+    shown = log_tail(gzip.decompress(REAL_LOG.read_bytes()).decode())
+    assert len(shown) <= LOG_TAIL_CHARS
+    services, _, step = shown.partition("\n\n")
+    assert services.splitlines()[:2] == [
+        "Services, as the runner started them:",
+        "- `postgres`: healthy",
+    ]
+    own = services.split("The end of `postgres`'s own log:\n", 1)[1].splitlines()
+    assert len(own) == SERVICE_LOG_LINES
+    assert 'FATAL:  role "root" does not exist' in own[-1]
+    assert "failed to resolve host 'postgres'" in step
+    assert step.endswith("##[error]Process completed with exit code 1.")
+    assert "Post job cleanup" not in shown
+
+
+def test_a_job_with_no_services_shows_the_failing_step_alone():
+    raw = "##[group]Run uv run pytest -q\nE   assert 1 == 2\n##[error]Process completed."
+    assert log_tail(raw) == raw
+
+
+def started(label: str, ident: str) -> list[str]:
+    return [
+        f"##[group]Starting {label} service container",
+        f"##[command]/usr/bin/docker start {ident}",
+        ident,
+        "##[endgroup]",
+    ]
+
+
+def test_a_service_that_failed_its_health_check_says_so_with_the_runners_error():
+    raw = "\n".join(
+        [
+            *started("db", "aa11"),
+            *started("cache", "bb22"),
+            "##[group]Waiting for all services to be ready",
+            "db service is starting, waiting 2 seconds before checking again.",
+            "##[error]Failed to initialize, db service is unhealthy.",
+            "Print service container logs: x_db",
+            "##[command]/usr/bin/docker logs --details aa11",
+            "  FATAL: could not open PGDATA",
+            "Stop and remove container: x_db",
+        ]
+    )
+    shown = log_tail(raw)
+    assert shown.startswith(
+        "Services, as the runner started them:\n- `db`: unhealthy\n- `cache`: started\n"
+        "##[error]Failed to initialize, db service is unhealthy.\n"
+        "The end of `db`'s own log:\n FATAL: could not open PGDATA\n\n"
+    )
+
+
+def test_a_long_service_log_leaves_the_failure_most_of_the_room():
+    noisy = [f" line {i} " + "x" * 200 for i in range(SERVICE_LOG_LINES * 3)]
+    raw = "\n".join(
+        [
+            *started("db", "aa11"),
+            "db service is healthy.",
+            "##[group]Run uv run pytest -q",
+            *(f"test {i} failed " + "y" * 80 for i in range(200)),
+            "##[error]Process completed with exit code 1.",
+            "##[command]/usr/bin/docker logs --details aa11",
+            *noisy,
+        ]
+    )
+    shown = log_tail(raw)
+    assert len(shown) <= LOG_TAIL_CHARS
+    services, _, step = shown.partition("\n\n")
+    assert len(services) <= LOG_TAIL_CHARS // 2
+    assert f"line {SERVICE_LOG_LINES * 3 - 1} " in services and "line 0 " not in services
+    assert step.endswith("exit code 1.")
 
 
 def test_a_check_run_names_its_job():

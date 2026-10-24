@@ -488,6 +488,7 @@ def _sessions(
             role=role,
             specs=role_tasks.done_specs(task, skills or ()) if task else None,
             scope=task.scope if task else (),
+            skills=tuple(s.name for s in skills or ()),
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(

@@ -36,16 +36,84 @@ MAX_JOBS = 3
 _STAMP = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ?", re.MULTILINE)
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _JOB = re.compile(r"/job/(\d+)")
+# What the runner logs of a job's service containers (crew#839).
+SERVICE_LOG_LINES = 10
+_STARTING = re.compile(r"##\[group\]Starting (\S+) service container")
+_DOCKER_START = re.compile(r"##\[command\]\S*docker start (\w+)")
+_STATE = re.compile(r"(\S+) service is (\w+)")
+_DOCKER_LOGS = re.compile(r"##\[command\]\S*docker logs (?:--details )?(\w+)")
+
+
+def services_seen(lines: list[str]) -> str:
+    """Each service the runner started for the job, as its log says: its last state, the
+    errors of its start-up, and the end of its own log. "" for a job with no services.
+
+    The runner starts each in a `##[group]Starting <label> service container`, checks
+    its health in "Waiting for all services to be ready" (the run page's "Initialize
+    containers"), and prints its `docker logs` after the job's steps. The failing step
+    alone left all of that out: mqucifer/sprint-metrics#748's session read "can't
+    resolve `postgres`" as a container that hadn't started, when it was healthy (crew#839).
+    """
+    labels: list[str] = []
+    ids: dict[str, str] = {}
+    states: dict[str, str] = {}
+    errors: list[str] = []
+    logs: dict[str, list[str]] = {}
+    label = printing = None
+    for line in lines:
+        started = _STARTING.match(line)
+        if started:
+            label = started.group(1)
+            labels.append(label)
+            continue
+        if line.startswith("##[group]Run "):
+            label = None
+        if label is not None:
+            ran = _DOCKER_START.match(line)
+            if ran:
+                ids[ran.group(1)] = label
+            if line.startswith("##[error]"):
+                errors.append(line)
+            state = _STATE.search(line)
+            if state and state.group(1) in labels:
+                states[state.group(1)] = state.group(2)
+        printed = _DOCKER_LOGS.match(line)
+        if printed:
+            printing = ids.get(printed.group(1))
+            if printing is not None:
+                logs[printing] = []
+            continue
+        if printing is not None:
+            if not line.startswith(" ") or line.startswith("##["):
+                printing = None
+            else:
+                logs[printing].append(line[1:].rstrip())
+    if not labels:
+        return ""
+    parts = ["Services, as the runner started them:"]
+    parts += [f"- `{name}`: {states.get(name, 'started')}" for name in labels]
+    parts += errors
+    for name in labels:
+        own = [line for line in logs.get(name, []) if line.strip()][-SERVICE_LOG_LINES:]
+        if own:
+            parts += [f"The end of `{name}`'s own log:", *own]
+    return "\n".join(parts)
 
 
 def log_tail(text: str) -> str:
-    """The failing step of a job log: from its header to the error, cleaned.
+    """The failing step of a job log: from its header to the error, cleaned, after what
+    the job's services did (`services_seen`).
 
     A job log ends with post-job cleanup, so its last lines are rarely the
     failure. GitHub marks the failure `##[error]`, and the step that ran it
-    starts at the `##[group]` before. Without a marker, the log's end.
+    starts at the `##[group]` before. Without a marker, the log's end. A job with
+    no services gets the failing step alone, as before.
     """
     lines = _ANSI.sub("", _STAMP.sub("", text)).strip().splitlines()
+    services = services_seen(lines)
+    if len(services) > LOG_TAIL_CHARS // 2:
+        # The services' part never takes more than half: the failure is the rest.
+        services = "…\n" + services[-(LOG_TAIL_CHARS // 2 - 2) :].split("\n", 1)[-1]
     error = next((i for i, line in enumerate(lines) if line.startswith("##[error]")), None)
     if error is not None:
         start = max(
@@ -55,10 +123,11 @@ def log_tail(text: str) -> str:
         errors = [line for line in lines[error:] if line.startswith("##[error]")]
         lines = lines[start:error] + errors
     clean = "\n".join(lines).strip()
-    if len(clean) <= LOG_TAIL_CHARS:
-        return clean
-    cut = clean[-LOG_TAIL_CHARS:]
-    return "…\n" + cut.split("\n", 1)[-1]
+    room = LOG_TAIL_CHARS - (len(services) + 2 if services else 0)
+    if len(clean) > room:
+        cut = clean[-(room - 2) :]
+        clean = "…\n" + cut.split("\n", 1)[-1]
+    return f"{services}\n\n{clean}" if services else clean
 
 
 def job_id(run: dict[str, Any]) -> int | None:

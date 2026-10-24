@@ -65,30 +65,42 @@ def test_the_services_limits_are_read_from_the_flags_they_start_with(monkeypatch
 @pytest.mark.parametrize(
     ("kind", "key", "offered"),
     [
-        (role_tasks.FIRST_WORKSPACE, "repository", True),
-        (role_tasks.NEED, "postgres", True),
-        (role_tasks.FINDING, "workspace-0123456789ab", True),
-        (role_tasks.CI_SERVICES, "repository", False),
-        (role_tasks.RELEASE, "1.4.0", False),
+        (role_tasks.FIRST_WORKSPACE, "repository", ["workspace"]),
+        (role_tasks.NEED, "postgres", ["workspace"]),
+        # The gate's finding that the workspace doesn't run what CI runs is both.
+        (role_tasks.FINDING, "workspace-0123456789ab", ["workspace", "ci"]),
+        (role_tasks.CI_SERVICES, "repository", ["ci"]),
+        (role_tasks.FINDING, "s12-devops-c0ffee", []),
+        (role_tasks.RELEASE, "1.4.0", []),
     ],
 )
-def test_devops_workspace_tasks_are_offered_the_skill_and_its_others_not(
-    tmp_path, kind, key, offered
-):
+def test_each_devops_task_is_offered_the_skills_its_kind_needs(tmp_path, kind, key, offered):
     found = skills.for_task(role_tasks.DEVOPS, body(kind, key), tmp_path, [])
-    assert [s.name for s in found] == (["workspace"] if offered else [])
+    assert [s.name for s in found] == offered
 
 
 def test_any_devops_task_whose_branch_changes_the_workspace_file_is_offered_it(tmp_path):
     changed = [".devcontainer/devcontainer.json"]
-    found = skills.for_task(role_tasks.DEVOPS, body(role_tasks.CI_SERVICES), tmp_path, changed)
+    found = skills.for_task(role_tasks.DEVOPS, body(role_tasks.RELEASE, "1.4.0"), tmp_path, changed)
     assert [s.name for s in found] == ["workspace"]
 
 
-def test_no_other_role_is_offered_it(tmp_path):
-    first = body(role_tasks.FIRST_WORKSPACE)
-    assert skills.for_task(role_tasks.ARCHITECT, first, tmp_path, []) == []
-    assert skills.for_task(None, first, tmp_path, []) == []
+def test_any_devops_task_whose_branch_changes_a_workflow_is_offered_ci(tmp_path):
+    changed = [".github/workflows/ci.yml"]
+    for kind, key in ((role_tasks.RELEASE, "1.4.0"), (role_tasks.FIRST_WORKSPACE, "repository")):
+        found = skills.for_task(role_tasks.DEVOPS, body(kind, key), tmp_path, changed)
+        assert "ci" in [s.name for s in found], kind
+    other = [".github/dependabot.yml", "CHANGELOG.md"]
+    assert (
+        skills.for_task(role_tasks.DEVOPS, body(role_tasks.RELEASE, "1.4.0"), tmp_path, other) == []
+    )
+
+
+def test_no_other_role_is_offered_either(tmp_path):
+    workflow = [".github/workflows/ci.yml"]
+    for kind in (role_tasks.FIRST_WORKSPACE, role_tasks.CI_SERVICES):
+        assert skills.for_task(role_tasks.ARCHITECT, body(kind), tmp_path, workflow) == []
+        assert skills.for_task(None, body(kind), tmp_path, workflow) == []
 
 
 def names(specs):
@@ -106,6 +118,16 @@ def test_the_tool_and_the_starts_line_come_with_the_skill_and_not_without():
         "services, and what the checks refuse. Read one with `skill` when you need it."
     )
     assert "Skills" not in role_tasks.task_start(role_tasks.DEVOPS, "2026-10-23")
+
+
+def test_a_ci_tasks_start_names_the_ci_skill(tmp_path):
+    offered = skills.for_task(role_tasks.DEVOPS, body(role_tasks.CI_SERVICES), tmp_path, [])
+    start = role_tasks.task_start(role_tasks.DEVOPS, "2026-10-24", offered)
+    assert start.endswith(
+        "Skills for this Task: `ci`, how GitHub Actions runs a job's services: reaching "
+        "them, health checks, and logs. Read one with `skill` when you need it."
+    )
+    assert "skill" in names(role_tasks.done_specs(role_tasks.DEVOPS, offered))
 
 
 # --- read on demand, and counted --------------------------------------------------------
@@ -142,12 +164,26 @@ def test_its_event_records_the_name_asked_for_never_the_text(tmp_path, seen):  #
     assert kinds(seen, EventKind.SESSION_STARTED)[0].detail["skill_offered"] is True
 
 
+def test_the_start_records_which_skills_were_offered(tmp_path, seen):  # noqa: F811
+    (tmp_path / "a.py").write_text("x = 1\n")
+    offered = [skills.SKILLS["workspace"], skills.SKILLS["ci"]]
+    proxy = Proxy(said(("blocked", {"missing": "nothing", "kind": "fact"})))
+    specs = role_tasks.done_specs(role_tasks.DEVOPS, offered)
+    conversation.session(
+        tmp_path, "# Task", Fake(), CHECKS, send=proxy, specs=specs, skills=("workspace", "ci")
+    ).run()
+    assert kinds(seen, EventKind.SESSION_STARTED)[0].detail["skills"] == ["workspace", "ci"]
+
+
 def test_workspace_check_points_to_the_skill_when_its_offered(tmp_path):
     (tmp_path / ".devcontainer").mkdir()
     (tmp_path / ".devcontainer/devcontainer.json").write_text('{"image": "x"}')
     pointer = "The `workspace` skill says how the crew runs a workspace."
-    assert pointer in Tools(tmp_path, Fake(), CHECKS, skills=True).call("workspace_check", {}).text
+    with_it = Tools(tmp_path, Fake(), CHECKS, skills=("workspace",))
+    assert pointer in with_it.call("workspace_check", {}).text
     assert pointer not in Tools(tmp_path, Fake(), CHECKS).call("workspace_check", {}).text
+    only_ci = Tools(tmp_path, Fake(), CHECKS, skills=("ci",))
+    assert pointer not in only_ci.call("workspace_check", {}).text
 
 
 def test_a_failed_setup_at_the_start_points_to_the_skill():
@@ -160,7 +196,7 @@ def test_a_ci_tasks_own_compose_file_doesnt_offer_the_workspace_skill(tmp_path):
     found = skills.for_task(
         role_tasks.DEVOPS, body(role_tasks.CI_SERVICES), tmp_path, ["ci/docker-compose.yml"]
     )
-    assert found == []
+    assert [s.name for s in found] == ["ci"]
 
 
 def test_the_skill_says_a_failed_setup_isnt_run_again_until_done():
@@ -196,3 +232,40 @@ def test_the_text_is_the_same_on_any_machine():
 
     assert f"{os.getuid()}:{os.getgid()}" not in skills.workspace()
     assert "the host's user, never root" in skills.workspace()
+
+
+# --- the ci skill: GitHub's own pages, each point linked ----------------------------------
+
+
+def test_the_ci_skill_says_how_a_job_reaches_its_services_by_where_it_runs():
+    text = skills.ci()
+    assert "`localhost:<port>`" in text and "`ports:`" in text
+    assert "`jobs.<job_id>.container`" in text
+    assert "`POSTGRES_HOST: localhost`" in text and "`POSTGRES_HOST: postgres`" in text
+    assert '"The `--network` option is not supported."' in text
+    assert "`--health-cmd`" in text
+    assert "`docker logs ${{ job.services.<service_id>.id }}`" in text
+
+
+def test_each_github_point_links_the_page_it_comes_from():
+    """Written from GitHub's documentation: every bullet but the crew's own part links a
+    docs.github.com page."""
+    github, _, crew = skills.ci().partition("## What the crew shows")
+    bullets = [b for b in github.split("\n- ")[1:]]
+    assert len(bullets) >= 10
+    for bullet in bullets:
+        assert "(https://docs.github.com/en/" in bullet, bullet[:80]
+    assert "Not GitHub's: the crew's." in crew
+
+
+def test_the_ci_skill_says_how_many_lines_of_a_services_log_the_crew_shows(monkeypatch):
+    from crew_org.flows import ci
+
+    assert "the last 10 lines of its own log" in skills.ci()
+    monkeypatch.setattr(ci, "SERVICE_LOG_LINES", 4)
+    assert "the last 4 lines of its own log" in skills.ci()
+
+
+def test_skill_reads_the_ci_skill(tmp_path):
+    read = Tools(tmp_path, Fake(), CHECKS).call("skill", {"name": "ci"})
+    assert read.kind == "ok" and read.text == skills.ci()

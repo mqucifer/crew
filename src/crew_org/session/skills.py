@@ -8,7 +8,8 @@ the rest of the start, and every other Task's, stays as it is.
 The first is DevOps's `workspace`: mqucifer/sprint-metrics#739 spent its gate rounds
 learning by trial how the crew runs a workspace. Its text is generated from the crew's
 own constants and the container's own flags, so it can't drift from what the crew does.
-A second skill is one more entry in `SKILLS` and one more condition in `for_task`.
+The second is `ci`: how GitHub Actions runs a job's services, from GitHub's own pages.
+Another skill is one more entry in `SKILLS` and one more condition in `for_task`.
 """
 
 from __future__ import annotations
@@ -140,13 +141,95 @@ network, in a container of its own, then the project's whole checks.
 """
 
 
+_DOCS = "https://docs.github.com/en"
+_SYNTAX = f"{_DOCS}/actions/reference/workflows-and-actions/workflow-syntax"
+_SERVICES = f"{_DOCS}/actions/tutorials/use-containerized-services"
+
+
+def ci() -> str:
+    """How GitHub Actions runs a job's service containers, from GitHub's own pages.
+
+    Each point says only what the page it links says (the operator, crew#839): what a
+    card's own failure means is for its session to read in the log, not for the skill.
+    """
+    from crew_org.flows.ci import SERVICE_LOG_LINES  # noqa: PLC0415
+
+    return f"""# How GitHub Actions runs a job's services
+
+Each point is GitHub's, from the page it links.
+
+## Reaching a service
+- A job that runs on the runner, with no `container:`, reaches a service at \
+`localhost:<port>` or `127.0.0.1:<port>`, and only through a port the service maps to \
+the host in its `ports:`: a service doesn't expose its ports to the runner by default. \
+([Communicating with Docker service containers]({_SERVICES}/use-docker-service-containers), \
+"Running jobs on the runner machine")
+- Only a job that runs in a container (`jobs.<job_id>.container`) reaches a service by \
+its label: "The hostname of the service container is automatically mapped to the label \
+name", over a bridge network the runner creates, and it needs no `ports:`. \
+([the same page]({_SERVICES}/use-docker-service-containers), "Running jobs in a \
+container"; [`jobs.<job_id>.services`]({_SYNTAX}#jobsjob_idservices))
+- So the host a test connects to follows the job: `localhost` on the runner, the \
+label in a container job. GitHub's PostgreSQL example sets `POSTGRES_HOST: localhost` \
+for a job on the runner, with `5432:5432` in `ports:`, and `POSTGRES_HOST: postgres` for \
+a container job. ([Creating PostgreSQL service containers]\
+({_SERVICES}/create-postgresql-service-containers))
+- A `ports:` entry with only the container's port maps it to a random free port on \
+the host; the job reads it from `job.services.<service_id>.ports`. \
+([Communicating with Docker service containers]({_SERVICES}/use-docker-service-containers), \
+"Mapping Docker host and service container ports"; \
+[`jobs.<job_id>.services.<service_id>.ports`]({_SYNTAX}#jobsjob_idservicesservice_idports))
+- Service containers need a Linux runner: on GitHub-hosted runners, Ubuntu. \
+([`jobs.<job_id>.services`]({_SYNTAX}#jobsjob_idservices))
+
+## Health checks and `options`
+- `options` takes "Additional Docker container resource options": the flags of \
+`docker create`. "The `--network` option is not supported." \
+([`jobs.<job_id>.services.<service_id>.options`]\
+({_SYNTAX}#jobsjob_idservicesservice_idoptions))
+- A health check is set there, with Docker's `--health-cmd`, `--health-interval`, \
+`--health-timeout` and `--health-retries`. GitHub's PostgreSQL example uses them "to \
+make sure the service is running". \
+([Creating PostgreSQL service containers]({_SERVICES}/create-postgresql-service-containers))
+- GitHub creates a fresh Docker container for each service configured in the \
+workflow, and destroys it when the job completes. \
+([Communicating with Docker service containers]({_SERVICES}/use-docker-service-containers))
+
+## Logs
+- In the run's page, failed steps are expanded; a step's log can be searched there, \
+and the run's logs downloaded as an archive. \
+([Using workflow run logs]({_DOCS}/actions/how-tos/monitor-workflows/use-workflow-run-logs))
+- The REST API gives one job's whole log as a plain text file: \
+`GET /repos/{{owner}}/{{repo}}/actions/jobs/{{job_id}}/logs`. \
+([Download job logs for a workflow job]\
+({_DOCS}/rest/actions/workflow-jobs#download-job-logs-for-a-workflow-job))
+- A service container's ID is `job.services.<service_id>.id`, and its network's \
+`job.services.<service_id>.network`, so a step can read its own log with \
+`docker logs ${{{{ job.services.<service_id>.id }}}}`. \
+([Contexts reference]({_DOCS}/actions/reference/workflows-and-actions/contexts#job-context))
+
+## What the crew shows of a failed job
+Not GitHub's: the crew's. The failing step, and before it, for each service the job \
+started, its state as the runner last logged it (started, healthy, or what failed) and \
+the last {SERVICE_LOG_LINES} lines of its own log, which the runner prints at the job's end.
+"""
+
+
 SKILLS: dict[str, Skill] = {
     "workspace": Skill(
         "workspace",
         "how the crew runs a workspace: setup, the network, services, and what the checks refuse",
         workspace,
     ),
+    "ci": Skill(
+        "ci",
+        "how GitHub Actions runs a job's services: reaching them, health checks, and logs",
+        ci,
+    ),
 }
+
+# A workflow file: a Task whose branch changes one is offered `ci`.
+WORKFLOWS = ".github/workflows/"
 
 
 def for_task(role: Any, body: str | None, worktree: Path, paths: list[str]) -> list[Skill]:
@@ -154,7 +237,10 @@ def for_task(role: Any, body: str | None, worktree: Path, paths: list[str]) -> l
 
     DevOps's workspace Tasks get `workspace`: the first workspace file, the services or
     toolchain a Goal needs, a finding the gate filed on the workspace, or any Task whose
-    branch already changes the workspace file. Its CI and release Tasks don't.
+    branch already changes the workspace file. Its CI Tasks get `ci`: CI's services, the
+    gate's finding that the workspace doesn't run what CI runs, or any Task whose branch
+    changes a workflow (mqucifer/sprint-metrics#747 guessed how a job reaches its
+    services, three times). Its release Tasks get neither.
     """
     from crew_org.flows import role_tasks  # noqa: PLC0415
 
@@ -162,13 +248,21 @@ def for_task(role: Any, body: str | None, worktree: Path, paths: list[str]) -> l
         return []
     found = role_tasks.marked(body)
     kind, key = (found.kind, found.key) if found is not None else ("", "")
+    workspace_finding = kind == role_tasks.FINDING and key.startswith("workspace-")
+    offered: list[Skill] = []
     if (
         kind in (role_tasks.FIRST_WORKSPACE, role_tasks.NEED)
-        or (kind == role_tasks.FINDING and key.startswith("workspace-"))
+        or workspace_finding
         or role_tasks.owns_workspace_file(role, worktree, paths)
     ):
-        return [SKILLS["workspace"]]
-    return []
+        offered.append(SKILLS["workspace"])
+    if (
+        kind == role_tasks.CI_SERVICES
+        or workspace_finding
+        or any(p.startswith(WORKFLOWS) for p in paths)
+    ):
+        offered.append(SKILLS["ci"])
+    return offered
 
 
 def start_line(skills: list[Skill]) -> str:
