@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 54 |
+| The tick decides a card's handling, found by the decision-point audit | 55 |
 | A setting that changes what the tick does | 205 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 128 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 129 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 18 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 103 |
@@ -253,6 +253,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.board_flow.goal_cards`<br>Cards awaiting an epic proposal. | flow | `src/crew_org/flows/board_flow.py:goal_cards` | — | — | src/crew_org/flows/board_flow.py:goal_cards<br>src/crew_org/flows/board_flow.py:set_by_the_sponsor | — |
 | `decision.board_flow.lacking_goals`<br>Goals the Sponsor asked for a missing epic, wherever on the board they are. | flow | `src/crew_org/flows/board_flow.py:lacking_goals` | — | — | src/crew_org/flows/board_flow.py:lacking_goals<br>src/crew_org/flows/board_flow.py:tick | — |
 | `decision.board_flow.parked`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#440<br>crew#858<br>crew#859 |
+| `decision.board_flow.parked_goals_released`<br>Goals the Sponsor parked and has released by adding the `goal` label (crew#829). | flow | `src/crew_org/flows/board_flow.py:parked_goals_released` | — | — | src/crew_org/flows/board_flow.py:parked_goals_released<br>src/crew_org/flows/board_flow.py:release_parked_goals | crew#829<br>mqucifer/sprint-metrics#659 |
 | `decision.board_flow.points_elsewhere`<br>The refinement phase: goals become epics, approved epics become stories. | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | ADR 0030<br>crew#690<br>crew#846 |
 | `decision.board_flow.product_step`<br>Before an epic sent back as a story problem is split again (#189). | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step<br>src/crew_org/flows/board_flow.py:refine_epics | crew#189<br>crew#859 |
 | `decision.board_flow.skeleton_only`<br>The refinement phase: goals become epics, approved epics become stories. | flow | `src/crew_org/flows/board_flow.py:tick` | — | — | src/crew_org/flows/board_flow.py:tick | ADR 0030<br>crew#690 |
@@ -608,7 +609,7 @@ section; one no line holds for is unplaced, never guessed.
 | `told.ux_designer.you_never_choose_a_tool_a`<br>You never choose a tool, a library or a format; that is the Architect's. | scope | `src/crew_org/config/agents.yaml:ux_designer.backstory` | UX Designer | agents.yaml ux_designer.backstory | guidance | — |
 | `§1 a_defect_is_filed_where_it`<br>A defect is filed where it belongs, by whoever found it. | flow | `docs/ways-of-working.md:§1` | Senior Engineer | §1 | guidance | — |
 | `§1 card_movement_and_wip_limits_are`<br>Card movement and WIP limits are not a role. | flow | `docs/ways-of-working.md:§1` | Senior Engineer | §1 | guidance | — |
-| `§1 no_agent_may_move_a_card`<br>No agent may move a card out of a human gate. | flow | `docs/ways-of-working.md:§1` | Senior Engineer | §1 | maybe decision.board_flow.skeleton_only | — |
+| `§1 no_agent_may_move_a_card`<br>No agent may move a card out of a human gate. | flow | `docs/ways-of-working.md:§1` | Senior Engineer | §1 | maybe decision.board_flow.parked_goals_released | — |
 | `§1 what_holds_them_is_the_output`<br>What holds them is the output schema and the call site. | flow | `docs/ways-of-working.md:§1` | Senior Engineer | §1 | maybe config.const.settle_crew.CONTEXT_CHARS | — |
 | `§13 one_goal_refines_at_a_time`<br>One Goal refines at a time in a project. | scope | `docs/ways-of-working.md:§13` | Architect | §13 | maybe skip.goal_look.waits_for_one_goal_refines_at | crew#858 |
 | `§13 when_the_architect_revisits_a_projects`<br>When the Architect revisits a project's design (crew#192). | scope | `docs/ways-of-working.md:§13` | Architect | §13 | guidance | crew#192<br>crew#306 |

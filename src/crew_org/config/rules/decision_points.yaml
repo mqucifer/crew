@@ -209,6 +209,10 @@ flows.board_flow.lacking_goals:filter:e6e90da4:
   if: c.work_type == GOAL_TYPE and c.state != 'CLOSED' and (NEEDS_EPIC in c.labels) and (NEEDS_REWORK
     not in c.labels) and set_by_the_sponsor(c, sponsor, crew_login)
   rule: decision.board_flow.lacking_goals
+flows.board_flow.parked_goals_released:filter:159a5b46:
+  at: flows/board_flow.py:parked_goals_released
+  if: 'c.status not in (INBOX, DONE) and c.state != ''CLOSED'' and (not c.work_type) and (GOAL_LABEL in c.labels)'
+  rule: decision.board_flow.parked_goals_released
 flows.board_flow.planned_elsewhere:filter:3d76f4a9:
   at: flows/board_flow.py:planned_elsewhere
   if: c.work_type == STORY_TYPE and (c.repo or repo) == repo and (c.state != 'CLOSED') and (c.status !=
@@ -302,6 +306,10 @@ flows.board_flow.refine_epics:skip:e1acdf1c:
   at: flows/board_flow.py:refine_epics
   if: settled != RESPLIT
   rule: decision.board_flow.rework_gate
+flows.board_flow.release_parked_goals:label:a13b95e5:
+  at: flows/board_flow.py:release_parked_goals
+  if: 'NEEDS_HUMAN in c.labels and c.repo and c.number'
+  rule: decision.board_flow.parked_goals_released
 flows.board_flow.resplit_gate:filter:405d8045:
   at: flows/board_flow.py:resplit_gate
   if: STORY_SPLIT_MARKER in b
