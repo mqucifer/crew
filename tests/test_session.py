@@ -932,3 +932,12 @@ def test_a_tasks_session_has_image_digest_too():
     for role in (role_tasks.DEVOPS, role_tasks.ARCHITECT):
         names = [s["function"]["name"] for s in role_tasks.done_specs(role)]
         assert "image_digest" in names
+
+
+def test_the_session_records_each_tools_refused_calls(root, seen):
+    """A refusal said again and again spent the UX review's proof 30 calls (crew#830)."""
+    proxy = Counting(said(("view", {})), said(("view", {})), said(LOOK), said(("done", DONE)))
+    s = conversation.session(root, "# Story\n\nf returns 2.", Fake(), CHECKS, send=proxy)
+    assert s.run().how == "done"
+    (ended,) = kinds(seen, EventKind.SESSION_ENDED)
+    assert ended.detail["tools_refused"] == {"view": 2}

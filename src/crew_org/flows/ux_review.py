@@ -46,6 +46,7 @@ from crew_org.project import RECORD_PATH, ProjectRecordError, parse
 from crew_org.session import role_tools
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.tools.look import Fetched, NotLooked
 
 REVIEW_POINTS = 2
 _PYPROJECT_VERSION = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
@@ -287,6 +288,7 @@ def review(
         )
     )
     shots = Path(tempfile.mkdtemp(prefix="ux-review-"))
+    fetched = Fetched()
     try:
         release = issues.release_for_tag(repo, version) if version else None
         if release is None:
@@ -300,7 +302,12 @@ def review(
             )
         site = str((issues.pages(repo) or {}).get("html_url") or "")
         reading = steps.Reading.at(ws.at_main(), repo, None, issues)
-        seeing = role_tools.Context(reading.root, repo, issues, keep=shots)
+        seeing = role_tools.Context(reading.root, repo, issues, looked=fetched, keep=shots)
+        # Fetched first: a session that can't see the published site can file nothing,
+        # and its proof spent 62 calls finding that out (crew#830).
+        unseen = _unfetchable(fetched, issues, repo)
+        if unseen:
+            return _blocked(board, issues, sink, card, repo=repo, why=unseen)
 
         def seen(answer: Any) -> None:
             ux_review_crew.check_seen(answer, seeing.shots)
@@ -338,6 +345,7 @@ def review(
         return _blocked(board, issues, sink, card, repo=repo, why=f"{type(exc).__name__}: {exc}")
     finally:
         shutil.rmtree(shots, ignore_errors=True)
+        fetched.close()
     said = (
         f"**The {BY}'s review of `{version}`.**\n\n{answer.readers_meet.strip()}\n\n"
         + (
@@ -374,6 +382,15 @@ def review(
         )
     )
     return "done"
+
+
+def _unfetchable(fetched: Fetched, github: Any, repo: str) -> str:
+    """Why the published site can't be fetched for `look`, or "" when it can."""
+    try:
+        fetched.site(github, repo)
+    except NotLooked as exc:
+        return f"The published site can't be looked at, so no session was started: {exc}"
+    return ""
 
 
 def _blocked(

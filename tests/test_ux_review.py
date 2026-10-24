@@ -247,6 +247,8 @@ def _session(monkeypatch, tmp_path, corrections, looked_at):
         return answer
 
     monkeypatch.setattr(steps, "run", run)
+    # The published site is there to look at: its artifact hasn't expired.
+    monkeypatch.setattr(ux_review.Fetched, "site", lambda self, github, repo: (tmp_path, "/"))
     monkeypatch.setattr(
         steps.Reading, "at", classmethod(lambda cls, root, repo, cov, gh: cls(root, repo, "abc"))
     )
@@ -403,3 +405,24 @@ def test_more_than_one_finding_per_owner_only_where_the_caller_says(tmp_path):
         cap=10,
     )
     assert len(both) == 2 and len(set(both)) == 2
+
+
+def test_a_site_look_cant_fetch_blocks_the_review_before_any_model_call(tmp_path, monkeypatch):
+    """The proof's session spent 62 calls on a site whose artifact had expired (crew#830)."""
+    issues, board, s = Reviewed(), Cards(), sink(tmp_path)
+    card = _task(issues, tmp_path)
+    ran = _session(monkeypatch, tmp_path, [], [])
+    monkeypatch.undo()
+    from crew_org.session import steps  # noqa: PLC0415
+
+    monkeypatch.setattr(steps, "run", lambda *a, **kw: ran.update(called=True))
+    monkeypatch.setattr(
+        steps.Reading, "at", classmethod(lambda cls, root, repo, cov, gh: cls(root, repo, "abc"))
+    )
+    issues.pages_artifact = lambda repo: None
+    ended = ux_review.review(
+        card, board=board, issues=issues, sink=s, ws=Workspace(tmp_path), repo="site"
+    )
+    assert ended == "blocked" and "called" not in ran
+    [said] = [d[2] for d in issues.done if d[0] == "comment" and d[1] == 901]
+    assert "no session was started" in said and "no github-pages artifact" in said

@@ -48,6 +48,13 @@ class Context:
     # which it took, by page and width: a correction is filed with its own.
     keep: Path | None = None
     shots: dict[tuple[str, int], Path] = field(default_factory=dict, compare=False)
+    # Why a repository's published site can't be fetched, once found: it won't change
+    # during the session, so it isn't fetched again.
+    unpublished: dict[str, str] = field(default_factory=dict, compare=False)
+
+
+class Refused(Exception):
+    """A role tool's refusal, said as its reply: the session counts it as refused."""
 
 
 @dataclass(frozen=True)
@@ -135,7 +142,21 @@ def look(context: Context, args: dict[str, Any]) -> str:
         if source == "published":
             if context.github is None:
                 return "The published site can't be fetched here: this step has no GitHub client."
-            files, base = context.looked.site(context.github, context.repo)
+            if context.repo in context.unpublished:
+                raise Refused(context.unpublished[context.repo])
+            try:
+                files, base = context.looked.site(context.github, context.repo)
+            except looking.NotLooked as exc:
+                # No page, width or URL form changes it: the UX review's proof tried 30
+                # (crew#830).
+                context.unpublished[context.repo] = (
+                    f"The published site can't be looked at in this session: {exc}. That "
+                    "won't change while it runs: no page, width or URL form works, so don't "
+                    "call `look` with `source` `published` again. Look at a directory of the "
+                    "repository instead, or say in your answer that you couldn't see the "
+                    "published pages."
+                )
+                raise Refused(context.unpublished[context.repo]) from exc
         else:
             files = (context.root / source).resolve()
             if not files.is_dir() or context.root.resolve() not in files.parents:

@@ -253,8 +253,9 @@ decision.role_tasks.turned_on:
   origin:
   - crew#839
 decision.ux_review.blocked:
-  description: A UX Designer's review that couldn't be worked (no live release, its session stopped, or
-    GitHub refused) is blocked for a person with why, as a Task is; it isn't split.
+  description: A UX Designer's review that couldn't be worked (no live release, a published site `look`
+    can't fetch, its session stopped, or GitHub refused) is blocked for a person with why, as a Task is;
+    it isn't split. A site that can't be fetched is found before the session, so no model call is spent.
   origin:
   - crew#830
 decision.ux_review.release_review_tasks:

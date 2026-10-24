@@ -539,3 +539,23 @@ def test_the_page_looked_at_is_the_sites_never_a_host_file(repo, monkeypatch):
     for page in ("../secret.json", "../../../../etc/hosts", "link.html"):
         text = role_tools.look(context(repo), {"source": "site", "page": page})
         assert "isn't a page of `site`" in text, page
+
+
+def test_a_published_site_that_cant_be_fetched_is_refused_once_for_the_session(repo):
+    """The UX review's proof called `look` 30 times on an expired artifact (crew#830): the
+    reply says it won't change, and the site isn't fetched again."""
+
+    class Expired:
+        asked = 0
+
+        def pages_artifact(self, repo):
+            Expired.asked += 1
+            return None
+
+    tools = ReadTools(repo, given=("look",), context=role_tools.Context(repo, "s", Expired()))
+    first = tools.call("look", {"page": "index.html"})
+    again = tools.call("look", {"page": "replay.html", "widths": [768]})
+    assert first.kind == again.kind == "refused"
+    assert "no github-pages artifact" in first.text
+    assert "don't call `look` with `source` `published` again" in first.text
+    assert again.text == first.text and Expired.asked == 1
