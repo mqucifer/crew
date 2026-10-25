@@ -159,6 +159,30 @@ def test_task(
     cards: list[Card],
 ) -> int:
     """Open QA's Task for one merged story or bug, with what it merged as."""
+    project = card.repo or ""
+    title, body = test_body(issues, card=card, kind=kind, key=key)
+    return rt.open_task(
+        issues,
+        board,
+        sink,
+        repo=SUITE,
+        role=rt.QA,
+        kind=kind,
+        key=key,
+        title=title,
+        body=body,
+        points=TEST_POINTS,
+        cards=cards,
+        column=READY,
+        by=BY,
+        event="story.merged" if kind == STORY_TEST else "bug.fixed",
+        labels=(rt.project_label(project),),
+        detail={"project": project},
+    ).number
+
+
+def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[str, str]:
+    """The title and body of QA's Task for a merged story or bug, from GitHub as it is."""
     project, number = card.repo or "", card.number or 0
     ref = f"{issues.owner}/{project}#{number}"
     filed = issues.get(project, number).get("body") or ""
@@ -199,24 +223,7 @@ def test_task(
         f"**{card.title}**\n\n{filed.strip()}"
     )
     body = rt.render(rt.QA, kind=kind, key=key, why=why, work=work, done_when=done_when)
-    return rt.open_task(
-        issues,
-        board,
-        sink,
-        repo=SUITE,
-        role=rt.QA,
-        kind=kind,
-        key=key,
-        title=title[:120],
-        body=body,
-        points=TEST_POINTS,
-        cards=cards,
-        column=READY,
-        by=BY,
-        event="story.merged" if kind == STORY_TEST else "bug.fixed",
-        labels=(rt.project_label(project),),
-        detail={"project": project},
-    ).number
+    return title[:120], body
 
 
 def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> None:
