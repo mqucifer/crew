@@ -141,19 +141,25 @@ backend's window. The Spark reports 262,144 when probed directly.
 ## 3. Start the LiteLLM proxy
 
 ```bash
-cd deploy/litellm
-docker compose --env-file ../../.env up -d
+cd <mqucifer/infra checkout>/compose/mac/litellm
+docker compose --env-file ~/.config/infra/secrets/litellm.env up -d
 curl -s -H "Authorization: Bearer $CREW_LLM_API_KEY" \
      http://localhost:4000/v1/models | jq
 ```
 
-The `--env-file` is not optional. Compose looks for `.env` beside the compose
-file, which is not where the crew's `.env` lives; the compose file guards every
-credential with `:?`, so a missing env file stops the proxy from starting
-rather than starting it with no authentication.
+The compose file lives in mqucifer/infra (crew#829), and its settings in
+`~/.config/infra/secrets/litellm.env` on the Mac, outside every repository. The
+`--env-file` is not optional: the compose file guards every credential with
+`:?`, so a missing env file stops the proxy from starting rather than starting
+it with no authentication. The Sponsor starts it (infra's
+`runbooks/mac-services-from-infra.md`).
 
-The proxy runs with a master key because it serves the Admin UI, so **every**
-call needs `Authorization: Bearer $CREW_LLM_API_KEY` — including `/v1/models`.
+The proxy runs with a master key, `LITELLM_MASTER_KEY`, which lives only in
+`litellm.env`. The crew calls with its own virtual key, `crew`, made in the
+Admin UI and set as `CREW_LLM_API_KEY` in the crew's `.env`. It serves only the
+aliases it's allowed, so a tick and `crew doctor` stop when an alias a role
+calls isn't served to it. **Every** call needs `Authorization: Bearer
+$CREW_LLM_API_KEY`, including `/v1/models`.
 An unauthenticated probe answers 401, which looks like a dead proxy and is not
 one. Sign in to the UI at <http://localhost:4000/ui> with `LITELLM_UI_USERNAME`
 and `LITELLM_UI_PASSWORD`.

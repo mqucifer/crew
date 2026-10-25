@@ -1,9 +1,10 @@
 """What leaves the crew's own record for observability: attributes, never content (#283).
 
 The Sponsor's Alloy tails `var/telemetry/*.jsonl` into Loki, and the exporter
-in `deploy/telemetry` serves Prometheus metrics computed from it. So this file
-is the boundary: an **allow-list** of fields, each a number, a name from a
-fixed vocabulary, or a card or sprint identifier. Nothing free-text crosses
+(`telemetry_exporter.py`, run by mqucifer/infra's `compose/mac/telemetry`) serves
+Prometheus metrics computed from it. So this file is the boundary: an
+**allow-list** of fields, each a number, a name from a fixed vocabulary, or a
+card or sprint identifier. Nothing free-text crosses
 it: not an event's summary (the model bridge puts prompt snippets there), not
 an error, test output, a criterion, an answer or a question, and never a
 prompt or a response. `var/events` keeps everything, for the crew's own use.

@@ -39,7 +39,7 @@ def test_a_telemetry_component_down_is_named_with_how_to_start_it(monkeypatch):
     lines = problems(stack_health())
     assert any("telemetry exporter" in line and "ConnectError" in line for line in lines)
     assert any("telemetry collector" in line and "answered 503" in line for line in lines)
-    assert all("deploy/telemetry" in line for line in lines)
+    assert all("compose/mac/telemetry" in line for line in lines)
 
 
 def test_the_model_is_marked_required(monkeypatch):

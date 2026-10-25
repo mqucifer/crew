@@ -21,8 +21,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 58 |
-| A setting that changes what the tick does | 207 |
+| The tick decides a card's handling, found by the decision-point audit | 63 |
+| A setting that changes what the tick does | 208 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -38,10 +38,10 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 69 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 132 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 137 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 105 |
+| Unplaced | | 106 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -272,6 +272,11 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.delivery.reconcile_orphans`<br>Return cards stranded In Progress to the backlog. | flow | `src/crew_org/flows/delivery.py:reconcile_orphans` | — | — | src/crew_org/flows/delivery.py:reconcile_orphans | — |
 | `decision.delivery.rework`<br>The open pull request on `branch` whose *current* head was refused. | flow | `src/crew_org/flows/delivery.py:awaiting_rework` | — | — | src/crew_org/flows/delivery.py:awaiting_rework<br>src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:needs_rework | sprint-metrics#31 |
 | `decision.delivery.waits_on_files`<br>Pull stories into progress up to the WIP limit, and deliver them. | flow | `src/crew_org/flows/delivery.py:deliver` | — | — | src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:rebuild_waits_for | crew#436<br>sprint-metrics#384 |
+| `decision.deploy.failed`<br> run | flow | `src/crew_org/flows/deploy.py:_run` | — | — | src/crew_org/flows/deploy.py:_run | crew#829 |
+| `decision.deploy.healthy`<br> run | flow | `src/crew_org/flows/deploy.py:_run` | — | — | src/crew_org/flows/deploy.py:_run | crew#829 |
+| `decision.deploy.held`<br> deploy | flow | `src/crew_org/flows/deploy.py:_deploy` | — | — | src/crew_org/flows/deploy.py:_deploy | crew#829 |
+| `decision.deploy.opened`<br> deploy | flow | `src/crew_org/flows/deploy.py:_deploy` | — | — | src/crew_org/flows/deploy.py:_deploy | crew#829<br>crew#839 |
+| `decision.deploy.record`<br>Merge the crew's deploy records in infra once its guard checks pass. | flow | `src/crew_org/flows/deploy.py:merge_records` | — | — | src/crew_org/flows/deploy.py:merge_records | crew#829 |
 | `decision.diagnose.diagnose_blocked`<br>The Senior Engineer on each card blocked for a person, once (#9). | flow | `src/crew_org/flows/diagnose.py:diagnose_blocked` | — | — | src/crew_org/flows/diagnose.py:diagnose_blocked | sprint-metrics#200 |
 | `decision.github_issues.trust`<br>comments | flow | `src/crew_org/tools/github_issues.py:comments` | — | — | src/crew_org/tools/github_issues.py:comments | — |
 | `decision.goal_look.look_step`<br>The Goal's record and its target diagram, from the look and its settle. | flow | `src/crew_org/flows/goal_look.py:_write` | — | — | src/crew_org/flows/goal_look.py:_write<br>src/crew_org/flows/goal_look.py:look_step | crew#858 |
@@ -388,6 +393,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.criteria_check.PLANNED_LIMIT`<br>What the check is shown of other epics' planned stories. | evidence | `src/crew_org/flows/criteria_check.py:PLANNED_LIMIT` | — | — | src/crew_org/flows/criteria_check.py:PLANNED_LIMIT | — |
 | `config.const.delivered.MAX_THEN`<br>MAX_THEN = 160 | scope | `src/crew_org/flows/delivered.py:MAX_THEN` | — | — | src/crew_org/flows/delivered.py:MAX_THEN | — |
 | `config.const.delivered.MAX_WHEN`<br>MAX_WHEN = 120 | scope | `src/crew_org/flows/delivered.py:MAX_WHEN` | — | — | src/crew_org/flows/delivered.py:MAX_WHEN | — |
+| `config.const.deploy.LOG_LINES`<br>Enough of the service's log to see why it didn't come up. | — | `src/crew_org/flows/deploy.py:LOG_LINES` | — | — | src/crew_org/flows/deploy.py:LOG_LINES | — |
 | `config.const.deploy_evidence.MAX_DEPLOY_EVIDENCE_CHARS`<br>Generous, not a budget (§16): a small project's runnable files and entry code fit whole. | evidence | `src/crew_org/tools/deploy_evidence.py:MAX_DEPLOY_EVIDENCE_CHARS` | — | — | src/crew_org/tools/deploy_evidence.py:MAX_DEPLOY_EVIDENCE_CHARS | — |
 | `config.const.design.ATTEMPTS`<br>ATTEMPTS = 2 | scope | `src/crew_org/flows/design.py:ATTEMPTS` | — | — | src/crew_org/flows/design.py:ATTEMPTS | — |
 | `config.const.diagnose.MAX_CHARS`<br>The files it chose, shown whole with line numbers; past this they're named. | — | `src/crew_org/flows/diagnose.py:MAX_CHARS` | — | — | src/crew_org/flows/diagnose.py:MAX_CHARS | — |

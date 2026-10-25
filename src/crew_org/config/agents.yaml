@@ -4,7 +4,7 @@
 # injected into each prompt. Backstories are operational instructions, not
 # flavour: they say how the role behaves and where its authority stops.
 #
-# `llm` names a LiteLLM alias (see deploy/litellm/config.yaml), never a raw
+# `llm` names a LiteLLM alias (see mqucifer/infra compose/mac/litellm/config.yaml), never a raw
 # model, so the backend can be repointed without touching this file.
 #
 # `can` is the role's capability allow-list, enforced by crew_org.permissions

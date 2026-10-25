@@ -1,7 +1,9 @@
 """Prometheus metrics for the crew, from its attributes-only telemetry log (#283).
 
 Standard library only, so it runs in a bare Python container that mounts the
-telemetry log read-only and can see nothing else of the crew. It reads the
+telemetry log read-only and can see nothing else of the crew. That container is
+mqucifer/infra's `compose/mac/telemetry`, which mounts this file from the crew's
+checkout: it's crew code, tested here against the log it reads (crew#829). It reads the
 log on every scrape: the crew is a command that runs and exits, so there is
 no process of its own to scrape, and its log is the record.
 
@@ -14,17 +16,19 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from collections import Counter
+from collections import Counter, defaultdict
+from collections.abc import Iterator
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 
 TELEMETRY = Path(os.environ.get("TELEMETRY_DIR", "/telemetry"))
 PORT = int(os.environ.get("PORT", "9464"))
 TOKENS = ("prompt_tokens", "completion_tokens", "reasoning_tokens", "cached_tokens")
 
 
-def _events(folder: Path):
+def _events(folder: Path) -> Iterator[dict[str, Any]]:
     for path in sorted(folder.glob("*.jsonl")):
         try:
             text = path.read_text(encoding="utf-8")
@@ -37,27 +41,27 @@ def _events(folder: Path):
                 continue
 
 
-def _label(value) -> str:
+def _label(value: object) -> str:
     return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
-def _series(name: str, labels: dict, value) -> str:
+def _series(name: str, labels: dict[str, object], value: object) -> str:
     inner = ",".join(f'{k}="{_label(v)}"' for k, v in labels.items())
     return f"{name}{{{inner}}} {value}" if inner else f"{name} {value}"
 
 
 def render(folder: Path) -> str:
     """The metrics, in Prometheus' text format."""
-    events = Counter()
-    moves = Counter()
-    calls = Counter()
-    failures = Counter()
-    tokens = Counter()
-    seconds = Counter()
-    retries = Counter()
+    events: Counter[tuple[str, str]] = Counter()
+    moves: Counter[str] = Counter()
+    calls: Counter[tuple[str, str, str]] = Counter()
+    failures: Counter[tuple[str, str]] = Counter()
+    tokens: Counter[tuple[str, str, str]] = Counter()
+    seconds: defaultdict[tuple[str, str], float] = defaultdict(float)
+    retries: Counter[tuple[str, str]] = Counter()
     ticks = 0
     budget = None
-    board: dict = {}
+    board: dict[str, Any] = {}
     last = 0.0
     for e in _events(folder):
         kind, role = e.get("kind") or "", e.get("role") or ""
@@ -153,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args) -> None:
+    def log_message(self, *args: Any) -> None:
         return  # a scrape every few seconds is not news
 
 

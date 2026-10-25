@@ -112,6 +112,35 @@ decision.delivery.waits_on_files:
   origin:
   - crew#436
   - sprint-metrics#384
+decision.deploy.failed:
+  description: A deploy that fails at its pull, its start or its health check rolls back to the release
+    that was running, read from the container, and files DevOps's finding with the deploy's log, every
+    settings value taken out first. Its Task ends in Done once the old release is healthy again; if the
+    rollback fails too, it goes to Blocked with needs:human and a standup line for the Sponsor.
+  origin:
+  - crew#829
+decision.deploy.healthy:
+  description: A deploy whose health check passes, as infra's inventory declares it, ends its Task in Done
+    and opens an infra pull request with only the new tag.
+  origin:
+  - crew#829
+decision.deploy.held:
+  description: A verified release isn't deployed while a reader infra declares pins another MAJOR, or while
+    its settings file isn't on the Mac. Recorded each pass and said on the standup, naming who moves first.
+  origin:
+  - crew#829
+decision.deploy.opened:
+  description: A release the release check verified, newer than infra's pinned tag for a service that
+    declares its repository, opens DevOps's deploy Task once per repository and version, and the tick runs
+    it with no model. A Task with an outcome, or closed, is never run again.
+  origin:
+  - crew#829
+  - crew#839
+decision.deploy.record:
+  description: The crew merges its own infra pull request recording a healthy deploy's tag once infra's
+    guard checks pass; the release's merge was the Sponsor's approval.
+  origin:
+  - crew#829
 decision.diagnose.diagnose_blocked:
   origin:
   - sprint-metrics#200

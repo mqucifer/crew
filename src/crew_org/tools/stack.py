@@ -42,7 +42,10 @@ def stack_health() -> list[Check]:
     from crew_org.llm import health  # noqa: PLC0415
 
     ok, message = health()
-    start = "Start it with `docker compose --env-file ../../.env up -d` in deploy/telemetry."
+    start = (
+        "Start it from mqucifer/infra compose/mac/telemetry: "
+        "`docker compose --env-file ~/.config/infra/secrets/telemetry.env up -d`."
+    )
     return [
         Check("proxy and model", ok, message, required=True),
         _http("telemetry exporter", EXPORTER, start),

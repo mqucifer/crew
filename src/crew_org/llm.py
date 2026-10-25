@@ -5,7 +5,7 @@ Roles name a LiteLLM alias (`crew-local`, `crew-analysis`, `crew-code-think`,
 crew at different hardware is a config change rather than a code change.
 
 Thinking is set per alias, and so is how much: `reasoning_effort` and the
-vendor's sampling live in `deploy/litellm/config.yaml`. Every role now thinks;
+vendor's sampling live in mqucifer/infra `compose/mac/litellm/config.yaml`. Every role now thinks;
 turning it off was a workaround for near-greedy sampling (#213).
 """
 
@@ -56,6 +56,32 @@ def api_key() -> str:
     return _setting("CREW_LLM_API_KEY", PLACEHOLDER_KEY)
 
 
+def crew_aliases() -> set[str]:
+    """Every alias a role calls, as agents.yaml names them."""
+    from crew_org.permissions import load_agents  # noqa: PLC0415
+
+    return {str(a["llm"]) for a in load_agents().values() if a.get("llm")}
+
+
+def unserved(served: list[str]) -> list[str]:
+    """The crew's aliases the proxy doesn't serve to its key (crew#829).
+
+    The proxy's config moved to mqucifer/infra, where no crew test can read it, and the
+    crew calls with its own virtual key, which serves only the models it's allowed. So
+    the proxy's own answer is what's checked: an alias missing from it fails a role's
+    first call mid-tick, and it's caught here, before any call is made.
+    """
+    return sorted(crew_aliases() - set(served))
+
+
+def unserved_message(missing: list[str]) -> str:
+    return (
+        f"The proxy doesn't serve {', '.join(missing)} to the crew's key.\n"
+        "  Allow them on the `crew` virtual key in LiteLLM's admin UI, or declare them in\n"
+        "  mqucifer/infra compose/mac/litellm/config.yaml."
+    )
+
+
 def health() -> tuple[bool, str]:
     """Is the proxy up?
 
@@ -81,14 +107,14 @@ def health() -> tuple[bool, str]:
     except Exception:  # noqa: BLE001
         return False, (
             f"LiteLLM proxy is not answering at {url}.\n"
-            "  Start it with:  cd deploy/litellm && "
-            "docker compose --env-file ../../.env up -d"
+            "  Start it from mqucifer/infra compose/mac/litellm with:\n"
+            "  docker compose --env-file ~/.config/infra/secrets/litellm.env up -d"
         )
     if r.status_code in (401, 403):
         return False, (
             f"LiteLLM proxy is up at {url} but rejected the credential.\n"
-            "  It was started with LITELLM_MASTER_KEY, so the crew needs that key:\n"
-            "  set CREW_LLM_API_KEY in .env to the proxy's master key."
+            "  Set CREW_LLM_API_KEY in .env to the crew's own virtual key, `crew`, made in\n"
+            "  LiteLLM's admin UI (mqucifer/infra runbooks/mac-services-from-infra.md)."
         )
     try:
         r.raise_for_status()
@@ -97,6 +123,8 @@ def health() -> tuple[bool, str]:
     aliases = [m["id"] for m in r.json().get("data", [])]
     if "crew-local" not in aliases:
         return False, f"Proxy is up but has no 'crew-local' alias. Serving: {aliases}"
+    if missing := unserved(aliases):
+        return False, unserved_message(missing)
     # The model list comes from the proxy's own config, whether or not the model
     # server behind it is up. On 2026-09-25 SGLang on the Spark was stopped, this
     # passed, and `crew design` failed inside its first model call with a

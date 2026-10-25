@@ -60,7 +60,7 @@ def probe_models(base_url: str) -> tuple[ProbeResult, str | None]:
                 check="endpoint reachable",
                 status=Status.FAIL,
                 detail=f"{type(exc).__name__}: {exc}",
-                hint="Is the LiteLLM proxy up (docker compose in deploy/litellm), is the "
+                hint="Is the LiteLLM proxy up (mqucifer/infra compose/mac/litellm), is the "
                 "model server behind it running, and is CREW_LLM_API_KEY its master key?",
             ),
             None,
@@ -72,6 +72,19 @@ def probe_models(base_url: str) -> tuple[ProbeResult, str | None]:
                 status=Status.FAIL,
                 detail="/v1/models returned no models",
                 hint="The server is up but serving nothing.",
+            ),
+            None,
+        )
+    from crew_org.llm import unserved, unserved_message  # noqa: PLC0415
+
+    if missing := unserved([str(m.get("id")) for m in data]):
+        # Every role's alias, not only the one probed: a missing one fails mid-tick.
+        return (
+            ProbeResult(
+                check="crew aliases served",
+                status=Status.FAIL,
+                detail=unserved_message(missing).splitlines()[0],
+                hint=" ".join(line.strip() for line in unserved_message(missing).splitlines()[1:]),
             ),
             None,
         )
@@ -167,7 +180,7 @@ def probe_context(base_url: str, model: str) -> ProbeResult:
             status=Status.WARN,
             detail="not reported by this endpoint",
             hint="The proxy does not declare this alias's window. Set "
-            "model_info.max_input_tokens on it in deploy/litellm/config.yaml.",
+            "model_info.max_input_tokens on it in mqucifer/infra compose/mac/litellm/config.yaml.",
         )
     if length < 16384:
         return ProbeResult(

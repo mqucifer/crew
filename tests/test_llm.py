@@ -26,7 +26,7 @@ def proxy(monkeypatch):
         sent = kwargs.get("headers", {}).get("Authorization", "")
         if required and sent != f"Bearer {required}":
             return httpx.Response(401, json={"error": "no api key passed in"}, request=REQUEST)
-        aliases = state.get("aliases", ["crew-local", "crew-code"])
+        aliases = state.get("aliases", ["crew-local", *sorted(llm.crew_aliases())])
         return httpx.Response(200, json={"data": [{"id": a} for a in aliases]}, request=REQUEST)
 
     def fake_post(url, **kwargs):
@@ -82,6 +82,23 @@ def test_a_proxy_missing_the_workhorse_alias_is_not_healthy(proxy):
     ok, message = llm.health()
     assert not ok
     assert "crew-local" in message
+
+
+def test_a_role_s_alias_the_key_isnt_served_stops_the_tick(proxy):
+    """The proxy's config is in mqucifer/infra and the crew calls with its own virtual key,
+    so what the proxy serves that key is checked, before any call (crew#829)."""
+    served = sorted(llm.crew_aliases() - {"crew-code-think"})
+    proxy["aliases"] = ["crew-local", *served]
+    ok, message = llm.health()
+    assert not ok
+    assert "crew-code-think" in message
+    assert "`crew` virtual key" in message
+
+
+def test_the_crew_s_aliases_are_every_role_s_from_agents_yaml():
+    from crew_org.permissions import load_agents  # noqa: PLC0415
+
+    assert llm.crew_aliases() == {a["llm"] for a in load_agents().values()}
 
 
 def test_settings_fall_back_to_the_env_file(monkeypatch, tmp_path):

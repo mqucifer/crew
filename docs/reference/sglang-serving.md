@@ -19,7 +19,7 @@ Captured from the running process, not from the scripts.
 
 | Flag | Effective value | Why the crew cares |
 |---|---|---|
-| `--served-model-name` | `qwen3.8-27b-sglang` | The model string in `deploy/litellm/config.yaml` |
+| `--served-model-name` | `qwen3.8-27b-sglang` | The model string in mqucifer/infra `compose/mac/litellm/config.yaml` |
 | `--port` | `8888` | Not SGLang's default 30000 |
 | `--context-length` | `262144` | Constitution + issue history fit comfortably |
 | `--reasoning-parser` | `qwen3` | **Load-bearing.** Puts thinking in `reasoning_content` so it never contaminates tool calls or JSON |

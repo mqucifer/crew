@@ -36,12 +36,6 @@ def body() -> dict:
 # --- the release the crew runs ------------------------------------------------------------
 
 
-def test_the_release_is_the_one_deploy_pins():
-    compose = (ROOT / "deploy" / "sprint-metrics" / "docker-compose.yaml").read_text()
-    [pinned] = re.findall(r"ghcr\.io/mqucifer/sprint-metrics:([\d.]+)", compose)
-    assert pinned == sma.RELEASE
-
-
 def test_the_release_s_published_schema_is_here():
     schema = sma.range_schema()
     assert schema["$schema"].startswith("https://json-schema.org/")
