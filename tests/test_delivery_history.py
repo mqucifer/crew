@@ -795,3 +795,12 @@ def test_a_message_from_neither_the_source_nor_the_retired_list_is_withheld():
     from crew_org.packages.reasons import published_reason
 
     assert published_reason("the model wrote this sentence about tests/test_x.py") is None
+
+
+def test_every_edit_tool_is_a_tool_the_package_names():
+    """An unnamed tool is published as None: a deletion would read as no tool (crew#839)."""
+    from typing import get_args
+
+    from crew_org.session.tools import EDITS
+
+    assert set(EDITS) <= set(get_args(dh.Tool))

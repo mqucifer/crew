@@ -17,7 +17,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A flow's own check sends the answer back | 25 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
-| A session's tool refuses a call, and says why in its reply | 20 |
+| A session's tool refuses a call, and says why in its reply | 21 |
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
@@ -35,7 +35,7 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
-| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 13 |
+| A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 69 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 132 |
@@ -185,6 +185,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.role_tasks.workspace_checks`<br>DevOps's workspace file and its compose file pass the gate's checks at `done`, run before it by `workspace_check`; starting the services stays the gate's (crew#839). | guards | `src/crew_org/session/tools.py:Tools.task_check` | Developer | — | src/crew_org/flows/gates.py:at_done<br>src/crew_org/session/tools.py:Tools.task_check | crew#778 |
 | `edit.ast_edit.apply_edit`<br>Refused if the name is no definition in the file, if the file doesn't parse, or if the replacement is empty. | edits | `src/crew_org/tools/ast_edit.py:apply_edit` | Developer | — | src/crew_org/tools/ast_edit.py:apply_edit | crew#778 |
 | `session.arguments`<br>A tool call names a tool there is, with an object of the arguments it takes and each one it needs. | answer_shape | `src/crew_org/session/reading.py:ReadTools.call` | Developer | — | src/crew_org/session/reading.py:ReadTools.call<br>src/crew_org/session/tools.py:Tools.call<br>src/crew_org/session/tools.py:check_arguments | crew#778 |
+| `session.delete_file`<br>`delete_file` deletes one existing file, never a folder. | edits | `src/crew_org/session/tools.py:Tools.delete_file` | Developer | — | src/crew_org/session/tools.py:Tools.delete_file | crew#778<br>crew#839 |
 | `session.git`<br>The git tool runs one git command line with no shell, and only the commands that read and `restore`; never an option that writes, reads outside the repository or runs a program. | guards | `src/crew_org/session/git.py:parse` | Developer | — | src/crew_org/session/git.py:_check_option<br>src/crew_org/session/git.py:parse<br>src/crew_org/session/reading.py:ReadTools.git | crew#778 |
 | `session.image_digest`<br>`image_digest` is given an image as it's pulled: a name, no digest, no variable. | answer_shape | `src/crew_org/session/tools.py:image_digest` | Developer | — | src/crew_org/session/tools.py:image_digest | crew#778<br>crew#839 |
 | `session.parse_guard`<br>An edit that would stop a Python file parsing isn't applied: the reply shows the error, the lines as they would have been and as they are. | edits | `src/crew_org/session/tools.py:Tools._write` | Developer | — | src/crew_org/session/tools.py:Tools._write | SWE-agent's edit guardrail<br>crew#778 |

@@ -11,11 +11,12 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from crew_org.flows import gates
-from crew_org.tools import reproduction
+from crew_org.tools import regression, reproduction
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult, check
 
@@ -423,3 +424,46 @@ def test_the_gate_sends_it_back_and_done_says_so_first(kept):
     assert "check.gates.no_changelog_entry" in [f.rule for f in verdict.findings]
     (said,) = gates.no_changelog_entry(kept, which="done")
     assert said.says.startswith("Your branch changes what the project ships")
+
+
+# --- a deletion is a change the gate sees (crew#839) -------------------------------------------
+
+
+def merged_with(repo: Path, *files: str) -> None:
+    """Add `files` to what's merged, under the story's branch."""
+    for name in files:
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(f"# {name}\n")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "more")
+    git(repo, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    git(repo, "checkout", "-q", "-B", "feat/662-uncap")
+
+
+def delete(repo: Path, path: str) -> None:
+    from crew_org.session.tools import Tools
+
+    reply = Tools(repo, None, SimpleNamespace(verify=[])).call("delete_file", {"path": path})
+    assert reply.kind == "ok", reply.text
+
+
+def test_a_file_the_session_deletes_is_in_the_branchs_diff(repo):
+    merged_with(repo, "docs/scrape.md")
+    delete(repo, "docs/scrape.md")
+    merged = regression.merged_base(repo)
+    assert "docs/scrape.md" in reproduction._changed(repo, merged.sha)
+    verdict = at_done(repo, done(criteria=[{"criterion": "docs/scrape.md is removed"}]))
+    rules = [f.rule for f in verdict.findings]
+    assert "check.gates.the_branch_changes_nothing" not in rules
+    assert "guard.bounds.out_of_bounds" not in rules
+
+
+def test_a_protected_path_deleted_goes_back(repo):
+    """The tool holds a deletion to the worktree, as `write_file`; the record's protected
+    paths are the gate's, read from the diff, for both."""
+    merged_with(repo, ".crew/project.yaml")
+    delete(repo, ".crew/project.yaml")
+    verdict = at_done(repo, done())
+    assert "guard.bounds.out_of_bounds" in [f.rule for f in verdict.findings]
+    assert "`.crew/project.yaml` is protected" in verdict.findings[0].says

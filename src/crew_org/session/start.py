@@ -34,8 +34,8 @@ You work on the story by calling tools, one or more per turn, until you call `do
 at most, or one Python definition by name). `search` finds text, `.package/` included. \
 `find` and `tests_for` are Python only.
 - **Change:** `replace_text`, `replace_definition` and `write_file` apply at once to \
-your branch; each says whether the file still parses and lints. Change only what the \
-story needs.
+your branch; each says whether the file still parses and lints. `delete_file` removes a \
+file. Change only what the story needs.
 - **Check:** `run` runs the tests you name, the project's whole checks (`suite`), or \
 lint, in the project's container, which has no network. It's feedback, not the verdict.
 - **Tool output** stays in the conversation whole, unless it grows very long.

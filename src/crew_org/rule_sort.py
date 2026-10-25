@@ -110,6 +110,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.replace_text": (FEEDBACK, "the quoted lines aren't there once, whole"),
     "session.replace_definition": (FEEDBACK, "not an existing Python file"),
     "session.write_file": (FEEDBACK, "an existing file, without `overwrite`"),
+    "session.delete_file": (FEEDBACK, "a folder, or no such file"),
     "session.parse_guard": (FEEDBACK, "an edit that would stop the file parsing isn't applied"),
     "session.run": (FEEDBACK, "no tests named, or no pytest or lint among the checks"),
     "session.tests_for": (FEEDBACK, "no coverage map: Python only"),
