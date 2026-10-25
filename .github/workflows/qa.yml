@@ -23,7 +23,7 @@ permissions:
 jobs:
   # Keep this job's id: it is half of the required check's name.
   qa-suite:
-    uses: mqucifer/qa-suite/.github/workflows/qa.yml@main
+    uses: mqucifer/qa-suite/.github/workflows/qa.yml@feat/4-readers-tests
     with:
       project: ${{ github.event.repository.name }}
       suite-ref: feat/4-readers-tests
