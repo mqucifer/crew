@@ -1,0 +1,28 @@
+# QA's functional tests, run from mqucifer/qa-suite (ADR 0006 and ADR 0008 in
+# mqucifer/project-print).
+#
+# The crew has no folder in qa-suite: it's a producer there. Projects read what
+# it publishes, such as the delivery-history package (crew-presentation's
+# record's `uses`), and qa-suite finds them from their records. So this pull
+# request runs each reader's tests, with this pull request's build as what it
+# reads, and a change that breaks a reader fails here before it ships.
+#
+# The crew isn't made from project-template, so this is the template's calling
+# workflow, kept by hand. The check is `qa-suite / qa`: making it required is the
+# Sponsor's step, since branch protection needs admin. A test the Developer
+# thinks is wrong is disputed, not edited.
+
+name: qa
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Keep this job's id: it is half of the required check's name.
+  qa-suite:
+    uses: mqucifer/qa-suite/.github/workflows/qa.yml@main
+    with:
+      project: ${{ github.event.repository.name }}
