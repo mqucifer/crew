@@ -305,6 +305,13 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.deploy import deploy_releases  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
+    from crew_org.flows.qa_tasks import (  # noqa: PLC0415
+        SUITE,
+        QATasks,
+        Settled,
+        open_tests,
+        settle_disputes,
+    )
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
     from crew_org.flows.role_tasks import (  # noqa: PLC0415
@@ -341,6 +348,21 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         )
         if INFRA in crew.repos
         else Alerts()
+    )
+    # A story or a bug's fix merged in a project with a folder in qa-suite opens QA's
+    # Task there, for its test (crew#896). Not while the crew doesn't work in qa-suite.
+    tested = (
+        open_tests(crew.issues, crew.board, crew.sink, cards=crew.board.cards(), repos=repos)
+        if SUITE in crew.repos
+        else QATasks()
+    )
+    # A story waiting on QA's dispute Task goes on once the Task is closed (crew#896).
+    disputes = (
+        settle_disputes(
+            crew.issues, crew.board, crew.sink, crew.ws, cards=crew.board.cards(), repos=repos
+        )
+        if SUITE in crew.repos
+        else Settled()
     )
     # A release whose site went live gets the UX Designer's review (crew#830).
     reviews = release_review_tasks(
@@ -409,6 +431,9 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             or released.filed
             or deployed.moved
             or alerted.moved
+            or tested.opened
+            or disputes.returned
+            or disputes.rerun
             or drawn.opened
             or housed.opened
             or ci.opened
@@ -422,6 +447,12 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             + (f", {len(deployed.healthy)} deployed" if deployed.healthy else "")
             + (f", {len(deployed.rolled_back)} rolled back" if deployed.rolled_back else "")
             + (f", {len(alerted.opened)} alert Tasks for DevOps" if alerted.opened else "")
+            + (f", {len(tested.opened)} test Tasks for QA" if tested.opened else "")
+            + (
+                f", {len(disputes.returned) + len(disputes.rerun)} disputes settled"
+                if disputes.returned or disputes.rerun
+                else ""
+            )
             + (
                 f", {len(reviews.opened)} release reviews for the UX Designer"
                 if reviews.opened
@@ -452,6 +483,9 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             for repo, version, task in deployed.rollback_failed
         ]
         + alerted.failed
+        + [f"{where} — {why}" for where, why in tested.failed]
+        + [f"#{n} — waits for QA's dispute Task {SUITE}#{t}" for n, t in disputes.waiting]
+        + [f"{where} — {why}" for where, why in disputes.failed]
         + [f"{repo} — {why}" for repo, why in reviews.failed]
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
@@ -725,6 +759,8 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         or result.blocked
         or result.recovered
         or result.reworked
+        or result.settled
+        or result.disputed
         or reverts.merged
         or reverts.returned
     )
@@ -779,6 +815,8 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         summary=(
             f"{len(result.landed)} merged, {len(result.delivered)} delivered"
             + (f", {len(result.reworked)} re-worked" if result.reworked else "")
+            + (f", {len(result.settled)} QA Tasks closed with no change" if result.settled else "")
+            + (f", {len(result.disputed)} QA tests disputed" if result.disputed else "")
         ),
         result=result,
         counts={

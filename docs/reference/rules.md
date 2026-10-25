@@ -18,11 +18,11 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 21 |
-| A gate at `done` sends a session's branch back | 12 |
+| A gate at `done` sends a session's branch back | 14 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 67 |
-| A setting that changes what the tick does | 205 |
+| The tick decides a card's handling, found by the decision-point audit | 73 |
+| A setting that changes what the tick does | 208 |
 | Told, and not checked by anything above | 146 |
 
 ## Categories
@@ -37,11 +37,11 @@ section; one no line holds for is unplaced, never guessed.
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 67 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 141 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 71 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 147 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 108 |
+| Unplaced | | 111 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -215,6 +215,8 @@ section; one no line holds for is unplaced, never guessed.
 | `check.gates.the_business_analyst_ruled_that`<br>At `done`, merged tests changed where the story says they stay unchanged go back when the Business Analyst rules the story doesn't change them. | contracts | `src/crew_org/flows/session_end.py:_ruled` | Developer | — | src/crew_org/flows/session_end.py:_ruled | crew#584<br>crew#778 |
 | `check.gates.the_checks_timed_out`<br>At `done`, checks that hung or ran past their bound are a finding naming the hung test and where it waits, never counted as a test that failed (crew#839). | evidence | `src/crew_org/flows/gates.py:_checked` | Developer | — | src/crew_org/flows/gates.py:_checked | crew#778<br>crew#839 |
 | `check.gates.these_tests_skipped`<br>At `done`, a test the branch adds or changes that skipped for a reason the project doesn't declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor, 2026-10-21; crew#860). | evidence | `src/crew_org/flows/gates.py:_skipped` | Developer | — | src/crew_org/flows/gates.py:_skipped | crew#778<br>crew#860<br>mqucifer/sprint-metrics#717 |
+| `check.qa_tasks.dispute_names_no_test`<br>A dispute names one of QA's tests in the story's project folder in qa-suite, as it is on its main; otherwise the session is told so and goes on (crew#896). | guards | `src/crew_org/flows/session_end.py:_disputed` | Developer | — | src/crew_org/flows/session_end.py:_disputed | crew#778 |
+| `check.qa_tasks.no_change_changed`<br>QA's `no_test` or `justified` changes nothing; a branch that changes files goes back to its session (crew#896). | guards | `src/crew_org/flows/session_end.py:_settled` | Developer | — | src/crew_org/flows/session_end.py:_settled | crew#778 |
 | `check.role_tasks.setup_failed_at_start`<br>A DevOps workspace Task whose own branch's setup fails at the session's start is told it, as a finding at `done` is, and works it; a story's stays a workspace that isn't ready (crew#839). | guards | `src/crew_org/flows/session_end.py:setup_failed_at_start` | Developer | — | src/crew_org/flows/session_end.py:setup_failed_at_start | crew#778 |
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
 
@@ -292,6 +294,12 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.main_watch.red_main`<br>Green again before any work began (a flaky run, or fixed by other work): close it. | flow | `src/crew_org/flows/main_watch.py:_close_if_untouched` | — | — | src/crew_org/flows/main_watch.py:_close_if_untouched<br>src/crew_org/flows/main_watch.py:_open_red | — |
 | `decision.merge.conflict`<br>An approved story that conflicts with main is rebuilt by the crew. | flow | `src/crew_org/flows/merge.py:_conflict` | — | — | src/crew_org/flows/merge.py:_conflict | crew#100<br>crew#158<br>crew#95 |
 | `decision.phase_cards`<br>The open cards the crew delivers in a column, in the repositories it works.<br>Cases: `decision.board_flow.goals_missing_work_type` (src/crew_org/flows/board_flow.py:goals_missing_work_type), `decision.bugs.bugs_to_triage` (src/crew_org/flows/bugs.py:bugs_to_triage), `decision.delivery.sprint_stories` (src/crew_org/flows/delivery.py:deliver), `decision.merge.merged_elsewhere` (src/crew_org/flows/merge.py:merged_elsewhere), `decision.review.what_is_reviewed` (src/crew_org/flows/review.py:cards_by_branch), `decision.sprint.left_over` (src/crew_org/flows/sprint.py:left_over), `decision.sprint.parked` (src/crew_org/flows/sprint.py:parked_epics) | flow | `src/crew_org/work_types.py:open_in` | — | — | src/crew_org/flows/board_flow.py:goals_missing_work_type<br>src/crew_org/flows/board_flow.py:tick<br>src/crew_org/flows/bugs.py:bugs_to_triage<br>src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:not_ours<br>src/crew_org/flows/delivery.py:sprint_stories<br>src/crew_org/flows/merge.py:merged_elsewhere<br>src/crew_org/flows/review.py:cards_by_branch<br>src/crew_org/flows/sprint.py:left_over<br>src/crew_org/flows/sprint.py:parked_epics<br>src/crew_org/flows/sprint.py:under_a_parked_epic<br>src/crew_org/work_types.py:open_in | crew#353<br>crew#756<br>sprint-metrics#284 |
+| `decision.qa_tasks.already_justified`<br>Open QA's Task for a disputed test, once per test as it stands on qa-suite's main, and leave the story waiting on it (crew#896). | flow | `src/crew_org/flows/qa_tasks.py:dispute` | — | — | src/crew_org/flows/qa_tasks.py:dispute | crew#896 |
+| `decision.qa_tasks.dispute_settled`<br>Why QA said a test stands, from its closed Task, or None if it didn't. | flow | `src/crew_org/flows/qa_tasks.py:_justification` | — | — | src/crew_org/flows/qa_tasks.py:_justification<br>src/crew_org/flows/qa_tasks.py:settle_disputes | crew#896 |
+| `decision.qa_tasks.disputed`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/qa_tasks.py:disputable<br>src/crew_org/flows/session_end.py:_blocked<br>src/crew_org/flows/session_end.py:_disputed | crew#896 |
+| `decision.qa_tasks.justified`<br>Close QA's Task with no change, saying why on it, and record it. | flow | `src/crew_org/flows/qa_tasks.py:settle` | — | — | src/crew_org/flows/qa_tasks.py:settle | crew#896 |
+| `decision.qa_tasks.no_test`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/session_end.py:_settled<br>src/crew_org/flows/session_end.py:route | crew#896 |
+| `decision.qa_tasks.test_task`<br>Stories and bugs whose pull request merged since `FROM`, in a project the crew works: Done and closed as completed, never one closed as superseded. | flow | `src/crew_org/flows/qa_tasks.py:merged_work` | — | — | src/crew_org/flows/qa_tasks.py:merged_work<br>src/crew_org/flows/qa_tasks.py:open_tests<br>src/crew_org/flows/qa_tasks.py:test_key | crew#896 |
 | `decision.release_check.check_releases`<br>Verify each repo's current release, once its release run for the head has finished. | flow | `src/crew_org/flows/release_check.py:check_releases` | — | — | src/crew_org/flows/release_check.py:check_releases | — |
 | `decision.resplit.affected`<br>Close the stories a round replaces. | flow | `src/crew_org/flows/board_flow.py:close_replaced` | — | — | src/crew_org/flows/board_flow.py:close_replaced<br>src/crew_org/flows/board_flow.py:finish_round<br>src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/board_flow.py:resplit_gate<br>src/crew_org/flows/resplit.py:open_stories<br>src/crew_org/flows/resplit.py:unfinished | crew#859 |
 | `decision.resplit.stop`<br>Before an epic sent back as a story problem is split again (#189). | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step | crew#189<br>crew#859 |
@@ -436,6 +444,9 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.merge.SETTLE_TRIES`<br>How long to let GitHub work out mergeability. | flow | `src/crew_org/flows/merge.py:SETTLE_TRIES` | — | — | src/crew_org/flows/merge.py:SETTLE_TRIES | crew#302 |
 | `config.const.merge.SETTLE_WAIT`<br>SETTLE_WAIT = 2.0 | flow | `src/crew_org/flows/merge.py:SETTLE_WAIT` | — | — | src/crew_org/flows/merge.py:SETTLE_WAIT | — |
 | `config.const.qa_crew.MIN_EVIDENCE_CHARS`<br>MIN_EVIDENCE_CHARS = 20 | evidence | `src/crew_org/crews/qa_crew.py:MIN_EVIDENCE_CHARS` | — | — | src/crew_org/crews/qa_crew.py:MIN_EVIDENCE_CHARS | — |
+| `config.const.qa_tasks.CI_SHOWN`<br>CI_SHOWN = 4000 | — | `src/crew_org/flows/qa_tasks.py:CI_SHOWN` | — | — | src/crew_org/flows/qa_tasks.py:CI_SHOWN | crew#896 |
+| `config.const.qa_tasks.DISPUTE_POINTS`<br>DISPUTE_POINTS = 1 | — | `src/crew_org/flows/qa_tasks.py:DISPUTE_POINTS` | — | — | src/crew_org/flows/qa_tasks.py:DISPUTE_POINTS | crew#896 |
+| `config.const.qa_tasks.TEST_POINTS`<br>TEST_POINTS = 2 | — | `src/crew_org/flows/qa_tasks.py:TEST_POINTS` | — | — | src/crew_org/flows/qa_tasks.py:TEST_POINTS | crew#896 |
 | `config.const.refinement_crew.MAX_EPICS`<br>MAX_EPICS = 5 | scope | `src/crew_org/crews/refinement_crew.py:MAX_EPICS` | — | — | src/crew_org/crews/refinement_crew.py:MAX_EPICS | — |
 | `config.const.refinement_crew.MIN_CRITERIA`<br>MIN_CRITERIA = 2 | scope | `src/crew_org/crews/refinement_crew.py:MIN_CRITERIA` | — | — | src/crew_org/crews/refinement_crew.py:MIN_CRITERIA | — |
 | `config.const.refinement_crew.MIN_EPICS`<br>A Sponsor goal that decomposes into one epic has not been decomposed — there is nothing to sequence and nothing to deliver early. | scope | `src/crew_org/crews/refinement_crew.py:MIN_EPICS` | — | — | src/crew_org/crews/refinement_crew.py:MIN_EPICS | — |
@@ -509,7 +520,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.org.board.blocked_column`<br>board.blocked_column = Blocked | flow | `src/crew_org/config/org.yaml:board.blocked_column` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.columns`<br>board.columns = ['Inbox (Goals)', 'Needs Refinement', 'Ready', 'Sprint Backlog', 'In Progress', 'Reviewing', 'QAing', 'Merging', 'Done'] | flow | `src/crew_org/config/org.yaml:board.columns` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.human_gates`<br>board.human_gates = ['Inbox (Goals)'] | flow | `src/crew_org/config/org.yaml:board.human_gates` | — | — | src/crew_org/config/org.yaml | — |
-| `config.org.delivery.repos`<br>delivery.repos = ['sprint-metrics', 'infra', 'crew-presentation'] | flow | `src/crew_org/config/org.yaml:delivery.repos` | — | — | src/crew_org/config/org.yaml | — |
+| `config.org.delivery.repos`<br>delivery.repos = ['sprint-metrics', 'infra', 'crew-presentation', 'qa-suite'] | flow | `src/crew_org/config/org.yaml:delivery.repos` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.force_label`<br>design.force_label = needs:design | scope | `src/crew_org/config/org.yaml:design.force_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.revisit_conflicts`<br>design.revisit_conflicts = 3 | scope | `src/crew_org/config/org.yaml:design.revisit_conflicts` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.skip_label`<br>design.skip_label = no:design | scope | `src/crew_org/config/org.yaml:design.skip_label` | — | — | src/crew_org/config/org.yaml | — |

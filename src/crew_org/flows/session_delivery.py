@@ -63,6 +63,8 @@ from crew_org.flows.delivery import (
     prior_verdicts,
 )
 from crew_org.flows.epic_notes import story_notes
+from crew_org.flows.qa_tasks import disputable as qa_disputable
+from crew_org.flows.qa_tasks import dispute_specs, place_reference, reference_ref
 from crew_org.git_ops import (
     CHECKPOINT,
     DONE_TRAILER,
@@ -204,6 +206,11 @@ def deliver_by_session(
                 paths=list(conflict.files),
                 rule="delivery.conflict_with_main",
             )
+    marked = role_tasks.marked(body) if role else None
+    project = role_tasks.project_of(card.labels)
+    if role is not None and role.key == role_tasks.QA.key and repo == role_tasks.SUITE and project:
+        # The project QA's test is for, to read beside its folder (crew#896).
+        place_reference(ws, worktree, project, reference_ref(body))
     try:
         record = read_record(worktree)
     except ProjectRecordError as exc:
@@ -311,6 +318,8 @@ def deliver_by_session(
             role=role.spec if role else conversation.ROLE,
             task=role,
             skills=offered,
+            kind=marked.kind if marked else "",
+            disputable=role is None and qa_disputable(issues, repo, live),
         )
     finally:
         held.stop()
@@ -452,6 +461,8 @@ def _sessions(
     role: str = conversation.ROLE,
     task: role_tasks.TaskRole | None = None,
     skills: list[Any] | None = None,
+    kind: str = "",
+    disputable: bool = False,
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -490,7 +501,13 @@ def _sessions(
             round=rounds,
             story_parts=measured,
             role=role,
-            specs=role_tasks.done_specs(task, skills or (), repo) if task else None,
+            specs=(
+                role_tasks.done_specs(task, skills or (), repo, kind)
+                if task
+                else dispute_specs()
+                if disputable
+                else None
+            ),
             scope=task.scope_for(repo) if task else (),
             skills=tuple(s.name for s in skills or ()),
         )

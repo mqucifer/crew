@@ -18,7 +18,8 @@ import copy
 import fnmatch
 import hashlib
 import re
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -111,13 +112,38 @@ DEVOPS = TaskRole(
     scope_in=(("infra", ("grafana/*", "inventory/*", "runbooks/*", "compose/*")),),
 )
 # The UX Designer's Tasks are worked by its release review's session, which changes no
-# file (`flows/ux_review.py`, crew#830). QA's are filed and held: its session comes with
-# M10's test repository (mqucifer/project-print#12).
+# file (`flows/ux_review.py`, crew#830).
 UX = TaskRole("ux", "UX Designer", "ux_designer")
-QA = TaskRole("qa", "QA Engineer", "qa_engineer", waits_for="M10")
+# QA's tests live in their own repository, a folder per project, and run against each
+# pull request's build (ADR 0006 in mqucifer/project-print). Its Tasks are filed there,
+# and each may change only its project's folder: `role_of` narrows the scope from the
+# Task's project label (crew#896). In a project's own repository it changes nothing.
+SUITE = "qa-suite"
+QA = TaskRole("qa", "QA Engineer", "qa_engineer", scope_in=((SUITE, ()),))
 
 ROLES: dict[str, TaskRole] = {r.key: r for r in (ARCHITECT, DEVOPS, UX, QA)}
 LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in ROLES.values()}
+# Which project's folder a QA Task in qa-suite is for.
+PROJECT_LABEL = "project:"
+
+
+def project_label(project: str) -> str:
+    return f"{PROJECT_LABEL}{project}"
+
+
+def project_of(labels: Iterable[str]) -> str:
+    """The project a Task's labels name, or ""."""
+    return next(
+        (lb.removeprefix(PROJECT_LABEL) for lb in labels if lb.startswith(PROJECT_LABEL)), ""
+    )
+
+
+def for_project(role: TaskRole, project: str) -> TaskRole:
+    """QA's role with its scope in qa-suite narrowed to `project`'s folder, or nothing
+    when no project is named: a Task that names none may change no file."""
+    folder = (f"{project}/*",) if project else ()
+    return replace(role, scope_in=((SUITE, folder),))
+
 
 # The diagram and the release are the Sponsor's to approve before they merge: the
 # diagram is the Sponsor's view of the system, once a Goal, and a release's merge is
@@ -135,6 +161,14 @@ REVIEW = "review"
 # A crew alert firing in Grafana, DevOps's in infra (crew#893).
 ALERT = "alert"
 FINDING = "finding"
+# QA's, in qa-suite (crew#896): a merged story's test, an escaped bug's, and a dispute.
+STORY_TEST = "story-test"
+ESCAPED = "escaped-bug"
+DISPUTE = "dispute"
+# What QA's `done` says instead of a test, changing nothing: why no test reaches a
+# story's criteria through the surface, or why a disputed test stands.
+NO_TEST = "no_test"
+JUSTIFIED = "justified"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 
 _MARKER = re.compile(r"<!-- crew:task role=(\S+) kind=(\S+) key=(\S+) -->")
@@ -163,7 +197,10 @@ def role_of(card: Card) -> TaskRole | None:
     """The role a Task card names, by its label, or None for any other card."""
     if card.work_type != TASK:
         return None
-    return next((r for r in ROLES.values() if r.label in card.labels), None)
+    role = next((r for r in ROLES.values() if r.label in card.labels), None)
+    if role is not None and role.key == QA.key:
+        return for_project(role, project_of(card.labels))
+    return role
 
 
 def outside_scope(role: TaskRole, paths: list[str], repo: str = "") -> list[str]:
@@ -192,7 +229,12 @@ def task_start(role: TaskRole, today: str = "", skills: Any = (), repo: str = ""
 
 
 def covers_tests(role: TaskRole, repo: str = "") -> bool:
-    """Whether the role's scope takes in test files, so a test can prove its Task."""
+    """Whether the role's scope takes in test files, so a test can prove its Task.
+
+    QA's in qa-suite is a project's folder of tests, whatever the files are named.
+    """
+    if role.key == QA.key and role.scope_for(repo):
+        return True
     return any(
         fnmatch.fnmatch(p, g)
         for g in role.scope_for(repo)
@@ -200,7 +242,9 @@ def covers_tests(role: TaskRole, repo: str = "") -> bool:
     )
 
 
-def done_specs(role: TaskRole, skills: Any = (), repo: str = "") -> list[dict[str, Any]]:
+def done_specs(
+    role: TaskRole, skills: Any = (), repo: str = "", kind: str = ""
+) -> list[dict[str, Any]]:
     """The Developer's tools, with `done` told as a Task's is (crew#839).
 
     The Developer's `done` asks a test for each criterion and says QA follows. A Task
@@ -252,7 +296,33 @@ def done_specs(role: TaskRole, skills: Any = (), repo: str = "") -> list[dict[st
         if not tests:
             # Its scope has no tests to change.
             del properties["changed_tests"]
+        if role.key == QA.key:
+            properties.update(_qa_endings(kind))
     return specs
+
+
+def _qa_endings(kind: str) -> dict[str, Any]:
+    """What QA's `done` may say instead of a test, by its Task's kind (crew#896)."""
+    if kind == DISPUTE:
+        return {
+            JUSTIFIED: {
+                "type": "string",
+                "description": "Only when the disputed test is right as it is: why, for the "
+                "Developer, from what the story and the project's docs say. Change nothing "
+                "then, and name no criteria: the story goes back to the Developer with the test "
+                "unchanged, to change the code.",
+            }
+        }
+    if kind in (STORY_TEST, ESCAPED):
+        return {
+            NO_TEST: {
+                "type": "string",
+                "description": "Only when nothing the Task asks can be reached through the "
+                "surface its project's README names: why. Change nothing then, and name no "
+                "criteria: the Task closes with no pull request, and it's recorded.",
+            }
+        }
+    return {}
 
 
 def waits_for(card: Card) -> str:
@@ -314,6 +384,7 @@ def open_task(
     event: str = "",
     rule: str = "",
     detail: dict[str, Any] | None = None,
+    labels: tuple[str, ...] = (),
 ) -> Opened:
     """Open the Task once, or finish placing one an earlier pass opened.
 
@@ -328,7 +399,9 @@ def open_task(
         issues.ensure_label(
             repo, role.label, color=LABELS[role.label][0], description=LABELS[role.label][1]
         )
-        found = issues.create(repo, title, body, labels=[role.label])
+        for extra in labels:
+            issues.ensure_label(repo, extra, color="c5def5", description="The project it's for")
+        found = issues.create(repo, title, body, labels=[role.label, *labels])
     number = int(found["number"])
     if not any(c.repo == repo and c.number == number for c in cards):
         item = board.add_issue(found["node_id"])
@@ -1327,7 +1400,9 @@ def _first_tasks(
 ) -> FirstDiagrams:
     """A role's first Task in each repository that lacks what it makes, once."""
     result = FirstDiagrams([], [])
-    for repo in sorted(repos):
+    # qa-suite is QA's tests for other projects, not a system: nothing to draw, and its
+    # tests run against each project's build in CI, not in a workspace (crew#896).
+    for repo in sorted(repos - {SUITE}):
         try:
             opened = open_one(issues, board, sink, repo=repo, cards=cards)
         except Exception as exc:  # noqa: BLE001
