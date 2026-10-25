@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from crew_org import profiles
+from crew_org.crews import qa_crew
 from crew_org.crews.design_crew import Choice, DesignProposal, PartChoice
 from crew_org.flows import acceptance
 from crew_org.flows.design import to_design
@@ -29,18 +30,17 @@ def mixed_project():
     profiles.clear()
 
 
-def test_qa_is_told_which_changed_files_had_no_guard(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        acceptance, "changed_paths", lambda wt: ["site/index.html", "src/pkg/report.py"]
-    )
-    checks = acceptance._with_unguarded("- tests: passed", tmp_path)
-    assert checks.startswith("- tests: passed")
-    assert "`site/index.html`" in checks and "report.py" not in checks
+def test_qa_is_told_which_changed_files_had_no_guard():
+    changed = ["site/index.html", "src/pkg/report.py"]
+    assert acceptance.unguarded(changed) == ["site/index.html"]
+    shown = qa_crew.opening("s", changed=changed, unguarded=acceptance.unguarded(changed))
+    assert "**No regression guard ran on:** `site/index.html`." in shown["changed"]
 
 
-def test_qa_s_checks_are_unchanged_when_everything_was_guarded(monkeypatch, tmp_path):
-    monkeypatch.setattr(acceptance, "changed_paths", lambda wt: ["src/pkg/report.py"])
-    assert acceptance._with_unguarded("- tests: passed", tmp_path) == "- tests: passed"
+def test_qa_is_told_nothing_more_when_everything_was_guarded():
+    assert acceptance.unguarded(["src/pkg/report.py"]) == []
+    shown = qa_crew.opening("s", changed=["src/pkg/report.py"])
+    assert "No regression guard" not in shown["changed"]
 
 
 def test_the_architect_s_parts_reach_the_record():

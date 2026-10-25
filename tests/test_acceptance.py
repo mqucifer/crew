@@ -12,7 +12,7 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from crew_org.crews.qa_crew import CriterionVerdict, QAVerdict
+from crew_org.crews.qa_crew import CriterionVerdict, QAVerdict, Ran
 from crew_org.crews.retro_crew import ProcessDefect
 from crew_org.events import EventSink
 from crew_org.flows.acceptance import (
@@ -31,8 +31,13 @@ def criterion(
     return CriterionVerdict(
         criterion=name,
         proven=proven,
+        by="run",
+        ran=[Ran(command=RAN, exit_code=0)] if proven else [],
         evidence="test_empty_sprint_reports_unavailable exercises it directly",
     )
+
+
+RAN = "uv run pytest -q tests/test_sprint.py::test_empty_sprint_reports_unavailable"
 
 
 # --- the acceptance rule -------------------------------------------------
@@ -68,63 +73,11 @@ def test_the_qa_comment_shows_what_was_not_proven():
     assert "test_empty_sprint_reports_unavailable" in body
 
 
-# --- what QA is shown ----------------------------------------------------
-
-
-def test_every_test_function_survives_collection(tmp_path):
-    """Story #13 was returned as unproven against two tests that were in the
-    file. A 12,000-character slice cut them off the end — new tests are
-    appended, so a head-slice lands on exactly the evidence QA needs."""
-    from crew_org.flows.acceptance import collect_tests
-
-    (tmp_path / "tests").mkdir()
-    body = "\n\n".join(f"def test_case_{i}():\n    assert {i} == {i}" for i in range(400))
-    (tmp_path / "tests/test_big.py").write_text(body)
-
-    collected = collect_tests(tmp_path)
-    assert len(body) > 12_000, "the fixture has to be big enough to have been cut"
-    for i in range(400):
-        assert f"def test_case_{i}()" in collected
-
-
-def test_evidence_that_does_not_fit_refuses_a_verdict(tmp_path):
-    """QAVerdict has no way to say "I could not see enough to tell", so a
-    partial view has to resolve to proven or unproven and both are false. The
-    run fails loudly instead, and says which file it got to."""
-    import pytest as _pytest
-
-    from crew_org.flows import acceptance
-
-    # Sized off the ceiling, so raising the guard does not quietly stop this
-    # from testing the guard. Two files, each just over half of it.
-    filler_lines = acceptance.QA_CONTEXT_CHAR_CEILING // 8
-    (tmp_path / "tests").mkdir()
-    for name in ("a", "b"):
-        (tmp_path / f"tests/test_{name}.py").write_text(
-            f"MARKER_{name} = 1\n" + f"# {name}\n" * filler_lines
-        )
-
-    with _pytest.raises(acceptance.EvidenceTooLarge, match="tests/test_b.py"):
-        acceptance.collect_tests(tmp_path)
-
-
-def test_the_end_of_a_run_is_what_survives(tmp_path):
-    """The summary and the failures are at the end. Delivery already learned
-    that keeping the front of a failure report keeps the wrong half."""
-    from dataclasses import dataclass
-
-    from crew_org.flows.acceptance import QA_OUTPUT_CHAR_CEILING, collect_output
-
-    @dataclass
-    class Result:
-        command: str
-        output: str
-
-    results = [Result("pytest -q", "x" * (QA_OUTPUT_CHAR_CEILING + 5_000) + "FAILED test_last")]
-    collected = collect_output(results)
-
-    assert "FAILED test_last" in collected
-    assert "earlier output trimmed" in collected
+def test_the_qa_comment_cites_what_each_criterion_rests_on():
+    """Its verdict cites what it ran (crew#895): each command and its exit code."""
+    body = render_qa(QAVerdict(summary="s", accepted=True, criteria=[criterion()]))
+    assert "proven by run" in body
+    assert f"ran `{RAN}`: exit 0" in body
 
 
 # --- a verdict belongs to a revision -------------------------------------
@@ -417,26 +370,7 @@ def test_qa_is_shown_what_it_said_about_this_card_before(monkeypatch, tmp_path):
     target the Developer cannot hit."""
     from crew_org.flows import acceptance as flow
 
-    seen = {}
-
-    def fake_verify(
-        story,
-        *,
-        test_output,
-        test_code,
-        prior_verdicts="",
-        project="",
-        docs="",
-        checks="",
-        decisions="",
-        diagram="",
-    ):
-        seen["prior"] = prior_verdicts
-        return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
-
-    monkeypatch.setattr(flow, "verify_story", fake_verify)
-    monkeypatch.setattr(flow.workspace, "check", lambda w, sandbox=None: _green())
-    monkeypatch.setattr(flow, "collect_tests", lambda w: "def test_x(): pass")
+    seen = in_a_session(monkeypatch)
 
     card = Card(
         item_id="C31",
@@ -459,13 +393,121 @@ def test_qa_is_shown_what_it_said_about_this_card_before(monkeypatch, tmp_path):
         cards=[card],
         repo="sprint-metrics",
     )
-    assert "criterion 2 is unproven" in seen["prior"]
+    assert "criterion 2 is unproven" in seen["prior_verdicts"]
 
 
-def _green():
-    from crew_org.tools.workspace import CheckResult, CommandResult
+class Held:
+    """The story's held workspace, as `hold` returns it: stopped once QA is done."""
 
-    return CheckResult(results=[CommandResult(command="pytest", code=0, output="")])
+    def __init__(self):
+        self.held = self
+        self.lost = False
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+def in_a_session(monkeypatch, verdict=None):
+    """QA's session stood in for: what it was started with, and the workspace it held."""
+    from crew_org.flows import acceptance as flow
+
+    seen: dict = {}
+
+    def held(worktree, name, sandbox=None):
+        seen["held"] = Held()
+        seen["held_as"] = name
+        return seen["held"]
+
+    def verify(story, **kw):
+        seen.update(story=story, **kw)
+        return verdict or QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
+
+    monkeypatch.setattr(flow, "hold", held)
+    monkeypatch.setattr(flow, "verify_story", verify)
+    return seen
+
+
+def test_qa_holds_the_storys_workspace_and_stops_it(monkeypatch, tmp_path):
+    """QA runs where the story's services are (crew#895, mqucifer/sprint-metrics#785)."""
+    from crew_org.flows import acceptance as flow
+
+    seen = in_a_session(monkeypatch)
+    card = story(31, "QAing")
+    issues = _QAIssues(comments=[])
+    result = flow.run_qa(
+        _QABoard(),
+        issues,
+        EventSink(None),
+        _QAWorkspace(tmp_path),
+        None,
+        cards=[card],
+        repo="sprint-metrics",
+    )
+    assert [o.card for o in result.verified] == [31]
+    assert seen["workspace"] is seen["held"] and seen["held"].stopped
+    assert seen["held_as"] == "sprint-metrics-31-qa"
+    assert f"ran `{RAN}`: exit 0" in issues.posted[0][1]
+
+
+def test_a_workspace_that_cant_be_held_fails_the_card_for_a_later_pass(monkeypatch, tmp_path):
+    from crew_org.flows import acceptance as flow
+
+    def unready(worktree, name, sandbox=None):
+        raise flow.WorkspaceUnready("$ uv sync\n(exit 1)\nno network")
+
+    monkeypatch.setattr(flow, "hold", unready)
+    issues = _QAIssues(comments=[])
+    result = flow.run_qa(
+        _QABoard(),
+        issues,
+        EventSink(None),
+        _QAWorkspace(tmp_path),
+        None,
+        cards=[story(31, "QAing")],
+        repo="sprint-metrics",
+    )
+    assert result.failed == [(31, "WorkspaceUnready: $ uv sync\n(exit 1)\nno network")]
+    assert not issues.posted, "no verdict on the story"
+
+
+class _Started:
+    def __init__(self, ok, command="start", code=0, output=""):
+        self.ok, self.command, self.code, self.output = ok, command, code, output
+
+
+def test_hold_starts_the_workspace_with_its_services_and_sets_it_up_once_more_on_a_failure(
+    monkeypatch, tmp_path
+):
+    from crew_org.flows import acceptance as flow
+
+    made = []
+
+    class FakeHeld:
+        def __init__(self, worktree, name, sandbox=None):
+            self.tools = object()
+            self.setups = [_Started(False, "uv sync", 1, "blip"), _Started(True)]
+            self.stopped = False
+            made.append(self)
+
+        def start(self):
+            return _Started(True)
+
+        def setup(self):
+            return self.setups.pop(0)
+
+        def stop(self):
+            self.stopped = True
+
+    monkeypatch.setattr(flow, "Held", FakeHeld)
+    held = flow.hold(tmp_path, "sm-31-qa")
+    assert held.held is made[0] and not made[0].stopped and not made[0].setups
+
+    made[0].setups = []
+    FakeHeld.setup = lambda self: _Started(False, "uv sync", 1, "no network")
+    with pytest.raises(flow.WorkspaceUnready, match="no network"):
+        flow.hold(tmp_path, "sm-31-qa")
+    assert made[1].stopped
 
 
 class _QAIssues:

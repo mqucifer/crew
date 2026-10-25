@@ -133,8 +133,12 @@ def test_refinement_goes_on_without_a_record_it_cannot_read(tmp_path):
 
 
 def test_qa_is_shown_the_record(tmp_path):
-    assert acceptance._project_brief(project(tmp_path)).startswith("## What this project is for")
-    assert acceptance._project_brief(tmp_path / "nothing") == ""
+    """Its session's start says it, as every step's does (crew#895); QA reads it first."""
+    from crew_org.session import steps
+
+    acceptance._read_project(project(tmp_path))
+    assert "**Purpose:**" in steps.project_section(project(tmp_path))
+    acceptance._read_project(tmp_path / "nothing")
 
 
 # --- 3: what a release is comes from the record ----------------------------------------------

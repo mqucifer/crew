@@ -2377,7 +2377,7 @@ _EVIDENCE_FIELDS = frozenset(
 _SHAPE_WORDS = re.compile(
     r"(^|_)(an_id|row_ids?|test_ids|one_or_the_other|stripped|says_(something|what|why)|"
     r"is_specific|is_actionable|short|few|a_name_not_its_code|a_bare_path|stated|"
-    r"covers|cut|a_verdict_or_an_ask|must_say_why|amendment_says_what|has_a_sample|"
+    r"covers|cut|a_verdict|must_say_why|amendment_says_what|has_a_sample|"
     r"enforces_something|is_a_change)($|_)"
 )
 # Constitution sections, by what their rules protect. A section not here is unplaced.

@@ -203,7 +203,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `deploy.rolled_back` | A deploy failed at a stage, and the release that was running runs again. | **`repo`**, `service`, **`from`**, **`to`**, `attempts`, `seconds`, `stage`, `finding` | `flows/deploy.py` | stays in the crew's log |
 | `deploy.rollback_failed` | A deploy failed and so did its rollback: the Task goes to the Sponsor. | **`repo`**, `service`, **`from`**, **`to`**, `attempts`, `seconds`, `stage`, `finding` | `flows/deploy.py` | stays in the crew's log |
 | `deploy.held` | A release not deployed: a reader pins another MAJOR, or its settings aren't there. | **`repo`**, `version`, `reader`, `pinned`, `missing`, **`rule`** | `flows/deploy.py` | stays in the crew's log |
-| `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `crews/refinement_crew.py`, `flows/acceptance.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/ci_from_main.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/deploy.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `flows/template.py`, `session/steps.py` | stays in the crew's log |
+| `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `crews/refinement_crew.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/ci_from_main.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/deploy.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `flows/template.py`, `session/steps.py` | stays in the crew's log |
 
 ### The rules notes name
 
@@ -245,8 +245,6 @@ filled in), and the fields it names.
 
 | Written in | Says | Fields |
 |---|---|---|
-| `flows/acceptance.py:_judge` | #… QA context: … chars of tests… | `asked`, `context_chars`, `cut`, `focused`, `shown` |
-| `flows/acceptance.py:_judge` | #… QA read … | `read` |
 | `flows/artifacts.py:comment` | commented | **`artifact`**, **`repo`** |
 | `flows/artifacts.py:label` | … | `added`, **`artifact`**, `removed`, **`repo`** |
 | `flows/backlog_order.py:order_backlogs` | … backlog order: … chars of backlog | — |

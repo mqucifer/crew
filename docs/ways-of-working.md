@@ -246,6 +246,12 @@ A card may enter `Done` only when **all** hold:
    Elsewhere, QA may cite a CI check as proof only of what that check runs:
    a `tests` check that runs lint and pytest proves nothing about a workflow
    it never runs, and a skipped test proves nothing (sprint-metrics#260).
+   QA verifies in a session (crew#895): it runs the tests in the story's
+   workspace and cites what each criterion rests on, a run it made, a passing
+   check with the step of its workflow that runs it, or the passage of the doc,
+   changelog or version file the criterion is about. The crew holds each
+   citation to what QA ran and what the branch says: evidence is cited, not
+   asserted.
 2. The full test suite passes; linting and type checks pass.
 3. Code review is approved against acceptance criteria and this document.
 4. The PR is merged via branch protection with all required checks green.

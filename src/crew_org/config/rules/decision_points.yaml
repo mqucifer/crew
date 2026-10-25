@@ -54,10 +54,6 @@ flows.acceptance._existing_proof:end:aa8c27db:
   at: flows/acceptance.py:_existing_proof
   if: not latest or EXISTING_PROOF_MARKER not in latest[-1]
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
-flows.acceptance._judge:filter:3e200959:
-  at: flows/acceptance.py:_judge
-  if: f'{rel}::{name}' not in asked
-  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.acceptance.close_finished_parents:filter:ac818ed0:
   at: flows/acceptance.py:close_finished_parents
   if: c.parent == card.number and c.repo == card.repo
@@ -106,22 +102,6 @@ flows.acceptance.close_finished_parents:skip:087a096b:
   at: flows/acceptance.py:close_finished_parents
   if: parent_type == GOAL_TYPE and (not _diagram_task_among(children))
   rule: decision.role_tasks.goal_epics_done
-flows.acceptance.in_part:filter:1789d18f:
-  at: flows/acceptance.py:in_part
-  if: isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
-  not_a_rule: chooses what a role is shown, not what happens to a card
-flows.acceptance.in_part:filter:863032e4:
-  at: flows/acceptance.py:in_part
-  if: k.rsplit('.', 1)[-1] in names or any((span(n)[0] <= x <= span(n)[1] for x in lines))
-  not_a_rule: chooses what a role is shown, not what happens to a card
-flows.acceptance.in_part:filter:9a734677:
-  at: flows/acceptance.py:in_part
-  if: k not in picked and (not isinstance(n, ast.ClassDef))
-  not_a_rule: chooses what a role is shown, not what happens to a card
-flows.acceptance.qa_tests:filter:9427ab87:
-  at: flows/acceptance.py:qa_tests
-  if: rel not in chosen
-  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.acceptance.run_qa:result:verified:4ab74c3b:
   at: flows/acceptance.py:run_qa
   if: verdict.accepted and done
@@ -929,14 +909,6 @@ flows.goal_look.rows_from:skip:a632648f:
   at: flows/goal_look.py:rows_from
   if: looked_at and view.epic not in looked_at
   not_a_rule: a delivered epic is shown as background; nothing is split from it
-flows.handover.sizes:filter:e25eeafb:
-  at: flows/handover.py:sizes
-  if: n > QA_FOCUS_ABOVE_CHARS
-  not_a_rule: 'a report or a render: lists, decides nothing'
-flows.handover.sizes:filter:fb53bc9e:
-  at: flows/handover.py:sizes
-  if: profiles.PYTHON.is_test_path(f)
-  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.history.latest_answer:filter:5b48d4f2:
   at: flows/history.py:latest_answer
   if: ANSWERED_MARKER in (c.get('body') or '')
