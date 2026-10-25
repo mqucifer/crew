@@ -181,7 +181,7 @@ def at_done(
     # A role's Task stays in its role's area (crew#839): anything else it needs is
     # its own finding, a bug or another Task.
     role = role_tasks.role_of(card)
-    if role is not None and (beyond := role_tasks.outside_scope(role, paths)):
+    if role is not None and (beyond := role_tasks.outside_scope(role, paths, card.repo or "")):
         verdict.findings.append(
             Finding(
                 "guard.role_tasks.out_of_scope",
@@ -189,7 +189,7 @@ def at_done(
                     "guard.role_tasks.out_of_scope",
                     role=role.name,
                     paths=", ".join(f"`{p}`" for p in beyond),
-                    scope=", ".join(f"`{g}`" for g in role.scope),
+                    scope=", ".join(f"`{g}`" for g in role.scope_for(card.repo or "")),
                 ),
             )
         )
