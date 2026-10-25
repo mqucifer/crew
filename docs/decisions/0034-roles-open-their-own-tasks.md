@@ -1,7 +1,7 @@
 # 34. Roles open their own tasks
 
 - **Date:** 2026-10-20
-- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; in M8 the deploy by crew#829 and the UX review by crew#830; in M9 the alert by crew#893; QA's Tasks M10's)
+- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; in M8 the deploy by crew#829 and the UX review by crew#830; in M9 the alert by crew#893; in M10 QA's Tasks by crew#896)
 
 ## Context
 
@@ -157,13 +157,32 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
   Unread for 24 hours straight, it's one DevOps finding in infra (the operator,
   2026-10-25).
 
-**Left:** QA's Tasks wait for M10.
+## What's built (M10, crew#896): QA's Tasks
+
+ADR 0006 in mqucifer/project-print decided QA's repository, its test bed and its three triggers. This is how they're built.
+- **QA's Tasks live in mqucifer/qa-suite,** which the crew takes over. Each carries a `project:` label, and may change only that project's folder there, read from the label. The session reads its project beside the folder, never committed.
+- **A story's test opens when it merges, not at the split** (the operator, 2026-10-25). qa-suite's main runs against every pull request of its project, so a test of work not yet merged would fail every other pull request. Before the merge, QA's session verifies the story (crew#895), so the story isn't held for its test.
+- **An escaped bug's test opens when its fix merges.** Triage accepts a bug only when it contradicts accepted behaviour (ADR 0027), so every fixed bug is one.
+- **A dispute:**
+  - **How it opens:** when QA's check failed on its pull request's head, the Developer may end `blocked` with kind `test`, naming the test. That opens QA's Task, keyed by the test and its file's text.
+  - **The story waits:** in Blocked, labelled `waits:qa`, and it isn't a person's to unblock.
+  - **Justified:** QA changes nothing and says why. The story goes back to the Developer with the test unchanged, so the Developer changes the code.
+  - **Disputed again:** a justified test, unchanged since, opens nothing. The session is told "already justified", with the Task's link.
+  - **Fixed:** the story's checks run again on an empty commit, and the story goes to review.
+- **QA's pull request is proven before it merges.** qa-suite's `suite.yml` runs each folder the pull request changes against its project's main. QA's Task otherwise skips QAing, as every Task does.
+- **No test:** a test Task with nothing reachable through the surface closes with no change. It's recorded as `role_task.settled`, so the retro sees how often the surface falls short.
+
+**Standards.** Acceptance test-driven development: QA's tests check the story's criteria from outside, through its surface, and a test is added for each escaped defect. Checklist:
+- every merged story and fixed bug in a project with a folder opens one Task, once;
+- a test is proven against main before it merges;
+- a dispute never edits the test from the Developer's side;
+- each closing with no change says why and is counted.
 
 ## Consequences
 
 - DevOps's session (crew#817) is the first to pick up tasks. The UX Designer's
   release review (crew#830) is the second.
-- QA's triggers are shaped in M10's planning session.
+- QA's triggers were shaped in M10's planning session (ADR 0006 in mqucifer/project-print), and built by crew#896.
 - A refinement note marked `infra` (ADR 0017) is DevOps's finding outside its
   story, so it's filed in mqucifer/infra as a task, not left in the epic's conclusion.
 - A role's finding outside its story is filed, not set aside, so "pre-existing" is no
@@ -202,3 +221,4 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
 - **2026-10-25:** an alert's Task built (crew#893), with the operator's answers: a
   later firing opens a new Task only once the last is closed, and a day of Grafana
   unread is DevOps's finding.
+- **2026-10-25:** QA's Tasks built in M10 (crew#896): filed in qa-suite, a story's test opening at its merge, and the dispute.
