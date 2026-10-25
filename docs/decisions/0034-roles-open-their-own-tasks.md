@@ -1,7 +1,7 @@
 # 34. Roles open their own tasks
 
 - **Date:** 2026-10-20
-- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; in M8 the deploy by crew#829 and the UX review by crew#830; QA's Tasks M10's)
+- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; in M8 the deploy by crew#829 and the UX review by crew#830; in M9 the alert by crew#893; QA's Tasks M10's)
 
 ## Context
 
@@ -136,6 +136,27 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
 - **One that can't be worked** (no live release, its session stopped) is blocked for a
   person, as a Task is.
 
+## What's built (M9, crew#893): an alert's Task
+
+- **The crew's alerts:** each pass reads Grafana's firing alerts with a read-only
+  token (`GRAFANA_READ_TOKEN` in `~/.config/infra/grafana.env`, read inside the
+  process), and applies nothing (mqucifer/infra#33). Only rules labelled
+  `audience: crew` open a Task; the Sponsor's page them through Grafana and open none
+  (mqucifer/project-print ADR 0007).
+- **One Task per firing,** DevOps's in mqucifer/infra, in Ready, keyed by the alert's
+  fingerprint and when it began firing. It names the alert, its labels, its runbook
+  and when it started. While it's open, the alert firing again is a comment on it;
+  once it's closed, a later firing opens its own (the operator, 2026-10-25).
+- **Its scope is infra's:** `grafana/`, `inventory/`, `runbooks/` and `compose/`. A
+  role's scope can now differ by repository; DevOps's in a project is unchanged. It
+  proposes by pull request; the Sponsor applies what merges.
+- **A stopped alert** is said on its Task, once per firing. The Task stays open until
+  DevOps's review is done.
+- **Grafana unread** (no token, unreachable, refused, unreadable) is a held line each
+  pass, and the tick goes on; nothing is marked stopped from a list that wasn't read.
+  Unread for 24 hours straight, it's one DevOps finding in infra (the operator,
+  2026-10-25).
+
 **Left:** QA's Tasks wait for M10.
 
 ## Consequences
@@ -178,3 +199,6 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
   corrections are filed with screenshots, up to ten per owner. The UX hold is lifted;
   no `role:ux` Task was held. The operator's answers on where the pages are and where
   screenshots live.
+- **2026-10-25:** an alert's Task built (crew#893), with the operator's answers: a
+  later firing opens a new Task only once the last is closed, and a day of Grafana
+  unread is DevOps's finding.
