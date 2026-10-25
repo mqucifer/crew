@@ -19,7 +19,7 @@ from crew_org.events import EventKind
 from crew_org.session import steps
 from crew_org.session.reading import ReadTools
 from tests.test_git_ops import _real_workspace
-from tests.test_session import Proxy, kinds, said, seen  # noqa: F401
+from tests.test_session import CHECKS, Fake, Proxy, kinds, said, seen  # noqa: F401
 from tests.test_session_git import clone, sh  # noqa: F401
 
 NOTE = "@notes/delivered.md"
@@ -253,3 +253,33 @@ def test_a_line_found_in_the_delivered_note_names_its_story(main: Path):
     assert "2 stories" in shown
     reply = ReadTools(main, notes=notes).call("search", {"pattern": "50%"})
     assert "2 [## #12 Show the rate]: - when run, then it prints 50%" in reply.text
+
+
+def test_a_step_given_a_held_workspace_runs_its_tests_there_and_still_edits_nothing(main, seen):  # noqa: F811
+    """QA's acceptance (crew#895): the story's branch, its base, and `run` in its container."""
+    held = Fake({"uv run pytest -q tests/test_app.py": (0, "1 passed")})
+    held.tools = CHECKS
+    proxy = Proxy(
+        said(("run", {"what": "tests", "tests": ["tests/test_app.py"]})),
+        said(("write_file", {"path": "src/x.py", "content": "x = 1\n"})),
+        said(("done", {"nothing_to_add": True, "notes": []})),
+    )
+    reading = steps.Reading.at(main, "r")
+    parts = {"step": "## Your step: verify the story"}
+    steps.run(step(), parts, reading, about="f", notes=NOTES, send=proxy, workspace=held)
+    assert held.ran == [(["uv", "run", "pytest", "-q", "tests/test_app.py"], None)]
+    assert "1 passed" in proxy.sent[1]["messages"][-1]["content"]
+    refused = proxy.sent[2]["messages"][-1]["content"]
+    assert "view, search, find, tests_for, git, run" in refused
+    assert not (main / "src" / "x.py").exists()
+    sent = proxy.sent[0]
+    assert [t["function"]["name"] for t in sent["tools"]] == [
+        *("view", "search", "find", "tests_for", "run", "git", "done")
+    ]
+    start = sent["messages"][1]["content"]
+    assert "at the story's branch" in start and "the ref `base`" in start
+    assert "with its services" in start
+    git = next(t for t in sent["tools"] if t["function"]["name"] == "git")
+    assert "`git diff base` is the whole change" in git["function"]["description"]
+    done = next(t for t in sent["tools"] if t["function"]["name"] == "done")
+    assert "as at the branch's commit" in done["function"]["description"]
