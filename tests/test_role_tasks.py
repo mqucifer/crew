@@ -47,10 +47,9 @@ def test_a_task_names_its_role_by_label():
     assert role_of(card.model_copy(update={"work_type": "Story"})) is None
 
 
-def test_every_role_but_qa_has_a_session_now():
-    """The UX Designer's came with its release review (crew#830); QA's waits for M10."""
-    assert ARCHITECT.has_session and DEVOPS.has_session and UX.has_session
-    assert QA.waits_for == "M10"
+def test_every_role_has_a_session_now():
+    """The UX Designer's came with its release review (crew#830), QA's with M10 (crew#896)."""
+    assert all(r.has_session for r in (ARCHITECT, DEVOPS, UX, QA))
 
 
 def test_the_body_carries_its_marker():
@@ -131,16 +130,21 @@ def _story(number: int, status: str, parent: int) -> Card:
     )
 
 
-def test_a_task_for_a_role_with_no_session_is_held_and_says_which_milestone():
+def test_a_task_for_a_role_with_no_session_is_held_and_says_which_milestone(monkeypatch):
+    from dataclasses import replace
+
     from crew_org.columns import READY as R
+    from crew_org.flows import role_tasks
     from crew_org.flows.role_tasks import waits_for
     from crew_org.flows.sprint import plan_sprint
 
-    qa, ux = _task(5, R, "qa"), _task(6, R, "ux")
-    plan = plan_sprint([qa, ux], {}, sprint="S1", capacity=10)
+    # Every role has its session now, so one is made to wait, as QA's did for M10.
+    monkeypatch.setitem(role_tasks.ROLES, "ux", replace(UX, waits_for="M10"))
+    ux, qa = _task(5, R, "ux"), _task(6, R, "qa")
+    plan = plan_sprint([ux, qa], {}, sprint="S1", capacity=10)
     assert [c.number for c in plan.admitted] == [6]
     assert [c.number for c in plan.no_session] == [5]
-    assert waits_for(qa) == "M10" and waits_for(ux) == ""
+    assert waits_for(ux) == "M10" and waits_for(qa) == ""
 
 
 def test_the_release_task_waits_for_every_story_of_its_epic_whatever_its_number():

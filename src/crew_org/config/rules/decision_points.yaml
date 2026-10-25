@@ -600,6 +600,10 @@ flows.delivery._deliver_and_move:result:delivered:81c0ce16:
   at: flows/delivery.py:_deliver_and_move
   if: outcome.already_done
   rule: decision.delivery.outcome
+flows.delivery._deliver_and_move:result:disputed:f8e177fb:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed == 'disputed'
+  rule: decision.qa_tasks.disputed
 flows.delivery._deliver_and_move:result:interrupted:525aee2d:
   at: flows/delivery.py:_deliver_and_move
   if: interrupted is not None
@@ -608,6 +612,10 @@ flows.delivery._deliver_and_move:result:reviewed:914c5a95:
   at: flows/delivery.py:_deliver_and_move
   if: ux_review.is_review(card)
   rule: decision.ux_review.reviewed
+flows.delivery._deliver_and_move:result:settled:05fe0b23:
+  at: flows/delivery.py:_deliver_and_move
+  if: outcome.routed == 'settled'
+  rule: decision.qa_tasks.no_test
 flows.delivery._gates_disagree:end:dc3ba109:
   at: flows/delivery.py:_gates_disagree
   if: rounds < story_problem.MAX_ROUND_TRIPS
@@ -1078,6 +1086,72 @@ flows.project_log.read_log:filter:4fe7c36a:
   at: flows/project_log.py:read_log
   if: _ENTRY.match(n)
   not_a_rule: chooses what a role is shown, not what happens to a card
+flows.qa_tasks._justification:filter:2027ba98:
+  at: flows/qa_tasks.py:_justification
+  if: (c.get('body') or '').startswith(JUSTIFIED_MARKER)
+  rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.disputable:end:25e38ed5:
+  at: flows/qa_tasks.py:disputable
+  if: pull is None or repo == SUITE
+  rule: decision.qa_tasks.disputed
+flows.qa_tasks.dispute:end:562de391:
+  at: flows/qa_tasks.py:dispute
+  if: justified is not None
+  rule: decision.qa_tasks.already_justified
+flows.qa_tasks.dispute:end:a71928dd:
+  at: flows/qa_tasks.py:dispute
+  if: found is not None and found.get('state') == 'closed'
+  rule: decision.qa_tasks.already_justified
+flows.qa_tasks.dispute:end:be1698b3:
+  at: flows/qa_tasks.py:dispute
+  if: text is None or not name or (not re.search(f'\\bdef {re.escape(name)}\\b', text))
+  rule: check.qa_tasks.dispute_names_no_test
+flows.qa_tasks.merged_work:filter:f5a200a2:
+  at: flows/qa_tasks.py:merged_work
+  if: 'c.work_type in (STORY, BUG) and c.status == DONE and (c.state == ''CLOSED'') and (c.state_reason
+    != ''NOT_PLANNED'') and (c.closed is not None) and (c.closed >= FROM) and (c.repo in repos) and (c.repo
+    != '
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.open_tests:end:319da5d2:
+  at: flows/qa_tasks.py:open_tests
+  if: not work
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.open_tests:filter:cfef9050:
+  at: flows/qa_tasks.py:open_tests
+  if: (found := rt.marked(issue.get('body'))) is not None
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.open_tests:skip:bf0fc8e5:
+  at: flows/qa_tasks.py:open_tests
+  if: not folders[project]
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.open_tests:skip:e9596882:
+  at: flows/qa_tasks.py:open_tests
+  if: key in opened
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.settle:end:da1224b4:
+  at: flows/qa_tasks.py:settle
+  if: justified
+  rule: decision.qa_tasks.justified
+flows.qa_tasks.settle_disputes:filter:61831ab1:
+  at: flows/qa_tasks.py:settle_disputes
+  if: c.status == BLOCKED and WAITS_LABEL in c.labels and (c.state != 'CLOSED') and (c.repo in repos)
+  rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.settle_disputes:filter:ecfde9ed:
+  at: flows/qa_tasks.py:settle_disputes
+  if: (m := _WAITS.search(c.get('body') or '')) is not None
+  rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.settle_disputes:result:waiting:2c222a09:
+  at: flows/qa_tasks.py:settle_disputes
+  if: task.get('state') != 'closed'
+  rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.settle_disputes:skip:662a6c8b:
+  at: flows/qa_tasks.py:settle_disputes
+  if: not waits
+  rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.test_key:end:b8aed34c:
+  at: flows/qa_tasks.py:test_key
+  if: card.work_type == BUG
+  rule: decision.qa_tasks.test_task
 flows.readiness.check:filter:6ffd3a66:
   at: flows/readiness.py:check
   if: n != BOARD_WORKFLOW
@@ -1440,6 +1514,10 @@ flows.role_tasks.role_of:end:2546eb7a:
   at: flows/role_tasks.py:role_of
   if: card.work_type != TASK
   not_a_rule: 'a report or a render: lists, decides nothing'
+flows.role_tasks.role_of:end:041ea061:
+  at: flows/role_tasks.py:role_of
+  if: role is not None and role.key == QA.key
+  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.role_tasks.tasks_to_triage:filter:958b9be7:
   at: flows/role_tasks.py:tasks_to_triage
   if: c.work_type == TASK and c.status == NEEDS_REFINEMENT and (c.state != 'CLOSED') and (NEEDS_HUMAN not in c.labels)
@@ -1472,6 +1550,18 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.session_end._blocked:end:2deb6b47:
+  at: flows/session_end.py:_blocked
+  if: kind == 'test'
+  rule: decision.qa_tasks.disputed
+flows.session_end._disputed:end:ce5ed0a9:
+  at: flows/session_end.py:_disputed
+  if: pull is None
+  rule: check.qa_tasks.dispute_names_no_test
+flows.session_end._disputed:end:ff8c5f3d:
+  at: flows/session_end.py:_disputed
+  if: disputed.start
+  rule: decision.qa_tasks.disputed
 flows.session_end._merged_tests:end:7f2ee007:
   at: flows/session_end.py:_merged_tests
   if: not tests
@@ -1480,6 +1570,14 @@ flows.session_end._ruled:end:e3655272:
   at: flows/session_end.py:_ruled
   if: 'ruling is not None and ruling.decision == ''amend'''
   rule: story.contract_ruling
+flows.session_end._settled:end:86565808:
+  at: flows/session_end.py:_settled
+  if: paths
+  rule: check.qa_tasks.no_change_changed
+flows.session_end._settled:end:e89aed1f:
+  at: flows/session_end.py:_settled
+  if: role is None or role.key != role_tasks.QA.key or (not why)
+  rule: decision.qa_tasks.no_test
 flows.session_end.returned_note:end:a74b0b72:
   at: flows/session_end.py:returned_note
   if: kind != 'stop'
@@ -1500,6 +1598,10 @@ flows.session_end.route:end:d5a03eed:
   at: flows/session_end.py:route
   if: 'verdict.disagree'
   rule: decision.delivery.outcome
+flows.session_end.route:end:df67a244:
+  at: flows/session_end.py:route
+  if: settled is not None
+  rule: decision.qa_tasks.no_test
 flows.siblings.unlanded_earlier_siblings:filter:aefa28a7:
   at: flows/siblings.py:unlanded_earlier_siblings
   if: c.repo == story.repo and c.parent == story.parent and (c.work_type == STORY_TYPE) and (every or (c.number or 0) < (story.number or 0)) and (c.state != 'CLOSED') and (c.status != DONE)
@@ -1611,9 +1713,10 @@ flows.standup.find_standup:end:1420ee02:
   at: flows/standup.py:find_standup
   if: marker(sprint) in (issue.get('body') or '')
   not_a_rule: 'does a thing once: skips what''s already done'
-flows.standup.waiting_on_a_person:filter:18d389c9:
+flows.standup.waiting_on_a_person:filter:070ae157:
   at: flows/standup.py:waiting_on_a_person
-  if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (card.status == BLOCKED or card.needs_human)
+  if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (WAITS_LABEL not in card.labels) and (card.status
+    == BLOCKED or card.needs_human)
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.write_standup:filter:8ab5a662:
   at: flows/standup.py:write_standup

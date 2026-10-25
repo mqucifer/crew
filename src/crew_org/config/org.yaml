@@ -115,6 +115,10 @@ delivery:
     # was rewritten to the package (mqucifer/crew-presentation#24) and the
     # Architect's design proposed again against it (mqucifer/crew-presentation#29).
     - crew-presentation
+    # QA's tests, a folder per project, run against each pull request's build
+    # (ADR 0006 in mqucifer/project-print). QA's Tasks are filed and worked here,
+    # each in its project's folder: the crew takes it over with crew#896.
+    - qa-suite
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in

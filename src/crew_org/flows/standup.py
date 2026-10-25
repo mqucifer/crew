@@ -192,14 +192,18 @@ def waiting_on_a_person(cards: list[Card]) -> list[str]:
     Not an epic at the Sponsor's gate. It carries `needs:human` too, and was
     listed here until three standups in a row showed 17 of them "waiting on a
     person" and the retro concluded they were stuck (#122). Waiting for a
-    decision is what the gate is for.
+    decision is what the gate is for. Nor a story waiting on QA's dispute Task, which
+    the pass follows (crew#896).
     """
+    from crew_org.flows.qa_tasks import WAITS_LABEL  # noqa: PLC0415
+
     qualify = many_repos(cards)
     return sorted(
         card.name(qualify=qualify)
         for card in cards
         if card.state != "CLOSED"
         and not _at_the_gate(card)
+        and WAITS_LABEL not in card.labels
         and (card.status == BLOCKED or card.needs_human)
     )
 
