@@ -21,8 +21,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 63 |
-| A setting that changes what the tick does | 208 |
+| The tick decides a card's handling, found by the decision-point audit | 67 |
+| A setting that changes what the tick does | 210 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -38,10 +38,10 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 69 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 137 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 141 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 106 |
+| Unplaced | | 108 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -250,6 +250,10 @@ section; one no line holds for is unplaced, never guessed.
 |---|---|---|---|---|---|---|
 | `decision.acceptance.ci_only`<br>Verify everything sitting in QAing. | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa | — |
 | `decision.acceptance.close_finished_parents`<br>Close an epic when its stories are Done, and a goal when its epics are. | flow | `src/crew_org/flows/acceptance.py:close_finished_parents` | — | — | src/crew_org/flows/acceptance.py:close_finished_parents | crew#174<br>crew#185<br>crew#187<br>sprint-metrics#184 |
+| `decision.alerts.alert_tasks`<br> one | flow | `src/crew_org/flows/alerts.py:_one` | — | — | src/crew_org/flows/alerts.py:_one | crew#893 |
+| `decision.alerts.fired`<br> one | flow | `src/crew_org/flows/alerts.py:_one` | — | — | src/crew_org/flows/alerts.py:_one | crew#893 |
+| `decision.alerts.resolved`<br>Tell an open Task its alert stopped, once per firing. | flow | `src/crew_org/flows/alerts.py:_stopped` | — | — | src/crew_org/flows/alerts.py:_stopped | crew#893 |
+| `decision.alerts.unread`<br>Keep when Grafana was first unread; a day of it is DevOps's finding, once. | flow | `src/crew_org/flows/alerts.py:_unread` | — | — | src/crew_org/flows/alerts.py:_unread | crew#893 |
 | `decision.backlog_order.what_is_ordered`<br>The open epics with no Rank: the trigger, and the new work to describe. | flow | `src/crew_org/flows/backlog_order.py:needs_ordering` | — | — | src/crew_org/flows/backlog_order.py:needs_ordering<br>src/crew_org/flows/backlog_order.py:open_epics<br>src/crew_org/flows/backlog_order.py:order_backlogs | — |
 | `decision.board_flow.already_delivered`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#440<br>crew#858<br>crew#859 |
 | `decision.board_flow.epics_to_split`<br>Epics the Sponsor has released from the gate, awaiting story splitting. | flow | `src/crew_org/flows/board_flow.py:epics_to_split` | — | — | src/crew_org/flows/board_flow.py:epics_to_split | — |
@@ -361,6 +365,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.acceptance.QA_DOCS_CHAR_CEILING`<br>Generous, not a budget (§16): docs a story edits are read whole or named. | evidence | `src/crew_org/flows/acceptance.py:QA_DOCS_CHAR_CEILING` | — | — | src/crew_org/flows/acceptance.py:QA_DOCS_CHAR_CEILING | — |
 | `config.const.acceptance.QA_FOCUS_ABOVE_CHARS`<br>Above this, QA is shown the tests the work touches or names in full, and the rest by name (#231). sprint-metrics' suite passed 200,000 characters, and a QA call reached 78,528 prompt tokens for a doc… | evidence | `src/crew_org/flows/acceptance.py:QA_FOCUS_ABOVE_CHARS` | — | — | src/crew_org/flows/acceptance.py:QA_FOCUS_ABOVE_CHARS | crew#231<br>crew#312 |
 | `config.const.acceptance.QA_OUTPUT_CHAR_CEILING`<br>The end of a test run is where the summary and the failures are. | evidence | `src/crew_org/flows/acceptance.py:QA_OUTPUT_CHAR_CEILING` | — | — | src/crew_org/flows/acceptance.py:QA_OUTPUT_CHAR_CEILING | — |
+| `config.const.alerts.ALERT_POINTS`<br>ALERT_POINTS = 3 | — | `src/crew_org/flows/alerts.py:ALERT_POINTS` | — | — | src/crew_org/flows/alerts.py:ALERT_POINTS | crew#893 |
+| `config.const.alerts.TIMEOUT_S`<br>TIMEOUT_S = 20.0 | — | `src/crew_org/flows/alerts.py:TIMEOUT_S` | — | — | src/crew_org/flows/alerts.py:TIMEOUT_S | crew#893 |
 | `config.const.attempts.EXAMPLE_CODE_LINES`<br>Of one test's output, as the example of its cause: its last lines of code, and the first lines of what it raised. | — | `src/crew_org/flows/attempts.py:EXAMPLE_CODE_LINES` | — | — | src/crew_org/flows/attempts.py:EXAMPLE_CODE_LINES | — |
 | `config.const.attempts.EXAMPLE_ERROR_LINES`<br>EXAMPLE_ERROR_LINES = 12 | — | `src/crew_org/flows/attempts.py:EXAMPLE_ERROR_LINES` | — | — | src/crew_org/flows/attempts.py:EXAMPLE_ERROR_LINES | — |
 | `config.const.attempts.OTHER_OUTPUT_CHARS`<br>A command that isn't a test run (lint, a build) is shown up to this, head and tail. | — | `src/crew_org/flows/attempts.py:OTHER_OUTPUT_CHARS` | — | — | src/crew_org/flows/attempts.py:OTHER_OUTPUT_CHARS | — |

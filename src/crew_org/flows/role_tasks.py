@@ -132,6 +132,8 @@ RELEASE = "release"
 DEPLOY = "deploy"
 # The UX Designer's review of a release once its site is live (crew#830).
 REVIEW = "review"
+# A crew alert firing in Grafana, DevOps's in infra (crew#893).
+ALERT = "alert"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 

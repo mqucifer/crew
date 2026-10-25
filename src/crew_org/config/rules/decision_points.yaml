@@ -1918,3 +1918,39 @@ flows.removed_tests.refuse_once:filter:5fd5ee1c:
   at: flows/removed_tests.py:refuse_once
   if: found
   rule: check.removed_tests.undeclared
+flows.alerts.alert_tasks:filter:918fefba:
+  at: flows/alerts.py:alert_tasks
+  if: (m := rt.marked(t.get('body'))) is not None and m.kind == rt.ALERT
+  not_a_rule: reads infra's DevOps Tasks down to the alert ones; decides nothing
+flows.alerts._one:result:fired:1abf9e50:
+  at: flows/alerts.py:_one
+  if: still is not None and still[1].key != alert.key
+  rule: decision.alerts.fired
+flows.alerts._one:end:fad618ba:
+  at: flows/alerts.py:_one
+  if: _said(issues, number, mark)
+  rule: decision.alerts.fired
+flows.alerts._one:end:b54b7e17:
+  at: flows/alerts.py:_one
+  if: still is None and any((m.key == alert.key for _, m in mine))
+  rule: decision.alerts.alert_tasks
+flows.alerts._one:result:opened:c1a81f37:
+  at: flows/alerts.py:_one
+  if: opened.new
+  rule: decision.alerts.alert_tasks
+flows.alerts._unread:end:1848b377:
+  at: flows/alerts.py:_unread
+  if: events_dir is None
+  rule: decision.alerts.unread
+flows.alerts._unread:end:7e8918cb:
+  at: flows/alerts.py:_unread
+  if: now - since < UNREAD_FOR
+  rule: decision.alerts.unread
+flows.alerts._stopped:result:resolved:7a905a4a:
+  at: flows/alerts.py:_stopped
+  if: not _said(issues, number, mark)
+  rule: decision.alerts.resolved
+flows.alerts.task_body:filter:21f1398f:
+  at: flows/alerts.py:task_body
+  if: not k.startswith('__')
+  not_a_rule: 'a render: leaves Grafana''s routing labels out of the Task''s text'
