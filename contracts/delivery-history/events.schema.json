@@ -1341,6 +1341,7 @@
                 "replace_text",
                 "replace_definition",
                 "write_file",
+                "delete_file",
                 "run",
                 "git",
                 "done",

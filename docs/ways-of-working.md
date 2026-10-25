@@ -523,7 +523,7 @@ read by its part's profile:
 
 | | Python | Any other language (the generic profile) |
 |---|---|---|
-| Editing | The session's edit tools, `replace_definition` by name among them | The session's edit tools: `replace_text` and `write_file` |
+| Editing | The session's edit tools, `replace_definition` by name among them | The session's edit tools: `replace_text`, `write_file` and `delete_file` |
 | Finding code | `find` and `tests_for` (ADR 0032, P6), as well as `search` and `view` | `search` and `view` |
 | A criterion's test | Named in `done` as `path::name`; the gates check it's there | Named in `done` by its title; the gates check it's there |
 | The regression guard | Sends back a change that removes or breaks a definition | None, and the Code Reviewer and QA are told which changed files had none |

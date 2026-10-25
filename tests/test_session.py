@@ -932,3 +932,66 @@ def test_a_tasks_session_has_image_digest_too():
     for role in (role_tasks.DEVOPS, role_tasks.ARCHITECT):
         names = [s["function"]["name"] for s in role_tasks.done_specs(role)]
         assert "image_digest" in names
+
+
+# --- deleting a file (crew#839) ---------------------------------------------------------------
+
+
+def test_delete_file_removes_the_file_and_counts_as_an_edit(root):
+    """mqucifer/sprint-metrics#769 emptied four doc pages its own test said were gone."""
+    from crew_org.session.tools import EDITS, edited, target_of
+
+    t = tools(root)
+    reply = t.call("delete_file", {"path": "tests/test_app.py"})
+    assert (reply.kind, reply.summary) == ("ok", "deleted tests/test_app.py")
+    assert not (root / "tests" / "test_app.py").exists()
+    assert "delete_file" in EDITS and edited("delete_file", reply) == ["tests/test_app.py"]
+    assert t.edited == ["tests/test_app.py"] and t.edits_since_run == 1
+    assert target_of({"path": "tests/test_app.py"}) == "tests/test_app.py"
+
+
+def test_a_folder_a_deletion_empties_goes_too_as_git_rm_does(root):
+    (root / "docs" / "guide" / "deep").mkdir(parents=True)
+    (root / "docs" / "index.md").write_text("# Docs\n")
+    (root / "docs" / "guide" / "deep" / "scrape.md").write_text("# Scrape\n")
+    reply = tools(root).call("delete_file", {"path": "docs/guide/deep/scrape.md"})
+    assert not (root / "docs" / "guide").exists(), "each folder left empty, up the tree"
+    assert (root / "docs" / "index.md").exists(), "a folder still holding a file stays"
+    assert "`docs/guide` was left empty" in reply.text
+
+
+def test_a_deletion_at_the_root_never_removes_the_worktree(root):
+    (root / "README.md").write_text("x\n")
+    for path in ("README.md", "src/app.py", "tests/test_app.py"):
+        tools(root).call("delete_file", {"path": path})
+    assert root.is_dir()
+
+
+def test_delete_file_refuses_what_write_file_refuses_and_what_isnt_a_file(root, outside):
+    (root / "src" / "out").symlink_to(outside, target_is_directory=True)
+    (root / "src" / "alias.py").symlink_to(root / "src" / "app.py")
+    t = tools(root)
+    for path, rule in [
+        ("../secrets", "session.path"),
+        ("/etc/passwd", "session.path"),
+        (".git/config", "session.path"),
+        ("src/out/secret.py", "session.path"),
+        ("src/alias.py", "session.path"),
+        ("src", "session.delete_file"),
+        ("src/nope.py", "session.delete_file"),
+    ]:
+        reply = t.call("delete_file", {"path": path})
+        assert (reply.kind, reply.rule) == ("refused", rule), path
+    assert t.call("delete_file", {"path": "src/nope.py"}).empty, "a lookup for what isn't there"
+    assert "is a folder" in t.call("delete_file", {"path": "src"}).text
+    assert (outside / "secret.py").exists() and (root / "src" / "app.py").read_text() == APP
+    assert t.edited == []
+
+
+def test_the_developer_is_told_delete_file_is_for_a_file_that_goes(root):
+    from crew_org.session.start import start
+    from crew_org.session.tools import SPECS
+
+    spec = next(s["function"] for s in SPECS if s["function"]["name"] == "delete_file")
+    assert "rather than emptying it" in spec["description"]
+    assert "`delete_file` removes a file" in start(root, "A story.", None)[0]
