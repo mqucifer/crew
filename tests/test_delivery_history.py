@@ -767,7 +767,7 @@ def test_a_declared_rules_message_is_one_the_crew_may_publish():
     assert published_reason(shown) == (
         "`'../etc/passwd'` isn't a path in the repository: give it relative to its root"
     )
-    assert published_reason(says("form.QAVerdict.a_verdict_or_an_ask")) is not None
+    assert published_reason(says("form.QAVerdict.a_verdict")) is not None
 
 
 def test_a_retired_rules_message_stays_publishable_for_the_past():

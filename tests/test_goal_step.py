@@ -750,14 +750,13 @@ def test_the_developer_reviewer_and_qa_are_told_what_the_diagram_is_for(monkeypa
     assert "### The Goal's target diagram\n\n```mermaid\nC4Context" in story_section(
         "Story", "", "", 'C4Context\nPerson(a, "A")'
     )
-    for call in (
-        lambda: review_crew.review_diff("t", "diff", diagram="C4Context"),
-        lambda: qa_crew.verify_story("s", test_output="", test_code="", diagram="C4Context"),
-    ):
-        seen = asked.capture(monkeypatch)
-        with pytest.raises(asked.Stop):
-            call()
-        assert "## The Goal's target diagram\n\n```mermaid\nC4Context" in seen["description"]
+    seen = asked.capture(monkeypatch)
+    with pytest.raises(asked.Stop):
+        review_crew.review_diff("t", "diff", diagram="C4Context")
+    assert "## The Goal's target diagram\n\n```mermaid\nC4Context" in seen["description"]
+    # QA's session starts with it (crew#895).
+    shown = qa_crew.opening("s", diagram="C4Context")["diagram"]
+    assert "## The Goal's target diagram\n\n```mermaid\nC4Context" in shown
 
 
 def test_the_product_owner_answers_a_story_problem_shown_the_goals_rows(monkeypatch):

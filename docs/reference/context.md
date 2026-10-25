@@ -179,15 +179,16 @@ Each turn is one call of the conversation (`calls.converse`, ADR 0025). A tool's
 
 ## QA, accepting a story
 
-`qa_crew.verify_story`, called by the acceptance phase.
+`qa_crew.verify_story`, called by the acceptance phase: a session over the story's branch, in its held workspace (crew#895). The start is `qa_crew.opening`, then the project, the map, the hints and the rules (`steps.start`). The tests, the docs and the workflows are read and run through the tools.
 
 | Part | From | Why |
 |---|---|---|
+| What QA said about this card before | `history.past_qa` | A return names a reason already given |
 | The story and the rows it follows | its issue, `conclusion.story_rows` | Each criterion is proven or not |
 | The Goal's target diagram | `conclusion.story_diagram` | The parts a criterion is proven through (crew#858) |
-| The tests that were written | the pull request | Which test proves which criterion |
-| What running the suite produced | the sandbox | Proof, not a claim |
-| The docs the change edits | the pull request | A doc criterion is judged by reading the doc |
+| What the Developer answered | `acceptance._already_done`, `acceptance._existing_proof` | The tests it says prove a criterion, to run |
+| The CI checks on the commit | `acceptance.ci_checks` | What only CI runs is proven by a check that runs it |
+| What the branch changed | `acceptance.changed_paths`, `acceptance.unguarded` | Where to start reading |
 
 ## Scrum Master, the retro
 

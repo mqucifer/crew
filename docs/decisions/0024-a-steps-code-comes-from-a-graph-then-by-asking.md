@@ -53,8 +53,9 @@ Sponsor, 2026-10-10 (D4 of the plan).
     importers, from the graph), `tests_for` (the coverage map) and `search`, and reads
     windows of files with `view`. `find` and `tests_for` are Python only to start.
   - Refinement's steps work the same way (crew#807, ADR 0033), with the read tools
-    only. The read tool, `need_files` and the reading ceilings stay for QA and bug
-    triage. The Developer and refinement have none of them.
+    only. QA does too, with `run` (crew#895). The read tool, `need_files` and the
+    reading ceilings stay for bug triage. The Developer, refinement and QA have none of
+    them.
 
 **The standards.** Test impact analysis (Rothermel and Harrold's regression test
 selection; pytest-testmon and Ekstazi in practice); a dependency graph from static
@@ -103,3 +104,4 @@ analysis; tool use, also called function calling; two-stage retrieval.
   Developer's `read_file`, `need_files` and reading ceilings are deleted; the split and
   QA keep theirs (crew#778, Stage E; the Sponsor's no-fallback decision).
 - **2026-10-18:** refinement works in a session (crew#807, ADR 0033). Its steps start with the graph's hints and look up the rest; the split's pinning tests and `need_files` are gone. The read tool stays for QA and bug triage.
+- **2026-10-25:** QA verifies in a session (crew#895, ADR 0032's P4): its read tool, `need_files` and the tests it was shown go. The read tool stays for bug triage.

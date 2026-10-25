@@ -1,13 +1,61 @@
 # Tests prove the criteria. Declared once each (crew#756, ADR 0031): change a rule here.
-check.acceptance.held_to_what_it_read:
-  description: A criterion proven by a test you weren't shown, or one no test file defines, is held unproven.
+check.acceptance.proven_by_a_check_that_runs_it:
+  description: A criterion proven by a CI check names one on this commit that passed, and quotes the step
+    of its workflow that runs it.
   messages:
-    default: cites `{name}`, which {why}
+    no_check: 'criterion {n}: `{check}` isn''t a check on this commit. Its checks are {checks}.'
+    no_step: 'criterion {n}: quote the step of `{check}`''s workflow, under `.github/workflows/`, that
+      runs it. A check proves only what its steps execute.'
+    outcome: 'criterion {n}: `{check}` is {outcome} on this commit, which proves nothing yet.'
   origin:
-  - crew#221
-  - crew#768
+  - crew#325
+  - crew#814
+  - crew#895
   owner: QA Engineer
-  told_in: CriterionVerdict.evidence
+  told_in: CriterionVerdict.check
+check.acceptance.quoted_as_it_reads:
+  description: Each quote is in its file at the branch's commit, or in a line `git diff base` removed.
+  messages:
+    no_file: 'criterion {n}: there''s no file `{path}` on the branch, and the quote isn''t in what
+      `git diff base` removed.'
+    not_found: 'criterion {n}: the quote isn''t in `{path}` at the branch''s commit, nor in what `git
+      diff base` removed. Copy the words from `view`.'
+  origin:
+  - crew#895
+  owner: QA Engineer
+  told_in: Quote.text
+check.acceptance.ran_as_cited:
+  description: Each cited run is one this session ran, with its exit code; a criterion proven by a run
+    rests on runs that exited 0 and passed a test.
+  messages:
+    code: 'criterion {n}: `{command}` exited {code}, not {said}.'
+    failed: 'criterion {n}: `{command}` exited {code}. A run that failed proves nothing.'
+    none_passed: 'criterion {n}: `{command}` passed no test: its tests were skipped or not collected, and
+      prove nothing.'
+    not_run: 'criterion {n}: `{command}` isn''t a command this session ran. Run it with `run`, then cite
+      it as its reply showed it after `$`.'
+  origin:
+  - crew#817
+  - crew#895
+  owner: QA Engineer
+  told_in: CriterionVerdict.ran
+check.acceptance.read_proves_the_artifact:
+  description: A criterion proven by reading quotes the file it's about (a doc, the changelog, the version,
+    a schema, or a path it names), never source or tests in place of running them.
+  messages:
+    default: 'criterion {n}: `{path}` is code or a test. A criterion about what the code does is proven
+      by `run` or `check`, not by quoting it.'
+  origin:
+  - crew#895
+  owner: QA Engineer
+  told_in: CriterionVerdict.by
+check.qa_crew.check_cited:
+  exempt: says the findings of check.acceptance.ran_as_cited, quoted_as_it_reads, read_proves_the_artifact
+    and proven_by_a_check_that_runs_it, which are told in CriterionVerdict and Quote; refuses nothing of
+    its own
+  origin:
+  - crew#895
+  owner: QA Engineer
 check.criteria_check.check_each:
   exempt: runs QA's criteria check one story per session and returns its conflicts; refuses nothing.
     Its text is a re-check's start, told to QA, and the conflicts reach the Business Analyst by check.criteria_check.feedback
@@ -135,16 +183,6 @@ check.ux_review.seen_on_the_published_site:
   - crew#830
   owner: UX Designer
   told_in: Correction.page
-config.const.acceptance.QA_ASK_LIMIT:
-config.const.acceptance.QA_CONTEXT_CHAR_CEILING:
-  origin:
-  - crew#13
-config.const.acceptance.QA_DOCS_CHAR_CEILING:
-config.const.acceptance.QA_FOCUS_ABOVE_CHARS:
-  origin:
-  - crew#231
-  - crew#312
-config.const.acceptance.QA_OUTPUT_CHAR_CEILING:
 config.const.ci.LOG_TAIL_CHARS:
 config.const.ci.MAX_JOBS:
 config.const.ci.SERVICE_LOG_LINES:
@@ -163,6 +201,17 @@ form.AcceptanceCriterion.names_what_to_check:
   - crew#281
   owner: Business Analyst
   told_in: AcceptanceCriterion.then
+form.CriterionVerdict.cites_what_it_rests_on:
+  description: A proven criterion cites what it rests on, by its kind.
+  messages:
+    check: a criterion proven by a check names the check and quotes the step of its workflow that runs
+      it
+    read: a criterion proven by reading quotes the file it's about
+    run: a criterion proven by a run cites the run, as `run`'s reply showed it
+  origin:
+  - crew#895
+  owner: QA Engineer
+  told_in: CriterionVerdict.by
 form.CriterionVerdict.is_specific:
   description: Refused if too short to name a test or say what is missing.
   messages:
@@ -170,8 +219,8 @@ form.CriterionVerdict.is_specific:
       not evidence.
   owner: QA Engineer
   told_in: CriterionVerdict.evidence
-form.QAVerdict.a_verdict_or_an_ask:
-  description: Refused if empty, unless the answer only asks for files.
+form.QAVerdict.a_verdict:
+  description: Refused if empty.
   messages:
     default: a story is accepted against its criteria; list them
   owner: QA Engineer
@@ -273,6 +322,9 @@ told.criteria_crew.every_criterion_of_the_story_under:
 told.criteria_crew.report_every_criterion_of_the_story:
   guidance: true
   owner: QA Engineer
+told.form.Quote.text:
+  guidance: true
+  owner: QA Engineer
 told.form.CriteriaCheck.conflicts:
   guidance: true
   owner: QA Engineer
@@ -288,16 +340,7 @@ told.qa_crew.a_check_proves_only_what_its:
 told.qa_crew.a_criterion_is_proven_only_by:
   guidance: true
   owner: QA Engineer
-told.qa_crew.a_criterion_only_ci_can_run:
-  guidance: true
-  owner: QA Engineer
-told.qa_crew.dont_cite_a_test_you_havent:
-  guidance: true
-  owner: QA Engineer
-told.qa_crew.some_test_files_are_shown_in:
-  guidance: true
-  owner: QA Engineer
-told.qa_crew.test_files_listed_by_name_only:
+told.qa_crew.the_crews_guard_reads_python_only:
   guidance: true
   owner: QA Engineer
 told.qa_engineer.criteria_check.two_criteria_that_expect_different_outcomes:

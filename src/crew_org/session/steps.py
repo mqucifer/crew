@@ -13,6 +13,11 @@ notes, is passed in as it's written. This module says what every step is told an
 runs it (`run`); each step's own parts are beside its form, in its crew module. The
 loop and its records are the Developer's (`conversation`), and the tools are its
 read tools (`reading`).
+
+QA's acceptance is a step too (crew#895), and the one that runs: it reads the story's
+branch, not the default branch, and is given the story's held workspace, where `run`
+runs the tests with the project's services (`run`'s `workspace`). Every other step is
+unchanged by it.
 """
 
 from __future__ import annotations
@@ -58,13 +63,16 @@ DELIVERED_NOTE = f"{NOTES}delivered.md"
 READS = ("view", "search", "find", "tests_for")
 
 
-def reading_specs(head: str) -> list[dict[str, Any]]:
+def reading_specs(head: str, *, branch: bool = False) -> list[dict[str, Any]]:
     """The read tools, as a step is given them, over the default branch at `head`.
 
     `git` is the Developer's tool (mqucifer/crew#808), told without what a reading
-    step doesn't have: its branch, `base` and `restore`.
+    step doesn't have: its branch, `base` and `restore`. A step over a story's `branch`
+    has the branch and its `base`, and `run` (crew#895).
     """
     specs = [copy.deepcopy(s) for s in SPECS if s["function"]["name"] in READS]
+    if branch:
+        specs += [copy.deepcopy(s) for s in SPECS if s["function"]["name"] == "run"]
     for spec in specs:
         if spec["function"]["name"] == "search":
             spec["function"]["description"] += " The notes this start names are searched too."
@@ -72,9 +80,16 @@ def reading_specs(head: str) -> list[dict[str, Any]]:
         _spec(
             "git",
             "Run one git command line, as you'd type it, with no shell: `status`, `diff`, "
-            "`log`, `show`, `blame` and `grep`, which read. The checkout is the default "
-            f"branch at `{head[:12]}`; another branch is `origin/<name>`. `git log --oneline -- "
-            "<path>` shows what changed a "
+            "`log`, `show`, `blame` and `grep`, which read. "
+            + (
+                f"The checkout is the story's branch at `{head[:12]}`; the commit it started "
+                "from is the ref `base`, so `git diff base` is the whole change and `git show "
+                "base:<path>` a file as it was. "
+                if branch
+                else f"The checkout is the default branch at `{head[:12]}`; another branch is "
+                "`origin/<name>`. "
+            )
+            + "`git log --oneline -- <path>` shows what changed a "
             "file, and `git log -S<text>` when a line came or went. Nothing else runs, nor "
             "an option that writes a file, reads outside the repository or runs a program. "
             f"Output past {OUTPUT_CHARS} characters is cut.",
@@ -85,18 +100,21 @@ def reading_specs(head: str) -> list[dict[str, Any]]:
     return specs
 
 
-def cite(head: str) -> str:
+def cite(head: str, *, at: str = "main's commit") -> str:
     """How an answer cites the code (the Sponsor, crew#807): a path and definition first,
-    since line numbers drift as stories land, with the line as at main's commit."""
+    since line numbers drift as stories land, with the line as at main's commit, or the
+    branch's (crew#895)."""
     return (
         "Where your answer states a fact about the code, it says where you saw it: a path "
-        "and definition first, with the line as at main's commit, such as "
+        f"and definition first, with the line as at {at}, such as "
         f"`src/sprint_metrics/thresholds.py` `_flag` (line 117 at {head[:7]}); a test, "
         "`path::name`; or a commit. The next step checks it with `view`."
     )
 
 
-def done_spec(form: type[BaseModel], said: str, *, head: str) -> dict[str, Any]:
+def done_spec(
+    form: type[BaseModel], said: str, *, head: str, at: str = "main's commit"
+) -> dict[str, Any]:
     """`done` as a step's answer form: its fields, each with the rules that check it.
 
     The rules are told where `calls.form_text` tells them in a one-call form (ADR 0031,
@@ -110,7 +128,9 @@ def done_spec(form: type[BaseModel], said: str, *, head: str) -> dict[str, Any]:
         _tell(model, name)
     # The form's own rules, which check it whole, are said with what it is.
     told = rulebook.told(title).get("", [])
-    description = " ".join([f"Your answer, which ends the session: {said}", *told, cite(head)])
+    description = " ".join(
+        [f"Your answer, which ends the session: {said}", *told, cite(head, at=at)]
+    )
     return {
         "type": "function",
         "function": {"name": "done", "description": description, "parameters": _untitled(schema)},
@@ -164,8 +184,7 @@ RULES = """\
 You work by calling tools, one or more per turn, until you call `done` with your answer. \
 Nothing is shown to you that you didn't ask for, beyond this start.
 
-- **The repository** is {repo} at its default branch, commit `{head}`. You read it; \
-nothing here changes or runs it.
+{repository}
 - **See and find:** `view` shows part of a file with line numbers ({view_lines} lines \
 at most, or one Python definition by name), or a note this start names. `search` finds \
 text across the repository and the notes. `find` and `tests_for` are Python only. `git` \
@@ -180,10 +199,21 @@ model time.
 """
 
 
-def rules(repo: str, head: str) -> str:
+READ_ONLY = """\
+- **The repository** is {repo} at its default branch, commit `{head}`. You read it; \
+nothing here changes or runs it."""
+
+ON_A_BRANCH = """\
+- **The repository** is {repo} at the story's branch, commit `{head}`; the commit it \
+started from is the ref `base`. Nothing here changes it.
+- **Run:** `run` runs the tests you name, the project's whole checks (`suite`), or lint, \
+in the project's container with its services, which has no other network. Its reply is \
+the command as it ran, its exit code and its output."""
+
+
+def rules(repo: str, head: str, *, branch: bool = False) -> str:
     return RULES.format(
-        repo=repo,
-        head=head[:12],
+        repository=(ON_A_BRANCH if branch else READ_ONLY).format(repo=repo, head=head[:12]),
         view_lines=VIEW_LINES,
         calls=READING_CALLS,
         hours=BACKSTOP_S // 3600,
@@ -259,6 +289,7 @@ def start(
     named_in: str,
     coverage: Any = None,
     notes: dict[str, str] | None = None,
+    branch: bool = False,
 ) -> Start:
     """The step's own parts, then the project, the map, the hints and the rules.
 
@@ -273,7 +304,7 @@ def start(
         + project_map(root),
         "hints": "## Likely relevant, as hints (paths only; view what you need)\n\n"
         + ("\n".join(hints(root, about, coverage, named_in=named_in)) or "- (none)"),
-        "rules": rules(repo, head),
+        "rules": rules(repo, head, branch=branch),
     }
     sizes = {k: len(v) for k, v in whole.items()}
     sizes["total"] = sum(sizes.values())
@@ -404,8 +435,13 @@ def run(
     on_end: Callable[[Session, Ending], None] | None = None,
     noted: dict[str, Any] | None = None,
     context: role_tools.Context | None = None,
+    workspace: Any = None,
 ) -> Any:
     """The step's answer, from a session over `reading`, or `StepStopped`.
+
+    `workspace` is a story's held workspace, started and set up, for a step that runs
+    its tests (crew#895): `reading` is then the story's branch, and `run` is offered.
+    The caller holds it and stops it, as delivery does.
 
     `noted` goes on the session's start event, in counts: whether a criteria check was a
     re-check, for one (crew#839).
@@ -430,6 +466,7 @@ def run(
         named_in=step.named_in,
         coverage=reading.coverage,
         notes=notes,
+        branch=workspace is not None,
     )
     who = str(role_spec(step.role, step.step)["role"])
     record(
@@ -454,6 +491,7 @@ def run(
         begun.notes,
         given=step.tools,
         context=context or role_tools.Context(reading.root, reading.repo, reading.github),
+        workspace=workspace,
     )
     session = Session(
         tools,
@@ -466,9 +504,14 @@ def run(
         step=step.step,
         name=step.name,
         specs=[
-            *reading_specs(reading.head),
+            *reading_specs(reading.head, branch=workspace is not None),
             *(role_tools.TOOLS[t].spec for t in step.tools),
-            done_spec(step.form, step.said, head=reading.head),
+            done_spec(
+                step.form,
+                step.said,
+                head=reading.head,
+                **({"at": "the branch's commit"} if workspace is not None else {}),
+            ),
         ],
         endings=("done",),
         watch=Signals(reading_calls=READING_CALLS),

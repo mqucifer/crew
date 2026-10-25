@@ -27,8 +27,8 @@ def test_qa_is_shown_the_criteria_existing_tests_prove(monkeypatch, tmp_path):
         }
     ]
     seen, _, board = qa(monkeypatch, tmp_path, delivered, accepted=True)
-    assert "## Criteria the Developer says the existing tests prove" in seen["story"]
-    assert "`tests/test_report.py::test_x`" in seen["story"]
+    assert "## Criteria the Developer says the existing tests prove" in seen["answered"]
+    assert "`tests/test_report.py::test_x`" in seen["answered"]
     assert board.moves == [("S143", "Merging")], "a story with a PR still merges"
 
 
@@ -38,4 +38,4 @@ def test_a_later_delivery_without_the_proof_shows_qa_none(monkeypatch, tmp_path)
         {"body": "Implemented in #171. Lint and tests pass."},
     ]
     seen, _, _ = qa(monkeypatch, tmp_path, comments, accepted=True)
-    assert "existing tests prove" not in seen["story"]
+    assert "existing tests prove" not in seen["answered"]

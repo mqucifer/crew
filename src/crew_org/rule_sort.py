@@ -52,8 +52,6 @@ SORTED: dict[str, tuple[str, str]] = {
         RETIRED,
         "a long one-shot JSON answer cut at a quote; code goes in tool arguments, short",
     ),
-    # --- asking for files, which the session doesn't ----------------------------------
-    "form.FileAsk.a_bare_path": (RETIRED, "asking for files to be shown; view and search"),
     # --- the edit applier `replace_definition` calls ----------------------------------
     "edit.ast_edit.apply_edit": (FEEDBACK, "no such definition, it exists, it doesn't parse"),
     # --- checks and guards on the Developer's work ------------------------------------

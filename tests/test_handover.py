@@ -272,10 +272,11 @@ def test_sizes_are_reported_never_missing(tmp_path):
     assert any("`app/render.py`" in r and "shown by definition" in r for r in found.reported)
 
 
-def test_a_test_file_past_where_qa_sees_all_of_it_is_named(tmp_path):
+def test_a_large_test_file_is_no_limit_now_qa_reads_in_a_session(tmp_path):
+    """QA reads and runs the tests it needs (crew#895): nothing shows it them in part."""
     big = "def test_x():\n    pass\n" + "# padding\n" * 7_000
     found = check(tmp_path, {"tests/test_render.py": big})
-    assert any("split by concern `tests/test_render.py`" in r for r in found.reported)
+    assert not any("QA" in r or "in part" in r for r in found.reported)
 
 
 # --- the workspace's devcontainer.json (crew#778) -----------------------------------
