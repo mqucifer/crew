@@ -238,6 +238,25 @@ def test_a_task_changes_only_its_roles_area():
     ]
 
 
+def test_devops_in_infra_changes_only_what_runs():
+    """An alert's Task proposes in infra's own areas, not its CI or a project's files
+    (crew#893); a project's DevOps Task is as it was."""
+    from crew_org.flows.role_tasks import done_specs, outside_scope, task_start
+
+    infra = ["grafana/alerts/a.yaml", "inventory/services/x.yaml", "runbooks/x.md"]
+    assert outside_scope(DEVOPS, infra + ["compose/mac/x/compose.yaml"], "infra") == []
+    assert outside_scope(DEVOPS, [".github/workflows/guard.yml", "src/x.py"], "infra") == [
+        ".github/workflows/guard.yml",
+        "src/x.py",
+    ]
+    assert outside_scope(DEVOPS, ["grafana/a.json"], "sprint-metrics") == ["grafana/a.json"]
+    assert outside_scope(DEVOPS, ["pyproject.toml"], "sprint-metrics") == []
+    assert "`runbooks/*`" in task_start(DEVOPS, repo="infra")
+    assert "`runbooks/*`" not in task_start(DEVOPS, repo="sprint-metrics")
+    done = next(s for s in done_specs(DEVOPS, repo="infra") if s["function"]["name"] == "done")
+    assert "`grafana/*`" in done["function"]["description"]
+
+
 def test_the_scope_is_said_where_the_gate_says_it():
     from crew_org.rulebook import says
 

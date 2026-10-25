@@ -46,6 +46,9 @@ class TaskRole:
     scope: tuple[str, ...] = ()
     # The milestone that brings its session, or "" when it has one now.
     waits_for: str = ""
+    # A repository whose files aren't a project's, as (repository, scope): its Tasks
+    # change that scope instead.
+    scope_in: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def label(self) -> str:
@@ -54,6 +57,10 @@ class TaskRole:
     @property
     def has_session(self) -> bool:
         return not self.waits_for
+
+    def scope_for(self, repo: str = "") -> tuple[str, ...]:
+        """The paths its Task in `repo` may change."""
+        return dict(self.scope_in).get(repo, self.scope)
 
 
 ARCHITECT = TaskRole("architect", "Architect", "architect", scope=("docs/architecture.md",))
@@ -98,6 +105,10 @@ DEVOPS = TaskRole(
         ".devcontainer/*",
         ".devcontainer.json",
     ),
+    # infra holds what runs, not a project: an alert's Task there proposes a change to
+    # its dashboards and alert rules, inventory, runbooks or compose files, which the
+    # Sponsor applies (crew#893).
+    scope_in=(("infra", ("grafana/*", "inventory/*", "runbooks/*", "compose/*")),),
 )
 # The UX Designer's Tasks are worked by its release review's session, which changes no
 # file (`flows/ux_review.py`, crew#830). QA's are filed and held: its session comes with
@@ -121,6 +132,8 @@ RELEASE = "release"
 DEPLOY = "deploy"
 # The UX Designer's review of a release once its site is live (crew#830).
 REVIEW = "review"
+# A crew alert firing in Grafana, DevOps's in infra (crew#893).
+ALERT = "alert"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 
@@ -153,12 +166,13 @@ def role_of(card: Card) -> TaskRole | None:
     return next((r for r in ROLES.values() if r.label in card.labels), None)
 
 
-def outside_scope(role: TaskRole, paths: list[str]) -> list[str]:
+def outside_scope(role: TaskRole, paths: list[str], repo: str = "") -> list[str]:
     """The changed paths a role's Task may not change: its role's scope leaves them out."""
-    return [p for p in paths if not any(fnmatch.fnmatch(p, glob) for glob in role.scope)]
+    scope = role.scope_for(repo)
+    return [p for p in paths if not any(fnmatch.fnmatch(p, glob) for glob in scope)]
 
 
-def task_start(role: TaskRole, today: str = "", skills: Any = ()) -> str:
+def task_start(role: TaskRole, today: str = "", skills: Any = (), repo: str = "") -> str:
     """What a role's session is told its work is, before the Task itself, with a line
     naming the skills it can read (`session/skills.py`).
 
@@ -171,18 +185,22 @@ def task_start(role: TaskRole, today: str = "", skills: Any = ()) -> str:
         (f"Today is {today}. " if today else "")
         + f"This is the {role.name}'s own Task (ADR 0034), not a story. You work it as the "
         f"{role.name}, inside your own area. It may change only: "
-        + ", ".join(f"`{g}`" for g in role.scope)
+        + ", ".join(f"`{g}`" for g in role.scope_for(repo))
         + ". A change anywhere else is refused at `done`. What else you find isn't this "
         "Task's: leave it, and say it in `done`'s summary."
     ) + (f"\n\n{offered}" if offered else "")
 
 
-def covers_tests(role: TaskRole) -> bool:
+def covers_tests(role: TaskRole, repo: str = "") -> bool:
     """Whether the role's scope takes in test files, so a test can prove its Task."""
-    return any(fnmatch.fnmatch(p, g) for g in role.scope for p in ("tests/test_x.py", "test_x.py"))
+    return any(
+        fnmatch.fnmatch(p, g)
+        for g in role.scope_for(repo)
+        for p in ("tests/test_x.py", "test_x.py")
+    )
 
 
-def done_specs(role: TaskRole, skills: Any = ()) -> list[dict[str, Any]]:
+def done_specs(role: TaskRole, skills: Any = (), repo: str = "") -> list[dict[str, Any]]:
     """The Developer's tools, with `done` told as a Task's is (crew#839).
 
     The Developer's `done` asks a test for each criterion and says QA follows. A Task
@@ -191,8 +209,8 @@ def done_specs(role: TaskRole, skills: Any = ()) -> list[dict[str, Any]]:
     """
     from crew_org.session.tools import SKILL_SPEC, SPECS, TASK_SPECS  # noqa: PLC0415
 
-    scope = ", ".join(f"`{g}`" for g in role.scope)
-    tests = covers_tests(role)
+    scope = ", ".join(f"`{g}`" for g in role.scope_for(repo))
+    tests = covers_tests(role, repo)
     proof = (
         f"a test that proves it, or the file within {scope} that shows it"
         if tests

@@ -47,6 +47,28 @@ decision.acceptance.close_finished_parents:
   - crew#185
   - crew#187
   - sprint-metrics#184
+decision.alerts.alert_tasks:
+  description: Each of the crew's alerts firing in Grafana (labelled audience crew, read with a read-only
+    token) opens one DevOps Task in infra, keyed by its fingerprint and when it began firing, in Ready.
+    The Sponsor's alerts open none. A firing whose Task was closed while it still fires opens no other.
+  origin:
+  - crew#893
+decision.alerts.fired:
+  description: An alert that fires again while its Task is open is said on that Task once, not opened
+    as a second Task.
+  origin:
+  - crew#893
+decision.alerts.resolved:
+  description: An open alert Task whose alert no longer fires is told so once per firing; it stays open
+    until DevOps's review is done. Nothing is marked resolved in a pass that couldn't read Grafana.
+  origin:
+  - crew#893
+decision.alerts.unread:
+  description: Grafana's alerts that can't be read (no token, unreachable, refused or unreadable) are a
+    held line each pass, and the tick goes on. Unread for 24 hours straight, they become one DevOps
+    finding in infra, keyed by the day it began; reading them again clears the count.
+  origin:
+  - crew#893
 decision.backlog_order.what_is_ordered:
   description: The Product Owner ranks the open epics with no Rank. One it can't place yet is held for
     the work it builds on, and an order it can't give is recorded as failed.

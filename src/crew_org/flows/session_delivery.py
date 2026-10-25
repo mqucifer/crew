@@ -216,7 +216,11 @@ def deliver_by_session(
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)
     story = story_section(
-        f"{role_tasks.task_start(role, _today(), offered)}\n\n{story_text}" if role else story_text,
+        (
+            f"{role_tasks.task_start(role, _today(), offered, repo)}\n\n{story_text}"
+            if role
+            else story_text
+        ),
         note,
         rows,
         diagram,
@@ -486,8 +490,8 @@ def _sessions(
             round=rounds,
             story_parts=measured,
             role=role,
-            specs=role_tasks.done_specs(task, skills or ()) if task else None,
-            scope=task.scope if task else (),
+            specs=role_tasks.done_specs(task, skills or (), repo) if task else None,
+            scope=task.scope_for(repo) if task else (),
             skills=tuple(s.name for s in skills or ()),
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)

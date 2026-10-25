@@ -1,4 +1,10 @@
 # Rules no category holds yet. Declared once each (crew#756, ADR 0031): change a rule here.
+config.const.alerts.ALERT_POINTS:
+  origin:
+  - crew#893
+config.const.alerts.TIMEOUT_S:
+  origin:
+  - crew#893
 config.const.attempts.EXAMPLE_CODE_LINES:
 config.const.attempts.EXAMPLE_ERROR_LINES:
 config.const.attempts.OTHER_OUTPUT_CHARS:
