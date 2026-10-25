@@ -26,3 +26,4 @@ jobs:
     uses: mqucifer/qa-suite/.github/workflows/qa.yml@main
     with:
       project: ${{ github.event.repository.name }}
+      suite-ref: feat/4-readers-tests
