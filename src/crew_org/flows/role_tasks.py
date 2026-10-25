@@ -99,9 +99,10 @@ DEVOPS = TaskRole(
         ".devcontainer.json",
     ),
 )
-# Filed and held: their sessions come with M8's release review (crew#830) and
+# The UX Designer's Tasks are worked by its release review's session, which changes no
+# file (`flows/ux_review.py`, crew#830). QA's are filed and held: its session comes with
 # M10's test repository (mqucifer/project-print#12).
-UX = TaskRole("ux", "UX Designer", "ux_designer", waits_for="M8")
+UX = TaskRole("ux", "UX Designer", "ux_designer")
 QA = TaskRole("qa", "QA Engineer", "qa_engineer", waits_for="M10")
 
 ROLES: dict[str, TaskRole] = {r.key: r for r in (ARCHITECT, DEVOPS, UX, QA)}
@@ -118,6 +119,8 @@ NEED = "need"
 RELEASE = "release"
 # A verified release's deploy on the Mac, which the tick runs with no model (crew#829).
 DEPLOY = "deploy"
+# The UX Designer's review of a release once its site is live (crew#830).
+REVIEW = "review"
 FINDING = "finding"
 SPONSOR_APPROVES = frozenset({DIAGRAM, FIRST_DIAGRAM, RELEASE})
 
@@ -584,25 +587,30 @@ def file_findings(
     by: str,
     round_key: str,
     cards: list[Card],
+    cap: int = 1,
+    found_while: str = "",
 ) -> list[int]:
     """File a role's findings outside its story: a Task for the role it names, or a bug.
 
-    At most one per owner for each story and round (a pull request's head), and each
+    At most `cap` per owner for each story and round (a pull request's head), and each
     filing recorded, so a finding said again in other words in a later round shows in
-    the events rather than as a flood of issues (the operator, crew#839). Filed or
+    the events rather than as a flood of issues (the operator, crew#839). A release
+    review's corrections are its whole work, so it files more (crew#830). Filed or
     not, the story under review goes on: a failure is recorded, never raised.
+
+    `found_while` says where the role found them, when that isn't judging a story.
     """
     filed: list[int] = []
-    seen: set[str] = set()
+    seen: dict[str, int] = {}
     number = story.number or 0
     for finding in found:
-        if finding.owner in seen:
+        if seen.get(finding.owner, 0) >= cap:
             sink.emit(
                 CrewEvent(
                     kind=EventKind.FINDING_FILED,
                     role=by,
                     card=number,
-                    summary=f"{finding.owner} finding not filed: one per round"[:100],
+                    summary=f"{finding.owner} finding not filed: {cap} per round"[:100],
                     detail={
                         "repo": repo,
                         "owner": finding.owner,
@@ -612,13 +620,13 @@ def file_findings(
                 )
             )
             continue
-        seen.add(finding.owner)
-        key = f"s{number}-{finding.owner}-{round_key}"
+        seen[finding.owner] = nth = seen.get(finding.owner, 0) + 1
+        key = f"s{number}-{finding.owner}-{round_key}" + (f"-{nth}" if nth > 1 else "")
         title = f"{finding.what.strip().rstrip('.')}"[:120]
         why = (
-            f"The {by} found this while judging #{number}, outside what that story changes.\n\n"
-            f"**Where:** {finding.where}\n\n**Evidence:** {finding.evidence}"
-        )
+            found_while
+            or f"The {by} found this while judging #{number}, outside what that story changes."
+        ) + f"\n\n**Where:** {finding.where}\n\n**Evidence:** {finding.evidence}"
         try:
             if finding.owner == "bug":
                 filed_as = _file_bug(

@@ -352,6 +352,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "edits_applied",
         "test_runs",
         "tools_used",
+        "tools_refused",
         "compactions",
         "troubles",
         "after_run_errors",

@@ -569,6 +569,25 @@ class IssueClient:
         site: dict[str, Any] = response.json()
         return site
 
+    def pages_live_since(self, repo: str) -> str | None:
+        """When the site readers are served now went live: the time of the newest
+        `github-pages` deployment whose last status is a success, or None (crew#830).
+
+        A deployment that failed leaves the one before it served, so it's passed over.
+        """
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/deployments",
+            params={"environment": "github-pages", "per_page": 20},
+        )
+        response.raise_for_status()
+        for deployment in response.json() or []:  # newest first
+            statuses = self._client.get(str(deployment["statuses_url"]), params={"per_page": 1})
+            statuses.raise_for_status()
+            last = next(iter(statuses.json() or []), None)
+            if last is not None and last.get("state") == "success":
+                return str(last["created_at"])
+        return None
+
     def head_sha(self, repo: str, branch: str) -> str:
         """The commit `branch` points at."""
         response = self._client.get(f"{API}/repos/{self.owner}/{repo}/commits/{branch}")
@@ -621,14 +640,22 @@ class IssueClient:
             make_latest="false",
         )
 
-    def upload_release_asset(self, release: dict[str, Any], path: Path) -> dict[str, Any]:
-        """Attach the file at `path` to `release`, under its own name."""
+    def upload_release_asset(
+        self,
+        release: dict[str, Any],
+        path: Path,
+        *,
+        name: str = "",
+        content_type: str = "application/gzip",
+    ) -> dict[str, Any]:
+        """Attach the file at `path` to `release`, under `name` or its own. A screenshot
+        is sent as an image, so a page that embeds it shows it (crew#830)."""
         url = str(release["upload_url"]).split("{", 1)[0]
         response = self._client.post(
             url,
-            params={"name": path.name},
+            params={"name": name or path.name},
             content=path.read_bytes(),
-            headers={"Content-Type": "application/gzip"},
+            headers={"Content-Type": content_type},
         )
         if response.status_code >= 400:
             detail = response.json().get("message", response.text[:120])

@@ -11,11 +11,12 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from crew_org.flows import gates
-from crew_org.tools import reproduction
+from crew_org.tools import regression, reproduction
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult, check
 
@@ -336,3 +337,133 @@ def test_done_checks_the_tests_it_names_exist_and_says_write_one_first(repo):
         " the criterion yet, write one and run it."
     )
     assert gates.missing_named_tests(repo, done()) == []
+
+
+# --- every story adds its own `[Unreleased]` entry (crew#816, ADR 0019) ---------
+
+CHANGELOG = (
+    "# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Changed\n\n### Fixed\n\n"
+    "- An entry another story added\n\n### Removed\n\n"
+    "## [1.3.3] - 2026-10-19\n\n### Fixed\n\n- A released entry\n"
+)
+
+
+@pytest.fixture
+def kept(repo: Path) -> Path:
+    """The same project, keeping a changelog."""
+    git(repo, "checkout", "-q", "main")
+    (repo / "CHANGELOG.md").write_text(CHANGELOG)
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "changelog")
+    git(repo, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    git(repo, "checkout", "-qb", "feat/663-entry")
+    return repo
+
+
+def _entry(repo: Path, line: str, under: str = "### Changed\n\n") -> None:
+    text = (repo / "CHANGELOG.md").read_text()
+    (repo / "CHANGELOG.md").write_text(text.replace(under, f"{under}{line}\n", 1))
+
+
+def _rules(repo: Path, work_type: str = "Story") -> list[str]:
+    return [f.rule for f in gates.no_changelog_entry(repo, card(work_type))]
+
+
+def test_a_story_that_ships_a_change_and_adds_no_entry_goes_back(kept):
+    uncap(kept)
+    (finding,) = gates.no_changelog_entry(kept, card())
+    assert finding.rule == "check.gates.no_changelog_entry"
+    assert f"`{MODULE}`" in finding.says and "## [Unreleased]" in finding.says
+
+
+def test_its_entry_under_unreleased_lets_it_through(kept):
+    uncap(kept)
+    _entry(kept, "- The escalation rate is no longer capped at 100%")
+    assert _rules(kept) == []
+
+
+def test_an_entry_under_a_released_version_isn_t_one(kept):
+    uncap(kept)
+    _entry(kept, "- Slipped in late", under="## [1.3.3] - 2026-10-19\n\n### Fixed\n\n")
+    assert _rules(kept) == ["check.gates.no_changelog_entry"]
+
+
+def test_tests_docs_and_settings_ship_nothing(kept):
+    for path in (TESTS, "docs/metrics.md", "README.md", ".github/workflows/ci.yml", ".gitignore"):
+        (kept / path).parent.mkdir(parents=True, exist_ok=True)
+        (kept / path).write_text("changed\n")
+    assert _rules(kept) == []
+
+
+def test_a_bug_adds_its_entry_and_a_task_doesn_t(kept):
+    uncap(kept)
+    assert _rules(kept, "Bug") == ["check.gates.no_changelog_entry"]
+    task = card("Task").model_copy(update={"labels": frozenset({"role:devops"})})
+    assert gates.no_changelog_entry(kept, task) == []
+
+
+def test_a_project_with_no_changelog_is_not_asked_for_one(repo):
+    uncap(repo)
+    assert _rules(repo) == []
+
+
+def test_a_story_adding_the_unreleased_section_with_its_entry_counts(kept):
+    (kept / "CHANGELOG.md").write_text("# Changelog\n\n## [1.3.3] - 2026-10-19\n")
+    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "none open")
+    git(kept, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    uncap(kept)
+    (kept / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- Uncapped\n\n## [1.3.3] - 2026-10-19\n"
+    )
+    assert _rules(kept) == []
+
+
+def test_the_gate_sends_it_back_and_done_says_so_first(kept):
+    uncap(kept)
+    verdict = at_done(kept, done())
+    assert "check.gates.no_changelog_entry" in [f.rule for f in verdict.findings]
+    (said,) = gates.no_changelog_entry(kept, which="done")
+    assert said.says.startswith("Your branch changes what the project ships")
+
+
+# --- a deletion is a change the gate sees (crew#839) -------------------------------------------
+
+
+def merged_with(repo: Path, *files: str) -> None:
+    """Add `files` to what's merged, under the story's branch."""
+    for name in files:
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(f"# {name}\n")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "more")
+    git(repo, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    git(repo, "checkout", "-q", "-B", "feat/662-uncap")
+
+
+def delete(repo: Path, path: str) -> None:
+    from crew_org.session.tools import Tools
+
+    reply = Tools(repo, None, SimpleNamespace(verify=[])).call("delete_file", {"path": path})
+    assert reply.kind == "ok", reply.text
+
+
+def test_a_file_the_session_deletes_is_in_the_branchs_diff(repo):
+    merged_with(repo, "docs/scrape.md")
+    delete(repo, "docs/scrape.md")
+    merged = regression.merged_base(repo)
+    assert "docs/scrape.md" in reproduction._changed(repo, merged.sha)
+    verdict = at_done(repo, done(criteria=[{"criterion": "docs/scrape.md is removed"}]))
+    rules = [f.rule for f in verdict.findings]
+    assert "check.gates.the_branch_changes_nothing" not in rules
+    assert "guard.bounds.out_of_bounds" not in rules
+
+
+def test_a_protected_path_deleted_goes_back(repo):
+    """The tool holds a deletion to the worktree, as `write_file`; the record's protected
+    paths are the gate's, read from the diff, for both."""
+    merged_with(repo, ".crew/project.yaml")
+    delete(repo, ".crew/project.yaml")
+    verdict = at_done(repo, done())
+    assert "guard.bounds.out_of_bounds" in [f.rule for f in verdict.findings]
+    assert "`.crew/project.yaml` is protected" in verdict.findings[0].says

@@ -1540,6 +1540,36 @@ def ready(
         raise typer.Exit(code=1)
 
 
+@app.command("template")
+def template_changes(
+    repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print what the pull request would carry. Required."
+    ),
+) -> None:
+    """What the tick would propose to a project from mqucifer/project-template (crew#829).
+
+    The tick opens the pull request itself. This prints what it would carry, so it
+    can be checked against the live repository first. Reads GitHub and a local
+    clone; changes nothing.
+    """
+    from crew_org.auth import resolve_credentials
+    from crew_org.config import load_env
+    from crew_org.flows import template
+    from crew_org.git_ops import Workspace
+    from crew_org.tools.github_issues import IssueClient
+
+    if not dry_run:
+        console.print("the tick opens template pull requests; only --dry-run is offered here")
+        raise typer.Exit(code=2)
+    env = load_env()
+    token, identity = resolve_credentials(env)
+    owner = env["GITHUB_OWNER"]
+    issues = IssueClient(token, owner)
+    ws = Workspace(owner, repo, token, _bot_identity(token, identity))
+    console.print(escape(template.preview(issues, ws, repo)), highlight=False)
+
+
 @app.command()
 def design(
     repo: str = typer.Argument(..., help="The project's repository, in GITHUB_OWNER."),

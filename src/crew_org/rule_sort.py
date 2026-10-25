@@ -85,6 +85,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "check.gates.the_branch_changes_nothing": (GATE, "`done` with an empty diff, at `done`"),
     "check.gates.these_tests_skipped": (GATE, "a skipped test CI runs, at `done`"),
     "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
+    "check.gates.no_changelog_entry": (GATE, "a story's `[Unreleased]` entry, at `done`"),
     "check.gates.the_business_analyst_ruled_that": (
         GATE,
         "the contract ruling, at `done`, when declaration and story disagree",
@@ -109,6 +110,7 @@ SORTED: dict[str, tuple[str, str]] = {
     "session.replace_text": (FEEDBACK, "the quoted lines aren't there once, whole"),
     "session.replace_definition": (FEEDBACK, "not an existing Python file"),
     "session.write_file": (FEEDBACK, "an existing file, without `overwrite`"),
+    "session.delete_file": (FEEDBACK, "a folder, or no such file"),
     "session.parse_guard": (FEEDBACK, "an edit that would stop the file parsing isn't applied"),
     "session.run": (FEEDBACK, "no tests named, or no pytest or lint among the checks"),
     "session.tests_for": (FEEDBACK, "no coverage map: Python only"),

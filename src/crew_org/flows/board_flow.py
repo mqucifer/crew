@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from crew_org import log, sendbacks
-from crew_org.columns import BLOCKED, INBOX, READY
+from crew_org.columns import BLOCKED, DONE, INBOX, READY
 from crew_org.columns import NEEDS_REFINEMENT as REFINEMENT
 from crew_org.config import load_org, resplit_stop_of
 from crew_org.crews.criteria_crew import check_criteria
@@ -1247,6 +1247,76 @@ def stamp_goal_work_type(board: ProjectClient, sink: EventSink, cards: list[Card
     ]
 
 
+def parked_goals_released(cards: list[Card]) -> list[Card]:
+    """Goals the Sponsor parked and has released by adding the `goal` label (crew#829).
+
+    A parked Goal is filed without `goal` and with no Work Type, wherever its card
+    sits: sm#659 waited in Inbox with `needs:human`, after the board's automation had
+    put it in Needs Refinement. Releasing it took a label swap and a move. Now the
+    label is the one action, and the tick does the rest.
+    """
+    return [
+        c
+        for c in cards
+        if c.status not in (INBOX, DONE)
+        and c.state != "CLOSED"
+        and not c.work_type
+        and GOAL_LABEL in c.labels
+    ]
+
+
+def release_parked_goals(
+    board: ProjectClient, issues: IssueClient, sink: EventSink, cards: list[Card]
+) -> list[Card]:
+    """Move each released Goal to Inbox (Goals), clear its `needs:human`, and return the
+    board as it now is, so `stamp_goal_work_type` types it and it's decomposed this pass.
+    """
+    moved: set[str] = set()
+    for c in parked_goals_released(cards):
+        try:
+            move_card(
+                board,
+                sink,
+                item_id=c.item_id,
+                to=INBOX,
+                by=None,
+                card=c.number,
+                frm=c.status,
+                summary="a parked Goal released by its `goal` label",
+                rule="decision.board_flow.parked_goals_released",
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Tried again next pass: the label stays, so the Goal stays released.
+            sink.note(
+                EventKind.NOTE,
+                f"parked Goal not moved to {INBOX}: {type(exc).__name__}: {exc}"[:120],
+                card=c.number,
+                repo=c.repo,
+                rule="decision.board_flow.parked_goals_released",
+            )
+            continue
+        moved.add(c.item_id)
+        if NEEDS_HUMAN in c.labels and c.repo and c.number:
+            with contextlib.suppress(Exception):
+                # The decision it asked for is made. A label left behind is stale,
+                # never a reason to hold the Goal.
+                artifacts.label(
+                    issues,
+                    sink,
+                    repo=c.repo,
+                    number=c.number,
+                    by=None,
+                    remove=[NEEDS_HUMAN],
+                    rule="decision.board_flow.parked_goals_released",
+                )
+    return [
+        c.model_copy(update={"status": INBOX, "labels": c.labels - {NEEDS_HUMAN}})
+        if c.item_id in moved
+        else c
+        for c in cards
+    ]
+
+
 def goal_cards(
     cards: list[Card], *, sponsor: str | None = None, crew_login: str | None = None
 ) -> list[Card]:
@@ -2418,6 +2488,9 @@ def tick(
     known.cards = cards
     sink.note(EventKind.NOTE, f"{len(cards)} cards on the board", counts=board.counts(cards))
 
+    # A Goal the Sponsor released by its `goal` label is moved first, so it's typed
+    # and decomposed on this pass (crew#829).
+    cards = release_parked_goals(board, issues, sink, cards)
     cards = stamp_goal_work_type(board, sink, cards)
 
     untyped = [c.number for c in cards if c.status == INBOX and not c.work_type]

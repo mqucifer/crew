@@ -465,7 +465,16 @@ def read_record(root: Path) -> ProjectRecord | None:
 # The crew's own files from mqucifer/project-template, the same in every project
 # (ADR 0030). CI runs what the design names; a story that rewrote it would change
 # how its own work is checked.
-CREW_FILES = (".github/workflows/board.yml", ".github/workflows/checks.yml", ".github/crew/")
+CREW_FILES = (
+    ".github/workflows/board.yml",
+    ".github/workflows/checks.yml",
+    ".github/crew/",
+    # The Sponsor's Goal form: it says how a Goal is parked and released (crew#829).
+    ".github/ISSUE_TEMPLATE/goal-template.md",
+)
+# The template commit the project last took (crew#829): the tick's pull requests
+# write it, and a story that rewrote it would hide the template's next change.
+TEMPLATE_TAKEN = ".crew/template.yaml"
 
 
 def protected(record: ProjectRecord | None) -> list[str]:
@@ -476,7 +485,7 @@ def protected(record: ProjectRecord | None) -> list[str]:
     is judged by.
     """
     listed = record.intent.done.never_touch if record else []
-    return list(dict.fromkeys([*listed, RECORD_PATH, *CREW_FILES]))
+    return list(dict.fromkeys([*listed, RECORD_PATH, TEMPLATE_TAKEN, *CREW_FILES]))
 
 
 def is_protected(path: str, rules: list[str]) -> str | None:

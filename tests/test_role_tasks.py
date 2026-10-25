@@ -47,9 +47,10 @@ def test_a_task_names_its_role_by_label():
     assert role_of(card.model_copy(update={"work_type": "Story"})) is None
 
 
-def test_only_the_architect_and_devops_have_sessions_now():
-    assert ARCHITECT.has_session and DEVOPS.has_session
-    assert (UX.waits_for, QA.waits_for) == ("M8", "M10")
+def test_every_role_but_qa_has_a_session_now():
+    """The UX Designer's came with its release review (crew#830); QA's waits for M10."""
+    assert ARCHITECT.has_session and DEVOPS.has_session and UX.has_session
+    assert QA.waits_for == "M10"
 
 
 def test_the_body_carries_its_marker():
@@ -135,11 +136,11 @@ def test_a_task_for_a_role_with_no_session_is_held_and_says_which_milestone():
     from crew_org.flows.role_tasks import waits_for
     from crew_org.flows.sprint import plan_sprint
 
-    ux, devops = _task(5, R, "ux"), _task(6, R, "devops")
-    plan = plan_sprint([ux, devops], {}, sprint="S1", capacity=10)
+    qa, ux = _task(5, R, "qa"), _task(6, R, "ux")
+    plan = plan_sprint([qa, ux], {}, sprint="S1", capacity=10)
     assert [c.number for c in plan.admitted] == [6]
     assert [c.number for c in plan.no_session] == [5]
-    assert waits_for(ux) == "M8"
+    assert waits_for(qa) == "M10" and waits_for(ux) == ""
 
 
 def test_the_release_task_waits_for_every_story_of_its_epic_whatever_its_number():

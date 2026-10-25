@@ -73,6 +73,8 @@ class ReadTools(Tools):
         if name in self.given:
             try:
                 text = self.given[name].call(self.context, args or {})
+            except role_tools.Refused as exc:
+                return Reply(str(exc), "refused", f"{name}: refused")
             except Exception as exc:  # noqa: BLE001 - a tool's failure is its reply
                 return Reply(
                     f"The tool failed: {type(exc).__name__}: {exc}", "error", f"{name}: failed"

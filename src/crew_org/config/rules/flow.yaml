@@ -63,6 +63,13 @@ decision.board_flow.parked:
   origin:
   - crew#192
   - crew#440
+decision.board_flow.parked_goals_released:
+  description: A Goal the Sponsor parked, filed without the `goal` label and with no Work Type, is released
+    by adding the label. The tick moves it to Inbox (Goals) from wherever it waits, clears its `needs:human`,
+    and types it, so it's decomposed that pass.
+  origin:
+  - crew#829
+  - mqucifer/sprint-metrics#659
 decision.board_flow.points_elsewhere:
   origin:
   - crew#846
@@ -281,6 +288,24 @@ decision.role_tasks.turned_on:
     closed within the last 14 days, and once, by its tests, a closed bug counting as filed.
   origin:
   - crew#839
+decision.ux_review.blocked:
+  description: A UX Designer's review that couldn't be worked (no live release, a published site `look`
+    can't fetch, its session stopped, or GitHub refused) is blocked for a person with why, as a Task is;
+    it isn't split. A site that can't be fetched is found before the session, so no model call is spent.
+  origin:
+  - crew#830
+decision.ux_review.release_review_tasks:
+  description: A release whose site is live (a Pages deployment succeeded after its GitHub Release) opens
+    the UX Designer's review Task, once per repository and version; only for a project GitHub has a Pages
+    site for and whose record names a reader.
+  origin:
+  - crew#830
+decision.ux_review.reviewed:
+  description: A UX Designer's Task is worked by its review session, not the Developer's path. Its
+    corrections are filed as bugs or Tasks, up to ten per owner, each with its page, width, standard and
+    screenshot; then it's closed and Done, with no pull request. It never blocks a merge.
+  origin:
+  - crew#830
 decision.sprint.capacity:
 decision.sprint.plan_sprint:
 decision.sprint.start_sprint:
@@ -326,7 +351,7 @@ gate.qa_unproven:
 gate.review_changes_requested:
 hold.no_session:
   description: A role's Task is filed and waits while its role has no session to work it, and says which
-    milestone brings one (the UX Designer's in M8, QA's in M10).
+    milestone brings one (QA's in M10; the UX Designer's came in M8, crew#830).
   origin:
   - crew#839
 hold.waits_for_earlier_work:

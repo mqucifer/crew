@@ -293,6 +293,14 @@ SPECS = [
         ["path", "content"],
     ),
     _spec(
+        "delete_file",
+        "Delete a file: when a criterion says a file is removed or gone, delete it rather "
+        "than emptying it. Applied at once, and committed as any edit is; a folder it leaves "
+        "empty goes too. `git restore --source=base -- <path>` puts it back.",
+        {"path": S},
+        ["path"],
+    ),
+    _spec(
         "run",
         "Run, in the project's container: `tests` (the test ids or files you name), `suite` "
         "(the project's whole checks), or `lint` (the checks' own lint). Feedback, not a "
@@ -329,14 +337,16 @@ SPECS = [
     _spec(
         "done",
         "Finish: the story is done. First `done` checks that each test you name for a "
-        "criterion exists, and that each merged test your branch changed or removed is in "
-        "`changed_tests`, with why; if not, the reply says which, and you fix that, then "
-        "call `done` again. Then the crew checks your branch, and returns it if any "
-        "of these fails: each acceptance criterion has a test that proves it and passes (a "
-        "criterion about what a user doc says is proven by that doc); the docs that describe "
-        "what you changed are updated on the same branch; each merged test you changed or "
-        "removed is named here, with why; and the project's whole checks pass. Then review "
-        "and QA follow.",
+        "criterion exists, that each merged test your branch changed or removed is in "
+        "`changed_tests`, with why, and that a branch changing what the project ships adds "
+        "its `CHANGELOG.md` line under `## [Unreleased]`; if not, the reply says which, and "
+        "you fix that, then call `done` again. Then the crew checks your branch, and returns "
+        "it if any of these fails: each acceptance criterion has a test that proves it and "
+        "passes (a criterion about what a user doc says is proven by that doc); the docs that "
+        "describe what you changed are updated on the same branch; each merged test you "
+        "changed or removed is named here, with why; a change to anything but tests, docs and "
+        "the repository's settings has its `[Unreleased]` entry, where the project keeps a "
+        "changelog; and the project's whole checks pass. Then review and QA follow.",
         {
             "criteria": {
                 "type": "array",
@@ -401,7 +411,7 @@ _ALL_ACCEPTED = {
 }
 # The tools that end the session, which the loop answers, not `Tools`.
 ENDINGS = ("done", "blocked")
-EDITS = ("replace_text", "replace_definition", "write_file")
+EDITS = ("replace_text", "replace_definition", "write_file", "delete_file")
 
 
 def edited(name: str, reply: Reply) -> list[str]:
@@ -929,6 +939,26 @@ class Tools:
         before = self._text(target, path) if target.exists() else None
         return self._write(rel, target, "Wrote", before, content)
 
+    def delete_file(self, path: str) -> Reply:
+        """Delete a file, and each folder that leaves empty, as `git rm` does: git keeps
+        no folders, so one left behind would show to `find` and the container alone."""
+        target, rel = self._path(path, write=True)
+        if target.is_dir():
+            refuse("session.delete_file", "folder", path=rel)
+        if not target.is_file():
+            refuse("session.delete_file", "no_file", kind=Missing, path=rel)
+        self._remove(target, rel)
+        self.edited.append(rel)
+        self.edits_since_run += 1
+        gone: list[str] = []
+        folder = target.parent
+        while folder != self.root and not any(folder.iterdir()):
+            folder.rmdir()
+            gone.append(folder.relative_to(self.root).as_posix())
+            folder = folder.parent
+        emptied = f" Its folder `{gone[-1]}` was left empty, so it's gone too." if gone else ""
+        return Reply(f"Deleted `{rel}`.{emptied}", "ok", f"deleted {rel}", {"path": rel})
+
     # --- check --------------------------------------------------------------------------
     def run(self, what: str, tests: list[str] | None = None) -> Reply:
         began = time.monotonic()
@@ -1225,6 +1255,8 @@ class Tools:
                 return self.replace_definition(args["path"], args["name"], args["source"])
             if name == "write_file":
                 return self.write_file(args["path"], args["content"], bool(args.get("overwrite")))
+            if name == "delete_file":
+                return self.delete_file(args["path"])
             if name == "run":
                 return self.run(args["what"], args.get("tests"))
             if name == "git":

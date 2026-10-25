@@ -18,6 +18,8 @@ used to run on an answer before it was applied:
 - **no test CI runs skipped** (crew#860): one the branch adds or changes that skipped
   for a reason the project doesn't declare CI-only goes back. One already merged isn't
   the Developer's: it's DevOps's, once the project has a workspace file.
+- **the changelog entry** (crew#816): a story or a bug that changes what the project
+  ships adds a line under `## [Unreleased]`, since a release ships what it holds.
 
 Every gate runs, and every finding goes back together, since a new session starts
 from all of them (P2). A test per criterion and the docs aren't mechanical yet: review
@@ -31,6 +33,8 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import re
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,7 +49,7 @@ from crew_org.tools import bounds, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, check, shown_test
-from crew_org.work_types import BUG
+from crew_org.work_types import BUG, STORY
 
 
 @dataclass(frozen=True)
@@ -213,6 +217,7 @@ def at_done(
         )
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
+    verdict.findings += no_changelog_entry(worktree, card)
     verdict.check = run_checks(worktree)
     if merged is not None and role_tasks.changes_workspace(role, worktree, paths):
         _turned_on(worktree, merged, paths, verdict)
@@ -442,6 +447,79 @@ def undeclared_changed_tests(worktree: Path, said: dict[str, Any]) -> list[Findi
                 tests=", ".join(f"`{key}` ({how})" for key, how in undeclared.items()),
             ),
             count=len(undeclared),
+        )
+    ]
+
+
+# What a release ships, said by what it doesn't (crew#816): the tests, the docs and the
+# repository's own settings change nothing a user runs. The changelog is the entry.
+CHANGELOG = "CHANGELOG.md"
+NOT_SHIPPED_DIRS = ("docs/", ".github/", ".crew/", ".devcontainer/")
+NOT_SHIPPED_SUFFIXES = (".md", ".rst")
+NOT_SHIPPED_FILES = frozenset({".gitignore", ".gitattributes", ".dockerignore"})
+_HEADING = re.compile(r"^##\s+(.*)$")
+
+
+def ships(path: str) -> bool:
+    """Whether a changed path changes what the project ships: anything but its tests, its
+    docs, its repository settings and the changelog itself."""
+    return not (
+        path == CHANGELOG
+        or profile_for(path).is_test_path(path)
+        or path.startswith(NOT_SHIPPED_DIRS)
+        or path.endswith(NOT_SHIPPED_SUFFIXES)
+        or path in NOT_SHIPPED_FILES
+    )
+
+
+def unreleased(text: str | None) -> list[str]:
+    """The entries under a changelog's `## [Unreleased]`, one per list item."""
+    found: list[str] = []
+    inside = False
+    for line in (text or "").splitlines():
+        heading = _HEADING.match(line)
+        if heading:
+            inside = heading.group(1).strip().lower().startswith("[unreleased]")
+            continue
+        if inside and line.strip().startswith(("- ", "* ")):
+            found.append(line.strip())
+    return found
+
+
+def no_changelog_entry(
+    worktree: Path, card: Card | None = None, which: str = "default"
+) -> list[Finding]:
+    """A story or a bug that changes what the project ships adds its `[Unreleased]` entry
+    (the Sponsor, 2026-10-20; crew#816, ADR 0019).
+
+    A release ships what `[Unreleased]` holds, so a story that adds nothing ships
+    unlisted. Not a role's Task: DevOps's release moves the entries. Not a project with no
+    changelog: there's nothing to add to. `which` is the message, the gate's or `done`'s.
+    """
+    if card is not None and (role_tasks.role_of(card) or card.work_type not in (STORY, BUG)):
+        return []
+    merged = regression.merged_base(worktree)
+    if merged is None:
+        return []
+    before = merged.text(CHANGELOG)
+    if before is None:
+        return []
+    shipped = [p for p in reproduction._changed(worktree, merged.sha) if ships(p)]
+    if not shipped:
+        return []
+    target = worktree / CHANGELOG
+    after = target.read_text(encoding="utf-8", errors="ignore") if target.is_file() else None
+    if Counter(unreleased(after)) - Counter(unreleased(before)):
+        return []
+    return [
+        Finding(
+            "check.gates.no_changelog_entry",
+            says(
+                "check.gates.no_changelog_entry",
+                which,
+                paths=", ".join(f"`{p}`" for p in shipped[:5])
+                + (f" and {len(shipped) - 5} more" if len(shipped) > 5 else ""),
+            ),
         )
     ]
 

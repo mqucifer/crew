@@ -1,7 +1,7 @@
 # 34. Roles open their own tasks
 
 - **Date:** 2026-10-20
-- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; the deploy built in M8 by crew#829; the UX review is M8's, QA's Tasks M10's)
+- **Status:** Accepted (built in M7 by crew#839: the Task, the Architect's and DevOps's events, findings, and their sessions; in M8 the deploy by crew#829 and the UX review by crew#830; QA's Tasks M10's)
 
 ## Context
 
@@ -80,8 +80,8 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
   before the merge. The release is ADR 0019's approval; the diagram is the Sponsor's
   view of the system, once a Goal. A Task from a finding is bug-like work and merges
   after the Code Reviewer (ADR 0027).
-- **A role with no session yet** (the UX Designer's comes in M8, QA's in M10): its Tasks
-  are filed and held, the hold naming the milestone, and recorded each pass.
+- **A role with no session yet** (QA's comes in M10): its Tasks are filed and held, the
+  hold naming the milestone, and recorded each pass.
 
 **The standards.** SAFe's enabler stories: work that supports delivery, owned and sized
 like a story, admitted to a sprint beside it. Event-triggered runbooks for the events:
@@ -110,8 +110,33 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
 - **Each run is recorded:** `deploy.started`, `deploy.healthy`, `deploy.rolled_back`,
   `deploy.rollback_failed` and `deploy.held`.
 
-**Left for M8:** the UX Designer's review when a release goes live (crew#830). QA's
-Tasks wait for M10.
+## What's built (M8, crew#830): the UX Designer's release review
+
+- **A release goes live:** its tag has a GitHub Release, and a GitHub Pages deployment
+  succeeded after it was published. crew-presentation publishes to Pages and has no
+  release workflow, so the release check doesn't see it. Each pass opens the UX
+  Designer's review Task, one per repository and version, in Ready. Only for a project
+  GitHub has a Pages site for (where the pages are is GitHub's fact) and whose record
+  names a reader (who reads them is the record's intent; the operator, 2026-10-24).
+- **Its session** is a read-only step session, not the Developer's path: a review has no
+  branch and no pull request, and the UX Designer changes no file. It reads the code
+  and `look`s at the published pages at the readers' widths. It judges them by two
+  established standards, and each correction names the one it breaks: Nielsen's 10
+  usability heuristics, and the WCAG 2.2 success criteria `look` can see (non-text
+  content, info and relationships, meaningful sequence, reflow, page titled, headings and
+  labels). `look` doesn't measure contrast, so the review doesn't claim it.
+- **Its corrections:** each names its page, width, what it saw, what the reader should
+  meet instead, its standard, and its owner. `done` refuses one on a page and width it
+  never looked at on the published site, so each is filed with its screenshot, uploaded
+  to the reviewed Release. Each is a bug, or a Task for the role it belongs to, through
+  the same filing as a finding outside a story, up to ten per owner (one for a story's
+  reviewers, as before). Then the Task is closed and Done. It never blocks a merge.
+- **A finding another role files for the UX Designer** is worked by the same session,
+  on the version readers meet now.
+- **One that can't be worked** (no live release, its session stopped) is blocked for a
+  person, as a Task is.
+
+**Left:** QA's Tasks wait for M10.
 
 ## Consequences
 
@@ -147,3 +172,9 @@ Tasks wait for M10.
 - **2026-10-24:** the deploy Task is built (crew#829), with the operator's answers: a
   MAJOR ahead of the release a reader pins waits, and the crew merges the infra pull
   request recording a healthy deploy's tag itself.
+
+- **2026-10-24:** the UX Designer's release review built (crew#830): a release going live
+  is read from GitHub Pages, its Task is worked by a read-only session, and its
+  corrections are filed with screenshots, up to ten per owner. The UX hold is lifted;
+  no `role:ux` Task was held. The operator's answers on where the pages are and where
+  screenshots live.

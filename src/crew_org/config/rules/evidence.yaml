@@ -125,6 +125,16 @@ check.review.with_docs_finding:
   origin:
   - crew#191
   told_in: ReviewVerdict
+check.ux_review.seen_on_the_published_site:
+  description: The UX Designer's review files a correction only on a page and width it looked at on the
+    published site, so each is filed with its screenshot.
+  messages:
+    default: You didn't look at {unseen} on the published site. `look` at it first, so the correction
+      has its screenshot, or correct it where you saw it.
+  origin:
+  - crew#830
+  owner: UX Designer
+  told_in: Correction.page
 config.const.acceptance.QA_ASK_LIMIT:
 config.const.acceptance.QA_CONTEXT_CHAR_CEILING:
   origin:

@@ -403,11 +403,15 @@ def run(
     send: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     on_end: Callable[[Session, Ending], None] | None = None,
     noted: dict[str, Any] | None = None,
+    context: role_tools.Context | None = None,
 ) -> Any:
     """The step's answer, from a session over `reading`, or `StepStopped`.
 
     `noted` goes on the session's start event, in counts: whether a criteria check was a
     re-check, for one (crew#839).
+
+    `context` is what the role's tools read, when the step keeps what they saw: a release
+    review keeps its screenshots (crew#830). By default, `reading`'s.
 
     `on_end` is given the session and its ending once it ends, as the panel measures
     its members (crew#807). One that fails is recorded, and costs the step nothing.
@@ -449,7 +453,7 @@ def run(
         reading.coverage,
         begun.notes,
         given=step.tools,
-        context=role_tools.Context(reading.root, reading.repo, reading.github),
+        context=context or role_tools.Context(reading.root, reading.repo, reading.github),
     )
     session = Session(
         tools,

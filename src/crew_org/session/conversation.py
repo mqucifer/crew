@@ -115,6 +115,9 @@ class Session:
     calls: int = 0
     usage: Counter[str] = field(default_factory=Counter)
     used: Counter[str] = field(default_factory=Counter)
+    # Calls each tool refused: a refusal the session can't change, said again and again,
+    # spent the UX review's proof 30 calls (crew#830).
+    refused: Counter[str] = field(default_factory=Counter)
     watch: Signals = field(default_factory=Signals)
     # Each compaction, in order: a long session compacts each time it reaches the limit.
     compactions: list[dict[str, Any]] = field(default_factory=list)
@@ -293,6 +296,8 @@ class Session:
                         self._after_run(reply.detail)
             else:
                 reply = Reply("Not run: the session had ended.", "end", f"{name}: not run")
+            if reply.kind == "refused":
+                self.refused[name] += 1
             self._tool(name, args, raw, reply, time.monotonic() - began)
             self.history.append(Turn(reply, call_id, name, args if isinstance(args, dict) else {}))
             replies.append((name, reply))
@@ -502,6 +507,7 @@ class Session:
             resetups=len(self.tools.resetups),
             resetups_failed=self.tools.resetups.count(False),
             tools_used=dict(self.used),
+            tools_refused=dict(self.refused),
             compactions=self.compactions,
             troubles=self.troubles,
             after_run_errors=self.after_run_errors,
@@ -560,17 +566,28 @@ def session(
         opening,
         send=send,
         after_run=after_run,
-        check_done=own_checks(worktree, scope, changed_tests=_takes_changed_tests(specs)),
+        check_done=own_checks(
+            worktree,
+            scope,
+            changed_tests=_takes_changed_tests(specs),
+            changelog=role == ROLE,
+        ),
         role=role,
         specs=SPECS if specs is None else specs,
     )
 
 
 def own_checks(
-    worktree: Path, scope: tuple[str, ...] = (), *, changed_tests: bool = True
+    worktree: Path,
+    scope: tuple[str, ...] = (),
+    *,
+    changed_tests: bool = True,
+    changelog: bool = False,
 ) -> Callable[[dict[str, Any]], list[Any]]:
     """`done`'s checks of itself on this worktree: the tests it names exist (crew#778),
-    and, where its `done` can declare them, the merged tests it changed are (crew#839)."""
+    and, where its `done` can declare them, the merged tests it changed are (crew#839).
+    A story's adds its changelog entry when it changes what ships (crew#816): the gate's
+    own check, asked first so a session adds it without spending a gate round."""
     # Here, not at the top: delivery, which the gates read, runs the session.
     from crew_org.flows import gates  # noqa: PLC0415
 
@@ -578,6 +595,8 @@ def own_checks(
         found = gates.missing_named_tests(worktree, said, scope=scope)
         if changed_tests:
             found += gates.undeclared_changed_tests(worktree, said)
+        if changelog:
+            found += gates.no_changelog_entry(worktree, which="done")
         return found
 
     return checked
