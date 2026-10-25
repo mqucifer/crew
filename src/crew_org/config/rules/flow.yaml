@@ -251,6 +251,47 @@ decision.rework_gate:
   origin:
   - crew#192
   - crew#440
+decision.qa_tasks.already_justified:
+  description: A Developer disputing a QA test QA already justified, its file unchanged, opens no new
+    Task; its session is told the test stands, with QA's why and the Task's link, and changes the code.
+  messages:
+    default: 'You disputed `{test}`. QA already justified it, and it hasn''t changed since ({task}):
+
+
+      {why}
+
+
+      The test stands. Change the code so it passes, then call `done`.'
+  origin:
+  - crew#896
+decision.qa_tasks.dispute_settled:
+  description: A story waiting on QA's dispute Task goes on once the Task is closed. Justified, it goes
+    back to the Developer with the test unchanged and QA's why as CI's verdict on its head; fixed, an
+    empty commit runs the checks again and it goes to review.
+  origin:
+  - crew#896
+decision.qa_tasks.disputed:
+  description: A Developer whose pull request fails QA's check, and who thinks the test is wrong, disputes
+    it; QA's Task opens in qa-suite to fix or justify it, and the story waits on it, blocked and labelled
+    waits:qa, not sent back (ADR 0006 in mqucifer/project-print).
+  origin:
+  - crew#896
+decision.qa_tasks.justified:
+  description: QA's dispute Task closes with no change when the test is right, saying why on the Task.
+  origin:
+  - crew#896
+decision.qa_tasks.no_test:
+  description: QA's test Task closes with no change when nothing it asks can be reached through the
+    surface its project's folder names, saying why; recorded, so the retro sees where the surface falls
+    short.
+  origin:
+  - crew#896
+decision.qa_tasks.test_task:
+  description: A story or a bug's fix merged in a project with a folder in qa-suite opens QA's Task for
+    its test, once. After the merge, not at the split, since qa-suite's main runs against every pull
+    request and a test of unmerged work would fail them all.
+  origin:
+  - crew#896
 decision.role_tasks.carry_out:
   description: A role's Task filed from a finding is triaged as a bug is, by the Business Analyst (ADR
     0027), into Ready with what done means and a size, or closed with why.
@@ -290,7 +331,7 @@ decision.role_tasks.goal_epics_done:
   - crew#858
 decision.role_tasks.no_qa:
   description: A role's Task skips QA's proof, which has no story criteria to prove; its role's checks
-    ran at done and the Code Reviewer judged it.
+    ran at done and the Code Reviewer judged it. QA's own Task is its test, which qa-suite's CI runs.
   origin:
   - crew#839
 decision.role_tasks.not_opened:
@@ -373,7 +414,7 @@ gate.qa_unproven:
 gate.review_changes_requested:
 hold.no_session:
   description: A role's Task is filed and waits while its role has no session to work it, and says which
-    milestone brings one (QA's in M10; the UX Designer's came in M8, crew#830).
+    milestone brings one (the UX Designer's came in M8, crew#830; QA's in M10, crew#896).
   origin:
   - crew#839
 hold.waits_for_earlier_work:

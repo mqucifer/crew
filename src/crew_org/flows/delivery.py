@@ -109,6 +109,11 @@ class DeliveryResult:
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # The UX Designer's reviews this pass worked, to Done or blocked (crew#830).
     reviewed: list[tuple[int, str]] = field(default_factory=list)
+    # QA's Tasks closed with no change: no test reaches the story, or the test stands
+    # (crew#896).
+    settled: list[int] = field(default_factory=list)
+    # Stories whose Developer disputed QA's test, now waiting on QA's Task (crew#896).
+    disputed: list[int] = field(default_factory=list)
     no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
@@ -869,6 +874,12 @@ def _deliver_and_move(
         counts[IN_PROGRESS] -= 1
         if outcome.routed == "refinement":
             result.returned.append((card.number or 0, card.parent or 0))
+        elif outcome.routed == "settled":
+            # QA's Task closed with no change, Done (crew#896).
+            result.settled.append(card.number or 0)
+        elif outcome.routed == "disputed":
+            # Waits on QA's dispute Task, which `settle_disputes` follows (crew#896).
+            result.disputed.append(card.number or 0)
         else:
             result.blocked.append(outcome)
         return

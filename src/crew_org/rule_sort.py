@@ -67,6 +67,14 @@ SORTED: dict[str, tuple[str, str]] = {
     "guard.bounds.out_of_bounds": (GATE, "protected paths and CI weakened, on the diff"),
     "guard.role_tasks.out_of_scope": (GATE, "a role's Task beyond its role's paths, on the diff"),
     "check.role_tasks.diagram_renders": (GATE, "the Architect's diagram renders, at `done`"),
+    "check.qa_tasks.no_change_changed": (
+        GATE,
+        "QA's `no_test` or `justified` changes nothing, at `done`",
+    ),
+    "check.qa_tasks.dispute_names_no_test": (
+        FEEDBACK,
+        "a dispute names a test of QA's for the project, told to the session",
+    ),
     "check.role_tasks.setup_failed_at_start": (
         FEEDBACK,
         "a DevOps workspace Task's own failing setup, told at its session's start",

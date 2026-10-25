@@ -184,6 +184,10 @@ class EventKind(StrEnum):
     """A role's own Task, opened by an event or a finding (ADR 0034)."""
     ROLE_TASK_HELD = "role_task.held"
     """A role's Task held because its role has no session yet."""
+    # QA's Task closed with no change: no test reaches the story, or the disputed test
+    # stands (crew#896).
+    ROLE_TASK_SETTLED = "role_task.settled"
+    """QA's Task closed with no change: no test reaches the story, or the test stands."""
     # A role's finding outside the story it was working on, filed as a Task or a bug.
     FINDING_FILED = "finding.filed"
     """A role's finding outside its story, filed as a Task or a bug."""
@@ -404,8 +408,17 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     EventKind.ISSUE_CITES: ("repo", "cites", "labels", "state", "state_reason", "opened", "closed"),
     EventKind.REFERENCE_UNRESOLVED: ("repo", "number"),
     EventKind.COMMENT_IGNORED: ("repo", "login"),
-    EventKind.ROLE_TASK_OPENED: ("repo", "task_role", "task_kind", "parent", "event", "rule"),
+    EventKind.ROLE_TASK_OPENED: (
+        "repo",
+        "task_role",
+        "task_kind",
+        "parent",
+        "event",
+        "rule",
+        "project",
+    ),
     EventKind.ROLE_TASK_HELD: ("repo", "task_role", "waits_for", "rule"),
+    EventKind.ROLE_TASK_SETTLED: ("repo", "task_role", "task_kind", "project", "rule"),
     EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error", "counts"),
     EventKind.DEPLOY_STARTED: ("repo", "service", "from", "to", "rule"),
     EventKind.DEPLOY_HEALTHY: ("repo", "service", "from", "to", "attempts", "seconds", "pr"),

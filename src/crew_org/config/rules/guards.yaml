@@ -63,6 +63,22 @@ check.design.unlocked:
   - crew#690
   owner: Architect
   told_in: DesignProposal.lockfile
+check.qa_tasks.dispute_names_no_test:
+  description: A dispute names one of QA's tests in the story's project folder in qa-suite, as it is on
+    its main; otherwise the session is told so and goes on (crew#896).
+  messages:
+    default: 'Your dispute named `{test}`, which isn''t a test of QA''s for {project}: name it as
+      `{project}/<file>::<test>`, as `{check}`''s log names it. If no QA test failed, this isn''t a
+      dispute: fix what failed.'
+  owner: Developer
+check.qa_tasks.no_change_changed:
+  description: QA's `no_test` or `justified` changes nothing; a branch that changes files goes back to
+    its session (crew#896).
+  messages:
+    default: 'You said no test reaches the story, or that the disputed test stands, but your branch
+      changes {paths}. Either keep the change and name its test for each criterion, leaving `no_test`
+      and `justified` out, or restore the files and say it again.'
+  owner: QA Engineer
 check.role_tasks.diagram_renders:
   description: The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders,
     checked as the Goal's target diagram is (crew#839).

@@ -276,7 +276,8 @@ def run_qa(
             card_repo = card.repo or repo
             # A role's Task has no story criteria for QA to prove: its role's checks ran
             # at `done`, the Code Reviewer judged it, and a release is proven by the
-            # release check once it's out (crew#839). QA's own Tasks wait for M10.
+            # release check once it's out (crew#839). QA's own Task is its test, which the Code
+            # Reviewer reads and qa-suite's CI runs against the project's main (crew#896).
             if card.work_type == TASK:
                 move_card(
                     board,

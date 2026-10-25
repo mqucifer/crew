@@ -58,6 +58,11 @@ QA = "qa"
 SESSION = "session"
 REFINEMENT = "refinement"
 BLOCKED_FOR_A_PERSON = "blocked"
+# QA's Task closed with no change: no test reaches the story, or a disputed test stands
+# (crew#896). Done, with no pull request.
+SETTLED = "settled"
+# A Developer disputed QA's test: the story waits, blocked on QA's Task (crew#896).
+DISPUTED = "disputed"
 
 # What a session's `blocked` says is missing, as the return says it.
 _MISSING = {
@@ -226,6 +231,11 @@ def route(
             sink=sink,
         )
     number = card.number or 0
+    settled = _settled(
+        ending, card=card, repo=repo, worktree=worktree, board=board, issues=issues, sink=sink
+    )
+    if settled is not None:
+        return settled
 
     def note(text: str) -> None:
         sink.note(EventKind.NOTE, f"#{number} {text}"[:300], card=number)
@@ -300,6 +310,46 @@ def route(
             sink=sink,
         )
     return _to_review(verdict)
+
+
+def _settled(
+    ending: Ending,
+    *,
+    card: Card,
+    repo: str,
+    worktree: Path,
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+) -> Route | None:
+    """QA's Task ended with `no_test` or `justified` (crew#896): closed with no pull
+    request, once the branch is seen to change nothing. None for any other ending."""
+    from crew_org.flows import qa_tasks  # noqa: PLC0415
+    from crew_org.tools import regression, reproduction  # noqa: PLC0415
+
+    role = role_tasks.role_of(card)
+    said = ending.said
+    why = str(said.get(role_tasks.NO_TEST) or said.get(role_tasks.JUSTIFIED) or "").strip()
+    if role is None or role.key != role_tasks.QA.key or not why:
+        return None
+    merged = regression.merged_base(worktree)
+    paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
+    if paths:
+        finding = gates.Finding(
+            "check.qa_tasks.no_change_changed",
+            says("check.qa_tasks.no_change_changed", paths=", ".join(f"`{p}`" for p in paths[:10])),
+        )
+        return Route(SESSION, finding.rule, start=rework_start([finding], said))
+    rule = qa_tasks.settle(
+        issues,
+        board,
+        sink,
+        task=card,
+        repo=repo,
+        why=why,
+        justified=bool(said.get(role_tasks.JUSTIFIED)),
+    )
+    return Route(SETTLED, rule)
 
 
 def rework_start(findings: list[gates.Finding], said: dict[str, Any]) -> str:
@@ -424,6 +474,8 @@ def _blocked(
     """A `blocked` session, or a stopped one, to the Business Analyst or the Sponsor."""
     kept = leaving.take() if leaving is not None else None
     kind = ending.said.get("kind") or ""
+    if kind == "test":
+        return _disputed(ending, card=card, repo=repo, board=board, issues=issues, sink=sink)
     if kind == "choice":
         comment = (
             "**Blocked: a choice for the Sponsor.** The Developer's session ended without "
@@ -452,6 +504,41 @@ def _blocked(
         kind=kind,
         stop=ending.stop,
     )
+
+
+def _disputed(
+    ending: Ending,
+    *,
+    card: Card,
+    repo: str,
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+) -> Route:
+    """A Developer's dispute of QA's test (crew#896): the story waits on QA's Task, or
+    goes back to a session when the test was already justified or isn't QA's."""
+    from crew_org.flows import qa_tasks  # noqa: PLC0415
+    from crew_org.git_ops import branch_name  # noqa: PLC0415
+
+    number = card.number or 0
+    pull = issues.pull_for_branch(repo, branch_name(number, card.title), known=None)
+    if pull is None:
+        return Route(
+            SESSION,
+            "check.qa_tasks.dispute_names_no_test",
+            start=says(
+                "check.qa_tasks.dispute_names_no_test",
+                test="(no pull request)",
+                project=repo,
+                check=qa_tasks.QA_CHECK,
+            ),
+        )
+    disputed = qa_tasks.dispute(
+        issues, board, sink, card=card, repo=repo, pull=pull, said=ending.said
+    )
+    if disputed.start:
+        return Route(SESSION, disputed.rule, start=disputed.start)
+    return Route(DISPUTED, disputed.rule)
 
 
 def returned_note(
