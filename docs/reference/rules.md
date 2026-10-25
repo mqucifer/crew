@@ -14,15 +14,15 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew's own decisions (`rules.Rule`) | 34 |
 | An answer's form refuses it | 38 |
 | The call layer refuses any answer | 4 |
-| A flow's own check sends the answer back | 24 |
+| A flow's own check sends the answer back | 25 |
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 21 |
 | A gate at `done` sends a session's branch back | 12 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 55 |
-| A setting that changes what the tick does | 205 |
+| The tick decides a card's handling, found by the decision-point audit | 58 |
+| A setting that changes what the tick does | 207 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -36,12 +36,12 @@ section; one no line holds for is unplaced, never guessed.
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 69 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 69 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 129 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 132 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 103 |
+| Unplaced | | 105 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -162,6 +162,7 @@ section; one no line holds for is unplaced, never guessed.
 | `check.settle_crew.check_grounded`<br>A call the Product Owner makes itself serves the Goal's intent (ADR 0018, ADR 0035). | scope | `src/crew_org/crews/settle_crew.py:check_grounded` | Product Owner | — | src/crew_org/crews/settle_crew.py:check_grounded | ADR 0018<br>ADR 0035<br>crew#440<br>crew#846 |
 | `check.settle_crew.cut`<br>No cell ran into its limit: a cell at the limit was cut off, not finished. | answer_shape | `src/crew_org/crews/settle_crew.py:check_not_cut` | Product Owner | — | src/crew_org/crews/settle_crew.py:check_not_cut | — |
 | `check.settle_crew.not_cut_at_a_quote`<br>A cell cut where the model wrote a double quote reads as finished (crew#618). | answer_shape | `src/crew_org/crews/settle_crew.py:_not_cut_at_a_quote` | Product Owner | — | src/crew_org/crews/settle_crew.py:_not_cut_at_a_quote | crew#618 |
+| `check.ux_review.seen_on_the_published_site`<br>`done` refuses a correction on a page and width `look` didn't show on the published site: it would be filed with no screenshot. | evidence | `src/crew_org/crews/ux_review_crew.py:check_seen` | — | — | src/crew_org/crews/ux_review_crew.py:check_seen | crew#830 |
 
 ## A guard on a change sends it back
 
@@ -302,6 +303,9 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.sprint.plan_sprint`<br>Epics past the Sponsor's gate — approving them was the scope decision. | flow | `src/crew_org/flows/sprint.py:approved_epics` | — | — | src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | — |
 | `decision.sprint.start_sprint`<br>Admit the planned stories into the sprint. | flow | `src/crew_org/flows/sprint.py:start_sprint` | — | — | src/crew_org/flows/sprint.py:start_sprint | — |
 | `decision.strain.strained`<br>The files in `repo` that `threshold` stories of one sprint collided in. | flow | `src/crew_org/flows/strain.py:strained` | — | — | src/crew_org/flows/strain.py:strained | — |
+| `decision.ux_review.blocked`<br>Work the review Task in a session, file its corrections, and close it: "done", or "blocked" with why on the Task. | flow | `src/crew_org/flows/ux_review.py:review` | — | — | src/crew_org/flows/ux_review.py:review | crew#830 |
+| `decision.ux_review.release_review_tasks`<br>Each repository whose release went live gets the UX Designer's review Task, once per version. | flow | `src/crew_org/flows/ux_review.py:release_review_tasks` | — | — | src/crew_org/flows/ux_review.py:release_review_tasks | crew#830 |
+| `decision.ux_review.reviewed`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move | crew#830 |
 
 ## A setting that changes what the tick does
 
@@ -486,6 +490,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.tools.TAG_LINES`<br>The tags `image_digest` shows at most. | — | `src/crew_org/session/tools.py:TAG_LINES` | — | — | src/crew_org/session/tools.py:TAG_LINES | — |
 | `config.const.tools.VIEW_CHARS`<br>VIEW_CHARS = 40000 | — | `src/crew_org/session/tools.py:VIEW_CHARS` | — | — | src/crew_org/session/tools.py:VIEW_CHARS | crew#778 |
 | `config.const.tools.VIEW_LINES`<br>VIEW_LINES = 400 | — | `src/crew_org/session/tools.py:VIEW_LINES` | — | — | src/crew_org/session/tools.py:VIEW_LINES | crew#778 |
+| `config.const.ux_review.CORRECTIONS_PER_OWNER`<br>Its corrections are the review's whole work, so a release files more than a story's one per owner: started high, to be lowered from what reviews file (crew#830). | — | `src/crew_org/flows/ux_review.py:CORRECTIONS_PER_OWNER` | — | — | src/crew_org/flows/ux_review.py:CORRECTIONS_PER_OWNER | crew#830 |
+| `config.const.ux_review.REVIEW_POINTS`<br>REVIEW_POINTS = 2 | — | `src/crew_org/flows/ux_review.py:REVIEW_POINTS` | — | — | src/crew_org/flows/ux_review.py:REVIEW_POINTS | — |
 | `config.const.workspace.DEFAULT_TIMEOUT`<br>A runaway test must not hang the tick. | edits | `src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/tools/workspace.py:DEFAULT_TIMEOUT | — |
 | `config.const.workspace.HANG_AFTER`<br>How long one test runs before it's a hang (crew#839). | edits | `src/crew_org/tools/workspace.py:HANG_AFTER` | — | — | src/crew_org/tools/workspace.py:HANG_AFTER | crew#839 |
 | `config.const.workspace.MAX_FAILURE_REPORT_CHARS`<br>What a command produced, kept whole. | edits | `src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS` | — | — | src/crew_org/tools/workspace.py:MAX_FAILURE_REPORT_CHARS | — |

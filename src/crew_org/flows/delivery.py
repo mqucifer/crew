@@ -107,6 +107,8 @@ class DeliveryResult:
     awaiting_approval: list[tuple[int, int]] = field(default_factory=list)
     # A role's Task the Sponsor approves before it merges (crew#839).
     awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
+    # The UX Designer's reviews this pass worked, to Done or blocked (crew#830).
+    reviewed: list[tuple[int, str]] = field(default_factory=list)
     no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     # Approved and refused by branch protection — a gate no tick can satisfy.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
@@ -774,6 +776,16 @@ def _deliver_and_move(
     # repository differs, so closing `ws` would leak the worktree that was
     # opened and close one that never was.
     card_ws = ws.for_repo(card_repo)
+    from crew_org.flows import ux_review  # noqa: PLC0415
+
+    if ux_review.is_review(card):
+        # Its review has no branch and no pull request: it looks, files and closes.
+        ended = ux_review.review(
+            card, board=board, issues=issues, sink=sink, ws=card_ws, repo=card_repo
+        )
+        counts[IN_PROGRESS] -= 1
+        result.reviewed.append((card.number or 0, ended))
+        return
     if rework and _gates_disagree(
         card, board=board, issues=issues, sink=sink, repo=card_repo, result=result
     ):

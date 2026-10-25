@@ -624,6 +624,10 @@ flows.delivery._deliver_and_move:result:interrupted:525aee2d:
   at: flows/delivery.py:_deliver_and_move
   if: interrupted is not None
   rule: decision.delivery.interrupted
+flows.delivery._deliver_and_move:result:reviewed:914c5a95:
+  at: flows/delivery.py:_deliver_and_move
+  if: ux_review.is_review(card)
+  rule: decision.ux_review.reviewed
 flows.delivery._gates_disagree:end:dc3ba109:
   at: flows/delivery.py:_gates_disagree
   if: rounds < story_problem.MAX_ROUND_TRIPS
@@ -1664,6 +1668,18 @@ flows.template.wanted:filter:9f3abb91:
   if: not (merged / path).exists() or (is_protected(path, list(CREW_FILES)) and (merged / path).read_text(encoding='utf-8')
     != text)
   not_a_rule: 'not the tick: a command a person runs'
+flows.ux_review.release_review_tasks:result:opened:c1a81f37:
+  at: flows/ux_review.py:release_review_tasks
+  if: opened.new
+  rule: decision.ux_review.release_review_tasks
+flows.ux_review.review:end:32ddffa6:
+  at: flows/ux_review.py:review
+  if: release is None
+  rule: decision.ux_review.blocked
+flows.ux_review.review:end:dc4ffd91:
+  at: flows/ux_review.py:review
+  if: unseen
+  rule: decision.ux_review.blocked
 tools.github_issues.comments:ignore:b30b67ad:
   at: tools/github_issues.py:comments
   if: login in self.trust.readable

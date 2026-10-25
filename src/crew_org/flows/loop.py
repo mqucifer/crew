@@ -312,6 +312,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
     from crew_org.flows.template import propose_changes  # noqa: PLC0415
+    from crew_org.flows.ux_review import release_review_tasks  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
     # holds below see it and this pass refines it (#335).
@@ -321,6 +322,10 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     # And what the last release actually published (#335).
     released = check_releases(crew.issues, crew.board, crew.sink, repos=repos)
+    # A release whose site went live gets the UX Designer's review (crew#830).
+    reviews = release_review_tasks(
+        crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
+    )
     # A project with no diagram of its system gets the Architect's Task to draw one
     # (crew#839). Not one waiting for its walking skeleton: there's nothing to draw.
     drawn = first_diagrams(
@@ -380,12 +385,18 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         or bool(taken.opened)
         or bool(
             red.filed or red.closed or released.filed or drawn.opened or housed.opened or ci.opened
-        ),
+        )
+        or bool(reviews.opened),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
             + (f", {len(red.filed)} for a red default branch" if red.filed else "")
             + (f", {len(released.filed)} for an incomplete release" if released.filed else "")
+            + (
+                f", {len(reviews.opened)} release reviews for the UX Designer"
+                if reviews.opened
+                else ""
+            )
             + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(housed.opened)} first workspaces for DevOps" if housed.opened else "")
             + (f", {len(ci.opened)} CI services Tasks for DevOps" if ci.opened else "")
@@ -404,6 +415,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{repo} — design revisit failed: {why}" for repo, why in result.failed]
         + [f"{repo} — default branch unread: {why}" for repo, why in red.failed]
         + [f"{repo} — release unchecked: {why}" for repo, why in released.failed]
+        + [f"{repo} — {why}" for repo, why in reviews.failed]
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]

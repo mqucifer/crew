@@ -115,6 +115,9 @@ class Session:
     calls: int = 0
     usage: Counter[str] = field(default_factory=Counter)
     used: Counter[str] = field(default_factory=Counter)
+    # Calls each tool refused: a refusal the session can't change, said again and again,
+    # spent the UX review's proof 30 calls (crew#830).
+    refused: Counter[str] = field(default_factory=Counter)
     watch: Signals = field(default_factory=Signals)
     # Each compaction, in order: a long session compacts each time it reaches the limit.
     compactions: list[dict[str, Any]] = field(default_factory=list)
@@ -293,6 +296,8 @@ class Session:
                         self._after_run(reply.detail)
             else:
                 reply = Reply("Not run: the session had ended.", "end", f"{name}: not run")
+            if reply.kind == "refused":
+                self.refused[name] += 1
             self._tool(name, args, raw, reply, time.monotonic() - began)
             self.history.append(Turn(reply, call_id, name, args if isinstance(args, dict) else {}))
             replies.append((name, reply))
@@ -502,6 +507,7 @@ class Session:
             resetups=len(self.tools.resetups),
             resetups_failed=self.tools.resetups.count(False),
             tools_used=dict(self.used),
+            tools_refused=dict(self.refused),
             compactions=self.compactions,
             troubles=self.troubles,
             after_run_errors=self.after_run_errors,
