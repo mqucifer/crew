@@ -69,7 +69,7 @@ def test_every_refusal_a_crew_step_raises_is_on_the_list():
 
 def test_each_kind_of_rule_is_found():
     found = ids()
-    assert "form.QAVerdict.a_verdict_or_an_ask" in found
+    assert "form.QAVerdict.a_verdict" in found
     assert "call.check_not_cut_at_a_quote" in found
     assert "call.schema" in found
     assert "check.design.shelled" in found
@@ -114,7 +114,7 @@ def test_a_rule_is_placed_by_what_it_protects():
     assert placed["call.schema"] == "answer_shape"
     assert placed["hold.waits_for_earlier_work"] == "flow"
     assert placed["session.path"] == "guards"
-    assert placed["form.QAVerdict.a_verdict_or_an_ask"] == "evidence"
+    assert placed["form.QAVerdict.a_verdict"] == "evidence"
     assert placed["session.replace_text"] == "edits"
     assert placed["guard.regression.broken_contracts"] == "contracts"
     assert placed["form.Epic.is_an_argument"] == "scope"

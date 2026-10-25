@@ -159,7 +159,6 @@ form.Elsewhere.one_or_the_other:
   - crew#846
   owner: Product Owner
   told_in: Elsewhere
-form.FileAsk.a_bare_path:
 form.Finding.is_actionable:
   description: Refused if it doesn't say specifically what to change.
   messages:

@@ -16,7 +16,6 @@ import httpx
 from crew_org.flows.ci import CI_MARKER, LOG_TAIL_CHARS, SERVICE_LOG_LINES, job_id, log_tail
 from crew_org.flows.delivery import awaiting_rework, prior_verdicts
 from crew_org.tools.github_issues import IssueClient, QueueState
-from tests import asked
 from tests.test_merge import FakeIssues, QueueIssues, card, run
 
 HEAD = "c0ffee"
@@ -325,7 +324,7 @@ def test_qa_is_shown_the_checks_on_the_commit_it_judges():
             assert sha == HEAD
             return [{"name": "image", "status": "completed", "conclusion": "success"}]
 
-    assert "- `image`: success" in ci_checks(Checks(), "sprint-metrics", HEAD)
+    assert ci_checks(Checks(), "sprint-metrics", HEAD) == {"image": "success"}
 
 
 def test_checks_that_cannot_be_read_are_left_out():
@@ -335,26 +334,17 @@ def test_checks_that_cannot_be_read_are_left_out():
         def check_runs(self, repo, sha):
             raise httpx.ConnectError("down")
 
-    assert ci_checks(Down(), "sprint-metrics", HEAD) == ""
+    assert ci_checks(Down(), "sprint-metrics", HEAD) == {}
 
 
 def test_qa_is_handed_the_checks(monkeypatch, tmp_path):
-    from crew_org.crews.qa_crew import QAVerdict
     from crew_org.events import EventSink
     from crew_org.flows import acceptance as flow
     from crew_org.tools.github_project import Card
-    from tests.test_acceptance import _green, _QABoard, _QAIssues, _QAWorkspace, criterion
+    from tests.test_acceptance import _QABoard, _QAIssues, _QAWorkspace, in_a_session
 
-    seen = {}
-
-    def fake_verify(story, *, test_output, test_code, prior_verdicts="", **kw):
-        seen.update(kw)
-        return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
-
-    monkeypatch.setattr(flow, "verify_story", fake_verify)
-    monkeypatch.setattr(flow.workspace, "check", lambda w, sandbox=None: _green())
-    monkeypatch.setattr(flow, "collect_tests", lambda w: "def test_x(): pass")
-    monkeypatch.setattr(flow, "ci_checks", lambda issues, repo, sha: "- `image`: success")
+    seen = in_a_session(monkeypatch)
+    monkeypatch.setattr(flow, "ci_checks", lambda issues, repo, sha: {"image": "success"})
     card_ = Card(
         item_id="C1",
         number=1,
@@ -373,17 +363,15 @@ def test_qa_is_handed_the_checks(monkeypatch, tmp_path):
         cards=[card_],
         repo="sprint-metrics",
     )
-    assert seen["checks"] == "- `image`: success"
+    assert seen["checks"] == {"image": "success"}
 
 
-def test_qa_is_told_a_check_proves_only_what_it_runs(monkeypatch):
-    """sprint-metrics#260: QA cited `tests` as proof of release.yml, which it never runs."""
-    import contextlib
-
+def test_qa_is_told_a_check_proves_only_what_it_runs():
+    """sprint-metrics#260: QA cited `tests` as proof of release.yml, which it never runs.
+    Its session reads the workflow, and `done` holds the citation to it (crew#895)."""
     from crew_org.crews import qa_crew
 
-    seen = asked.capture(monkeypatch)
-    with contextlib.suppress(asked.Stop):
-        qa_crew.verify_story("S", test_output="", test_code="", checks="- `tests`: success")
-    assert "**that runs it**" in seen["description"]
-    assert "a test the run skipped proves nothing" in seen["description"]
+    start = qa_crew.opening("S", checks={"tests": "success"})["checks"]
+    assert "- `tests`: success" in start
+    assert "A check proves only what its steps execute: read its workflow" in start
+    assert "neither does one that was skipped" in qa_crew.opening("S")["step"]

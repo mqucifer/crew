@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from crew_org.crews.qa_crew import CriterionVerdict, QAVerdict
+from crew_org.crews.qa_crew import CriterionVerdict, QAVerdict, Ran
 from crew_org.events import EventSink
-from crew_org.flows import acceptance
 from crew_org.flows.acceptance import ALREADY_DONE_MARKER, run_qa
 from crew_org.flows.delivery import already_done_comment, names_a_test
 from crew_org.tools.github_project import Card
+from tests.test_acceptance import in_a_session
 
 # --- the answer itself ---------------------------------------------------------------
 
@@ -111,19 +111,13 @@ def qa(monkeypatch, tmp_path, comments, accepted):
             CriterionVerdict(
                 criterion="api_version is 1",
                 proven=accepted,
+                by="run",
+                ran=[Ran(command="uv run pytest -q tests/test_report.py", exit_code=0)],
                 evidence="tests/test_report.py::test_api_version passes and checks it",
             )
         ],
     )
-
-    def verify(story, **kwargs):
-        seen["story"] = story
-        return verdict
-
-    monkeypatch.setattr(acceptance, "verify_story", verify)
-    monkeypatch.setattr(
-        acceptance.workspace, "check", lambda w, sandbox=None: SimpleNamespace(results=[])
-    )
+    seen = in_a_session(monkeypatch, verdict)
     card = Card(
         item_id="S143",
         number=143,
@@ -145,7 +139,7 @@ def test_qa_accepting_an_already_done_story_closes_it(monkeypatch, tmp_path):
     """#221, criterion 2."""
     evidence = [{"body": f"{ALREADY_DONE_MARKER}\n**Already done.** | a | b | c |"}]
     seen, issues, board = qa(monkeypatch, tmp_path, evidence, accepted=True)
-    assert "## The Developer answered that this is already done" in seen["story"]
+    assert "## The Developer answered that this is already done" in seen["answered"]
     assert board.moves == [("S143", "Done")] and issues.closed == [143]
 
 
@@ -161,5 +155,5 @@ def test_a_story_built_since_its_already_done_answer_merges_as_usual(monkeypatch
         {"body": "Implemented in #170 on `feat/143`. Lint and tests pass."},
     ]
     seen, issues, board = qa(monkeypatch, tmp_path, later, accepted=True)
-    assert "already done" not in seen["story"]
+    assert "already done" not in seen["answered"] + seen["story"]
     assert board.moves == [("S143", "Merging")] and issues.closed == []

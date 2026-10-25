@@ -177,12 +177,6 @@ ROWS = "| ID | Status |\n|---|---|\n| R1 | accepted |"
             "Judge the diff against them as well",
         ),
         (
-            qa_crew,
-            qa_crew.verify_story,
-            {"story": "s", "test_output": "o", "test_code": "c"},
-            "hold it unproven if the code does what a row rules out",
-        ),
-        (
             deploy_review_crew,
             deploy_review_crew.review_deploy,
             {"title": "t", "diff": "d", "evidence": "e"},
@@ -202,7 +196,6 @@ def test_each_judging_step_is_shown_the_rows_with_its_own_instruction(
     ("module", "call", "kw"),
     [
         (review_crew, review_crew.review_diff, {"title": "t", "diff": "d"}),
-        (qa_crew, qa_crew.verify_story, {"story": "s", "test_output": "o", "test_code": "c"}),
         (
             deploy_review_crew,
             deploy_review_crew.review_deploy,
@@ -212,6 +205,15 @@ def test_each_judging_step_is_shown_the_rows_with_its_own_instruction(
 )
 def test_a_story_with_no_rows_gets_the_prompt_it_always_did(monkeypatch, module, call, kw):
     assert "What the epic decided" not in prompt(monkeypatch, module, call, **kw)
+
+
+def test_qa_is_shown_the_rows_with_its_own_instruction_and_none_without_them():
+    """QA's session starts with them (crew#895), as its one call was told them."""
+    text = "\n\n".join(qa_crew.opening("s", decisions=ROWS).values())
+    assert "## What the epic decided that this story follows" in text
+    assert "| R1 | accepted |" in text
+    assert "hold it unproven if the code does what a row rules out" in text
+    assert "What the epic decided" not in "\n\n".join(qa_crew.opening("s").values())
 
 
 # --- the flows hand them over ------------------------------------------------------------------
@@ -260,23 +262,15 @@ def test_the_code_reviewer_is_shown_the_rows_its_story_names(monkeypatch):
 
 
 def test_qa_is_shown_the_rows_its_story_names(monkeypatch, tmp_path):
-    from crew_org.crews.qa_crew import QAVerdict
     from crew_org.flows import acceptance as flow_qa
-    from tests.test_acceptance import _green, _QABoard, _QAIssues, _QAWorkspace, criterion
+    from tests.test_acceptance import _QABoard, _QAIssues, _QAWorkspace, in_a_session
 
-    seen = {}
-
-    def fake_verify(story, *, test_output, test_code, decisions="", **_):
-        seen["decisions"] = decisions
-        return QAVerdict(summary="ok", accepted=True, criteria=[criterion()])
+    seen = in_a_session(monkeypatch)
 
     class Issues_(_QAIssues):
         def get(self, repo, number):
             return {"body": {6: EPIC, 7: STORY}.get(number, "")}
 
-    monkeypatch.setattr(flow_qa, "verify_story", fake_verify)
-    monkeypatch.setattr(flow_qa.workspace, "check", lambda w, sandbox=None: _green())
-    monkeypatch.setattr(flow_qa, "collect_tests", lambda w: "def test_x(): pass")
     flow_qa.run_qa(
         _QABoard(),
         Issues_(comments=[]),

@@ -16,7 +16,7 @@ from crew_org.events import EventSink
 from crew_org.flows import acceptance as flow
 from crew_org.flows.acceptance import ci_only
 from crew_org.tools.github_project import Card
-from tests.test_acceptance import _green, _QABoard, _QAIssues, _QAWorkspace
+from tests.test_acceptance import _QABoard, _QAIssues, _QAWorkspace, in_a_session
 from tests.test_regression_merged import git
 
 
@@ -65,9 +65,8 @@ def test_any_other_change_is_still_verified(monkeypatch, tmp_path):
         raise Stop
 
     monkeypatch.setattr(flow, "ci_only", lambda worktree: False)
+    in_a_session(monkeypatch)
     monkeypatch.setattr(flow, "verify_story", verify)
-    monkeypatch.setattr(flow.workspace, "check", lambda w, sandbox=None: _green())
-    monkeypatch.setattr(flow, "collect_tests", lambda w: "")
     flow.run_qa(
         _QABoard(),
         _QAIssues(comments=[]),

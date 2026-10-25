@@ -595,7 +595,6 @@ def tested(record: ProjectRecord, files: list[str], builder: str) -> list[Missin
 
 def sizes(root: Path, files: list[str]) -> list[str]:
     """Where the crew's views stop showing everything: reported, never refused (ADR 0030)."""
-    from crew_org.flows.acceptance import QA_FOCUS_ABOVE_CHARS  # noqa: PLC0415
 
     def chars(path: str) -> int:
         return len((root / path).read_text(encoding="utf-8", errors="replace"))
@@ -622,17 +621,5 @@ def sizes(root: Path, files: list[str]) -> list[str]:
         found.append(
             f"Python files above {WHOLE_FILE_CHARS:,} characters are shown by definition, "
             "not whole: " + ", ".join(f"`{f}` ({text[f]:,})" for f in big)
-        )
-    tests = {f: n for f, n in text.items() if profiles.PYTHON.is_test_path(f)}
-    if sum(tests.values()) > QA_FOCUS_ABOVE_CHARS:
-        alone = [f for f, n in tests.items() if n > QA_FOCUS_ABOVE_CHARS]
-        found.append(
-            f"its tests are {sum(tests.values()):,} characters, above {QA_FOCUS_ABOVE_CHARS:,}: "
-            "QA and refinement see them in part"
-            + (
-                "; split by concern " + ", ".join(f"`{f}` ({tests[f]:,})" for f in alone)
-                if alone
-                else ""
-            )
         )
     return found

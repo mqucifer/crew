@@ -7,6 +7,10 @@ refused, and `search` reads the notes the start names along with the repository.
 
 A role's question can need more (ADR 0035, crew#846): its own tools that read
 (`role_tools`), such as the Architect's `contracts` and the UX Designer's `look`.
+
+A step that verifies a story is given its held workspace (crew#895): it reads the
+story's branch and `run`s its tests there, with the project's services, and still edits
+nothing. A step that isn't given one runs nothing, as before.
 """
 
 from __future__ import annotations
@@ -56,13 +60,17 @@ class ReadTools(Tools):
         *,
         given: tuple[str, ...] = (),
         context: role_tools.Context | None = None,
+        workspace: Any = None,
     ):
-        super().__init__(root, _Nowhere(), _NO_CHECKS, coverage, notes)
+        if workspace is None:
+            super().__init__(root, _Nowhere(), _NO_CHECKS, coverage, notes)
+        else:
+            super().__init__(root, workspace, workspace.tools, coverage, notes)
         self.search_notes = True
         self.context = context or role_tools.Context(root, "")
         tools = {n: role_tools.TOOLS[n] for n in given}
         self.given = {n: t for n, t in tools.items() if t.offered(self.context)}
-        self.offered = (*OFFERED, *self.given)
+        self.offered = (*OFFERED, *(("run",) if workspace is not None else ()), *self.given)
 
     def call(self, name: str, args: Any) -> Reply:
         if name not in self.offered:
