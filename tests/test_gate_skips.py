@@ -166,6 +166,34 @@ def test_a_skip_the_project_declares_ci_only_is_not_refused(repo):  # noqa: F811
     assert verdict.findings == [] and verdict.for_devops == {}
 
 
+# sprint-metrics' own declaration (mqucifer/sprint-metrics#746): test ids, not reasons.
+DOCKER_TESTS = [
+    "tests/test_dockerfile.py::test_docker_build_and_help",
+    "tests/test_dockerfile.py::test_docker_run_repeating_program_name_fails",
+    "tests/test_dockerfile.py::test_docker_run_with_cards",
+    "tests/test_dockerfile.py::test_docker_runs_as_non_root",
+]
+
+
+def test_a_skip_whose_test_id_the_project_declares_ci_only_is_not_refused(repo):  # noqa: F811
+    """mqucifer/sprint-metrics#807 went back three times for these four (crew#917)."""
+    declare(repo, *DOCKER_TESTS)
+    (repo / "tests/test_dockerfile.py").write_text(
+        "".join(f"def {t.partition('::')[2]}():\n    pass\n" for t in DOCKER_TESTS)
+    )
+    verdict = at_done(repo, done(), run_checks=skipping(dict.fromkeys(DOCKER_TESTS, DOCKER)))
+    assert verdict.findings == [] and verdict.for_devops == {}
+
+
+def test_a_declared_test_id_covers_its_parameters_and_nothing_else(repo):  # noqa: F811
+    declare(repo, f"{NEW}::test_insert")
+    (repo / NEW).write_text("def test_insert():\n    pass\ndef test_other():\n    pass\n")
+    skipped = {f"{NEW}::test_insert[a]": DOCKER, f"{NEW}::test_other": DOCKER}
+    verdict = at_done(repo, done(), run_checks=skipping(skipped))
+    (finding,) = [f for f in verdict.findings if f.rule == "check.gates.these_tests_skipped"]
+    assert f"{NEW}::test_other" in finding.says and "test_insert" not in finding.says
+
+
 def test_a_merged_test_that_skips_is_devops_not_the_developers(repo):  # noqa: F811
     declare(repo, DOCKER)
     adds_a_db_test(repo)
@@ -245,6 +273,55 @@ def test_what_isnt_the_storys_is_one_devops_task_however_many_stories_meet_it(tm
     assert "- `postgres`: it stopped: FATAL" in task["body"]
     filed = [e for e in events(tmp_path) if e["kind"] == "finding.filed"]
     assert [e["detail"]["owner"] for e in filed] == ["devops", "devops"]
+
+
+def test_a_finding_that_recurs_after_its_task_closed_reopens_it(tmp_path):
+    """The gate filed the same finding into closed mqucifer/sprint-metrics#743 three
+    times, with nothing said and nothing reopened, so nobody saw it (crew#917)."""
+    from crew_org.columns import DONE, NEEDS_REFINEMENT
+    from crew_org.tools.github_project import Card
+
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    skipped = dict.fromkeys(DOCKER_TESTS, DOCKER)
+    first = role_tasks.workspace_finding(
+        issues, board, s, repo="sm", story=807, skipped=skipped, down={}, cards=[]
+    )
+    issues.issues[first]["state"] = "closed"
+    card = Card(item_id="item-1", number=first, repo="sm", state="CLOSED", status=DONE)
+    again = role_tasks.workspace_finding(
+        issues, board, s, repo="sm", story=812, skipped=skipped, down={}, cards=[card]
+    )
+    assert again == first and len(issues.issues) == 1
+    assert issues.issues[first]["state"] == "open"
+    (said,) = issues.comments_on[first]
+    assert "#812" in said["body"] and all(t in said["body"] for t in DOCKER_TESTS)
+    assert ("status", "item-1", NEEDS_REFINEMENT) in board.done
+    # Seen again on the same story, the open Task isn't told twice.
+    card = card.model_copy(update={"state": "OPEN", "status": NEEDS_REFINEMENT})
+    role_tasks.workspace_finding(
+        issues, board, s, repo="sm", story=812, skipped=skipped, down={}, cards=[card]
+    )
+    assert len(issues.comments_on[first]) == 1
+
+
+def test_an_open_task_the_finding_recurs_on_is_told_once_per_story(tmp_path):
+    from crew_org.tools.github_project import Card
+
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    skipped = {"tests/test_service.py::test_1": DB}
+    first = role_tasks.workspace_finding(
+        issues, board, s, repo="sm", story=40, skipped=skipped, down={}, cards=[]
+    )
+    card = Card(item_id="item-1", number=first, repo="sm", state="OPEN", status="Ready")
+    for story in (41, 41, 42):
+        role_tasks.workspace_finding(
+            issues, board, s, repo="sm", story=story, skipped=skipped, down={}, cards=[card]
+        )
+    assert [("#41" in c["body"], "#42" in c["body"]) for c in issues.comments_on[first]] == [
+        (True, False),
+        (False, True),
+    ]
+    assert not any(d[0] == "reopen" for d in issues.done)
 
 
 def test_nothing_to_file_files_nothing(tmp_path):

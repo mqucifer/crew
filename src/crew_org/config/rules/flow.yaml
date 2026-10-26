@@ -339,6 +339,13 @@ decision.role_tasks.not_opened:
     again; nothing marks it opened until it is.
   origin:
   - crew#839
+decision.role_tasks.seen_again:
+  description: DevOps's workspace finding met again on a story tells its Task once per story. A closed
+    one is reopened, its card back where a Task waits for its work, since the gate otherwise filed into
+    it with nothing said.
+  origin:
+  - crew#917
+  - mqucifer/sprint-metrics#743
 decision.role_tasks.sponsor_approves:
   description: A role's Task whose work is the repository's diagram or a release merges only once the
     Sponsor approves it; a Task from a finding merges after the Code Reviewer, as a bug does.

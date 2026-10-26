@@ -58,8 +58,10 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
   - **A Goal's look names a new service or toolchain:** DevOps's Task for it, a child
     of the Goal, named at the level of intent (crew#860).
   - **The gate at `done` finds the workspace isn't what CI runs:** a merged test
-    skipped for a reason the file doesn't declare CI-only, or a service that won't
-    start. DevOps's finding, one per cause, however many stories meet it (crew#860).
+    skipped that the file doesn't declare CI-only, by its id or its reason, or a service
+    that won't start. DevOps's finding, one per cause, however many stories meet it
+    (crew#860). Met again, its Task is told once per story; a closed one is reopened
+    (crew#917).
   - **An epic is split:** DevOps's Task for its CI and release, a child of the epic, one
     per epic. It replaces the release story (ADR 0019): the split refuses a story that
     cuts the release. It waits for every story of the epic, so the epic doesn't close
@@ -222,3 +224,4 @@ ADR 0006 in mqucifer/project-print decided QA's repository, its test bed and its
   later firing opens a new Task only once the last is closed, and a day of Grafana
   unread is DevOps's finding.
 - **2026-10-25:** QA's Tasks built in M10 (crew#896): filed in qa-suite, a story's test opening at its merge, and the dispute.
+- **2026-10-26:** a workspace finding met again tells its Task once per story, and reopens it when closed (crew#917): the gate had filed into closed mqucifer/sprint-metrics#743 three times with nothing said.
