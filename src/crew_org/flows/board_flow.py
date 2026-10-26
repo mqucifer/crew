@@ -1517,7 +1517,23 @@ def render_story_body(
     return "\n".join(lines)
 
 
-_TEST_ID = re.compile(r"[\w/.-]+\.py::[\w.]+")
+_TEST_ID = re.compile(r"[\w/.-]+\.py::[\w.]*\w")
+# The tests a story keeps follow a phrase like this: sm#750's line listed forty after
+# "Not changed", and each was declared as a test the story changes (crew#913).
+_KEPT = re.compile(r"\b(?:not changed|unchanged)\b", re.IGNORECASE)
+
+
+def changed_tests(pinned: str) -> tuple[list[str], list[str]]:
+    """The tests a contract-change line changes, and those it also names as kept.
+
+    A test named on both sides of the line's "not changed" is held, not declared:
+    which side the story meant isn't something to guess from its wording.
+    """
+    kept_at = _KEPT.search(pinned)
+    cut = kept_at.start() if kept_at else len(pinned)
+    named = list(dict.fromkeys(_TEST_ID.findall(pinned[:cut])))
+    kept = set(_TEST_ID.findall(pinned[cut:]))
+    return [t for t in named if t not in kept], [t for t in named if t in kept]
 
 
 def record_split_tests(
@@ -1536,12 +1552,19 @@ def record_split_tests(
     story. Only an epic with a record gets them: one split without the panel stays
     as it was. A failure here costs the rows, not the split.
     """
-    changes = [
-        (test, story, numbers.get(story.title))
+    changes: list[tuple[str, str]] = []
+    contracts = [
+        story
         for story in proposal.stories
         if story.pinned_behaviour.lower().startswith("contract change")
-        for test in dict.fromkeys(_TEST_ID.findall(story.pinned_behaviour))
     ]
+    for story in contracts:
+        made = numbers.get(story.title)
+        by = f"{issues.owner}/{repo}#{made}" if made else story.title
+        changed, held = changed_tests(story.pinned_behaviour)
+        changes += [(test, by) for test in changed]
+        for test in held:
+            sink.note(EventKind.NOTE, f"#{epic}: held {test}, {by} names it changed and not"[:160])
     if not (changes or proposal.tests_dropped):
         return
     try:
@@ -1549,12 +1572,11 @@ def record_split_tests(
             return
 
         def change(current: record_flow.Record) -> record_flow.Record:
-            for test, story, made in changes:
-                said = story.pinned_behaviour.split(":", 1)[-1].strip()
+            # A pointer, not the story's line: that lists every test it changes, so
+            # a copy per row grew the record as the square of them (crew#913).
+            for test, by in changes:
                 current = current.declare(
-                    test,
-                    settle_flow.explicit(said, owner=issues.owner, repo=repo),
-                    f"{issues.owner}/{repo}#{made}" if made else story.title,
+                    test, f"changed by {by}; its Existing tests line says how", by
                 )
             for dropped in proposal.tests_dropped:
                 current = current.drop(dropped.test, dropped.why)
