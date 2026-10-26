@@ -159,3 +159,65 @@ def test_a_story_problems_pinned_tests_become_rows_the_re_split_must_account_for
     assert found.declared_tests() == [SCHEMA_TEST]
     assert "assert 11 == 15" in found.tests[0].asserts
     assert "sprint-metrics#529" in found.tests[0].declared_by
+
+
+# --- each test row says only its own: never the story's whole line (crew#913) -------------
+
+from pathlib import Path  # noqa: E402
+
+# The pinned behaviour of the story sm#750's split declared eight rows from, as it was.
+SM750_LINE = (Path(__file__).parent / "fixtures/pinned/sprint-metrics-750.txt").read_text().strip()
+
+
+def declared_rows(*stories):
+    issues = Issues(WITH_RECORD)
+    proposal = StoryProposal(epic_title="Keys", stories=list(stories))
+    board_flow.record_split_tests(
+        issues, EventSink(None), "sprint-metrics", 468, proposal, {"Add the keys": 537}
+    )
+    return issues, record.parse(record.split(issues.body)[1])
+
+
+def story_with(line):
+    return make_story("Add the keys", 3).model_copy(update={"pinned_behaviour": line})
+
+
+def test_a_story_naming_several_tests_gives_one_row_each_with_its_own_text():
+    tests = [f"tests/test_keys.py::test_key_{n}" for n in range(3)]
+    _, found = declared_rows(story_with("contract change: " + ", ".join(tests)))
+    assert [t.test for t in found.tests] == tests
+    for row in found.tests:
+        assert not any(other in row.asserts for other in tests)
+        assert "mqucifer/sprint-metrics#537" in row.asserts
+
+
+def test_the_records_size_grows_with_the_number_of_tests_not_its_square():
+    def size(n):
+        tests = [f"tests/test_keys.py::test_key_{i:03}" for i in range(n)]
+        issues, _ = declared_rows(story_with("contract change: " + ", ".join(tests)))
+        return len(issues.body)
+
+    # One more test costs one more row of the same size, however many there are.
+    assert size(41) - size(40) == pytest.approx(size(11) - size(10), abs=2)
+
+
+def test_tests_the_story_keeps_unchanged_are_not_declared():
+    """sm#750: five of eight rows were tests its line listed as not changed."""
+    _, found = declared_rows(story_with(SM750_LINE))
+    assert found.declared_tests() == [
+        "tests/test_service.py::test_range_response_metrics_and_keys",
+        "tests/test_schema.py::test_sprint_range_schema_accepts_all_null_sprint_entry",
+        "tests/test_schema_drift.py::test_committed_schema_files_match_python_dicts",
+    ]
+    assert all(len(t.asserts) < 120 for t in found.tests)
+
+
+def test_a_test_named_both_changed_and_kept_is_held_not_declared():
+    line = (
+        f"contract change: {SCHEMA_TEST} and {DRIFT_TEST}. "
+        f"Not changed: {DRIFT_TEST}, which keeps its key"
+    )
+    changed, held = board_flow.changed_tests(line)
+    assert changed == [SCHEMA_TEST] and held == [DRIFT_TEST]
+    _, found = declared_rows(story_with(line))
+    assert found.declared_tests() == [SCHEMA_TEST]
