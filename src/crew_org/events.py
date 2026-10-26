@@ -323,6 +323,10 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "skill_offered",
         # Which skills, by name (crew#839).
         "skills",
+        # A story review or QA sent back, and whether its branch was rebuilt on main
+        # (crew#919).
+        "returned",
+        "rebuilt",
     ),
     EventKind.SESSION_TURN: (
         "turn",
