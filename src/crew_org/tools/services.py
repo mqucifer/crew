@@ -169,13 +169,22 @@ class Declared:
     unknown: dict[str, str] = field(default_factory=dict)
     # The workspace definition the services came from, if any.
     path: str | None = None
-    # Skip reasons the project declares CI makes too (`customizations.crew.ciOnlySkips`):
-    # a test that skips at `done` for one of these isn't one CI runs (crew#860).
+    # The skips the project declares CI makes too (`customizations.crew.ciOnlySkips`),
+    # each a test id or text in a skip's reason: a test that skips at `done` for one of
+    # these isn't one CI runs (crew#860).
     ci_only: list[str] = field(default_factory=list)
 
     @property
     def any(self) -> bool:
         return bool(self.services or self.problems)
+
+    def skips_in_ci(self, test: str, reason: str) -> bool:
+        """Whether a test's skip is one the project declares CI makes too: by its test
+        id, with or without its parameters, or by text in its reason. sprint-metrics
+        declared its four Docker tests by id, and a match on the reason alone sent
+        mqucifer/sprint-metrics#807 back three times (crew#917)."""
+        bare = test.split("[", 1)[0]
+        return any(ci in (test, bare) or ci in reason for ci in self.ci_only)
 
 
 def at_main(worktree: Path) -> Declared:
@@ -209,8 +218,8 @@ def declared(read: Callable[[str], str | None]) -> Declared:
 
 
 def ci_only(raw: dict[str, object]) -> list[str]:
-    """The skip reasons the project declares CI-only, in the spec's slot for a tool's own
-    settings (`customizations`)."""
+    """The skips the project declares CI-only, by test id or reason, in the spec's slot
+    for a tool's own settings (`customizations`)."""
     crew = (raw.get("customizations") or {}) if isinstance(raw.get("customizations"), dict) else {}
     given = crew.get("crew") if isinstance(crew, dict) else None
     found = given.get("ciOnlySkips") if isinstance(given, dict) else None

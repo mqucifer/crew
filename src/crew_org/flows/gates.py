@@ -527,24 +527,22 @@ def no_changelog_entry(
 def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict) -> None:
     """The gate refuses a skipped test that CI runs (the Sponsor, 2026-10-21).
 
-    What CI runs is checkable through the project's declaration: a test that skips for
-    a reason its workspace file declares CI-only (Docker, say) is one CI skips too, and
-    anything else would run there. One the branch causes goes back: a test it adds or
-    changes, or any test in a module it changes or under a `conftest.py` it changes,
-    where a `pytestmark`, a fixture or a `skipif` can skip tests it never touched. So
-    does one the report can't place in a file. One already merged isn't this
-    Developer's to fix: it's DevOps's, whose declaration it is. A
-    project with no file can't say what's CI-only yet, so its merged skips wait for
-    DevOps's first workspace Task, which covers them.
+    What CI runs is checkable through the project's declaration: a test its workspace
+    file declares CI-only, by its id or its skip's reason (Docker, say), is one CI skips
+    too, and anything else would run there. One the branch causes goes back: a test it
+    adds or changes, or any test in a module it changes or under a `conftest.py` it
+    changes, where a `pytestmark`, a fixture or a `skipif` can skip tests it never
+    touched. So does one the report can't place in a file. One already merged isn't
+    this Developer's to fix: it's DevOps's, whose declaration it is. A project with no
+    file can't say what's CI-only yet, so its merged skips wait for DevOps's first
+    workspace Task, which covers them.
     """
     skipped = verdict.check.skipped if verdict.check is not None else None
     if not skipped:
         return
     declared = services.at_main(worktree)
     run_in_ci = {
-        test: reason
-        for test, reason in skipped.items()
-        if not any(ci in reason for ci in declared.ci_only)
+        test: reason for test, reason in skipped.items() if not declared.skips_in_ci(test, reason)
     }
     touched = added_or_changed(worktree, merged, paths)
     changed = set(paths)

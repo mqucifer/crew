@@ -363,6 +363,8 @@ def existing(
 class Opened:
     number: int
     new: bool
+    # Found already opened, and closed: its work was done once.
+    closed: bool = False
 
 
 def open_task(
@@ -439,7 +441,7 @@ def open_task(
                 },
             )
         )
-    return Opened(number, new)
+    return Opened(number, new, closed=not new and found.get("state") == "closed")
 
 
 def not_opened(
@@ -828,6 +830,7 @@ def workspace_finding(
         + "\n".join(lines)
         + "\n\nNone of it is that story's: the workspace file and its services are DevOps's."
     )
+    title = "The workspace doesn't run what CI runs"
     opened = open_task(
         issues,
         board,
@@ -836,15 +839,17 @@ def workspace_finding(
         role=DEVOPS,
         kind=FINDING,
         key=key,
-        title="The workspace doesn't run what CI runs",
+        title=title,
         body=render(
             DEVOPS,
             kind=FINDING,
             key=key,
             why=why,
             work="Make the workspace match CI: declare each service the tests need in "
-            "`.devcontainer/` so they run there, or, where CI skips them too, declare the "
-            "reason in `devcontainer.json`'s `customizations.crew.ciOnlySkips`.",
+            "`.devcontainer/` so they run there, or, where CI skips them too, declare them "
+            "in `devcontainer.json`'s `customizations.crew.ciOnlySkips`. Each entry is a "
+            "test id (`tests/test_x.py::test_y`, which covers its parameters) or text "
+            "inside the skip's reason; both count as declared.",
             done_when=["Triaged: the Business Analyst writes what done means."],
         ),
         points=None,
@@ -854,6 +859,10 @@ def workspace_finding(
         event="finding",
         rule="check.gates.these_tests_skipped" if skipped else "check.gates.a_service_wont_start",
     )
+    if not opened.new:
+        _seen_again(
+            issues, board, sink, repo=repo, story=story, opened=opened, lines=lines, cards=cards
+        )
     sink.emit(
         CrewEvent(
             kind=EventKind.FINDING_FILED,
@@ -864,6 +873,57 @@ def workspace_finding(
         )
     )
     return opened.number
+
+
+_SEEN_AGAIN = "<!-- crew:seen-again story={story} -->"
+
+
+def _seen_again(
+    issues: IssueClient,
+    board: ProjectClient,
+    sink: EventSink,
+    *,
+    repo: str,
+    story: int,
+    opened: Opened,
+    lines: list[str],
+    cards: list[Card],
+) -> None:
+    """The workspace finding met again: its Task is told, once per story. A closed one
+    is reopened and its card goes back to where a Task waits for its work. Without it the
+    gate filed the same finding into closed mqucifer/sprint-metrics#743 three times, with
+    nothing said, so nobody saw it (crew#917)."""
+    told = _SEEN_AGAIN.format(story=story)
+    number = opened.number
+    if not opened.closed and issues.has_comment_marked(repo, number, told):
+        return
+    if opened.closed:
+        issues.reopen(repo, number)
+        card = next((c for c in cards if c.repo == repo and c.number == number), None)
+        if card is not None:
+            triaged = "## Done when (triaged)" in (issues.get(repo, number).get("body") or "")
+            move_card(
+                board,
+                sink,
+                item_id=card.item_id,
+                to=READY if triaged else NEEDS_REFINEMENT,
+                by="Developer",
+                card=number,
+                frm=card.status,
+                summary=f"{DEVOPS.name}'s task reopened: the gate met it again on #{story}"[:100],
+                rule="decision.role_tasks.seen_again",
+            )
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"{told}\nThe gates at `done` on #{story} met this again"
+        + (", so it's reopened" if opened.closed else "")
+        + ":\n\n"
+        + "\n".join(lines),
+        by="Developer",
+    )
 
 
 def changes_workspace(role: TaskRole | None, worktree: Any, paths: list[str]) -> bool:

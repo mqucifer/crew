@@ -147,9 +147,9 @@ check.gates.the_checks_timed_out:
   origin:
   - crew#839
 check.gates.these_tests_skipped:
-  description: At `done`, a test the branch adds or changes that skipped for a reason the project doesn't
-    declare CI-only goes back, so a missing service shows at `done`, not rounds later in CI (the Sponsor,
-    2026-10-21; crew#860).
+  description: At `done`, a test the branch adds or changes that skipped and that the project doesn't
+    declare CI-only, by its id or its reason, goes back, so a missing service shows at `done`, not rounds
+    later in CI (the Sponsor, 2026-10-21; crew#860).
   messages:
     default: 'These tests you added or changed skipped here, and CI runs them, so they prove nothing at
       `done`:
@@ -163,6 +163,7 @@ check.gates.these_tests_skipped:
   origin:
   - mqucifer/sprint-metrics#717
   - crew#860
+  - crew#917
   owner: Developer
 check.review.with_docs_finding:
   description: An option the change adds that no user doc mentions is added as a blocking finding.

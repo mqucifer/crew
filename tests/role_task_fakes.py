@@ -98,6 +98,14 @@ class Issues:
         self.done.append(("close", number))
         return {}
 
+    def reopen(self, repo: str, number: int) -> dict:
+        self.issues.setdefault(number, {})["state"] = "open"
+        self.done.append(("reopen", number))
+        return {}
+
+    def has_comment_marked(self, repo: str, number: int, marker: str) -> bool:
+        return any(marker in (c.get("body") or "") for c in self.comments(repo, number))
+
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         return self.files.get(path)
 
