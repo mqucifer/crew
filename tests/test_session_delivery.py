@@ -868,6 +868,9 @@ def test_a_returned_story_s_session_is_told_the_findings_and_the_last_done(
     )
     told = again.started[0]["instead_of_hints"]
     assert "Rename `rate`." in told and "## The last `done`" in told and "Shows the rate." in told
+    assert "rebuilt" not in told, "its work is on its branch, as before (crew#919)"
+    assert again.started[0]["findings"] == len("## What review or QA said\n\nRename `rate`.")
+    assert again.started[0]["returned"] is True and again.started[0]["rebuilt"] is False
     assert outcome.pr == 700 and issues.comments and issues.pulls == []
 
 
@@ -952,8 +955,40 @@ def test_a_returned_branch_that_conflicts_with_main_is_rebuilt_on_main_and_force
     )
     worktree = Held.instances[0].worktree
     assert (worktree / "README.md").read_text() == "main's\n", "rebuilt on main"
-    assert sessions.started[0]["instead_of_hints"] is None, "not told of work that isn't there"
+    assert "Its previous work is in the files" not in sessions.started[0]["instead_of_hints"], (
+        "not told of work that isn't there"
+    )
     assert forced == [True] and outcome.pr == 700
+
+
+def test_a_returned_story_rebuilt_from_main_is_still_told_the_findings_and_its_last_done(
+    ws, deliver, monkeypatch
+):
+    """crew#919: a rebuild dropped review's findings, so each session sent the same diff back."""
+    first = Sessions({"writes": {"README.md": "the branch's\n"}, "ending": Ending("done", DONE)})
+    deliver(ws, first, Routes(session_end.Route(session_end.REVIEW, "r")))
+    ws.close()
+    ws.forget(BRANCH)
+    on_origin(ws, "main", {"README.md": "main's\n"})
+    said = "No test proves the story's criteria."
+    monkeypatch.setattr(session_delivery, "prior_verdicts", lambda *a, **k: said)
+    monkeypatch.setattr(session_delivery, "previous_fate", lambda *a, **k: "PR #700 is open.")
+    again = Sessions({"ending": Ending("done", DONE)})
+    deliver(
+        ws,
+        again,
+        Routes(session_end.Route(session_end.REVIEW, "r")),
+        Issues(live={"number": 700}),
+        rework=True,
+    )
+    assert (Held.instances[-1].worktree / "README.md").read_text() == "main's\n", "rebuilt"
+    started = again.started[0]
+    told = started["instead_of_hints"]
+    assert said in told and "PR #700 is open." in told
+    assert "rebuilt on current main" in told and "`README.md`" in told
+    assert "## The last `done`" in told and "Shows the rate." in told, "its last try, to read"
+    assert started["findings"] == len(f"## What review or QA said\n\n{said}")
+    assert started["returned"] is True and started["rebuilt"] is True
 
 
 def test_a_resumed_branch_is_caught_up_with_main_first(ws, deliver, monkeypatch):
@@ -1314,7 +1349,7 @@ def test_a_returned_pull_request_comes_before_kept_work(ws, deliver):
     issues.live = {"number": 700, "head": {"sha": origin_sha(ws, BRANCH)}}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            session_delivery, "returned_start", lambda *a, **k: "## Why this is a new session"
+            session_delivery, "returned_start", lambda *a, **k: ("## Why this is a new session", 0)
         )
         resumes(ws, deliver, issues, rework=True)
     assert issues.asked == []

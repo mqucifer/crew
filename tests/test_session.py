@@ -688,6 +688,17 @@ def test_a_session_from_a_branch_with_work_is_told_that_where_the_hints_would_be
     assert "## Likely relevant" in conversation.session(root, "# Story", Fake(), CHECKS).start
 
 
+def test_a_returned_story_s_start_counts_its_findings_inside_the_total(root, seen):
+    """crew#919: a start with no findings section shows as `findings: 0` in the events."""
+    told = "## What review or QA said\n\nNo test proves its criteria."
+    conversation.session(root, "# Story", Fake(), CHECKS, instead_of_hints=told, findings=40)
+    conversation.session(root, "# Story", Fake(), CHECKS)
+    returned, fresh = (e.detail["start_chars"] for e in kinds(seen, EventKind.SESSION_STARTED))
+    assert returned["findings"] == 40 and "findings" not in fresh
+    parts = sum(v for k, v in returned.items() if k not in ("total", "findings"))
+    assert returned["total"] == parts, "a part of instead_of_hints, not counted twice"
+
+
 def test_the_caller_is_given_each_run_once_it_has_run(root):
     """Delivery commits a checkpoint after a green run (P3)."""
     runs: list[dict] = []

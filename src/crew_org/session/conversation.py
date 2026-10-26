@@ -529,6 +529,7 @@ def session(
     specs: list[dict[str, Any]] | None = None,
     scope: tuple[str, ...] = (),
     skills: tuple[str, ...] = (),
+    findings: int | None = None,
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
@@ -536,9 +537,13 @@ def session(
     `about` goes on the `session.started` event, such as the base commit. `role` is
     agents.yaml's key for who works it: the Developer, or the role whose Task it is
     (crew#839), with the Developer's tools. A Task's `specs` tell its `done` as a Task's,
-    and its `scope` is what `done` takes as proof besides a test.
+    and its `scope` is what `done` takes as proof besides a test. A returned story's
+    `findings` is the size of review's and QA's section in `instead_of_hints`, shown
+    beside the parts, outside the total it's already in (crew#919).
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
+    if findings is not None:
+        sizes["findings"] = findings
     offered = any(s["function"]["name"] == "skill" for s in specs or ())
     tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=skills)
     record(

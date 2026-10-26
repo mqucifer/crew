@@ -181,14 +181,19 @@ def deliver_by_session(
         kept=kept.sha if kept else None,
     )
     rebuilt = False
+    conflicted: list[str] = []
+    earlier = ""
     if ws.resumed:
         try:
             ws.catch_up()
         except MergeConflict as conflict:
+            # A returned story's last `done`, read before the rebuild drops it: what it
+            # tried, beside the findings it was sent back with (crew#919).
+            earlier = last_done_on(worktree, number) if live is not None else ""
             # A checkpoint's or a returned story's branch, either way being rewritten:
             # rebuilt on current main, as today's rework is (#158).
             worktree = ws.open(branch, resume=False)
-            checkpoint, rebuilt = None, True
+            checkpoint, rebuilt, conflicted = None, True, list(conflict.files)
             if kept is not None:
                 unused = not_resumed(
                     kept,
@@ -243,10 +248,22 @@ def deliver_by_session(
     }
     # After a catch-up, the branch's base is main as it is now.
     since = _merge_base(worktree) or "origin/HEAD"
+    findings: int | None = None
     if checkpoint is not None:
         instead = resumed_start(checkpoint)
-    elif live is not None and not rebuilt:
-        instead = returned_start(issues, repo, number, branch, worktree, known=card)
+    elif live is not None:
+        # Rebuilt or not, the findings it was sent back with: without them each session
+        # sent the same diff back (crew#919).
+        instead, findings = returned_start(
+            issues,
+            repo,
+            number,
+            branch,
+            worktree,
+            known=card,
+            rebuilt=conflicted if rebuilt else None,
+            earlier=earlier,
+        )
     elif kept is not None:
         instead = kept_start(issues, repo, number, kept, worktree, since, link=ws)
     else:
@@ -315,6 +332,9 @@ def deliver_by_session(
             outcome=outcome,
             route=session_end.route,
             measured=measured,
+            findings=findings,
+            returned=live is not None,
+            rebuilt=rebuilt,
             role=role.spec if role else conversation.ROLE,
             task=role,
             skills=offered,
@@ -458,6 +478,9 @@ def _sessions(
     outcome: DeliveryOutcome,
     route: Any,
     measured: dict[str, int],
+    findings: int | None = None,
+    returned: bool = False,
+    rebuilt: bool = False,
     role: str = conversation.ROLE,
     task: role_tasks.TaskRole | None = None,
     skills: list[Any] | None = None,
@@ -500,6 +523,11 @@ def _sessions(
             base=since,
             round=rounds,
             story_parts=measured,
+            # The returned start's findings are the first round's; later rounds start
+            # from the gates' (crew#919).
+            findings=findings if rounds == 1 else None,
+            returned=returned,
+            rebuilt=rebuilt,
             role=role,
             specs=(
                 role_tasks.done_specs(task, skills or (), repo, kind)
@@ -1150,24 +1178,48 @@ def _nth(n: int) -> str:
 
 
 def returned_start(
-    issues: IssueClient, repo: str, number: int, branch: str, worktree: Path, *, known: Card
-) -> str:
-    """What a session reworking a story review or QA sent back is told (P2)."""
+    issues: IssueClient,
+    repo: str,
+    number: int,
+    branch: str,
+    worktree: Path,
+    *,
+    known: Card,
+    rebuilt: list[str] | None = None,
+    earlier: str = "",
+) -> tuple[str, int]:
+    """What a session reworking a story review or QA sent back is told (P2), and the size
+    of its findings section, 0 without one.
+
+    A branch `rebuilt` on main, for conflicting in those files, has no previous work in
+    the files: its last `done`, read before the rebuild, is `earlier` (crew#919).
+    """
     verdicts = prior_verdicts(issues, repo, number, branch, known=known.open_pull_on(branch))
     fate = previous_fate(issues, repo, branch)
-    parts = [
-        "## Why this is a new session\n\n"
-        "Review or QA sent the story back. Its previous work is in the files below, on "
-        "its branch: change what the findings ask, and leave the rest."
-    ]
+    if rebuilt is None:
+        why = (
+            "Review or QA sent the story back. Its previous work is in the files below, on "
+            "its branch: change what the findings ask, and leave the rest."
+        )
+        done = last_done_on(worktree, number)
+    else:
+        why = (
+            "Review or QA sent the story back, and its branch conflicted with main in "
+            + (", ".join(f"`{f}`" for f in rebuilt) or "unknown files")
+            + ", so it was rebuilt on current main: its previous work isn't in the files. "
+            "Do the story again on main, with the findings in view; its last `done` is "
+            "below, to read."
+        )
+        done = earlier
+    parts = [f"## Why this is a new session\n\n{why}"]
     if fate:
         parts.append(f"## What happened to it\n\n{fate}")
-    if verdicts:
-        parts.append(f"## What review or QA said\n\n{verdicts}")
-    done = last_done_on(worktree, number)
+    said = f"## What review or QA said\n\n{verdicts}" if verdicts else ""
+    if said:
+        parts.append(said)
     if done:
         parts.append(done)
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), len(said)
 
 
 def last_done_on(worktree: Path, number: int) -> str:
