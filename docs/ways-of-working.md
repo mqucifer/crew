@@ -383,8 +383,7 @@ has no Goal, and is never held by this.
 **When the Architect revisits a project's design** (crew#192). How a project is
 built is the Architect's call, and the Sponsor is never asked whether a
 refactor is appropriate. The evidence is mechanical. When a story's branch
-conflicts with `main` and is rebuilt, the files it conflicted in are recorded;
-one whose conflicts a session resolved isn't rebuilt, so isn't counted (crew#933).
+conflicts with `main` and is rebuilt, the files it conflicted in are recorded.
 When `design.revisit_conflicts` stories of one sprint (3 by default) have been
 rebuilt over the same file since the Architect last looked, the tick's first
 phase sends the Architect back to the project's design. Its reason is that

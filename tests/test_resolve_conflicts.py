@@ -166,7 +166,13 @@ def test_review_sees_only_what_the_resolution_changed(monkeypatch):
         asked.update(diff=diff, **kw)
         return APPROVAL
 
+    def review_deploy(title, diff, **kw):
+        # The pin is in a workflow, so the deploy review reads it too: as narrowed.
+        asked["deploy_diff"] = diff
+        return APPROVAL
+
     monkeypatch.setattr(review_flow, "review_diff", review_diff)
+    monkeypatch.setattr(review_flow, "review_deploy", review_deploy)
     review_flow.review_open_pulls(
         Resolving([pull]),
         EventSink(None),
@@ -177,6 +183,7 @@ def test_review_sees_only_what_the_resolution_changed(monkeypatch):
     )
 
     assert asked["diff"] == whole.split("diff --git a/docs.md")[0]
+    assert asked["deploy_diff"] == asked["diff"]
     assert "This head resolves conflicts with main" in asked["prior_verdicts"]
 
 
