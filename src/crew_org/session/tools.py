@@ -458,6 +458,82 @@ def check_arguments(name: str, args: Any, accepted: dict[str, Any] | None = None
         )
 
 
+def check_form(name: str, args: dict[str, Any], accepted: dict[str, Any] | None = None) -> None:
+    """Refuse an ending whose arguments aren't in its schema's form (crew#926).
+
+    The crew's code reads an ending's statement as its schema says. On
+    mqucifer/sprint-metrics#820, `done`'s `changed_tests` came as one object, not a list
+    of them, and reading it blocked the card. Refused here, the model fixes it in its
+    next call. Asked after `check_arguments`, so each argument is one the tool takes.
+    """
+    spec = (ACCEPTED if accepted is None else accepted)[name]
+    for key, value in args.items():
+        wanted = spec["properties"][key]
+        kind = wanted.get("type")
+        if kind == "array":
+            items = wanted.get("items") or {}
+            fields = list((items.get("properties") or {}).keys())
+            shape = "{" + ", ".join(fields) + "}"
+            if not isinstance(value, list):
+                refuse(
+                    "session.arguments",
+                    "a_list",
+                    tool=name,
+                    name=key,
+                    shape=shape,
+                    sent=_sent(value),
+                )
+            for n, item in enumerate(value, 1):
+                _check_entry(name, key, n, item, items, shape)
+        elif kind == "string" and not isinstance(value, str):
+            refuse("session.arguments", "a_string", tool=name, name=key, sent=_sent(value))
+        if "enum" in wanted and value not in wanted["enum"]:
+            refuse(
+                "session.arguments",
+                "not_one_of",
+                tool=name,
+                name=key,
+                allowed=", ".join(f"`{v}`" for v in wanted["enum"]),
+                sent=_sent(value),
+            )
+
+
+def _check_entry(name: str, key: str, n: int, item: Any, items: dict[str, Any], shape: str) -> None:
+    """One entry of an ending's list argument, against its schema's `items`."""
+    if items.get("type") != "object":
+        return
+    if not isinstance(item, dict):
+        refuse(
+            "session.arguments", "an_entry", tool=name, name=key, n=n, shape=shape, sent=_sent(item)
+        )
+    for part, of in (items.get("properties") or {}).items():
+        if part in item and of.get("type") == "string" and not isinstance(item[part], str):
+            refuse(
+                "session.arguments",
+                "an_entry_field",
+                tool=name,
+                name=key,
+                n=n,
+                field=part,
+                sent=_sent(item[part]),
+            )
+
+
+def _sent(value: Any) -> str:
+    """What came, in the words of JSON's forms."""
+    if isinstance(value, dict):
+        return "one object"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, bool):
+        return "true or false"
+    if isinstance(value, int | float):
+        return "a number"
+    return "null"
+
+
 def target_of(args: Any) -> str:
     """What a call is about, for its record: a path, or a name looked for."""
     if not isinstance(args, dict):

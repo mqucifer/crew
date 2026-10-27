@@ -248,14 +248,22 @@ form.row.an_id:
   told_in: AnswerRow.replaces, SponsorRow.replaces
 session.arguments:
   description: A tool call names a tool there is, with an object of the arguments it takes and each one
-    it needs.
+    it needs; an ending's arguments are each in the form its schema gives.
   messages:
+    a_list: '`{name}` must be a list of {shape}: you sent {sent}. Call `{tool}` again with it as a list.'
+    a_string: '`{name}` must be a string: you sent {sent}. Call `{tool}` again with it as one.'
+    an_entry: '`{name}`''s entry {n} must be an object of {shape}: you sent {sent}. Call `{tool}` again
+      with each entry as one.'
+    an_entry_field: '`{field}` in `{name}`''s entry {n} must be a string: you sent {sent}. Call `{tool}`
+      again with it as one.'
     missing: '`{tool}` needs {missing}. It takes: {takes}. Nothing was done.'
     no_tool: 'There''s no tool `{tool}`: use one of {tools}.'
     not_an_object: '`{tool}`''s arguments aren''t a JSON object: call it again.'
+    not_one_of: '`{name}` must be one of {allowed}: you sent {sent}. Call `{tool}` again with one.'
     unknown: '`{tool}` doesn''t take {unknown}. It takes: {takes}. Nothing was done.'
   origin:
   - crew#778
+  - crew#926
   owner: Developer
 session.image_digest:
   description: '`image_digest` is given an image as it''s pulled: a name, no digest, no variable.'

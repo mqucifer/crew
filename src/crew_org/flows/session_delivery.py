@@ -840,7 +840,7 @@ def _land(
                 test=c.get("test"),
                 ci_step=None,
             )
-            for c in reached.said.get("criteria") or []
+            for c in gates.entries(reached.said, "criteria")
         ]
         sink.emit(
             CrewEvent(

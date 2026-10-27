@@ -601,3 +601,15 @@ def test_a_session_stopped_by_a_full_context_is_packaged_with_its_stop():
     (stopped,) = kinds(files, "session_ended")
     assert (stopped.how, stopped.blocked_on, stopped.stop) == ("blocked", "stop", "context_full")
     assert deliveries(history)[(664, 1)].stop == "context_full"
+
+
+def test_a_done_in_the_wrong_shape_counts_only_its_objects():
+    """mqucifer/sprint-metrics#820's `changed_tests` came as one object (crew#926)."""
+    said = {"criteria": [{"criterion": "c", "test": "t"}, "t"], "changed_tests": {"test": "t"}}
+    ended = dh._session_event(
+        "session.ended",
+        datetime(2026, 10, 27, 2, 45, tzinfo=UTC),
+        dh.CardRef(repo=SM, number=820),
+        {"how": "done", "said": said},
+    )
+    assert (ended.criteria, ended.changed_tests) == (1, 0)

@@ -40,7 +40,15 @@ from crew_org.session.container import Gone, Workspace
 from crew_org.session.history import Turn, compact, messages, reasoning_size
 from crew_org.session.signals import Signals
 from crew_org.session.start import start, system_text
-from crew_org.session.tools import ENDINGS, SPECS, Reply, Tools, check_arguments, target_of
+from crew_org.session.tools import (
+    ENDINGS,
+    SPECS,
+    Reply,
+    Tools,
+    check_arguments,
+    check_form,
+    target_of,
+)
 
 ROLE = "developer"
 # One delivery's model time, shared by its sessions: the Sponsor's 3 hours, from 2, after
@@ -109,6 +117,10 @@ class Session:
     name: str = ""
     specs: list[dict[str, Any]] = field(default_factory=lambda: SPECS)
     endings: tuple[str, ...] = ENDINGS
+    # An ending's arguments are checked against its schema at the reply (crew#926). A
+    # step's aren't: its form checks them in `check_done`, after reading a list the model
+    # wrote as JSON text (crew#807).
+    forms_checked: bool = True
     quiet: str = QUIET
     refused_done: str = REFUSED_DONE
     model_s: float = 0.0
@@ -264,6 +276,8 @@ class Session:
             if name in self.endings and ending is None:
                 try:
                     check_arguments(name, args, self._accepted)
+                    if self.forms_checked:
+                        check_form(name, args, self._accepted)
                     statement = dict(args)
                     if name == "done" and "changed_tests" in self._accepted[name]["properties"]:
                         statement.setdefault("changed_tests", [])
