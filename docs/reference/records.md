@@ -54,6 +54,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.open_pull_request` | A pull request is still open on the branch; re-delivering would overwrite it. |
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
 | `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). |
+| `delivery.resolve_conflicts` | Approved and conflicting with main: a session resolves the conflicts alone (crew#933). |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
 | `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
 | `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
@@ -170,7 +171,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `session.turn` | One model call of a session, with its signals after it. | **`turn`**, **`tool_calls`**, **`model_s`**, **`since_action`**, **`most_views`**, **`edits_since_run`**, **`empty_lookups`**, **`reasoning_kept_chars`**, **`reasoning_kept_tokens`** | `session/conversation.py` | as `session_turn` |
 | `session.compacted` | A session's history compacted to fit, and what it left. | **`compaction`**, **`chars_after`**, **`estimated_tokens`**, **`estimated_after`**, **`turns_masked`**, **`turns_newly_masked`**, **`reasoning_chars_cleared`**, **`reasoning_tokens_cleared`** | `session/conversation.py` | as `session_compacted` |
 | `session.ended` | A session ended: how, why, and its totals. | `how`, `why`, **`stop`**, `said`, `evidence`, **`model_calls`**, **`model_s`**, **`edits_applied`**, **`test_runs`**, `tools_used`, `tools_refused`, `compactions`, `troubles`, `after_run_errors`, **`resetups`**, **`resetups_failed`** | `session/conversation.py` | as `session_ended` |
-| `gate.checked` | The gates' verdict on a session's branch at `done`, and the rules of what sent it back. | **`repo`**, `passed`, `rules`, `already_done`, **`resetups`**, **`resetups_failed`**, **`turned_on`**, **`hang_rounds`**, **`hung`** | `flows/session_end.py` | as `gate_checked` |
+| `gate.checked` | The gates' verdict on a session's branch at `done`, and the rules of what sent it back. | **`repo`**, `passed`, `rules`, `already_done`, **`resetups`**, **`resetups_failed`**, **`turned_on`**, **`hang_rounds`**, **`hung`**, `resolution` | `flows/session_delivery.py`, `flows/session_end.py` | as `gate_checked` |
 | `revert.opened` | A revert pull request was opened for a merged change. | **`repo`**, **`pr`**, `reverted`, `card`, `reason` | `flows/revert.py` | stays in the crew's log |
 | `revert.refused` | A revert couldn't be made or landed, and why. | **`repo`**, **`pr`**, `reverted`, `card`, `reason`, `why`, `conflict` | `flows/revert.py` | stays in the crew's log |
 | `revert.landed` | A revert landed: its card goes back to Needs Refinement. | **`repo`**, **`pr`**, `reverted`, `card` | `flows/revert.py` | stays in the crew's log |
@@ -204,6 +205,7 @@ Its parts built from something else, not an event: `pull_merged`.
 | `deploy.rolled_back` | A deploy failed at a stage, and the release that was running runs again. | **`repo`**, `service`, **`from`**, **`to`**, `attempts`, `seconds`, `stage`, `finding` | `flows/deploy.py` | stays in the crew's log |
 | `deploy.rollback_failed` | A deploy failed and so did its rollback: the Task goes to the Sponsor. | **`repo`**, `service`, **`from`**, **`to`**, `attempts`, `seconds`, `stage`, `finding` | `flows/deploy.py` | stays in the crew's log |
 | `deploy.held` | A release not deployed: a reader pins another MAJOR, or its settings aren't there. | **`repo`**, `version`, `reader`, `pinned`, `missing`, **`rule`** | `flows/deploy.py` | stays in the crew's log |
+| `merge.resolved` | An approved story's conflicts with main resolved by one session, then gated and pushed. | **`repo`**, **`pr`**, `files`, `changed`, `calls`, **`model_s`**, `sessions` | `flows/session_delivery.py` | stays in the crew's log |
 | `note` | Anything else a flow records, by the rule it names where it names one. See [the rules notes name](#the-rules-notes-name) and [notes that name no rule](#notes-that-name-no-rule). | **`rule`**, **`repo`**, `card` | `crews/refinement_crew.py`, `flows/alerts.py`, `flows/artifacts.py`, `flows/backlog_order.py`, `flows/board_flow.py`, `flows/ci_from_main.py`, `flows/close.py`, `flows/criteria_check.py`, `flows/decision_log.py`, `flows/delivery.py`, `flows/deploy.py`, `flows/diagnose.py`, `flows/goal_look.py`, `flows/loop.py`, `flows/main_watch.py`, `flows/merge.py`, `flows/metrics_push.py`, `flows/moves.py`, `flows/release_check.py`, `flows/revisit.py`, `flows/role_tasks.py`, `flows/session_delivery.py`, `flows/session_end.py`, `flows/sprint.py`, `flows/story_problem.py`, `flows/template.py`, `session/steps.py` | stays in the crew's log |
 
 ### The rules notes name
@@ -234,6 +236,7 @@ names, what it means, and where those notes are written:
 | `decision.role_tasks.ci_services` | Once the first workspace Task is closed, and a story's whole checks pass with the default branch's services up or main's own do in a container with them, DevOps gets its Task to make CI's test job run the same services, once. Main's are run at most once per head commit, and only while the Task isn't opened. | `flows/ci_from_main.py:held_by` |
 | `decision.role_tasks.not_opened` | A role's Task an event should open and GitHub refused is recorded, and the next pass tries again; nothing marks it opened until it is. | `flows/role_tasks.py:not_opened` |
 | `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. | `flows/session_delivery.py:deliver_by_session` |
+| `delivery.resolve_conflicts` | Approved and conflicting with main: a session resolves the conflicts alone (crew#933). | `flows/session_delivery.py:resolve` |
 | `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). | `flows/session_delivery.py:kept_work` |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. | `flows/criteria_check.py:to_product_owner` |
 | `hold.builds_on` | It waits for a story it builds on. | `flows/delivery.py:deliver` |
@@ -312,8 +315,10 @@ filled in), and the fields it names.
 | `flows/revisit.py:revisit_designs` | …: design revisit failed: … | — |
 | `flows/session_delivery.py:_keep` | #… its work is kept on …, with no pull request | **`kept`** |
 | `flows/session_delivery.py:_record_turned_on` | PR #…: the tests it turns on weren't recorded: … | — |
+| `flows/session_delivery.py:_say_resolved` | #… resolved on PR #…, and its comment failed: … | — |
 | `flows/session_delivery.py:_say_reworked` | #… re-worked on PR #…, and its comment failed: … | — |
 | `flows/session_delivery.py:after_run` | #… checkpoint after a green 'run …' | `checkpoint` |
+| `flows/session_delivery.py:note` | #… … | — |
 | `flows/session_end.py:note` | #… … | — |
 | `flows/sprint.py:start_sprint` | #… sprint not cleared: … | — |
 | `flows/sprint.py:start_sprint` | could not read sub-issues: … | — |

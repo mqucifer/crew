@@ -679,12 +679,90 @@ REBUILD_MARKER = "<!-- crew:rebuild head={head} -->"
 # working in them before it starts the rebuild (#436).
 REBUILD_FILES_MARKER = "<!-- crew:rebuild-files {files} -->"
 _REBUILD_FILES = re.compile(r"<!-- crew:rebuild-files (\S+) -->")
+_REBUILT_HEAD = re.compile(r"<!-- crew:rebuild head=(\S*) -->")
 
 
 def rebuild_files(body: str) -> list[str]:
     """The files a rebuild comment says it conflicted in, or none."""
     found = _REBUILD_FILES.search(body)
     return found.group(1).split(",") if found else []
+
+
+def returned_for_conflict(issues: IssueClient, repo: str, pull: dict[str, Any]) -> bool:
+    """Was this pull request's head approved and returned for conflicting with main?"""
+    head = (pull.get("head") or {}).get("sha", "")
+    if not head:
+        return False
+    try:
+        comments = issues.comments(repo, pull["number"])
+    except Exception:  # noqa: BLE001 - unread, it's rebuilt as before
+        return False
+    marker = REBUILD_MARKER.format(head=head)
+    return any(marker in (c.get("body") or "") for c in comments)
+
+
+# On a pull request whose conflicts with main a session resolved (crew#933): the
+# approved head it started from, the head it made, and the files it changed. Review
+# and QA judge only what changed in those files since the approval.
+RESOLVED_MARKER = "<!-- crew:resolved approved={approved} head={head} files={files} -->"
+_RESOLVED = re.compile(r"<!-- crew:resolved approved=(\w+) head=(\w+) files=(\S*) -->")
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """A resolution of an approved head's conflicts with main, as its marker says."""
+
+    approved: str
+    head: str
+    files: tuple[str, ...]
+
+
+def resolutions(issues: IssueClient, repo: str, pull: int) -> list[Resolved]:
+    """The resolutions on a pull request, oldest first, from the crew's own comments.
+
+    Only the crew's App (`trust.crew`) counts: a marker narrows what review reads, so
+    one anyone else wrote is no marker. None when the comments can't be read.
+    """
+    crew = getattr(getattr(issues, "trust", None), "crew", None) or frozenset()
+    try:
+        comments = issues.comments(repo, pull)
+    except Exception:  # noqa: BLE001 - unread, the whole pull request is judged
+        return []
+    found = []
+    for comment in comments:
+        if ((comment.get("user") or {}).get("login") or "") not in crew:
+            continue
+        for approved, head, files in _RESOLVED.findall(comment.get("body") or ""):
+            found.append(Resolved(approved, head, tuple(f for f in files.split(",") if f)))
+    return found
+
+
+def resolved_at(issues: IssueClient, repo: str, pull: int, head: str) -> Resolved | None:
+    """The resolution that made `head`, or None: a head any later push made is judged whole."""
+    return next((r for r in reversed(resolutions(issues, repo, pull)) if r.head == head), None)
+
+
+def resolution_diff(issues: IssueClient, repo: str, resolved: Resolved) -> str:
+    """What the resolution changed: its files' diff from the approved head to its own.
+
+    The approved head is the merge's first parent, so this is each file as main and the
+    resolution left it against the approved story. The other files main brought were
+    merged by git alone and judged on their own pull requests.
+    """
+    diff = issues.compare_diff(repo, resolved.approved, resolved.head)
+    return only_files(diff, set(resolved.files))
+
+
+def only_files(diff: str, files: set[str]) -> str:
+    """The parts of a unified diff about `files`."""
+    kept, keep = [], False
+    for line in diff.splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            name = line.rstrip("\n").rsplit(" b/", 1)[-1]
+            keep = name in files
+        if keep:
+            kept.append(line)
+    return "".join(kept)
 
 
 # Parallel work can conflict a rebuilt pull request again. Past this many
@@ -703,7 +781,7 @@ def _conflict(
     result: MergeResult,
     keep_both: Callable[[str, str], list[str] | None] | None = None,
 ) -> None:
-    """An approved story that conflicts with main is rebuilt by the crew.
+    """An approved story that conflicts with main is returned to the crew to resolve.
 
     Decided 2026-09-25, reversing #158's third criterion for approved work.
     sprint-metrics is one module, and parallel epics touch it together, so an
@@ -711,6 +789,9 @@ def _conflict(
     #95 and #100 both did in one tick. Rebuilding it on main costs model time and
     no person, and the gates run again on what's rebuilt, so nothing lands
     unreviewed. Past MAX_REBUILDS of one pull request, a person decides.
+
+    Delivery first gives the conflicts alone to a session, and rebuilds only when that
+    fails (crew#933): sprint-metrics#809's rebuild for one shared line took 135 calls.
     """
     number = card.number or 0
     head = (pull.get("head") or {}).get("sha", "")
@@ -762,7 +843,14 @@ def _conflict(
         comments = issues.comments(repo, pull["number"])
     except Exception:  # noqa: BLE001
         comments = []
-    rebuilt = sum(1 for c in comments if "<!-- crew:rebuild head=" in (c.get("body") or ""))
+    # A return its resolution answered was no rebuild (crew#933).
+    answered = {r.approved for r in resolutions(issues, repo, pull["number"])}
+    rebuilt = sum(
+        1
+        for c in comments
+        for returned in _REBUILT_HEAD.findall(c.get("body") or "")
+        if returned not in answered
+    )
     if rebuilt >= MAX_REBUILDS:
         held("decision.merge.conflict", repo=card.repo or repo, card=number)
         _block_on_conflict(board, issues, sink, card, repo=repo, pull=pull["number"])
@@ -786,7 +874,7 @@ def _conflict(
         by=None,
         card=number,
         frm=MERGING,
-        summary=f"approved PR #{pull['number']} conflicts with main — returned for a rebuild",
+        summary=f"approved PR #{pull['number']} conflicts with main — returned to resolve it",
     )
     sendbacks.record(
         sink,
@@ -801,15 +889,17 @@ def _conflict(
         pull["number"],
         f"{REBUILD_MARKER.format(head=head)}\n"
         + (f"{REBUILD_FILES_MARKER.format(files=','.join(files))}\n" if files else "")
-        + f"**Conflicts with `main`{where}, returned for a "
-        "rebuild.** This was approved, and other work has since merged into the same lines"
+        + f"**Conflicts with `main`{where}, returned to resolve them.** This was "
+        "approved, and other work has since merged into the same lines"
         + (f": the last to land there was *{landed}*" if landed else "")
         + (
             ". It isn't only an addition on both sides, so keeping both wasn't safe"
             if files
             else ""
         )
-        + ". The crew rebuilds it on current `main` and it goes through review and QA again "
+        + ". The Developer resolves only the conflicts, and review and QA judge only what "
+        "that changes. If they can't be resolved cleanly, the crew rebuilds it on current "
+        "`main` and it goes through review and QA again "
         f"(rebuild {rebuilt + 1} of {MAX_REBUILDS} before a person is asked).",
     )
     result.rebuilding.append((number, pull["number"]))

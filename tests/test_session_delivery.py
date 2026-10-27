@@ -114,7 +114,9 @@ class Sessions:
     def __call__(self, worktree, story, workspace, toolchain, **kw):
         script = self.scripts.pop(0)
         self.started.append({"story": story, **kw})
-        session = SimpleNamespace(model_s=script.get("model_s", 60.0), backstop_s=None)
+        session = SimpleNamespace(
+            model_s=script.get("model_s", 60.0), calls=script.get("calls", 12), backstop_s=None
+        )
 
         def run():
             self.started[-1]["backstop_s"] = session.backstop_s

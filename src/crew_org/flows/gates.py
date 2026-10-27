@@ -547,6 +547,22 @@ def no_changelog_entry(
     ]
 
 
+def conflicts_left(worktree: Path, files: list[str]) -> list[Finding]:
+    """A resolution's `done` with a conflict's markers still in a file it was resolving
+    (crew#933). Text with markers can pass every check: a changelog is never run."""
+    from crew_org.git_ops import unresolved  # noqa: PLC0415
+
+    left = unresolved(worktree, files)
+    if not left:
+        return []
+    return [
+        Finding(
+            "check.gates.conflicts_left",
+            says("check.gates.conflicts_left", paths=", ".join(f"`{p}`" for p in left)),
+        )
+    ]
+
+
 def _skipped(worktree: Path, merged: regression.Merged, paths: list[str], verdict: Verdict) -> None:
     """The gate refuses a skipped test that CI runs (the Sponsor, 2026-10-21).
 

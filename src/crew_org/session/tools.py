@@ -584,8 +584,12 @@ class Tools:
         *,
         parse_guard: bool = True,
         skills: tuple[str, ...] = (),
+        writable: frozenset[str] | None = None,
     ) -> None:
         self.root = worktree.resolve()
+        # The only paths an edit may change, when the session has a narrower job than
+        # the story: a resolution's conflicted files (crew#933). None is any.
+        self.writable = writable
         self.notes = notes or {}
         self.workspace = workspace
         self.coverage = coverage
@@ -634,6 +638,13 @@ class Tools:
             refuse("session.path", "outside", path=given)
         if write and target.is_symlink():
             refuse("session.path", "link", path=given)
+        if write and self.writable is not None and rel not in self.writable:
+            refuse(
+                "session.path",
+                "not_conflicted",
+                path=given,
+                files=", ".join(f"`{f}`" for f in sorted(self.writable)),
+            )
         return real, rel
 
     def _open(self, real: Path, flags: int, given: str) -> int:

@@ -28,6 +28,7 @@ from crew_org.flows import artifacts, role_tasks
 from crew_org.flows.board_flow import NEEDS_REWORK
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.history import past_qa
+from crew_org.flows.merge import Resolved, resolved_at
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import Workspace, branch_name
 from crew_org.llm import reraise_if_down
@@ -248,6 +249,30 @@ def _already_done(issues: IssueClient, repo: str, number: int) -> str:
     return latest[-1].replace(ALREADY_DONE_MARKER, "").split("<!-- crew:by")[0].strip()
 
 
+def _resolved(
+    issues: IssueClient, repo: str, card: Card, branch: str, revision: str
+) -> Resolved | None:
+    """The resolution that made the branch's head, or None, as when it can't be read."""
+    try:
+        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+    except Exception:  # noqa: BLE001 - unread, the whole story is judged
+        return None
+    return resolved_at(issues, repo, pull["number"], revision) if pull else None
+
+
+def resolved_note(resolved: Resolved) -> str:
+    """What QA is told of a head that resolved conflicts with main (crew#933)."""
+    return (
+        "## This head resolves conflicts with main\n\n"
+        f"QA accepted this story at {resolved.approved[:7]}. Other work has since landed on "
+        "main in the same lines, so main was merged in and the conflicts in "
+        + ", ".join(f"`{f}`" for f in resolved.files)
+        + " resolved. The changed files below are only those, and the base is the head "
+        "you accepted. Judge the criteria those files bear on, and whether both changes "
+        "still hold there; the rest of the story stands as accepted."
+    )
+
+
 def run_qa(
     board: ProjectClient,
     issues: IssueClient,
@@ -382,15 +407,22 @@ def run_qa(
                 )
                 body = issues.get(card_repo, number).get("body") or ""
                 changed = changed_paths(worktree)
-                holding = hold(worktree, f"{card_repo}-{number}-qa", sandbox)
                 merged = merged_base(worktree)
+                base = merged.sha if merged is not None else ""
+                # A head a resolution of its conflicts made: only what that changed since
+                # QA accepted it (crew#933).
+                resolved = _resolved(issues, card_repo, card, branch, revision)
+                if resolved is not None:
+                    changed, base = list(resolved.files), resolved.approved
+                    answered = "\n\n".join(p for p in (answered, resolved_note(resolved)) if p)
+                holding = hold(worktree, f"{card_repo}-{number}-qa", sandbox)
                 verdict = attributed(verify_story, card=number, repo=card_repo)(
                     f"{bug}{card.title}\n\n{body}",
                     worktree=worktree,
                     repo=card_repo,
                     github=issues,
                     workspace=holding,
-                    base=merged.sha if merged is not None else "",
+                    base=base,
                     checks=ci_checks(issues, card_repo, revision),
                     prior_verdicts=past_qa(issues, card_repo, number, marker=QA_MARKER),
                     decisions=story_rows(issues, card, card_repo),

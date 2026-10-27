@@ -182,13 +182,17 @@ session.git:
   owner: Developer
 session.path:
   description: A tool reads and writes only the worktree, never the crew's own folders or what tools make,
-    and never through a symbolic link that leads out of it.
+    and never through a symbolic link that leads out of it. A session resolving a merge's conflicts writes
+    only the files main conflicted in (crew#933).
   messages:
     link: '`{path}` is a symbolic link: edit the file it leads to instead.'
+    not_conflicted: '`{path}` has no conflict to resolve: this session changes only the files main
+      conflicted in, {files}.'
     outside: '`{path}` isn''t a path in the repository: give it relative to its root.'
     skipped: '`{path}` is in a folder the session doesn''t {verb}.'
   origin:
   - crew#778
+  - crew#933
   owner: Developer
 told.deploy_review_crew.block_the_change_when_what_it:
   guidance: true

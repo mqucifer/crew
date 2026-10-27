@@ -387,6 +387,15 @@ delivery.push_failed:
   origin:
   - crew#10
 delivery.record_unreadable:
+delivery.resolve_conflicts:
+  description: An approved story returned only for conflicting with main is merged with main, its
+    conflicts left in the files, and one Developer session resolves them, editing only those files. Its
+    `done` commits the merge and the gates run on the branch. Passed, it's pushed with a marker, and
+    review and QA judge only what changed in those files since the approval. Any other ending, a gate's
+    finding or a file changed beyond the conflicts rebuilds it on main, as before. A role's Task is
+    rebuilt as before.
+  origin:
+  - crew#933
 delivery.resume_kept:
   description: A delivery with no checkpoint and no returned pull request starts from the card's newest
     kept branch not yet in main, only when its newest push is by the crew's own App and left it at the

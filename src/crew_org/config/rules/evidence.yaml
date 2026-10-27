@@ -124,6 +124,15 @@ check.gates.a_service_wont_start:
   - crew#814
   - crew#860
   owner: DevOps Engineer
+check.gates.conflicts_left:
+  description: At `done`, a session resolving a merge's conflicts leaves no conflict's markers in the
+    files it resolves (crew#933).
+  messages:
+    default: 'A conflict''s markers are still in {paths}. Resolve each conflict so both sides'' changes
+      hold, take out its `<<<<<<<`, `|||||||`, `=======` and `>>>>>>>` lines, then call `done` again.'
+  origin:
+  - crew#933
+  owner: Developer
 check.gates.the_branch_changes_nothing:
   description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion
     and the checks pass, as an already-done story does (crew#221).

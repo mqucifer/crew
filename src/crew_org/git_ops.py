@@ -625,6 +625,42 @@ class Workspace:
         _run([*identity, "commit", "--no-edit"], cwd=self.path)
         return files
 
+    def merge_leaving_conflicts(self) -> list[str]:
+        """Merge the default branch into the open worktree, its conflicts left in the files.
+
+        For a session that resolves them (crew#933): each conflict in diff3 style, so it
+        sees the branch's side, the base both started from, and main's. Nothing is
+        committed; the session's `done` commits the merge. Empty when main merged
+        cleanly, which is committed as `catch_up` would. A merge that fails with
+        nothing conflicted is aborted and raised.
+        """
+        if self.path is None:
+            raise GitError("no worktree open")
+        identity = [
+            "-c",
+            f"user.name={self.identity.name}",
+            "-c",
+            f"user.email={self.identity.email}",
+        ]
+        try:
+            _run(
+                [*identity, "-c", "merge.conflictStyle=diff3", "merge", "--no-edit", "origin/HEAD"],
+                cwd=self.path,
+            )
+            return []
+        except GitError:
+            files = _run(["diff", "--name-only", "--diff-filter=U"], cwd=self.path).split()
+        if not files:
+            self.abort_merge()
+            raise MergeConflict(files)
+        return files
+
+    def abort_merge(self) -> None:
+        """Abandon a merge in progress in the open worktree, leaving it as it was."""
+        if self.path is not None:
+            with contextlib.suppress(GitError):
+                _run(["merge", "--abort"], cwd=self.path)
+
     def revert(self, sha: str) -> None:
         """Commit the inverse of `sha` onto the open worktree.
 
@@ -764,6 +800,54 @@ def keep_both_additions(text: str) -> str | None:
     if unresolved or "<<<<<<< " in resolved or "\n>>>>>>> " in resolved:
         return None
     return resolved
+
+
+def conflicts_in(text: str) -> list[tuple[str, str, str]]:
+    """Each diff3 conflict in `text`, as (the branch's side, their base, main's side)."""
+    return [(m.group(1), m.group(2), m.group(3)) for m in _CONFLICT.finditer(text)]
+
+
+def beyond_the_merge(path: Path, approved: str, main: str = "origin/HEAD") -> list[str]:
+    """The files HEAD has otherwise than git's own merge of `approved` and `main` would.
+
+    What a resolution changed (crew#933): every file it resolved, and any other it
+    touched, which git alone would have merged. git's merge leaves the conflicted
+    files with their markers, so each one resolved is among them.
+    """
+    import os  # noqa: PLC0415
+
+    merged = subprocess.run(
+        ["git", "merge-tree", "--write-tree", "--no-messages", approved, main],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **NO_PROMPT},
+    )
+    # 1 is a merge with conflicts, which is the point; anything else is git failing.
+    if merged.returncode not in (0, 1) or not merged.stdout.strip():
+        raise GitError(f"git merge-tree failed: {merged.stderr.strip()[:300]}")
+    tree = merged.stdout.split("\n", 1)[0].strip()
+    return _run(["diff", "--name-only", tree, "HEAD"], cwd=path).split()
+
+
+# A line only a conflict leaves: its opening, its base's or its closing marker.
+_MARKER = re.compile(r"^(<<<<<<<|\|\|\|\|\|\|\||>>>>>>>)( |$)", re.MULTILINE)
+
+
+def unresolved(root: Path, files: list[str]) -> list[str]:
+    """Those of `files` under `root` that still hold a conflict's markers (crew#933).
+
+    `=======` alone isn't one: it underlines a heading in Markdown.
+    """
+    left = []
+    for name in files:
+        try:
+            text = (root / name).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _MARKER.search(text):
+            left.append(name)
+    return left
 
 
 def _still_whole(source: str) -> bool:

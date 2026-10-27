@@ -26,6 +26,7 @@ from crew_org.flows.ci import return_for_ci
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.history import latest_answer, past_reviews
+from crew_org.flows.merge import Resolved, resolution_diff, resolved_at
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import branch_name
 from crew_org.llm import reraise_if_down
@@ -292,9 +293,14 @@ def review_open_pulls(
                 )
             )
             try:
-                diff = issues.pull_diff(repo, number)
-                base = (pull.get("base") or {}).get("ref") or "main"
                 story = waiting.get((pull.get("head") or {}).get("ref", ""))
+                # A head a resolution of its conflicts made: only what that changed, since
+                # the approval (crew#933). Any other head, the whole pull request.
+                resolved = resolved_at(issues, repo, number, head) if story is not None else None
+                diff = _resolved_diff(issues, repo, resolved) if resolved else ""
+                if not diff:
+                    resolved, diff = None, issues.pull_diff(repo, number)
+                base = (pull.get("base") or {}).get("ref") or "main"
                 verdict = attributed(
                     review_diff,
                     card=story.number if story is not None else None,
@@ -303,9 +309,12 @@ def review_open_pulls(
                 )(
                     pull["title"],
                     diff,
-                    prior_verdicts=_with_answer(
-                        past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
-                        latest_answer(issues, repo, number),
+                    prior_verdicts=_with_resolution(
+                        _with_answer(
+                            past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
+                            latest_answer(issues, repo, number),
+                        ),
+                        resolved,
                     ),
                     checks=_with_guard_notice(
                         checks_section(issues.check_runs(repo, head), pull.get("body") or ""),
@@ -790,6 +799,30 @@ def _to_product_owner(
         )
         issues.close_pull(repo, pull)
     return True
+
+
+def _resolved_diff(issues: IssueClient, repo: str, resolved: Resolved) -> str:
+    """The resolution's diff, or empty when it can't be read: then the whole is judged."""
+    try:
+        return resolution_diff(issues, repo, resolved)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _with_resolution(prior: str, resolved: Resolved | None) -> str:
+    """What the reviewer is told of a head that resolved conflicts with main (crew#933)."""
+    if resolved is None:
+        return prior
+    said = (
+        "## This head resolves conflicts with main\n\n"
+        f"The crew approved this pull request at {resolved.approved[:7]}. Other work has "
+        "since landed on main in the same lines, so main was merged in and the conflicts "
+        "in " + ", ".join(f"`{f}`" for f in resolved.files) + " resolved. The diff is only "
+        "what changed in those files since that approval: main's side, and the resolution. "
+        "Judge whether both changes still hold and nothing else changed; the rest of the "
+        "story stands as approved."
+    )
+    return f"{prior}\n\n{said}" if prior else said
 
 
 def _with_answer(prior: str, answer: str) -> str:
