@@ -419,6 +419,38 @@ def prior_verdicts(
     return "\n\n---\n\n".join(parts)
 
 
+def sponsor_review(issues: IssueClient, repo: str, pull: int, sponsor: str) -> str:
+    """The Sponsor's change request on the pull request, with its line comments, or "".
+
+    Their latest review that decides, whichever head it was on, as GitHub reads it: an
+    approval after a change request settles it, and a plain comment changes neither,
+    so it isn't one of the crew's findings. It carries no marker, so the
+    crew's verdicts never held it, and a Task the Sponsor sent back came back reworked
+    against the crew's notes only (crew#924). No Sponsor named, no review of theirs.
+    """
+    if not sponsor:
+        return ""
+    theirs = [
+        r
+        for r in issues.pull_reviews(repo, pull)
+        if (r.get("user") or {}).get("login") == sponsor
+        and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
+    ]
+    if not theirs or theirs[-1].get("state") != "CHANGES_REQUESTED":
+        return ""
+    latest = theirs[-1]
+    parts = ["### The Sponsor's review", (latest.get("body") or "").strip()]
+    try:
+        lines = issues.review_comments(repo, pull, latest["id"])
+    except Exception:  # noqa: BLE001 - the review's own words are still worth sending
+        lines = []
+    parts += [
+        f"On `{c.get('path')}` line {c.get('line') or c.get('original_line')}:\n\n{c.get('body')}"
+        for c in lines
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
 def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
     """What became of the last pull request from this branch, in one line.
 
@@ -765,6 +797,7 @@ def _deliver_and_move(
     repo: str,
     default_branch: str,
     rework: bool = False,
+    sponsor: str | None = None,
 ) -> None:
     """Deliver one card that is already In Progress, and move it on.
 
@@ -811,6 +844,7 @@ def _deliver_and_move(
             repo=card_repo,
             default_branch=default_branch,
             rework=rework,
+            sponsor=sponsor,
         )
     except Exception as exc:  # noqa: BLE001
         reraise_if_down(exc)
@@ -1092,6 +1126,7 @@ def deliver(
             repo=repo,
             default_branch=default_branch,
             rework=True,
+            sponsor=sponsor,
         )
     if result.reworked:
         cards = board.cards()
@@ -1176,5 +1211,6 @@ def deliver(
             sprint=sprint,
             repo=repo,
             default_branch=default_branch,
+            sponsor=sponsor,
         )
     return result

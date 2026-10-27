@@ -775,6 +775,15 @@ class IssueClient:
         response.raise_for_status()
         return response.json()
 
+    def review_comments(self, repo: str, number: int, review_id: int) -> list[dict[str, Any]]:
+        """The comments one review left on the diff's lines, each with its `path` and `line`."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/pulls/{number}/reviews/{review_id}/comments"
+            "?per_page=100"
+        )
+        response.raise_for_status()
+        return list(response.json())
+
     def create_review(self, repo: str, number: int, *, event: str, body: str) -> dict[str, Any]:
         """Submit a review. `event` is APPROVE, REQUEST_CHANGES or COMMENT."""
         return self._request(
