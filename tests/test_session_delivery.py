@@ -871,7 +871,49 @@ def test_a_returned_story_s_session_is_told_the_findings_and_the_last_done(
     assert "rebuilt" not in told, "its work is on its branch, as before (crew#919)"
     assert again.started[0]["findings"] == len("## What review or QA said\n\nRename `rate`.")
     assert again.started[0]["returned"] is True and again.started[0]["rebuilt"] is False
+    assert again.started[0]["sponsor"] == 0, "no Sponsor review, and its absence shows"
     assert outcome.pr == 700 and issues.comments and issues.pulls == []
+
+
+def test_a_returned_task_starts_with_the_sponsor_s_change_request(ws, deliver, monkeypatch):
+    """crew#924: the Architect reworked a diagram against the crew's notes, not the Sponsor's."""
+    deliver(
+        ws, Sessions({"ending": Ending("done", DONE)}), Routes(session_end.Route("review", "r"))
+    )
+    ws.close()
+    ws.forget(BRANCH)
+    monkeypatch.setattr(session_delivery, "prior_verdicts", lambda *a, **k: "Name the file.")
+    monkeypatch.setattr(session_delivery, "previous_fate", lambda *a, **k: "")
+
+    class Asked(Issues):
+        def pull_reviews(self, repo, number):
+            return [
+                {"id": 3, "user": {"login": "mquarters"}, "state": "APPROVED", "body": "Older."},
+                {
+                    "id": 9,
+                    "user": {"login": "mquarters"},
+                    "state": "CHANGES_REQUESTED",
+                    "body": "Lexical error on line 2.",
+                },
+            ]
+
+        def review_comments(self, repo, number, review_id):
+            return [{"path": "docs/architecture.md", "line": 2, "body": "Won't parse."}]
+
+    again = Sessions({"ending": Ending("done", DONE)})
+    deliver(
+        ws,
+        again,
+        Routes(session_end.Route(session_end.REVIEW, "r")),
+        Asked(live={"number": 700}),
+        rework=True,
+        sponsor="mquarters",
+    )
+    started = again.started[0]
+    told = started["instead_of_hints"]
+    assert told.index("Lexical error on line 2.") < told.index("Name the file.")
+    assert "Won't parse." in told and "Older." not in told
+    assert 0 < started["sponsor"] < started["findings"]
 
 
 def test_the_phase_counts_a_routed_story_without_moving_it_again(monkeypatch):
@@ -1349,7 +1391,9 @@ def test_a_returned_pull_request_comes_before_kept_work(ws, deliver):
     issues.live = {"number": 700, "head": {"sha": origin_sha(ws, BRANCH)}}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            session_delivery, "returned_start", lambda *a, **k: ("## Why this is a new session", 0)
+            session_delivery,
+            "returned_start",
+            lambda *a, **k: ("## Why this is a new session", 0, 0),
         )
         resumes(ws, deliver, issues, rework=True)
     assert issues.asked == []

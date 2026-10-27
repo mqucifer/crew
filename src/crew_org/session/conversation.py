@@ -530,6 +530,7 @@ def session(
     scope: tuple[str, ...] = (),
     skills: tuple[str, ...] = (),
     findings: int | None = None,
+    sponsor: int | None = None,
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
@@ -539,11 +540,14 @@ def session(
     (crew#839), with the Developer's tools. A Task's `specs` tell its `done` as a Task's,
     and its `scope` is what `done` takes as proof besides a test. A returned story's
     `findings` is the size of review's and QA's section in `instead_of_hints`, shown
-    beside the parts, outside the total it's already in (crew#919).
+    beside the parts, outside the total it's already in (crew#919), and `sponsor` the
+    size of the Sponsor's change request within it (crew#924).
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     if findings is not None:
         sizes["findings"] = findings
+    if sponsor is not None:
+        sizes["sponsor"] = sponsor
     offered = any(s["function"]["name"] == "skill" for s in specs or ())
     tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=skills)
     record(

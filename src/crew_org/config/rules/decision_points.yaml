@@ -722,6 +722,19 @@ flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
   rule: story.contract_ruling
+flows.delivery.sponsor_review:end:6c05aeb5:
+  at: flows/delivery.py:sponsor_review
+  if: not sponsor
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery.sponsor_review:end:9a375d76:
+  at: flows/delivery.py:sponsor_review
+  if: not theirs or theirs[-1].get('state') != 'CHANGES_REQUESTED'
+  not_a_rule: chooses what a role is shown, not what happens to a card
+flows.delivery.sponsor_review:filter:6f4088f7:
+  at: flows/delivery.py:sponsor_review
+  if: (r.get('user') or {}).get('login') == sponsor and r.get('state') in ('APPROVED', 'CHANGES_REQUESTED',
+    'DISMISSED')
+  not_a_rule: chooses what a role is shown, not what happens to a card
 flows.deploy._deploy:result:held:32de8da5:
   at: flows/deploy.py:_deploy
   if: reader is not None

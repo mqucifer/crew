@@ -61,6 +61,7 @@ from crew_org.flows.delivery import (
     coverage_for,
     previous_fate,
     prior_verdicts,
+    sponsor_review,
 )
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.qa_tasks import disputable as qa_disputable
@@ -142,11 +143,13 @@ def deliver_by_session(
     repo: str,
     default_branch: str,
     rework: bool = False,
+    sponsor: str | None = None,
 ) -> DeliveryOutcome:
     """Take one story to a pull request by Developer sessions, or to where they end it.
 
     A role's Task goes the same way, worked by its role's session in the Developer's
-    place, with the Developer's tools (crew#839).
+    place, with the Developer's tools (crew#839). `sponsor` is `GITHUB_SPONSOR`, as the
+    merge reads it: a returned story is told their change request first (crew#924).
     """
     from crew_org.flows import session_end  # noqa: PLC0415
 
@@ -249,12 +252,13 @@ def deliver_by_session(
     # After a catch-up, the branch's base is main as it is now.
     since = _merge_base(worktree) or "origin/HEAD"
     findings: int | None = None
+    asked: int | None = None
     if checkpoint is not None:
         instead = resumed_start(checkpoint)
     elif live is not None:
         # Rebuilt or not, the findings it was sent back with: without them each session
         # sent the same diff back (crew#919).
-        instead, findings = returned_start(
+        instead, findings, asked = returned_start(
             issues,
             repo,
             number,
@@ -263,6 +267,7 @@ def deliver_by_session(
             known=card,
             rebuilt=conflicted if rebuilt else None,
             earlier=earlier,
+            sponsor=role_tasks.the_sponsor(sponsor),
         )
     elif kept is not None:
         instead = kept_start(issues, repo, number, kept, worktree, since, link=ws)
@@ -333,6 +338,7 @@ def deliver_by_session(
             route=session_end.route,
             measured=measured,
             findings=findings,
+            sponsor=asked,
             returned=live is not None,
             rebuilt=rebuilt,
             role=role.spec if role else conversation.ROLE,
@@ -479,6 +485,7 @@ def _sessions(
     route: Any,
     measured: dict[str, int],
     findings: int | None = None,
+    sponsor: int | None = None,
     returned: bool = False,
     rebuilt: bool = False,
     role: str = conversation.ROLE,
@@ -526,6 +533,7 @@ def _sessions(
             # The returned start's findings are the first round's; later rounds start
             # from the gates' (crew#919).
             findings=findings if rounds == 1 else None,
+            sponsor=sponsor if rounds == 1 else None,
             returned=returned,
             rebuilt=rebuilt,
             role=role,
@@ -1187,14 +1195,25 @@ def returned_start(
     known: Card,
     rebuilt: list[str] | None = None,
     earlier: str = "",
-) -> tuple[str, int]:
-    """What a session reworking a story review or QA sent back is told (P2), and the size
-    of its findings section, 0 without one.
+    sponsor: str = "",
+) -> tuple[str, int, int]:
+    """What a session reworking a story review or QA sent back is told (P2), the size of
+    its findings section, and of the Sponsor's part of it: each 0 without one.
 
     A branch `rebuilt` on main, for conflicting in those files, has no previous work in
-    the files: its last `done`, read before the rebuild, is `earlier` (crew#919).
+    the files: its last `done`, read before the rebuild, is `earlier` (crew#919). The
+    Sponsor's change request goes first: their words outrank the crew's (crew#924).
     """
-    verdicts = prior_verdicts(issues, repo, number, branch, known=known.open_pull_on(branch))
+    linked = known.open_pull_on(branch)
+    theirs = ""
+    try:
+        pull = issues.pull_for_branch(repo, branch, known=linked)
+        if pull:
+            theirs = sponsor_review(issues, repo, pull["number"], sponsor)
+    except Exception:  # noqa: BLE001, S110 - best effort, as the crew's verdicts are
+        pass
+    crews = prior_verdicts(issues, repo, number, branch, known=linked)
+    verdicts = "\n\n---\n\n".join(p for p in (theirs, crews) if p)
     fate = previous_fate(issues, repo, branch)
     if rebuilt is None:
         why = (
@@ -1219,7 +1238,7 @@ def returned_start(
         parts.append(said)
     if done:
         parts.append(done)
-    return "\n\n".join(parts), len(said)
+    return "\n\n".join(parts), len(said), len(theirs)
 
 
 def last_done_on(worktree: Path, number: int) -> str:
