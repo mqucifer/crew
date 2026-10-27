@@ -80,8 +80,8 @@ check.qa_tasks.no_change_changed:
       and `justified` out, or restore the files and say it again.'
   owner: QA Engineer
 check.role_tasks.diagram_renders:
-  description: The Architect's Task leaves the repository's diagram as a C4 diagram in Mermaid that renders,
-    checked as the Goal's target diagram is (crew#839).
+  description: The Architect's Task leaves the repository's diagram with a C4 block, and every block one
+    Mermaid's own parser accepts and draws right, checked as the Goal's target diagram is (crew#839, crew#922).
   messages:
     default: 'The repository''s diagram won''t render: {problems}.'
   owner: Architect

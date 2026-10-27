@@ -786,13 +786,25 @@ def doctor(
     model: tool calling, constrained JSON, context length and thinking control.
     Everything goes through the proxy; the doctor used to go around it, and so
     checked a path no agent takes.
+
+    It also says whether Mermaid's parser, which checks the Architect's diagrams,
+    can run (crew#922).
     """
+    from crew_org import mermaid
     from crew_org.llm import base_url as proxy_url
-    from crew_org.substrate import Status, run_all
+    from crew_org.substrate import ProbeResult, Status, run_all
 
     base_url = base_url or proxy_url()
     console.print(f"[dim]Probing {base_url} as {model}…[/]")
     results = run_all(base_url, model, deep=deep)
+    # Not pulled or not installed yet is a warning: the first check does both. No
+    # engine is a failure: every diagram check would then refuse.
+    unready = mermaid.unready()
+    status = Status.PASS if unready is None else Status.FAIL if unready[1] else Status.WARN
+    ready = f"{mermaid.IMAGE.split('@')[0]}, mermaid {mermaid.version()}"
+    results.append(
+        ProbeResult(check="mermaid parser", status=status, detail=unready[0] if unready else ready)
+    )
 
     table = Table(box=box.SIMPLE, show_header=True, header_style="dim")
     table.add_column("check")

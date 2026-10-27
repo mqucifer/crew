@@ -145,6 +145,8 @@ class Sandbox:
         labels: dict[str, str] | None = None,
         readonly: dict[Path, str] | None = None,
         attach: str | None = None,
+        stdin: bool = False,
+        cache: bool = True,
     ) -> list[str]:
         """Build the container invocation for one command.
 
@@ -161,6 +163,11 @@ class Sandbox:
 
         `attach` names an internal network, with no route out, in place of none: the
         one a held workspace shares with its project's services (crew#814).
+
+        `stdin` keeps the container's input open, for what it's handed there rather
+        than in its arguments: untrusted text, as Mermaid's parser reads (crew#922).
+        Without `cache`, the shared cache isn't mounted, so nothing run can change
+        what the crew's other commands install from it.
         """
         home = f"/work/{HOME_DIR}"
         found = ["-e", f"PATH={home}/.local/bin:{path}"] if path else []
@@ -181,6 +188,7 @@ class Sandbox:
             self.engine,
             "run",
             "--rm",
+            *(["-i"] if stdin else []),
             *hold,
             # No network for anything but dependency resolution, and the services'.
             "--network",
@@ -208,8 +216,7 @@ class Sandbox:
             "-v",
             f"{worktree.resolve()}:/work",
             *guard,
-            "-v",
-            f"{self.cache_dir}:/cache",
+            *(["-v", f"{self.cache_dir}:/cache"] if cache else []),
             "-w",
             "/work",
             *own,

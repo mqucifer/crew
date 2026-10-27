@@ -70,6 +70,20 @@ def test_only_the_worktree_and_cache_are_mounted(box):
     assert len(mounts) == 2
 
 
+def test_without_the_cache_only_the_worktree_is_mounted(box):
+    """Mermaid's parser reads untrusted text, and mustn't be able to change what the
+    crew's other commands install from the cache (crew#922)."""
+    a = box.command(Path("/tmp/wt"), ["node", "check.mjs"], network=False, cache=False)
+    mounts = [a[i + 1] for i, x in enumerate(a) if x == "-v"]
+    assert len(mounts) == 1 and mounts[0].endswith(":/work")
+
+
+def test_input_is_kept_open_only_when_asked(box):
+    assert "-i" not in argv(box)
+    a = box.command(Path("/tmp/wt"), ["node", "check.mjs"], network=False, stdin=True)
+    assert a[a.index("run") + 1 : a.index("run") + 3] == ["--rm", "-i"]
+
+
 def test_the_cache_is_a_host_directory_not_a_named_volume(box):
     """A named volume is created root-owned, and the container runs as the
     invoking user, so uv could not write into one."""

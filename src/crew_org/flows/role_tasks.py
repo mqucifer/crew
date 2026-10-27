@@ -1307,24 +1307,10 @@ def diagram_problems(text: str | None) -> list[str]:
     if not blocks:
         return [f"`{DIAGRAM_PATH}` has no Mermaid block"]
     # Every block, since GitHub renders each: on mqucifer/sprint-metrics#740 only the
-    # first was checked, and the second and third didn't render (crew#839).
-    problems: list[str] = []
-    kinds: list[str] = []
-    for n, block in enumerate(blocks, 1):
-        lines = block.strip().splitlines()
-        kind = lines[0].strip() if lines else ""
-        kinds.append(kind)
-        if kind in mermaid.C4_TYPES:
-            found = mermaid.c4_problems(block)
-        elif kind == "sequenceDiagram":
-            found = mermaid.sequence_problems(block)
-        else:
-            found = [
-                f"`{kind[:40]}` isn't one the crew checks: {', '.join(mermaid.C4_TYPES)} "
-                "or sequenceDiagram"
-            ]
-        problems += [f"block {n}, {kind[:40] or 'empty'}: {p}" for p in found]
-    if not any(k in mermaid.C4_TYPES for k in kinds):
+    # first was checked, and the second and third didn't render (crew#839). Mermaid's own
+    # parser reads them (crew#922).
+    problems = mermaid.problems(blocks)
+    if not any(mermaid.kind(b) in mermaid.C4_TYPES for b in blocks):
         problems.append(f"no block is a C4 diagram ({', '.join(mermaid.C4_TYPES)})")
     return problems
 

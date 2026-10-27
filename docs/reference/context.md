@@ -71,7 +71,7 @@ Then the four parts every refinement session's start ends with (below). The repo
 | The Goal's record and target diagram, for a later look | `record.goal_record_comment`, `goal_look.diagram_of` | What's settled; a later look reads only the epics added since |
 | The Goal's epics | `goal_look.gather`: those it reads for, those the record covers, the delivered ones | What each role reads, from its own question |
 
-Then the four parts every refinement session's start ends with (below). The Architect also has `contracts`, and the UX Designer `look` (`role_tools`). `done` refuses a diagram that wouldn't render (`mermaid.c4_problems`), a new part the diagram doesn't draw, an epic that isn't the Goal's, and a reader's answer that leaves out an epic it read.
+Then the four parts every refinement session's start ends with (below). The Architect also has `contracts`, and the UX Designer `look` (`role_tools`). `done` refuses a diagram that Mermaid's own parser refuses or that it would draw wrong (`mermaid.problems`), a new part the diagram doesn't draw, an epic that isn't the Goal's, and a reader's answer that leaves out an epic it read.
 
 ## Product Owner, settling the Goal's look
 

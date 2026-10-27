@@ -86,8 +86,12 @@ def test_the_architects_answer_carries_a_diagram_that_renders():
 def test_a_diagram_that_wouldnt_render_is_refused_naming_why():
     with pytest.raises(ValidationError, match="doesn't render as written.*`tik`"):
         system(diagram=CONTAINERS.replace("Rel(tick, github", "Rel(tik, github"))
-    with pytest.raises(ValidationError, match="the sequence: .*block left open"):
+    with pytest.raises(ValidationError, match="block 2, sequenceDiagram: Parse error on line 9"):
         system(sequence=SEQUENCE.replace("\nend\n", "\n"))
+    with pytest.raises(ValidationError, match="first line is `flowchart LR`, not one of the C4"):
+        system(diagram="flowchart LR\nA-->B")
+    with pytest.raises(ValidationError, match="first line is `C4Context`, not `sequenceDiagram`"):
+        system(sequence=CONTAINERS.replace("C4Container", "C4Context"))
 
 
 def test_a_new_part_has_to_be_one_the_diagram_draws():

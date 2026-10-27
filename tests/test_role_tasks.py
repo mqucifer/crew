@@ -716,14 +716,20 @@ def test_every_block_of_the_architects_diagram_must_render():
 
     found = diagram_problems(fenced)
 
-    assert found and all(p.startswith("block 3, C4Container: ") for p in found)
-    assert any("`Container_Boundary` opens no `{`" in p for p in found)
-    assert any("`End_Boundary` isn't a C4 macro" in p for p in found)
+    # Mermaid's own message, as GitHub shows it (crew#922).
+    assert found == [
+        "block 3, C4Container: Parse error on line 4: "
+        '...er_Boundary(b, "S")Container(c, "C", "p '
+        "Expecting 'LBRACE', got 'CONTAINER'"
+    ]
     assert diagram_problems(f"```mermaid\n{context}\n```\n\n```mermaid\n{sequence}\n```") == []
     broken_sequence = f"```mermaid\n{context}\n```\n\n```mermaid\nsequenceDiagram\nA->>B: a; b\n```"
     assert diagram_problems(broken_sequence)[0].startswith("block 2, sequenceDiagram: ")
+    # Mermaid renders any type it knows, so a flowchart beside the C4 diagram passes.
     flowchart = f"```mermaid\n{context}\n```\n\n```mermaid\ngraph TD\nA-->B\n```"
-    assert diagram_problems(flowchart)[0].startswith("block 2, graph TD: ")
+    assert diagram_problems(flowchart) == []
+    unknown = f"```mermaid\n{context}\n```\n\n```mermaid\ngraf TD\nA-->B\n```"
+    assert diagram_problems(unknown)[0].startswith("block 2, graf TD: No diagram type detected")
     only_sequence = f"```mermaid\n{sequence}\n```"
     assert diagram_problems(only_sequence) == [
         "no block is a C4 diagram ("
