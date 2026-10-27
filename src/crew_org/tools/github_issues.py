@@ -741,6 +741,15 @@ class IssueClient:
         response.raise_for_status()
         return response.text
 
+    def compare_diff(self, repo: str, base: str, head: str) -> str:
+        """The diff from `base` to `head`, as GitHub's compare shows it (crew#933)."""
+        response = self._client.get(
+            f"{API}/repos/{self.owner}/{repo}/compare/{base}...{head}",
+            headers={"Accept": "application/vnd.github.v3.diff"},
+        )
+        response.raise_for_status()
+        return response.text
+
     def review_decision(self, repo: str, number: int) -> str | None:
         """GitHub's own verdict on whether this pull request is approved.
 

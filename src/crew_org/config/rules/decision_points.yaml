@@ -970,10 +970,6 @@ flows.main_watch._open_red:skip:76ea1de5:
   at: flows/main_watch.py:_open_red
   if: issue.get('state') != 'open'
   rule: decision.main_watch.red_main
-flows.merge._conflict:filter:bf551557:
-  at: flows/merge.py:_conflict
-  if: '''<!-- crew:rebuild head='' in (c.get(''body'') or '''')'
-  rule: decision.merge.conflict
 flows.merge._conflict:result:conflicted:168c1d3e:
   at: flows/merge.py:_conflict
   if: rebuilt >= MAX_REBUILDS
@@ -2066,3 +2062,56 @@ flows.alerts.task_body:filter:21f1398f:
   at: flows/alerts.py:task_body
   if: not k.startswith('__')
   not_a_rule: 'a render: leaves Grafana''s routing labels out of the Task''s text'
+flows.merge.returned_for_conflict:end:7287767e:
+  at: flows/merge.py:returned_for_conflict
+  if: not head
+  rule: delivery.resolve_conflicts
+flows.merge.resolutions:skip:fa1cc213:
+  at: flows/merge.py:resolutions
+  if: ((comment.get('user') or {}).get('login') or '') not in crew
+  not_a_rule: 'reads where a record is kept: only the crew''s own App''s comments carry a resolution''s
+    marker'
+flows.merge.resolved_at:filter:440381e0:
+  at: flows/merge.py:resolved_at
+  if: r.head == head
+  rule: delivery.resolve_conflicts
+flows.session_delivery.deliver_by_session:end:6c453a48:
+  at: flows/session_delivery.py:deliver_by_session
+  if: ws.resumed
+  rule: delivery.resolve_conflicts
+flows.session_delivery.deliver_by_session:end:ae567874:
+  at: flows/session_delivery.py:deliver_by_session
+  if: live is not None and role is None and returned_for_conflict(issues, repo, live)
+  rule: delivery.resolve_conflicts
+flows.session_delivery.deliver_by_session:end:3b5e8d8e:
+  at: flows/session_delivery.py:deliver_by_session
+  if: resolution.reached is not None
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:cfc22686:
+  at: flows/session_delivery.py:resolve
+  if: not files
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:fbff912c:
+  at: flows/session_delivery.py:resolve
+  if: not started.ok
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:5f762175:
+  at: flows/session_delivery.py:resolve
+  if: setup is not None and (not setup.ok)
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:f5258225:
+  at: flows/session_delivery.py:resolve
+  if: ending.how != 'done'
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:947489d1:
+  at: flows/session_delivery.py:resolve
+  if: beyond
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:5e18afd5:
+  at: flows/session_delivery.py:resolve
+  if: verdict.findings
+  rule: delivery.resolve_conflicts
+flows.session_delivery.resolve:end:dd0d08a9:
+  at: flows/session_delivery.py:resolve
+  if: verdict.already_done or verdict.disagree
+  rule: delivery.resolve_conflicts

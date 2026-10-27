@@ -64,6 +64,7 @@ from crew_org.flows.delivery import (
     sponsor_review,
 )
 from crew_org.flows.epic_notes import story_notes
+from crew_org.flows.merge import returned_for_conflict
 from crew_org.flows.qa_tasks import disputable as qa_disputable
 from crew_org.flows.qa_tasks import dispute_specs, place_reference, reference_ref
 from crew_org.git_ops import (
@@ -72,7 +73,9 @@ from crew_org.git_ops import (
     GitError,
     MergeConflict,
     Workspace,
+    beyond_the_merge,
     branch_name,
+    conflicts_in,
     kept_name,
 )
 from crew_org.llm import reraise_if_down
@@ -186,6 +189,7 @@ def deliver_by_session(
     rebuilt = False
     conflicted: list[str] = []
     earlier = ""
+    tried = ""
     if ws.resumed:
         try:
             ws.catch_up()
@@ -193,6 +197,39 @@ def deliver_by_session(
             # A returned story's last `done`, read before the rebuild drops it: what it
             # tried, beside the findings it was sent back with (crew#919).
             earlier = last_done_on(worktree, number) if live is not None else ""
+            if live is not None and role is None and returned_for_conflict(issues, repo, live):
+                # Approved, and returned only for conflicting with main: its conflicts
+                # are resolved, and it's rebuilt only if that fails (crew#933).
+                resolution = resolve(
+                    card,
+                    ws=ws,
+                    worktree=worktree,
+                    story_text=story_text,
+                    earlier=earlier,
+                    issues=issues,
+                    sink=sink,
+                    sprint=sprint,
+                    repo=repo,
+                    outcome=outcome,
+                )
+                if resolution.reached is not None:
+                    return _land(
+                        resolution.reached,
+                        card,
+                        outcome=outcome,
+                        ws=ws,
+                        issues=issues,
+                        sink=sink,
+                        repo=repo,
+                        default_branch=default_branch,
+                        live=live,
+                        rework=True,
+                        rebuilt=False,
+                        since=resolution.approved,
+                        worktree=worktree,
+                        resolution=resolution,
+                    )
+                tried = resolution_failed(resolution)
             # A checkpoint's or a returned story's branch, either way being rewritten:
             # rebuilt on current main, as today's rework is (#158).
             worktree = ws.open(branch, resume=False)
@@ -242,6 +279,8 @@ def deliver_by_session(
     )
     if unused:
         story += "\n\n" + unused
+    if tried:
+        story += "\n\n" + tried
     # The story's part of the start, measured by what it's made of (the operator, crew#778).
     measured = {
         "card": len(story_text),
@@ -772,8 +811,11 @@ def _land(
     since: str,
     worktree: Path,
     task: role_tasks.TaskRole | None = None,
+    resolution: Resolution | None = None,
 ) -> DeliveryOutcome:
-    """Push and open for review, or for QA, as today; a story the route moved is done here."""
+    """Push and open for review, or for QA, as today; a story the route moved is done here.
+
+    A `resolution`'s push is said with its marker, for review and QA (crew#933)."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.tools.remote_errors import transient_remote  # noqa: PLC0415
 
@@ -852,7 +894,10 @@ def _land(
             )
         )
         return outcome
-    if live is not None:
+    if live is not None and resolution is not None:
+        outcome.pr = live["number"]
+        _say_resolved(issues, sink, repo, card, live["number"], worktree, resolution, outcome)
+    elif live is not None:
         outcome.pr = live["number"]
         _say_reworked(issues, sink, repo, number, live["number"], summary, reached, rebuilt, by)
     else:
@@ -949,6 +994,336 @@ def _say_reworked(
             f"#{number} re-worked on PR #{pull}, and its comment failed: {exc}"[:300],
             card=number,
         )
+
+
+@dataclass
+class Resolution:
+    """A session's resolution of an approved branch's conflicts with main (crew#933).
+
+    `reached` is where its gates sent it: review, ready to land. None when it failed,
+    and `why` says how, for the rebuild that follows.
+    """
+
+    approved: str
+    files: list[str]
+    reached: Delivered | None = None
+    why: str = ""
+    calls: int = 0
+    model_s: float = 0.0
+
+
+# How much of the story's approved diff a resolution's start shows. The rest is read
+# with `git diff`, as the start says.
+APPROVED_DIFF_CHARS = 20_000
+
+
+def resolve(
+    card: Card,
+    *,
+    ws: Workspace,
+    worktree: Path,
+    story_text: str,
+    earlier: str,
+    issues: IssueClient,
+    sink: EventSink,
+    sprint: str,
+    repo: str,
+    outcome: DeliveryOutcome,
+) -> Resolution:
+    """Merge main into an approved branch and give its conflicts alone to one session.
+
+    sprint-metrics#809 was rebuilt from scratch for a shared line in four files: 135
+    calls and 95 minutes, then review and QA again (crew#933). Here the merge's conflicts
+    stay in the files, and the session may edit only those files. Its `done` commits the
+    merge, and the gates run on the branch as at any `done`. Anything else, an ending
+    that isn't `done`, a gate's finding, a file it changed beyond the conflicts, fails
+    it: the caller rebuilds, as before. The worktree is left as the caller reopens it.
+    """
+    from crew_org.flows import session_end  # noqa: PLC0415
+
+    number = card.number or 0
+    approved = _git(worktree, "rev-parse", "HEAD")
+    try:
+        files = ws.merge_leaving_conflicts()
+    except GitError as exc:
+        return Resolution(approved, [], why=f"main couldn't be merged in: {exc}"[:300])
+    resolution = Resolution(approved, files)
+    if not files:
+        resolution.why = "main merged in with nothing to resolve"
+        return resolution
+    try:
+        record = read_record(worktree)
+    except ProjectRecordError as exc:
+        resolution.why = f"the project's record can't be read mid-merge: {exc}"[:300]
+        return resolution
+    profiles.set_project(record)
+    start, measured = resolution_start(worktree, files, approved, earlier)
+    sink.note(
+        EventKind.NOTE,
+        f"#{number} resolves its conflicts with main in {', '.join(files)}",
+        repo=repo,
+        card=number,
+        paths=list(files),
+        rule=Rule.RESOLVE_CONFLICTS,
+    )
+    held = Held(worktree, f"{repo}-{number}")
+    try:
+        started = held.start()
+        if not started.ok and started.code != 2:
+            raise SessionInterrupted("the container engine", started.output[-300:])
+        if not started.ok:
+            resolution.why = f"its workspace couldn't start: {started.output[-300:]}"
+            return resolution
+        setup = held.setup()
+        if setup is not None and not setup.ok:
+            setup = held.setup()
+        if setup is not None and not setup.ok:
+            resolution.why = f"its setup failed mid-merge: `{setup.command}` exited {setup.code}"
+            return resolution
+        session = conversation.session(
+            worktree,
+            story_text,
+            held,
+            held.tools,
+            instead_of_hints=start,
+            base=approved,
+            round=1,
+            story_parts=measured,
+            returned=True,
+            resolving=tuple(files),
+        )
+        ending = attributed(
+            session.run, card=number, repo=repo, sprint=sprint, attempt=1, purpose="resolution"
+        )()
+        resolution.calls, resolution.model_s = session.calls, session.model_s
+        outcome.attempts += 1
+        if ending.how == "interrupted":
+            if ending.error is not None:
+                reraise_if_down(ending.error)
+            service = (
+                "the workspace container" if ending.why == "workspace_gone" else "a model call"
+            )
+            raise SessionInterrupted(service, str(ending.said.get("error") or ending.why))
+        if ending.how != "done":
+            said = ending.said.get("missing") or ending.why or "no reason given"
+            resolution.why = f"its session ended `{ending.how}`: {said}"[:400]
+            return resolution
+        try:
+            ws.commit(
+                f"merge({number}): main into {card.title}, its conflicts resolved\n\n"
+                f"Resolved: {', '.join(files)}",
+                allow_empty=True,
+            )
+            beyond = sorted(set(beyond_the_merge(worktree, approved)) - set(files))
+        except GitError as exc:
+            raise SessionInterrupted("git", f"the merge's commit failed: {exc}") from exc
+        if beyond:
+            # The tools refuse these edits; this is the gate's own look, whatever made them.
+            resolution.why = "it changed files main didn't conflict in: " + ", ".join(
+                f"`{f}`" for f in beyond
+            )
+            return resolution
+
+        def note(text: str) -> None:
+            sink.note(EventKind.NOTE, f"#{number} {text}"[:300], card=number)
+
+        def run_checks(at: Path) -> Any:
+            checked = check(at, held=held, since=approved)
+            if held.lost:
+                raise SessionInterrupted("the workspace container", "lost while the gates ran")
+            return checked
+
+        verdict = gates.at_done(
+            worktree,
+            ending.said,
+            card=card,
+            story=story_text,
+            record=record,
+            run_checks=run_checks,
+            note=note,
+        )
+        rules = [f.rule for f in verdict.findings]
+        sink.emit(
+            CrewEvent(
+                kind=EventKind.GATE_CHECKED,
+                role="Developer",
+                card=number,
+                summary=f"#{number} gates at the resolution's done: "
+                + (", ".join(rules) if rules else "passed"),
+                detail={"repo": repo, "passed": verdict.passed, "rules": rules, "resolution": True},
+            )
+        )
+        if verdict.findings:
+            resolution.why = "its gates sent it back: " + session_end.first_lines(
+                verdict.findings[0].says
+            )
+            return resolution
+        if verdict.already_done or verdict.disagree:
+            resolution.why = "its gates found it changes nothing main doesn't have, or ruled on it"
+            return resolution
+        resolution.reached = Delivered(
+            session_end.REVIEW,
+            ending.said,
+            verdict,
+            "decision.delivery.outcome",
+            sections=gates.pr_sections(verdict),
+            how="done",
+        )
+        return resolution
+    finally:
+        held.stop()
+        if resolution.reached is None:
+            ws.abort_merge()
+
+
+def resolution_start(
+    worktree: Path, files: list[str], approved: str, earlier: str
+) -> tuple[str, dict[str, int]]:
+    """What a session resolving a merge's conflicts is told, and the size of each part.
+
+    Each conflict with both sides, the base they share, and the commits on main that
+    changed the file; the story's approved diff, to read; and its last `done`, which
+    its own `done` repeats (crew#933).
+    """
+    base = _git(worktree, "merge-base", approved, "origin/HEAD")
+    parts = [
+        "## Why this is a new session\n\n"
+        "Review and QA approved this story, and since then other work has landed on main "
+        "in the same lines, so it can't merge. Main is merged into the branch, and git "
+        "left its conflicts in the files: resolve them, and change nothing else. Only "
+        "the files below can be edited.\n\n"
+        "Resolve each conflict so both changes hold: where both sides moved the same "
+        "value, make one move to the newer value; where both added entries, keep both. "
+        "Take out every marker line. Then run the checks, and call `done` with the "
+        "story's criteria and tests as its last `done` names them, below. Review and QA "
+        "then judge only what your resolution changes.\n\n"
+        "If a conflict can't be resolved so that both changes hold, call `blocked` and "
+        "say why: the story is then rebuilt on main instead."
+    ]
+    shown = []
+    for name in files:
+        landed = _git(worktree, "log", "--format=- %s", f"{base}..origin/HEAD", "--", name)
+        text = (worktree / name).read_text(encoding="utf-8", errors="replace")
+        lines = [f"### `{name}`", ""]
+        if landed:
+            lines += ["Main's side came from:", "", *landed.splitlines()[:5], ""]
+        for i, (story, both, main) in enumerate(conflicts_in(text), 1):
+            lines += [
+                f"**Conflict {i}.** The story's side:",
+                "",
+                _fenced(story),
+                "",
+                "What both sides started from:",
+                "",
+                _fenced(both),
+                "",
+                "Main's side:",
+                "",
+                _fenced(main),
+                "",
+            ]
+        shown.append("\n".join(lines).rstrip())
+    conflicts = "## The conflicts\n\n" + "\n\n".join(shown)
+    diff = _git(worktree, "diff", base, approved)
+    if len(diff) > APPROVED_DIFF_CHARS:
+        diff = diff[:APPROVED_DIFF_CHARS] + (
+            f"\n(cut at {APPROVED_DIFF_CHARS} characters: read the rest with "
+            f"`git diff {base[:12]} {approved[:12]}`)"
+        )
+    change = (
+        "## The story's approved change, to read\n\n"
+        f"What review and QA approved, against main as it was then:\n\n{_fenced(diff, 'diff')}"
+    )
+    parts += [conflicts, change]
+    if earlier:
+        parts.append(earlier)
+    measured = {"conflicts": len(conflicts), "approved_diff": len(change), "done": len(earlier)}
+    return "\n\n".join(parts), measured
+
+
+def resolution_failed(resolution: Resolution) -> str:
+    """The rebuild's line on the resolution tried first, so its session knows why."""
+    return (
+        "## The conflicts couldn't be resolved\n\n"
+        "This story was approved, and conflicted with main in "
+        + (", ".join(f"`{f}`" for f in resolution.files) or "unknown files")
+        + f". A session tried to resolve only those conflicts, and {resolution.why}. So it "
+        "is rebuilt on main."
+    )
+
+
+def _say_resolved(
+    issues: IssueClient,
+    sink: EventSink,
+    repo: str,
+    card: Card,
+    pull: int,
+    worktree: Path,
+    resolution: Resolution,
+    outcome: DeliveryOutcome,
+) -> None:
+    """The resolution, said on its pull request with the marker review and QA read, and
+    recorded as `merge.resolved`. The push already moved its head."""
+    from crew_org.flows.artifacts import signed  # noqa: PLC0415
+    from crew_org.flows.merge import RESOLVED_MARKER  # noqa: PLC0415
+
+    number = card.number or 0
+    head = _git(worktree, "rev-parse", "HEAD")
+    try:
+        # What the gates' fixers changed lands with it too, so it's judged with it.
+        changed = sorted(set(beyond_the_merge(worktree, resolution.approved)))
+    except GitError:
+        changed = list(resolution.files)
+    marker = RESOLVED_MARKER.format(
+        approved=resolution.approved, head=head, files=",".join(changed)
+    )
+    try:
+        issues.comment(
+            repo,
+            pull,
+            signed(
+                f"{marker}\n**Conflicts with `main` resolved.** Main is merged in, and the "
+                "conflicts in "
+                + ", ".join(f"`{f}`" for f in resolution.files)
+                + " are resolved so both sides' changes hold. Nothing else of the story "
+                "changed. Lint and the full test suite pass in the story's workspace; "
+                f"review and QA judge only what changed in those files since "
+                f"{resolution.approved[:7]}, which they approved.",
+                "Developer",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - unmarked, review judges the whole pull request
+        reraise_if_down(exc)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} resolved on PR #{pull}, and its comment failed: {exc}"[:300],
+            card=number,
+        )
+    sink.emit(
+        CrewEvent(
+            kind=EventKind.MERGE_RESOLVED,
+            role="Developer",
+            card=number,
+            summary=f"#{number} PR #{pull}: conflicts with main resolved in "
+            + ", ".join(resolution.files),
+            detail={
+                "repo": repo,
+                "pr": pull,
+                "files": list(resolution.files),
+                "changed": changed,
+                "calls": resolution.calls,
+                "model_s": round(resolution.model_s, 1),
+                "sessions": outcome.attempts,
+            },
+        )
+    )
+
+
+def _fenced(text: str, lang: str = "") -> str:
+    """`text` in a fence longer than any it holds."""
+    longest = max((len(m) for m in re.findall(r"`{3,}", text)), default=2)
+    fence = "`" * (longest + 1)
+    return f"{fence}{lang}\n{text.rstrip(chr(10))}\n{fence}"
 
 
 def _today() -> str:

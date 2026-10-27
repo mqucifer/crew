@@ -204,6 +204,11 @@ class EventKind(StrEnum):
     DEPLOY_HELD = "deploy.held"
     """A release not deployed: a reader pins another MAJOR, or its settings aren't there."""
 
+    # An approved branch's conflicts with main resolved by a session, not rebuilt
+    # (crew#933): the files, and the calls and model time it took.
+    MERGE_RESOLVED = "merge.resolved"
+    """An approved story's conflicts with main resolved by one session, then gated and pushed."""
+
     NOTE = "note"
     """Anything else a flow records, by the rule it names where it names one."""
 
@@ -377,6 +382,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "turned_on",
         "hang_rounds",
         "hung",
+        "resolution",
     ),
     EventKind.REVERT_OPENED: ("repo", "pr", "reverted", "card", "reason"),
     EventKind.REVERT_REFUSED: ("repo", "pr", "reverted", "card", "reason", "why", "conflict"),
@@ -409,6 +415,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     EventKind.FILES_ASKED: (),
     EventKind.EDIT_LOOSE_MATCH: (),
     EventKind.AUTOFIX_APPLIED: ("fixed", "reverted", "rules", "unsafe"),
+    EventKind.MERGE_RESOLVED: ("repo", "pr", "files", "changed", "calls", "model_s", "sessions"),
     EventKind.ISSUE_CITES: ("repo", "cites", "labels", "state", "state_reason", "opened", "closed"),
     EventKind.REFERENCE_UNRESOLVED: ("repo", "number"),
     EventKind.COMMENT_IGNORED: ("repo", "login"),

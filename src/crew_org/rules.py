@@ -59,6 +59,8 @@ class Rule(StrEnum):
     """The work was done, and the branch couldn't be pushed."""
     RESUME_KEPT = "delivery.resume_kept"
     """It resumes the card's newest kept work, when it's the crew's (crew#839)."""
+    RESOLVE_CONFLICTS = "delivery.resolve_conflicts"
+    """Approved and conflicting with main: a session resolves the conflicts alone (crew#933)."""
     WORKSPACE_UNREADY = "delivery.workspace_unready"
     """The story's workspace container didn't start, or its setup failed (crew#778)."""
     ROUND_TRIPS_NO_EPIC = "delivery.round_trips_no_epic"

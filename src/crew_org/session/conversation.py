@@ -545,6 +545,7 @@ def session(
     skills: tuple[str, ...] = (),
     findings: int | None = None,
     sponsor: int | None = None,
+    resolving: tuple[str, ...] = (),
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
@@ -555,7 +556,9 @@ def session(
     and its `scope` is what `done` takes as proof besides a test. A returned story's
     `findings` is the size of review's and QA's section in `instead_of_hints`, shown
     beside the parts, outside the total it's already in (crew#919), and `sponsor` the
-    size of the Sponsor's change request within it (crew#924).
+    size of the Sponsor's change request within it (crew#924). A session `resolving` a
+    merge's conflicts edits only those files, and its `done` leaves no markers in them
+    (crew#933).
     """
     opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
     if findings is not None:
@@ -563,7 +566,15 @@ def session(
     if sponsor is not None:
         sizes["sponsor"] = sponsor
     offered = any(s["function"]["name"] == "skill" for s in specs or ())
-    tools = Tools(worktree, workspace, toolchain, coverage, notes, skills=skills)
+    tools = Tools(
+        worktree,
+        workspace,
+        toolchain,
+        coverage,
+        notes,
+        skills=skills,
+        writable=frozenset(resolving) if resolving else None,
+    )
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
@@ -594,6 +605,7 @@ def session(
             scope,
             changed_tests=_takes_changed_tests(specs),
             changelog=role == ROLE,
+            resolving=resolving,
         ),
         role=role,
         specs=SPECS if specs is None else specs,
@@ -606,11 +618,13 @@ def own_checks(
     *,
     changed_tests: bool = True,
     changelog: bool = False,
+    resolving: tuple[str, ...] = (),
 ) -> Callable[[dict[str, Any]], list[Any]]:
     """`done`'s checks of itself on this worktree: the tests it names exist (crew#778),
     and, where its `done` can declare them, the merged tests it changed are (crew#839).
     A story's adds its changelog entry when it changes what ships (crew#816): the gate's
-    own check, asked first so a session adds it without spending a gate round."""
+    own check, asked first so a session adds it without spending a gate round. A
+    resolution's leaves no conflict's markers in the files it resolves (crew#933)."""
     # Here, not at the top: delivery, which the gates read, runs the session.
     from crew_org.flows import gates  # noqa: PLC0415
 
@@ -620,6 +634,8 @@ def own_checks(
             found += gates.undeclared_changed_tests(worktree, said)
         if changelog:
             found += gates.no_changelog_entry(worktree, which="done")
+        if resolving:
+            found += gates.conflicts_left(worktree, list(resolving))
         return found
 
     return checked

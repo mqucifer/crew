@@ -667,7 +667,7 @@ def test_a_rebuild_without_the_files_says_only_what_it_knows():
     result, _ = run_keeping(issues, lambda repo, branch: None)
     assert result.rebuilding == [(6, 100)]
     (_, body) = issues.posted[0]
-    assert "Conflicts with `main`, returned for a rebuild." in body
+    assert "Conflicts with `main`, returned to resolve them." in body
     assert "keeping both" not in body and "last to land" not in body
 
 
