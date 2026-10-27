@@ -514,6 +514,7 @@ def run(
             ),
         ],
         endings=("done",),
+        forms_checked=False,
         watch=Signals(reading_calls=READING_CALLS),
         quiet=QUIET,
         refused_done=REFUSED_DONE,

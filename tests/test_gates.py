@@ -8,6 +8,7 @@ and a bug's reproduction. Every finding goes back together.
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -174,6 +175,47 @@ def test_done_has_nothing_to_declare_with_no_merged_test_changed(repo):
     (repo / MODULE).write_text((repo / MODULE).read_text() + "\n\ndef other():\n    return 1\n")
     (repo / "tests/test_other.py").write_text("def test_other():\n    assert True\n")
     assert gates.undeclared_changed_tests(repo, done()) == []
+
+
+# mqucifer/sprint-metrics#820's `done`, from its session's end (crew#926): `changed_tests`
+# came as one object, and the gates walked its keys as entries.
+SM_820 = json.loads((Path(__file__).parent / "fixtures/sm820_done.json").read_text())
+WRONG_SHAPES = [
+    SM_820,
+    {**done(), "changed_tests": f"{TESTS}::test_rate_is_capped"},
+    {**done(), "changed_tests": [f"{TESTS}::test_rate_is_capped", 3, None, {"test": 3}]},
+    {**done(), "criteria": {"criterion": "x", "test": f"{TESTS}::test_rate_is_capped"}},
+    {**done(), "criteria": ["x", None, {"criterion": ["x"], "test": 1}], "docs": ["a"]},
+    {**done(), "summary": None, "docs": {"path": "x"}, "criteria": None, "changed_tests": 1},
+]
+
+
+@pytest.mark.parametrize("said", WRONG_SHAPES)
+def test_a_done_in_any_wrong_shape_reaches_the_gates_without_an_exception(repo, said):
+    """What `done` said is read only in its schema's shape; anything else is left out."""
+    from crew_org.flows import session_end  # noqa: PLC0415
+
+    uncap(repo)
+    gates.missing_named_tests(repo, said)
+    [finding] = gates.undeclared_changed_tests(repo, said)
+    assert finding.rule == "check.gates.these_merged_tests_changed"
+    assert not at_done(repo, said).passed
+    session_end.last_done(said)
+
+
+def test_sm_820s_done_passes_through_the_gates(repo):
+    """Its one object declares nothing: the gates say so, as for a `done` that left it out."""
+    uncap(repo)
+    verdict = at_done(repo, SM_820)
+    assert f"`{TESTS}::test_rate_is_capped` (changed)" in " ".join(f.says for f in verdict.findings)
+    assert gates.entries(SM_820, "changed_tests") == []
+    assert gates.entries(SM_820, "criteria") == SM_820["criteria"]
+
+
+def test_entries_keep_only_the_schemas_fields_as_strings():
+    said = {"criteria": [{"criterion": "x", "test": 3, "extra": "y"}, "z", {"test": "t"}]}
+    assert gates.entries(said, "criteria") == [{"criterion": "x"}, {"test": "t"}]
+    assert gates.entries({}, "criteria") == []
 
 
 def test_one_the_changes_line_doesnt_name_is_a_question_for_review(repo):

@@ -832,6 +832,14 @@ flows.gates.at_done:filter:cbd17a84:
   at: flows/gates.py:at_done
   if: 'not _is_test(key)'
   rule: guard.regression.broken_contracts
+flows.gates.entries:filter:638e95bd:
+  at: flows/gates.py:entries
+  if: 'isinstance(item, dict)'
+  not_a_rule: 'reads done''s statement in its schema''s form: session.arguments refuses any other at the reply (crew#926)'
+flows.gates.entries:filter:3c3904ed:
+  at: flows/gates.py:entries
+  if: 'f in fields and isinstance(v, str)'
+  not_a_rule: 'reads done''s statement in its schema''s form: session.arguments refuses any other at the reply (crew#926)'
 flows.gates.no_changelog_entry:end:1b91f4fa:
   at: flows/gates.py:no_changelog_entry
   if: 'card is not None and (role_tasks.role_of(card) or card.work_type not in (STORY, BUG))'

@@ -368,13 +368,13 @@ def rework_start(findings: list[gates.Finding], said: dict[str, Any]) -> str:
 
 def last_done(said: dict[str, Any]) -> str:
     """`done`'s statement, as the next session or the pull request reads it."""
-    lines = ["## The last `done`", "", (said.get("summary") or "").strip(), "", "**Criteria:**"]
-    lines += [f"- {p.get('criterion')}: `{p.get('test')}`" for p in said.get("criteria") or []]
-    changed = said.get("changed_tests") or []
+    lines = ["## The last `done`", "", gates.text(said, "summary").strip(), "", "**Criteria:**"]
+    lines += [f"- {p.get('criterion')}: `{p.get('test')}`" for p in gates.entries(said, "criteria")]
+    changed = gates.entries(said, "changed_tests")
     if changed:
         lines += ["", "**Merged tests changed:**"]
         lines += [f"- `{t.get('test')}`: {t.get('why')}" for t in changed]
-    lines += ["", f"**Docs:** {said.get('docs') or ''}"]
+    lines += ["", f"**Docs:** {gates.text(said, 'docs')}"]
     return "\n".join(lines) + "\n"
 
 

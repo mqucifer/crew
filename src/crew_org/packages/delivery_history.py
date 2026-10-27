@@ -1111,6 +1111,11 @@ def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _objects(value: Any) -> list[dict[str, Any]]:
+    """A list's entries that are objects: `done`'s form, whatever came (crew#926)."""
+    return [v for v in _list(value) if isinstance(v, dict)]
+
+
 def _needed(value: Any) -> int:
     """A count an event can't do without, such as its call's number."""
     found = _int(value)
@@ -1187,8 +1192,8 @@ def _session_event(kind: str, at: datetime, ref: CardRef, detail: dict[str, Any]
             reasoning_tokens=_int(detail.get("reasoning_tokens")),
             edits=_int(detail.get("edits_applied")),
             runs=_int(detail.get("test_runs")),
-            criteria=len(_list(said.get("criteria"))) if done else None,
-            changed_tests=len(_list(said.get("changed_tests"))) if done else None,
+            criteria=len(_objects(said.get("criteria"))) if done else None,
+            changed_tests=len(_objects(said.get("changed_tests"))) if done else None,
             since_action=_int(signals.get("since_action")),
             most_views=_int(signals.get("most_views")),
             edits_since_run=_int(signals.get("edits_since_run")),

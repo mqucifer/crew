@@ -1,0 +1,30 @@
+{
+  "criteria": [
+    {
+      "criterion": "AC1: a sprint with two epic releases, one of which has a 'returned' event on the epic's stories after its release moment, reads change-failure count 1 and rate 50 (the whole percent of releases that came back), rate shown alongside its count",
+      "test": "tests/test_service.py::test_range_dora_change_failure_count_and_rate"
+    },
+    {
+      "criterion": "AC2: a sprint whose releases never came back reports change-failure count 0 and rate 0 (a defined rate); a sprint with no releases at all reports JSON null for both (no data, not zero)",
+      "test": "tests/test_service.py::test_range_dora_change_failure_zero_and_null"
+    },
+    {
+      "criterion": "AC3: a bad release whose epic re-releases contributes a recovery span from the 'returned' event to the epic's next release moment; the sprint's mean time to recovery is the mean of completed recoveries in whole minutes, null when no bad release completed a recovery or there is no bad release",
+      "test": "tests/test_service.py::test_range_dora_mean_time_to_recovery"
+    },
+    {
+      "criterion": "AC4: a sprint whose stored stories carry no epic link (pre-Goal history, no backfill) reads null for change-failure count, rate and mean time to recovery",
+      "test": "tests/test_service.py::test_range_dora_change_failure_and_recovery_null_when_no_epic_links"
+    },
+    {
+      "criterion": "AC5: the generated metrics table in docs/metrics.md names the two measures as DORA (change failure rate, mean time to recovery); the change-failure row states it is a rate \u2014 the share of releases that came back with rework \u2014 shown alongside its count; the recovery row states its unit is whole minutes",
+      "test": "tests/test_docs.py::test_metrics_md_names_dora_change_failure_rate_and_recovery"
+    }
+  ],
+  "changed_tests": {
+    "test": "tests/test_metrics.py::test_all_metrics_grew_by_four",
+    "why": "ALL_METRICS grew by two entries (change_failure_rate, mean_time_to_recovery) so /trend can answer them; the registry test's expected count moves from 26 to 28 and its expected-key set gains the two DORA measures, following the same pattern #807 used when the two earlier DORA measures joined the registry."
+  },
+  "docs": "docs/metrics.md: the generated metrics table gains the DORA change failure rate and mean time to recovery rows (rate shown alongside its count, whole minutes for recovery). docs/service.md: the /trend valid-metrics list (generated from SERVICE_ENDPOINTS in service.py) now names the two new measures (plus the two DORA measures from #807, which the list had missed). CHANGELOG.md: two [Unreleased] entries under Added.",
+  "summary": "GET /range's DORA block now completes DORA's four measures per sprint. A release is bad when a 'returned' event on the epic's stories follows its release moment (the epic's last story's finished event in the sprint): the dora block carries change_failure_count (the count of the sprint's releases that came back with rework) alongside change_failure_rate (the whole percent of the sprint's releases that came back \u2014 0 when none, null when no release can be derived, i.e. no epic links or no events), and mean_time_to_recovery (the mean, in whole minutes, of the completed recoveries of the sprint's bad releases, each span running from its 'returned' event to the epic's next release moment; null when no bad release completed a recovery or there is no bad release at all). GET /trend answers the two new measures per sprint from the same stored history. The published sprint-range schema, the /trend docs row, the generated metrics table and the changelog are updated on the same branch; the new behaviour is opt-in \u2014 sprints without epic links or returned events read null/0 exactly as before, and the committed schema and docs sections are regenerated so the drift checks hold."
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -21,7 +22,7 @@ from crew_org.rulebook import Refusal
 from crew_org.session import conversation, history, signals
 from crew_org.session.container import GONE, Gone
 from crew_org.session.history import Turn
-from crew_org.session.tools import Reply, Tools
+from crew_org.session.tools import Reply, Tools, check_form
 
 APP = "def f():\n    return 1\n\n\nx = 1\n"
 TEST = "from app import f\n\n\ndef test_f():\n    assert f() == 1\n"
@@ -873,6 +874,46 @@ def test_a_session_refuses_a_done_that_doesnt_declare_a_changed_merged_test(root
     told = proxy.sent[1]["messages"][-1]["content"]
     assert "`tests/test_app.py::test_f` (changed)" in told
     assert "`changed_tests: [{test, why}]`" in told
+
+
+def test_a_done_whose_changed_tests_are_one_object_is_refused_and_the_session_goes_on(root, seen):
+    """mqucifer/sprint-metrics#820 sent one object, and reading it blocked the card (crew#926)."""
+    merged(root)
+    (root / "tests" / "test_app.py").write_text(TEST.replace("== 1", "== 2"))
+    entry = {"test": "tests/test_app.py::test_f", "why": "f is 2"}
+    proxy = Proxy(
+        said(("done", {**DONE, "changed_tests": entry})),
+        said(("done", {**DONE, "changed_tests": [entry]})),
+    )
+    _, ending = run_session(root, proxy)
+    assert ending.how == "done" and ending.said["changed_tests"] == [entry]
+    refused = kinds(seen, EventKind.TOOL_FINISHED)[0].detail
+    assert (refused["result"], refused["rule"]) == ("refused", "session.arguments")
+    told = proxy.sent[1]["messages"][-1]["content"]
+    assert "`changed_tests` must be a list of {test, why}: you sent one object." in told
+    assert not kinds(seen, EventKind.TOOL_FAILED)
+
+
+@pytest.mark.parametrize(
+    ("args", "says"),
+    [
+        ({"criteria": "t"}, "`criteria` must be a list of {criterion, test}: you sent a string."),
+        ({"criteria": ["t"]}, "`criteria`'s entry 1 must be an object of {criterion, test}"),
+        ({"changed_tests": [{"test": "t", "why": 3}]}, "`why` in `changed_tests`'s entry 1 must"),
+        ({"docs": ["docs/a.md"]}, "`docs` must be a string: you sent a list."),
+        ({"summary": None}, "`summary` must be a string: you sent null."),
+    ],
+)
+def test_an_endings_form_is_checked_against_its_schema(args, says):
+    with pytest.raises(Refusal, match=re.escape(says)):
+        check_form("done", {**DONE, **args})
+
+
+def test_blocked_names_one_of_its_kinds():
+    with pytest.raises(Refusal, match="`kind` must be one of `file`, `fact`, `choice`: you sent"):
+        check_form("blocked", {"missing": "x", "kind": "stop"})
+    check_form("blocked", {"missing": "x", "kind": "fact"})
+    check_form("done", {**DONE, "changed_tests": []})
 
 
 def test_a_done_with_no_changed_tests_field_isnt_asked_for_them(root):

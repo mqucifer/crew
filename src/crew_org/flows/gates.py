@@ -45,6 +45,7 @@ from crew_org.flows.attempts import repair_report
 from crew_org.profiles import profile_for
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
+from crew_org.session.tools import ACCEPTED
 from crew_org.tools import bounds, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
@@ -246,9 +247,31 @@ def at_done(
     return verdict
 
 
+def entries(said: dict[str, Any], key: str) -> list[dict[str, str]]:
+    """`done`'s list `key` in its schema's shape: objects, each with its fields as strings.
+
+    Anything else is left out, so a reader finds it missing, never an exception: on
+    mqucifer/sprint-metrics#820, `changed_tests` came as one object, and walking its keys
+    blocked the card (crew#926). `done`'s reply refuses that form; this is for the rest.
+    """
+    fields = ACCEPTED["done"]["properties"][key]["items"]["properties"]
+    found = said.get(key)
+    return [
+        {f: v for f, v in item.items() if f in fields and isinstance(v, str)}
+        for item in (found if isinstance(found, list) else [])
+        if isinstance(item, dict)
+    ]
+
+
+def text(said: dict[str, Any], key: str) -> str:
+    """`done`'s string `key`, or "" for anything else (crew#926)."""
+    found = said.get(key)
+    return found if isinstance(found, str) else ""
+
+
 def _named(said: dict[str, Any]) -> list[str]:
     """The tests `done` names for its criteria, one per criterion, "" where it names none."""
-    return [p.get("test") or "" for p in said.get("criteria") or []]
+    return [p.get("test") or "" for p in entries(said, "criteria")]
 
 
 # The pull request's section of changed merged tests the story doesn't name (decision 6).
@@ -407,7 +430,7 @@ def _declared_why(said: dict[str, Any]) -> dict[str, str]:
     """`done`'s changed tests, by key, each with its why. One with no why isn't declared."""
     why = {
         _as_key(t.get("test") or ""): (t.get("why") or "").strip()
-        for t in said.get("changed_tests") or []
+        for t in entries(said, "changed_tests")
     }
     return {key: reason for key, reason in why.items() if key and reason}
 
