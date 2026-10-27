@@ -616,7 +616,7 @@ def test_diagram_check_is_the_gates_check_on_the_file_as_it_is(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs/architecture.md").write_text("```mermaid\nflowchart LR\n```\n")
     failed = session_tools(tmp_path).call("diagram_check", {})
-    assert failed.kind == "failed" and "isn't one the crew checks" in failed.text
+    assert failed.kind == "failed" and "no block is a C4 diagram" in failed.text
     assert failed.rule == "check.role_tasks.diagram_renders"  # the gate's own rule
     (tmp_path / "docs/architecture.md").write_text(GOOD)
     assert session_tools(tmp_path).call("diagram_check", {}).kind == "passed"

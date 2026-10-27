@@ -1,79 +1,282 @@
-"""Whether a Mermaid diagram the Architect draws is well formed (crew#858).
+"""Whether the Architect's Mermaid diagrams render, by Mermaid's own parser (crew#922).
 
 The Goal's target diagram is C4 (Simon Brown's model: context, containers and
-components) in Mermaid's C4 syntax, which GitHub renders in the Goal's comment. A
-diagram GitHub can't render is a comment of source text nobody reads, and nothing in
-the crew runs Mermaid, so this checks the grammar the Architect is asked for, in code:
+components) in Mermaid's C4 syntax, with a sequence diagram when the Goal adds an
+interaction, and GitHub renders each block. A diagram GitHub can't render is source
+text nobody reads.
 
-- the first line is a C4 diagram type;
-- every other line is a C4 macro the syntax has, a boundary's closing brace, a title
-  or a comment;
-- quotes and parentheses balance, each macro has the arguments it needs, and a
-  boundary opens its brace;
-- each alias is defined once, and each relation names aliases the diagram defines.
+This used to be a hand-written copy of Mermaid's C4 and sequence grammar (crew#858),
+and each quirk it lacked reached the Sponsor first: a `;` in a sequence message
+(mqucifer/sprint-metrics#666), a second block nobody checked (crew#839), a `title`
+Mermaid's lexer refuses (mqucifer/sprint-metrics#806). The Sponsor's decision
+(2026-10-26): the standard decides, so Mermaid's parser reads every block, and its
+own message is the finding, as GitHub shows it.
 
-A sequence diagram, drawn only when a Goal adds an interaction, is checked the same
-way for its own lines, for blocks that open and end, and for a `;`, which ends a line.
+**How it runs**, as `tools/look.py` runs its browser: a public Node image, pinned by
+digest, with the parser's packages installed once, from the lockfile beside this
+module, into the sandbox's cache, in a container with the network. The check itself
+runs in the sandbox's hardening with no network, read-only, and the packages mounted
+read-only; the diagrams, the model's text, go in on stdin, never as arguments. A
+parser that can't run is a problem named, never a pass.
 
-What it can't show is that GitHub draws it as intended: layout and Mermaid's own
-quirks. Its tests' diagrams were run once through Mermaid's parser (`tests/test_mermaid.py`).
+Mermaid parses five things and then draws them wrong or not at all (crew#858's notes),
+so those are checked after it, in code: an open quote, a relation without its label, a
+relation to an alias nobody defined, an alias defined twice, and an alias with a space.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+
+from crew_org.tools.sandbox import Mode, Sandbox
 
 C4_TYPES = ("C4Context", "C4Container", "C4Component", "C4Dynamic", "C4Deployment")
-# Each macro, and how many arguments it needs before the optional ones.
-_ELEMENTS = {
-    f"{kind}{variant}{ext}": 2
-    for kind in ("Person", "System", "Container", "Component")
-    for variant in (("",) if kind == "Person" else ("", "Db", "Queue"))
-    for ext in ("", "_Ext")
-}
-_BOUNDARIES = {
-    "Boundary": 2,
-    "Enterprise_Boundary": 2,
-    "System_Boundary": 2,
-    "Container_Boundary": 2,
-    "Deployment_Node": 2,
-    "Node": 2,
-    "Node_L": 2,
-    "Node_R": 2,
-}
-_RELATIONS = {
-    name: 3
-    for name in (
-        "Rel",
-        "BiRel",
-        "Rel_U",
-        "Rel_Up",
-        "Rel_D",
-        "Rel_Down",
-        "Rel_L",
-        "Rel_Left",
-        "Rel_R",
-        "Rel_Right",
-        "Rel_Back",
-    )
-}
-_STYLES = {
-    "UpdateElementStyle": 1,
-    "UpdateRelStyle": 2,
-    "UpdateBoundaryStyle": 1,
-    "UpdateLayoutConfig": 0,
-}
-_MACRO = re.compile(r"^(\w+)\s*\((.*)\)\s*(\{)?\s*$")
+
+# Node's LTS line, pinned by digest as every image the crew runs is. The parser's own
+# version is in `mermaid_parse/package.json`: GitHub doesn't say which it renders with
+# outside a browser, so it's the newest 11.x (11.17.2 on 2026-10-26).
+IMAGE = (
+    "node:24.22.1-bookworm-slim"
+    "@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205"
+)
+PACKAGE = Path(__file__).with_name("mermaid_parse")
+INSTALL_TIMEOUT = 300
+TIMEOUT = 120
+# A finding carries Mermaid's message, but not a page of the tokens it expected.
+MESSAGE = 400
+
+_MACRO = re.compile(r"^(\w+)\s*\((.*)\)\s*\{?\s*$")
+_RELATION = re.compile(r"^(?:Bi)?Rel(?:_\w+)?$")
+_STYLE = re.compile(r"^Update\w+$")
 _ALIAS = re.compile(r"^[A-Za-z_][\w.]*$")
+_POINTER = re.compile(r"^-*\^$")
+
+# Each text's parse, once a process: the same diagram is checked by more than one step.
+_parsed: dict[str, str | None] = {}
 
 
-def _unfenced(text: str) -> list[str]:
+class Unparsed(Exception):
+    """Mermaid's parser couldn't run."""
+
+
+def problems(blocks: list[str], *, sandbox: Sandbox | None = None) -> list[str]:
+    """What keeps each block from rendering, by its place and kind. Empty if nothing.
+
+    Mermaid's message for a block it refuses, and the draw checks for a C4 block it
+    accepts. A parser that can't run is one problem, saying why.
+    """
+    texts = [_unfenced(block) for block in blocks]
+    if not texts:
+        return []
+    try:
+        refused = _parse(texts, sandbox)
+    except Unparsed as exc:
+        return [f"Mermaid's parser couldn't run: {exc}"]
+    found: list[str] = []
+    for n, (text, error) in enumerate(zip(texts, refused, strict=True), 1):
+        label = f"block {n}, {kind(text)[:40] or 'empty'}"
+        if error is not None:
+            found.append(f"{label}: {_said(error)}")
+        elif kind(text) in C4_TYPES:
+            found += [f"{label}: {p}" for p in _drawn_wrong(text)]
+    return found
+
+
+def kind(text: str) -> str:
+    """The diagram's type, from its first line."""
+    lines = _unfenced(text).splitlines()
+    return lines[0].strip() if lines else ""
+
+
+def aliases(text: str) -> set[str]:
+    """The aliases a C4 diagram defines."""
+    found = set()
+    for line in _unfenced(text).splitlines():
+        macro = _MACRO.match(line.strip())
+        if macro and not _RELATION.match(macro.group(1)) and not _STYLE.match(macro.group(1)):
+            args = _arguments(macro.group(2)) or []
+            if args:
+                found.add(args[0])
+    return found
+
+
+def unready(sandbox: Sandbox | None = None) -> tuple[str, bool] | None:
+    """Why the parser isn't ready to run now, and whether a check would fail for it
+    rather than fetch what it lacks first; None when it's ready. For `crew doctor`."""
+    sandbox = _sandbox(sandbox)
+    if reason := sandbox.unavailable_reason():
+        return reason, True
+    try:
+        inspect = subprocess.run(
+            [sandbox.engine, "image", "inspect", IMAGE], capture_output=True, timeout=60
+        )
+    except subprocess.TimeoutExpired:
+        return f"{sandbox.engine} didn't answer within 60s", True
+    if inspect.returncode != 0:
+        return f"the image `{IMAGE}` isn't pulled: the first check pulls it", False
+    if not _installed(sandbox).is_dir():
+        return "the parser's packages aren't installed: the first check installs them", False
+    return None
+
+
+def version() -> str:
+    """The parser's pinned mermaid version."""
+    return str(json.loads((PACKAGE / "package.json").read_text())["dependencies"]["mermaid"])
+
+
+def _parse(texts: list[str], sandbox: Sandbox | None) -> list[str | None]:
+    """Mermaid's message for each text it refuses, None for each it accepts."""
+    unseen = list(dict.fromkeys(t for t in texts if t not in _parsed))
+    if unseen:
+        sandbox = _sandbox(sandbox)
+        if reason := sandbox.unavailable_reason():
+            raise Unparsed(reason)
+        for text, result in zip(unseen, _run(sandbox, unseen), strict=True):
+            _parsed[text] = None if result.get("ok") else str(result.get("error"))
+    return [_parsed[t] for t in texts]
+
+
+def _run(sandbox: Sandbox, texts: list[str]) -> list[dict[str, Any]]:
+    package = _install(sandbox)
+    work = Path(tempfile.mkdtemp(prefix="mermaid-"))
+    try:
+        argv = sandbox.command(
+            work,
+            ["node", "/mermaid/check.mjs"],
+            network=False,
+            readonly={package: "/mermaid"},
+            stdin=True,
+            cache=False,
+        )
+        try:
+            done = subprocess.run(
+                argv, input=json.dumps(texts), capture_output=True, text=True, timeout=TIMEOUT
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise Unparsed(f"it took over {TIMEOUT}s") from exc
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    try:
+        results = json.loads(done.stdout)
+    except ValueError:
+        results = None
+    if done.returncode != 0 or not isinstance(results, list) or len(results) != len(texts):
+        raise Unparsed(f"exit {done.returncode}: {done.stderr.strip()[-800:]}")
+    return results
+
+
+def _install(sandbox: Sandbox) -> Path:
+    """The parser's packages, installed from the lockfile into the sandbox's cache."""
+    target = _installed(sandbox)
+    if target.is_dir():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Installed beside, then moved in whole, so a check never meets half an install.
+    staging = Path(tempfile.mkdtemp(prefix=".install-", dir=target.parent))
+    try:
+        for name in ("package.json", "package-lock.json", "check.mjs"):
+            shutil.copy(PACKAGE / name, staging / name)
+        argv = sandbox.command(
+            staging,
+            ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
+            network=True,
+            env={"npm_config_cache": "/tmp/npm"},
+            cache=False,
+        )
+        try:
+            done = subprocess.run(argv, capture_output=True, text=True, timeout=INSTALL_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise Unparsed(f"installing it took over {INSTALL_TIMEOUT}s") from exc
+        if done.returncode != 0:
+            raise Unparsed(f"it didn't install: {done.stderr.strip()[-800:]}")
+        try:
+            os.rename(staging, target)
+        except OSError:
+            if not target.is_dir():  # Not another check's install, finished first.
+                raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return target
+
+
+def _installed(sandbox: Sandbox) -> Path:
+    """Where this lockfile's install goes: a changed lockfile or script installs anew."""
+    digest = hashlib.sha256(IMAGE.encode())
+    for name in ("package-lock.json", "check.mjs"):
+        digest.update((PACKAGE / name).read_bytes())
+    return sandbox.cache_dir / "mermaid" / digest.hexdigest()[:16]
+
+
+def _sandbox(sandbox: Sandbox | None) -> Sandbox:
+    return replace(sandbox or Sandbox(), mode=Mode.REQUIRED, image=IMAGE)
+
+
+def _said(error: str) -> str:
+    """Mermaid's message on one line, without the pointer under its excerpt."""
+    # A diagram of no type Mermaid knows is named by its first line, not all of it.
+    head, sep, text = error.partition("for text: ")
+    if sep:
+        error = f"{head}{sep}{text.strip().splitlines()[0] if text.strip() else ''}"
+    kept = " ".join(
+        line.strip() for line in error.splitlines() if line.strip() and not _POINTER.match(line)
+    )
+    return kept if len(kept) <= MESSAGE else kept[: MESSAGE - 1] + "…"
+
+
+def _drawn_wrong(text: str) -> list[str]:
+    """What Mermaid parses in a C4 diagram and then draws wrong or not at all."""
+    found: list[str] = []
+    defined: dict[str, int] = {}
+    relations: list[tuple[int, list[str]]] = []
+    for n, raw in enumerate(text.splitlines(), 1):
+        macro = _MACRO.match(raw.strip())
+        if not macro:
+            continue
+        name, inner = macro.groups()
+        args = _arguments(inner)
+        if args is None:
+            found.append(f"line {n}: a quote is left open")
+            continue
+        positional = [a for a in args if not a.startswith("$")]
+        if _STYLE.match(name):
+            continue
+        if _RELATION.match(name):
+            if len(positional) < 3:
+                found.append(f"line {n}: `{name}` has no label, and is drawn without one")
+            relations.append((n, positional[:2]))
+            continue
+        alias = positional[0] if positional else ""
+        if not _ALIAS.match(alias):
+            found.append(f"line {n}: `{alias}` isn't an alias: letters, digits, `_`")
+        elif alias in defined:
+            found.append(f"line {n}: `{alias}` is defined twice, on lines {defined[alias]} and {n}")
+        else:
+            defined[alias] = n
+    for n, ends in relations:
+        found += [
+            f"line {n}: the relation names `{end}`, which the diagram doesn't define"
+            for end in ends
+            if end not in defined
+        ]
+    return found
+
+
+def _unfenced(text: str) -> str:
     lines = text.strip().splitlines()
     if lines and lines[0].strip().startswith("```"):
         lines = lines[1:]
     if lines and lines[-1].strip() == "```":
         lines = lines[:-1]
-    return [line.strip() for line in lines]
+    return "\n".join(lines)
 
 
 def _arguments(inner: str) -> list[str] | None:
@@ -92,126 +295,3 @@ def _arguments(inner: str) -> list[str] | None:
     if current.strip() or out:
         out.append(current.strip())
     return out
-
-
-def c4_problems(text: str) -> list[str]:
-    """What keeps a Mermaid C4 diagram from rendering, in its own words. Empty if nothing."""
-    lines = _unfenced(text)
-    if not lines or lines[0] not in C4_TYPES:
-        first = lines[0] if lines else "nothing"
-        return [f"the first line is `{first[:40]}`, not one of {', '.join(C4_TYPES)}"]
-    problems: list[str] = []
-    defined: dict[str, int] = {}
-    relations: list[tuple[int, list[str]]] = []
-    depth = 0
-    for n, line in enumerate(lines[1:], 2):
-        if not line or line.startswith("%%") or line.startswith("title "):
-            continue
-        if line == "}":
-            depth -= 1
-            if depth < 0:
-                problems.append(f"line {n}: a `}}` closes no boundary")
-                depth = 0
-            continue
-        found = _MACRO.match(line)
-        if not found:
-            problems.append(f"line {n}: `{line[:60]}` isn't a C4 macro, a `}}` or a title")
-            continue
-        name, inner, brace = found.groups()
-        need = {**_ELEMENTS, **_BOUNDARIES, **_RELATIONS, **_STYLES}.get(name)
-        if need is None:
-            problems.append(f"line {n}: `{name}` isn't a C4 macro")
-            continue
-        args = _arguments(inner)
-        if args is None or inner.count("(") != inner.count(")"):
-            problems.append(f"line {n}: a quote or a parenthesis is left open")
-            continue
-        positional = [a for a in args if not a.startswith("$")]
-        if len(positional) < need:
-            problems.append(f"line {n}: `{name}` needs {need} arguments, and has {len(positional)}")
-            continue
-        if name in _BOUNDARIES:
-            if not brace:
-                problems.append(f"line {n}: `{name}` opens no `{{` for what it holds")
-            depth += 1
-        elif brace:
-            problems.append(f"line {n}: `{name}` can't hold anything")
-        if name in _ELEMENTS or name in _BOUNDARIES:
-            alias = positional[0]
-            if not _ALIAS.match(alias):
-                problems.append(f"line {n}: `{alias}` isn't an alias: letters, digits, `_`")
-            elif alias in defined:
-                problems.append(
-                    f"line {n}: `{alias}` is defined twice, on lines {defined[alias]} and {n}"
-                )
-            else:
-                defined[alias] = n
-        elif name in _RELATIONS:
-            relations.append((n, positional[:2]))
-    if depth:
-        problems.append(f"{depth} boundary left open: close each with `}}`")
-    for n, ends in relations:
-        problems += [
-            f"line {n}: the relation names `{end}`, which the diagram doesn't define"
-            for end in ends
-            if end not in defined
-        ]
-    return problems
-
-
-def aliases(text: str) -> set[str]:
-    """The aliases a C4 diagram defines."""
-    found = set()
-    for line in _unfenced(text):
-        macro = _MACRO.match(line)
-        if macro and (macro.group(1) in _ELEMENTS or macro.group(1) in _BOUNDARIES):
-            args = _arguments(macro.group(2)) or []
-            if args:
-                found.add(args[0])
-    return found
-
-
-_ARROW = r"(?:->>|-->>|->|-->|-x|--x|-\)|--\))"
-_SEQUENCE_LINES = (
-    re.compile(r"^(?:participant|actor)\s+\S+(?:\s+as\s+.+)?$"),
-    re.compile(rf"^[^\s:>-]+\s*{_ARROW}[+-]?\s*[^\s:]+\s*:.*$"),
-    re.compile(r"^Note\s+(?:over|left of|right of)\s+[^:]+:.*$"),
-    re.compile(r"^(?:activate|deactivate)\s+\S+$"),
-    re.compile(r"^(?:autonumber|title\s.*|%%.*)$"),
-)
-_OPENS = ("loop", "alt", "opt", "par", "critical", "break", "rect", "box")
-_INSIDE = ("else", "and", "option")
-
-
-def sequence_problems(text: str) -> list[str]:
-    """What keeps a Mermaid sequence diagram from rendering. Empty if nothing."""
-    lines = _unfenced(text)
-    if not lines or lines[0] != "sequenceDiagram":
-        first = lines[0] if lines else "nothing"
-        return [f"the first line is `{first[:40]}`, not `sequenceDiagram`"]
-    problems: list[str] = []
-    depth = 0
-    for n, line in enumerate(lines[1:], 2):
-        word = line.split(" ", 1)[0]
-        if not line:
-            continue
-        if ";" in line and not line.startswith("%%"):
-            # Mermaid ends a statement at `;`: the rest of the line doesn't parse. The
-            # first real look's sequence diagram listed its queries with them.
-            problems.append(f"line {n}: a `;` ends the line in Mermaid: write it as a comma")
-            continue
-        if word in _OPENS:
-            depth += 1
-        elif word == "end":
-            depth -= 1
-            if depth < 0:
-                problems.append(f"line {n}: an `end` closes no block")
-                depth = 0
-        elif word in _INSIDE:
-            if not depth:
-                problems.append(f"line {n}: `{word}` is outside any block")
-        elif not any(form.match(line) for form in _SEQUENCE_LINES):
-            problems.append(f"line {n}: `{line[:60]}` isn't a sequence diagram line")
-    if depth:
-        problems.append(f"{depth} block left open: close each with `end`")
-    return problems

@@ -221,11 +221,12 @@ form.Story.row_ids:
   owner: Business Analyst
   told_in: Story.follows
 form.SystemLook.diagram_well_formed:
-  description: Refused if the diagram wouldn't render as Mermaid's C4, or the sequence as a sequence diagram.
+  description: Refused if Mermaid's own parser refuses a block, the C4 diagram would be drawn wrong, the diagram isn't C4, or the sequence isn't a sequence diagram.
   messages:
     default: 'the diagram doesn''t render as written: {problems}'
   origin:
   - crew#858
+  - crew#922
   owner: Architect
   told_in: SystemLook.diagram
 form.SystemLook.new_parts_drawn:

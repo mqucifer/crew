@@ -322,7 +322,7 @@ def test_every_probe_sends_the_proxys_key(monkeypatch):
 def test_the_doctor_probes_the_proxy_by_default(monkeypatch):
     from typer.testing import CliRunner
 
-    from crew_org import cli
+    from crew_org import cli, mermaid
 
     monkeypatch.setenv("CREW_LLM_BASE_URL", "http://localhost:4000/v1")
     seen = {}
@@ -332,6 +332,7 @@ def test_the_doctor_probes_the_proxy_by_default(monkeypatch):
         return []
 
     monkeypatch.setattr(sub, "run_all", fake_run_all)
+    monkeypatch.setattr(mermaid, "unready", lambda: None)
     result = CliRunner().invoke(cli.app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert seen == {"base_url": "http://localhost:4000/v1", "model": "crew-local"}

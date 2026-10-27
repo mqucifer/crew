@@ -109,9 +109,14 @@ class SystemLook(BaseModel):
 
     @model_validator(mode="after")
     def _diagram_well_formed(self) -> SystemLook:
-        found = mermaid.c4_problems(self.diagram)
-        if self.sequence.strip():
-            found += [f"the sequence: {p}" for p in mermaid.sequence_problems(self.sequence)]
+        blocks = [self.diagram, *([self.sequence] if self.sequence.strip() else [])]
+        found = mermaid.problems(blocks)
+        if mermaid.kind(self.diagram) not in mermaid.C4_TYPES:
+            first = mermaid.kind(self.diagram)[:40]
+            found.append(f"the diagram's first line is `{first}`, not one of the C4 types")
+        if len(blocks) > 1 and mermaid.kind(self.sequence) != "sequenceDiagram":
+            first = mermaid.kind(self.sequence)[:40]
+            found.append(f"the sequence's first line is `{first}`, not `sequenceDiagram`")
         if found:
             refuse("form.SystemLook.diagram_well_formed", problems="; ".join(found))
         return self

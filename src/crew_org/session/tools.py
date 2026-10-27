@@ -380,8 +380,8 @@ TASK_SPECS = {
     "architect": _spec(
         "diagram_check",
         "The check the gate at `done` runs on `docs/architecture.md`, on the file as it is "
-        "now: every Mermaid block is one the crew checks and renders, and one is a C4 "
-        "diagram. The same check, so a pass here passes there.",
+        "now: Mermaid's own parser accepts every Mermaid block, a C4 block draws right, "
+        "and one block is a C4 diagram. The same check, so a pass here passes there.",
         {},
         [],
     ),

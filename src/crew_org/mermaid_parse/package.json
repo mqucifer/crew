@@ -1,0 +1,10 @@
+{
+  "name": "crew-mermaid-check",
+  "private": true,
+  "description": "Mermaid's own parser, for the crew's diagram check (crew#922)",
+  "type": "module",
+  "dependencies": {
+    "jsdom": "27.4.0",
+    "mermaid": "11.17.2"
+  }
+}
