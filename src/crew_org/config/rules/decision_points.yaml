@@ -452,9 +452,9 @@ flows.close.close_sprint:result:still_open:7489d0f6:
   at: flows/close.py:close_sprint
   if: card.status != MERGING
   rule: decision.close.close_sprint
-flows.close.close_sprint:result:unapprovable:47f46e7c:
+flows.close.close_sprint:result:unapprovable:72a5c53e:
   at: flows/close.py:close_sprint
-  if: issues.review_decision(repo, pull['number']) == REVIEW_REQUIRED
+  if: issues.review_decision(own, pull['number']) == REVIEW_REQUIRED
   rule: decision.close.close_sprint
 flows.close.close_sprint:result:unmergeable:0c636a13:
   at: flows/close.py:close_sprint

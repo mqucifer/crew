@@ -168,6 +168,8 @@ def _settle_queue(board, issues, sink, result, in_queue, *, repo, sleep=None, cl
     The close used to report a queued story as not done and end; GitHub merged it
     minutes later, and it landed in a sprint whose report was already written.
     The tick already waits the same way before it calls itself settled (#314).
+    Each pull request is asked of its card's repo; `repo` is the pilot's, for a
+    card that names none (crew#938).
     """
     import time  # noqa: PLC0415
 
@@ -182,7 +184,7 @@ def _settle_queue(board, issues, sink, result, in_queue, *, repo, sleep=None, cl
         still = []
         for card, pull, base in pending:
             try:
-                queued = issues.queue_state(repo, pull, branch=base).queued
+                queued = issues.queue_state(card.repo or repo, pull, branch=base).queued
             except Exception:  # noqa: BLE001
                 queued = True
             if queued:
@@ -190,7 +192,7 @@ def _settle_queue(board, issues, sink, result, in_queue, *, repo, sleep=None, cl
         pending = still
     for card, pull, _base in in_queue:
         try:
-            merged = bool(issues.pull(repo, pull).get("merged_at"))
+            merged = bool(issues.pull(card.repo or repo, pull).get("merged_at"))
         except Exception:  # noqa: BLE001
             merged = False
         if not merged:
@@ -284,8 +286,11 @@ def close_sprint(
             result.still_open.append(card.name(qualify=qualify))
             continue
 
+        # The card's own repo: the board holds several, and the pilot's PR of the
+        # same number is someone else's work (crew#938).
+        own = card.repo or repo
         branch = branch_name(number, card.title)
-        pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+        pull = issues.pull_for_branch(own, branch, known=card.open_pull_on(branch))
         if pull is None:
             held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unmergeable.append((number, "no open pull request"))
@@ -293,7 +298,7 @@ def close_sprint(
 
         # The crew cannot approve its own work, so this is where the Sponsor's
         # approval is read rather than requested again.
-        reviews = issues.pull_reviews(repo, pull["number"])
+        reviews = issues.pull_reviews(own, pull["number"])
         approved = any(r.get("state") == "APPROVED" for r in reviews)
         if not approved:
             held("decision.close.close_sprint", repo=card.repo or repo, card=number)
@@ -304,7 +309,7 @@ def close_sprint(
         # from an actor with repository write access, so the crew's reviewing
         # identity can approve into the void — and the sprint review must not
         # ask the Sponsor for an approval that is already there.
-        if issues.review_decision(repo, pull["number"]) == REVIEW_REQUIRED:
+        if issues.review_decision(own, pull["number"]) == REVIEW_REQUIRED:
             held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.unapprovable.append((number, pull["number"]))
             continue
@@ -318,7 +323,7 @@ def close_sprint(
         # protection calls for (#116, #302). The rest lands on the next tick,
         # or on a second close.
         try:
-            landed = land(issues, repo, pull["number"])
+            landed = land(issues, own, pull["number"])
         except Exception as exc:  # noqa: BLE001
             result.unmergeable.append((number, str(exc)[:120]))
             continue
