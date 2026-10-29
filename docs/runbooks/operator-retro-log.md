@@ -710,7 +710,7 @@ These three are the overhaul's evidence (ADR 0035).
 
 ## Operator's retro: Sprint 34 (2026-10-28 to 2026-10-29, closed 11:45Z, mqucifer/crew#943)
 
-The sprint ran sprint-metrics' /range work (epics mqucifer/sprint-metrics#802, #852 and #853) and crew-presentation's review of v0.1.2 (mqucifer/crew-presentation#176 to #178, then 10 bugs from the UX review).
+The sprint ran sprint-metrics' /range work (epics mqucifer/sprint-metrics#802, mqucifer/sprint-metrics#852 and mqucifer/sprint-metrics#853) and crew-presentation's review of v0.1.2 (mqucifer/crew-presentation#176 to mqucifer/crew-presentation#178, then 10 bugs from the UX review).
 - **Delivered:** 25 of 26 stories by the crew's count. mqucifer/crew-presentation#177 is wrongly among them (section 1).
 - **Released:** sprint-metrics v4.2.0 and v4.2.1. Neither was deployed, because crew pins 1.3.1 (mqucifer/crew#905).
 - **The numbers:** 6 ticks, 65 sessions, 8.7 h of model time, 43.7M tokens.
@@ -718,8 +718,8 @@ The sprint ran sprint-metrics' /range work (epics mqucifer/sprint-metrics#802, #
 ### 1. Interventions
 - **No tick was stopped.**
 - **The operator re-filed mqucifer/sprint-metrics#868 as a story** after `guard.reproduce.check` sent it back 5 times. Its bug and fix were both in a test file, so nothing could fail on main (mqucifer/crew#949).
-- **The operator closed three cards** with the Sponsor's go-ahead, as covered by v4.2.0: mqucifer/sprint-metrics#822, #828 and #864. Two of them were moved from Blocked to Done by hand.
-- **The Sponsor moved two Goals** to Done: mqucifer/crew-presentation#101 and #102.
+- **The operator closed three cards** with the Sponsor's go-ahead, as covered by v4.2.0: mqucifer/sprint-metrics#822, mqucifer/sprint-metrics#828 and mqucifer/sprint-metrics#864. Two of them were moved from Blocked to Done by hand.
+- **The Sponsor moved two Goals** to Done: mqucifer/crew-presentation#101 and mqucifer/crew-presentation#102.
 - **One crew PR merged in the sprint, an incident fix:** mqucifer/crew#940. The close 404'd on every tick, because it read every card's PR from the pilot repo (mqucifer/crew#938).
 - **mqucifer/crew#940's body closed mqucifer/crew-presentation#177** with "couldn't close:" before its reference. The operator reopened it (mqucifer/crew#951).
 - `operator.jsonl` and `sponsor.jsonl` have had no events since 2026-10-13. Every step above comes from the working log and the board.
@@ -729,7 +729,7 @@ The sprint ran sprint-metrics' /range work (epics mqucifer/sprint-metrics#802, #
   - mqucifer/sprint-metrics#811: a story-added test pinned `[Unreleased]`, so any release cut fails it. That led to mqucifer/sprint-metrics#868.
   - mqucifer/sprint-metrics#872: the Task's file scope couldn't meet its criteria. Superseded.
   - mqucifer/sprint-metrics#864: the reviewer's only finding was a PR title the role can't change.
-  - mqucifer/crew-presentation#189: the Developer disputed QA's test. That was the first dispute (qa-suite#8 in mqucifer/qa-suite), and it deadlocked. mqucifer/crew#946 fixed it.
+  - mqucifer/crew-presentation#189: the Developer disputed QA's test. That was the first dispute (mqucifer/qa-suite#8), and it deadlocked. mqucifer/crew#946 fixed it.
 - **The Sponsor approved** mqucifer/sprint-metrics#886, mqucifer/sprint-metrics#887 and mqucifer/crew-presentation#195. Each question was theirs.
 
 ### 3. Drift between the Goal and the plan
@@ -743,7 +743,7 @@ None found. The Sponsor's decisions in the sprint are on the issues and in mquci
   - mqucifer/sprint-metrics#861: QA, 2;
   - mqucifer/sprint-metrics#863: QA, 1;
   - mqucifer/crew-presentation#189: CI, 3.
-- **Four reworked or blocked cards took 265 of 520 minutes of model time (51%):** mqucifer/sprint-metrics#811 82, #863 64, #861 61 and #868 58.
+- **Four reworked or blocked cards took 265 of 520 minutes of model time (51%):** mqucifer/sprint-metrics#811 82, mqucifer/sprint-metrics#863 64, mqucifer/sprint-metrics#861 61 and mqucifer/sprint-metrics#868 58.
 - **`guard.reproduce.check`:** 5 in Sprint 34, 6 in Sprint 35.
 - **sprint-metrics' coverage map failed to build** 27 times. It has failed in each of the four sprints counted (92 notes in all; mqucifer/crew#950).
 - **Model failures:** 2 Business Analyst refusals ("a double quote inside a value ends the field"). No `llm.failed` and no `llm.empty`.
