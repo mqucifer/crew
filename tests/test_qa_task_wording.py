@@ -88,3 +88,39 @@ def test_a_returned_task_s_session_says_the_task_came_back(tmp_path, monkeypatch
     )
     assert "Review or CI sent the Task back" in told and "## What review or CI said" in told
     assert "story" not in told and "QA" not in told
+
+
+# --- CI's log, in whole lines (crew#944) -------------------------------------------------
+
+
+def test_a_cut_log_keeps_whole_lines_and_says_how_many_were_left_out():
+    log = "\n".join(f"line {n}: returned to the Developer." for n in range(1, 101))
+    shown = ci.last_lines(log, 200)
+    first, *rest = shown.splitlines()
+    assert first.startswith("(") and first.endswith("earlier lines left out)")
+    assert all(line.startswith("line ") and line.endswith("Developer.") for line in rest)
+    assert rest[-1] == "line 100: returned to the Developer."
+    assert first == f"({100 - len(rest)} earlier lines left out)"
+    assert len("\n".join(rest)) <= 200
+
+
+def test_a_short_log_is_shown_whole():
+    assert ci.last_lines("one\ntwo", 200) == "one\ntwo"
+
+
+def test_a_dispute_task_shows_ci_s_log_from_a_line_s_start(tmp_path):
+    from crew_org.flows import qa_tasks
+    from crew_org.flows.ci import CI_MARKER
+    from tests.test_qa_tasks import HEAD, TEST, _disputing, _story
+
+    issues, board, s = _disputing(tmp_path)
+    long = "\n".join(f"step {n} returned to the Developer." for n in range(400))
+    issues.comments_on[40] = [
+        {"body": f"{CI_MARKER.format(head=HEAD)}\n`{qa_tasks.QA_CHECK}` did not pass.\n{long}"}
+    ]
+    qa_tasks.dispute(
+        issues, board, s, card=_story(), repo="sm", pull=issues.pulls[40], said={"test": TEST}
+    )
+    section = issues.issues[901]["body"].split("## What CI said\n\n", 1)[1]
+    assert section.splitlines()[0].endswith("earlier lines left out)")
+    assert section.splitlines()[1].startswith("step ")

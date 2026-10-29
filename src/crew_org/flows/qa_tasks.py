@@ -498,7 +498,7 @@ def dispute(
     head = (pull.get("head") or {}).get("sha", "")
     number = card.number or 0
     ref = f"{issues.owner}/{repo}"
-    from crew_org.flows.ci import latest_ci_verdict  # noqa: PLC0415
+    from crew_org.flows.ci import last_lines, latest_ci_verdict  # noqa: PLC0415
 
     ci = latest_ci_verdict(issues, repo, pull["number"])
     body = (
@@ -518,7 +518,7 @@ def dispute(
             f"{repo} as the disputed pull request has it is at `{REFERENCE}/{repo}/` in your "
             f"worktree, to read and never to change.\n\n## The Developer's dispute\n\n"
             + "\n".join(f"> {line}" for line in (why or "(nothing said)").splitlines())
-            + (f"\n\n## What CI said\n\n{ci[-CI_SHOWN:]}" if ci else ""),
+            + (f"\n\n## What CI said\n\n{last_lines(ci, CI_SHOWN)}" if ci else ""),
             done_when=[f"`{test}` is fixed, or justified with why"],
         )
         + "\n\n"

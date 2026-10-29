@@ -130,6 +130,25 @@ def log_tail(text: str) -> str:
     return f"{services}\n\n{clean}" if services else clean
 
 
+def last_lines(text: str, chars: int) -> str:
+    """The end of `text` in whole lines within `chars`, saying how many earlier lines
+    were left out. A cut by characters opened mqucifer/qa-suite#8's CI section with
+    "veloper.**" (crew#944)."""
+    if len(text) <= chars:
+        return text
+    lines = text.splitlines()
+    kept: list[str] = []
+    size = 0
+    for line in reversed(lines):
+        if kept and size + len(line) + 1 > chars:
+            break
+        kept.append(line)
+        size += len(line) + 1
+    kept.reverse()
+    left = len(lines) - len(kept)
+    return f"({left} earlier line{'s' if left != 1 else ''} left out)\n" + "\n".join(kept)
+
+
 def job_id(run: dict[str, Any]) -> int | None:
     """The Actions job behind a check run or a job record."""
     found = _JOB.search(run.get("details_url") or run.get("html_url") or "")
