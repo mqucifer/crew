@@ -800,6 +800,7 @@ def _deliver(crew: Crew) -> PhaseOutcome:
         ]
         + [f"#{n} — {why}; merges once they pass" for n, why in result.checking]
         + [f"#{n} — PR #{pr} is in the merge queue" for n, pr in result.queued]
+        + [f"#{n} — {why}" for n, why in result.paired]
         + [f"#{n} — {why}" for n, why in result.unmergeable]
         + [f"#{n} — waits for #{b} in the same epic" for n, b in result.waiting_on_a_sibling]
         + [

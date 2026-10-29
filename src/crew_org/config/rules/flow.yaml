@@ -266,11 +266,13 @@ decision.qa_tasks.already_justified:
   origin:
   - crew#896
 decision.qa_tasks.dispute_settled:
-  description: A story waiting on QA's dispute Task goes on once the Task is closed. Justified, it goes
-    back to the Developer with the test unchanged and QA's why as CI's verdict on its head; fixed, an
-    empty commit runs the checks again and it goes to review.
+  description: A story waiting on QA's dispute Task goes on once QA has answered. Justified, the Task
+    closed, it goes back to the Developer with the test unchanged and QA's why as CI's verdict on its
+    head; fixed, QA's pull request approved, an empty commit runs its checks again with QA's tests and
+    it goes to review, labelled lands-with:qa.
   origin:
   - crew#896
+  - crew#945
 decision.qa_tasks.disputed:
   description: A Developer whose pull request fails QA's check, and who thinks the test is wrong, disputes
     it; QA's Task opens in qa-suite to fix or justify it, and the story waits on it, blocked and labelled
@@ -281,6 +283,12 @@ decision.qa_tasks.justified:
   description: QA's dispute Task closes with no change when the test is right, saying why on the Task.
   origin:
   - crew#896
+decision.qa_tasks.lands_with_story:
+  description: A disputed story and QA's changed test land back to back, the story first. The story
+    waits until QA's pull request is approved and its checks, run against the story's head, passed;
+    QA's waits until the story's has landed. Before it, QA's test would fail the project's main.
+  origin:
+  - crew#945
 decision.qa_tasks.no_test:
   description: QA's test Task closes with no change when nothing it asks can be reached through the
     surface its project's folder names, saying why; recorded, so the retro sees where the surface falls

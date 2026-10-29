@@ -1164,14 +1164,62 @@ flows.qa_tasks.settle_disputes:filter:61831ab1:
   at: flows/qa_tasks.py:settle_disputes
   if: c.status == BLOCKED and WAITS_LABEL in c.labels and (c.state != 'CLOSED') and (c.repo in repos)
   rule: decision.qa_tasks.dispute_settled
-flows.qa_tasks.settle_disputes:filter:ecfde9ed:
-  at: flows/qa_tasks.py:settle_disputes
+flows.qa_tasks._waits:filter:ecfde9ed:
+  at: flows/qa_tasks.py:_waits
   if: (m := _WAITS.search(c.get('body') or '')) is not None
   rule: decision.qa_tasks.dispute_settled
-flows.qa_tasks.settle_disputes:result:waiting:2c222a09:
+flows.qa_tasks.settle_disputes:result:waiting:d76ec67e:
   at: flows/qa_tasks.py:settle_disputes
-  if: task.get('state') != 'closed'
+  if: task.get('state') != 'closed' and (not approved)
   rule: decision.qa_tasks.dispute_settled
+flows.qa_tasks.waits_for_story:end:5d9dcee0:
+  at: flows/qa_tasks.py:waits_for_story
+  if: task.repo != SUITE or role is None or role.key != rt.QA.key
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.waits_for_story:end:9540548c:
+  at: flows/qa_tasks.py:waits_for_story
+  if: found is None
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.waits_for_story:end:a72c6fb2:
+  at: flows/qa_tasks.py:waits_for_story
+  if: live.get('merged') or live.get('merged_at')
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.waits_for_story:end:b9b51414:
+  at: flows/qa_tasks.py:waits_for_story
+  if: live.get('state') == 'closed'
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.lands_with:end:9afc4624:
+  at: flows/qa_tasks.py:lands_with
+  if: LANDS_WITH_LABEL not in story.labels
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.lands_with:end:615496e8:
+  at: flows/qa_tasks.py:lands_with
+  if: not waits
+  rule: decision.qa_tasks.lands_with_story
+flows.qa_tasks.lands_with:filter:c13c34b6:
+  at: flows/qa_tasks.py:lands_with
+  if: c.repo == SUITE and c.number == waits[-1] and (c.state != 'CLOSED')
+  rule: decision.qa_tasks.lands_with_story
+flows.merge.merge_approved:result:paired:40bea985:
+  at: flows/merge.py:merge_approved
+  if: paired
+  rule: decision.qa_tasks.lands_with_story
+flows.merge._qa_beside:end:d8471798:
+  at: flows/merge.py:_qa_beside
+  if: task is None
+  rule: decision.qa_tasks.lands_with_story
+flows.merge._qa_beside:end:c6eadeb6:
+  at: flows/merge.py:_qa_beside
+  if: task.status != MERGING
+  rule: decision.qa_tasks.lands_with_story
+flows.merge._qa_beside:end:ce5ed0a9:
+  at: flows/merge.py:_qa_beside
+  if: pull is None
+  rule: decision.qa_tasks.lands_with_story
+flows.merge._qa_beside:end:bbc58d4b:
+  at: flows/merge.py:_qa_beside
+  if: unready is not None
+  rule: decision.qa_tasks.lands_with_story
 flows.qa_tasks.settle_disputes:skip:662a6c8b:
   at: flows/qa_tasks.py:settle_disputes
   if: not waits

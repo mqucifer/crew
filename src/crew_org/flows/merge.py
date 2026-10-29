@@ -24,7 +24,7 @@ from typing import Any
 from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink, held
-from crew_org.flows import artifacts, role_tasks
+from crew_org.flows import artifacts, qa_tasks, role_tasks
 from crew_org.flows.ci import return_for_ci
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
@@ -211,6 +211,9 @@ class MergeResult:
     checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn.
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # (card, why) a disputed story and QA's changed test, held to land together: the
+    # story first, QA's pull request straight after (crew#945).
+    paired: list[tuple[int, str]] = field(default_factory=list)
     # (repo, PR, base branch) of each queued pull request, so the tick can
     # wait for the queue rather than stop while it is about to land (#314).
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
@@ -240,7 +243,12 @@ def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card
     built — and merging siblings out of that order conflicts the remainder,
     which blocks those cards and labels them for a person.
     """
-    return sorted(open_in(cards, MERGING, repos=repos), key=lambda c: c.number or 0)
+    # QA's Tasks after the stories, so a disputed story lands before QA's changed test
+    # in the same pass (crew#945).
+    return sorted(
+        open_in(cards, MERGING, repos=repos),
+        key=lambda c: (c.repo == qa_tasks.SUITE, c.number or 0),
+    )
 
 
 def merge_approved(
@@ -415,6 +423,18 @@ def merge_approved(
             result.ci_failed.append((number, pull["number"]))
             continue
 
+        # A disputed story and QA's changed test land back to back, the story first:
+        # QA's test fails the project's main until the story is on it, and the story's
+        # check passes only with QA's test (crew#945).
+        try:
+            paired = qa_tasks.waits_for_story(issues, card) or _qa_beside(issues, cards, card)
+        except Exception as exc:  # noqa: BLE001
+            paired = f"its dispute couldn't be read: {exc}"[:120]
+        if paired:
+            held("decision.qa_tasks.lands_with_story", repo=card.repo or repo, card=number)
+            result.paired.append((number, paired))
+            continue
+
         try:
             landed = land(issues, repo, pull["number"])
         except Exception as exc:  # noqa: BLE001
@@ -495,6 +515,25 @@ def merge_approved(
         _done(board, sink, card, pull=pull, result=result, issues=issues, repo=repo)
 
     return result
+
+
+def _qa_beside(issues: IssueClient, cards: list[Card], story: Card) -> str:
+    """Why a story whose dispute QA answered by changing the test can't land yet, or ""
+    when it can: QA's pull request must be approved and its checks passed, so it lands
+    straight after (crew#945)."""
+    task = qa_tasks.lands_with(issues, cards, story)
+    if task is None:
+        return ""
+    link = f"{issues.owner}/{qa_tasks.SUITE}#{task.number}"
+    if task.status != MERGING:
+        return f"lands with QA's changed test ({link}), which isn't approved yet"
+    pull = issues.pull_for_branch(qa_tasks.SUITE, branch_name(task.number or 0, task.title))
+    if pull is None:
+        return f"lands with QA's changed test ({link}), which has no open pull request"
+    unready = unproven(issues, qa_tasks.SUITE, (pull.get("head") or {}).get("sha"))
+    if unready is not None:
+        return f"lands with QA's changed test ({link}): {unready.reason}"
+    return ""
 
 
 def _failed(read: Callable, repo: str, key) -> list[dict]:

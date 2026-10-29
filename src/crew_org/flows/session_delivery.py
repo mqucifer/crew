@@ -66,7 +66,7 @@ from crew_org.flows.delivery import (
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.merge import returned_for_conflict
 from crew_org.flows.qa_tasks import disputable as qa_disputable
-from crew_org.flows.qa_tasks import dispute_specs, place_reference, reference_ref
+from crew_org.flows.qa_tasks import dispute_line, dispute_specs, place_reference, reference_ref
 from crew_org.git_ops import (
     CHECKPOINT,
     DONE_TRAILER,
@@ -907,7 +907,17 @@ def _land(
                 title=card.title,
                 head=outcome.branch or "",
                 base=default_branch,
-                body=pr_body(card, reached, outcome, _changes(worktree, since), by=by),
+                body=pr_body(
+                    card,
+                    reached,
+                    outcome,
+                    _changes(worktree, since),
+                    by=by,
+                    # QA's changed test runs against the disputed pull request (crew#945).
+                    marks=dispute_line(issues, repo, number)
+                    if task is not None and task.key == role_tasks.QA.key
+                    else "",
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - pushed, so the clone's branch is kept
             if transient_remote(exc):
@@ -1341,9 +1351,11 @@ def pr_body(
     changes: list[str],
     *,
     by: str = "Developer",
+    marks: str = "",
 ) -> str:
     """The pull request: what `done` said, how it was checked, and what the gates noted,
-    signed by the role whose sessions did the work."""
+    signed by the role whose sessions did the work. `marks` are for the workflows that
+    read the body: a QA dispute's names the pull request its test runs against."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
 
@@ -1372,6 +1384,8 @@ def pr_body(
         ]
     lines += reached.sections
     lines += ["", f"Closes #{card.number}"]
+    if marks:
+        lines += ["", marks]
     return signed("\n".join(lines), by)
 
 

@@ -126,6 +126,8 @@ class DeliveryResult:
     checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # (card, why) a disputed story and QA's changed test, landing together (crew#945).
+    paired: list[tuple[int, str]] = field(default_factory=list)
     # Stories a passing service failure interrupted, left to be retried (#390).
     interrupted: list[int] = field(default_factory=list)
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
@@ -1037,6 +1039,7 @@ def deliver(
     result.updating = list(landed.updating)
     result.checking = list(landed.checking)
     result.queued = list(landed.queued)
+    result.paired = list(landed.paired)
     result.in_queue = list(landed.in_queue)
     result.landed = [card for card, _pr in landed.merged]
     if landed.merged or landed.conflicted or landed.rebuilding:
