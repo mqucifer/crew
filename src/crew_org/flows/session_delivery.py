@@ -1392,6 +1392,75 @@ def pr_body(
     return signed("\n".join(lines), by)
 
 
+def test_task_start(
+    issues: IssueClient,
+    *,
+    project: str,
+    number: int,
+    worktree: Path,
+    today: str = "",
+    bug: bool = False,
+) -> str:
+    """The first session's start of QA's test Task for a merged story, rendered without
+    opening the Task or calling a model: its system prompt, its first message and its
+    tools (crew#944). For the Sponsor's and the operator's review before test Tasks open.
+
+    `worktree` is qa-suite, with `project` placed at `.project/<project>/`, as delivery
+    places it. Built from the pieces a delivery builds it from: the Task's body as
+    `qa_tasks.test_body` writes it, the role's start, and the session's own start. The
+    hints are read without coverage, so they can differ from a tick's. A `bug`'s fix opens
+    the test that would have caught it: its type is the board's, not the issue's.
+    """
+    from crew_org.flows import qa_tasks  # noqa: PLC0415
+    from crew_org.session.start import start, system_text  # noqa: PLC0415
+    from crew_org.work_types import BUG, STORY  # noqa: PLC0415
+
+    filed = issues.get(project, number)
+    if filed.get("pull_request"):
+        raise ValueError(
+            f"{project}#{number} is a pull request: name the story it closes, whose test this is"
+        )
+    story = Card(
+        item_id="",
+        number=number,
+        title=str(filed.get("title") or ""),
+        repo=project,
+        work_type=BUG if bug else STORY,
+        state=str(filed.get("state") or "").upper(),
+    )
+    kind, key = qa_tasks.test_key(story)
+    title, body = qa_tasks.test_body(issues, card=story, kind=kind, key=key)
+    task = Card(
+        item_id="",
+        number=None,
+        title=title,
+        repo=role_tasks.SUITE,
+        work_type=TASK,
+        labels=frozenset({role_tasks.QA.label, role_tasks.project_label(project)}),
+    )
+    role = role_tasks.role_of(task)
+    assert role is not None
+    offered = skills.for_task(role, body, worktree, [])
+    text = story_section(
+        f"{role_tasks.task_start(role, today, offered, role_tasks.SUITE)}\n\n{title}\n\n{body}",
+        story_notes(issues, task, role_tasks.SUITE),
+        story_rows(issues, task, role_tasks.SUITE),
+        story_diagram(issues, task, role_tasks.SUITE),
+    )
+    opening, _, _ = start(worktree, text, None, None, "Task")
+    specs = role_tasks.done_specs(role, offered, role_tasks.SUITE, kind)
+    done = next(s for s in specs if s["function"]["name"] == "done")["function"]
+    return "\n\n".join(
+        [
+            f"# The session start of QA's test Task for {issues.owner}/{project}#{number}",
+            f"## System prompt\n\n{system_text(role.spec, role.step)}",
+            f"## First message\n\n{opening}",
+            "## Tools\n\n" + "\n".join(f"- `{s['function']['name']}`" for s in specs),
+            f"## `done`, as it's described\n\n{done['description']}",
+        ]
+    )
+
+
 def story_section(story_text: str, note: str, rows: str, diagram: str = "") -> str:
     """The story as the session starts with it: the card, then what its epic decided, and
     the Goal's target diagram (crew#858)."""

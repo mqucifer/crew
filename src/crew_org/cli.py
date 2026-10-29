@@ -1729,6 +1729,72 @@ def decisions(
     typer.echo(render(found, goal=f"{owner}/{repo}#{number}"))
 
 
+@app.command(name="qa-start")
+def qa_start(
+    story: str = typer.Argument(..., help="The merged story, as `repo#n`."),
+    out: str = typer.Option("", "--out", help="A file to write it to, instead of printing."),
+    bug: bool = typer.Option(
+        False, "--bug", help="It's a bug's fix: the test that would have caught it."
+    ),
+) -> None:
+    """QA's test Task's session start for a merged story, rendered and nothing more (crew#944).
+
+    Its system prompt, first message and tools, as the first session of its Task would
+    be given them, for the review before test Tasks open (`delivery.qa_tests_from`).
+    Opens no Task and calls no model: it reads the story from GitHub, and clones
+    qa-suite and the project, both public, into a folder it removes.
+    """
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from crew_org.auth import resolve_credentials  # noqa: PLC0415
+    from crew_org.clock import sprint_today  # noqa: PLC0415
+    from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.flows.qa_tasks import REFERENCE, SUITE  # noqa: PLC0415
+    from crew_org.flows.session_delivery import test_task_start  # noqa: PLC0415
+    from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
+
+    repo, number = _issue_ref(story)
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    issues = IssueClient(token, env["GITHUB_OWNER"])
+    with tempfile.TemporaryDirectory() as tmp:
+        suite, project = Path(tmp) / SUITE, Path(tmp) / repo
+        for name, into in ((SUITE, suite), (repo, project)):
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    f"https://github.com/{issues.owner}/{name}.git",
+                    str(into),
+                ],
+                check=True,
+            )
+        # Where delivery places the project for QA's session to read (`place_reference`).
+        shutil.copytree(project, suite / REFERENCE / repo, ignore=shutil.ignore_patterns(".git"))
+        try:
+            text = test_task_start(
+                issues,
+                project=repo,
+                number=number,
+                worktree=suite,
+                today=sprint_today(load_org()).isoformat(),
+                bug=bug,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{escape(str(exc))}[/]")
+            raise typer.Exit(code=2) from exc
+    if out:
+        Path(out).write_text(text + "\n", encoding="utf-8")
+        console.print(f"wrote {out}: {len(text):,} characters")
+    else:
+        typer.echo(text)
+
+
 def _issue_ref(text: str) -> tuple[str, int]:
     """`repo#n` or `owner/repo#n` as (repo, n)."""
     import re  # noqa: PLC0415

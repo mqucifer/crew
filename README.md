@@ -51,6 +51,7 @@ crew sprint close              # merge what you approved, and report
 crew revert <pr> --reason "…"  # undo a merged change, through review like any other
 crew log --follow              # what a tick is doing and deciding, as it happens
 crew runs --card repo#N        # a card's runs, joined from the record alone
+crew qa-start repo#N           # QA's test Task's session start, rendered, no model
 ```
 
 What the crew records, how its records join, and what leaves the machine:

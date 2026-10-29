@@ -124,3 +124,56 @@ def test_a_dispute_task_shows_ci_s_log_from_a_line_s_start(tmp_path):
     section = issues.issues[901]["body"].split("## What CI said\n\n", 1)[1]
     assert section.splitlines()[0].endswith("earlier lines left out)")
     assert section.splitlines()[1].startswith("step ")
+
+
+# --- the session start, rendered for the review (crew#944) ------------------------------
+
+
+def test_a_test_task_s_session_start_renders_without_a_task_or_a_model(tmp_path):
+    from tests.test_qa_tasks import Suite
+
+    issues = Suite()
+    issues.add(5, "**As a** reader\n\n- [ ] GET /range counts it", title="Count a card")
+    (tmp_path / "sm").mkdir()
+    (tmp_path / "sm" / "README.md").write_text("# sm\n\n**The surface:** its HTTP API.\n")
+    (tmp_path / ".project" / "sm").mkdir(parents=True)
+    shown = session_delivery.test_task_start(
+        issues, project="sm", number=5, worktree=tmp_path, today="2026-10-29"
+    )
+    system = shown.split("## System prompt\n\n", 1)[1].split("\n\n## First message", 1)[0]
+    first = shown.split("## First message\n\n", 1)[1].split("\n\n## Tools", 1)[0]
+    assert "Write and keep QA's functional tests" in system
+    assert "You do not fix the code" not in system
+    assert first.startswith(
+        "## The Task\n\nToday is 2026-10-29. This is the QA Engineer's own Task"
+    )
+    assert "The test of sm#5: Count a card" in first and "GET /range counts it" in first
+    # The Task's own heading; the story QA tests is the Task's section about it.
+    assert "## The story\n" not in first and "## The story as it merged" in first
+    assert "`no_test`" in shown
+    assert "- `done`" in shown
+    # Nothing was opened.
+    assert set(issues.issues) == {5}
+
+
+def test_a_bug_s_fix_renders_the_test_that_would_have_caught_it(tmp_path):
+    from tests.test_qa_tasks import Suite
+
+    issues = Suite()
+    issues.add(6, "Throughput counts a card twice", title="Counted twice")
+    shown = session_delivery.test_task_start(
+        issues, project="sm", number=6, worktree=tmp_path, bug=True
+    )
+    assert "kind=escaped-bug" in shown and "would have caught sm#6" in shown
+
+
+def test_a_pull_request_is_refused_for_the_story_it_closes(tmp_path):
+    import pytest
+
+    from tests.test_qa_tasks import Suite
+
+    issues = Suite()
+    issues.add(200, "Closes #189")
+    issues.issues[200]["pull_request"] = {"url": "u"}
+    with pytest.raises(ValueError, match="is a pull request"):
+        session_delivery.test_task_start(issues, project="sm", number=200, worktree=tmp_path)
