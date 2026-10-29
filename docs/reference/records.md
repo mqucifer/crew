@@ -263,6 +263,7 @@ filled in), and the fields it names.
 | `flows/board_flow.py:for_repo` | …: delivered stories unread: … | — |
 | `flows/board_flow.py:reading_for` | …: no checkout to read: … | — |
 | `flows/board_flow.py:reading_for` | …: no coverage map: … | — |
+| `flows/board_flow.py:reading_for` | …: no coverage map: … | — |
 | `flows/board_flow.py:reading_for` | …: … | — |
 | `flows/board_flow.py:record_split_tests` | #…: held …, … names it changed and not | — |
 | `flows/board_flow.py:record_split_tests` | #…: the split's tests weren't recorded: … | — |

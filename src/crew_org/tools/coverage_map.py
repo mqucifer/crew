@@ -14,7 +14,8 @@ definition that holds it, so the map answers "which tests execute
 outside any definition runs at import, under no test, and maps to the file.
 
 Python only, through pytest-cov, for every Python part: in the crew's image with
-uv, or in the project's own image with its own Python (crew#690, ADR 0030).
+uv, or in the project's own image: through uv when its setup makes a uv
+environment (crew#950), with the image's own Python otherwise (crew#690, ADR 0030).
 """
 
 from __future__ import annotations
@@ -41,8 +42,9 @@ WORK = ".crew-coverage"
 # Installed beside the project's own dev dependencies, with the network the setup
 # step already has. The project's lockfile is not changed.
 INSTALL = ["uv", "pip", "install", "--quiet", "pytest-cov"]
-# A project with its own image: its own Python, with pytest-cov installed into
-# the worktree's home beside what its setup installed (crew#690, ADR 0030).
+# A project with its own image that doesn't set up with uv: its own Python, with
+# pytest-cov installed into the worktree's home beside what its setup installed
+# (crew#690, ADR 0030).
 OWN_INSTALL = ["python", "-m", "pip", "install", "--quiet", "pytest-cov"]
 RC = f"""\
 [run]
@@ -73,6 +75,9 @@ MEASURE = [
 OWN_MEASURE = ["python", "-m", "pytest", *MEASURE[4:]]
 # The whole suite under coverage, which is slower than a plain run.
 TIMEOUT = 900
+
+# pytest's header for a module it couldn't import, up to the next header or summary.
+_COLLECTING = re.compile(r"^_+ ERROR collecting .*?(?=^[_=]{3,} )", re.MULTILINE | re.DOTALL)
 
 _PHASE = re.compile(r"\|(setup|run|teardown)$")
 _PARAMS = re.compile(r"\[.*\]$")
@@ -356,6 +361,27 @@ def with_static(measured: CoverageMap, clone: Path) -> CoverageMap:
     return CoverageMap(measured.repo, measured.commit, tests)
 
 
+def _why_no_report(output: str) -> str:
+    """The first module pytest couldn't collect, whole, or the run's last lines.
+
+    A collection error stops the run before coverage writes its report, and the
+    tail is then only the summary's list of files: sprint-metrics' notes named 16
+    files for weeks and never why they didn't import (crew#950).
+    """
+    found = _COLLECTING.search(output)
+    return found.group(0).strip() if found else output[-300:]
+
+
+def _through_uv(setup: list[str] | None) -> bool:
+    """Whether the project's setup made a uv environment, which only `uv run` sees.
+
+    sprint-metrics names its own uv image and sets up with `uv sync`, into `.venv`:
+    the image's bare python couldn't import the project, and no map was built from
+    2026-10-23 (crew#950). crew-presentation sets up with the image's own python.
+    """
+    return Path(setup[0]).name == "uv" if setup else False
+
+
 def _head(clone: Path) -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=clone, capture_output=True, text=True, check=True
@@ -391,7 +417,8 @@ def build(
     install, measure = INSTALL, MEASURE
     if tools.image:
         sandbox = replace(sandbox, image=tools.image)
-        install, measure = OWN_INSTALL, OWN_MEASURE
+        if not _through_uv(tools.setup):
+            install, measure = OWN_INSTALL, OWN_MEASURE
     work = clone / WORK
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir()
@@ -406,7 +433,7 @@ def build(
         done = run(clone, measure, sandbox=sandbox, network=False, timeout=TIMEOUT)
         report = work / "coverage.json"
         if not report.exists():
-            raise CoverageUnavailable(f"no coverage report: {done.output[-300:]}")
+            raise CoverageUnavailable(f"no coverage report: {_why_no_report(done.output)}")
         found = from_report(repo, commit, clone, json.loads(report.read_text()))
     finally:
         shutil.rmtree(work, ignore_errors=True)
