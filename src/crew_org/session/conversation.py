@@ -540,6 +540,7 @@ def session(
     instead_of_hints: str | None = None,
     after_run: Callable[[dict[str, Any]], None] | None = None,
     role: str = ROLE,
+    step: str | None = None,
     specs: list[dict[str, Any]] | None = None,
     scope: tuple[str, ...] = (),
     skills: tuple[str, ...] = (),
@@ -552,7 +553,8 @@ def session(
 
     `about` goes on the `session.started` event, such as the base commit. `role` is
     agents.yaml's key for who works it: the Developer, or the role whose Task it is
-    (crew#839), with the Developer's tools. A Task's `specs` tell its `done` as a Task's,
+    (crew#839), with the Developer's tools, and `step` that role's own text for its
+    Tasks where it has one (crew#944). A Task's `specs` tell its `done` as a Task's,
     and its `scope` is what `done` takes as proof besides a test. A returned story's
     `findings` is the size of review's and QA's section in `instead_of_hints`, shown
     beside the parts, outside the total it's already in (crew#919), and `sponsor` the
@@ -578,7 +580,7 @@ def session(
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
-        role=_role(role),
+        role=_role(role, step),
         start_chars=sizes,
         # Whether `skill` was offered: the count of who reads a skill needs who could
         # (M11's skills pilot, crew#839).
@@ -596,7 +598,7 @@ def session(
     )
     return Session(
         tools,
-        system_text(role),
+        system_text(role, step),
         opening,
         send=send,
         after_run=after_run,
@@ -608,6 +610,7 @@ def session(
             resolving=resolving,
         ),
         role=role,
+        step=step,
         specs=SPECS if specs is None else specs,
     )
 

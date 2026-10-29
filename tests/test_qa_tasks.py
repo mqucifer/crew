@@ -549,3 +549,29 @@ def test_qa_s_session_reads_its_project_beside_its_folder_and_never_commits_it(t
     qa_tasks.place_reference(Clone(), suite, "sm")  # again: replaced, still excluded once
     exclude = (suite / ".git" / "info" / "exclude").read_text()
     assert exclude.count("/.project/") == 1
+
+
+# --- QA's session for its Tasks (crew#944) ---------------------------------------------
+
+
+def test_a_qa_task_session_is_told_it_writes_and_fixes_tests(tmp_path, monkeypatch):
+    from crew_org.session import conversation
+
+    monkeypatch.setattr(conversation, "record", lambda *a, **k: None)
+    monkeypatch.setattr(conversation, "start", lambda *a: ("start", {"total": 5}, []))
+    monkeypatch.setattr(conversation, "Tools", lambda *a, **k: None)
+    role = role_of(_qa_task())
+    assert role.step == "tasks"
+    session = conversation.session(tmp_path, "# Task", None, None, role=role.spec, step=role.step)
+    assert session.step == "tasks"
+    told = session.system
+    assert "You are QA Engineer." in told and "Write and keep QA's functional tests" in told
+    assert "fix a test that's wrong" in told
+    assert "You do not fix the code" not in told
+
+
+def test_verifying_a_story_keeps_the_verifier_s_text():
+    from crew_org.session.start import system_text
+
+    told = system_text("qa_engineer")
+    assert "You do not fix the code" in told and "Write and keep" not in told

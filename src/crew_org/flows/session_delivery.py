@@ -576,6 +576,7 @@ def _sessions(
             returned=returned,
             rebuilt=rebuilt,
             role=role,
+            step=task.step if task else None,
             specs=(
                 role_tasks.done_specs(task, skills or (), repo, kind)
                 if task

@@ -52,13 +52,14 @@ comes back on 3 runs with edits between, or after 3 hours of model time.
 """
 
 
-def system_text(role: str = "developer") -> str:
+def system_text(role: str = "developer", step: str | None = None) -> str:
     """Who the role is, without the answer forms' rules: the start tells the session's.
+    A `step` of the role's says its own goal and backstory over the role's.
 
     The constitution's Definition of Done, audit and guidelines (10k characters) are
     left out: `done`'s own description says what the gate returns a branch for.
     """
-    spec = role_spec(role)
+    spec = role_spec(role, step)
     return f"{who(spec)}\n\nYour goal: {spec['goal'].strip()}"
 
 

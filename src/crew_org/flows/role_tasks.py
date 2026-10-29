@@ -50,6 +50,9 @@ class TaskRole:
     # A repository whose files aren't a project's, as (repository, scope): its Tasks
     # change that scope instead.
     scope_in: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Its step in agents.yaml, over its spec, for its Task's session, when the role's
+    # own text is for other work: QA's `tasks`, not verifying a story (crew#944).
+    step: str | None = None
 
     @property
     def label(self) -> str:
@@ -118,7 +121,7 @@ UX = TaskRole("ux", "UX Designer", "ux_designer")
 # pull request's build (ADR 0006 in mqucifer/project-print). Its Tasks are filed there,
 # and each may change only its project's folder: `role_of` narrows the scope from the
 # Task's project label (crew#896). In a project's own repository it changes nothing.
-QA = TaskRole("qa", "QA Engineer", "qa_engineer", scope_in=((SUITE, ()),))
+QA = TaskRole("qa", "QA Engineer", "qa_engineer", scope_in=((SUITE, ()),), step="tasks")
 
 ROLES: dict[str, TaskRole] = {r.key: r for r in (ARCHITECT, DEVOPS, UX, QA)}
 LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in ROLES.values()}
