@@ -1134,11 +1134,15 @@ flows.qa_tasks.dispute:end:be1698b3:
   at: flows/qa_tasks.py:dispute
   if: text is None or not name or (not re.search(f'\\bdef {re.escape(name)}\\b', text))
   rule: check.qa_tasks.dispute_names_no_test
-flows.qa_tasks.merged_work:filter:f5a200a2:
+flows.qa_tasks.open_tests:end:be5eb66f:
+  at: flows/qa_tasks.py:open_tests
+  if: since is None
+  rule: decision.qa_tasks.test_task
+flows.qa_tasks.merged_work:filter:79d2df02:
   at: flows/qa_tasks.py:merged_work
-  if: 'c.work_type in (STORY, BUG) and c.status == DONE and (c.state == ''CLOSED'') and (c.state_reason
-    != ''NOT_PLANNED'') and (c.closed is not None) and (c.closed >= FROM) and (c.repo in repos) and (c.repo
-    != '
+  if: c.work_type in (STORY, BUG) and c.status == DONE and (c.state == 'CLOSED') and (c.state_reason !=
+    'NOT_PLANNED') and (c.closed is not None) and (c.closed >= since) and (c.repo in repos) and (c.repo
+    !=
   rule: decision.qa_tasks.test_task
 flows.qa_tasks.open_tests:end:319da5d2:
   at: flows/qa_tasks.py:open_tests

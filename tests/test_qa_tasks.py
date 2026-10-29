@@ -115,8 +115,11 @@ def _merged(number: int, work_type: str = STORY, **update) -> Card:
     return Card(**{**fields, **update})
 
 
-def _open(issues, board, s, cards, repos=frozenset({"sm", SUITE})):
-    return qa_tasks.open_tests(issues, board, s, cards=cards, repos=set(repos))
+FROM = datetime(2026, 10, 26, tzinfo=UTC)
+
+
+def _open(issues, board, s, cards, repos=frozenset({"sm", SUITE}), since=FROM):
+    return qa_tasks.open_tests(issues, board, s, cards=cards, repos=set(repos), since=since)
 
 
 def test_a_merged_story_opens_qa_s_test_task_in_qa_suite_once(tmp_path):
@@ -162,6 +165,36 @@ def test_only_merged_stories_and_bugs_since_it_was_built_open_one(tmp_path, card
     issues = Suite()
     issues.add(7)
     assert _open(issues, SuiteBoard(), sink(tmp_path), [card]).opened == []
+
+
+def test_no_test_task_opens_until_the_operator_sets_its_start(tmp_path):
+    issues = Suite()
+    issues.add(5)
+    assert _open(issues, SuiteBoard(), sink(tmp_path), [_merged(5)], since=None).opened == []
+    assert len(issues.issues) == 1
+    assert qa_tasks.tests_from({"delivery": {"qa_tests_from": None}}) is None
+    assert qa_tasks.tests_from({}) is None
+
+
+def test_test_tasks_start_from_the_day_the_operator_sets(tmp_path):
+    from datetime import date
+
+    set_to = {"delivery": {"qa_tests_from": date(2026, 10, 30)}}
+    assert qa_tasks.tests_from(set_to) == datetime(2026, 10, 30, tzinfo=UTC)
+    assert qa_tasks.tests_from({"delivery": {"qa_tests_from": "2026-10-30"}}) == datetime(
+        2026, 10, 30, tzinfo=UTC
+    )
+    # Merged the day before: no backfill.
+    issues = Suite()
+    issues.add(5)
+    since = qa_tasks.tests_from(set_to)
+    assert _open(issues, SuiteBoard(), sink(tmp_path), [_merged(5)], since=since).opened == []
+
+
+def test_the_crew_s_own_config_holds_test_tasks_until_the_review():
+    from crew_org.config import load_org
+
+    assert qa_tasks.tests_from(load_org()) is None
 
 
 def test_a_project_with_no_folder_in_qa_suite_opens_none(tmp_path):

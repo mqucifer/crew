@@ -24,7 +24,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,9 +45,6 @@ STORY_TEST = rt.STORY_TEST
 ESCAPED = rt.ESCAPED
 DISPUTE = rt.DISPUTE
 TEST_POINTS = 2
-# Work merged before QA's Tasks were built has no Task: the suite starts from what
-# merges after (crew#896).
-FROM = datetime(2026, 10, 26, tzinfo=UTC)
 # Where a QA Task's session reads the project it tests, inside its qa-suite worktree:
 # never committed, and never in its scope.
 REFERENCE = ".project"
@@ -57,8 +54,22 @@ def folder_readme(project: str) -> str:
     return f"{project}/README.md"
 
 
-def merged_work(cards: list[Card], repos: set[str]) -> list[Card]:
-    """Stories and bugs whose pull request merged since `FROM`, in a project the crew
+def tests_from(org: dict[str, Any]) -> datetime | None:
+    """The day QA's test Tasks start from, `delivery.qa_tests_from`, or None while it's
+    unset and none open (crew#945).
+
+    No backfill: work merged before has no Task (the Sponsor, 2026-10-29). And none
+    open until the Sponsor and the operator have reviewed one Task's session start.
+    """
+    value = (org.get("delivery") or {}).get("qa_tests_from")
+    if not value:
+        return None
+    day = value if isinstance(value, date) else date.fromisoformat(str(value))
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
+
+
+def merged_work(cards: list[Card], repos: set[str], since: datetime) -> list[Card]:
+    """Stories and bugs whose pull request merged since `since`, in a project the crew
     works: Done and closed as completed, never one closed as superseded."""
     return sorted(
         (
@@ -69,7 +80,7 @@ def merged_work(cards: list[Card], repos: set[str]) -> list[Card]:
             and c.state == "CLOSED"
             and c.state_reason != "NOT_PLANNED"
             and c.closed is not None
-            and c.closed >= FROM
+            and c.closed >= since
             and c.repo in repos
             and c.repo != SUITE
         ),
@@ -97,12 +108,15 @@ def open_tests(
     *,
     cards: list[Card],
     repos: set[str],
+    since: datetime | None,
 ) -> QATasks:
-    """QA's Task for each story and bug merged in a project with a folder in qa-suite,
-    once. One GitHub refused is recorded and opened by the next pass: nothing marks it
-    opened until it is."""
+    """QA's Task for each story and bug merged since `since` in a project with a folder
+    in qa-suite, once; none while `since` is None (`tests_from`). One GitHub refused is
+    recorded and opened by the next pass: nothing marks it opened until it is."""
     result = QATasks()
-    work = merged_work(cards, repos)
+    if since is None:
+        return result
+    work = merged_work(cards, repos, since)
     if not work:
         return result
     try:

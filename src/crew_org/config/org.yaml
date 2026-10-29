@@ -119,6 +119,11 @@ delivery:
     # (ADR 0006 in mqucifer/project-print). QA's Tasks are filed and worked here,
     # each in its project's folder: the crew takes it over with crew#896.
     - qa-suite
+  # QA's test Tasks open for stories and bugs merged on or after this day, with no
+  # backfill of what merged before (the Sponsor, 2026-10-29; crew#945). Empty, none
+  # open: the Sponsor and the operator first review one test Task's session start
+  # (`crew qa-start`, crew#944), then the operator sets it to that day.
+  qa_tests_from:
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in

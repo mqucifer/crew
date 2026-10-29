@@ -320,6 +320,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         Settled,
         open_tests,
         settle_disputes,
+        tests_from,
     )
     from crew_org.flows.release_check import check_releases  # noqa: PLC0415
     from crew_org.flows.revisit import revisit_designs  # noqa: PLC0415
@@ -363,7 +364,14 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     # while the crew doesn't work in qa-suite.
     suite = works_in_suite(crew)
     tested = (
-        open_tests(crew.issues, crew.board, crew.sink, cards=crew.board.cards(), repos=repos)
+        open_tests(
+            crew.issues,
+            crew.board,
+            crew.sink,
+            cards=crew.board.cards(),
+            repos=repos,
+            since=tests_from(crew.org),
+        )
         if suite
         else QATasks()
     )

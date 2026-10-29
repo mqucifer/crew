@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 75 |
-| A setting that changes what the tick does | 209 |
+| A setting that changes what the tick does | 210 |
 | Told, and not checked by anything above | 146 |
 
 ## Categories
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 68 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 71 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 150 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 151 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -302,7 +302,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.qa_tasks.justified`<br>Close QA's Task with no change, saying why on it, and record it. | flow | `src/crew_org/flows/qa_tasks.py:settle` | — | — | src/crew_org/flows/qa_tasks.py:settle | crew#896 |
 | `decision.qa_tasks.lands_with_story`<br>Why a story whose dispute QA answered by changing the test can't land yet, or "" when it can: QA's pull request must be approved and its checks passed, so it lands straight after (crew#945). | flow | `src/crew_org/flows/merge.py:_qa_beside` | — | — | src/crew_org/flows/merge.py:_qa_beside<br>src/crew_org/flows/merge.py:merge_approved<br>src/crew_org/flows/qa_tasks.py:lands_with<br>src/crew_org/flows/qa_tasks.py:waits_for_story | crew#945 |
 | `decision.qa_tasks.no_test`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/session_end.py:_settled<br>src/crew_org/flows/session_end.py:route | crew#896 |
-| `decision.qa_tasks.test_task`<br>Stories and bugs whose pull request merged since `FROM`, in a project the crew works: Done and closed as completed, never one closed as superseded. | flow | `src/crew_org/flows/qa_tasks.py:merged_work` | — | — | src/crew_org/flows/qa_tasks.py:merged_work<br>src/crew_org/flows/qa_tasks.py:open_tests<br>src/crew_org/flows/qa_tasks.py:test_key | crew#896 |
+| `decision.qa_tasks.test_task`<br>Stories and bugs whose pull request merged since `since`, in a project the crew works: Done and closed as completed, never one closed as superseded. | flow | `src/crew_org/flows/qa_tasks.py:merged_work` | — | — | src/crew_org/flows/qa_tasks.py:merged_work<br>src/crew_org/flows/qa_tasks.py:open_tests<br>src/crew_org/flows/qa_tasks.py:test_key | crew#896<br>crew#945 |
 | `decision.release_check.check_releases`<br>Verify each repo's current release, once its release run for the head has finished. | flow | `src/crew_org/flows/release_check.py:check_releases` | — | — | src/crew_org/flows/release_check.py:check_releases | — |
 | `decision.resplit.affected`<br>Close the stories a round replaces. | flow | `src/crew_org/flows/board_flow.py:close_replaced` | — | — | src/crew_org/flows/board_flow.py:close_replaced<br>src/crew_org/flows/board_flow.py:finish_round<br>src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/board_flow.py:resplit_gate<br>src/crew_org/flows/resplit.py:open_stories<br>src/crew_org/flows/resplit.py:unfinished | crew#859 |
 | `decision.resplit.stop`<br>Before an epic sent back as a story problem is split again (#189). | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step | crew#189<br>crew#859 |
@@ -525,6 +525,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.org.board.blocked_column`<br>board.blocked_column = Blocked | flow | `src/crew_org/config/org.yaml:board.blocked_column` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.columns`<br>board.columns = ['Inbox (Goals)', 'Needs Refinement', 'Ready', 'Sprint Backlog', 'In Progress', 'Reviewing', 'QAing', 'Merging', 'Done'] | flow | `src/crew_org/config/org.yaml:board.columns` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.human_gates`<br>board.human_gates = ['Inbox (Goals)'] | flow | `src/crew_org/config/org.yaml:board.human_gates` | — | — | src/crew_org/config/org.yaml | — |
+| `config.org.delivery.qa_tests_from`<br>delivery.qa_tests_from = None | flow | `src/crew_org/config/org.yaml:delivery.qa_tests_from` | — | — | src/crew_org/config/org.yaml | crew#945 |
 | `config.org.delivery.repos`<br>delivery.repos = ['sprint-metrics', 'infra', 'crew-presentation', 'qa-suite'] | flow | `src/crew_org/config/org.yaml:delivery.repos` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.force_label`<br>design.force_label = needs:design | scope | `src/crew_org/config/org.yaml:design.force_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.revisit_conflicts`<br>design.revisit_conflicts = 3 | scope | `src/crew_org/config/org.yaml:design.revisit_conflicts` | — | — | src/crew_org/config/org.yaml | — |
