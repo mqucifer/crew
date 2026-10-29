@@ -23,6 +23,16 @@ def resplit_stop_of(org: dict[str, Any]) -> int:
     return int((org.get("refinement") or {}).get("resplit_stop", RESPLIT_STOP))
 
 
+# `delivery.ci_same_failure_stop` when org.yaml doesn't say: a card CI keeps returning
+# for the same tests always stops (crew#944).
+CI_SAME_FAILURE_STOP = 3
+
+
+def ci_same_failure_stop_of(org: dict[str, Any]) -> int:
+    """CI's returns running, with the same failing tests, before a card is blocked."""
+    return int((org.get("delivery") or {}).get("ci_same_failure_stop", CI_SAME_FAILURE_STOP))
+
+
 @cache
 def load_org(path: Path | None = None) -> dict[str, Any]:
     """Load and validate org.yaml."""
@@ -88,6 +98,12 @@ def _validate(org: dict[str, Any]) -> None:
     stop = (org.get("refinement") or {}).get("resplit_stop")
     if stop is not None and (isinstance(stop, bool) or not isinstance(stop, int) or stop < 1):
         raise ValueError(f"refinement.resplit_stop must be a whole number above 0, got {stop!r}")
+
+    same = (org.get("delivery") or {}).get("ci_same_failure_stop")
+    if same is not None and (isinstance(same, bool) or not isinstance(same, int) or same < 2):
+        raise ValueError(
+            f"delivery.ci_same_failure_stop must be a whole number above 1, got {same!r}"
+        )
 
     sandbox = org.get("sandbox") or {}
     mode = sandbox.get("mode", "required")

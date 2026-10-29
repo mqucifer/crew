@@ -124,6 +124,11 @@ delivery:
   # open: the Sponsor and the operator first review one test Task's session start
   # (`crew qa-start`, crew#944), then the operator sets it to that day.
   qa_tests_from:
+  # CI returns running with the same failing tests before the card is blocked for a
+  # person with the log, instead of another session (crew#944): mqucifer/qa-suite#8 was
+  # sent back three times for a failure its session had already explained. It starts
+  # high and is lowered from the `work.sent_back` events, which count every return.
+  ci_same_failure_stop: 3
 
 sandbox:
   # Testing the crew's output means executing code an LLM wrote. That happens in

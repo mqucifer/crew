@@ -33,6 +33,9 @@ config.const.strain.REVISIT_CONFLICTS:
 config.org.board.blocked_column:
 config.org.board.columns:
 config.org.board.human_gates:
+config.org.delivery.ci_same_failure_stop:
+  origin:
+  - crew#944
 config.org.delivery.qa_tests_from:
   origin:
   - crew#945
@@ -118,6 +121,12 @@ decision.board_flow.technical_work_first:
   - crew#440
 decision.bugs.carry_out:
 decision.bugs.collaborators_only:
+decision.ci.same_failure_stop:
+  description: A card CI returns delivery.ci_same_failure_stop times running with the same failing
+    tests is blocked for a person, with the log, instead of another session that would be shown the
+    failure it has already answered.
+  origin:
+  - crew#944
 decision.close.carry_over:
   origin:
   - crew#389

@@ -18,8 +18,10 @@ import re
 from typing import Any
 
 from crew_org import sendbacks
-from crew_org.columns import IN_PROGRESS, MERGING
-from crew_org.events import EventSink
+from crew_org.columns import BLOCKED, IN_PROGRESS, MERGING
+from crew_org.config import ci_same_failure_stop_of, load_org
+from crew_org.events import EventKind, EventSink
+from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient
@@ -41,6 +43,8 @@ SERVICE_LOG_LINES = 10
 _STARTING = re.compile(r"##\[group\]Starting (\S+) service container")
 _DOCKER_START = re.compile(r"##\[command\]\S*docker start (\w+)")
 _STATE = re.compile(r"(\S+) service is (\w+)")
+# A test pytest says failed, in its short summary: what one return failed on.
+_FAILED_TEST = re.compile(r"^(?:FAILED|ERROR) (\S+::\S+)", re.MULTILINE)
 _DOCKER_LOGS = re.compile(r"##\[command\]\S*docker logs (?:--details )?(\w+)")
 
 
@@ -149,6 +153,11 @@ def last_lines(text: str, chars: int) -> str:
     return f"({left} earlier line{'s' if left != 1 else ''} left out)\n" + "\n".join(kept)
 
 
+def failing_tests(text: str) -> frozenset[str]:
+    """The tests a CI report's logs say failed, by id; empty when it names none."""
+    return frozenset(_FAILED_TEST.findall(text))
+
+
 def job_id(run: dict[str, Any]) -> int | None:
     """The Actions job behind a check run or a job record."""
     found = _JOB.search(run.get("details_url") or run.get("html_url") or "")
@@ -196,9 +205,15 @@ def return_for_ci(
     where: str,
     frm: str = MERGING,
     rule: str = "",
+    stop: int | None = None,
 ) -> None:
     """Send a card back to whoever built it with what CI said: approved, or before review.
-    A role's Task goes back to its role, not the Developer (crew#944)."""
+    A role's Task goes back to its role, not the Developer (crew#944).
+
+    Returned `stop` times running for the same failing tests, it's blocked for a person
+    with the log instead (`delivery.ci_same_failure_stop`): another session would be
+    shown the same failure it has already answered.
+    """
     from crew_org.flows.role_tasks import role_of  # noqa: PLC0415
 
     number = card.number or 0
@@ -214,13 +229,25 @@ def return_for_ci(
     except Exception:  # noqa: BLE001
         bodies = None
     already = any(marker in b for b in bodies or [])
+    said = report(issues, repo, failed)
+    stop = ci_same_failure_stop_of(load_org()) if stop is None else stop
+    tests = failing_tests(said)
+    earlier = [b for b in bodies or [] if CI_MARKER_PREFIX in b and marker not in b]
+    if (
+        not already
+        and tests
+        and len(earlier) >= stop - 1
+        and all(failing_tests(b) == tests for b in earlier[-(stop - 1) :])
+    ):
+        _stopped(board, issues, sink, card, repo=repo, pull=pull, frm=frm, stop=stop, said=said)
+        return
     if not already:
         issues.comment(
             repo,
             pull["number"],
             f"{marker}\n**CI failed {where}: returned to {who}.** {names} did not pass. "
             "The crew's own checks run lint and tests in a sandbox; this is what only CI "
-            f"runs, and its log is below.\n\n{report(issues, repo, failed)}",
+            f"runs, and its log is below.\n\n{said}",
         )
     named: dict[str, Any] = {"rule": rule} if rule else {}
     move_card(
@@ -246,6 +273,49 @@ def return_for_ci(
         if bodies is None
         else sum(CI_MARKER_PREFIX in b and marker not in b for b in bodies) + 1,
         jobs=len(failed),
+    )
+
+
+def _stopped(
+    board: ProjectClient,
+    issues: IssueClient,
+    sink: EventSink,
+    card: Card,
+    *,
+    repo: str,
+    pull: dict,
+    frm: str,
+    stop: int,
+    said: str,
+) -> None:
+    """Blocked for a person, with CI's log, after `stop` returns for the same tests."""
+    number = card.number or 0
+    rule = "decision.ci.same_failure_stop"
+    move_card(
+        board,
+        sink,
+        item_id=card.item_id,
+        to=BLOCKED,
+        by=None,
+        card=number,
+        frm=frm,
+        summary=f"PR #{pull['number']}: CI failed the same tests {stop} returns running"[:120],
+        kind=EventKind.CARD_BLOCKED,
+        rule=rule,
+    )
+    artifacts.label(
+        issues, sink, repo=repo, number=number, by=None, add=["blocked", "needs:human"], rule=rule
+    )
+    artifacts.comment(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        body=f"**Blocked: CI failed the same tests {stop} returns running** on PR "
+        f"#{pull['number']}. Each session was sent back with this log, and another would be "
+        "shown the same failure, so a person decides: the failure, or the check.\n\n"
+        f"{said}",
+        by=None,
     )
 
 

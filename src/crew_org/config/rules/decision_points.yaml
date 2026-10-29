@@ -2037,6 +2037,11 @@ flows.role_tasks.turned_on_bug:end:7f2ee007:
   at: flows/role_tasks.py:turned_on_bug
   if: not tests
   not_a_rule: nothing to file
+flows.ci.return_for_ci:end:665d685f:
+  at: flows/ci.py:return_for_ci
+  if: not already and tests and (len(earlier) >= stop - 1) and all((failing_tests(b) == tests for b in
+    earlier[-(stop - 1):]))
+  rule: decision.ci.same_failure_stop
 flows.ci_from_main.ci_services_from_main:result:held:705cf4f7:
   at: flows/ci_from_main.py:ci_services_from_main
   if: why
