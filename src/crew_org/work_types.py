@@ -20,6 +20,24 @@ TASK = "Task"
 # epic", such as the split's or the backlog order's, still names STORY.
 DELIVERED = frozenset({STORY, BUG, TASK})
 
+# QA's tests live in their own repository, a folder per project (ADR 0006 in
+# mqucifer/project-print), and each of QA's Tasks there is labelled with the project it
+# tests (`flows.role_tasks`).
+SUITE = "qa-suite"
+PROJECT_LABEL = "project:"
+
+
+def works(card: Card, repos: set[str] | None) -> bool:
+    """Is `card` one a tick on `repos` works: in one of them, or QA's Task in qa-suite
+    for one of them (crew#945).
+
+    The operator ticks one project at a time, and a qa-suite Task was worked only in a
+    tick on qa-suite: a story waiting on QA's dispute couldn't go on in its own project's.
+    """
+    if repos is None or card.repo in repos:
+        return True
+    return card.repo == SUITE and any(f"{PROJECT_LABEL}{r}" in card.labels for r in repos)
+
 
 def open_in(cards: list[Card], status: str, *, repos: set[str] | None = None) -> list[Card]:
     """The open cards the crew delivers in a column, in the repositories it works.
@@ -33,5 +51,5 @@ def open_in(cards: list[Card], status: str, *, repos: set[str] | None = None) ->
         if c.status == status
         and c.work_type in DELIVERED
         and c.state != "CLOSED"
-        and (repos is None or c.repo in repos)
+        and works(c, repos)
     ]

@@ -38,7 +38,7 @@ from crew_org.rulebook import says
 from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
-from crew_org.work_types import DELIVERED, open_in
+from crew_org.work_types import DELIVERED, open_in, works
 
 # Marks the comment a repair leaves on the pull request it updated, so the
 # thread says why a new commit appeared rather than leaving the reviewer to
@@ -662,7 +662,7 @@ def not_ours(cards: list[Card], sprint: str, repos: set[str]) -> list[Card]:
         and c.work_type in DELIVERED
         and c.state != "CLOSED"
         and (c.sprint == sprint or sprint is None)
-        and c.repo not in repos
+        and not works(c, repos)
     ]
 
 
@@ -1074,7 +1074,7 @@ def deliver(
     # is already In Progress occupies no new slot.
     returned = needs_rework(issues, cards, repo=repo)
     for card in returned:
-        if repos is not None and (card.repo or repo) not in repos:
+        if repos is not None and (card.repo or repo) not in repos and not works(card, repos):
             held("decision.delivery.sprint_stories", repo=card.repo or repo, card=card.number)
             continue
         waiting = rebuild_waits_for(issues, cards, card, repo=card.repo or repo)

@@ -205,9 +205,10 @@ decision.phase_cards:
   - decision.bugs.bugs_to_triage
   - decision.board_flow.goals_missing_work_type
   description: A phase takes the open cards in its column, of the types it works, in the repositories
-    the crew works.
+    the crew works, and QA's Tasks in qa-suite for those projects, by their project label.
   origin:
   - crew#353
+  - crew#945
   - sprint-metrics#284
 decision.release_check.check_releases:
   description: 'Each project''s current release is checked once its release run for the head has finished:

@@ -187,6 +187,7 @@ def review_open_pulls(
     cards: list[Card] | None = None,
     writer: IssueClient | None = None,
     clone: Path | None = None,
+    only_cards: bool = False,
 ) -> ReviewResult:
     """Review every open pull request that the crew has not yet judged.
 
@@ -202,6 +203,9 @@ def review_open_pulls(
 
     `clone` is the repository at its base branch, where the reviewer is shown
     who imports the names a diff changes (#215). Without one it isn't shown.
+
+    `only_cards` leaves alone a pull request with no card among `cards`: in a tick on
+    one project, qa-suite's pull requests of other projects' Tasks (crew#945).
     """
     result = ReviewResult()
     waiting = cards_by_branch(cards or []) if board is not None else {}
@@ -209,6 +213,8 @@ def review_open_pulls(
     for pull in issues.open_pulls(repo):
         # One Code Reviewer run per pull request, under the card it closes (crew#449).
         story = waiting.get((pull.get("head") or {}).get("ref", ""))
+        if only_cards and story is None:
+            continue
         with log.run("Code Reviewer", card=story.number if story is not None else None, repo=repo):
             number = pull["number"]
             author = (pull.get("user") or {}).get("login", "")

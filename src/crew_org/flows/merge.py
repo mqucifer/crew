@@ -37,7 +37,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED, TASK, open_in
+from crew_org.work_types import DELIVERED, TASK, open_in, works
 
 STORY_TYPE = "Story"
 
@@ -515,7 +515,7 @@ def merged_elsewhere(cards: list[Card], repos: set[str] | None = None) -> list[C
         if c.status == MERGING
         and c.work_type in DELIVERED
         and c.state == "CLOSED"
-        and (repos is None or c.repo in repos)
+        and works(c, repos)
     ]
 
 
@@ -543,7 +543,7 @@ def done_devops_tasks(
         and c.closed is not None
         and c.closed >= since
         and role_tasks.role_of(c) is role_tasks.DEVOPS
-        and (repos is None or c.repo in repos)
+        and works(c, repos)
     ]
 
 

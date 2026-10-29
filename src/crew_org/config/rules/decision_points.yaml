@@ -656,9 +656,9 @@ flows.delivery.deliver:skip:02bfad69:
   at: flows/delivery.py:deliver
   if: limit is not None and claimed >= limit
   rule: decision.delivery.limit
-flows.delivery.deliver:skip:d9825b8d:
+flows.delivery.deliver:skip:1e4b16df:
   at: flows/delivery.py:deliver
-  if: repos is not None and (card.repo or repo) not in repos
+  if: repos is not None and (card.repo or repo) not in repos and (not works(card, repos))
   rule: decision.delivery.sprint_stories
 flows.delivery.held_by_what_it_builds_on:filter:69928729:
   at: flows/delivery.py:held_by_what_it_builds_on
@@ -672,10 +672,10 @@ flows.delivery.needs_rework:filter:273ada58:
   at: flows/delivery.py:needs_rework
   if: awaiting_rework(issues, c.repo or repo, branch_name(c.number or 0, c.title), c)
   rule: decision.delivery.rework
-flows.delivery.not_ours:filter:3af5a48e:
+flows.delivery.not_ours:filter:b52396d4:
   at: flows/delivery.py:not_ours
   if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.sprint
-    == sprint or sprint is None) and (c.repo not in repos)
+    == sprint or sprint is None) and (not works(c, repos))
   rule: decision.delivery.sprint_stories
 flows.delivery.prior_verdicts:filter:c0537204:
   at: flows/delivery.py:prior_verdicts
@@ -1090,10 +1090,9 @@ flows.merge.merge_approved:result:no_sponsor:c16c1664:
   at: flows/merge.py:merge_approved
   if: not login
   rule: decision.role_tasks.sponsor_approves
-flows.merge.merged_elsewhere:filter:3cc79fb3:
+flows.merge.merged_elsewhere:filter:a382f243:
   at: flows/merge.py:merged_elsewhere
-  if: c.status == MERGING and c.work_type in DELIVERED and (c.state == 'CLOSED') and (repos is None or
-    c.repo in repos)
+  if: c.status == MERGING and c.work_type in DELIVERED and (c.state == 'CLOSED') and works(c, repos)
   rule: decision.merge.merged_elsewhere
 flows.merge.settled:end:14a1cfaa:
   at: flows/merge.py:settled
@@ -1663,10 +1662,10 @@ flows.sprint.approved_epics:filter:a4e15c48:
   at: flows/sprint.py:approved_epics
   if: c.work_type == EPIC_TYPE and c.status != INBOX and (c.state != 'CLOSED')
   rule: decision.sprint.plan_sprint
-flows.sprint.committed_points:filter:719a2968:
+flows.sprint.committed_points:filter:b2f47351:
   at: flows/sprint.py:committed_points
-  if: c.sprint == sprint and c.work_type in DELIVERED and (repos is None or c.repo in repos) and (not
-    (c.state == 'CLOSED' and c.state_reason == 'NOT_PLANNED'))
+  if: c.sprint == sprint and c.work_type in DELIVERED and works(c, repos) and (not (c.state == 'CLOSED'
+    and c.state_reason == 'NOT_PLANNED'))
   rule: decision.sprint.capacity
 flows.sprint.parked_epics:filter:c583c32b:
   at: flows/sprint.py:parked_epics
@@ -1688,9 +1687,9 @@ flows.sprint.plan_sprint:filter:54897c3e:
   at: flows/sprint.py:plan_sprint
   if: c.status == READY and c.work_type in DELIVERED and (c.state != 'CLOSED')
   rule: decision.sprint.plan_sprint
-flows.sprint.plan_sprint:filter:bbfef75a:
+flows.sprint.plan_sprint:filter:ee4b1b90:
   at: flows/sprint.py:plan_sprint
-  if: repos is None or c.repo in repos
+  if: works(c, repos)
   rule: decision.sprint.plan_sprint
 flows.sprint.plan_sprint:filter:d1cf0817:
   at: flows/sprint.py:plan_sprint
@@ -1720,15 +1719,15 @@ flows.sprint.start_sprint:skip:4d459956:
   at: flows/sprint.py:start_sprint
   if: not verdict.allowed
   rule: hold.wip_limit
-flows.sprint.start_sprint:skip:a264d07a:
+flows.sprint.start_sprint:skip:cd0c97c0:
   at: flows/sprint.py:start_sprint
-  if: not (card.status == READY and card.work_type in DELIVERED and (card.state != 'CLOSED') and (repos
-    is None or card.repo in repos))
+  if: not (card.status == READY and card.work_type in DELIVERED and (card.state != 'CLOSED') and works(card,
+    repos))
   rule: decision.sprint.start_sprint
-flows.sprint.under_a_parked_epic:filter:e8330b7c:
+flows.sprint.under_a_parked_epic:filter:2d489f4d:
   at: flows/sprint.py:under_a_parked_epic
   if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.parent
-    is not None) and ((c.repo or '', c.parent) in parked) and (repos
+    is not None) and ((c.repo or '', c.parent) in parked) and works(c, repos)
   rule: decision.sprint.parked
 flows.standup.aging_blocked:skip:6fbb6a02:
   at: flows/standup.py:aging_blocked
@@ -1840,9 +1839,17 @@ flows.sprint.left_over:filter:ed146956:
   at: flows/sprint.py:left_over
   if: c.sprint and c.sprint != sprint
   rule: decision.sprint.left_over
-work_types.open_in:filter:5de9924e:
+work_types.works:end:0d19fdea:
+  at: work_types.py:works
+  if: repos is None or card.repo in repos
+  rule: decision.phase_cards
+flows.review.review_open_pulls:skip:3f9a5267:
+  at: flows/review.py:review_open_pulls
+  if: only_cards and story is None
+  rule: decision.phase_cards
+work_types.open_in:filter:edd94940:
   at: work_types.py:open_in
-  if: c.status == status and c.work_type in DELIVERED and (c.state != 'CLOSED') and (r
+  if: c.status == status and c.work_type in DELIVERED and (c.state != 'CLOSED') and works(c, repos)
   rule: decision.phase_cards
 flows.delivery._deliver_and_move:result:blocked:c9e55b6b:
   at: flows/delivery.py:_deliver_and_move
@@ -1957,10 +1964,10 @@ flows.merge._turned_on:end:f5f3b880:
   at: flows/merge.py:_turned_on
   if: not tests or role_tasks.turned_on_filed(issues, repo, tests) is not None
   rule: decision.role_tasks.turned_on
-flows.merge.done_devops_tasks:filter:fb1b4695:
+flows.merge.done_devops_tasks:filter:b360923b:
   at: flows/merge.py:done_devops_tasks
-  if: c.status == DONE and c.state == 'CLOSED' and (c.closed is not None) and (c.closed >= since)
-    and (role_tasks.role_of(c) is role_tasks.DEVOPS) and (repos is None or c.repo in repos)
+  if: c.status == DONE and c.state == 'CLOSED' and (c.closed is not None) and (c.closed >= since) and
+    (role_tasks.role_of(c) is role_tasks.DEVOPS) and works(c, repos)
   rule: decision.role_tasks.turned_on
 flows.role_tasks.turned_on_filed:filter:158652dc:
   at: flows/role_tasks.py:turned_on_filed

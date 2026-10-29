@@ -407,9 +407,11 @@ def within(cards: list[Card], repos: set[str] | None) -> list[Card]:
     split the crew repository's own Goal #4 into eight epics and stories, and
     that is how the crew's own backlog came to be on the board.
     """
+    from crew_org.work_types import works  # noqa: PLC0415
+
     if repos is None:
         return cards
-    return [c for c in cards if c.repo in repos]
+    return [c for c in cards if works(c, repos)]
 
 
 def many_repos(cards: list[Card]) -> bool:

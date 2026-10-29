@@ -36,7 +36,7 @@ from crew_org.flows.siblings import unlanded_earlier_siblings
 from crew_org.process import ProcessRules
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED, open_in
+from crew_org.work_types import DELIVERED, open_in, works
 
 EPIC_TYPE = "Epic"
 
@@ -172,7 +172,7 @@ def plan_sprint(
     }
     # Same test as `delivery.sprint_stories`, so the two ends of the loop agree
     # about what the crew can work.
-    ready = {k: c for k, c in candidates.items() if repos is None or c.repo in repos}
+    ready = {k: c for k, c in candidates.items() if works(c, repos)}
     plan.not_ours = sorted(
         (c for k, c in candidates.items() if k not in ready),
         key=lambda c: (c.repo or "", c.number or 0),
@@ -283,7 +283,7 @@ def committed_points(cards: list[Card], sprint: str, *, repos: set[str] | None =
         for c in cards
         if c.sprint == sprint
         and c.work_type in DELIVERED
-        and (repos is None or c.repo in repos)
+        and works(c, repos)
         and not (c.state == "CLOSED" and c.state_reason == "NOT_PLANNED")
     )
 
@@ -360,7 +360,7 @@ def under_a_parked_epic(cards: list[Card], *, repos: set[str] | None = None) -> 
         and c.state != "CLOSED"
         and c.parent is not None
         and (c.repo or "", c.parent) in parked
-        and (repos is None or c.repo in repos)
+        and works(c, repos)
     ]
 
 
@@ -447,7 +447,7 @@ def start_sprint(
                 card.status == READY
                 and card.work_type in DELIVERED
                 and card.state != "CLOSED"
-                and (repos is None or card.repo in repos)
+                and works(card, repos)
             ):
                 continue
             try:

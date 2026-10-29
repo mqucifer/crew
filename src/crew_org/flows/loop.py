@@ -277,6 +277,15 @@ def _land(crew: Crew) -> PhaseOutcome:
     )
 
 
+def works_in_suite(crew: Crew) -> bool:
+    """Does the crew work in qa-suite at all, so a tick does QA's work there for the
+    projects it ticks? A tick on one project does that project's (crew#945)."""
+    from crew_org.work_types import SUITE  # noqa: PLC0415
+
+    delivery = set((crew.org.get("delivery") or {}).get("repos") or ())
+    return SUITE in crew.repos or (SUITE in delivery and SUITE not in crew.not_ready)
+
+
 def watched(repos: set[str], skeleton_only: dict[str, str]) -> set[str]:
     """The repositories whose red default branch is work to file (#335).
 
@@ -350,18 +359,20 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         else Alerts()
     )
     # A story or a bug's fix merged in a project with a folder in qa-suite opens QA's
-    # Task there, for its test (crew#896). Not while the crew doesn't work in qa-suite.
+    # Task there, for its test (crew#896), in a tick on that project too (crew#945). Not
+    # while the crew doesn't work in qa-suite.
+    suite = works_in_suite(crew)
     tested = (
         open_tests(crew.issues, crew.board, crew.sink, cards=crew.board.cards(), repos=repos)
-        if SUITE in crew.repos
+        if suite
         else QATasks()
     )
-    # A story waiting on QA's dispute Task goes on once the Task is closed (crew#896).
+    # A story waiting on QA's dispute Task goes on once the Task is settled (crew#896).
     disputes = (
         settle_disputes(
             crew.issues, crew.board, crew.sink, crew.ws, cards=crew.board.cards(), repos=repos
         )
-        if SUITE in crew.repos
+        if suite
         else Settled()
     )
     # A release whose site went live gets the UX Designer's review (crew#830).
@@ -662,22 +673,29 @@ def _clone(crew: Crew, repo: str):
 
 def _review(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.review import review_open_pulls  # noqa: PLC0415
+    from crew_org.tools.github_project import within  # noqa: PLC0415
+    from crew_org.work_types import SUITE  # noqa: PLC0415
 
     moved_any = False
     reviewed = skipped = 0
     failed: list[str] = []
     returned: list[str] = []
     cards = crew.board.cards()
-    for repo in sorted(crew.repos):
+    # In a tick on a project, qa-suite's pull requests of that project's Tasks, and
+    # none of another's (crew#945).
+    for_tasks = SUITE not in crew.repos and works_in_suite(crew)
+    for repo in sorted(crew.repos | ({SUITE} if for_tasks else set())):
+        only = for_tasks and repo == SUITE
         result = review_open_pulls(
             crew.reviewer,
             crew.sink,
             repo=repo,
             bot_login=crew.reviewer_login,
             board=crew.board,
-            cards=cards,
+            cards=within(cards, crew.repos) if only else cards,
             writer=crew.issues,
             clone=_clone(crew, repo),
+            only_cards=only,
         )
         reviewed += len(result.reviewed)
         returned += [f"#{n}" for n, _epic in result.returned]
