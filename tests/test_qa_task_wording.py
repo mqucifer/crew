@@ -8,6 +8,8 @@ and "this story was sent back to be re-worked".
 
 from __future__ import annotations
 
+import re
+
 from crew_org.events import EventSink
 from crew_org.flows import ci, delivery, session_delivery
 from crew_org.session.start import start
@@ -177,3 +179,38 @@ def test_a_pull_request_is_refused_for_the_story_it_closes(tmp_path):
     issues.issues[200]["pull_request"] = {"url": "u"}
     with pytest.raises(ValueError, match="is a pull request"):
         session_delivery.test_task_start(issues, project="sm", number=200, worktree=tmp_path)
+
+
+def test_how_a_task_s_session_works_speaks_to_the_task_and_where_blocked_goes(tmp_path):
+    opening, _, _ = start(tmp_path, "the Task's body", None, work="Task")
+    rules = opening.split("## How this session works", 1)[1]
+    assert "You work on the Task by calling tools" in rules
+    assert "Change only what the Task needs" in rules
+    assert "a fact the Task doesn't give" in rules
+    assert "it goes to a person: the Task is blocked, with your words on it." in rules
+    assert not re.search(r"\bstory\b", rules)
+    story, _, _ = start(tmp_path, "the story's body", None)
+    assert "it goes back to whoever wrote the story." in story
+
+
+def test_a_blocked_qa_task_goes_to_a_person_not_to_a_story_s_author(tmp_path):
+    from crew_org.flows import session_end
+    from crew_org.session.conversation import Ending
+    from tests.role_task_fakes import sink
+    from tests.test_qa_tasks import Suite, SuiteBoard, _qa_task
+
+    issues, board = Suite(), SuiteBoard()
+    issues.add(1, "a test Task")
+    task = _qa_task(1, parent=None)
+    routed = session_end.route(
+        Ending(how="blocked", said={"kind": "missing", "missing": "no build to read"}),
+        card=task,
+        repo=SUITE,
+        worktree=tmp_path,
+        story="",
+        record=None,
+        board=board,
+        issues=issues,
+        sink=sink(tmp_path),
+    )
+    assert routed.to == session_end.BLOCKED_FOR_A_PERSON

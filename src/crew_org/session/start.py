@@ -27,7 +27,7 @@ _TEST_NAME = re.compile(r"\b(test_\w+)\b")
 RULES = """\
 ## How this session works
 
-You work on the story by calling tools, one or more per turn, until you call `done` or
+You work on the {work} by calling tools, one or more per turn, until you call `done` or
 `blocked`. Nothing is shown to you that you didn't ask for, beyond this start.
 
 - **See and find:** `view` shows part of a file with line numbers ({view_lines} lines \
@@ -35,21 +35,29 @@ at most, or one Python definition by name). `search` finds text, `.package/` inc
 `find` and `tests_for` are Python only.
 - **Change:** `replace_text`, `replace_definition` and `write_file` apply at once to \
 your branch; each says whether the file still parses and lints. `delete_file` removes a \
-file. Change only what the story needs.
+file. Change only what the {work} needs.
 - **Check:** `run` runs the tests you name, the project's whole checks (`suite`), or \
 lint, in the project's container, which has no network. It's feedback, not the verdict.
 - **Tool output** stays in the conversation whole, unless it grows very long.
 - **`done`** is for when the work is finished and you've seen the checks pass. Its \
 description says what the crew checks on your branch after it.
 - **`blocked`** is for when the work can't be finished from what's here: a file that \
-isn't in the repository, a fact the story doesn't give, or a choice nobody has made. Say \
-which, in your own words; it goes back to whoever wrote the story.
+isn't in the repository, a fact the {work} doesn't give, or a choice nobody has made. Say \
+which, in your own words; {blocked_goes}
 - **History:** `git` runs one git command line on your branch: `status`, `diff`, `log`, \
 `show`, `blame` and `grep` read, and `restore --source=<ref> -- <paths>` is an edit. `base` \
 is the commit your branch started from. The crew commits your work.
 - There's no shell or network. The session ends if the same first error in the same test \
 comes back on 3 runs with edits between, or after 3 hours of model time.
 """
+
+
+# Where `blocked` goes, as `session_end` sends it. A Task has no epic to be split again,
+# so `return_to_refinement` refuses it and it's blocked for a person (crew#944).
+BLOCKED_GOES = {
+    "story": "it goes back to whoever wrote the story.",
+    "Task": "it goes to a person: the Task is blocked, with your words on it.",
+}
 
 
 def system_text(role: str = "developer", step: str | None = None) -> str:
@@ -237,7 +245,7 @@ def start(
                 + ("\n".join(hints(root, story, coverage)) or "- (none)")
             }
         ),
-        "rules": RULES.format(view_lines=VIEW_LINES),
+        "rules": RULES.format(view_lines=VIEW_LINES, work=work, blocked_goes=BLOCKED_GOES[work]),
     }
     sizes = {k: len(v) for k, v in parts.items()}
     sizes["total"] = sum(sizes.values())
