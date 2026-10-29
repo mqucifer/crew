@@ -54,6 +54,46 @@ def folder_readme(project: str) -> str:
     return f"{project}/README.md"
 
 
+# The folder README's paragraph that says what its tests reach, up to the next blank line.
+_SURFACE = re.compile(r"^\*\*The surface:\*\*.*?(?=\n\s*\n|\Z)", re.M | re.S)
+# What a folder's `start.sh` hands its tests in CI: each variable it writes to
+# `$GITHUB_ENV`, which qa.yml's next step runs the tests with.
+_CI_VARIABLE = re.compile(r"\b(QA_[A-Z0-9_]+)=")
+
+
+def reach(issues: IssueClient, project: str) -> str:
+    """What a QA Task's tests reach, for its first message: the folder README's
+    `**The surface:**` paragraph quoted whole, and the variables its `start.sh` gives
+    the tests in CI. A README without the paragraph is said plainly, not filled in."""
+    branch = issues.default_branch(SUITE)
+    readme = folder_readme(project)
+    text = issues.file_at(SUITE, readme, branch) or ""
+    found = _SURFACE.search(text)
+    said = (
+        found.group(0).strip()
+        if found
+        else f"`{readme}` doesn't say what {project}'s tests reach: it has no "
+        "**The surface:** paragraph. Don't guess one: say so with `blocked`."
+    )
+    start = issues.file_at(SUITE, f"{project}/start.sh", branch) or ""
+    names = list(
+        dict.fromkeys(
+            name
+            for line in start.splitlines()
+            if "GITHUB_ENV" in line and not line.lstrip().startswith("#")
+            for name in _CI_VARIABLE.findall(line)
+        )
+    )
+    given = (
+        f"In CI, `{project}/start.sh` starts {project} and gives your tests "
+        + ", ".join(f"`{name}`" for name in names)
+        + ", and nothing else of it."
+        if names
+        else f"`{project}/start.sh` gives your tests no variables in CI."
+    )
+    return f"## What your tests reach\n\n{said}\n\n{given}"
+
+
 def tests_from(org: dict[str, Any]) -> datetime | None:
     """The day QA's test Tasks start from, `delivery.qa_tests_from`, or None while it's
     unset and none open (crew#945).
@@ -221,19 +261,20 @@ def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[
         )
         work = (
             f"Add a test of the story's acceptance criteria to `{project}/`, one per "
-            "criterion the surface reaches."
+            "criterion your tests can reach."
         )
         title = f"The test of {project}#{number}: {card.title}"
-        done_when = [f"Each criterion of {ref} the surface reaches has a test in `{project}/`"]
+        done_when = [f"Each criterion of {ref} your tests can reach has a test in `{project}/`"]
     work += (
-        f"\n\nThrough the surface `{readme}` names, and nothing else: no imports of "
-        f"{project}'s code, no reads of its database. Add each test to the README's table. "
+        f"\n\nYour tests reach {project} only as the next section says: no imports of "
+        f"{project}'s code, no reads of its database. Add each test to `{readme}`'s table. "
         f"{project} as it is now is at `{REFERENCE}/{project}/` in your worktree, to read and "
-        "never to change: its docs say how the surface behaves. Your tests run in CI against "
+        f"never to change: its docs say how it behaves there. Your tests run in CI against "
         f"{project}'s main when your pull request opens, and a red one comes back to you."
-        "\n\nIf no criterion can be reached through the surface, change nothing and say why "
-        "in `done`'s `no_test`: that's recorded, so the retro sees where the surface falls "
-        f"short.\n\n## {'The bug' if kind == ESCAPED else 'The story'} as it merged\n\n"
+        "\n\nIf no criterion can be reached that way, change nothing and say why in "
+        "`done`'s `no_test`: that's recorded, so the retro sees what the tests can't reach."
+        f"\n\n{reach(issues, project)}"
+        f"\n\n## {'The bug' if kind == ESCAPED else 'The story'} as it merged\n\n"
         f"**{card.title}**\n\n{filed.strip()}"
     )
     body = rt.render(rt.QA, kind=kind, key=key, why=why, work=work, done_when=done_when)
@@ -516,7 +557,8 @@ def dispute(
             "change nothing and say why in `done`'s `justified`, for the Developer: the story "
             "goes back to them with the test unchanged, to change the code. "
             f"{repo} as the disputed pull request has it is at `{REFERENCE}/{repo}/` in your "
-            f"worktree, to read and never to change.\n\n## The Developer's dispute\n\n"
+            f"worktree, to read and never to change.\n\n{reach(issues, repo)}"
+            "\n\n## The Developer's dispute\n\n"
             + "\n".join(f"> {line}" for line in (why or "(nothing said)").splitlines())
             + (f"\n\n## What CI said\n\n{last_lines(ci, CI_SHOWN)}" if ci else ""),
             done_when=[f"`{test}` is fixed, or justified with why"],

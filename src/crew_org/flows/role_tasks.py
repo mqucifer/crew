@@ -320,8 +320,8 @@ def _qa_endings(kind: str) -> dict[str, Any]:
         return {
             NO_TEST: {
                 "type": "string",
-                "description": "Only when nothing the Task asks can be reached through the "
-                "surface its project's README names: why. Change nothing then, and name no "
+                "description": "Only when nothing the Task asks can be reached the way the "
+                "Task's 'What your tests reach' says: why. Change nothing then, and name no "
                 "criteria: the Task closes with no pull request, and it's recorded.",
             }
         }

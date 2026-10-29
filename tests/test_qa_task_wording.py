@@ -214,3 +214,72 @@ def test_a_blocked_qa_task_goes_to_a_person_not_to_a_story_s_author(tmp_path):
         sink=sink(tmp_path),
     )
     assert routed.to == session_end.BLOCKED_FOR_A_PERSON
+
+
+# --- what a QA Task's tests reach (crew#946) ---------------------------------------------
+
+# qa-suite's crew-presentation folder as it stands: what its tests reach, and the
+# variables its start.sh writes to $GITHUB_ENV for qa.yml's test step.
+SITE_SURFACE = (
+    "**The surface:** the site's pages, as its `build.py` writes them, served over\n"
+    "HTTP at `QA_BASE_URL`. The tests read the pages and the package the site was\n"
+    "built from (its input), never the site's code."
+)
+SITE_START = (
+    "# Writes QA_BASE_URL and QA_SITE_STATE to $GITHUB_ENV\n"
+    'case "${QA_PRODUCER:-}" in\n'
+    'if [ -n "${GITHUB_ENV:-}" ]; then\n'
+    '  { echo "QA_BASE_URL=$url"; echo "QA_SITE_STATE=$STATE"; echo "QA_PACKAGE=$package"; }'
+    ' >> "$GITHUB_ENV"\n'
+    "fi\n"
+    'echo "QA_BASE_URL=$url"\n'
+)
+
+
+def _site(readme: str):
+    from tests.test_qa_tasks import Suite
+
+    issues = Suite()
+    issues.files["crew-presentation/README.md"] = readme
+    issues.files["crew-presentation/start.sh"] = SITE_START
+    issues.add(189, "- [ ] Each sprint's page shows its throughput", title="Throughput")
+    return issues
+
+
+def test_a_test_task_quotes_what_its_tests_reach_and_the_variables_ci_gives_them(tmp_path):
+    issues = _site(f"# crew-presentation\n\nQA's tests.\n\n{SITE_SURFACE}\n\n**What it reads:** x")
+    shown = session_delivery.test_task_start(
+        issues, project="crew-presentation", number=189, worktree=tmp_path
+    )
+    first = shown.split("## First message\n\n", 1)[1].split("\n\n## Tools", 1)[0]
+    reach = first.split("## What your tests reach\n\n", 1)[1].split("\n\n## ", 1)[0]
+    assert reach.startswith(SITE_SURFACE + "\n\n")
+    assert "**What it reads:**" not in reach
+    assert "gives your tests `QA_BASE_URL`, `QA_SITE_STATE`, `QA_PACKAGE`," in reach
+    assert "QA_PRODUCER" not in reach
+    assert "the surface" not in first.replace(SITE_SURFACE, "")
+
+
+def test_a_folder_that_doesnt_say_what_its_tests_reach_is_said_plainly(tmp_path):
+    issues = _site("# crew-presentation\n\nQA's tests.\n")
+    shown = session_delivery.test_task_start(
+        issues, project="crew-presentation", number=189, worktree=tmp_path
+    )
+    reach = shown.split("## What your tests reach\n\n", 1)[1].split("\n\n## ", 1)[0]
+    assert reach.startswith(
+        "`crew-presentation/README.md` doesn't say what crew-presentation's tests reach: "
+        "it has no **The surface:** paragraph. Don't guess one: say so with `blocked`."
+    )
+
+
+def test_qa_s_task_role_says_how_users_reach_a_project_and_names_none(tmp_path):
+    issues = _site(SITE_SURFACE)
+    shown = session_delivery.test_task_start(
+        issues, project="crew-presentation", number=189, worktree=tmp_path
+    )
+    system = shown.split("## System prompt\n\n", 1)[1].split("\n\n## First message", 1)[0]
+    text = " ".join(system.split())
+    assert "surface the project's folder names" not in text
+    assert "its web pages, its HTTP API or its command line" in text
+    assert "`QA_BASE_URL`" in text and "never import the project's code" in text
+    assert "crew-presentation" not in text and "sprint-metrics" not in text
