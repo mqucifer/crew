@@ -178,8 +178,13 @@ def return_for_ci(
     frm: str = MERGING,
     rule: str = "",
 ) -> None:
-    """Send a card back to the Developer with what CI said: approved, or before review."""
+    """Send a card back to whoever built it with what CI said: approved, or before review.
+    A role's Task goes back to its role, not the Developer (crew#944)."""
+    from crew_org.flows.role_tasks import role_of  # noqa: PLC0415
+
     number = card.number or 0
+    role = role_of(card)
+    who = f"the {role.name if role is not None else 'Developer'}"
     head = (pull.get("head") or {}).get("sha", "")
     marker = CI_MARKER.format(head=head)
     names = ", ".join(f"`{r.get('name')}`" for r in failed[:MAX_JOBS])
@@ -194,7 +199,7 @@ def return_for_ci(
         issues.comment(
             repo,
             pull["number"],
-            f"{marker}\n**CI failed {where}: returned to the Developer.** {names} did not pass. "
+            f"{marker}\n**CI failed {where}: returned to {who}.** {names} did not pass. "
             "The crew's own checks run lint and tests in a sandbox; this is what only CI "
             f"runs, and its log is below.\n\n{report(issues, repo, failed)}",
         )

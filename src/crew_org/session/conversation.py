@@ -547,6 +547,7 @@ def session(
     findings: int | None = None,
     sponsor: int | None = None,
     resolving: tuple[str, ...] = (),
+    work: str = "story",
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
@@ -562,7 +563,7 @@ def session(
     merge's conflicts edits only those files, and its `done` leaves no markers in them
     (crew#933).
     """
-    opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
+    opening, sizes, notes = start(worktree, story, coverage, instead_of_hints, work)
     if findings is not None:
         sizes["findings"] = findings
     if sponsor is not None:

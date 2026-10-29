@@ -88,6 +88,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.regression import merged_base
 from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
+from crew_org.work_types import TASK
 
 if TYPE_CHECKING:
     from crew_org.flows import session_end
@@ -586,6 +587,7 @@ def _sessions(
             ),
             scope=task.scope_for(repo) if task else (),
             skills=tuple(s.name for s in skills or ()),
+            work="Task" if task else "story",
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(
@@ -1365,7 +1367,7 @@ def pr_body(
         "",
         "## Verification",
         "",
-        "Lint and the full test suite pass in the story's workspace container.",
+        "Lint and the full test suite pass in its workspace container.",
         "",
         f"- {by} sessions: {outcome.attempts}",
         "",
@@ -1604,26 +1606,29 @@ def returned_start(
         pass
     crews = prior_verdicts(issues, repo, number, branch, known=linked)
     verdicts = "\n\n---\n\n".join(p for p in (theirs, crews) if p)
-    fate = previous_fate(issues, repo, branch)
+    # A role's Task isn't a story, and QA doesn't verify it: review or CI sends it back
+    # (crew#944).
+    work, by = ("Task", "Review or CI") if known.work_type == TASK else ("story", "Review or QA")
+    fate = previous_fate(issues, repo, branch, work=work)
     if rebuilt is None:
         why = (
-            "Review or QA sent the story back. Its previous work is in the files below, on "
+            f"{by} sent the {work} back. Its previous work is in the files below, on "
             "its branch: change what the findings ask, and leave the rest."
         )
         done = last_done_on(worktree, number)
     else:
         why = (
-            "Review or QA sent the story back, and its branch conflicted with main in "
+            f"{by} sent the {work} back, and its branch conflicted with main in "
             + (", ".join(f"`{f}`" for f in rebuilt) or "unknown files")
             + ", so it was rebuilt on current main: its previous work isn't in the files. "
-            "Do the story again on main, with the findings in view; its last `done` is "
+            f"Do the {work} again on main, with the findings in view; its last `done` is "
             "below, to read."
         )
         done = earlier
     parts = [f"## Why this is a new session\n\n{why}"]
     if fate:
         parts.append(f"## What happened to it\n\n{fate}")
-    said = f"## What review or QA said\n\n{verdicts}" if verdicts else ""
+    said = f"## What {by[0].lower()}{by[1:]} said\n\n{verdicts}" if verdicts else ""
     if said:
         parts.append(said)
     if done:

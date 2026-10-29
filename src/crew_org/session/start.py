@@ -201,9 +201,15 @@ def how_it_works(record: Any, root: Path) -> tuple[str, dict[str, str]]:
 
 
 def start(
-    root: Path, story: str, coverage: Any, instead_of_hints: str | None = None
+    root: Path,
+    story: str,
+    coverage: Any,
+    instead_of_hints: str | None = None,
+    work: str = "story",
 ) -> tuple[str, dict[str, int], dict[str, str]]:
-    """The start, each part's size in characters, and the notes it names.
+    """The start, each part's size in characters, and the notes it names. `work` is
+    what the session works, a story or a role's Task: a Task's session read "## The
+    story" for QA's own test (crew#944).
 
     `instead_of_hints` goes where the hints would, as it's written: for a session
     that starts from a branch with work on it, such as review's findings and the last
@@ -216,8 +222,8 @@ def start(
     project, notes = how_it_works(record, root)
     ids, sources = declared_tests(root, story)
     parts = {
-        "story": "## The story\n\n" + story,
-        "declared_tests": "## The tests the story declares\n\n"
+        "story": f"## The {work}\n\n" + story,
+        "declared_tests": f"## The tests the {work} declares\n\n"
         + ("\n".join(f"- `{i}`" for i in ids) or "- (none named)")
         + (f"\n\nAt the base commit:\n\n{sources}" if sources else ""),
         "project": project,

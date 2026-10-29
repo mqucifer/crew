@@ -453,7 +453,7 @@ def sponsor_review(issues: IssueClient, repo: str, pull: int, sponsor: str) -> s
     return "\n\n".join(p for p in parts if p)
 
 
-def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
+def previous_fate(issues: IssueClient, repo: str, branch: str, *, work: str = "story") -> str:
     """What became of the last pull request from this branch, in one line.
 
     A verdict says what was wrong. This says what happened next, and the two
@@ -475,7 +475,7 @@ def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
         return f"PR #{number} was merged."
     if pull.get("state") == "closed":
         return f"PR #{number} was **closed without merging**. The work on it was not accepted."
-    return f"PR #{number} is still open, and this story was sent back to be re-worked."
+    return f"PR #{number} is still open, and this {work} was sent back to be re-worked."
 
 
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
