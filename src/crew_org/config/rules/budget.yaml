@@ -13,7 +13,9 @@
 # their prompts and role text, and §13's lines on rationed design. Raised by one for
 # the Business Analyst: §5.7 (no open question on a card) was checked by the hold on
 # a question left for the Architect, which went with the design settle that answered
-# those questions; the Goal's look decides them now.
+# those questions; the Goal's look decides them now. QA's Tasks (crew#944): the role
+# text for writing and fixing tests in qa-suite, set at its count, as the refinement
+# steps' was.
 Architect: 17
 Architect (design_placement): 3
 Business Analyst: 26
@@ -25,6 +27,7 @@ Product Owner: 17
 Product Owner (onboarding): 8
 QA Engineer: 20
 QA Engineer (criteria_check): 2
+QA Engineer (tasks): 2
 Scrum Master: 7
 Senior Engineer: 8
 UX Designer: 1

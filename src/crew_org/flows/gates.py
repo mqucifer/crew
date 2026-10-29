@@ -497,7 +497,9 @@ def one_outcome(worktree: Path, said: dict[str, Any]) -> list[Finding]:
     return [
         Finding(
             "check.qa_tasks.one_outcome",
-            says("check.qa_tasks.one_outcome", ending, changes=" and ".join(changes)),
+            says("check.qa_tasks.one_outcome", "justified", changes=" and ".join(changes))
+            if ending == role_tasks.JUSTIFIED
+            else says("check.qa_tasks.one_outcome", "no_test", changes=" and ".join(changes)),
         )
     ]
 

@@ -283,7 +283,7 @@ def _stopped(
     card: Card,
     *,
     repo: str,
-    pull: dict,
+    pull: dict[str, Any],
     frm: str,
     stop: int,
     said: str,

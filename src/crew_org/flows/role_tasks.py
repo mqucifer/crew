@@ -30,7 +30,8 @@ from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient, load_trust
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import PROJECT_LABEL, SUITE, TASK
+from crew_org.work_types import PROJECT_LABEL, TASK
+from crew_org.work_types import SUITE as SUITE
 
 
 @dataclass(frozen=True)
