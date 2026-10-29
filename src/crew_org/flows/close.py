@@ -16,6 +16,7 @@ from pathlib import Path
 from crew_org.columns import DONE, MERGING
 from crew_org.crews.retro_crew import Retro, write_retro
 from crew_org.events import EventKind, EventSink, attributed, held
+from crew_org.flows import role_tasks
 from crew_org.flows.artifacts import signed
 from crew_org.flows.attempts import causes_of, read_attempts, retries_text, sprint_report
 from crew_org.flows.deployed import commits_seen
@@ -61,6 +62,11 @@ class SprintClose:
     # because the sprint review would otherwise ask the Sponsor to approve a
     # pull request their approval is not what is missing from.
     unapprovable: list[tuple[int, int]] = field(default_factory=list)
+    # (story, PR): a role's Task whose work the Sponsor approves, without their
+    # approval on its head, as the tick holds it (crew#839).
+    awaiting_sponsor: list[tuple[int, int]] = field(default_factory=list)
+    # (story, PR): such a Task, with no Sponsor named to approve it.
+    no_sponsor: list[tuple[int, int]] = field(default_factory=list)
     unmergeable: list[tuple[int, str]] = field(default_factory=list)
     # (story, PR) behind main and brought up to date; they merge once checks pass.
     updating: list[tuple[int, int]] = field(default_factory=list)
@@ -96,6 +102,8 @@ class SprintClose:
         return not (
             self.awaiting_approval
             or self.unapprovable
+            or self.awaiting_sponsor
+            or self.no_sponsor
             or self.still_open
             or self.unmergeable
             or self.updating
@@ -258,6 +266,7 @@ def close_sprint(
     delivery_repos: list[str] | None = None,
     preview: bool = False,
     tz: str = "UTC",
+    sponsor: str | None = None,
     sleep=None,
     clock=None,
 ) -> SprintClose:
@@ -304,6 +313,21 @@ def close_sprint(
             held("decision.close.close_sprint", repo=card.repo or repo, card=number)
             result.awaiting_approval.append((number, pull["number"]))
             continue
+
+        # A role's Task the Sponsor approves waits for their own approval on its
+        # head, at the close as on a tick: any approval let the close merge one the
+        # tick had held (crew#839, crew#938). The tick has already asked them.
+        if role_tasks.for_the_sponsor(issues, own, card):
+            login = role_tasks.the_sponsor(sponsor)
+            if not login:
+                held("decision.role_tasks.sponsor_approves", repo=own, card=number)
+                result.no_sponsor.append((number, pull["number"]))
+                continue
+            head = (pull.get("head") or {}).get("sha", "")
+            if not role_tasks.sponsor_approved(reviews, login, head):
+                held("decision.role_tasks.sponsor_approves", repo=own, card=number)
+                result.awaiting_sponsor.append((number, pull["number"]))
+                continue
 
         # Approved and still refused. Branch protection only counts an approval
         # from an actor with repository write access, so the crew's reviewing
