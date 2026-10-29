@@ -633,6 +633,10 @@ def own_checks(
     from crew_org.flows import gates  # noqa: PLC0415
 
     def checked(said: dict[str, Any]) -> list[Any]:
+        # QA's `justified` or `no_test` with a change says two things: which first (crew#944).
+        found = gates.one_outcome(worktree, said)
+        if found:
+            return found
         found = gates.missing_named_tests(worktree, said, scope=scope)
         if changed_tests:
             found += gates.undeclared_changed_tests(worktree, said)

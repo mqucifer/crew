@@ -575,3 +575,40 @@ def test_verifying_a_story_keeps_the_verifier_s_text():
 
     told = system_text("qa_engineer")
     assert "You do not fix the code" in told and "Write and keep" not in told
+
+
+# --- one outcome in `done` (crew#944) ---------------------------------------------------
+
+
+def _checked(tmp_path, **said):
+    from crew_org.session import conversation
+
+    return conversation.own_checks(tmp_path)(said)
+
+
+def test_justified_with_a_changed_test_is_refused_at_the_reply_asking_which(tmp_path, unchanged):
+    # Session 2 of mqucifer/qa-suite#8: the test stands, and here's the test changed.
+    unchanged.append("crew-presentation/test_reads_crew.py")
+    found = _checked(
+        tmp_path,
+        summary="s",
+        justified="The test is right: the page shows None",
+        changed_tests=[{"test": "crew-presentation/test_reads_crew.py::test_x", "why": "w"}],
+    )
+    assert [f.rule for f in found] == ["check.qa_tasks.one_outcome"]
+    said = found[0].says
+    assert "Which do you mean?" in said and "`justified`" in said
+    assert "`crew-presentation/test_reads_crew.py`" in said
+    assert "`crew-presentation/test_reads_crew.py::test_x`" in said
+
+
+def test_no_test_naming_a_criterion_s_test_is_refused_too(tmp_path, unchanged):
+    found = _checked(
+        tmp_path, summary="s", no_test="Not reachable", criteria=[{"criterion": "c", "test": "t"}]
+    )
+    assert [f.rule for f in found] == ["check.qa_tasks.one_outcome"]
+    assert "`no_test`" in found[0].says
+
+
+def test_justified_alone_on_an_unchanged_branch_ends_the_session(tmp_path, unchanged):
+    assert _checked(tmp_path, summary="s", justified="The test is right") == []
