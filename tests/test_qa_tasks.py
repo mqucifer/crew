@@ -115,8 +115,11 @@ def _merged(number: int, work_type: str = STORY, **update) -> Card:
     return Card(**{**fields, **update})
 
 
-def _open(issues, board, s, cards, repos=frozenset({"sm", SUITE})):
-    return qa_tasks.open_tests(issues, board, s, cards=cards, repos=set(repos))
+FROM = datetime(2026, 10, 26, tzinfo=UTC)
+
+
+def _open(issues, board, s, cards, repos=frozenset({"sm", SUITE}), since=FROM):
+    return qa_tasks.open_tests(issues, board, s, cards=cards, repos=set(repos), since=since)
 
 
 def test_a_merged_story_opens_qa_s_test_task_in_qa_suite_once(tmp_path):
@@ -162,6 +165,36 @@ def test_only_merged_stories_and_bugs_since_it_was_built_open_one(tmp_path, card
     issues = Suite()
     issues.add(7)
     assert _open(issues, SuiteBoard(), sink(tmp_path), [card]).opened == []
+
+
+def test_no_test_task_opens_until_the_operator_sets_its_start(tmp_path):
+    issues = Suite()
+    issues.add(5)
+    assert _open(issues, SuiteBoard(), sink(tmp_path), [_merged(5)], since=None).opened == []
+    assert len(issues.issues) == 1
+    assert qa_tasks.tests_from({"delivery": {"qa_tests_from": None}}) is None
+    assert qa_tasks.tests_from({}) is None
+
+
+def test_test_tasks_start_from_the_day_the_operator_sets(tmp_path):
+    from datetime import date
+
+    set_to = {"delivery": {"qa_tests_from": date(2026, 10, 30)}}
+    assert qa_tasks.tests_from(set_to) == datetime(2026, 10, 30, tzinfo=UTC)
+    assert qa_tasks.tests_from({"delivery": {"qa_tests_from": "2026-10-30"}}) == datetime(
+        2026, 10, 30, tzinfo=UTC
+    )
+    # Merged the day before: no backfill.
+    issues = Suite()
+    issues.add(5)
+    since = qa_tasks.tests_from(set_to)
+    assert _open(issues, SuiteBoard(), sink(tmp_path), [_merged(5)], since=since).opened == []
+
+
+def test_the_crew_s_own_config_holds_test_tasks_until_the_review():
+    from crew_org.config import load_org
+
+    assert qa_tasks.tests_from(load_org()) is None
 
 
 def test_a_project_with_no_folder_in_qa_suite_opens_none(tmp_path):
@@ -516,3 +549,66 @@ def test_qa_s_session_reads_its_project_beside_its_folder_and_never_commits_it(t
     qa_tasks.place_reference(Clone(), suite, "sm")  # again: replaced, still excluded once
     exclude = (suite / ".git" / "info" / "exclude").read_text()
     assert exclude.count("/.project/") == 1
+
+
+# --- QA's session for its Tasks (crew#944) ---------------------------------------------
+
+
+def test_a_qa_task_session_is_told_it_writes_and_fixes_tests(tmp_path, monkeypatch):
+    from crew_org.session import conversation
+
+    monkeypatch.setattr(conversation, "record", lambda *a, **k: None)
+    monkeypatch.setattr(conversation, "start", lambda *a: ("start", {"total": 5}, []))
+    monkeypatch.setattr(conversation, "Tools", lambda *a, **k: None)
+    role = role_of(_qa_task())
+    assert role.step == "tasks"
+    session = conversation.session(tmp_path, "# Task", None, None, role=role.spec, step=role.step)
+    assert session.step == "tasks"
+    told = session.system
+    assert "You are QA Engineer." in told and "Write and keep QA's functional tests" in told
+    assert "fix a test that's wrong" in told
+    assert "You do not fix the code" not in told
+
+
+def test_verifying_a_story_keeps_the_verifier_s_text():
+    from crew_org.session.start import system_text
+
+    told = system_text("qa_engineer")
+    assert "You do not fix the code" in told and "Write and keep" not in told
+
+
+# --- one outcome in `done` (crew#944) ---------------------------------------------------
+
+
+def _checked(tmp_path, **said):
+    from crew_org.session import conversation
+
+    return conversation.own_checks(tmp_path)(said)
+
+
+def test_justified_with_a_changed_test_is_refused_at_the_reply_asking_which(tmp_path, unchanged):
+    # Session 2 of mqucifer/qa-suite#8: the test stands, and here's the test changed.
+    unchanged.append("crew-presentation/test_reads_crew.py")
+    found = _checked(
+        tmp_path,
+        summary="s",
+        justified="The test is right: the page shows None",
+        changed_tests=[{"test": "crew-presentation/test_reads_crew.py::test_x", "why": "w"}],
+    )
+    assert [f.rule for f in found] == ["check.qa_tasks.one_outcome"]
+    said = found[0].says
+    assert "Which do you mean?" in said and "`justified`" in said
+    assert "`crew-presentation/test_reads_crew.py`" in said
+    assert "`crew-presentation/test_reads_crew.py::test_x`" in said
+
+
+def test_no_test_naming_a_criterion_s_test_is_refused_too(tmp_path, unchanged):
+    found = _checked(
+        tmp_path, summary="s", no_test="Not reachable", criteria=[{"criterion": "c", "test": "t"}]
+    )
+    assert [f.rule for f in found] == ["check.qa_tasks.one_outcome"]
+    assert "`no_test`" in found[0].says
+
+
+def test_justified_alone_on_an_unchanged_branch_ends_the_session(tmp_path, unchanged):
+    assert _checked(tmp_path, summary="s", justified="The test is right") == []

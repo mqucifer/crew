@@ -66,7 +66,7 @@ from crew_org.flows.delivery import (
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.merge import returned_for_conflict
 from crew_org.flows.qa_tasks import disputable as qa_disputable
-from crew_org.flows.qa_tasks import dispute_specs, place_reference, reference_ref
+from crew_org.flows.qa_tasks import dispute_line, dispute_specs, place_reference, reference_ref
 from crew_org.git_ops import (
     CHECKPOINT,
     DONE_TRAILER,
@@ -88,6 +88,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.regression import merged_base
 from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
+from crew_org.work_types import TASK
 
 if TYPE_CHECKING:
     from crew_org.flows import session_end
@@ -576,6 +577,7 @@ def _sessions(
             returned=returned,
             rebuilt=rebuilt,
             role=role,
+            step=task.step if task else None,
             specs=(
                 role_tasks.done_specs(task, skills or (), repo, kind)
                 if task
@@ -585,6 +587,7 @@ def _sessions(
             ),
             scope=task.scope_for(repo) if task else (),
             skills=tuple(s.name for s in skills or ()),
+            work="Task" if task else "story",
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(
@@ -907,7 +910,17 @@ def _land(
                 title=card.title,
                 head=outcome.branch or "",
                 base=default_branch,
-                body=pr_body(card, reached, outcome, _changes(worktree, since), by=by),
+                body=pr_body(
+                    card,
+                    reached,
+                    outcome,
+                    _changes(worktree, since),
+                    by=by,
+                    # QA's changed test runs against the disputed pull request (crew#945).
+                    marks=dispute_line(issues, repo, number)
+                    if task is not None and task.key == role_tasks.QA.key
+                    else "",
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - pushed, so the clone's branch is kept
             if transient_remote(exc):
@@ -1341,9 +1354,11 @@ def pr_body(
     changes: list[str],
     *,
     by: str = "Developer",
+    marks: str = "",
 ) -> str:
     """The pull request: what `done` said, how it was checked, and what the gates noted,
-    signed by the role whose sessions did the work."""
+    signed by the role whose sessions did the work. `marks` are for the workflows that
+    read the body: a QA dispute's names the pull request its test runs against."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
 
@@ -1352,7 +1367,7 @@ def pr_body(
         "",
         "## Verification",
         "",
-        "Lint and the full test suite pass in the story's workspace container.",
+        "Lint and the full test suite pass in its workspace container.",
         "",
         f"- {by} sessions: {outcome.attempts}",
         "",
@@ -1372,7 +1387,78 @@ def pr_body(
         ]
     lines += reached.sections
     lines += ["", f"Closes #{card.number}"]
+    if marks:
+        lines += ["", marks]
     return signed("\n".join(lines), by)
+
+
+def test_task_start(
+    issues: IssueClient,
+    *,
+    project: str,
+    number: int,
+    worktree: Path,
+    today: str = "",
+    bug: bool = False,
+) -> str:
+    """The first session's start of QA's test Task for a merged story, rendered without
+    opening the Task or calling a model: its system prompt, its first message and its
+    tools (crew#944). For the Sponsor's and the operator's review before test Tasks open.
+
+    `worktree` is qa-suite, with `project` placed at `.project/<project>/`, as delivery
+    places it. Built from the pieces a delivery builds it from: the Task's body as
+    `qa_tasks.test_body` writes it, the role's start, and the session's own start. The
+    hints are read without coverage, so they can differ from a tick's. A `bug`'s fix opens
+    the test that would have caught it: its type is the board's, not the issue's.
+    """
+    from crew_org.flows import qa_tasks  # noqa: PLC0415
+    from crew_org.session.start import start, system_text  # noqa: PLC0415
+    from crew_org.work_types import BUG, STORY  # noqa: PLC0415
+
+    filed = issues.get(project, number)
+    if filed.get("pull_request"):
+        raise ValueError(
+            f"{project}#{number} is a pull request: name the story it closes, whose test this is"
+        )
+    story = Card(
+        item_id="",
+        number=number,
+        title=str(filed.get("title") or ""),
+        repo=project,
+        work_type=BUG if bug else STORY,
+        state=str(filed.get("state") or "").upper(),
+    )
+    kind, key = qa_tasks.test_key(story)
+    title, body = qa_tasks.test_body(issues, card=story, kind=kind, key=key)
+    task = Card(
+        item_id="",
+        number=None,
+        title=title,
+        repo=role_tasks.SUITE,
+        work_type=TASK,
+        labels=frozenset({role_tasks.QA.label, role_tasks.project_label(project)}),
+    )
+    role = role_tasks.role_of(task)
+    assert role is not None
+    offered = skills.for_task(role, body, worktree, [])
+    text = story_section(
+        f"{role_tasks.task_start(role, today, offered, role_tasks.SUITE)}\n\n{title}\n\n{body}",
+        story_notes(issues, task, role_tasks.SUITE),
+        story_rows(issues, task, role_tasks.SUITE),
+        story_diagram(issues, task, role_tasks.SUITE),
+    )
+    opening, _, _ = start(worktree, text, None, None, "Task")
+    specs = role_tasks.done_specs(role, offered, role_tasks.SUITE, kind)
+    done = next(s for s in specs if s["function"]["name"] == "done")["function"]
+    return "\n\n".join(
+        [
+            f"# The session start of QA's test Task for {issues.owner}/{project}#{number}",
+            f"## System prompt\n\n{system_text(role.spec, role.step)}",
+            f"## First message\n\n{opening}",
+            "## Tools\n\n" + "\n".join(f"- `{s['function']['name']}`" for s in specs),
+            f"## `done`, as it's described\n\n{done['description']}",
+        ]
+    )
 
 
 def story_section(story_text: str, note: str, rows: str, diagram: str = "") -> str:
@@ -1589,26 +1675,29 @@ def returned_start(
         pass
     crews = prior_verdicts(issues, repo, number, branch, known=linked)
     verdicts = "\n\n---\n\n".join(p for p in (theirs, crews) if p)
-    fate = previous_fate(issues, repo, branch)
+    # A role's Task isn't a story, and QA doesn't verify it: review or CI sends it back
+    # (crew#944).
+    work, by = ("Task", "Review or CI") if known.work_type == TASK else ("story", "Review or QA")
+    fate = previous_fate(issues, repo, branch, work=work)
     if rebuilt is None:
         why = (
-            "Review or QA sent the story back. Its previous work is in the files below, on "
+            f"{by} sent the {work} back. Its previous work is in the files below, on "
             "its branch: change what the findings ask, and leave the rest."
         )
         done = last_done_on(worktree, number)
     else:
         why = (
-            "Review or QA sent the story back, and its branch conflicted with main in "
+            f"{by} sent the {work} back, and its branch conflicted with main in "
             + (", ".join(f"`{f}`" for f in rebuilt) or "unknown files")
             + ", so it was rebuilt on current main: its previous work isn't in the files. "
-            "Do the story again on main, with the findings in view; its last `done` is "
+            f"Do the {work} again on main, with the findings in view; its last `done` is "
             "below, to read."
         )
         done = earlier
     parts = [f"## Why this is a new session\n\n{why}"]
     if fate:
         parts.append(f"## What happened to it\n\n{fate}")
-    said = f"## What review or QA said\n\n{verdicts}" if verdicts else ""
+    said = f"## What {by[0].lower()}{by[1:]} said\n\n{verdicts}" if verdicts else ""
     if said:
         parts.append(said)
     if done:

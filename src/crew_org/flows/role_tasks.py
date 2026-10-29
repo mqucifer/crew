@@ -30,7 +30,8 @@ from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient, load_trust
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import TASK
+from crew_org.work_types import PROJECT_LABEL, TASK
+from crew_org.work_types import SUITE as SUITE
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,9 @@ class TaskRole:
     # A repository whose files aren't a project's, as (repository, scope): its Tasks
     # change that scope instead.
     scope_in: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # Its step in agents.yaml, over its spec, for its Task's session, when the role's
+    # own text is for other work: QA's `tasks`, not verifying a story (crew#944).
+    step: str | None = None
 
     @property
     def label(self) -> str:
@@ -118,13 +122,12 @@ UX = TaskRole("ux", "UX Designer", "ux_designer")
 # pull request's build (ADR 0006 in mqucifer/project-print). Its Tasks are filed there,
 # and each may change only its project's folder: `role_of` narrows the scope from the
 # Task's project label (crew#896). In a project's own repository it changes nothing.
-SUITE = "qa-suite"
-QA = TaskRole("qa", "QA Engineer", "qa_engineer", scope_in=((SUITE, ()),))
+QA = TaskRole("qa", "QA Engineer", "qa_engineer", scope_in=((SUITE, ()),), step="tasks")
 
 ROLES: dict[str, TaskRole] = {r.key: r for r in (ARCHITECT, DEVOPS, UX, QA)}
 LABELS = {r.label: ("0e8a16", f"A Task the {r.name} owns (ADR 0034)") for r in ROLES.values()}
-# Which project's folder a QA Task in qa-suite is for.
-PROJECT_LABEL = "project:"
+# Which project's folder a QA Task in qa-suite is for: `PROJECT_LABEL`, from `work_types`,
+# where a tick on that project finds its Tasks (crew#945).
 
 
 def project_label(project: str) -> str:
@@ -317,8 +320,8 @@ def _qa_endings(kind: str) -> dict[str, Any]:
         return {
             NO_TEST: {
                 "type": "string",
-                "description": "Only when nothing the Task asks can be reached through the "
-                "surface its project's README names: why. Change nothing then, and name no "
+                "description": "Only when nothing the Task asks can be reached the way the "
+                "Task's 'What your tests reach' says: why. Change nothing then, and name no "
                 "criteria: the Task closes with no pull request, and it's recorded.",
             }
         }

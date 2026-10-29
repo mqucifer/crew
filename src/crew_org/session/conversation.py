@@ -540,19 +540,22 @@ def session(
     instead_of_hints: str | None = None,
     after_run: Callable[[dict[str, Any]], None] | None = None,
     role: str = ROLE,
+    step: str | None = None,
     specs: list[dict[str, Any]] | None = None,
     scope: tuple[str, ...] = (),
     skills: tuple[str, ...] = (),
     findings: int | None = None,
     sponsor: int | None = None,
     resolving: tuple[str, ...] = (),
+    work: str = "story",
     **about: Any,
 ) -> Session:
     """A session on `story`, over its worktree at the base and a started workspace.
 
     `about` goes on the `session.started` event, such as the base commit. `role` is
     agents.yaml's key for who works it: the Developer, or the role whose Task it is
-    (crew#839), with the Developer's tools. A Task's `specs` tell its `done` as a Task's,
+    (crew#839), with the Developer's tools, and `step` that role's own text for its
+    Tasks where it has one (crew#944). A Task's `specs` tell its `done` as a Task's,
     and its `scope` is what `done` takes as proof besides a test. A returned story's
     `findings` is the size of review's and QA's section in `instead_of_hints`, shown
     beside the parts, outside the total it's already in (crew#919), and `sponsor` the
@@ -560,7 +563,7 @@ def session(
     merge's conflicts edits only those files, and its `done` leaves no markers in them
     (crew#933).
     """
-    opening, sizes, notes = start(worktree, story, coverage, instead_of_hints)
+    opening, sizes, notes = start(worktree, story, coverage, instead_of_hints, work)
     if findings is not None:
         sizes["findings"] = findings
     if sponsor is not None:
@@ -578,7 +581,7 @@ def session(
     record(
         EventKind.SESSION_STARTED,
         f"session: {sizes['total']} characters to start",
-        role=_role(role),
+        role=_role(role, step),
         start_chars=sizes,
         # Whether `skill` was offered: the count of who reads a skill needs who could
         # (M11's skills pilot, crew#839).
@@ -596,7 +599,7 @@ def session(
     )
     return Session(
         tools,
-        system_text(role),
+        system_text(role, step),
         opening,
         send=send,
         after_run=after_run,
@@ -608,6 +611,7 @@ def session(
             resolving=resolving,
         ),
         role=role,
+        step=step,
         specs=SPECS if specs is None else specs,
     )
 
@@ -629,6 +633,10 @@ def own_checks(
     from crew_org.flows import gates  # noqa: PLC0415
 
     def checked(said: dict[str, Any]) -> list[Any]:
+        # QA's `justified` or `no_test` with a change says two things: which first (crew#944).
+        found = gates.one_outcome(worktree, said)
+        if found:
+            return found
         found = gates.missing_named_tests(worktree, said, scope=scope)
         if changed_tests:
             found += gates.undeclared_changed_tests(worktree, said)

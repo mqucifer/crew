@@ -33,6 +33,12 @@ config.const.strain.REVISIT_CONFLICTS:
 config.org.board.blocked_column:
 config.org.board.columns:
 config.org.board.human_gates:
+config.org.delivery.ci_same_failure_stop:
+  origin:
+  - crew#944
+config.org.delivery.qa_tests_from:
+  origin:
+  - crew#945
 config.org.delivery.repos:
 config.org.refinement.look:
 config.org.refinement.resplit_stop:
@@ -115,6 +121,12 @@ decision.board_flow.technical_work_first:
   - crew#440
 decision.bugs.carry_out:
 decision.bugs.collaborators_only:
+decision.ci.same_failure_stop:
+  description: A card CI returns delivery.ci_same_failure_stop times running with the same failing
+    tests is blocked for a person, with the log, instead of another session that would be shown the
+    failure it has already answered.
+  origin:
+  - crew#944
 decision.close.carry_over:
   origin:
   - crew#389
@@ -205,9 +217,10 @@ decision.phase_cards:
   - decision.bugs.bugs_to_triage
   - decision.board_flow.goals_missing_work_type
   description: A phase takes the open cards in its column, of the types it works, in the repositories
-    the crew works.
+    the crew works, and QA's Tasks in qa-suite for those projects, by their project label.
   origin:
   - crew#353
+  - crew#945
   - sprint-metrics#284
 decision.release_check.check_releases:
   description: 'Each project''s current release is checked once its release run for the head has finished:
@@ -265,11 +278,13 @@ decision.qa_tasks.already_justified:
   origin:
   - crew#896
 decision.qa_tasks.dispute_settled:
-  description: A story waiting on QA's dispute Task goes on once the Task is closed. Justified, it goes
-    back to the Developer with the test unchanged and QA's why as CI's verdict on its head; fixed, an
-    empty commit runs the checks again and it goes to review.
+  description: A story waiting on QA's dispute Task goes on once QA has answered. Justified, the Task
+    closed, it goes back to the Developer with the test unchanged and QA's why as CI's verdict on its
+    head; fixed, QA's pull request approved, an empty commit runs its checks again with QA's tests and
+    it goes to review, labelled lands-with:qa.
   origin:
   - crew#896
+  - crew#945
 decision.qa_tasks.disputed:
   description: A Developer whose pull request fails QA's check, and who thinks the test is wrong, disputes
     it; QA's Task opens in qa-suite to fix or justify it, and the story waits on it, blocked and labelled
@@ -280,6 +295,12 @@ decision.qa_tasks.justified:
   description: QA's dispute Task closes with no change when the test is right, saying why on the Task.
   origin:
   - crew#896
+decision.qa_tasks.lands_with_story:
+  description: A disputed story and QA's changed test land back to back, the story first. The story
+    waits until QA's pull request is approved and its checks, run against the story's head, passed;
+    QA's waits until the story's has landed. Before it, QA's test would fail the project's main.
+  origin:
+  - crew#945
 decision.qa_tasks.no_test:
   description: QA's test Task closes with no change when nothing it asks can be reached through the
     surface its project's folder names, saying why; recorded, so the retro sees where the surface falls
@@ -289,9 +310,11 @@ decision.qa_tasks.no_test:
 decision.qa_tasks.test_task:
   description: A story or a bug's fix merged in a project with a folder in qa-suite opens QA's Task for
     its test, once. After the merge, not at the split, since qa-suite's main runs against every pull
-    request and a test of unmerged work would fail them all.
+    request and a test of unmerged work would fail them all. Only work merged on or after
+    delivery.qa_tests_from, with no backfill, and none while it's unset.
   origin:
   - crew#896
+  - crew#945
 decision.role_tasks.carry_out:
   description: A role's Task filed from a finding is triaged as a bug is, by the Business Analyst (ADR
     0027), into Ready with what done means and a size, or closed with why.

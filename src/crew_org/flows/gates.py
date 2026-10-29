@@ -474,6 +474,36 @@ def undeclared_changed_tests(worktree: Path, said: dict[str, Any]) -> list[Findi
     ]
 
 
+def one_outcome(worktree: Path, said: dict[str, Any]) -> list[Finding]:
+    """`done`'s check of itself on QA's Task: `justified` and `no_test` change nothing, so
+    one with a changed file, or a test named in `criteria` or `changed_tests`, says two
+    outcomes (crew#944). Session 2 of mqucifer/qa-suite#8 sent `justified` with a changed
+    test; asked at the reply, the session says which it means."""
+    ending = next(
+        (k for k in (role_tasks.JUSTIFIED, role_tasks.NO_TEST) if str(said.get(k) or "").strip()),
+        None,
+    )
+    if ending is None:
+        return []
+    merged = regression.merged_base(worktree)
+    paths = reproduction._changed(worktree, merged.sha) if merged is not None else []
+    named = [e.get("test") or "" for e in entries(said, "criteria")] + [
+        e.get("test") or "" for e in entries(said, "changed_tests")
+    ]
+    changes = [f"changes {', '.join(f'`{p}`' for p in paths[:10])}"] if paths else []
+    changes += [f"names {', '.join(f'`{t}`' for t in named if t)}"] if any(named) else []
+    if not changes:
+        return []
+    return [
+        Finding(
+            "check.qa_tasks.one_outcome",
+            says("check.qa_tasks.one_outcome", "justified", changes=" and ".join(changes))
+            if ending == role_tasks.JUSTIFIED
+            else says("check.qa_tasks.one_outcome", "no_test", changes=" and ".join(changes)),
+        )
+    ]
+
+
 # What a release ships, said by what it doesn't (crew#816): the tests, the docs and the
 # repository's own settings change nothing a user runs. The changelog is the entry.
 CHANGELOG = "CHANGELOG.md"

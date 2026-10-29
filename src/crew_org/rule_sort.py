@@ -71,6 +71,10 @@ SORTED: dict[str, tuple[str, str]] = {
         GATE,
         "QA's `no_test` or `justified` changes nothing, at `done`",
     ),
+    "check.qa_tasks.one_outcome": (
+        FEEDBACK,
+        "QA's `done` says one outcome, refused at the reply",
+    ),
     "check.qa_tasks.dispute_names_no_test": (
         FEEDBACK,
         "a dispute names a test of QA's for the project, told to the session",

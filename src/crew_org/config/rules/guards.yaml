@@ -71,6 +71,21 @@ check.qa_tasks.dispute_names_no_test:
       `{project}/<file>::<test>`, as `{check}`''s log names it. If no QA test failed, this isn''t a
       dispute: fix what failed.'
   owner: Developer
+check.qa_tasks.one_outcome:
+  description: QA's `done` says one outcome. `justified` or `no_test` with a changed file, or a test
+    named in `criteria` or `changed_tests`, is refused at the reply, asking which is meant (crew#944).
+  messages:
+    justified: 'Your `done` says the disputed test stands, in `justified`, and it also {changes}. Which
+      do you mean? If the test is wrong and your change fixes it, call `done` again without `justified`,
+      naming the test you changed. If the test stands, restore the files you changed and call `done`
+      with `justified` alone, naming no criteria or changed tests.'
+    no_test: 'Your `done` says no test reaches the story''s criteria, in `no_test`, and it also {changes}.
+      Which do you mean? If your tests reach them, call `done` again without `no_test`, naming each
+      test. If none can, restore the files you changed and call `done` with `no_test` alone, naming no
+      criteria or changed tests.'
+  origin:
+  - crew#944
+  owner: QA Engineer
 check.qa_tasks.no_change_changed:
   description: QA's `no_test` or `justified` changes nothing; a branch that changes files goes back to
     its session (crew#896).

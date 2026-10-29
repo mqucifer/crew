@@ -2419,6 +2419,7 @@ _TOLD_SITES = {
     "agents.yaml:product_owner": "scope",
     "agents.yaml:qa_engineer": "evidence",
     "agents.yaml:qa_engineer.criteria_check": "evidence",
+    "agents.yaml:qa_engineer.tasks": "evidence",
     "agents.yaml:scrum_master": "guidance",
     "agents.yaml:senior_engineer": "guidance",
     "agents.yaml:ux_designer": "scope",

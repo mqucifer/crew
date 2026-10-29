@@ -24,11 +24,11 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, READY, REVIEWING
+from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING, READY, REVIEWING
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows import role_tasks as rt
@@ -45,9 +45,6 @@ STORY_TEST = rt.STORY_TEST
 ESCAPED = rt.ESCAPED
 DISPUTE = rt.DISPUTE
 TEST_POINTS = 2
-# Work merged before QA's Tasks were built has no Task: the suite starts from what
-# merges after (crew#896).
-FROM = datetime(2026, 10, 26, tzinfo=UTC)
 # Where a QA Task's session reads the project it tests, inside its qa-suite worktree:
 # never committed, and never in its scope.
 REFERENCE = ".project"
@@ -57,8 +54,62 @@ def folder_readme(project: str) -> str:
     return f"{project}/README.md"
 
 
-def merged_work(cards: list[Card], repos: set[str]) -> list[Card]:
-    """Stories and bugs whose pull request merged since `FROM`, in a project the crew
+# The folder README's paragraph that says what its tests reach, up to the next blank line.
+_SURFACE = re.compile(r"^\*\*The surface:\*\*.*?(?=\n\s*\n|\Z)", re.M | re.S)
+# What a folder's `start.sh` hands its tests in CI: each variable it writes to
+# `$GITHUB_ENV`, which qa.yml's next step runs the tests with.
+_CI_VARIABLE = re.compile(r"\b(QA_[A-Z0-9_]+)=")
+
+
+def reach(issues: IssueClient, project: str) -> str:
+    """What a QA Task's tests reach, for its first message: the folder README's
+    `**The surface:**` paragraph quoted whole, and the variables its `start.sh` gives
+    the tests in CI. A README without the paragraph is said plainly, not filled in."""
+    branch = issues.default_branch(SUITE)
+    readme = folder_readme(project)
+    text = issues.file_at(SUITE, readme, branch) or ""
+    found = _SURFACE.search(text)
+    said = (
+        found.group(0).strip()
+        if found
+        else f"`{readme}` doesn't say what {project}'s tests reach: it has no "
+        "**The surface:** paragraph. Don't guess one: say so with `blocked`."
+    )
+    start = issues.file_at(SUITE, f"{project}/start.sh", branch) or ""
+    names = list(
+        dict.fromkeys(
+            name
+            for line in start.splitlines()
+            if "GITHUB_ENV" in line and not line.lstrip().startswith("#")
+            for name in _CI_VARIABLE.findall(line)
+        )
+    )
+    given = (
+        f"In CI, `{project}/start.sh` starts {project} and gives your tests "
+        + ", ".join(f"`{name}`" for name in names)
+        + ", and nothing else of it."
+        if names
+        else f"`{project}/start.sh` gives your tests no variables in CI."
+    )
+    return f"## What your tests reach\n\n{said}\n\n{given}"
+
+
+def tests_from(org: dict[str, Any]) -> datetime | None:
+    """The day QA's test Tasks start from, `delivery.qa_tests_from`, or None while it's
+    unset and none open (crew#945).
+
+    No backfill: work merged before has no Task (the Sponsor, 2026-10-29). And none
+    open until the Sponsor and the operator have reviewed one Task's session start.
+    """
+    value = (org.get("delivery") or {}).get("qa_tests_from")
+    if not value:
+        return None
+    day = value if isinstance(value, date) else date.fromisoformat(str(value))
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
+
+
+def merged_work(cards: list[Card], repos: set[str], since: datetime) -> list[Card]:
+    """Stories and bugs whose pull request merged since `since`, in a project the crew
     works: Done and closed as completed, never one closed as superseded."""
     return sorted(
         (
@@ -69,7 +120,7 @@ def merged_work(cards: list[Card], repos: set[str]) -> list[Card]:
             and c.state == "CLOSED"
             and c.state_reason != "NOT_PLANNED"
             and c.closed is not None
-            and c.closed >= FROM
+            and c.closed >= since
             and c.repo in repos
             and c.repo != SUITE
         ),
@@ -97,12 +148,15 @@ def open_tests(
     *,
     cards: list[Card],
     repos: set[str],
+    since: datetime | None,
 ) -> QATasks:
-    """QA's Task for each story and bug merged in a project with a folder in qa-suite,
-    once. One GitHub refused is recorded and opened by the next pass: nothing marks it
-    opened until it is."""
+    """QA's Task for each story and bug merged since `since` in a project with a folder
+    in qa-suite, once; none while `since` is None (`tests_from`). One GitHub refused is
+    recorded and opened by the next pass: nothing marks it opened until it is."""
     result = QATasks()
-    work = merged_work(cards, repos)
+    if since is None:
+        return result
+    work = merged_work(cards, repos, since)
     if not work:
         return result
     try:
@@ -207,19 +261,20 @@ def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[
         )
         work = (
             f"Add a test of the story's acceptance criteria to `{project}/`, one per "
-            "criterion the surface reaches."
+            "criterion your tests can reach."
         )
         title = f"The test of {project}#{number}: {card.title}"
-        done_when = [f"Each criterion of {ref} the surface reaches has a test in `{project}/`"]
+        done_when = [f"Each criterion of {ref} your tests can reach has a test in `{project}/`"]
     work += (
-        f"\n\nThrough the surface `{readme}` names, and nothing else: no imports of "
-        f"{project}'s code, no reads of its database. Add each test to the README's table. "
+        f"\n\nYour tests reach {project} only as the next section says: no imports of "
+        f"{project}'s code, no reads of its database. Add each test to `{readme}`'s table. "
         f"{project} as it is now is at `{REFERENCE}/{project}/` in your worktree, to read and "
-        "never to change: its docs say how the surface behaves. Your tests run in CI against "
+        f"never to change: its docs say how it behaves there. Your tests run in CI against "
         f"{project}'s main when your pull request opens, and a red one comes back to you."
-        "\n\nIf no criterion can be reached through the surface, change nothing and say why "
-        "in `done`'s `no_test`: that's recorded, so the retro sees where the surface falls "
-        f"short.\n\n## {'The bug' if kind == ESCAPED else 'The story'} as it merged\n\n"
+        "\n\nIf no criterion can be reached that way, change nothing and say why in "
+        "`done`'s `no_test`: that's recorded, so the retro sees what the tests can't reach."
+        f"\n\n{reach(issues, project)}"
+        f"\n\n## {'The bug' if kind == ESCAPED else 'The story'} as it merged\n\n"
         f"**{card.title}**\n\n{filed.strip()}"
     )
     body = rt.render(rt.QA, kind=kind, key=key, why=why, work=work, done_when=done_when)
@@ -382,6 +437,9 @@ WAITS = "<!-- crew:qa-dispute-waits task={task} -->"
 _WAITS = re.compile(r"<!-- crew:qa-dispute-waits task=(\d+) -->")
 # On the story's pull request when the Task is settled, once per Task.
 ANSWERED = "<!-- crew:qa-dispute-answered task={task} -->"
+# On a story whose dispute QA answered by changing the test: the story's pull request
+# lands first and QA's straight after it, each only when both are ready (crew#945).
+LANDS_WITH_LABEL = "lands-with:qa"
 
 
 def disputable(issues: IssueClient, repo: str, pull: dict[str, Any] | None) -> bool:
@@ -481,7 +539,7 @@ def dispute(
     head = (pull.get("head") or {}).get("sha", "")
     number = card.number or 0
     ref = f"{issues.owner}/{repo}"
-    from crew_org.flows.ci import latest_ci_verdict  # noqa: PLC0415
+    from crew_org.flows.ci import last_lines, latest_ci_verdict  # noqa: PLC0415
 
     ci = latest_ci_verdict(issues, repo, pull["number"])
     body = (
@@ -494,13 +552,15 @@ def dispute(
             "test blocks the merge, and the Developer can't change qa-suite, so the story "
             "waits on this Task (ADR 0006 in mqucifer/project-print).",
             work=f"Decide whether the test is wrong. If it is, fix it in `{repo}/`: your pull "
-            f"request runs it against {repo}'s main, and once it merges the story's check runs "
-            "again. If it's right, change nothing and say why in `done`'s `justified`, for the "
-            "Developer: the story goes back to them with the test unchanged, to change the code. "
+            f"request runs it against the disputed pull request's head, not {repo}'s main, and "
+            "once it's approved the story lands first and yours straight after. If it's right, "
+            "change nothing and say why in `done`'s `justified`, for the Developer: the story "
+            "goes back to them with the test unchanged, to change the code. "
             f"{repo} as the disputed pull request has it is at `{REFERENCE}/{repo}/` in your "
-            f"worktree, to read and never to change.\n\n## The Developer's dispute\n\n"
+            f"worktree, to read and never to change.\n\n{reach(issues, repo)}"
+            "\n\n## The Developer's dispute\n\n"
             + "\n".join(f"> {line}" for line in (why or "(nothing said)").splitlines())
-            + (f"\n\n## What CI said\n\n{ci[-CI_SHOWN:]}" if ci else ""),
+            + (f"\n\n## What CI said\n\n{last_lines(ci, CI_SHOWN)}" if ci else ""),
             done_when=[f"`{test}` is fixed, or justified with why"],
         )
         + "\n\n"
@@ -526,6 +586,58 @@ def dispute(
     ).number
     _wait(issues, board, sink, card=card, repo=repo, task=task, test=test)
     return Disputed("decision.qa_tasks.disputed", task=task)
+
+
+def dispute_line(issues: IssueClient, repo: str, number: int) -> str:
+    """The dispute's marker in QA's dispute Task, for its pull request's body, or "" for
+    any other Task: qa-suite's `suite.yml` reads it there, to run QA's changed test
+    against the disputed pull request's head instead of the project's main (crew#945).
+    Against main, a fix that needs the story can never pass: mqucifer/qa-suite#10 was
+    right and failed three times."""
+    found = _DISPUTED.search(issues.get(repo, number).get("body") or "")
+    return found.group(0) if found else ""
+
+
+def waits_for_story(issues: IssueClient, task: Card) -> str:
+    """Why QA's dispute Task's pull request can't land yet, or "" when it can: the
+    disputed story's lands first (crew#945). Before it, QA's changed test would fail the
+    project's main, and every other pull request there."""
+    role = rt.role_of(task)
+    if task.repo != SUITE or role is None or role.key != rt.QA.key:
+        return ""
+    found = _DISPUTED.search(issues.get(SUITE, task.number or 0).get("body") or "")
+    if found is None:
+        return ""
+    repo, pull = found.group("repo"), int(found.group("pull"))
+    live = issues.pull(repo, pull)
+    if live.get("merged") or live.get("merged_at"):
+        return ""
+    ref = f"{issues.owner}/{repo}#{pull}"
+    if live.get("state") == "closed":
+        return f"its test needs {ref}, closed without landing: a person decides"
+    return f"lands straight after the disputed {ref}, which hasn't landed yet"
+
+
+def lands_with(issues: IssueClient, cards: list[Card], story: Card) -> Card | None:
+    """The open QA Task whose pull request lands straight after this story's, or None."""
+    if LANDS_WITH_LABEL not in story.labels:
+        return None
+    waits = _waits(issues, story.repo or "", story.number or 0)
+    if not waits:
+        return None
+    return next(
+        (c for c in cards if c.repo == SUITE and c.number == waits[-1] and c.state != "CLOSED"),
+        None,
+    )
+
+
+def _waits(issues: IssueClient, repo: str, number: int) -> list[int]:
+    """The dispute Tasks a story has waited on, in order, from its comments."""
+    return [
+        int(m.group(1))
+        for c in issues.comments(repo, number)
+        if (m := _WAITS.search(c.get("body") or "")) is not None
+    ]
 
 
 def _wait(
@@ -594,11 +706,13 @@ def settle_disputes(
     cards: list[Card],
     repos: set[str],
 ) -> Settled:
-    """Each story waiting on a dispute goes on once QA's Task is closed (crew#896).
+    """Each story waiting on a dispute goes on once QA has answered it (crew#896).
 
-    Justified: back to the Developer, with the test unchanged and QA's why, as CI's
-    verdict on the same head, so its rework reads it. Fixed: the pull request's head
-    moves by an empty commit, so CI runs the fixed test, and the story goes to review.
+    Justified, the Task closed: back to the Developer, with the test unchanged and QA's
+    why, as CI's verdict on the same head, so its rework reads it. Fixed, QA's pull
+    request approved: its check ran QA's test against the story's head (crew#945). The
+    story's head moves by an empty commit, so its own check runs again with QA's pull
+    request's tests, and it goes to review, to land first with QA's straight after.
     One that fails is retried next pass: the label stays until it's done.
     """
     result = Settled()
@@ -615,15 +729,14 @@ def settle_disputes(
     ):
         repo, number = card.repo or "", card.number or 0
         try:
-            waits = [
-                int(m.group(1))
-                for c in issues.comments(repo, number)
-                if (m := _WAITS.search(c.get("body") or "")) is not None
-            ]
+            waits = _waits(issues, repo, number)
             if not waits:
                 continue
             task = issues.get(SUITE, waits[-1])
-            if task.get("state") != "closed":
+            approved = any(
+                c.repo == SUITE and c.number == waits[-1] and c.status == MERGING for c in cards
+            )
+            if task.get("state") != "closed" and not approved:
                 held("decision.qa_tasks.dispute_settled", repo=repo, card=number)
                 result.waiting.append((number, waits[-1]))
                 continue
@@ -670,6 +783,12 @@ def _go_on(
             _rerun(ws, repo, live, task=link)
             body = (
                 f"{answered}\n**QA changed the disputed test** ({link}). `{QA_CHECK}` runs again."
+                + (
+                    " QA's pull request is approved, and its check passed against this pull "
+                    "request's head. This one lands first, and QA's straight after it."
+                    if task.get("state") != "closed"
+                    else ""
+                )
             )
         artifacts.comment(issues, sink, repo=repo, number=pull, body=body, by=BY)
     move_card(
@@ -687,7 +806,16 @@ def _go_on(
         )[:100],
         rule="decision.qa_tasks.dispute_settled",
     )
-    artifacts.label(issues, sink, repo=repo, number=number, by=BY, remove=[WAITS_LABEL])
+    artifacts.label(
+        issues,
+        sink,
+        repo=repo,
+        number=number,
+        by=BY,
+        remove=[WAITS_LABEL],
+        # Its test is QA's open pull request's, which lands straight after it (crew#945).
+        add=[LANDS_WITH_LABEL] if justified is None and task.get("state") != "closed" else (),
+    )
 
 
 def _rerun(ws: Any, repo: str, pull: dict[str, Any], *, task: str) -> None:

@@ -38,7 +38,7 @@ from crew_org.rulebook import says
 from crew_org.rules import Rule
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, LinkedPull, ProjectClient
-from crew_org.work_types import DELIVERED, open_in
+from crew_org.work_types import DELIVERED, open_in, works
 
 # Marks the comment a repair leaves on the pull request it updated, so the
 # thread says why a new commit appeared rather than leaving the reviewer to
@@ -126,6 +126,8 @@ class DeliveryResult:
     checking: list[tuple[int, str]] = field(default_factory=list)
     # (card, PR) in the merge queue; GitHub merges it in its turn (#302).
     queued: list[tuple[int, int]] = field(default_factory=list)
+    # (card, why) a disputed story and QA's changed test, landing together (crew#945).
+    paired: list[tuple[int, str]] = field(default_factory=list)
     # Stories a passing service failure interrupted, left to be retried (#390).
     interrupted: list[int] = field(default_factory=list)
     in_queue: list[tuple[str, int, str]] = field(default_factory=list)
@@ -451,7 +453,7 @@ def sponsor_review(issues: IssueClient, repo: str, pull: int, sponsor: str) -> s
     return "\n\n".join(p for p in parts if p)
 
 
-def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
+def previous_fate(issues: IssueClient, repo: str, branch: str, *, work: str = "story") -> str:
     """What became of the last pull request from this branch, in one line.
 
     A verdict says what was wrong. This says what happened next, and the two
@@ -473,7 +475,7 @@ def previous_fate(issues: IssueClient, repo: str, branch: str) -> str:
         return f"PR #{number} was merged."
     if pull.get("state") == "closed":
         return f"PR #{number} was **closed without merging**. The work on it was not accepted."
-    return f"PR #{number} is still open, and this story was sent back to be re-worked."
+    return f"PR #{number} is still open, and this {work} was sent back to be re-worked."
 
 
 def held_by_a_sibling(cards: list[Card], story: Card) -> Card | None:
@@ -662,7 +664,7 @@ def not_ours(cards: list[Card], sprint: str, repos: set[str]) -> list[Card]:
         and c.work_type in DELIVERED
         and c.state != "CLOSED"
         and (c.sprint == sprint or sprint is None)
-        and c.repo not in repos
+        and not works(c, repos)
     ]
 
 
@@ -1037,6 +1039,7 @@ def deliver(
     result.updating = list(landed.updating)
     result.checking = list(landed.checking)
     result.queued = list(landed.queued)
+    result.paired = list(landed.paired)
     result.in_queue = list(landed.in_queue)
     result.landed = [card for card, _pr in landed.merged]
     if landed.merged or landed.conflicted or landed.rebuilding:
@@ -1074,7 +1077,7 @@ def deliver(
     # is already In Progress occupies no new slot.
     returned = needs_rework(issues, cards, repo=repo)
     for card in returned:
-        if repos is not None and (card.repo or repo) not in repos:
+        if repos is not None and (card.repo or repo) not in repos and not works(card, repos):
             held("decision.delivery.sprint_stories", repo=card.repo or repo, card=card.number)
             continue
         waiting = rebuild_waits_for(issues, cards, card, repo=card.repo or repo)

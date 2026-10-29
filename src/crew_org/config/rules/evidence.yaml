@@ -359,6 +359,12 @@ told.qa_engineer.criteria_check.two_criteria_that_expect_different_outcomes:
 told.qa_engineer.criteria_check.you_dont_judge_style_size_or:
   guidance: true
   owner: QA Engineer (criteria_check)
+told.qa_engineer.tasks.you_never_import_the_projects_code:
+  guidance: true
+  owner: QA Engineer (tasks)
+told.qa_engineer.tasks.you_read_the_projects_docs_and:
+  guidance: true
+  owner: QA Engineer (tasks)
 told.qa_engineer.you_do_not_fix_the_code:
   guidance: true
   owner: QA Engineer
