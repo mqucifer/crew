@@ -302,6 +302,7 @@ def _roll_over(
                 owner=owner,
                 repo=env.get("PILOT_REPO", "crew"),
                 crew_repo=crew_repo,
+                sponsor=env.get("GITHUB_SPONSOR") or None,
             )
     except Exception as exc:  # noqa: BLE001
         console.print(
@@ -2318,6 +2319,7 @@ def sprint_close(
         repo=repo,
         crew_repo=crew_repo,
         merge=not no_merge,
+        sponsor=env.get("GITHUB_SPONSOR") or None,
     )
     from crew_org.flows.rollover import ended_on  # noqa: PLC0415
 
@@ -2336,6 +2338,7 @@ def _close_and_report(
     repo: str,
     crew_repo: str,
     merge: bool = True,
+    sponsor: str | None = None,
 ) -> None:
     """Close `sprint` and print its report: `crew sprint close`, and a tick at a
     sprint's end (ADR 0028)."""
@@ -2358,6 +2361,7 @@ def _close_and_report(
         crew_repo=crew_repo,
         delivery_repos=list(org.get("delivery", {}).get("repos") or []),
         tz=clock_zone(org),
+        sponsor=sponsor,
     )
 
     console.print(f"\n[bold]{result.sprint}[/]")
@@ -2367,6 +2371,13 @@ def _close_and_report(
         console.print(
             f"  [yellow]#{story}[/] waiting on your approval of PR #{pull} — "
             f"https://github.com/{owner}/{repo}/pull/{pull}"
+        )
+    for story, pull in result.awaiting_sponsor:
+        console.print(f"  [yellow]#{story}[/] a role's Task: PR #{pull} waits for your approval")
+    for story, pull in result.no_sponsor:
+        console.print(
+            f"  [red]#{story}[/] a role's Task: PR #{pull} can't merge: no Sponsor is named "
+            "(GITHUB_SPONSOR in .env, or trust.sponsor in org.yaml)"
         )
     for card, days in result.aging_blocked:
         age = "for an unknown time" if days is None else f"{days} days"

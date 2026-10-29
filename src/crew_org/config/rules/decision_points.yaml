@@ -440,6 +440,14 @@ flows.close.close_sprint:result:awaiting_approval:ddf120c8:
   at: flows/close.py:close_sprint
   if: not approved
   rule: decision.close.close_sprint
+flows.close.close_sprint:result:awaiting_sponsor:6eefd3cf:
+  at: flows/close.py:close_sprint
+  if: not role_tasks.sponsor_approved(reviews, login, head)
+  rule: decision.role_tasks.sponsor_approves
+flows.close.close_sprint:result:awaiting_sponsor:f86b5a1a:
+  at: flows/close.py:close_sprint
+  if: role_tasks.for_the_sponsor(issues, own, card)
+  rule: decision.role_tasks.sponsor_approves
 flows.close.close_sprint:result:checking:7a2475dd:
   at: flows/close.py:close_sprint
   if: landed.how == Landing.CHECKING
@@ -452,9 +460,13 @@ flows.close.close_sprint:result:still_open:7489d0f6:
   at: flows/close.py:close_sprint
   if: card.status != MERGING
   rule: decision.close.close_sprint
-flows.close.close_sprint:result:unapprovable:47f46e7c:
+flows.close.close_sprint:result:no_sponsor:c16c1664:
   at: flows/close.py:close_sprint
-  if: issues.review_decision(repo, pull['number']) == REVIEW_REQUIRED
+  if: not login
+  rule: decision.role_tasks.sponsor_approves
+flows.close.close_sprint:result:unapprovable:72a5c53e:
+  at: flows/close.py:close_sprint
+  if: issues.review_decision(own, pull['number']) == REVIEW_REQUIRED
   rule: decision.close.close_sprint
 flows.close.close_sprint:result:unmergeable:0c636a13:
   at: flows/close.py:close_sprint
