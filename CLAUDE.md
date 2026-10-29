@@ -50,6 +50,11 @@ request, like any other file.
   close; `crew#12` is plain text. Never a bare `#12`: GitHub links it in
   whichever repo the text lands in.
   *Guarded by the hook for `gh` issue and PR bodies.*
+- **A closing keyword before a reference closes it,** anywhere in a merged
+  PR's body: "couldn't close: owner/repo#12" closes owner/repo#12. Only the
+  PR's own closing line, `Closes owner/repo#12` alone on its line, pairs them;
+  elsewhere write "left open: owner/repo#12". *Guarded by the hook for
+  `gh pr create` and `gh pr edit` bodies; not yet for commit messages.*
 - **Claude works as its own GitHub account, `quarters-claude`** (crew#566):
   Write, not admin, so branch protection applies to it. Its token is
   `GH_TOKEN` in `~/.claude/settings.json`, never in a repo; git pushes with it
