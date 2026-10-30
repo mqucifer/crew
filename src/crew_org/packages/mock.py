@@ -650,8 +650,6 @@ _SPRINT_5 = {
     "first_attempt_numerator": 2,
     "first_attempt_denominator": 3,
     "first_attempt_rate_percent": 67,
-    "escalation_count": 0,
-    "escalation_rate_percent": 0,
     "wip_violations": 0,
     "blocked_aging_days": 0,
     "cycle_time_days": 0,
@@ -669,8 +667,6 @@ _SPRINT_6 = {
     "first_attempt_numerator": 3,
     "first_attempt_denominator": 6,
     "first_attempt_rate_percent": 50,
-    "escalation_count": 1,
-    "escalation_rate_percent": 17,
     "wip_violations": 0,
     "blocked_aging_days": 1,
     "cycle_time_days": 0,
@@ -701,10 +697,25 @@ def _answer(now: dict[str, Any], prior: dict[str, Any] | None, **rest: Any) -> d
     return {**now, **rest, "flags": flags, "prior": prior, "delta": delta}
 
 
-def _sprint_metrics() -> dh.SprintMetrics:
-    """sprint-metrics' part, checked against its schema as the service's answer is."""
+def range_body() -> dict[str, Any]:
+    """sprint-metrics' GET /range for Sprints 5 and 6, in the pinned release's shape."""
     body: dict[str, Any] = {
-        "api_version": "1",
+        "api_version": "4",
+        # The range's own verdicts, which the package doesn't carry: under three
+        # sprints with data are too few for one.
+        "window": {
+            "start": "Sprint 5",
+            "end": "Sprint 6",
+            "sprint_count": 2,
+            "no_data": [],
+            "verdicts": dict.fromkeys(
+                sma.range_schema()["properties"]["window"]["properties"]["verdicts"]["required"]
+            ),
+            "biggest_improvement": None,
+            "worst_dip": None,
+            "turns": [],
+            "too_short": True,
+        },
         "sprints": {
             "Sprint 5": _answer(
                 _SPRINT_5,
@@ -722,8 +733,13 @@ def _sprint_metrics() -> dh.SprintMetrics:
         },
     }
     body["sprints"]["Sprint 6"]["flags"]["first_attempt_rate_percent"] = True
+    return body
+
+
+def _sprint_metrics() -> dh.SprintMetrics:
+    """sprint-metrics' part, checked against its schema as the service's answer is."""
     return dh.SprintMetrics(
-        release=sma.RELEASE, answers=sma.checked(body, ["Sprint 5", "Sprint 6"])
+        release=sma.RELEASE, answers=sma.checked(range_body(), ["Sprint 5", "Sprint 6"])
     )
 
 

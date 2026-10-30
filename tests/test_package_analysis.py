@@ -307,15 +307,14 @@ def test_what_changed_is_sprint_metrics_numbers_worded_by_the_crew():
         }
     }
     [sprint] = analyse([], [], answers=answers).sprints
+    # sprint-metrics stopped answering escalations in 4.0.0: one still sent isn't worded.
     assert [(c.measure, c.previous, c.now, c.better) for c in sprint.changed] == [
         ("first_attempt_rate_percent", 40, 55, True),
         ("throughput", 22, 15, False),
-        ("escalation_count", 2, 1, True),
     ]
     assert [c.text for c in sprint.changed] == [
         "The first-try rate rose from 40% to 55%.",
         "Stories delivered fell from 22 to 15.",
-        "Escalations fell from 2 to 1.",
     ]
     assert {c.source for c in sprint.changed} == {"sprint-metrics"}
 

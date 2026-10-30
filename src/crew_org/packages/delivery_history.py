@@ -39,7 +39,7 @@ from crew_org.sendbacks import Step
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "1.11.0"
+SCHEMA_VERSION = "2.0.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -472,7 +472,6 @@ Measure = Literal[
     "first_attempt_rate_percent",
     "throughput",
     "points_delivered",
-    "escalation_count",
     "blocked_aging_days",
     "wip_violations",
     "cycle_time_minutes",

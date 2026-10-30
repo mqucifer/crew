@@ -44,7 +44,6 @@ MEASURES: dict[dh.Measure, tuple[str, bool | None]] = {
     "first_attempt_rate_percent": ("the first-try rate", True),
     "throughput": ("stories delivered", True),
     "points_delivered": ("points delivered", True),
-    "escalation_count": ("escalations", False),
     "blocked_aging_days": ("days spent blocked", False),
     "wip_violations": ("breaks of the work-in-progress limit", False),
     "cycle_time_minutes": ("the time from starting a story to delivering it", False),

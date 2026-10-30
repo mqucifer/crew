@@ -20,9 +20,9 @@ without the part, which `release.refusal()` won't release.
 
 **Only what the schema names is carried** (ADR 0020's allow-list): a field the
 service adds later stays out until the pinned release names it. What it leaves
-open (flags, failure causes and breakdowns, the superseded breakdown) keeps only
-measures and names: numbers, true and false, and single words such as `VERIFY`,
-never a sentence.
+open (flags, failure causes and breakdowns, the superseded breakdown) and its
+plain strings keep only measures and names: numbers, true and false, and single
+words such as `VERIFY` or a card, `sprint-metrics#133`, never a sentence.
 """
 
 from __future__ import annotations
@@ -33,13 +33,14 @@ from pathlib import Path
 from typing import Any
 
 # The sprint-metrics release the crew reads; the service's deploy keeps to its MAJOR.
-RELEASE = "1.3.1"
+RELEASE = "4.2.1"
 UPSTREAM = Path(__file__).resolve().parent / "upstream"
 SCHEMA_URL = (
     "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v{release}/schemas/sprint-range.json"
 )
-# A name, such as a failure class or a role: one word, never a sentence.
-_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,63}$")
+# A name, such as a failure class, a role or a card (4.x's rosters and costs name stories
+# as `repo#n`): one word, never a sentence.
+_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.:/#-]{0,63}$")
 
 
 class Unanswered(Exception):

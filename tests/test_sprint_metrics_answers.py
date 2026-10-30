@@ -28,9 +28,7 @@ FIVE, SIX = "Sprint 5", "Sprint 6"
 
 def body() -> dict:
     """A /range answer for Sprints 5 and 6 in the pinned release's shape: the mock's."""
-    answers = mock.inputs().sprint_metrics
-    assert answers is not None
-    return {"api_version": "1", "sprints": copy.deepcopy(answers.answers)}
+    return copy.deepcopy(mock.range_body())
 
 
 # --- the release the crew runs ------------------------------------------------------------
@@ -40,6 +38,14 @@ def test_the_release_s_published_schema_is_here():
     schema = sma.range_schema()
     assert schema["$schema"].startswith("https://json-schema.org/")
     assert "cycle_time_minutes" in sma.entry_schema()["required"]
+
+
+def test_the_crew_reads_4_2_1_whose_answers_have_no_escalation_measures():
+    """sprint-metrics 4.0.0 took the escalation measures out of /range (crew#905)."""
+    assert sma.RELEASE == "4.2.1"
+    named = sma.entry_schema()["properties"]
+    assert "escalation_count" not in named and "escalation_rate_percent" not in named
+    assert "window" in sma.range_schema()["required"]
 
 
 def test_the_package_schema_embeds_sprint_metrics_own():
@@ -65,9 +71,36 @@ def test_an_answer_is_carried_with_only_what_the_schema_names():
     assert six["prior"]["throughput"] == 3 and answers[FIVE]["prior"] is None
 
 
+def test_cards_named_in_an_answer_are_carried_whole():
+    """4.x names stories, epics and Goals by card: one word with a `#`, never a sentence."""
+    found = body()
+    six = found["sprints"][SIX]
+    six["roster"] = {
+        "completed_stories": ["sprint-metrics#133", "mqucifer/crew#905"],
+        "released_epics": None,
+        "achieved_goals": None,
+    }
+    six["rework"] = {
+        "started": 6,
+        "sent_backs": [
+            {
+                "card_id": "sprint-metrics#133",
+                "send_backs": [{"step": "Developer", "reason": "the model wrote a sentence"}],
+            }
+        ],
+    }
+    answers = sma.checked(found, [FIVE, SIX])
+    roster = answers[SIX]["roster"]
+    assert roster["completed_stories"] == ["sprint-metrics#133", "mqucifer/crew#905"]
+    [sent] = answers[SIX]["rework"]["sent_backs"]
+    assert sent["card_id"] == "sprint-metrics#133"
+    assert sent["send_backs"] == [{"step": "Developer", "reason": None}]
+    jsonschema.validate(answers[SIX], sma.entry_schema())
+
+
 def test_an_answer_from_an_older_release_is_refused_and_says_which_it_needs():
     found = body()
-    del found["sprints"][SIX]["cycle_time_minutes"]  # 1.2.0 doesn't answer it
+    del found["window"]  # 1.3.x doesn't answer it
     with pytest.raises(sma.Unanswered, match=rf"Is the service running {re.escape(sma.RELEASE)}\?"):
         sma.checked(found, [FIVE, SIX])
 
