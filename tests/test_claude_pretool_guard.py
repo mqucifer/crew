@@ -149,6 +149,83 @@ def test_a_body_file_is_checked_too(repo):
     assert run_guard("gh pr create --body-file body.md", repo).returncode == 2
 
 
+# --- closing keywords (crew#951) -------------------------------------------
+# GitHub closes an issue when a closing keyword comes right before its
+# reference, wherever the pair sits. Only the PR's own closing line may say it.
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # The Sprint 34 case: merging mqucifer/crew#940 closed it.
+        "Parked: couldn't close: mqucifer/crew-presentation#177",
+        "this fixes mqucifer/crew#12's display",
+        "It was RESOLVED https://github.com/mqucifer/crew/issues/12 already",
+        "we **closed** mqucifer/crew#12 by hand",
+        "the bug is fixed: _mqucifer/crew#12_",
+        "see https://github.com/mqucifer/crew/pull/3 which closes mqucifer/crew#12",
+        # At the start of a line, but prose follows the reference.
+        "Fixes mqucifer/crew#12's display and the layout",
+    ],
+)
+def test_a_closing_keyword_before_a_reference_in_prose_is_refused(repo, body):
+    done = run_guard(f'gh pr create --title "fix: x" --body "{body}"', repo)
+    assert done.returncode == 2
+    assert "left open:" in done.stderr
+    assert body.splitlines()[-1] in done.stderr
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Closes mqucifer/crew#951",
+        "closes: mqucifer/crew#951",
+        "**Fixes** mqucifer/crew#951.",
+        "Resolves https://github.com/mqucifer/crew/issues/951",
+        "Closes mqucifer/crew#951\nCloses mqucifer/crew#952\n\n## Why\nIt closes the gap.",
+        # A keyword with no reference after it closes nothing.
+        "Left open: mqucifer/crew-presentation#177, couldn't close it here",
+        "fix: the guard; crew#12 is plain text and closes nothing",
+    ],
+)
+def test_the_pr_s_own_closing_line_and_plain_prose_pass(repo, body):
+    assert run_guard(f'gh pr edit 5 --body "{body}"', repo).returncode == 0
+
+
+def test_the_closing_line_ends_where_the_body_ends(repo):
+    command = (
+        'gh pr create --draft --title "fix: x" --body "Closes mqucifer/crew#951" '
+        "--assignee mquarters && gh pr view --json url"
+    )
+    assert run_guard(command, repo).returncode == 0
+    assert run_guard('gh pr edit 5 --body="Closes mqucifer/crew#951"', repo).returncode == 0
+
+
+def test_a_body_with_both_is_refused_for_its_prose(repo):
+    body = "Closes mqucifer/crew#951\n\n## Why\nParked: couldn't close: mqucifer/crew#940\n"
+    (repo / "body.md").write_text(body)
+    done = run_guard("gh pr create --body-file body.md", repo)
+    assert done.returncode == 2
+    assert "couldn't close: mqucifer/crew#940" in done.stderr
+    assert "Closes mqucifer/crew#951" not in done.stderr
+
+
+def test_a_heredoc_body_is_read_line_by_line(repo):
+    command = (
+        'gh pr create --title "fix: x" --body "$(cat <<\'EOF\'\n'
+        "Closes mqucifer/crew#951\n\nParked: couldn't close: mqucifer/crew#940\nEOF\n)\""
+    )
+    assert run_guard(command, repo).returncode == 2
+    command = command.replace("couldn't close", "left open")
+    assert run_guard(command, repo).returncode == 0
+
+
+def test_closing_keywords_in_comments_are_left_alone(repo):
+    # Only a merged PR closes: an issue comment saying so changes nothing.
+    command = 'gh issue comment 5 --body "This closes mqucifer/crew#12 once it merges"'
+    assert run_guard(command, repo).returncode == 0
+
+
 def test_input_it_cannot_read_is_allowed(repo):
     done = subprocess.run(
         [sys.executable, str(SCRIPT)], input="not json", capture_output=True, text=True
