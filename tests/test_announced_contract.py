@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import jsonschema
@@ -55,3 +56,25 @@ def test_an_announced_mock_follows_its_schemas(directory):
     assert periods
     for period in periods:
         jsonschema.validate(json.loads(period.read_text()), schemas["events.schema.json"])
+
+
+def _announced() -> dict:
+    return json.loads((contract.CONTRACTS / "announced.json").read_text(encoding="utf-8"))
+
+
+def test_what_is_announced_is_published_for_readers_crews_to_file():
+    # Read from what the crew publishes, by each reader's pass (crew#960).
+    assert sorted(_announced()) == [p.name for p in ANNOUNCED]
+
+
+@pytest.mark.parametrize("version", sorted(_announced()))
+def test_an_announcement_names_its_contract_date_and_changelog(version):
+    from crew_org.usage import section  # noqa: PLC0415
+
+    said = _announced()[version]
+    assert said["replaces"] == f"{int(version.split('.')[0]) - 1}.x"
+    assert date.fromisoformat(said["on"])
+    assert (contract.ROOT / said["contract"]).resolve() == contract.CONTRACTS / version
+    log = said["changelog"]
+    text = section((contract.ROOT / log["file"]).read_text(encoding="utf-8"), log["section"])
+    assert text and f"replaces {said['replaces']} on {said['on']}" in text
