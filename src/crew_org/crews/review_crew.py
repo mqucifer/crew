@@ -101,6 +101,7 @@ def review_diff(
     decisions: str = "",
     diagram: str = "",
     release: bool = False,
+    tests_cover: str = "",
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -121,6 +122,10 @@ def review_diff(
 
     `release` is a DevOps release Task's pull request (crew#948): judged on what a release
     changes, not on its epic's story work, which its stories' own pull requests merged.
+
+    `tests_cover` is the story or bug a QA test Task's pull request tests (crew#971):
+    what its tests should cover, never its criteria. The work merged in its own project,
+    so the diff was never going to carry it.
     """
     if len(diff) > MAX_DIFF_CHARS:
         return ReviewVerdict(
@@ -167,12 +172,23 @@ def review_diff(
         if release
         else ""
     )
+    covers = (
+        "\n\n## This pull request is QA's test of merged work\n\n"
+        "It adds tests to the project's folder in this repository. The work they test merged "
+        "in the project's own repository, whose code isn't here and isn't this pull request's "
+        "to change. The criteria above are this pull request's.\n\n"
+        "## What the tests should cover\n\n"
+        "The work as it merged, to judge what the tests cover. These aren't this pull "
+        f"request's criteria.\n\n{tests_cover}"
+        if tests_cover
+        else ""
+    )
     return calls.ask(
         "code_reviewer",
         [
             calls.Part(
                 "task",
-                f"Review this pull request.\n\n## Title\n\n{title}{released}{criteria}"
+                f"Review this pull request.\n\n## Title\n\n{title}{released}{criteria}{covers}"
                 f"{previously}\n\n"
                 f"## Diff\n\n```diff\n{diff}\n```\n\n"
                 + (f"{checks}\n\n" if checks else "")
@@ -199,7 +215,7 @@ def review_diff(
                     "have the author break one of them, whatever the design note says, set its "
                     "`conflicts_with` to that criterion: the story goes to the Product Owner to "
                     "settle, not back to the author.\n"
-                    if acceptance_criteria
+                    if acceptance_criteria and not tests_cover
                     else ""
                 )
                 + "Review for correctness first, then reuse and simplification. Name the file "

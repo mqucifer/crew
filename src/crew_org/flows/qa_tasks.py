@@ -235,6 +235,11 @@ def test_task(
     ).number
 
 
+_WORK = "## The work"
+_DONE_WHEN = "## Done when"
+_QUOTE = re.compile(r"^## The (?:story|bug) as it merged$", re.MULTILINE)
+
+
 def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[str, str]:
     """The title and body of QA's Task for a merged story or bug, from GitHub as it is."""
     project, number = card.repo or "", card.number or 0
@@ -279,6 +284,24 @@ def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[
     )
     body = rt.render(rt.QA, kind=kind, key=key, why=why, work=work, done_when=done_when)
     return title[:120], body
+
+
+def own_and_quoted(body: str) -> tuple[str, str]:
+    """A QA Task's own criteria, and the story or bug its body quotes, or "" (crew#971).
+
+    Written by `test_body`: the quote sits between the work and `## Done when`, and
+    carries the story's own `## Acceptance criteria`, which aren't the Task's. Its
+    `## Done when` is the last, so a quoted one isn't taken for it.
+    """
+    done = body.rfind(_DONE_WHEN)
+    criteria = body[done + len(_DONE_WHEN) :].strip() if done != -1 else ""
+    before = body[:done] if done != -1 else body
+    quote = _QUOTE.search(before)
+    quoted = before[quote.end() :].strip() if quote else ""
+    work = before[: quote.start()] if quote else before
+    start = work.find(_WORK)
+    rules = work[start + len(_WORK) :].strip() if start != -1 else work.strip()
+    return f"{criteria}\n\n**The rules of this Task**\n\n{rules}".strip(), quoted
 
 
 def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> None:

@@ -147,6 +147,8 @@ Roles live in `config/agents.yaml` as data — goal, backstory, model alias, cap
     - If QA justifies the test, the story goes back to the Developer with the test unchanged and QA's reason, given as CI's verdict, so the Developer changes the code.
     - A test already justified, and unchanged since, opens nothing when it's disputed again. The session is told "already justified", with the Task's link.
 
+  **A QA Task's pull request is judged and found where it lives** (crew#971). It's in qa-suite, whichever project's tick this is, and the stranded-card check, the rework pass and delivery's own comments and labels all use the card's repository. The Code Reviewer judges it on the Task's own `## Done when` and the rules of its work: tests only in the project's folder, the project read-only. The story or bug its body quotes is shown as what the tests should cover, labelled as not this pull request's criteria. Such a review carries `<!-- crew:judged-as-task -->`. A refusal of QA's Task without it was made against the story, which no work in qa-suite can answer, so it stops nothing: it isn't sent for rework, and at the next review phase the card goes back to Reviewing from In Progress, Blocked or the backlog, and that head is reviewed again (`decision.review.against_the_story`). mqucifer/qa-suite#17 was refused that way, for not changing files only crew-presentation has.
+
   QA's pull request runs its changed folders against each project's main (qa-suite's `suite.yml`), or a dispute's against the disputed pull request, so a red test comes back to QA before it fails anyone else's. QA can end with no change and no pull request:
   - `no_test`, when nothing the Task asks can be reached through the surface;
   - `justified`, on a dispute.

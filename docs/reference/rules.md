@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 14 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 79 |
+| The tick decides a card's handling, found by the decision-point audit | 80 |
 | A setting that changes what the tick does | 211 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 72 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 156 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 157 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -249,7 +249,7 @@ section; one no line holds for is unplaced, never guessed.
 | `skip.board_flow.waits_for_planned`<br>waits for planned … | flow | `src/crew_org/flows/board_flow.py:settle_wait` | — | — | src/crew_org/flows/board_flow.py:settle_wait | — |
 | `skip.goal_look.waits_for_one_goal_refines_at`<br>waits for …: one Goal refines at a time | flow | `src/crew_org/flows/goal_look.py:look_step` | — | — | src/crew_org/flows/goal_look.py:look_step | crew#858 |
 | `skip.goal_look.waits_for_the_goals_look_still`<br>waits for the Goal's look: … still waits for the Sponsor | flow | `src/crew_org/flows/goal_look.py:look_step` | — | — | src/crew_org/flows/goal_look.py:look_step | crew#858 |
-| `skip.judged_at_this_head`<br>A gate judges a pull request's head once: QA's verdict and the Code Reviewer's review aren't repeated at the same head.<br>Cases: `skip.acceptance.already_judged_at` (src/crew_org/flows/acceptance.py:run_qa), `skip.review.already_reviewed_at_this_head` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa<br>src/crew_org/flows/review.py:review_open_pulls | — |
+| `skip.judged_at_this_head`<br>A gate judges a pull request's head once: QA's verdict and the Code Reviewer's review aren't repeated at the same head.<br>Cases: `skip.acceptance.already_judged_at` (src/crew_org/flows/acceptance.py:run_qa), `skip.review.already_reviewed_at_this_head` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/flows/acceptance.py:run_qa` | — | — | src/crew_org/flows/acceptance.py:run_qa<br>src/crew_org/flows/review.py:standing_reviews | crew#971 |
 | `skip.review.draft`<br>draft | flow | `src/crew_org/flows/review.py:review_open_pulls` | — | — | src/crew_org/flows/review.py:review_open_pulls | — |
 | `skip.waits_for_the_sponsors_answer`<br>An epic waits for the Sponsor's answer before it's refined further.<br>Cases: `skip.board_flow.waits_for_the_sponsors_answer_on` (src/crew_org/flows/board_flow.py:product_step), `skip.goal_look.waits_for_the_sponsors_answer_on` (src/crew_org/flows/goal_look.py:look_step) | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/events.py:attributed<br>src/crew_org/flows/board_flow.py:product_step<br>src/crew_org/flows/goal_look.py:_question_and_reply<br>src/crew_org/tools/github_issues.py:from_sponsor | — |
 
@@ -285,7 +285,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.delivery.interrupted`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move | — |
 | `decision.delivery.limit`<br>Pull stories into progress up to the WIP limit, and deliver them. | flow | `src/crew_org/flows/delivery.py:deliver` | — | — | src/crew_org/flows/delivery.py:deliver | — |
 | `decision.delivery.outcome`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move<br>src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_end.py:route | — |
-| `decision.delivery.reconcile_orphans`<br>Return cards stranded In Progress to the backlog. | flow | `src/crew_org/flows/delivery.py:reconcile_orphans` | — | — | src/crew_org/flows/delivery.py:reconcile_orphans | — |
+| `decision.delivery.reconcile_orphans`<br>Return cards stranded In Progress to the backlog. | flow | `src/crew_org/flows/delivery.py:reconcile_orphans` | — | — | src/crew_org/flows/delivery.py:reconcile_orphans | crew#971 |
 | `decision.delivery.rework`<br>The open pull request on `branch` whose *current* head was refused. | flow | `src/crew_org/flows/delivery.py:awaiting_rework` | — | — | src/crew_org/flows/delivery.py:awaiting_rework<br>src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:needs_rework | sprint-metrics#31 |
 | `decision.delivery.waits_on_files`<br>Pull stories into progress up to the WIP limit, and deliver them. | flow | `src/crew_org/flows/delivery.py:deliver` | — | — | src/crew_org/flows/delivery.py:deliver<br>src/crew_org/flows/delivery.py:rebuild_waits_for | crew#436<br>sprint-metrics#384 |
 | `decision.deploy.failed`<br> run | flow | `src/crew_org/flows/deploy.py:_run` | — | — | src/crew_org/flows/deploy.py:_run | crew#829 |
@@ -312,6 +312,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.resplit.stop`<br>Before an epic sent back as a story problem is split again (#189). | flow | `src/crew_org/flows/board_flow.py:product_step` | — | — | src/crew_org/flows/board_flow.py:product_step | crew#189<br>crew#859 |
 | `decision.revert.refused`<br> refusal | flow | `src/crew_org/flows/revert.py:_refusal` | — | — | src/crew_org/flows/revert.py:_refusal<br>src/crew_org/flows/revert.py:request_revert | — |
 | `decision.revert.return_card`<br> return card | flow | `src/crew_org/flows/revert.py:_return_card` | — | — | src/crew_org/flows/revert.py:_return_card | — |
+| `decision.review.against_the_story`<br>QA's Tasks in `repo` whose head was refused against the story, back in Reviewing. | flow | `src/crew_org/flows/review.py:back_to_review` | — | — | src/crew_org/flows/review.py:back_to_review<br>src/crew_org/flows/review.py:standing_reviews<br>src/crew_org/flows/review.py:story_criteria<br>src/crew_org/flows/review.py:what_tests_cover | crew#971 |
 | `decision.review.deploy_review`<br>Review every open pull request that the crew has not yet judged. | flow | `src/crew_org/flows/review.py:review_open_pulls` | — | — | src/crew_org/flows/review.py:review_open_pulls | crew#215<br>crew#252<br>crew#945 |
 | `decision.review.verdict`<br>Review every open pull request that the crew has not yet judged. | flow | `src/crew_org/flows/review.py:review_open_pulls` | — | — | src/crew_org/flows/review.py:review_open_pulls | crew#215<br>crew#252<br>crew#945 |
 | `decision.revisit.back_to_work`<br>Put back in Ready the stories a merged design answered, once (crew#690). | flow | `src/crew_org/flows/revisit.py:back_to_work` | — | — | src/crew_org/flows/revisit.py:back_to_work | crew#690 |

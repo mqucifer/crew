@@ -170,8 +170,14 @@ def awaiting_rework(
         head = (pull.get("head") or {}).get("sha")
         if not head:
             return None
+        from crew_org.flows.review import standing_reviews  # noqa: PLC0415
+
         refused = (
-            bool(changes_requested(issues.pull_reviews(repo, pull["number"]), head))
+            bool(
+                changes_requested(
+                    standing_reviews(issues.pull_reviews(repo, pull["number"]), card), head
+                )
+            )
             or any(
                 # Approved, but conflicting with main at merge: returned for a
                 # rebuild. Or a CI check failed on this head (#325).
@@ -311,28 +317,33 @@ def reconcile_orphans(
     next pass rather than assuming it was left tidy. This is what makes it a
     reconciliation loop rather than a script that must not be interrupted.
 
-    A card with an open pull request is not stranded; it is waiting for review.
+    A card with an open pull request is not stranded; it is waiting for review. Its pull
+    request is in the card's own repository: QA's Task's is in qa-suite, whichever
+    project's tick this is (crew#971).
     """
     in_progress = [c for c in cards if c.status == IN_PROGRESS and c.work_type in DELIVERED]
     if not in_progress:
         return []
 
-    try:
-        open_prs = {pull["head"]["ref"]: pull["number"] for pull in issues.open_pulls(repo)}
-    except Exception:  # noqa: BLE001
-        open_prs = {}
+    open_prs: dict[str, dict[str, int]] = {}
+    for own in {c.repo or repo for c in in_progress}:
+        try:
+            open_prs[own] = {pull["head"]["ref"]: pull["number"] for pull in issues.open_pulls(own)}
+        except Exception:  # noqa: BLE001
+            open_prs[own] = {}
 
     recovered: list[int] = []
     for card in in_progress:
         number = card.number or 0
         branch = branch_name(number, card.title)
-        if branch in open_prs:
+        own = card.repo or repo
+        if branch in open_prs[own]:
             # Not stranded, and not waiting for review either: the reviewer has
             # already refused this head, so the card is exactly where it should
             # be and the rework pass will claim it. Moving it to Reviewing is
             # what made the ping-pong — review skips it as already judged, and
             # the card never comes back.
-            if awaiting_rework(issues, repo, branch, card) is not None:
+            if awaiting_rework(issues, own, branch, card) is not None:
                 continue
             move_card(
                 board,
@@ -342,7 +353,7 @@ def reconcile_orphans(
                 by=None,
                 card=number,
                 frm=IN_PROGRESS,
-                summary=f"already has PR #{open_prs[branch]} — moved to review",
+                summary=f"already has PR #{open_prs[own][branch]} — moved to review",
                 rule="decision.delivery.reconcile_orphans",
             )
             continue
@@ -938,7 +949,7 @@ def _deliver_and_move(
         artifacts.comment(
             issues,
             sink,
-            repo=repo,
+            repo=card_repo,
             number=card.number or 0,
             body=already_done_comment(outcome.already_done),
             by="Developer",
@@ -961,7 +972,7 @@ def _deliver_and_move(
         artifacts.comment(
             issues,
             sink,
-            repo=repo,
+            repo=card_repo,
             number=card.number or 0,
             body=f"Implemented in #{outcome.pr} on `{outcome.branch}`. Lint and tests pass.",
             by="Developer",
@@ -982,12 +993,12 @@ def _deliver_and_move(
         )
         counts[IN_PROGRESS] -= 1
         artifacts.label(
-            issues, sink, repo=repo, number=card.number or 0, by="Developer", add=["blocked"]
+            issues, sink, repo=card_repo, number=card.number or 0, by="Developer", add=["blocked"]
         )
         artifacts.comment(
             issues,
             sink,
-            repo=repo,
+            repo=card_repo,
             number=card.number or 0,
             body=f"**Blocked.** {outcome.blocked_reason}\n\n"
             + (f"Where: `{outcome.where}`\n\n" if outcome.where else "")

@@ -15,11 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from crew_org import log, sendbacks
-from crew_org.columns import IN_PROGRESS, QAING, REVIEWING
+from crew_org.columns import BLOCKED, IN_PROGRESS, QAING, REVIEWING, SPRINT_BACKLOG
 from crew_org.crews.deploy_review_crew import review_deploy
 from crew_org.crews.review_crew import Finding, ReviewVerdict, review_diff
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
-from crew_org.flows import role_tasks, story_problem
+from crew_org.flows import artifacts, qa_tasks, role_tasks, story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.ci import return_for_ci
@@ -48,6 +48,8 @@ _log = logging.getLogger(__name__)
 
 REVIEW_MARKER = "<!-- crew:review -->"
 CRITERIA = "## Acceptance criteria"
+# On a review of QA's Task: it was judged on the Task's own criteria (crew#971).
+JUDGED_AS_TASK = "<!-- crew:judged-as-task -->"
 
 
 @dataclass
@@ -161,6 +163,88 @@ def changes_round(reviews: list[dict[str, Any]], bot_login: str, head: str) -> i
     return len(earlier) + 1
 
 
+def _qa_task(card: Card | None) -> bool:
+    role = role_tasks.role_of(card) if card is not None else None
+    return role is not None and role.key == role_tasks.QA.key
+
+
+def standing_reviews(reviews: list[dict[str, Any]], card: Card | None) -> list[dict[str, Any]]:
+    """The reviews that say anything about this card's work.
+
+    Not a refusal of QA's Task from before its review was judged on the Task's own
+    criteria (crew#971): mqucifer/qa-suite#17 was asked to change files only the project
+    it tests has. No work could answer that, so only a new review can.
+    """
+    if not _qa_task(card):
+        return reviews
+    return [r for r in reviews if not _against_the_story(r)]
+
+
+def _against_the_story(review: dict[str, Any]) -> bool:
+    body = review.get("body") or ""
+    return (
+        review.get("state") == "CHANGES_REQUESTED"
+        and REVIEW_MARKER in body
+        and JUDGED_AS_TASK not in body
+    )
+
+
+def back_to_review(
+    issues: IssueClient, board: ProjectClient, sink: EventSink, cards: list[Card], *, repo: str
+) -> list[Card]:
+    """QA's Tasks in `repo` whose head was refused against the story, back in Reviewing.
+
+    The refusal sent them to In Progress, the stranded-card check to the backlog, and
+    the next claim to Blocked for having an open pull request, so none is in review
+    where it can be judged again (crew#971).
+    """
+    back: list[Card] = []
+    for card in cards:
+        if (
+            (card.repo or repo) != repo
+            or card.state == "CLOSED"
+            or card.status not in (IN_PROGRESS, BLOCKED, SPRINT_BACKLOG)
+            or not _qa_task(card)
+        ):
+            continue
+        branch = branch_name(card.number or 0, card.title)
+        try:
+            pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
+            head = ((pull or {}).get("head") or {}).get("sha", "")
+            ours = [
+                r
+                for r in (issues.pull_reviews(repo, pull["number"]) if pull else [])
+                if REVIEW_MARKER in (r.get("body") or "") and head and r.get("commit_id") == head
+            ]
+        except Exception:  # noqa: BLE001 - it's looked at again next pass
+            continue
+        if not ours or not _against_the_story(ours[-1]):
+            continue
+        if "blocked" in card.labels:
+            artifacts.label(
+                issues,
+                sink,
+                repo=repo,
+                number=card.number or 0,
+                by=None,
+                remove=["blocked"],
+                rule="decision.review.against_the_story",
+            )
+        move_card(
+            board,
+            sink,
+            item_id=card.item_id,
+            to=REVIEWING,
+            by=None,
+            card=card.number,
+            frm=card.status,
+            summary="refused against the story's criteria, not its own: to be reviewed again",
+            rule="decision.review.against_the_story",
+        )
+        back.append(card.model_copy(update={"status": REVIEWING}))
+    return back
+
+
 def cards_by_branch(cards: list[Card]) -> dict[str, Card]:
     """The cards waiting for review, indexed by the branch carrying their work.
 
@@ -208,7 +292,8 @@ def review_open_pulls(
     one project, qa-suite's pull requests of other projects' Tasks (crew#945).
     """
     result = ReviewResult()
-    waiting = cards_by_branch(cards or []) if board is not None else {}
+    back = back_to_review(issues, board, sink, cards or [], repo=repo) if board is not None else []
+    waiting = cards_by_branch([*(cards or []), *back]) if board is not None else {}
 
     for pull in issues.open_pulls(repo):
         # One Code Reviewer run per pull request, under the card it closes (crew#449).
@@ -227,7 +312,7 @@ def review_open_pulls(
                 continue
 
             head = (pull.get("head") or {}).get("sha", "")
-            reviews = issues.pull_reviews(repo, number)
+            reviews = standing_reviews(issues.pull_reviews(repo, number), story)
             if already_reviewed(reviews, bot_login, head):
                 # The crew's own approval already covers this head, and the card
                 # still waits in Reviewing. GitHub carries an approval forward to a
@@ -340,6 +425,7 @@ def review_open_pulls(
                     diagram=story_diagram(issues, story, repo),
                     importers=_importers(clone, diff),
                     release=is_release(issues, story, repo),
+                    tests_cover=what_tests_cover(issues, story, repo),
                 )
             except Exception as exc:  # noqa: BLE001
                 reraise_if_down(exc)
@@ -410,7 +496,13 @@ def review_open_pulls(
             # this downgrade now only fires where it should: a pull request the
             # reviewing identity opened itself.
             event = "COMMENT" if author == bot_login else verdict.event
-            issues.create_review(repo, number, event=event, body=render_review(code, deploy))
+            body = render_review(code, deploy)
+            issues.create_review(
+                repo,
+                number,
+                event=event,
+                body=f"{JUDGED_AS_TASK}\n{body}" if _qa_task(story) else body,
+            )
             # What each saw outside this story is filed for its owner (crew#839).
             if story is not None and board is not None:
                 for by, judged in (("Code Reviewer", code), ("DevOps Engineer", deploy)):
@@ -759,6 +851,10 @@ def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) ->
     The reviewer was shown the epic's design note and never the story: on
     sprint-metrics#145 it asked, three times, for the assertion the story's own
     criterion required, because the note said so (#252).
+
+    QA's Task is judged on its own criteria, and the rules of its work. Its body quotes
+    the story it tests, whose criteria aren't its own: mqucifer/qa-suite#17 was asked
+    to do the story's work (crew#971).
     """
     if card is None:
         return ""
@@ -766,6 +862,8 @@ def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) ->
         body = issues.get(card.repo or default_repo, card.number or 0).get("body") or ""
     except Exception:  # noqa: BLE001
         return ""
+    if _qa_task(card):
+        return qa_tasks.own_and_quoted(body)[0]
     start = body.find(CRITERIA)
     if start == -1:
         return ""
@@ -773,6 +871,18 @@ def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) ->
     for end in ("\n**Estimate**", "\n---"):
         section = section.split(end, 1)[0]
     return section.strip()
+
+
+def what_tests_cover(issues: IssueClient, card: Card | None, default_repo: str) -> str:
+    """The story or bug QA's Task tests, as its body quotes it, or "" (crew#971)."""
+    if not _qa_task(card):
+        return ""
+    assert card is not None
+    try:
+        body = issues.get(card.repo or default_repo, card.number or 0).get("body") or ""
+    except Exception:  # noqa: BLE001
+        return ""
+    return qa_tasks.own_and_quoted(body)[1]
 
 
 def _to_product_owner(
