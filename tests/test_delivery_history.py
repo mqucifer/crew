@@ -625,6 +625,14 @@ def test_a_new_version_must_be_later_than_the_last():
     contract.check_version({"1.1.0": "a"}, "1.2.0", "b")
 
 
+def test_the_current_major_still_moves_while_the_next_is_announced():
+    """2.0.0's record holds the announcement's week; 1.x may still add a MINOR."""
+    announced = {"1.11.0": "a", "2.0.0": "b"}
+    contract.check_version(announced, "1.12.0", "c")
+    with pytest.raises(contract.StaleVersion, match="isn't later than 1.11.0"):
+        contract.check_version(announced, "1.10.1", "c")
+
+
 def test_a_package_built_from_every_kind_of_event_matches_the_committed_schema():
     events = [
         MOVE,

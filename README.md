@@ -91,6 +91,19 @@ another step rather than refusing the package. The crew's code writes
 that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
+**2.0.0 is announced: it replaces 1.x on 2026-11-06** (crew#905), a week after the
+announcement merged; if that merge slips, the date moves with it. Its schemas and mock are in
+[`contracts/delivery-history/2.0.0/`](contracts/delivery-history/2.0.0/), and until then the
+package follows 1.x. 2.0.0 carries sprint-metrics 4.2.1's answers in place of 1.3.1's:
+- **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
+  `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
+  `escalation_count` as a measure in what changed. The crew's own record of escalations stays:
+  the `escalated` events and pattern, and each story's `escalations`.
+- **What changes shape:** the failure causes, `top_failure_causes`, become a list of class,
+  role and count, as `failure_breakdown` already is, in place of a map of class to count.
+- **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
+  with cards in them named as `repo#n`.
+
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
   file and `manifest.schema.json` for its manifest.
@@ -99,7 +112,9 @@ is ADR 0022.
   sprint-metrics' own schema for its answers, from the release the crew runs:
   `RELEASE` in `src/crew_org/packages/sprint_metrics_answers.py`. The service
   runs a release at the same MAJOR, which a release's deploy keeps it to
-  (crew#829).
+  (crew#829). A breaking version is announced a week before it ships: its schemas and
+  mock sit beside the current ones in `contracts/delivery-history/<version>/`, and
+  `versions.json` records it, so the version that ships is exactly the one announced.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first
