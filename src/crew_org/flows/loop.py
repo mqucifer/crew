@@ -332,6 +332,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     )
     from crew_org.flows.strain import REVISIT_CONFLICTS  # noqa: PLC0415
     from crew_org.flows.template import propose_changes  # noqa: PLC0415
+    from crew_org.flows.unreleased import unreleased_releases  # noqa: PLC0415
     from crew_org.flows.ux_review import release_review_tasks  # noqa: PLC0415
 
     # A workflow red on a default branch becomes a technical epic first, so the
@@ -391,6 +392,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     # A producer's announced new major opens the Architect's Task in each project that
     # pins the major it replaces, read from what the producer publishes (crew#960).
     announced = announced_tasks(
+        crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
+    )
+    # What waits under `[Unreleased]` that no epic in flight will release, a bug's fix
+    # most often, gets DevOps's release Task of its own (crew#961).
+    fixes = unreleased_releases(
         crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
     )
     # A project with no diagram of its system gets the Architect's Task to draw one
@@ -464,7 +470,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             or ci.opened
         )
         or bool(reviews.opened)
-        or bool(announced.opened),
+        or bool(announced.opened)
+        or bool(fixes.opened),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
@@ -489,6 +496,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
                 if announced.opened
                 else ""
             )
+            + (f", {len(fixes.opened)} releases of unreleased changes" if fixes.opened else "")
             + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
             + (f", {len(housed.opened)} first workspaces for DevOps" if housed.opened else "")
             + (f", {len(ci.opened)} CI services Tasks for DevOps" if ci.opened else "")
@@ -519,6 +527,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{where} — {why}" for where, why in disputes.failed]
         + [f"{repo} — {why}" for repo, why in reviews.failed]
         + [f"{repo} — {why}" for repo, why in announced.failed]
+        + [f"{repo} — {why}" for repo, why in fixes.failed]
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
