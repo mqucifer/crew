@@ -1406,6 +1406,10 @@ flows.review.cards_by_branch:filter:c13977cf:
   at: flows/review.py:cards_by_branch
   if: c.status == REVIEWING and c.state != 'CLOSED'
   rule: decision.review.what_is_reviewed
+flows.review.is_release:end:5669da6c:
+  at: flows/review.py:is_release
+  if: card is None or role_tasks.role_of(card) is not role_tasks.DEVOPS
+  not_a_rule: 'reads what''s recorded (a marker): says what the Reviewer is shown, routes nothing'
 flows.review.review_open_pulls:move:bb417d8d:
   at: flows/review.py:review_open_pulls
   if: event == 'APPROVE'
@@ -1630,6 +1634,14 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
+flows.session_delivery.pr_title:end:07783790:
+  at: flows/session_delivery.py:pr_title
+  if: marked is None or marked.kind != role_tasks.RELEASE or (not marked.key.startswith('epic-'))
+  not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
+flows.session_delivery.pr_title:end:143c9dcf:
+  at: flows/session_delivery.py:pr_title
+  if: not epic.isdigit() or card.title != role_tasks.release_title(full, int(epic)) or 'CHANGELOG.md' not in _branch_paths(worktree)
+  not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
 flows.session_end._blocked:end:2deb6b47:
   at: flows/session_end.py:_blocked
   if: kind == 'test'

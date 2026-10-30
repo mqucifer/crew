@@ -773,6 +773,32 @@ def test_a_split_opens_devops_task_for_the_epics_ci_and_release(tmp_path):
     assert ("number", "item-N901", "Points", role_tasks.RELEASE_POINTS) in board.done
 
 
+def test_a_release_task_is_titled_as_a_release_of_its_epic(tmp_path):
+    """Titled after the epic, the reviewer judged mqucifer/sprint-metrics#876 by the epic's
+    work and sent it back 4 times (crew#948). The epic's title is what it ships."""
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.add(10)
+    role_tasks.epic_release_task(issues, board, s, repo="sm", epic=_epic(), stories=[11], cards=[])
+    task = issues.issues[901]
+    assert task["title"] == "Release for epic mqucifer/sm#10"
+    assert "It ships epic mqucifer/sm#10: Serve the history." in task["body"]
+
+
+def test_a_release_title_names_its_version_once_known():
+    assert role_tasks.release_title("mqucifer/sprint-metrics", 853, "4.2.0") == (
+        "Release 4.2.0 for epic mqucifer/sprint-metrics#853"
+    )
+
+
+def test_the_version_a_release_moves_to_is_its_changelog_s_newest(tmp_path):
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n## [4.2.0] - 2026-10-28\n\n- x\n\n"
+        "## [4.1.0] - 2026-10-20\n"
+    )
+    assert role_tasks.released_version(tmp_path) == "4.2.0"
+    assert role_tasks.released_version(tmp_path / "missing") == ""
+
+
 @pytest.mark.parametrize("refused", ["label", "create", "add", "link"])
 def test_any_refusal_at_the_split_leaves_the_release_task_for_the_next_pass(tmp_path, refused):
     issues, board, s = Issues(), Board(), sink(tmp_path)

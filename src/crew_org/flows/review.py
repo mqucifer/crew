@@ -339,6 +339,7 @@ def review_open_pulls(
                     decisions=story_rows(issues, story, repo),
                     diagram=story_diagram(issues, story, repo),
                     importers=_importers(clone, diff),
+                    release=is_release(issues, story, repo),
                 )
             except Exception as exc:  # noqa: BLE001
                 reraise_if_down(exc)
@@ -737,6 +738,19 @@ def with_docs_finding(
         approve=False,
         findings=[*verdict.findings, *found],
     )
+
+
+def is_release(issues: IssueClient, card: Card | None, default_repo: str) -> bool:
+    """Is the card a DevOps release Task, by its marker (crew#948)? Its title once read
+    as the epic's work, so the title never says."""
+    if card is None or role_tasks.role_of(card) is not role_tasks.DEVOPS:
+        return False
+    try:
+        body = issues.get(card.repo or default_repo, card.number or 0).get("body") or ""
+    except Exception:  # noqa: BLE001
+        return False
+    found = role_tasks.marked(body)
+    return found is not None and found.kind == role_tasks.RELEASE
 
 
 def story_criteria(issues: IssueClient, card: Card | None, default_repo: str) -> str:

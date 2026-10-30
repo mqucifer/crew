@@ -162,6 +162,48 @@ def test_accepted_becomes_a_bug_in_ready_with_its_points():
     assert issues.done[0][0] == "edit"
 
 
+# mqucifer/sprint-metrics#868 as filed: the defect is a stale test, and its fix is that
+# test's removal. As a bug, nothing could fail on main, and the gate sent it back 4 times.
+TEST_ONLY = (
+    "**What happens:** `tests/test_changelog.py::test_unreleased_added_records_range_verdict` "
+    "asserts that the `[Unreleased]` Added section mentions the /range window verdict. A "
+    "release moves `[Unreleased]`'s entries into the dated section, so the test fails after "
+    "any release cut. It now blocks both release Tasks, whose file scope excludes `tests/`.\n\n"
+    "**Where:** `tests/test_changelog.py`, lines 304–317 on main.\n\n"
+    "**Evidence:** This one assertion fails, on `'/range'` missing from an empty "
+    "`[Unreleased]` Added."
+)
+
+
+def test_a_bug_whose_defect_is_in_its_tests_is_accepted_as_a_story():
+    board, issues = Board(), Issues()
+    triage = _triage("accepted", acceptance_criteria=[CRITERION], points=1)
+    bugs.carry_out(board, issues, Sink(), _card(868), repo="sm", report=TEST_ONLY, triage=triage)
+    assert board.done[0] == ("select", "Work Type", "Story")
+    assert ("status", READY) in board.done
+    body = issues.done[0][1]
+    assert "Triaged as a story by the Business Analyst" in body
+    assert "`tests/test_changelog.py`" in body
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        # A product defect, named where it is, with its failing test.
+        "**What happens:** `tests/test_rate.py::test_shown` fails.\n\n"
+        "**Where:** `src/rate/service.py`, and `tests/test_rate.py`.",
+        # No **Where:** to tell by: as a bug, as before.
+        "**What happens:** `tests/test_rate.py::test_shown` fails on main.",
+        REPORT,
+    ],
+)
+def test_a_bug_with_its_defect_anywhere_else_stays_a_bug(report):
+    board, issues = Board(), Issues()
+    triage = _triage("accepted", acceptance_criteria=[CRITERION], points=2)
+    bugs.carry_out(board, issues, Sink(), _card(), repo="sm", report=report, triage=triage)
+    assert board.done[0] == ("select", "Work Type", "Bug")
+
+
 @pytest.mark.parametrize(
     ("outcome", "extra", "closed", "said"),
     [

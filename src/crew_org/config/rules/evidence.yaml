@@ -283,9 +283,15 @@ guard.reproduce.check:
       \ the bug. On this branch they don't all pass in the workspace yet:\n\n{tests}\n\nEach\
       \ has to run and pass there, and a file that hung has to run to its end, every test\
       \ in it passing."
+    test_only: 'The defect looks like the test itself: this branch changes only tests, the
+      named ones'' files among them ({files}), and none of them fails against the code as merged:
+      {passed} pass there. A bug''s test has to fail on main, and a fix to the test itself
+      can''t make one, so no change to this branch can meet this check. The way out is back to
+      refinement, as a story: its criteria hold as they are.'
   origin:
   - crew#407
   - crew#839
+  - crew#949
   owner: Developer
 session.run:
   description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint

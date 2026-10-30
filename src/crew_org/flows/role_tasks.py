@@ -21,6 +21,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from crew_org.columns import NEEDS_REFINEMENT, READY
@@ -1723,13 +1724,15 @@ def epic_release_task(
     the board is what `pending_release_tasks` looks for.
     """
     number = epic.number or 0
+    ref = f"{issues.owner}/{repo}#{number}"
     body = render(
         DEVOPS,
         kind=RELEASE,
         key=f"epic-{number}",
         why=f"Epic #{number} was split"
         + (" into " + ", ".join(f"#{n}" for n in stories) if stories else "")
-        + ". Each epic releases itself (ADR 0019), and its CI and release are DevOps's.",
+        + ". Each epic releases itself (ADR 0019), and its CI and release are DevOps's. "
+        f"It ships epic {ref}: {epic.title}.",
         work="This waits until every story of the epic is done.\n\n"
         "**CI:** CI runs what the epic's stories need, with nothing skipped that it should "
         "run: services the tests need, jobs, the image's platforms. CI gaps a story hit "
@@ -1755,7 +1758,7 @@ def epic_release_task(
             role=DEVOPS,
             kind=RELEASE,
             key=f"epic-{number}",
-            title=f"CI and release for #{number}: {epic.title}"[:120],
+            title=release_title(f"{issues.owner}/{repo}", number),
             body=body,
             points=RELEASE_POINTS,
             cards=cards,
@@ -1767,6 +1770,27 @@ def epic_release_task(
         reraise_if_down(exc)
         return not_opened(sink, repo=repo, role=DEVOPS, kind=RELEASE, card=number, why=exc)
     return ""
+
+
+def release_title(repo: str, epic: int, version: str = "") -> str:
+    """A release Task's title, and its pull request's: the release and its epic, never the
+    epic's title, which the reviewer read as a promise of the epic's work (crew#948).
+    `repo` is owner/name, so the reference links wherever the title is read."""
+    return f"Release {version + ' ' if version else ''}for epic {repo}#{epic}"
+
+
+_RELEASED = re.compile(r"^## \[(\d+\.\d+\.\d+[^\]]*)\]", re.M)
+
+
+def released_version(worktree: Path) -> str:
+    """The newest version `CHANGELOG.md` names, or "": a release moves `[Unreleased]` to
+    it, so on a release's branch that changed the changelog, it's the one released."""
+    try:
+        text = (worktree / "CHANGELOG.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    found = _RELEASED.search(text)
+    return found.group(1) if found else ""
 
 
 def pending_release_tasks(

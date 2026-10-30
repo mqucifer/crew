@@ -100,6 +100,7 @@ def review_diff(
     importers: str = "",
     decisions: str = "",
     diagram: str = "",
+    release: bool = False,
 ) -> ReviewVerdict:
     """Review one pull request's diff.
 
@@ -117,6 +118,9 @@ def review_diff(
     and delivery's own run reported, and the code the diff imports as it is on
     the base branch. Without them a diff of tests alone looks like tests that
     must fail, even when the code they exercise has already landed.
+
+    `release` is a DevOps release Task's pull request (crew#948): judged on what a release
+    changes, not on its epic's story work, which its stories' own pull requests merged.
     """
     if len(diff) > MAX_DIFF_CHARS:
         return ReviewVerdict(
@@ -153,12 +157,22 @@ def review_diff(
         if prior_verdicts
         else ""
     )
+    released = (
+        "\n\n## This pull request is a release\n\n"
+        "It's DevOps's release of its epic. A release changes `CHANGELOG.md` (it moves "
+        "`[Unreleased]` to the new version), the version where the project keeps it, and CI. "
+        "It ships the epic's stories, already merged, each reviewed in its own pull request. "
+        "Judge it on the changelog, the version and CI, not on the epic's story work."
+        if release
+        else ""
+    )
     return calls.ask(
         "code_reviewer",
         [
             calls.Part(
                 "task",
-                f"Review this pull request.\n\n## Title\n\n{title}{criteria}{previously}\n\n"
+                f"Review this pull request.\n\n## Title\n\n{title}{released}{criteria}"
+                f"{previously}\n\n"
                 f"## Diff\n\n```diff\n{diff}\n```\n\n"
                 + (f"{checks}\n\n" if checks else "")
                 + (f"{imported}\n\n" if imported else "")

@@ -29,6 +29,8 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 
 **How a bug flows** (built by crew#407): refined if needed, sized 1–5, admitted to a sprint, fixed with a test that reproduces it and then passes, reviewed, and proven by QA. The test runs where the project's tests can: in the default branch's workspace, with its services, when it declares one (crew#839). A bug the crew filed from the tests a workspace turned on is already reproduced: the crew's own record, made at merge, names the tests that fail on main. Its fix makes each of them pass in the workspace, and a hung file runs to its end.
 
+**A bug whose defect is in the project's tests goes as a story** (agreed with the Sponsor on mqucifer/crew#949, 2026-10-29). Its fix is in the test, so no test can fail on main, as a bug's has to: triage accepts it as a `Story` when every file its report's `**Where:**` names is a test. A bug that reaches the gate in that shape anyway gets a final finding saying so, and stops in one round.
+
 ## Consequences
 
 - People have a way to report a defect besides writing a Goal, and a bug isn't dressed up as one.
@@ -43,3 +45,4 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 - **2026-10-21:** a proposed Goal is also how the Product Owner says "the Goal points elsewhere" (ADR 0018), so it's built in M7 (crew#846) rather than waiting for the consumer review. Decided by the Sponsor in the overhaul's planning session.
 - **2026-10-23:** a bug the crew's own App files (org.yaml's `trust.crew`) is triaged like a collaborator's. The first, mqucifer/sprint-metrics#742, was refused as "not a collaborator"; mqucifer/crew#839 had already decided the crew files it.
 - **2026-10-23:** a bug's test runs in the default branch's workspace, not the networkless sandbox, where a database test could only skip. A bug the crew filed from turned-on tests is reproduced by its own record, read only from the crew's comment at the merged head. mqucifer/sprint-metrics#742 was refused three rounds running for a database test the sandbox skipped (crew#839).
+- **2026-10-29:** a bug whose defect and fix are in the project's tests is triaged as a story, since the reproduction check can't be met by one (mqucifer/crew#949). mqucifer/sprint-metrics#868 was sent back 4 times before the operator re-filed it by hand.

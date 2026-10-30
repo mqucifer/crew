@@ -358,6 +358,36 @@ def test_a_bugs_tests_must_fail_without_the_fix(repo, monkeypatch):
     assert [f.rule for f in verdict.findings] == ["guard.reproduce.check"]
 
 
+def test_a_bug_whose_fix_is_only_its_tests_is_told_it_is_a_story_s_work(repo, monkeypatch):
+    """mqucifer/sprint-metrics#868 (crew#949): the defect was a stale test, so its fix was
+    in the test file alone, and nothing could fail on main. The gate said the same thing
+    5 times; this finding names the shape, and is final."""
+    passed = reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"])
+    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: passed)
+    # The test was the defect: it pinned a value, and the fix loosens it. Declared, as
+    # the story's Existing tests line says.
+    (repo / TESTS).write_text(MERGED_TESTS.replace("== 100", "<= 100"))
+    said = done((f"{TESTS}::test_rate_is_capped", "it pinned the cap"))
+    verdict = at_done(repo, said, card=card("Bug"))
+    (finding,) = verdict.findings
+    assert finding.rule == "guard.reproduce.check" and finding.final
+    assert finding.says.startswith("The defect looks like the test itself")
+    assert "The way out is back to refinement, as a story" in finding.says
+    assert f"`{TESTS}`" in finding.says
+
+
+def test_a_product_bug_whose_test_passes_on_main_still_goes_back_to_reproduce_it(repo, monkeypatch):
+    """The branch changes the code as well as its test: the test has to show the bug."""
+    passed = reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"])
+    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: passed)
+    uncap(repo)
+    said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
+    (finding,) = at_done(repo, said, card=card("Bug")).findings
+    assert finding.rule == "guard.reproduce.check" and not finding.final
+    assert finding.says.startswith("The fix passes the checks, but ")
+    assert "looks like the test itself" not in finding.says
+
+
 def test_the_pull_request_lists_the_declared_tests_apart_from_the_questions(repo):
     uncap(repo)
     verdict = at_done(repo, done((f"{TESTS}::test_rate_is_capped", "the cap is gone")))

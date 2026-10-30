@@ -225,7 +225,7 @@ section; one no line holds for is unplaced, never guessed.
 
 {}{} | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 | `guard.regression.broken_contracts`<br>guard.regression.broken_contracts | contracts | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
-| `guard.reproduce.check`<br>The fix passes the checks, but {}. Change them so at least one fails against the code as merged, for the reason the bug describes. | evidence | `src/crew_org/flows/gates.py:_as_recorded` | Developer | — | src/crew_org/flows/gates.py:_as_recorded<br>src/crew_org/flows/gates.py:_reproduced | crew#407<br>crew#778<br>crew#839 |
+| `guard.reproduce.check`<br>The fix passes the checks, but {}. Change them so at least one fails against the code as merged, for the reason the bug describes. | evidence | `src/crew_org/flows/gates.py:_as_recorded` | Developer | — | src/crew_org/flows/gates.py:_as_recorded<br>src/crew_org/flows/gates.py:_reproduced | crew#407<br>crew#778<br>crew#839<br>crew#949 |
 | `guard.role_tasks.out_of_scope`<br>A role's Task changes only its role's area (crew#839); what else it needs is its own finding, a bug or another Task. | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 
 ## The crew changes the work itself, and records it

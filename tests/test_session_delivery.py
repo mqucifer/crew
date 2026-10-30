@@ -479,6 +479,33 @@ def test_the_gates_same_finding_three_times_stops_the_delivery_and_keeps_its_wor
     )
 
 
+def test_a_final_finding_stops_the_delivery_in_its_first_round(ws, deliver):
+    """mqucifer/sprint-metrics#868 (crew#949): no change could meet the reproduction check,
+    and it was sent back 4 times and refused a fifth, over 7 sessions."""
+    from crew_org.flows.gates import Finding, Verdict
+
+    final = Finding("guard.reproduce.check", "The defect looks like the test itself.", final=True)
+    sessions = Sessions({"writes": {"rate.py": "RATE = 2\n"}, "ending": Ending("done", DONE)})
+    routes = Gates(
+        session_end.Route(
+            session_end.SESSION,
+            final.rule,
+            start="## The gates",
+            verdict=Verdict(findings=[final]),
+        )
+    )
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.attempts == 1, "no second session"
+    assert outcome.routed == session_end.REFINEMENT
+    stopped = routes.asked[-1]
+    assert (stopped.how, stopped.stop) == ("blocked", "gate_repeat")
+    assert stopped.evidence["stop"] == {"repeats": 1, "final": "guard.reproduce.check"}
+    [note] = routes.notes
+    assert "stopped by the gates at `done`, whose finding no change to the branch can meet" in note
+    assert "**What the gates found:**\n\n> The defect looks like the test itself." in note
+    assert len(kept_on_origin(ws)) == 1
+
+
 def test_two_same_findings_then_another_go_on_to_the_next_session(ws, deliver):
     sessions = Sessions(*({"ending": Ending("done", DONE)} for _ in range(4)))
     routes = Gates(
@@ -1413,3 +1440,45 @@ def test_a_resumed_delivery_that_leaves_keeps_a_newer_branch_the_next_resume_tak
     resumes(ws, deliver, issues)
     assert issues.asked == newer
     assert (Held.instances[-1].worktree / "rate.py").read_text() == "RATE = 3\n"
+
+
+def _release_task(title: str) -> Card:
+    return Card(item_id="T1", number=901, title=title, repo="sprint-metrics")
+
+
+@pytest.mark.parametrize(
+    ("title", "changed", "kind", "expected"),
+    [
+        (
+            "Release for epic mqucifer/sprint-metrics#853",
+            ["CHANGELOG.md", "pyproject.toml"],
+            "release",
+            "Release 4.2.0 for epic mqucifer/sprint-metrics#853",
+        ),
+        # Not yet released on the branch: no version to name.
+        (
+            "Release for epic mqucifer/sprint-metrics#853",
+            ["ci.yml"],
+            "release",
+            "Release for epic mqucifer/sprint-metrics#853",
+        ),
+        # An open Task from before crew#948 keeps its title.
+        ("CI and release for #853: Rewrite it", ["CHANGELOG.md"], "release", None),
+        # Another kind of Task, whatever its title says.
+        ("Release for epic mqucifer/sprint-metrics#853", ["CHANGELOG.md"], "deploy", None),
+    ],
+)
+def test_a_release_pull_request_names_the_version_it_moves_to(
+    tmp_path, monkeypatch, title, changed, kind, expected
+):
+    """Told from the Task's marker, and only once the branch moved the changelog."""
+    from crew_org.flows import role_tasks
+
+    (tmp_path / "CHANGELOG.md").write_text("## [Unreleased]\n\n## [4.2.0] - 2026-10-28\n")
+    monkeypatch.setattr(session_delivery, "_branch_paths", lambda _w: changed)
+    marked = role_tasks.Marked(role_tasks.DEVOPS, kind, "epic-853")
+    issues = SimpleNamespace(owner="mqucifer")
+    got = session_delivery.pr_title(
+        _release_task(title), marked, issues, "sprint-metrics", tmp_path
+    )
+    assert got == (expected or title)
