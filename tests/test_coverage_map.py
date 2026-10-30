@@ -143,10 +143,11 @@ def test_the_map_survives_its_store(repo):
 class Runs:
     """The sandbox, standing in: records each command and writes the report."""
 
-    def __init__(self, *, report=REPORT, fail=None):
+    def __init__(self, *, report=REPORT, fail=None, output=""):
         self.commands = []
         self.report = report
         self.fail = fail
+        self.output = output
 
     def __call__(self, worktree, command, *, sandbox, network, timeout=0):
         self.commands.append((command, network))
@@ -155,7 +156,7 @@ class Runs:
             return CommandResult(" ".join(command), 1, "no network")
         if command in (cm.MEASURE, cm.OWN_MEASURE) and self.report is not None:
             (worktree / cm.WORK / "coverage.json").write_text(json.dumps(self.report))
-        return CommandResult(" ".join(command), 0, "")
+        return CommandResult(" ".join(command), 0, self.output)
 
 
 def test_the_tests_run_offline_after_a_setup_with_the_network(repo, tmp_path_factory):
@@ -192,6 +193,70 @@ def test_a_setup_that_fails_says_why(repo, tmp_path_factory):
 def test_no_report_says_why(repo, tmp_path_factory):
     with pytest.raises(cm.CoverageUnavailable, match="no coverage report"):
         cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=Runs(report=None))
+
+
+# pytest's output when a module can't be imported: the head of what sprint-metrics'
+# run printed on 2026-10-29, when every module failed so (crew#950).
+COLLECTION = (
+    """\
+==================================== ERRORS ====================================
+_____________________ ERROR collecting tests/test_card.py ______________________
+ImportError while importing test module '/work/tests/test_card.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+tests/test_card.py:7: in <module>
+    from sprint_metrics.card import Card, _as_cards, _parse_date, parse_card
+E   ModuleNotFoundError: No module named 'sprint_metrics'
+__________________ ERROR collecting tests/test_dependabot.py ___________________
+ImportError while importing test module '/work/tests/test_dependabot.py'.
+Traceback:
+tests/test_dependabot.py:3: in <module>
+    import yaml
+E   ModuleNotFoundError: No module named 'yaml'
+=========================== short test summary info ============================
+ERROR tests/test_card.py
+ERROR tests/test_dependabot.py
+"""
+    + "ERROR tests/test_more.py\n" * 40
+    + """\
+!!!!!!!!!!!!!!!!!!! Interrupted: 42 errors during collection !!!!!!!!!!!!!!!!!!!
+"""
+)
+
+
+def test_no_report_names_the_first_collection_error_whole(repo, tmp_path_factory):
+    """The tail was only the summary's list of files, and the note cut that to 160
+    characters: no tick recorded why sprint-metrics' modules didn't import (crew#950)."""
+    with pytest.raises(cm.CoverageUnavailable) as raised:
+        cm.build(
+            repo,
+            "pkg",
+            store=tmp_path_factory.mktemp("store"),
+            run=Runs(report=None, output=COLLECTION),
+        )
+    said = str(raised.value)
+    assert "ERROR collecting tests/test_card.py" in said
+    assert "No module named 'sprint_metrics'" in said
+    assert "test_dependabot" not in said
+
+
+def test_a_project_in_its_own_image_set_up_with_uv_is_measured_through_uv(repo, tmp_path_factory):
+    """sprint-metrics names a uv image and sets up with `uv sync`, into `.venv`: the
+    image's bare python can't import the project or its dependencies (crew#950)."""
+
+    class Own:
+        image = "ghcr.io/astral-sh/uv:python3.12-bookworm@sha256:abc"
+        setup = ["uv", "sync", "--extra", "dev", "--quiet"]
+        problem = None
+        python = True
+
+    runs = Runs()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(cm.workspace, "toolchain", lambda _: Own())
+        found = cm.build(repo, "pkg", store=tmp_path_factory.mktemp("store"), run=runs)
+    assert [c for c, _ in runs.commands] == [Own.setup, cm.INSTALL, cm.MEASURE]
+    assert set(runs.images) == {Own.image}
+    assert found.tests
 
 
 def test_a_project_with_no_python_part_has_no_map(repo, tmp_path_factory):

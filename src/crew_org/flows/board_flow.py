@@ -1677,7 +1677,7 @@ class RepoContext:
         if self._ws is None:
             return None
         if repo not in self._reading:
-            from crew_org.tools.coverage_map import build  # noqa: PLC0415
+            from crew_org.tools.coverage_map import CoverageUnavailable, build  # noqa: PLC0415
 
             try:
                 root = self._ws.for_repo(repo).at_main()
@@ -1687,6 +1687,11 @@ class RepoContext:
                 return None
             try:
                 coverage = build(root, repo)
+            except CoverageUnavailable as exc:
+                # Whole: cut at 160 characters, sprint-metrics' notes kept only the
+                # list of files that didn't import, never why (crew#950).
+                self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}")
+                coverage = None
             except Exception as exc:  # noqa: BLE001 - `tests_for` says there's no map
                 reraise_if_down(exc)
                 self._sink.note(EventKind.NOTE, f"{repo}: no coverage map: {exc}"[:160])

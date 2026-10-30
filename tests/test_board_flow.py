@@ -1070,3 +1070,29 @@ def test_the_skeleton_goal_itself_is_decomposed(monkeypatch):
         skeleton_only={"sprint-metrics": "CI hasn't run green on `main`"},
     )
     assert result.proposed == [1]
+
+
+def test_a_coverage_map_that_cant_be_built_is_noted_whole(tmp_path, monkeypatch):
+    """Cut at 160 characters, the note kept only the summary's file list, and no tick
+    recorded why sprint-metrics' modules didn't import (crew#950)."""
+    from crew_org.tools import coverage_map
+
+    why = "no coverage report: " + "E   ModuleNotFoundError: No module named 'x'\n" * 8
+
+    def unavailable(root, repo):
+        raise coverage_map.CoverageUnavailable(why)
+
+    class Checkout:
+        def at_main(self):
+            return tmp_path
+
+    class Ws:
+        def for_repo(self, repo):
+            return Checkout()
+
+    monkeypatch.setattr(coverage_map, "build", unavailable)
+    sink = EventSink()
+    notes = []
+    sink.subscribe(lambda e: notes.append(e.summary))
+    board_flow.RepoContext(Ws(), sink).reading_for("pkg")
+    assert f"pkg: no coverage map: {why}" in notes
