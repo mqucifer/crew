@@ -159,10 +159,11 @@ def review_diff(
     )
     released = (
         "\n\n## This pull request is a release\n\n"
-        "It's DevOps's release of its epic. A release changes `CHANGELOG.md` (it moves "
-        "`[Unreleased]` to the new version), the version where the project keeps it, and CI. "
-        "It ships the epic's stories, already merged, each reviewed in its own pull request. "
-        "Judge it on the changelog, the version and CI, not on the epic's story work."
+        "It's DevOps's release: of an epic, or of what waits under `[Unreleased]` with no "
+        "epic behind it. A release changes `CHANGELOG.md` (it moves `[Unreleased]` to the "
+        "new version), the version where the project keeps it, and CI. It ships work "
+        "already merged, each piece reviewed in its own pull request. Judge it on the "
+        "changelog, the version and CI, not on the work it ships."
         if release
         else ""
     )

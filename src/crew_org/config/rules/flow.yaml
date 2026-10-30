@@ -87,6 +87,13 @@ decision.announcements.none_published:
     notes it.
   origin:
   - crew#960
+decision.unreleased.unreleased_releases:
+  description: Entries under a project's `[Unreleased]` that no epic in flight will release open
+    DevOps's release Task, once per version they follow, a PATCH when they're only fixes. An open
+    release Task, or an open epic with stories and no release Task yet, carries them instead; a
+    project never released waits for its first epic's.
+  origin:
+  - crew#961
 decision.backlog_order.what_is_ordered:
   description: The Product Owner ranks the open epics with no Rank. One it can't place yet is held for
     the work it builds on, and an order it can't give is recorded as failed.
