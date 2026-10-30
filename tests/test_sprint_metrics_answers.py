@@ -48,6 +48,19 @@ def test_the_crew_reads_4_2_1_whose_answers_have_no_escalation_measures():
     assert "window" in sma.range_schema()["required"]
 
 
+def test_the_mock_s_failure_causes_are_4_x_s_list_of_class_role_and_count():
+    """1.x answered `{"VERIFY": 2}`; 4.x answers a list, as its failure breakdown is."""
+    six = mock.range_body()["sprints"][SIX]
+    assert six["top_failure_causes"] == [
+        {"class": "VERIFY", "role": "Developer", "count": 2},
+        {"class": "EDIT", "role": "Developer", "count": 1},
+    ]
+    assert (
+        sma.checked(mock.range_body(), [FIVE, SIX])[SIX]["top_failure_causes"]
+        == (six["top_failure_causes"])
+    )
+
+
 def test_the_package_schema_embeds_sprint_metrics_own():
     answers = contract.schemas()["schema.json"]["$defs"]["SprintMetrics"]["properties"]["answers"]
     embedded = dict(answers["additionalProperties"])

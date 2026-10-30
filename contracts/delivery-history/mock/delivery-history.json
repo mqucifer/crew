@@ -947,9 +947,13 @@
      "sponsor": 0,
      "story_problem": 0
     },
-    "top_failure_causes": {
-     "VERIFY": 1
-    },
+    "top_failure_causes": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
     "failure_breakdown": [
      {
       "class": "VERIFY",
@@ -988,10 +992,18 @@
      "sponsor": 0,
      "story_problem": 1
     },
-    "top_failure_causes": {
-     "VERIFY": 2,
-     "EDIT": 1
-    },
+    "top_failure_causes": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 2
+     },
+     {
+      "class": "EDIT",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
     "failure_breakdown": [
      {
       "class": "VERIFY",

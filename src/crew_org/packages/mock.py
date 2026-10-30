@@ -659,7 +659,7 @@ _SPRINT_5 = {
     "superseded_count": 0,
     "superseded_points": 0,
     "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
-    "top_failure_causes": {"VERIFY": 1},
+    "top_failure_causes": [{"class": "VERIFY", "role": "Developer", "count": 1}],
 }
 _SPRINT_6 = {
     "throughput": 6,
@@ -676,7 +676,10 @@ _SPRINT_6 = {
     "superseded_count": 1,
     "superseded_points": 3,
     "superseded_breakdown": {"sponsor": 0, "story_problem": 1},
-    "top_failure_causes": {"VERIFY": 2, "EDIT": 1},
+    "top_failure_causes": [
+        {"class": "VERIFY", "role": "Developer", "count": 2},
+        {"class": "EDIT", "role": "Developer", "count": 1},
+    ],
 }
 
 
