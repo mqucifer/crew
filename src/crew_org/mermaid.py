@@ -43,7 +43,9 @@ C4_TYPES = ("C4Context", "C4Container", "C4Component", "C4Dynamic", "C4Deploymen
 
 # Node's LTS line, pinned by digest as every image the crew runs is. The parser's own
 # version is in `mermaid_parse/package.json`: GitHub doesn't say which it renders with
-# outside a browser, so it's the newest 11.x (11.17.2 on 2026-10-26).
+# outside a browser, so it's the newest 11.x (11.17.2 on 2026-10-26). Its `katex` is
+# overridden to 0.19.1 for KaTeX's prototype-pollution fix (GHSA-238p-pmpm-9mq7, crew#964):
+# 11.x asks for ^0.16, which has no fix, and the parse never draws math.
 IMAGE = (
     "node:24.22.1-bookworm-slim"
     "@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205"
