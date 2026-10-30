@@ -9,6 +9,8 @@ they hold whether or not the rule is remembered:
   imports phase modules lazily, so a tick would mix old and new code;
 - a bare issue number (`#123`) in a `gh` issue or PR body: GitHub links it to
   that number in whichever repository it is posted in;
+- a closing keyword before an issue reference in a PR body, except on the PR's
+  own closing line: GitHub closes that issue when the PR merges (crew#951);
 - a secret on a command line or in a command's output: arguments show in `ps`
   and the session's command record (CWE-214), output reaches the transcript
   (CWE-532). It also runs before the Read tool, which would print a `.env`, and
@@ -38,6 +40,23 @@ GH_WRITE = re.compile(r"\bgh\s+(issue|pr)\s+(create|comment|edit|review|close)\b
 # `#123` with nothing that scopes it in front: `crew#123`, `owner/repo#123`
 # and full URLs pass. A digit run followed by a letter is a colour, not an issue.
 BARE_ISSUE = re.compile(r"(?<![\w/#])#\d+(?![\w])")
+
+# GitHub closes an issue when one of these comes right before its reference,
+# anywhere in a merged PR's body, so "couldn't close: owner/repo#N" closes it.
+GH_PR_BODY = re.compile(r"\bgh\s+pr\s+(create|edit)\b")
+KEYWORD = r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)"
+REFERENCE = (
+    r"(?:[\w.-]+/[\w.-]+#\d+|#\d+"
+    r"|https?://github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+)"
+)
+CLOSES = re.compile(
+    rf"(?<![A-Za-z0-9])[*_]*{KEYWORD}[*_]*(?::[\s*_]*|[\s*_]+)(?P<ref>{REFERENCE})", re.IGNORECASE
+)
+# The intended closing line holds the keyword and one reference and nothing
+# else, so a sentence that happens to start with "Fixes" is still prose.
+CLOSING_LINE = re.compile(
+    rf"[*_]*{KEYWORD}[*_]*:?[ \t*_]+{REFERENCE}[*_]*[ \t.\"'`]*", re.IGNORECASE
+)
 
 TICK = "crew tick"
 
@@ -141,12 +160,47 @@ def check_gh_body(command: str, cwd: Path) -> None:
                 path = (cwd / words[words.index(flag) + 1]).expanduser()
                 with contextlib.suppress(OSError):
                     texts.append(path.read_text())
+    if GH_PR_BODY.search(command):
+        for body in [*inline_bodies(command), *texts[1:]]:
+            check_closing(body)
     for text in texts:
         found = BARE_ISSUE.search(text)
         if found:
             refuse(
                 f"bare issue number {found.group()} in a gh body. GitHub links it in the "
                 "repository it's posted to. Write `owner/repo#N` or the full URL."
+            )
+
+
+def inline_bodies(command: str) -> list[str]:
+    """The `--body` values of `gh pr create/edit`, each as its own text."""
+    try:
+        commands = Shell(command).commands()
+    except (ValueError, IndexError):
+        return []
+    bodies = []
+    for cmd in commands:
+        words = [w.text for w in cmd.words]
+        if not GH_PR_BODY.match(" ".join(words[:3])):
+            continue
+        for i, word in enumerate(words):
+            if word in ("--body", "-b") and i + 1 < len(words):
+                bodies.append(words[i + 1])
+            elif word.startswith("--body="):
+                bodies.append(word.removeprefix("--body="))
+    return bodies
+
+
+def check_closing(text: str) -> None:
+    for line in text.splitlines():
+        found = CLOSES.search(line)
+        if found and not CLOSING_LINE.fullmatch(line):
+            ref = found.group("ref")
+            refuse(
+                f"a closing keyword before a reference in a PR body: `{line.strip()}`. "
+                f"GitHub closes {ref} when this PR merges. Only the PR's own closing line, "
+                "`Closes owner/repo#N` alone on its line, may pair them. Reword the rest, "
+                f"such as `left open: {ref}`."
             )
 
 
