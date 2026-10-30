@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+from crew_org import sendbacks
 from crew_org.packages import delivery_history as dh
 from crew_org.packages import sprint_metrics_feed as smf
 
@@ -123,21 +124,118 @@ def test_a_story_becomes_started_attempts_and_finished_with_its_first_miss():
         "created": "2026-10-11",
         "created_at": "2026-10-11T01:00:00+00:00",
         "points": 3,
-        "attempts": 3,
         "failure_class": "VERIFY",
         "failure_role": "Developer",
     }
     assert finished["api_version"] == "1"
 
 
-def test_a_story_that_landed_first_time_finishes_with_one_attempt():
+def test_finished_carries_no_count_of_attempts_sprint_metrics_counts_them():
+    """The crew logs what happened; sprint-metrics decides what first try means (crew#963)."""
     found = smf.feed(_history([_card(1)]), [_period([_moved(1, 30, "Merging", "Done")])])
     assert found.events[0]["card"] == {
         "created": "2026-10-11",
         "created_at": "2026-10-11T01:00:00+00:00",
         "points": 3,
-        "attempts": 1,
     }
+
+
+def _at(minutes: float) -> datetime:
+    return T0 + timedelta(minutes=minutes)
+
+
+def _session(number: int, minutes: float) -> dh.SessionStarted:
+    return dh.SessionStarted(
+        at=_at(minutes), card=_ref(number), start_chars={"total": 1}, rework=False
+    )
+
+
+def _sent_back(number: int, minutes: float, back: sendbacks.SendBack) -> dh.SentBack:
+    return dh.SentBack(
+        at=_at(minutes),
+        repo="sm",
+        card=_ref(number),
+        sent_from=back.sent_from,
+        sent_to=back.sent_to,
+        rule=str(back.rule),
+        round=1,
+        counts={},
+    )
+
+
+def _returns(found: smf.Feed) -> list[tuple]:
+    return [
+        (e["failure_class"], e.get("failure_role"), "attempt_number" in e)
+        for e in found.events
+        if e["type"] == "attempt_failed"
+    ]
+
+
+def test_every_return_of_a_sessions_story_goes_as_a_miss_by_its_step():
+    """CI failing and a conflict rebuild are returns too: sprint-metrics can't count what
+    it isn't sent (crew#963)."""
+    events = [
+        _session(1, 0),
+        _moved(1, 1, "In Progress", "Reviewing"),
+        _sent_back(1, 2, sendbacks.CI_BEFORE_REVIEW),
+        _moved(1, 3, "In Progress", "Reviewing"),
+        _sent_back(1, 4, sendbacks.MERGE_CONFLICT),
+        _sent_back(1, 5, sendbacks.MERGE_CI_FAILED),
+        _sent_back(1, 6, sendbacks.MERGE_CHANGES_REQUESTED),
+        _sent_back(1, 7, sendbacks.DEPLOY_REVIEW_CHANGES),
+        _sent_back(1, 8, sendbacks.QA_UNPROVEN),
+        _moved(1, 9, "Merging", "Done"),
+        _sent_back(1, 10, sendbacks.REVERTED),
+    ]
+    found = smf.feed(_history([_card(1)]), [_period(events)])
+    assert _returns(found) == [
+        ("CI", None, False),
+        ("CONFLICT", None, False),
+        ("CI", None, False),
+        ("REVIEW", None, False),
+        ("REVIEW", "DevOps Engineer", False),
+        ("QA", "QA Engineer", False),
+        ("REVERT", None, False),
+    ]
+    (finished,) = [e for e in found.events if e["type"] == "finished"]
+    assert "attempts" not in finished["card"]
+    assert finished["card"]["failure_class"] == "CI"
+
+
+def test_the_gates_and_the_developers_own_send_backs_arent_returns():
+    """The gate's before review (the Sponsor, 2026-10-18), and the Developer's own stop,
+    which the crew counts for its blocks."""
+    events = [
+        _session(1, 0),
+        _sent_back(1, 1, sendbacks.GATE_FINDINGS),
+        _sent_back(1, 2, sendbacks.CONTRACT_REPAIR),
+        _sent_back(1, 3, sendbacks.SESSION_BLOCKED),
+        _sent_back(1, 4, sendbacks.ROUND_TRIPS),
+        _moved(1, 5, "Merging", "Done"),
+    ]
+    assert _returns(smf.feed(_history([_card(1)]), [_period(events)])) == []
+
+
+def test_a_reviews_verdict_and_its_send_back_are_one_return():
+    """Each send-back writes its event beside the verdict (crew#862): one return, sent once."""
+    verdict = dh.WorkFinished(
+        at=_at(2), card=_ref(1), pull=None, role="Code Reviewer", verdict="changes_requested"
+    )
+    events = [
+        _session(1, 0),
+        _moved(1, 1, "In Progress", "Reviewing"),
+        verdict,
+        _sent_back(1, 2.5, sendbacks.REVIEW_CHANGES),
+        _moved(1, 3, "Reviewing", "In Progress"),
+        # Asked again an hour later: a second return.
+        _sent_back(1, 60, sendbacks.REVIEW_CHANGES),
+        _moved(1, 90, "Merging", "Done"),
+    ]
+    found = smf.feed(_history([_card(1)]), [_period(events)])
+    assert _returns(found) == [
+        ("REVIEW", "Code Reviewer", False),
+        ("REVIEW", "Code Reviewer", False),
+    ]
 
 
 def test_a_block_and_the_move_to_blocked_are_one_block_and_leaving_it_unblocks():

@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 14 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 78 |
+| The tick decides a card's handling, found by the decision-point audit | 79 |
 | A setting that changes what the tick does | 211 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 72 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 155 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 156 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -332,6 +332,7 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.sprint.plan_sprint`<br>Epics past the Sponsor's gate — approving them was the scope decision. | flow | `src/crew_org/flows/sprint.py:approved_epics` | — | — | src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | — |
 | `decision.sprint.start_sprint`<br>Admit the planned stories into the sprint. | flow | `src/crew_org/flows/sprint.py:start_sprint` | — | — | src/crew_org/flows/sprint.py:start_sprint | — |
 | `decision.strain.strained`<br>The files in `repo` that `threshold` stories of one sprint collided in. | flow | `src/crew_org/flows/strain.py:strained` | — | — | src/crew_org/flows/strain.py:strained | — |
+| `decision.unreleased.unreleased_releases`<br>Why an epic's release will ship what waits, or "" when none will. | flow | `src/crew_org/flows/unreleased.py:in_flight` | — | — | src/crew_org/flows/unreleased.py:in_flight<br>src/crew_org/flows/unreleased.py:unreleased_releases | crew#961 |
 | `decision.ux_review.blocked`<br>Work the review Task in a session, file its corrections, and close it: "done", or "blocked" with why on the Task. | flow | `src/crew_org/flows/ux_review.py:review` | — | — | src/crew_org/flows/ux_review.py:review | crew#830 |
 | `decision.ux_review.release_review_tasks`<br>Each repository whose release went live gets the UX Designer's review Task, once per version. | flow | `src/crew_org/flows/ux_review.py:release_review_tasks` | — | — | src/crew_org/flows/ux_review.py:release_review_tasks | crew#830 |
 | `decision.ux_review.reviewed`<br>Deliver one card that is already In Progress, and move it on. | flow | `src/crew_org/flows/delivery.py:_deliver_and_move` | — | — | src/crew_org/flows/delivery.py:_deliver_and_move | crew#830 |

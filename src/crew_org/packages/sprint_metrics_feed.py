@@ -13,17 +13,25 @@ What a story's events become:
 - moved to In Progress: `started`;
 - blocked by the crew, or moved to Blocked: `blocked` (once, when both happen);
 - moved out of Blocked: `unblocked`;
-- an attempt that didn't land: `attempt_failed`, with its number, class and role;
+- an attempt that didn't land: `attempt_failed`, with its class, its role when one
+  returned it, and its number when the log has one;
 - escalated: `escalated`;
-- moved to Done: `finished`, carrying how many attempts it took, and the class and
-  role of its first miss: why it didn't land first time.
+- moved to Done: `finished`, with the class and role of its first miss: why it
+  didn't land first time.
 
-A story delivered in Developer sessions (crew#778) counts its attempts as the times
-its branch was handed to review and QA (the Sponsor, 2026-10-18), since escalation's
-attempts stop with escalation: `finished` carries that count, and each return by
-review or QA is an `attempt_failed`, class `REVIEW` or `QA` with the role that
-returned it. The gate's returns before review aren't attempts. Stories from before
-sessions are sent as they always were.
+**The feed logs what happened and sends no counts** (the Sponsor, 2026-10-30,
+crew#963): sprint-metrics keeps and computes (ADR 0022), so it decides what first
+try means, from the returns it's sent. `finished` carries no `attempts`.
+
+A story delivered in Developer sessions (crew#778) misses each time its handed-on
+work comes back, whoever sent it back and why: a review or QA verdict (`REVIEW`,
+`QA`), CI failing before review or at merge (`CI`), a conflict with main (`CONFLICT`),
+changes requested at merge (`REVIEW`), or its merged change reverted (`REVERT`). Each
+send-back writes its own event beside the verdict (crew#862), so a verdict and a
+send-back from the same step moments apart are one return. The gate's returns before
+review aren't misses (the Sponsor, 2026-10-18), nor is the Developer's own stop: the
+crew counts those for its own blocks. Stories from before sessions are sent as they
+always were: escalation's attempts were their misses.
 
 A story closed as not planned was superseded, not finished: its move to Done is
 sent as `superseded` (sprint-metrics 1.3.0), with `because`, the reason its epic
@@ -42,15 +50,42 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from crew_org import columns
+from crew_org import columns, sendbacks
 from crew_org.flows.attempts import QA, REVIEW
-from crew_org.packages.delivery_history import REVIEWERS, Card, DeliveryHistory, PeriodEvents
+from crew_org.packages.delivery_history import (
+    REVIEWERS,
+    Card,
+    DeliveryHistory,
+    PeriodEvents,
+    SentBack,
+)
+from crew_org.sendbacks import Step
 from crew_org.work_types import DELIVERED
 
 API_VERSION = "1"
 # Seen at the same card within this many seconds, a block and a move to Blocked
 # are one block: the crew blocks a card by moving it there.
 SAME_BLOCK_SECONDS = 120
+# Within this many seconds at the same card, a verdict and a send-back of its class are
+# one return: the step writes both as it sends the card back. Two send-backs are two.
+SAME_RETURN_SECONDS = 120
+
+# The steps that send a story's handed-on work back: a return from any of them is a
+# miss. The gate's come before review, and the build step's are the Developer's own.
+RETURNING = {Step.CI, Step.REVIEW, Step.DEPLOY_REVIEW, Step.QA, Step.MERGE, Step.REVERT}
+# A return's class is its step's name, except where the rule says more.
+_CLASS_BY_RULE = {
+    str(sendbacks.MERGE_CI_FAILED.rule): "CI",
+    str(sendbacks.MERGE_CONFLICT.rule): "CONFLICT",
+    str(sendbacks.MERGE_CHANGES_REQUESTED.rule): REVIEW,
+    str(sendbacks.DEPLOY_REVIEW_CHANGES.rule): REVIEW,
+}
+# Who sent it back, where one role always does; at merge and in CI, none does.
+_ROLE_BY_STEP = {
+    Step.REVIEW: "Code Reviewer",
+    Step.DEPLOY_REVIEW: "DevOps Engineer",
+    Step.QA: "QA Engineer",
+}
 
 
 @dataclass
@@ -108,15 +143,23 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
     events: list[dict[str, Any]] = []
     misses: dict[tuple[str, int], list[Any]] = {}
     blocks: dict[tuple[str, int], list[Any]] = {}
-    handed: Counter[tuple[str, int]] = Counter()
     for sprint, event in stories:
         key = (event.card.repo, event.card.number)
         card = cards[key]
         sessions = key in in_sessions
-        if sessions and _handed_on(event):
-            handed[key] += 1
         kind = _kind(event, sessions)
         if kind is None:
+            continue
+        if (
+            kind == "attempt_failed"
+            and sessions
+            and any(
+                m.kind != event.kind
+                and _failure_class(m) == _failure_class(event)
+                and abs((event.at - m.at).total_seconds()) <= SAME_RETURN_SECONDS
+                for m in misses.get(key, [])
+            )
+        ):
             continue
         if kind == "blocked":
             if any(
@@ -135,20 +178,17 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
             body["because"] = card.superseded_because
         if kind == "attempt_failed":
             misses.setdefault(key, []).append(event)
-            if sessions:
-                body["attempt_number"] = max(handed[key], 1)
-            else:
-                body["attempt_number"] = event.number or len(misses[key])
+            if event.kind == "attempt" and event.number:
+                body["attempt_number"] = event.number
             body["failure_class"] = _failure_class(event)
-            if event.role:
-                body["failure_role"] = event.role
+            if _failure_role(event):
+                body["failure_role"] = _failure_role(event)
         if kind == "finished":
             missed = misses.get(key, [])
-            body["card"]["attempts"] = max(handed[key], 1) if sessions else 1 + len(missed)
             if missed:
                 body["card"]["failure_class"] = _failure_class(missed[0])
-                if missed[0].role:
-                    body["card"]["failure_role"] = missed[0].role
+                if _failure_role(missed[0]):
+                    body["card"]["failure_role"] = _failure_role(missed[0])
         events.append(body)
     return Feed(sprints=sprints, events=events, left_out=left_out)
 
@@ -159,22 +199,20 @@ def _review_return(event: Any) -> bool:
     )
 
 
-def _handed_on(event: Any) -> bool:
-    """The branch handed to review and QA: into Reviewing, or into QAing from elsewhere."""
-    return bool(
-        event.kind == "card_moved"
-        and (
-            event.to_column == columns.REVIEWING
-            or (event.to_column == columns.QAING and event.from_column != columns.REVIEWING)
-        )
-    )
-
-
 def _failure_class(event: Any) -> str:
-    """An attempt's class: escalation's, or for a session's story, who returned it."""
+    """A miss's class: escalation's, or for a session's story, the step that returned it."""
     if event.kind == "attempt":
         return str(event.failure_class)
+    if isinstance(event, SentBack):
+        return _CLASS_BY_RULE.get(event.rule, event.sent_from.value.upper())
     return REVIEW if event.role in REVIEWERS else QA
+
+
+def _failure_role(event: Any) -> str | None:
+    """The role that returned it, where the record says or its step has only one."""
+    if isinstance(event, SentBack):
+        return _ROLE_BY_STEP.get(event.sent_from)
+    return str(event.role) if event.role else None
 
 
 def _kind(event: Any, sessions: bool = False) -> str | None:
@@ -187,6 +225,8 @@ def _kind(event: Any, sessions: bool = False) -> str | None:
         return None if sessions else "attempt_failed"
     if event.kind == "work_finished":
         return "attempt_failed" if sessions and _review_return(event) else None
+    if event.kind == "sent_back":
+        return "attempt_failed" if sessions and event.sent_from in RETURNING else None
     if event.kind == "escalated":
         return "escalated"
     if event.kind == "blocked":
@@ -256,7 +296,7 @@ def only(found: Feed, sprints: Iterable[str]) -> Feed:
     """The feed for some sprints: their definitions and their events.
 
     The feed is built from the whole history and cut afterwards. A story's
-    `finished` counts its misses in every sprint, not only the ones sent.
+    `finished` names its first miss in any sprint, not only the ones sent.
     """
     names = set(sprints)
     return Feed(
