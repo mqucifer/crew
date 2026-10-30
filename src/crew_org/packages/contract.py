@@ -70,7 +70,8 @@ def read_versions(directory: Path = CONTRACTS) -> dict[str, str]:
 
 
 def check_version(versions: dict[str, str], version: str, print_: str) -> None:
-    """Raise unless `version` names exactly this schema, or is new and later than the rest."""
+    """Raise unless `version` names exactly this schema, or is new and later than the rest
+    at its MAJOR."""
     known = versions.get(version)
     if known == print_:
         return
@@ -79,7 +80,13 @@ def check_version(versions: dict[str, str], version: str, print_: str) -> None:
             f"the schema changed but SCHEMA_VERSION is still {version}: raise it, MAJOR "
             "if a consumer could break on the change, MINOR if it only adds (ADR 0021)"
         )
-    later = [v for v in versions if _version(v) >= _version(version)]
+    # Compared within its MAJOR: an announced next MAJOR is recorded a week before it
+    # ships (crew#905), and the current one may still add a MINOR meanwhile.
+    later = [
+        v
+        for v in versions
+        if _version(v)[0] == _version(version)[0] and _version(v) >= _version(version)
+    ]
     if later:
         raise StaleVersion(f"SCHEMA_VERSION {version} isn't later than {max(later, key=_version)}")
 
