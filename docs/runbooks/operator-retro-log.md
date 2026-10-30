@@ -707,3 +707,71 @@ These three are the overhaul's evidence (ADR 0035).
 - **New, for the operator:**
   - watch approvals by board status, not by the `needs:human` label;
   - take every timestamp from `date -u`.
+
+## Operator's retro: Sprint 34 (2026-10-28 to 2026-10-29, closed 11:45Z, mqucifer/crew#943)
+
+The sprint ran sprint-metrics' /range work (epics mqucifer/sprint-metrics#802, mqucifer/sprint-metrics#852 and mqucifer/sprint-metrics#853) and crew-presentation's review of v0.1.2 (mqucifer/crew-presentation#176 to mqucifer/crew-presentation#178, then 10 bugs from the UX review).
+- **Delivered:** 25 of 26 stories by the crew's count. mqucifer/crew-presentation#177 is wrongly among them (section 1).
+- **Released:** sprint-metrics v4.2.0 and v4.2.1. Neither was deployed, because crew pins 1.3.1 (mqucifer/crew#905).
+- **The numbers:** 6 ticks, 65 sessions, 8.7 h of model time, 43.7M tokens.
+
+### 1. Interventions
+- **No tick was stopped.**
+- **The operator re-filed mqucifer/sprint-metrics#868 as a story** after `guard.reproduce.check` sent it back 5 times. Its bug and fix were both in a test file, so nothing could fail on main (mqucifer/crew#949).
+- **The operator closed three cards** with the Sponsor's go-ahead, as covered by v4.2.0: mqucifer/sprint-metrics#822, mqucifer/sprint-metrics#828 and mqucifer/sprint-metrics#864. Two of them were moved from Blocked to Done by hand.
+- **The Sponsor moved two Goals** to Done: mqucifer/crew-presentation#101 and mqucifer/crew-presentation#102.
+- **One crew PR merged in the sprint, an incident fix:** mqucifer/crew#940. The close 404'd on every tick, because it read every card's PR from the pilot repo (mqucifer/crew#938).
+- **mqucifer/crew#940's body closed mqucifer/crew-presentation#177** with "couldn't close:" before its reference. The operator reopened it (mqucifer/crew#951).
+- `operator.jsonl` and `sponsor.jsonl` have had no events since 2026-10-13. Every step above comes from the working log and the board.
+
+### 2. Where a person was asked
+- **Four sessions ended blocked:**
+  - mqucifer/sprint-metrics#811: a story-added test pinned `[Unreleased]`, so any release cut fails it. That led to mqucifer/sprint-metrics#868.
+  - mqucifer/sprint-metrics#872: the Task's file scope couldn't meet its criteria. Superseded.
+  - mqucifer/sprint-metrics#864: the reviewer's only finding was a PR title the role can't change.
+  - mqucifer/crew-presentation#189: the Developer disputed QA's test. That was the first dispute (mqucifer/qa-suite#8), and it deadlocked. mqucifer/crew#946 fixed it.
+- **The Sponsor approved** mqucifer/sprint-metrics#886, mqucifer/sprint-metrics#887 and mqucifer/crew-presentation#195. Each question was theirs.
+
+### 3. Drift between the Goal and the plan
+None found. The Sponsor's decisions in the sprint are on the issues and in mqucifer/project-print#44.
+
+### 4. Repeats and cost
+- **Send-backs:** 16.
+  - mqucifer/sprint-metrics#868: gate, 4;
+  - mqucifer/sprint-metrics#864: review, 4;
+  - mqucifer/sprint-metrics#811: review, 2;
+  - mqucifer/sprint-metrics#861: QA, 2;
+  - mqucifer/sprint-metrics#863: QA, 1;
+  - mqucifer/crew-presentation#189: CI, 3.
+- **Four reworked or blocked cards took 265 of 520 minutes of model time (51%):** mqucifer/sprint-metrics#811 82, mqucifer/sprint-metrics#863 64, mqucifer/sprint-metrics#861 61 and mqucifer/sprint-metrics#868 58.
+- **`guard.reproduce.check`:** 5 in Sprint 34, 6 in Sprint 35.
+- **sprint-metrics' coverage map failed to build** 27 times. It has failed in each of the four sprints counted (92 notes in all; mqucifer/crew#950).
+- **Model failures:** 2 Business Analyst refusals ("a double quote inside a value ends the field"). No `llm.failed` and no `llm.empty`.
+
+### 5. The crew's own retro (mqucifer/crew#943) against this one
+- **It saw:**
+  - the mqucifer/sprint-metrics#864 return chain;
+  - the WIP breach (Merging 6 against 3);
+  - the QA returns;
+  - the MAJOR version gap;
+  - mqucifer/crew-presentation#189;
+  - mqucifer/crew#938.
+- **It missed:**
+  - mqucifer/sprint-metrics#868's five gate rounds and the hand re-file;
+  - the coverage-map failures;
+  - the operator's closes;
+  - mqucifer/crew-presentation#177 counted as delivered.
+- **Its defect mqucifer/crew#941 named a cause the record doesn't support.** mqucifer/sprint-metrics#864 was a release whose PR took the epic's title, and the reviewer read that title as a promise. mqucifer/crew#941 is closed for mqucifer/crew#948.
+- **mqucifer/crew#942** (changelog scope) matches the record.
+
+### 6. Agreed with the Sponsor (2026-10-29)
+All four were filed:
+1. mqucifer/crew#948: a release Task and its PR are titled as a release, and the reviewer is told it's a release.
+2. mqucifer/crew#949: a bug whose fix is in its own failing test goes as a story, and the gate stops looping on that shape.
+3. mqucifer/crew#950: an investigation of sprint-metrics' coverage map.
+4. mqucifer/crew#951: the guard blocks a closing keyword before another issue's reference.
+
+**Checks:**
+- **"Ticks stopped" found none** for the second sprint running. It's a candidate for removal.
+- **"The crew's retro against this one" found something again,** this time a wrong cause. It stays.
+- **The event logs `operator.jsonl` and `sponsor.jsonl` are no longer written.** The interventions check reads the working log instead.
