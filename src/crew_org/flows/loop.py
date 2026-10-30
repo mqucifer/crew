@@ -310,6 +310,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         review_design,
     )
     from crew_org.flows.alerts import INFRA, Alerts, alert_tasks  # noqa: PLC0415
+    from crew_org.flows.announcements import announced_tasks  # noqa: PLC0415
     from crew_org.flows.ci_from_main import ci_services_from_main  # noqa: PLC0415
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.deploy import deploy_releases  # noqa: PLC0415
@@ -387,6 +388,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     reviews = release_review_tasks(
         crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
     )
+    # A producer's announced new major opens the Architect's Task in each project that
+    # pins the major it replaces, read from what the producer publishes (crew#960).
+    announced = announced_tasks(
+        crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
+    )
     # A project with no diagram of its system gets the Architect's Task to draw one
     # (crew#839). Not one waiting for its walking skeleton: there's nothing to draw.
     drawn = first_diagrams(
@@ -457,7 +463,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             or housed.opened
             or ci.opened
         )
-        or bool(reviews.opened),
+        or bool(reviews.opened)
+        or bool(announced.opened),
         summary=(
             f"{len(result.proposed)} design revisions proposed, {len(result.merged)} merged, "
             f"{len(result.epics)} technical epics"
@@ -475,6 +482,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             + (
                 f", {len(reviews.opened)} release reviews for the UX Designer"
                 if reviews.opened
+                else ""
+            )
+            + (
+                f", {len(announced.opened)} announced majors for the Architect"
+                if announced.opened
                 else ""
             )
             + (f", {len(drawn.opened)} first diagrams for the Architect" if drawn.opened else "")
@@ -506,6 +518,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"#{n} — waits for QA's dispute Task {SUITE}#{t}" for n, t in disputes.waiting]
         + [f"{where} — {why}" for where, why in disputes.failed]
         + [f"{repo} — {why}" for repo, why in reviews.failed]
+        + [f"{repo} — {why}" for repo, why in announced.failed]
         + [f"{repo} — {why}" for repo, why in drawn.failed]
         + [f"{repo} — {why}" for repo, why in housed.failed]
         + [f"{repo} — decision log not written: {why}" for repo, why in logs.failed]
