@@ -35,6 +35,8 @@ class Board:
 
 
 class Issues:
+    owner = "mqucifer"
+
     def __init__(self) -> None:
         self.issues: dict[int, dict[str, Any]] = {}
         self.subs: dict[int, list[int]] = {}

@@ -1413,3 +1413,45 @@ def test_a_resumed_delivery_that_leaves_keeps_a_newer_branch_the_next_resume_tak
     resumes(ws, deliver, issues)
     assert issues.asked == newer
     assert (Held.instances[-1].worktree / "rate.py").read_text() == "RATE = 3\n"
+
+
+def _release_task(title: str) -> Card:
+    return Card(item_id="T1", number=901, title=title, repo="sprint-metrics")
+
+
+@pytest.mark.parametrize(
+    ("title", "changed", "kind", "expected"),
+    [
+        (
+            "Release for epic mqucifer/sprint-metrics#853",
+            ["CHANGELOG.md", "pyproject.toml"],
+            "release",
+            "Release 4.2.0 for epic mqucifer/sprint-metrics#853",
+        ),
+        # Not yet released on the branch: no version to name.
+        (
+            "Release for epic mqucifer/sprint-metrics#853",
+            ["ci.yml"],
+            "release",
+            "Release for epic mqucifer/sprint-metrics#853",
+        ),
+        # An open Task from before crew#948 keeps its title.
+        ("CI and release for #853: Rewrite it", ["CHANGELOG.md"], "release", None),
+        # Another kind of Task, whatever its title says.
+        ("Release for epic mqucifer/sprint-metrics#853", ["CHANGELOG.md"], "deploy", None),
+    ],
+)
+def test_a_release_pull_request_names_the_version_it_moves_to(
+    tmp_path, monkeypatch, title, changed, kind, expected
+):
+    """Told from the Task's marker, and only once the branch moved the changelog."""
+    from crew_org.flows import role_tasks
+
+    (tmp_path / "CHANGELOG.md").write_text("## [Unreleased]\n\n## [4.2.0] - 2026-10-28\n")
+    monkeypatch.setattr(session_delivery, "_branch_paths", lambda _w: changed)
+    marked = role_tasks.Marked(role_tasks.DEVOPS, kind, "epic-853")
+    issues = SimpleNamespace(owner="mqucifer")
+    got = session_delivery.pr_title(
+        _release_task(title), marked, issues, "sprint-metrics", tmp_path
+    )
+    assert got == (expected or title)

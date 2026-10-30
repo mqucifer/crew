@@ -404,6 +404,7 @@ def deliver_by_session(
         since=since,
         worktree=worktree,
         task=role,
+        marked=marked,
     )
 
 
@@ -815,6 +816,7 @@ def _land(
     worktree: Path,
     task: role_tasks.TaskRole | None = None,
     resolution: Resolution | None = None,
+    marked: role_tasks.Marked | None = None,
 ) -> DeliveryOutcome:
     """Push and open for review, or for QA, as today; a story the route moved is done here.
 
@@ -907,7 +909,7 @@ def _land(
         try:
             pr = issues.create_pull(
                 repo,
-                title=card.title,
+                title=pr_title(card, marked, issues, repo, worktree),
                 head=outcome.branch or "",
                 base=default_branch,
                 body=pr_body(
@@ -1345,6 +1347,24 @@ def _today() -> str:
     from crew_org.config import load_org  # noqa: PLC0415
 
     return sprint_today(load_org()).isoformat()
+
+
+def pr_title(
+    card: Card, marked: role_tasks.Marked | None, issues: IssueClient, repo: str, worktree: Path
+) -> str:
+    """The Task's title, or a release's with the version its changelog moved to once the
+    branch has moved it (crew#948). A release is told from the marker; a Task opened
+    before its title named the release keeps the title it has."""
+    if marked is None or marked.kind != role_tasks.RELEASE or not marked.key.startswith("epic-"):
+        return card.title
+    epic, full = marked.key.removeprefix("epic-"), f"{issues.owner}/{repo}"
+    if (
+        not epic.isdigit()
+        or card.title != role_tasks.release_title(full, int(epic))
+        or "CHANGELOG.md" not in _branch_paths(worktree)
+    ):
+        return card.title
+    return role_tasks.release_title(full, int(epic), role_tasks.released_version(worktree))
 
 
 def pr_body(
