@@ -685,10 +685,16 @@ def _stopped_between(found: list[list[Any]], spent: float, ending: Any) -> Any:
 
     The gates' same findings `GATE_REPEATS` rounds in a row, or the budget spent with
     their findings still open. Each ends as a stopped session does, `blocked` of kind
-    `stop`, with the last session's evidence.
+    `stop`, with the last session's evidence. A final finding is one no change can meet,
+    so its first round is the stop (crew#949).
     """
     repeats = _repeats(found)
-    if repeats >= GATE_REPEATS:
+    final = next((f.rule for f in (found[-1] if found else []) if getattr(f, "final", False)), "")
+    if final:
+        missing = "a finding of the gates no change to the branch can meet"
+        stop = "gate_repeat"
+        evidence = {**(ending.evidence or {}), "stop": {"repeats": repeats, "final": final}}
+    elif repeats >= GATE_REPEATS:
         missing = f"the gates' same findings, sent back {repeats} times in a row"
         stop, evidence = "gate_repeat", {**(ending.evidence or {}), "stop": {"repeats": repeats}}
     elif spent >= BACKSTOP_S:

@@ -61,6 +61,9 @@ class Finding:
     says: str
     # How many things it names, where the retro counts them (crew#839's tests at `done`).
     count: int = 0
+    # No change to the branch can meet it, so the delivery stops in this round, as the
+    # same findings 3 rounds running stop it (crew#949).
+    final: bool = False
 
 
 @dataclass
@@ -243,7 +246,9 @@ def at_done(
             _as_recorded(worktree, recorded, name, verdict)
         else:
             missing = recorded.missing if recorded is not None else ""
-            _reproduced(worktree, merged, named, verdict, note, name=name, missing=missing)
+            _reproduced(
+                worktree, merged, named, verdict, note, name=name, missing=missing, paths=paths
+            )
     return verdict
 
 
@@ -796,10 +801,15 @@ def _reproduced(
     *,
     name: str = "",
     missing: str = "",
+    paths: list[str] | None = None,
 ) -> None:
     """A bug's criteria tests have to fail on the merged code (crew#407, B3), run in the
     default branch's workspace when it has one (crew#839). `missing` says why a bug the
-    crew filed from turned-on tests has no record to stand in."""
+    crew filed from turned-on tests has no record to stand in.
+
+    A branch that changes only tests, every named one's file among them, with none
+    failing as merged, is a fix to the tests themselves: nothing it does can fail on main,
+    so the finding says so and is final (mqucifer/sprint-metrics#868, crew#949)."""
     tests = [profile_for(t.partition("::")[0]).split_test_id(t) for t in named if t]
     if not tests:
         return
@@ -809,6 +819,28 @@ def _reproduced(
             note(f"reproduction not checked: {found.unchecked}")
         return
     refusal = found.refusal()
+    files = sorted({path for path, _ in tests})
+    changed = paths or []
+    if (
+        refusal
+        and found.passed
+        and not (found.skipped or found.hung)
+        and set(files) <= set(changed)
+        and all(profile_for(p).is_test_path(p) for p in changed)
+    ):
+        verdict.findings.append(
+            Finding(
+                "guard.reproduce.check",
+                says(
+                    "guard.reproduce.check",
+                    "test_only",
+                    files=", ".join(f"`{f}`" for f in files),
+                    passed=", ".join(found.passed),
+                ),
+                final=True,
+            )
+        )
+        return
     if refusal:
         why = f"{refusal}. {missing}" if missing else refusal
         verdict.findings.append(

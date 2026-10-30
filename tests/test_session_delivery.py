@@ -479,6 +479,33 @@ def test_the_gates_same_finding_three_times_stops_the_delivery_and_keeps_its_wor
     )
 
 
+def test_a_final_finding_stops_the_delivery_in_its_first_round(ws, deliver):
+    """mqucifer/sprint-metrics#868 (crew#949): no change could meet the reproduction check,
+    and it was sent back 4 times and refused a fifth, over 7 sessions."""
+    from crew_org.flows.gates import Finding, Verdict
+
+    final = Finding("guard.reproduce.check", "The defect looks like the test itself.", final=True)
+    sessions = Sessions({"writes": {"rate.py": "RATE = 2\n"}, "ending": Ending("done", DONE)})
+    routes = Gates(
+        session_end.Route(
+            session_end.SESSION,
+            final.rule,
+            start="## The gates",
+            verdict=Verdict(findings=[final]),
+        )
+    )
+    outcome = deliver(ws, sessions, routes)
+    assert outcome.attempts == 1, "no second session"
+    assert outcome.routed == session_end.REFINEMENT
+    stopped = routes.asked[-1]
+    assert (stopped.how, stopped.stop) == ("blocked", "gate_repeat")
+    assert stopped.evidence["stop"] == {"repeats": 1, "final": "guard.reproduce.check"}
+    [note] = routes.notes
+    assert "stopped by the gates at `done`, whose finding no change to the branch can meet" in note
+    assert "**What the gates found:**\n\n> The defect looks like the test itself." in note
+    assert len(kept_on_origin(ws)) == 1
+
+
 def test_two_same_findings_then_another_go_on_to_the_next_session(ws, deliver):
     sessions = Sessions(*({"ending": Ending("done", DONE)} for _ in range(4)))
     routes = Gates(

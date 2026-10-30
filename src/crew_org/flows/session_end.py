@@ -589,6 +589,8 @@ def _repeated(ending: Ending, leaving: Leaving | None) -> str:
     if ending.stop != "gate_repeat" or leaving is None or not leaving.findings:
         return ""
     quoted = "\n\n".join(_quoted(first_lines(f.says)) for f in leaving.findings[-1])
+    if ((ending.evidence or {}).get("stop") or {}).get("final"):
+        return f"**What the gates found:**\n\n{quoted}"
     return f"**What the gates sent back each time:**\n\n{quoted}"
 
 
@@ -602,6 +604,9 @@ def stopped_by(ending: Ending, leaving: Leaving | None = None) -> str:
             f"the backstop: {minutes} minutes of model time over "
             f"{_count(sessions, 'session')}, the delivery's {BACKSTOP_S // 3600} hours"
         )
+    if ending.stop == "gate_repeat" and seen.get("final"):
+        # A finding no change can meet stops its first round (crew#949).
+        return "the gates at `done`, whose finding no change to the branch can meet"
     if ending.stop == "gate_repeat":
         last = leaving.findings[-1] if leaving and leaving.findings else []
         return (
