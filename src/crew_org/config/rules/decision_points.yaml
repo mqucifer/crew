@@ -722,14 +722,6 @@ flows.delivery.reconcile_orphans:filter:6298460e:
   at: flows/delivery.py:reconcile_orphans
   if: c.status == IN_PROGRESS and c.work_type in DELIVERED
   rule: decision.delivery.reconcile_orphans
-flows.delivery.reconcile_orphans:move:7762cd32:
-  at: flows/delivery.py:reconcile_orphans
-  if: branch in open_prs
-  rule: decision.delivery.reconcile_orphans
-flows.delivery.reconcile_orphans:skip:95859012:
-  at: flows/delivery.py:reconcile_orphans
-  if: awaiting_rework(issues, repo, branch, card) is not None
-  rule: decision.delivery.reconcile_orphans
 flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
@@ -2259,3 +2251,40 @@ flows.session_delivery.resolve:end:dd0d08a9:
   at: flows/session_delivery.py:resolve
   if: verdict.already_done or verdict.disagree
   rule: delivery.resolve_conflicts
+flows.delivery.reconcile_orphans:move:a0dc57be:
+  at: flows/delivery.py:reconcile_orphans
+  if: branch in open_prs[own]
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.reconcile_orphans:skip:5d48f3d6:
+  at: flows/delivery.py:reconcile_orphans
+  if: awaiting_rework(issues, own, branch, card) is not None
+  rule: decision.delivery.reconcile_orphans
+flows.review.standing_reviews:end:22cbb3ed:
+  at: flows/review.py:standing_reviews
+  if: not _qa_task(card)
+  rule: decision.review.against_the_story
+flows.review.back_to_review:skip:940994a7:
+  at: flows/review.py:back_to_review
+  if: (card.repo or repo) != repo or card.state == 'CLOSED' or card.status not in (IN_PROGRESS, BLOCKED,
+    SPRINT_BACKLOG) or (not _qa_task(card))
+  rule: decision.review.against_the_story
+flows.review.back_to_review:filter:c169cd3d:
+  at: flows/review.py:back_to_review
+  if: REVIEW_MARKER in (r.get('body') or '') and head and (r.get('commit_id') == head)
+  rule: decision.review.against_the_story
+flows.review.back_to_review:skip:4c4f74bb:
+  at: flows/review.py:back_to_review
+  if: not ours or not _against_the_story(ours[-1])
+  rule: decision.review.against_the_story
+flows.review.back_to_review:label:be662956:
+  at: flows/review.py:back_to_review
+  if: '''blocked'' in card.labels'
+  rule: decision.review.against_the_story
+flows.review.story_criteria:end:35ba261e:
+  at: flows/review.py:story_criteria
+  if: _qa_task(card)
+  rule: decision.review.against_the_story
+flows.review.what_tests_cover:end:22cbb3ed:
+  at: flows/review.py:what_tests_cover
+  if: not _qa_task(card)
+  rule: decision.review.against_the_story

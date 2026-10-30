@@ -258,6 +258,11 @@ decision.resplit.stop:
   - crew#859
 decision.revert.refused:
 decision.revert.return_card:
+decision.review.against_the_story:
+  description: QA's Task refused against the story it quotes, not its own criteria, goes back to review
+    wherever the refusal left it.
+  origin:
+  - crew#971
 decision.review.deploy_review:
   origin:
   - crew#215
