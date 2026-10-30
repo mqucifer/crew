@@ -2150,6 +2150,26 @@ flows.alerts.task_body:filter:21f1398f:
   at: flows/alerts.py:task_body
   if: not k.startswith('__')
   not_a_rule: 'a render: leaves Grafana''s routing labels out of the Task''s text'
+flows.announcements._items:skip:d5da2c50:
+  at: flows/announcements.py:_items
+  if: replaced != at or _major(version) <= at
+  rule: decision.announcements.announced_tasks
+flows.announcements.plan:result:unannounced:8ecfb5c4:
+  at: flows/announcements.py:plan
+  if: found is None
+  rule: decision.announcements.none_published
+flows.announcements.plan:filter:498725a4:
+  at: flows/announcements.py:plan
+  if: (m := rt.marked(i.get('body'))) is not None and m.kind == rt.ANNOUNCED
+  rule: decision.announcements.announced_tasks
+flows.announcements.announced_tasks:skip:0690b827:
+  at: flows/announcements.py:announced_tasks
+  if: item.filed is not None
+  rule: decision.announcements.announced_tasks
+flows.announcements.announced_tasks:result:opened:c1a81f37:
+  at: flows/announcements.py:announced_tasks
+  if: opened.new
+  rule: decision.announcements.announced_tasks
 flows.merge.returned_for_conflict:end:7287767e:
   at: flows/merge.py:returned_for_conflict
   if: not head

@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 14 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 76 |
+| The tick decides a card's handling, found by the decision-point audit | 78 |
 | A setting that changes what the tick does | 211 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 72 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 153 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 155 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -263,6 +263,8 @@ section; one no line holds for is unplaced, never guessed.
 | `decision.alerts.fired`<br> one | flow | `src/crew_org/flows/alerts.py:_one` | — | — | src/crew_org/flows/alerts.py:_one | crew#893 |
 | `decision.alerts.resolved`<br>Tell an open Task its alert stopped, once per firing. | flow | `src/crew_org/flows/alerts.py:_stopped` | — | — | src/crew_org/flows/alerts.py:_stopped | crew#893 |
 | `decision.alerts.unread`<br>Keep when Grafana was first unread; a day of it is DevOps's finding, once. | flow | `src/crew_org/flows/alerts.py:_unread` | — | — | src/crew_org/flows/alerts.py:_unread | crew#893 |
+| `decision.announcements.announced_tasks`<br>What the project files for `use`'s announcements; None when it publishes none. | flow | `src/crew_org/flows/announcements.py:_items` | — | — | src/crew_org/flows/announcements.py:_items<br>src/crew_org/flows/announcements.py:announced_tasks<br>src/crew_org/flows/announcements.py:plan | crew#960 |
+| `decision.announcements.none_published`<br>What a pass would file in `repo` for its producers' announcements, opening nothing. | flow | `src/crew_org/flows/announcements.py:plan` | — | — | src/crew_org/flows/announcements.py:plan | crew#960 |
 | `decision.backlog_order.what_is_ordered`<br>The open epics with no Rank: the trigger, and the new work to describe. | flow | `src/crew_org/flows/backlog_order.py:needs_ordering` | — | — | src/crew_org/flows/backlog_order.py:needs_ordering<br>src/crew_org/flows/backlog_order.py:open_epics<br>src/crew_org/flows/backlog_order.py:order_backlogs | — |
 | `decision.board_flow.already_delivered`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics | crew#192<br>crew#440<br>crew#858<br>crew#859 |
 | `decision.board_flow.epics_to_split`<br>Epics the Sponsor has released from the gate, awaiting story splitting. | flow | `src/crew_org/flows/board_flow.py:epics_to_split` | — | — | src/crew_org/flows/board_flow.py:epics_to_split | — |

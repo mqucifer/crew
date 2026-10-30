@@ -1,0 +1,11 @@
+{
+  "2.0.0": {
+    "changelog": {
+      "file": "README.md",
+      "section": "Announced: delivery-history 2.0.0"
+    },
+    "contract": "contracts/delivery-history/2.0.0/",
+    "on": "2026-11-06",
+    "replaces": "1.x"
+  }
+}

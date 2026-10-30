@@ -75,6 +75,18 @@ decision.alerts.unread:
     finding in infra, keyed by the day it began; reading them again clears the count.
   origin:
   - crew#893
+decision.announcements.announced_tasks:
+  description: A producer's announced new major, read from its `announced.json` beside the contract
+    files a project's record names, opens the Architect's Task in Needs Refinement in each project that
+    pins a release at the major it replaces, once per project, producer and version, never again once
+    closed. Nothing is filed in the producer's own repository.
+  origin:
+  - crew#960
+decision.announcements.none_published:
+  description: A producer a project uses that publishes no `announced.json` files nothing, and each pass
+    notes it.
+  origin:
+  - crew#960
 decision.backlog_order.what_is_ordered:
   description: The Product Owner ranks the open epics with no Rank. One it can't place yet is held for
     the work it builds on, and an order it can't give is recorded as failed.

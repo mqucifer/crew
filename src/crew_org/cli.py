@@ -1795,6 +1795,31 @@ def qa_start(
         typer.echo(text)
 
 
+@app.command(name="announced")
+def announced(
+    repo: str = typer.Argument(..., help="The project, e.g. crew-presentation."),
+    ref: str = typer.Option(
+        "HEAD",
+        "--ref",
+        help="The producers' ref to read announcements at: a branch shows an unmerged one.",
+    ),
+) -> None:
+    """What a pass would file in a project for its producers' announced majors (crew#960).
+
+    Each Task's title and body, or the one already filed, rendered and nothing more:
+    it reads the project's record, its pins and its producers' `announced.json`, and
+    opens nothing.
+    """
+    from crew_org.auth import resolve_credentials  # noqa: PLC0415
+    from crew_org.config import load_env  # noqa: PLC0415
+    from crew_org.flows.announcements import plan, render_plan  # noqa: PLC0415
+    from crew_org.tools.github_issues import IssueClient  # noqa: PLC0415
+
+    env = load_env()
+    token, _ = resolve_credentials(env)
+    typer.echo(render_plan(plan(IssueClient(token, env["GITHUB_OWNER"]), repo, ref=ref)))
+
+
 def _issue_ref(text: str) -> tuple[str, int]:
     """`repo#n` or `owner/repo#n` as (repo, n)."""
     import re  # noqa: PLC0415
