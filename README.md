@@ -80,21 +80,14 @@ before that, what it cost and how it ended. Since 1.10.0 it carries every send-b
 (crew#862): finished work sent back to its own step or an earlier one, by the step that
 sent it, the step it went back to, the rule that decided, and its round. What counts as
 one is in [`docs/reference/records.md`](docs/reference/records.md). Since 1.11.0 a session's tools include `delete_file`
-(crew#839). **2.0.0 carries sprint-metrics 4.2.1's answers** (crew#905), not 1.3.1's:
-sprint-metrics took `escalation_count` and `escalation_rate_percent` out of its answers, and
-out of each answer's `prior` and `delta`, in its 4.0.0, so they've left the package, and so has
-`escalation_count` as a measure in what changed. The crew's own record of escalations stays: the
-`escalated` events and pattern, and each story's `escalations`. The answers add 4.x's costs, rework,
-roster, working and idle time, and DORA measures, cards in them named as `repo#n`. The steps are a closed
+(crew#839). The steps are a closed
 list today, and a later MINOR version may add to it, so read a step you don't know as
 another step rather than refusing the package. The crew's code writes
 that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
-**2.0.0 is announced: it replaces 1.x on 2026-11-06** (crew#905), a week after the
-announcement merged; if that merge slips, the date moves with it. Its schemas and mock are in
-[`contracts/delivery-history/2.0.0/`](contracts/delivery-history/2.0.0/), and until then the
-package follows 1.x. 2.0.0 carries sprint-metrics 4.2.1's answers in place of 1.3.1's:
+**2.0.0 replaced 1.x** (crew#905), as announced a week before: it carries sprint-metrics
+4.2.1's answers in place of 1.3.1's.
 - **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
   `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
   `escalation_count` as a measure in what changed. The crew's own record of escalations stays:

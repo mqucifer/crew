@@ -30,9 +30,11 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_2_0_0_is_announced_while_the_package_stays_on_1_x():
-    assert [p.name for p in ANNOUNCED] == ["2.0.0"]
-    assert dh.SCHEMA_VERSION.split(".")[0] == "1"
+def test_delivery_history_2_0_0_shipped_exactly_as_announced():
+    """Its announcement recorded the fingerprint; the switch removed the announced copy."""
+    assert ANNOUNCED == []
+    assert dh.SCHEMA_VERSION == "2.0.0"
+    assert contract.read_versions()["2.0.0"] == contract.fingerprint(contract.schemas())
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)
