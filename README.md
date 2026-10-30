@@ -100,17 +100,23 @@ is ADR 0022.
   (crew#829). A breaking version is announced a week before it ships: its schemas and
   mock sit beside the current ones in `contracts/delivery-history/<version>/`, and
   `versions.json` records it, so the version that ships is exactly the one announced.
-- **An announcement is published, so its readers' crews file it** (crew#960):
+- **An announcement is published, so its readers' crews file it** (crew#960, crew#969):
   `announced.json`, beside the contract files a project's record names, maps each
   announced version to the major it `replaces` (`"1.x"`), the date it ships `on`, where its
-  `contract` is (`contracts/delivery-history/2.0.0/`) and its `changelog`, as a `file` and the
-  `section` heading in it. Each pass, a project whose record `uses` the producer and
-  pins a release at the replaced major gets one Task, its Architect's, with that changelog
-  whole; the crew reads what the project pins from `versions.json` at the pinned tag,
-  leaving out what was only announced there. The release that ships a version takes it out
-  of `announced.json`. Any producer can announce this way; one that publishes no
-  `announced.json` files nothing, and each pass notes it. `crew announced <project>` shows
-  what a pass would file.
+  `contract` is (`contracts/delivery-history/2.0.0/`), its `changelog`, as a `file` and the
+  `section` heading in it, and its `mock`, the mock's files under that folder. Each pass, a
+  project whose record `uses` the producer and pins a release at the replaced major gets one
+  technical epic to adopt it, in Needs Refinement, with that changelog whole; the crew reads
+  what the project pins from `versions.json` at the pinned tag, leaving out what was only
+  announced there. Its refinement rules on what the project reads: if nothing it reads
+  changes, the epic closes with that said, and staying on the old major is a decision written
+  on the epic. Until the version ships, the project's sessions are shown what differs from the
+  pinned fields, and have its schemas and mock at
+  `.announced/<producer>/<package>-<version>/` in their checkout, never committed: a test
+  reads them with no network, and one that stays carries what it uses as its own fixture. The
+  release that ships a version takes it out of `announced.json`. Any producer can announce
+  this way; one that publishes no `announced.json` files nothing, and each pass notes it.
+  `crew announced <project>` shows what a pass would file.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first

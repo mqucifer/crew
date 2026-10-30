@@ -310,7 +310,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         review_design,
     )
     from crew_org.flows.alerts import INFRA, Alerts, alert_tasks  # noqa: PLC0415
-    from crew_org.flows.announcements import announced_tasks  # noqa: PLC0415
+    from crew_org.flows.announcements import announced_epics  # noqa: PLC0415
     from crew_org.flows.ci_from_main import ci_services_from_main  # noqa: PLC0415
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.deploy import deploy_releases  # noqa: PLC0415
@@ -389,9 +389,9 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     reviews = release_review_tasks(
         crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
     )
-    # A producer's announced new major opens the Architect's Task in each project that
-    # pins the major it replaces, read from what the producer publishes (crew#960).
-    announced = announced_tasks(
+    # A producer's announced new major opens a technical epic to adopt it in each project
+    # that pins the major it replaces, read from what the producer publishes (crew#969).
+    announced = announced_epics(
         crew.issues, crew.board, crew.sink, repos=repos, cards=crew.board.cards()
     )
     # What waits under `[Unreleased]` that no epic in flight will release, a bug's fix
@@ -492,7 +492,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
                 else ""
             )
             + (
-                f", {len(announced.opened)} announced majors for the Architect"
+                f", {len(announced.opened)} epics to adopt announced majors"
                 if announced.opened
                 else ""
             )

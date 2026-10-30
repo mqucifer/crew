@@ -33,6 +33,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows import role_tasks as rt
 from crew_org.flows.moves import move_card
+from crew_org.git_ops import exclude_folder
 from crew_org.llm import reraise_if_down
 from crew_org.rulebook import says
 from crew_org.tools.github_issues import IssueClient
@@ -314,7 +315,7 @@ def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> Non
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
-    _exclude(worktree)
+    exclude_folder(worktree, REFERENCE)
     archive = subprocess.run(
         ["git", "archive", "--format=tar", ref or "HEAD"],
         cwd=clone,
@@ -322,27 +323,6 @@ def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> Non
         capture_output=True,
     )
     subprocess.run(["tar", "-x", "-C", str(target)], input=archive.stdout, check=True)
-
-
-def _exclude(worktree: Path) -> None:
-    """Name `REFERENCE` in the git directory's `info/exclude`, which every worktree of
-    the clone shares, once."""
-    common = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"],
-        cwd=worktree,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    path = (worktree / common).resolve() / "info" / "exclude"
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
-    line = f"/{REFERENCE}/"
-    if line in current.splitlines():
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        current + ("\n" if current and not current.endswith("\n") else "") + line + "\n"
-    )
 
 
 # On QA's Task when it closes with no change, saying why: for the record, and for the

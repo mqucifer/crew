@@ -226,6 +226,27 @@ def exclude_machine_files(clone: Path) -> None:
     )
 
 
+def exclude_folder(worktree: Path, folder: str) -> None:
+    """Name `folder` in the git directory's `info/exclude`, which every worktree of the
+    clone shares, once."""
+    common = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    path = (worktree / common).resolve() / "info" / "exclude"
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    line = f"/{folder}/"
+    if line in current.splitlines():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        current + ("\n" if current and not current.endswith("\n") else "") + line + "\n"
+    )
+
+
 class Workspace:
     """An isolated worktree for one card.
 
