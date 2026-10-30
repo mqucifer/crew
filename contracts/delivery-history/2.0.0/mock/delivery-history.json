@@ -1,0 +1,1067 @@
+{
+ "package": "delivery-history",
+ "schema_version": "2.0.0",
+ "date": "2026-09-25",
+ "timezone": "America/Chicago",
+ "crew_repository": "crew",
+ "repositories": [
+  "sprint-metrics"
+ ],
+ "sprints": [
+  {
+   "name": "Sprint 5",
+   "start": "2026-09-24",
+   "end": "2026-09-24"
+  },
+  {
+   "name": "Sprint 6",
+   "start": "2026-09-25",
+   "end": "2026-09-25"
+  }
+ ],
+ "cards": [
+  {
+   "repo": "sprint-metrics",
+   "number": 48,
+   "type": "Goal",
+   "title": "Goal: the tool presents, not just reports",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/48",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 59,
+   "type": "Epic",
+   "title": "Stable JSON API",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/59",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 62,
+   "type": "Epic",
+   "title": "A five-second health summary",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/62",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Inbox (Goals)",
+   "status_set": "2026-09-23T23:30:00Z",
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 63,
+   "type": "Epic",
+   "title": "A trend line a person can read",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/63",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Inbox (Goals)",
+   "status_set": "2026-09-23T23:30:00Z",
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 105,
+   "type": "Epic",
+   "title": "A JSON report of one sprint",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/105",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T01:30:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 110,
+   "type": "Story",
+   "title": "Write the sprint report as JSON",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/110",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-24T23:53:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 111,
+   "type": "Story",
+   "title": "Show the prior sprint beside it",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/111",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T00:23:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 112,
+   "type": "Story",
+   "title": "Exit 2 when the sprint is missing",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/112",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T01:03:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 123,
+   "type": "Epic",
+   "title": "Split crew_performance.py into seven modules",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/123",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "In Progress",
+   "status_set": null,
+   "created": "2026-09-25T23:38:00Z",
+   "closed": null,
+   "technical": true,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 124,
+   "type": "Epic",
+   "title": "One entry point for the CLI and the service",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/124",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-25T23:38:00Z",
+   "closed": null,
+   "technical": true,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 125,
+   "type": "Story",
+   "title": "Move the card model into card.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/125",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T00:13:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 126,
+   "type": "Story",
+   "title": "Move the metric functions into metrics.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/126",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T00:51:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 127,
+   "type": "Story",
+   "title": "Extract threshold logic into thresholds.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/127",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T01:55:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 128,
+   "type": "Story",
+   "title": "Move the report into report.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/128",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T02:23:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 129,
+   "type": "Story",
+   "title": "Move sprint ranges into sprint_range.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/129",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "In Progress",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 130,
+   "type": "Story",
+   "title": "Move serve into serve.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/130",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T02:50:00Z",
+   "technical": false,
+   "closed_as": "not_planned",
+   "superseded_because": "story_problem"
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 131,
+   "type": "Story",
+   "title": "Move the CLI into cli.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/131",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Blocked",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 132,
+   "type": "Story",
+   "title": "Serve the trend from the package",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/132",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 133,
+   "type": "Story",
+   "title": "Add the package's entry point",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/133",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T03:03:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 136,
+   "type": "Story",
+   "title": "Read the sprint from the service's query",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/136",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Reviewing",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null
+  }
+ ],
+ "periods": [
+  {
+   "sprint": "Sprint 5",
+   "start": "2026-09-24",
+   "end": "2026-09-24",
+   "file": "events/2026-09-24.json",
+   "events": 39
+  },
+  {
+   "sprint": "Sprint 6",
+   "start": "2026-09-25",
+   "end": "2026-09-25",
+   "file": "events/2026-09-25.json",
+   "events": 133
+  }
+ ],
+ "analysis": {
+  "sprints": [
+   {
+    "sprint": "Sprint 5",
+    "as_of": "2026-09-24T23:59:59.999999-05:00",
+    "changed": [],
+    "attention": [
+     {
+      "kind": "waiting_on_sponsor",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 59
+      },
+      "since": null,
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#59 is waiting for the Sponsor's approval."
+     },
+     {
+      "kind": "waiting_on_sponsor",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 62
+      },
+      "since": "2026-09-23T23:30:00Z",
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#62 is waiting for the Sponsor's approval, for 1 day."
+     },
+     {
+      "kind": "waiting_on_sponsor",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 63
+      },
+      "since": "2026-09-23T23:30:00Z",
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#63 is waiting for the Sponsor's approval, for 1 day."
+     }
+    ],
+    "decided": []
+   },
+   {
+    "sprint": "Sprint 6",
+    "as_of": "2026-09-25T23:59:59.999999-05:00",
+    "changed": [
+     {
+      "measure": "first_attempt_rate_percent",
+      "source": "sprint-metrics",
+      "previous": 67.0,
+      "now": 50.0,
+      "better": false,
+      "text": "The first-try rate fell from 67% to 50%."
+     },
+     {
+      "measure": "throughput",
+      "source": "sprint-metrics",
+      "previous": 3.0,
+      "now": 6.0,
+      "better": true,
+      "text": "Stories delivered rose from 3 to 6."
+     },
+     {
+      "measure": "points_delivered",
+      "source": "sprint-metrics",
+      "previous": 9.0,
+      "now": 18.0,
+      "better": true,
+      "text": "Points delivered rose from 9 to 18."
+     },
+     {
+      "measure": "blocked_aging_days",
+      "source": "sprint-metrics",
+      "previous": 0.0,
+      "now": 1.0,
+      "better": false,
+      "text": "Days spent blocked rose from 0 to 1."
+     },
+     {
+      "measure": "cycle_time_minutes",
+      "source": "sprint-metrics",
+      "previous": 410.0,
+      "now": 655.0,
+      "better": false,
+      "text": "The time from starting a story to delivering it rose from 6 hours 50 minutes to 10 hours 55 minutes."
+     },
+     {
+      "measure": "lead_time_minutes",
+      "source": "sprint-metrics",
+      "previous": 1900.0,
+      "now": 1500.0,
+      "better": true,
+      "text": "The time from filing a story to delivering it fell from 1 day 7 hours to 1 day 1 hour."
+     },
+     {
+      "measure": "superseded_count",
+      "source": "sprint-metrics",
+      "previous": 0.0,
+      "now": 1.0,
+      "better": null,
+      "text": "Stories superseded rose from 0 to 1."
+     },
+     {
+      "measure": "crew_fixes_merged",
+      "source": "crew",
+      "previous": 1.0,
+      "now": 2.0,
+      "better": null,
+      "text": "Fixes to the crew merged rose from 1 to 2."
+     }
+    ],
+    "attention": [
+     {
+      "kind": "waiting_on_sponsor",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 62
+      },
+      "since": "2026-09-23T23:30:00Z",
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#62 is waiting for the Sponsor's approval, for 2 days."
+     },
+     {
+      "kind": "waiting_on_sponsor",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 63
+      },
+      "since": "2026-09-23T23:30:00Z",
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#63 is waiting for the Sponsor's approval, for 2 days."
+     },
+     {
+      "kind": "blocked",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 131
+      },
+      "since": "2026-09-26T03:20:00Z",
+      "count": null,
+      "reason": null,
+      "text": "sprint-metrics#131 is blocked, for 1 hour."
+     },
+     {
+      "kind": "repeated_refusal",
+      "card": {
+       "repo": "sprint-metrics",
+       "number": 127
+      },
+      "since": "2026-09-26T01:10:00Z",
+      "count": 3,
+      "reason": "no definition named 'DEFAULT_THRESHOLDS'",
+      "text": "sprint-metrics#127 was refused 3 times with the same reason."
+     }
+    ],
+    "decided": [
+     {
+      "kind": "design_revision_merged",
+      "at": "2026-09-25T23:38:00Z",
+      "repo": "sprint-metrics",
+      "number": 122,
+      "text": "The crew merged sprint-metrics#122, the Architect's revision of the project's design."
+     },
+     {
+      "kind": "technical_epic_filed",
+      "at": "2026-09-25T23:38:00Z",
+      "repo": "sprint-metrics",
+      "number": 123,
+      "text": "The crew filed sprint-metrics#123 as technical work, which skips the Sponsor's gate."
+     },
+     {
+      "kind": "technical_epic_filed",
+      "at": "2026-09-25T23:38:00Z",
+      "repo": "sprint-metrics",
+      "number": 124,
+      "text": "The crew filed sprint-metrics#124 as technical work, which skips the Sponsor's gate."
+     }
+    ]
+   }
+  ],
+  "stories": [
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 110
+    },
+    "pattern": "first_try",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-24T23:53:00Z",
+    "wall_clock_seconds": 1380.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 280000,
+     "completion_tokens": 10400,
+     "reasoning_tokens": 7600,
+     "cached_tokens": 0,
+     "model_seconds": 390.0
+    },
+    "text": "Landed first try."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 111
+    },
+    "pattern": "first_try",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-25T00:23:00Z",
+    "wall_clock_seconds": 1380.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 281800,
+     "completion_tokens": 10400,
+     "reasoning_tokens": 7600,
+     "cached_tokens": 0,
+     "model_seconds": 390.0
+    },
+    "text": "Landed first try."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 112
+    },
+    "pattern": "retried",
+    "misses": 1,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-25T01:03:00Z",
+    "wall_clock_seconds": 1980.0,
+    "cost": {
+     "model_calls": 3,
+     "prompt_tokens": 322600,
+     "completion_tokens": 14500,
+     "reasoning_tokens": 10900,
+     "cached_tokens": 0,
+     "model_seconds": 560.0
+    },
+    "text": "Missed once, then landed."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 125
+    },
+    "pattern": "first_try",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-26T00:13:00Z",
+    "wall_clock_seconds": 1380.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 307000,
+     "completion_tokens": 10400,
+     "reasoning_tokens": 7600,
+     "cached_tokens": 0,
+     "model_seconds": 390.0
+    },
+    "text": "Landed first try."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 126
+    },
+    "pattern": "retried",
+    "misses": 1,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-26T00:51:00Z",
+    "wall_clock_seconds": 1860.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 206400,
+     "completion_tokens": 11300,
+     "reasoning_tokens": 8200,
+     "cached_tokens": 0,
+     "model_seconds": 430.0
+    },
+    "text": "Missed once, then landed."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 127
+    },
+    "pattern": "crew_fix",
+    "misses": 3,
+    "blocks": 1,
+    "escalations": 0,
+    "crew_fixes": [
+     {
+      "repo": "crew",
+      "number": 208
+     },
+     {
+      "repo": "crew",
+      "number": 209
+     }
+    ],
+    "repeated": {
+     "failure_class": "EDIT",
+     "reason": "no definition named 'DEFAULT_THRESHOLDS'",
+     "count": 3
+    },
+    "delivered": "2026-09-26T01:55:00Z",
+    "wall_clock_seconds": 3060.0,
+    "cost": {
+     "model_calls": 4,
+     "prompt_tokens": 198183,
+     "completion_tokens": 38335,
+     "reasoning_tokens": 30714,
+     "cached_tokens": 0,
+     "model_seconds": 1200.3
+    },
+    "text": "Missed 3 times and was blocked once, then landed after the crew's own fixes crew#208 and crew#209 merged. It was refused 3 times with the same reason."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 128
+    },
+    "pattern": "first_try",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-26T02:23:00Z",
+    "wall_clock_seconds": 1380.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 312400,
+     "completion_tokens": 10400,
+     "reasoning_tokens": 7600,
+     "cached_tokens": 0,
+     "model_seconds": 390.0
+    },
+    "text": "Landed first try."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 129
+    },
+    "pattern": "open",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": null,
+    "wall_clock_seconds": null,
+    "cost": {
+     "model_calls": 1,
+     "prompt_tokens": 43000,
+     "completion_tokens": 4800,
+     "reasoning_tokens": 3500,
+     "cached_tokens": 0,
+     "model_seconds": 200.0
+    },
+    "text": "Not delivered yet."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 130
+    },
+    "pattern": "superseded",
+    "misses": 0,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": null,
+    "wall_clock_seconds": null,
+    "cost": null,
+    "text": "Superseded: closed as not planned, never built."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 131
+    },
+    "pattern": "blocked",
+    "misses": 1,
+    "blocks": 1,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": null,
+    "wall_clock_seconds": null,
+    "cost": {
+     "model_calls": 1,
+     "prompt_tokens": 42000,
+     "completion_tokens": 4400,
+     "reasoning_tokens": 3000,
+     "cached_tokens": 0,
+     "model_seconds": 180.0
+    },
+    "text": "Blocked now; it missed once and was blocked once first."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 132
+    },
+    "pattern": "open",
+    "misses": 1,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": null,
+    "wall_clock_seconds": null,
+    "cost": null,
+    "text": "Not delivered yet; it missed once so far."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 133
+    },
+    "pattern": "escalated",
+    "misses": 2,
+    "blocks": 0,
+    "escalations": 1,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": "2026-09-26T03:03:00Z",
+    "wall_clock_seconds": 2280.0,
+    "cost": {
+     "model_calls": 2,
+     "prompt_tokens": 89000,
+     "completion_tokens": 10100,
+     "reasoning_tokens": 7900,
+     "cached_tokens": 0,
+     "model_seconds": 415.0
+    },
+    "text": "Missed twice, then landed after it was escalated."
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 136
+    },
+    "pattern": "open",
+    "misses": 1,
+    "blocks": 0,
+    "escalations": 0,
+    "crew_fixes": [],
+    "repeated": null,
+    "delivered": null,
+    "wall_clock_seconds": null,
+    "cost": null,
+    "text": "Not delivered yet; it missed once so far."
+   }
+  ],
+  "deliveries": [
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 132
+    },
+    "number": 1,
+    "started": "2026-09-26T03:36:00Z",
+    "ended": "2026-09-26T03:41:00Z",
+    "outcome": "returned",
+    "sessions": 1,
+    "submissions": 0,
+    "gate_rounds": 0,
+    "gate_rules": [],
+    "review_returns": 0,
+    "rework_rounds": 0,
+    "resumes": 0,
+    "model_calls": 2,
+    "model_seconds": 30.0,
+    "prompt_tokens": 38000,
+    "cached_tokens": 34000,
+    "completion_tokens": 2600,
+    "reasoning_tokens": 2300,
+    "runs": 0,
+    "first_green_run": null,
+    "stop": "ceiling",
+    "blocked_on": "stop",
+    "ceiling": "reading",
+    "since_action": 60,
+    "most_views": 2,
+    "edits_since_run": 0,
+    "empty_lookups": 1,
+    "returned_because": "session blocked",
+    "gaps": []
+   },
+   {
+    "card": {
+     "repo": "sprint-metrics",
+     "number": 136
+    },
+    "number": 1,
+    "started": "2026-09-26T03:31:00Z",
+    "ended": null,
+    "outcome": "open",
+    "sessions": 3,
+    "submissions": 2,
+    "gate_rounds": 1,
+    "gate_rules": [
+     "contract.declared_tests"
+    ],
+    "review_returns": 1,
+    "rework_rounds": 2,
+    "resumes": 0,
+    "model_calls": 6,
+    "model_seconds": 90.0,
+    "prompt_tokens": 114000,
+    "cached_tokens": 102000,
+    "completion_tokens": 7800,
+    "reasoning_tokens": 6900,
+    "runs": 3,
+    "first_green_run": 1,
+    "stop": null,
+    "blocked_on": null,
+    "ceiling": null,
+    "since_action": 0,
+    "most_views": 2,
+    "edits_since_run": 0,
+    "empty_lookups": 1,
+    "returned_because": null,
+    "gaps": []
+   }
+  ]
+ },
+ "sprint_metrics": {
+  "release": "4.2.1",
+  "answers": {
+   "Sprint 5": {
+    "throughput": 3,
+    "points_delivered": 9,
+    "first_attempt_numerator": 2,
+    "first_attempt_denominator": 3,
+    "first_attempt_rate_percent": 67,
+    "wip_violations": 0,
+    "blocked_aging_days": 0,
+    "cycle_time_days": 0,
+    "lead_time_days": 1,
+    "cycle_time_minutes": 410,
+    "lead_time_minutes": 1900,
+    "superseded_count": 0,
+    "superseded_points": 0,
+    "superseded_breakdown": {
+     "sponsor": 0,
+     "story_problem": 0
+    },
+    "top_failure_causes": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "failure_breakdown": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "flags": {
+     "first_attempt_rate_percent": false,
+     "blocked_aging_days": false,
+     "cycle_time_days": false,
+     "lead_time_days": false,
+     "cycle_time_minutes": false,
+     "lead_time_minutes": false,
+     "throughput": false,
+     "wip_violations": false
+    },
+    "prior": null,
+    "delta": null
+   },
+   "Sprint 6": {
+    "throughput": 6,
+    "points_delivered": 18,
+    "first_attempt_numerator": 3,
+    "first_attempt_denominator": 6,
+    "first_attempt_rate_percent": 50,
+    "wip_violations": 0,
+    "blocked_aging_days": 1,
+    "cycle_time_days": 0,
+    "lead_time_days": 1,
+    "cycle_time_minutes": 655,
+    "lead_time_minutes": 1500,
+    "superseded_count": 1,
+    "superseded_points": 3,
+    "superseded_breakdown": {
+     "sponsor": 0,
+     "story_problem": 1
+    },
+    "top_failure_causes": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 2
+     },
+     {
+      "class": "EDIT",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "failure_breakdown": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 2
+     },
+     {
+      "class": "EDIT",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "flags": {
+     "first_attempt_rate_percent": true,
+     "blocked_aging_days": false,
+     "cycle_time_days": false,
+     "lead_time_days": false,
+     "cycle_time_minutes": false,
+     "lead_time_minutes": false,
+     "throughput": false,
+     "wip_violations": false
+    },
+    "prior": {
+     "throughput": 3,
+     "points_delivered": 9,
+     "first_attempt_numerator": 2,
+     "first_attempt_denominator": 3,
+     "first_attempt_rate_percent": 67,
+     "wip_violations": 0,
+     "blocked_aging_days": 0,
+     "cycle_time_days": 0,
+     "lead_time_days": 1,
+     "cycle_time_minutes": 410,
+     "lead_time_minutes": 1900,
+     "superseded_count": 0,
+     "superseded_points": 0,
+     "superseded_breakdown": {
+      "sponsor": 0,
+      "story_problem": 0
+     }
+    },
+    "delta": {
+     "throughput": 3,
+     "points_delivered": 9,
+     "first_attempt_numerator": 1,
+     "first_attempt_denominator": 3,
+     "first_attempt_rate_percent": -17,
+     "wip_violations": 0,
+     "blocked_aging_days": 1,
+     "cycle_time_days": 0,
+     "lead_time_days": 0,
+     "cycle_time_minutes": 245,
+     "lead_time_minutes": -400,
+     "superseded_count": 1,
+     "superseded_points": 3,
+     "superseded_breakdown": 1
+    }
+   }
+  }
+ }
+}

@@ -3,9 +3,11 @@
 #
 # The crew has no folder in qa-suite: it's a producer there. Projects read what
 # it publishes, such as the delivery-history package (crew-presentation's
-# record's `uses`), and qa-suite finds them from their records. So this pull
-# request runs each reader's tests, with this pull request's build as what it
-# reads, and a change that breaks a reader fails here before it ships.
+# record's `uses`), and qa-suite finds them from their records. A producer's pull
+# request no longer runs its readers' tests: a breaking change is announced
+# instead, and ships a week later (ADR 0008 in mqucifer/project-print, the
+# Sponsor's decision of 2026-10-30, crew#905). Until qa-suite stops running them,
+# this pull request still runs each reader's tests against its own build.
 #
 # The crew isn't made from project-template, so this is the template's calling
 # workflow, kept by hand. The check is `qa-suite / qa`: making it required is the
