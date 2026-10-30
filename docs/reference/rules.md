@@ -528,7 +528,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.org.board.columns`<br>board.columns = ['Inbox (Goals)', 'Needs Refinement', 'Ready', 'Sprint Backlog', 'In Progress', 'Reviewing', 'QAing', 'Merging', 'Done'] | flow | `src/crew_org/config/org.yaml:board.columns` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.human_gates`<br>board.human_gates = ['Inbox (Goals)'] | flow | `src/crew_org/config/org.yaml:board.human_gates` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.delivery.ci_same_failure_stop`<br>delivery.ci_same_failure_stop = 3 | flow | `src/crew_org/config/org.yaml:delivery.ci_same_failure_stop` | — | — | src/crew_org/config/org.yaml | crew#944 |
-| `config.org.delivery.qa_tests_from`<br>delivery.qa_tests_from = None | flow | `src/crew_org/config/org.yaml:delivery.qa_tests_from` | — | — | src/crew_org/config/org.yaml | crew#945 |
+| `config.org.delivery.qa_tests_from`<br>delivery.qa_tests_from = 2026-10-30 | flow | `src/crew_org/config/org.yaml:delivery.qa_tests_from` | — | — | src/crew_org/config/org.yaml | crew#945 |
 | `config.org.delivery.repos`<br>delivery.repos = ['sprint-metrics', 'infra', 'crew-presentation', 'qa-suite'] | flow | `src/crew_org/config/org.yaml:delivery.repos` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.force_label`<br>design.force_label = needs:design | scope | `src/crew_org/config/org.yaml:design.force_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.revisit_conflicts`<br>design.revisit_conflicts = 3 | scope | `src/crew_org/config/org.yaml:design.revisit_conflicts` | — | — | src/crew_org/config/org.yaml | — |

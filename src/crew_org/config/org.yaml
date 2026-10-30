@@ -122,8 +122,9 @@ delivery:
   # QA's test Tasks open for stories and bugs merged on or after this day, with no
   # backfill of what merged before (the Sponsor, 2026-10-29; crew#945). Empty, none
   # open: the Sponsor and the operator first review one test Task's session start
-  # (`crew qa-start`, crew#944), then the operator sets it to that day.
-  qa_tests_from:
+  # (`crew qa-start`, crew#944), then the operator sets it to that day. Set on
+  # 2026-10-30, after that review (mqucifer/crew-presentation#189's render).
+  qa_tests_from: 2026-10-30
   # CI returns running with the same failing tests before the card is blocked for a
   # person with the log, instead of another session (crew#944): mqucifer/qa-suite#8 was
   # sent back three times for a failure its session had already explained. It starts

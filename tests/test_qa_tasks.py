@@ -191,10 +191,11 @@ def test_test_tasks_start_from_the_day_the_operator_sets(tmp_path):
     assert _open(issues, SuiteBoard(), sink(tmp_path), [_merged(5)], since=since).opened == []
 
 
-def test_the_crew_s_own_config_holds_test_tasks_until_the_review():
+def test_the_crew_s_own_config_starts_test_tasks_on_the_review_day():
     from crew_org.config import load_org
 
-    assert qa_tasks.tests_from(load_org()) is None
+    # Set after the Sponsor and the operator reviewed a test Task's session start.
+    assert qa_tasks.tests_from(load_org()) == datetime(2026, 10, 30, tzinfo=UTC)
 
 
 def test_a_project_with_no_folder_in_qa_suite_opens_none(tmp_path):
