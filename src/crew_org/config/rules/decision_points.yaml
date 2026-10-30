@@ -1634,9 +1634,21 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
-flows.session_delivery.pr_title:end:07783790:
+flows.session_delivery.pr_title:end:023af79d:
   at: flows/session_delivery.py:pr_title
-  if: marked is None or marked.kind != role_tasks.RELEASE or (not marked.key.startswith('epic-'))
+  if: marked is None or marked.kind != role_tasks.RELEASE
+  not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
+flows.session_delivery.pr_title:end:a06b45c9:
+  at: flows/session_delivery.py:pr_title
+  if: marked.key.startswith(unreleased.KEY_PREFIX)
+  not_a_rule: 'names a release''s pull request (crew#961): routes nothing'
+flows.session_delivery.pr_title:end:9533c7d6:
+  at: flows/session_delivery.py:pr_title
+  if: "'CHANGELOG.md' not in _branch_paths(worktree) or not version"
+  not_a_rule: 'names a release''s pull request (crew#961): routes nothing'
+flows.session_delivery.pr_title:end:7ee142e3:
+  at: flows/session_delivery.py:pr_title
+  if: not marked.key.startswith('epic-')
   not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
 flows.session_delivery.pr_title:end:143c9dcf:
   at: flows/session_delivery.py:pr_title
@@ -2170,6 +2182,30 @@ flows.announcements.announced_tasks:result:opened:c1a81f37:
   at: flows/announcements.py:announced_tasks
   if: opened.new
   rule: decision.announcements.announced_tasks
+flows.unreleased.in_flight:end:e2b694bb:
+  at: flows/unreleased.py:in_flight
+  if: issue.get('state') == 'open' and found is not None and (found.kind == rt.RELEASE)
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:skip:06716c63:
+  at: flows/unreleased.py:in_flight
+  if: epic.repo != repo or epic.work_type != 'Epic' or epic.state == 'CLOSED'
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:filter:7c54c7ce:
+  at: flows/unreleased.py:in_flight
+  if: c.repo == repo and c.parent == epic.number
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:end:e72fd511:
+  at: flows/unreleased.py:in_flight
+  if: any((c.work_type == 'Story' for c in under)) and (not any((rt.role_of(c) is rt.DEVOPS for c in under)))
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.unreleased_releases:result:waiting:3a888507:
+  at: flows/unreleased.py:unreleased_releases
+  if: why
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.unreleased_releases:result:opened:c1a81f37:
+  at: flows/unreleased.py:unreleased_releases
+  if: opened.new
+  rule: decision.unreleased.unreleased_releases
 flows.merge.returned_for_conflict:end:7287767e:
   at: flows/merge.py:returned_for_conflict
   if: not head
