@@ -1,64 +1,72 @@
-"""A producer's announced new major opens an item in each project that uses it (crew#960).
+"""A producer's announced new major opens an epic to adopt it in each project that uses it
+(crew#960, crew#969).
 
 A producer announces a breaking change and ships it a week later (ADR 0008 in
-mqucifer/project-print). The crew's first, `delivery-history` 2.0.0 (crew#959), reached
-crew-presentation only as text in its sessions' context, through the README section its
-record `uses`: nothing turned it into work.
+mqucifer/project-print). The crew's first, `delivery-history` 2.0.0 (crew#959), opened a
+Task that only ruled whether crew-presentation could still read it, and the ruling named
+the work and stopped: mqucifer/crew-presentation#210 said adopting it "is the follow-up
+story/Task, not this one", and nothing could file one. As in Renovate or Dependabot, the
+notice is the work item now, and the week is the time to do it.
 
 **Read from what the producer publishes,** never a list in the crew: `announced.json`
 beside the contract files a project's record names, on the producer's default branch.
-Each version in it says the major it replaces, the date, where its contract is and
-which section of which file is its changelog. A producer that publishes none files
-nothing, and the pass says so.
+Each version in it says the major it replaces, the date, where its contract is, which
+section of which file is its changelog, and its mock's files. A producer that publishes
+none files nothing, and the pass says so.
 
-**One Task per project, producer and version,** the Architect's (the role that rules
-whether a project can still read a change, ADR 0021), in Needs Refinement for the
-Business Analyst's triage, as a finding is. It's never filed again, even once closed.
-Only a project that pins the major being replaced gets one: what it pins is read from
-the producer's `versions.json` at the pinned release, leaving out what was only
-announced there.
+**One technical epic per project, producer and version,** in Needs Refinement, past the
+Sponsor's gate (crew#192): the producer set the date. It's never filed again, even once
+closed, and a ruling Task crew#960 filed counts as filed. Only a project that pins the
+major being replaced gets one: what it pins is read from the producer's `versions.json`
+at the pinned release, leaving out what was only announced there.
+
+**Its refinement does the ruling.** A split with nothing to change says so in
+`already_delivered`, with where the code reads it, and that closes the epic.
 """
 
 from __future__ import annotations
 
-import json
-import posixpath
-from collections.abc import Callable
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any
 
 import httpx
 
-from crew_org.columns import NEEDS_REFINEMENT
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import role_tasks as rt
+from crew_org.flows.board_flow import TECHNICAL
+from crew_org.flows.revisit import file_technical_epic, place_technical_epic
 from crew_org.llm import reraise_if_down
 from crew_org.project import RECORD_PATH, ProjectRecordError, Use, parse
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.usage import (
+    Announcement,
+    Read,
+    Unreadable,
+    announcing,
+    producer_file,
+    section,
+)
 
-ANNOUNCED_FILE = "announced.json"
-VERSIONS_FILE = "versions.json"
-RULE = "decision.announcements.announced_tasks"
-
-# A producer's file at a ref: its text, or None when there's no such file.
-Read = Callable[[str, str, str], "str | None"]
-
-
-def producer_file(repo: str, path: str, ref: str = "HEAD") -> str | None:
-    """Read as the usage notes are, without a token: every producer the crew uses is public."""
-    from crew_org.usage import _file  # noqa: PLC0415
-
-    try:
-        return _file(repo, path, ref)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            return None
-        raise
+# What crew#960's ruling Task said it was: mqucifer/crew-presentation#207 is one.
+RULING = "announced"
+_ADOPTION = re.compile(r"<!-- crew:adoption key=(\S+) -->")
 
 
-class Unreadable(Exception):
-    """What an announcement needs that couldn't be read."""
+def adoption_key(body: str | None) -> str | None:
+    """Which announcement an epic adopts, by what its body says, or None."""
+    found = _ADOPTION.search(body or "")
+    return found.group(1) if found else None
+
+
+def _filed_key(issue: dict[str, Any]) -> str | None:
+    """Each announcement is filed once per project: the one this issue is filed for, or None."""
+    key = adoption_key(issue.get("body"))
+    if key is not None:
+        return key
+    ruled = rt.marked(issue.get("body"))
+    return ruled.key if ruled is not None and ruled.kind == RULING else None
 
 
 @dataclass(frozen=True)
@@ -70,8 +78,10 @@ class Item:
     title: str
     body: str
     version: str
-    # The Task already filed for it, open or closed, or None.
+    # What's already filed for it, open or closed, or None.
     filed: int | None = None
+    # An open epic of this announcement, which a board that refused it may still lack.
+    epic: dict[str, Any] | None = None
 
 
 @dataclass
@@ -90,133 +100,52 @@ class Announced:
     failed: list[tuple[str, str]] = field(default_factory=list)
 
 
-def _major(version: str) -> int:
-    return int(version.split(".", 1)[0])
-
-
-def _version(text: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in text.split("."))
-
-
-def _json(read: Read, repo: str, path: str, ref: str) -> Any:
-    text = read(repo, path, ref)
-    if text is None:
-        return None
-    try:
-        return json.loads(text)
-    except ValueError:
-        raise Unreadable(f"{repo}'s `{path}` at `{ref}` isn't JSON") from None
-
-
-def contract_dir(use: Use) -> str:
-    """Where the producer keeps the contract the record names: its files' shared folder."""
-    folders = [posixpath.dirname(p) for p in use.contract]
-    return posixpath.commonpath(folders) if folders else ""
-
-
-def _at(folder: str, name: str) -> str:
-    return posixpath.join(folder, name) if folder else name
-
-
-def pinned_version(use: Use, tag: str, read: Read) -> str:
-    """The version the project's pinned release follows: the latest its `versions.json`
-    records that wasn't only announced there."""
-    folder = contract_dir(use)
-    versions = _json(read, use.repo, _at(folder, VERSIONS_FILE), tag)
-    if not isinstance(versions, dict) or not versions:
-        raise Unreadable(f"{use.repo} records no versions at `{tag}`")
-    announced = _json(read, use.repo, _at(folder, ANNOUNCED_FILE), tag) or {}
-    following = [v for v in versions if v not in announced]
-    if not following:
-        raise Unreadable(f"{use.repo} records only announced versions at `{tag}`")
-    return str(max(following, key=_version))
-
-
-def _body(
-    use: Use,
-    *,
-    key: str,
-    package: str,
-    version: str,
-    replaces: str,
-    on: str,
-    contract: str,
-    log: dict[str, str],
-    changelog: str,
-    tag: str,
-    pinned: str,
-) -> str:
-    where = f"https://github.com/{use.repo}/tree/HEAD/{contract}"
-    return rt.render(
-        rt.ARCHITECT,
-        kind=rt.ANNOUNCED,
-        key=key,
-        why=f"{use.repo} announced `{package}` {version}: it replaces {replaces} on "
-        f"**{on}**, whether this project has moved or not (ADR 0008 in "
-        f"mqucifer/project-print). This project pins `{tag}` in `{use.pin}`, which "
-        f"follows {pinned}.\n\n"
+def _body(use: Use, *, key: str, found: Announcement, changelog: str, tag: str) -> str:
+    where = f"https://github.com/{use.repo}/tree/HEAD/{found.contract}"
+    package, version = found.package, found.version
+    return (
+        f"<!-- crew:adoption key={key} -->\n\n"
+        f"**The work:** this project reads `{package}` {version} by **{found.on}**, when it "
+        f"replaces {found.replaces} whether the project has moved or not (ADR 0008 in "
+        "mqucifer/project-print).\n\n"
+        f"**What the project does now:** it pins `{tag}` in `{use.pin}`, which follows "
+        f"{found.pinned}.\n\n"
         f"**The new contract**, its schemas and mock: {where}\n\n"
-        f"**{use.repo}'s changelog for {version}**, from its `{log['file']}`, "
-        f'"{log["section"]}":\n\n{changelog}',
-        work=f"Rule whether this project can still read `{package}` {version} (ADR 0021): "
-        "what it reads that leaves or changes shape, against the new contract's schemas "
-        f"and mock. Say what it must change to adopt {version}, or that it keeps {pinned} "
-        "and loses what changed.",
-        done_when=["Triaged: the Business Analyst writes what done means."],
+        "**What refinement decides:** whether anything this project reads leaves or changes "
+        f"shape, against the new contract's schemas and mock (ADR 0021). If nothing it reads "
+        "changes, this epic closes with that said. Staying on "
+        f"{found.pinned} and losing what changed is the project's to decide (ADR 0008), written "
+        "on this epic as a decision, never the default when nobody acts.\n\n"
+        f"**{use.repo}'s changelog for {version}**, from its `{found.changelog_file}`, "
+        f'"{found.changelog_section}":\n\n{changelog}\n\n'
+        "Technical work: the producer's announcement set the date, so it goes straight to "
+        "refinement rather than to the Sponsor's gate (mqucifer/crew#192)."
     )
 
 
 def _items(repo: str, use: Use, pin: str | None, read: Read, ref: str) -> list[Item] | None:
     """What the project files for `use`'s announcements; None when it publishes none."""
-    from crew_org.usage import section  # noqa: PLC0415
-
-    folder = contract_dir(use)
-    announced = _json(read, use.repo, _at(folder, ANNOUNCED_FILE), ref)
-    if announced is None:
+    found = announcing(use, pin, read, ref)
+    if found is None:
         return None
-    if not isinstance(announced, dict):
-        raise Unreadable(f"{use.repo}'s `{_at(folder, ANNOUNCED_FILE)}` isn't a map of versions")
-    if not pin:
-        raise Unreadable(f"`{use.pin}` names no release of {use.repo}")
-    pinned = pinned_version(use, pin, read)
-    package = posixpath.basename(folder) or use.repo.rsplit("/", 1)[-1]
-    at = _major(pinned)
     items = []
-    for version, said in sorted(announced.items(), key=lambda kv: _version(kv[0])):
-        try:
-            replaces, on = str(said["replaces"]), str(said["on"])
-            contract, log = str(said["contract"]), said["changelog"]
-            replaced = _major(replaces.removesuffix(".x"))
-            file, heading = str(log["file"]), str(log["section"])
-        except (KeyError, TypeError, ValueError):
-            raise Unreadable(f"{use.repo}'s announcement of {version} is incomplete") from None
-        # Only the readers of the major it replaces have anything to move from.
-        if replaced != at or _major(version) <= at:
-            continue
-        text = read(use.repo, file, ref)
-        changelog = section(text, heading) if text is not None else None
+    for each in found:
+        text = read(use.repo, each.changelog_file, ref)
+        changelog = section(text, each.changelog_section) if text is not None else None
         if changelog is None:
-            raise Unreadable(f'{use.repo}\'s `{file}` has no section "{heading}" for {version}')
-        key = f"{use.repo}:{package}@{version}"
+            raise Unreadable(
+                f"{use.repo}'s `{each.changelog_file}` has no section "
+                f'"{each.changelog_section}" for {each.version}'
+            )
+        key = f"{use.repo}:{each.package}@{each.version}"
         items.append(
             Item(
                 repo=repo,
                 key=key,
-                title=f"{package} {version} replaces {replaces} on {on}",
-                body=_body(
-                    use,
-                    key=key,
-                    package=package,
-                    version=version,
-                    replaces=replaces,
-                    on=on,
-                    contract=contract,
-                    log=log,
-                    changelog=changelog,
-                    tag=pin,
-                    pinned=pinned,
-                ),
-                version=version,
+                title=f"Adopt {each.package} {each.version} before it replaces "
+                f"{each.replaces} on {each.on}",
+                body=_body(use, key=key, found=each, changelog=changelog, tag=str(pin)),
+                version=each.version,
             )
         )
     return items
@@ -225,6 +154,18 @@ def _items(repo: str, use: Use, pin: str | None, read: Read, ref: str) -> list[I
 def _pin(issues: Any, repo: str, use: Use, branch: str) -> str | None:
     text = issues.file_at(repo, use.pin, branch) if use.pin else None
     return next((line.strip() for line in (text or "").splitlines() if line.strip()), None)
+
+
+def _already_filed(issues: Any, repo: str) -> dict[str, dict[str, Any]]:
+    """What's filed for each announcement, open or closed: its adoption epic, or the ruling
+    Task crew#960 filed before there were epics."""
+    filed: dict[str, dict[str, Any]] = {}
+    for label in (rt.ARCHITECT.label, TECHNICAL):
+        for issue in issues.labelled(repo, label):
+            key = _filed_key(issue)
+            if key is not None:
+                filed[key] = issue
+    return filed
 
 
 def plan(issues: Any, repo: str, *, read: Read = producer_file, ref: str = "HEAD") -> Plan:
@@ -257,16 +198,46 @@ def plan(issues: Any, repo: str, *, read: Read = producer_file, ref: str = "HEAD
             result.unannounced.append(use.repo)
             continue
         if found and filed is None:
-            filed = {
-                m.key: int(i["number"])
-                for i in issues.labelled(repo, rt.ARCHITECT.label)
-                if (m := rt.marked(i.get("body"))) is not None and m.kind == rt.ANNOUNCED
-            }
-        result.items += [replace(item, filed=(filed or {}).get(item.key)) for item in found]
+            filed = _already_filed(issues, repo)
+        for item in found:
+            issue = (filed or {}).get(item.key)
+            result.items.append(
+                replace(
+                    item,
+                    filed=int(issue["number"]) if issue else None,
+                    epic=issue
+                    if issue and adoption_key(issue.get("body")) and issue.get("state") == "open"
+                    else None,
+                )
+            )
     return result
 
 
-def announced_tasks(
+def _placed_late(board: Any, sink: EventSink, *, repo: str, item: Item, cards: list[Card]) -> bool:
+    """An epic filed by a pass the board refused goes on the board now, not filed again."""
+    if item.epic is None or item.filed is None:
+        return False
+    if any(c.repo == repo and c.number == item.filed for c in cards):
+        return False
+    place_technical_epic(board, sink, repo=repo, issue=item.epic, summary=_summary(item))
+    return True
+
+
+def _summary(item: Item) -> str:
+    return f"technical epic — {item.title[:50]}"
+
+
+def _said(sink: EventSink, *, repo: str, number: int, item: Item) -> None:
+    sink.note(
+        EventKind.NOTE,
+        f"{repo}#{number}: {item.title}"[:120],
+        repo=repo,
+        card=number,
+        rule="decision.announcements.announced_epics",
+    )
+
+
+def announced_epics(
     issues: IssueClient,
     board: ProjectClient,
     sink: EventSink,
@@ -275,9 +246,9 @@ def announced_tasks(
     cards: list[Card],
     read: Read = producer_file,
 ) -> Announced:
-    """Each project gets the Architect's Task for each announced major that replaces the
-    one it pins, once. A producer that publishes none is noted; one that can't be read,
-    or a Task GitHub refused, is held and tried again next pass."""
+    """Each project gets one technical epic for each announced major that replaces the one
+    it pins, once. A producer that publishes none is noted; one that can't be read, or an
+    epic GitHub or the board refused, is held and tried again next pass."""
     result = Announced()
     for repo in sorted(repos):
         try:
@@ -297,45 +268,33 @@ def announced_tasks(
                 rule="decision.announcements.none_published",
             )
         for item in planned.items:
-            if item.filed is not None:
-                continue
             try:
-                opened = rt.open_task(
-                    issues,
-                    board,
-                    sink,
-                    repo=repo,
-                    role=rt.ARCHITECT,
-                    kind=rt.ANNOUNCED,
-                    key=item.key,
-                    title=item.title,
-                    body=item.body,
-                    points=None,
-                    cards=cards,
-                    column=NEEDS_REFINEMENT,
-                    by=rt.ARCHITECT.name,
-                    event="producer.announced",
-                    rule=RULE,
-                    detail={"key": item.key, "version": item.version},
-                )
-            except Exception as exc:  # noqa: BLE001
-                reraise_if_down(exc)
-                result.failed.append(
-                    (
-                        repo,
-                        rt.not_opened(
+                if item.filed is not None:
+                    if not _placed_late(board, sink, repo=repo, item=item, cards=cards):
+                        continue
+                    number = item.filed
+                else:
+                    number = int(
+                        file_technical_epic(
+                            issues,
+                            board,
                             sink,
                             repo=repo,
-                            role=rt.ARCHITECT,
-                            kind=rt.ANNOUNCED,
-                            card=None,
-                            why=exc,
-                        ),
+                            title=item.title,
+                            body=item.body,
+                            summary=_summary(item),
+                        )["number"]
                     )
+            except Exception as exc:  # noqa: BLE001
+                reraise_if_down(exc)
+                why = f"{repo}'s epic for {item.key} not filed or not placed: {exc}"[:200]
+                sink.note(
+                    EventKind.NOTE, why, repo=repo, rule="decision.announcements.announced_epics"
                 )
+                result.failed.append((repo, why))
                 continue
-            if opened.new:
-                result.opened.append((repo, opened.number))
+            _said(sink, repo=repo, number=number, item=item)
+            result.opened.append((repo, number))
     return result
 
 

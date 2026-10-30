@@ -2154,26 +2154,30 @@ flows.alerts.task_body:filter:21f1398f:
   at: flows/alerts.py:task_body
   if: not k.startswith('__')
   not_a_rule: 'a render: leaves Grafana''s routing labels out of the Task''s text'
-flows.announcements._items:skip:d5da2c50:
-  at: flows/announcements.py:_items
-  if: replaced != at or _major(version) <= at
-  rule: decision.announcements.announced_tasks
+flows.announcements._filed_key:end:ad2d25f7:
+  at: flows/announcements.py:_filed_key
+  if: key is not None
+  rule: decision.announcements.announced_epics
+flows.announcements._placed_late:end:f3c34e98:
+  at: flows/announcements.py:_placed_late
+  if: item.epic is None or item.filed is None
+  rule: decision.announcements.announced_epics
+flows.announcements._placed_late:end:ad8328a9:
+  at: flows/announcements.py:_placed_late
+  if: any((c.repo == repo and c.number == item.filed for c in cards))
+  rule: decision.announcements.announced_epics
 flows.announcements.plan:result:unannounced:8ecfb5c4:
   at: flows/announcements.py:plan
   if: found is None
   rule: decision.announcements.none_published
-flows.announcements.plan:filter:498725a4:
-  at: flows/announcements.py:plan
-  if: (m := rt.marked(i.get('body'))) is not None and m.kind == rt.ANNOUNCED
-  rule: decision.announcements.announced_tasks
-flows.announcements.announced_tasks:skip:0690b827:
-  at: flows/announcements.py:announced_tasks
+flows.announcements.announced_epics:skip:0690b827:
+  at: flows/announcements.py:announced_epics
   if: item.filed is not None
-  rule: decision.announcements.announced_tasks
-flows.announcements.announced_tasks:result:opened:c1a81f37:
-  at: flows/announcements.py:announced_tasks
-  if: opened.new
-  rule: decision.announcements.announced_tasks
+  rule: decision.announcements.announced_epics
+flows.announcements.announced_epics:skip:9191fd4d:
+  at: flows/announcements.py:announced_epics
+  if: not _placed_late(board, sink, repo=repo, item=item, cards=cards)
+  rule: decision.announcements.announced_epics
 flows.unreleased.in_flight:end:e2b694bb:
   at: flows/unreleased.py:in_flight
   if: issue.get('state') == 'open' and found is not None and (found.kind == rt.RELEASE)

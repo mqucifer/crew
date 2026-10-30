@@ -66,6 +66,16 @@ def test_what_is_announced_is_published_for_readers_crews_to_file():
 
 
 @pytest.mark.parametrize("version", sorted(_announced()))
+def test_an_announcement_lists_its_mock_whole(version):
+    # A raw file host lists no folder, so a reader's crew fetches what this names (crew#969).
+    folder = contract.CONTRACTS / version
+    on_disk = sorted(
+        p.relative_to(folder).as_posix() for p in (folder / "mock").rglob("*") if p.is_file()
+    )
+    assert sorted(_announced()[version]["mock"]) == on_disk
+
+
+@pytest.mark.parametrize("version", sorted(_announced()))
 def test_an_announcement_names_its_contract_date_and_changelog(version):
     from crew_org.usage import section  # noqa: PLC0415
 

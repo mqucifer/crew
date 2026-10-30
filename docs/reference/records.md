@@ -220,7 +220,8 @@ names, what it means, and where those notes are written:
 | `decision.alerts.fired` | An alert that fires again while its Task is open is said on that Task once, not opened as a second Task. | `flows/alerts.py:_one` |
 | `decision.alerts.resolved` | An open alert Task whose alert no longer fires is told so once per firing; it stays open until DevOps's review is done. Nothing is marked resolved in a pass that couldn't read Grafana. | `flows/alerts.py:_stopped` |
 | `decision.alerts.unread` | Grafana's alerts that can't be read (no token, unreachable, refused or unreadable) are a held line each pass, and the tick goes on. Unread for 24 hours straight, they become one DevOps finding in infra, keyed by the day it began; reading them again clears the count. | `flows/alerts.py:alert_tasks` |
-| `decision.announcements.none_published` | A producer a project uses that publishes no `announced.json` files nothing, and each pass notes it. | `flows/announcements.py:announced_tasks` |
+| `decision.announcements.announced_epics` | A producer's announced new major, read from its `announced.json` beside the contract files a project's record names, opens a technical epic to adopt it in Needs Refinement in each project that pins a release at the major it replaces, once per project, producer and version, never again once closed. A ruling Task crew#960 filed for it counts as filed. Nothing is filed in the producer's own repository. | `flows/announcements.py:_said`, `flows/announcements.py:announced_epics` |
+| `decision.announcements.none_published` | A producer a project uses that publishes no `announced.json` files nothing, and each pass notes it. | `flows/announcements.py:announced_epics` |
 | `decision.backlog_order.what_is_ordered` | The Product Owner ranks the open epics with no Rank. One it can't place yet is held for the work it builds on, and an order it can't give is recorded as failed. | `flows/backlog_order.py:order_backlogs` |
 | `decision.board_flow.already_delivered` | An epic whose stories would only repeat delivered work is closed as already delivered, naming the stories that delivered it. | `flows/board_flow.py:refine_epics` |
 | `decision.board_flow.parked_goals_released` | A Goal the Sponsor parked, filed without the `goal` label and with no Work Type, is released by adding the label. The tick moves it to Inbox (Goals) from wherever it waits, clears its `needs:human`, and types it, so it's decomposed that pass. | `flows/board_flow.py:release_parked_goals` |
@@ -257,6 +258,7 @@ filled in), and the fields it names.
 | `flows/artifacts.py:label` | … | `added`, **`artifact`**, `removed`, **`repo`** |
 | `flows/backlog_order.py:order_backlogs` | … backlog order: … chars of backlog | — |
 | `flows/backlog_order.py:order_backlogs` | …: ordered the backlog: … | `order`, **`repo`** |
+| `flows/board_flow.py:_place_announced` | … | **`repo`** |
 | `flows/board_flow.py:_record` | refining … without its record: … | — |
 | `flows/board_flow.py:admit_held_stories` | waiting for room in …: … | — |
 | `flows/board_flow.py:create_epic_cards` | could not nest under #…: … | — |
@@ -320,6 +322,7 @@ filled in), and the fields it names.
 | `flows/session_delivery.py:_say_resolved` | #… resolved on PR #…, and its comment failed: … | — |
 | `flows/session_delivery.py:_say_reworked` | #… re-worked on PR #…, and its comment failed: … | — |
 | `flows/session_delivery.py:after_run` | #… checkpoint after a green 'run …' | `checkpoint` |
+| `flows/session_delivery.py:deliver_by_session` | … | **`repo`** |
 | `flows/session_delivery.py:note` | #… … | — |
 | `flows/session_end.py:note` | #… … | — |
 | `flows/sprint.py:start_sprint` | #… sprint not cleared: … | — |

@@ -13,6 +13,14 @@ not the producer's latest, since a producer's schema moves on between releases.
 crew-presentation's roles saw only the notes, and an epic promised two numbers
 its package doesn't carry.
 
+A major the producer has announced to replace the pinned one is shown beside it
+(crew#969): what differs from the pinned fields, in the same text, and the announced
+schemas and mock as files in the session's checkout, since a session has no network.
+On mqucifer/crew-presentation#211 the Business Analyst searched the 1.x package for
+`top_failure_causes`, because the 2.0.0 shape was nowhere it could read, and only the
+mock shows it: the schema types it as array, object or null. The mock is 84 KB and few
+sessions need it, so it's never in the text.
+
 Read without a token: every producer the crew uses is public. A private one
 would need the crew's token here.
 """
@@ -20,18 +28,34 @@ would need the crew's token here.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
+import shutil
+import subprocess
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 import httpx
+
+from crew_org.git_ops import exclude_folder
 
 if TYPE_CHECKING:
     from crew_org.project import Use
 
 RAW = "https://raw.githubusercontent.com/{repo}/{ref}/{file}"
 TIMEOUT = 15
+
+ANNOUNCED_FILE = "announced.json"
+VERSIONS_FILE = "versions.json"
+# Where a session's checkout holds an announced major's files: never committed, since
+# the clone's `info/exclude` names it, so a test that stays carries its own fixture.
+ANNOUNCED_DIR = ".announced"
+
+# A producer's file at a ref: its text, or None when there's no such file.
+Read = Callable[[str, str, str], "str | None"]
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _FENCE = re.compile(r"^\s*(```|~~~)")
@@ -210,6 +234,271 @@ def contract(use: Use, root: Path | None) -> str:
     return "\n".join(lines)
 
 
+class Unreadable(Exception):
+    """What an announcement needs that couldn't be read."""
+
+
+def producer_file(repo: str, path: str, ref: str = "HEAD") -> str | None:
+    """A producer's file, or None when it has no such file."""
+    try:
+        return _file(repo, path, ref)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        raise
+
+
+def _major(version: str) -> int:
+    return int(version.split(".", 1)[0])
+
+
+def _version(text: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in text.split("."))
+
+
+def _json(read: Read, repo: str, path: str, ref: str) -> Any:
+    text = read(repo, path, ref)
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        raise Unreadable(f"{repo}'s `{path}` at `{ref}` isn't JSON") from None
+
+
+def contract_dir(use: Use) -> str:
+    """Where the producer keeps the contract the record names: its files' shared folder."""
+    folders = [posixpath.dirname(p) for p in use.contract]
+    return posixpath.commonpath(folders) if folders else ""
+
+
+def _at(folder: str, name: str) -> str:
+    return posixpath.join(folder, name) if folder else name
+
+
+def pinned_version(use: Use, tag: str, read: Read = producer_file) -> str:
+    """The version the project's pinned release follows: the latest its `versions.json`
+    records that wasn't only announced there."""
+    folder = contract_dir(use)
+    versions = _json(read, use.repo, _at(folder, VERSIONS_FILE), tag)
+    if not isinstance(versions, dict) or not versions:
+        raise Unreadable(f"{use.repo} records no versions at `{tag}`")
+    announced = _json(read, use.repo, _at(folder, ANNOUNCED_FILE), tag) or {}
+    following = [v for v in versions if v not in announced]
+    if not following:
+        raise Unreadable(f"{use.repo} records only announced versions at `{tag}`")
+    return str(max(following, key=_version))
+
+
+@dataclass(frozen=True)
+class Announcement:
+    """One announced version that replaces the major a project pins."""
+
+    package: str
+    version: str
+    replaces: str
+    on: str
+    # Its folder at the producer, and its files there beside the record's contract.
+    contract: str
+    changelog_file: str
+    changelog_section: str
+    mock: tuple[str, ...]
+    # The version the project's pinned release follows.
+    pinned: str
+
+
+def _inside(path: str) -> str:
+    """A path a producer names under a folder, refused if it could lead out of it: it's
+    written on the host (`place_announced`)."""
+    pure = PurePosixPath(path)
+    if not path or pure.is_absolute() or ".." in pure.parts:
+        raise ValueError(path)
+    return path
+
+
+def announcing(
+    use: Use, tag: str | None, read: Read = producer_file, ref: str = "HEAD"
+) -> list[Announcement] | None:
+    """What the producer announces to replace the major at `tag`; None when it publishes
+    no announcements. `ref` is the producer's ref to read them at."""
+    folder = contract_dir(use)
+    announced = _json(read, use.repo, _at(folder, ANNOUNCED_FILE), ref)
+    if announced is None:
+        return None
+    if not isinstance(announced, dict):
+        raise Unreadable(f"{use.repo}'s `{_at(folder, ANNOUNCED_FILE)}` isn't a map of versions")
+    if not tag:
+        raise Unreadable(f"`{use.pin}` names no release of {use.repo}")
+    pinned = pinned_version(use, tag, read)
+    package = posixpath.basename(folder) or use.repo.rsplit("/", 1)[-1]
+    at = _major(pinned)
+    found = []
+    for version, said in announced.items():
+        try:
+            replaced = _major(str(said["replaces"]).removesuffix(".x"))
+            _version(version)
+            log = said["changelog"]
+            announcement = Announcement(
+                package=package,
+                version=version,
+                replaces=str(said["replaces"]),
+                on=str(said["on"]),
+                contract=str(said["contract"]),
+                changelog_file=str(log["file"]),
+                changelog_section=str(log["section"]),
+                # A producer that names no mock still has its fields shown.
+                mock=tuple(_inside(str(path)) for path in said.get("mock") or ()),
+                pinned=pinned,
+            )
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise Unreadable(f"{use.repo}'s announcement of {version} is incomplete") from None
+        # Only the readers of the major it replaces have anything to move from.
+        if replaced == at and _major(version) > at:
+            found.append(announcement)
+    return sorted(found, key=lambda a: _version(a.version))
+
+
+def announced_folder(use: Use, found: Announcement) -> str:
+    """Where a session's checkout holds `found`'s files."""
+    name = f"{found.package}-{found.version}"
+    return posixpath.join(ANNOUNCED_DIR, use.repo.replace("/", "-"), name)
+
+
+def contract_files(use: Use) -> list[str]:
+    """The record's contract files, as named under their shared folder."""
+    folder = contract_dir(use)
+    return [posixpath.relpath(path, folder) if folder else path for path in use.contract]
+
+
+def _announced_at(use: Use, found: Announcement, name: str) -> str | None:
+    return producer_file(use.repo, _at(found.contract, name), "HEAD")
+
+
+def _differs(use: Use, found: Announcement, name: str, release: str) -> str:
+    """One contract file at the announced major, beside what the pinned release provides:
+    only what leaves, comes or changes what its schema says. The rest is listed above."""
+    text = _announced_at(use, found, name)
+    if text is None:
+        return f"`{name}`: {use.repo} announces none."
+    before = producer_file(use.repo, _at(contract_dir(use), name), release)
+    if before == text:
+        return f"`{name}`: as above."
+    if not name.endswith(".json") or before is None:
+        return f"`{name}`:\n\n{_provided(name, text)}"
+    try:
+        old, new = described_fields(json.loads(before)), described_fields(json.loads(text))
+    except (ValueError, AttributeError):
+        return f"`{name}`:\n\n{_provided(name, text)}"
+    left = [f for f in old if f not in new]
+    came = {f: said for f, said in new.items() if f not in old or old[f] != said}
+    if not left and not came:
+        return f"`{name}`: as above."
+    lines = [f"`{name}`:"]
+    if left:
+        lines += ["", "Leaves: " + ", ".join(f"`{f}`" for f in left)]
+    if came:
+        lines += ["", "New, or said differently:"]
+        lines += [f"- `{f}`: {said}" if said else f"- `{f}`" for f, said in came.items()]
+    return "\n".join(lines)
+
+
+def _where(use: Use, found: Announcement, root: Path) -> str:
+    """How a session reaches the announced files, the mock among them."""
+    folder = announced_folder(use, found)
+    if not (root / folder).is_dir():
+        return (
+            f"Its schemas and mock are at https://github.com/{use.repo}/tree/HEAD/"
+            f"{found.contract}, which a session has no network to read."
+        )
+    mock = "".join(f", `{path}`" for path in found.mock)
+    return (
+        f"Its schemas{' and mock' if found.mock else ''} are files at `{folder}/` in this "
+        f"checkout, to view and search, and for a test to read with no network: "
+        f"{', '.join(f'`{n}`' for n in contract_files(use))}{mock}. A field's shape can change "
+        "with its name the same, and only the mock shows that. The folder is never committed "
+        "and isn't in CI, so a test that stays carries what it uses as its own fixture."
+    )
+
+
+def _headline(found: Announcement) -> str:
+    return f"`{found.package}` {found.version} replaces {found.replaces} on {found.on}"
+
+
+def announced(use: Use, root: Path | None) -> str:
+    """What's announced to replace the major this project pins, or "" if nothing is."""
+    release = pinned(use, root)
+    if root is None or release is None or not use.contract:
+        return ""
+    try:
+        return "\n\n".join(
+            "\n\n".join(
+                [
+                    f"**What {use.repo} has announced: {_headline(found)}**, whether this "
+                    "project has moved or not. The list above stays what it pins until then; "
+                    "this is what changes.",
+                    *(_differs(use, found, n, release) for n in contract_files(use)),
+                    _where(use, found, root),
+                ]
+            )
+            for found in announcing(use, release) or []
+        )
+    except (Unreadable, httpx.HTTPError) as exc:
+        return f"(What {use.repo} has announced couldn't be read: {exc}.)"
+
+
+def announced_summary(use: Use, root: Path | None) -> list[str]:
+    """One line per announced major, for a start that keeps the fields in a note."""
+    release = pinned(use, root)
+    if root is None or release is None or not use.contract:
+        return []
+    try:
+        found = announcing(use, release) or []
+    except (Unreadable, httpx.HTTPError):
+        return []
+    return [
+        f"{_headline(a)}: its schemas and mock are at `{announced_folder(use, a)}/`, never "
+        "committed; a test that stays carries what it uses as its own fixture."
+        if (root / announced_folder(use, a)).is_dir()
+        else f"{_headline(a)}."
+        for a in found
+    ]
+
+
+def place_announced(uses: list[Use], root: Path, ref: str = "HEAD") -> list[str]:
+    """Put each announced major's schemas and mock in a checkout, for a session with no
+    network to read and its tests to build against. Why any couldn't be, one line each:
+    the session goes on, told where they are instead."""
+    gaps = []
+    for use in uses:
+        release = pinned(use, root)
+        if release is None or not use.contract:
+            continue
+        try:
+            for found in announcing(use, release, ref=ref) or []:
+                _place(use, found, root, ref)
+        except (Unreadable, httpx.HTTPError, OSError, subprocess.CalledProcessError) as exc:
+            gaps.append(f"{use.repo}'s announced files weren't placed: {exc}"[:200])
+    return gaps
+
+
+def _place(use: Use, found: Announcement, root: Path, ref: str) -> None:
+    """All of its files or none: read first, so a mock half there can't mislead a test."""
+    files = {}
+    for name in [*contract_files(use), *found.mock]:
+        text = producer_file(use.repo, _at(found.contract, name), ref)
+        if text is None:
+            raise Unreadable(f"`{_at(found.contract, name)}` isn't at `{ref}`")
+        files[name] = text
+    target = root / announced_folder(use, found)
+    exclude_folder(root, ANNOUNCED_DIR)
+    if target.exists():
+        shutil.rmtree(target)
+    for name, text in files.items():
+        path = target / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
 def unreadable(use: Use, root: Path | None) -> list[str]:
     """Why the roles couldn't be shown what `use` points to, one line per gap.
 
@@ -243,8 +532,15 @@ def unreadable(use: Use, root: Path | None) -> list[str]:
 
 
 def provided_fields(uses: list[Use], root: Path | None) -> frozenset[str]:
-    """Every field the pinned releases' JSON schemas define, by path and by name."""
+    """Every field the pinned releases' JSON schemas define, by path and by name, and the
+    majors announced to replace them: an adoption epic's stories name those (crew#969)."""
     names: set[str] = set()
+
+    def add(schema: Any) -> None:
+        for field in schema_fields(schema) if isinstance(schema, dict) else []:
+            names.add(field)
+            names.add(field.rsplit(".", 1)[-1].removesuffix("[]"))
+
     for use in uses:
         release = pinned(use, root)
         if release is None:
@@ -253,10 +549,14 @@ def provided_fields(uses: list[Use], root: Path | None) -> frozenset[str]:
             if not path.endswith(".json"):
                 continue
             try:
-                schema = json.loads(_file(use.repo, path, release))
+                add(json.loads(_file(use.repo, path, release)))
             except (httpx.HTTPError, ValueError):
                 continue
-            for field in schema_fields(schema) if isinstance(schema, dict) else []:
-                names.add(field)
-                names.add(field.rsplit(".", 1)[-1].removesuffix("[]"))
+        try:
+            for found in announcing(use, release) or []:
+                for name in contract_files(use):
+                    text = _announced_at(use, found, name) if name.endswith(".json") else None
+                    add(json.loads(text) if text else None)
+        except (Unreadable, httpx.HTTPError, ValueError):
+            continue
     return frozenset(names)

@@ -1482,3 +1482,34 @@ def test_a_release_pull_request_names_the_version_it_moves_to(
         _release_task(title), marked, issues, "sprint-metrics", tmp_path
     )
     assert got == (expected or title)
+
+
+def test_a_session_has_the_announced_files_and_they_are_never_pushed(ws, deliver, monkeypatch):
+    """crew#969: on a project whose pin an announced major replaces."""
+    from crew_org import usage
+    from tests import test_announced_sessions as announced
+
+    monkeypatch.setattr(usage, "_file", announced._producer(announced.FILES))
+    on_origin(
+        ws,
+        "main",
+        {".crew/project.yaml": announced.RECORD, "delivery-history.tag": f"{announced.TAG}\n"},
+    )
+
+    class Seeing(Sessions):
+        placed: bool = False
+
+        def __call__(self, worktree, *args, **kw):
+            Seeing.placed = (worktree / announced.FOLDER / "schema.json").is_file()
+            return super().__call__(worktree, *args, **kw)
+
+    sessions = Seeing({"writes": {"rate.py": "RATE = 1\n"}, "ending": Ending("done", DONE)})
+    deliver(ws, sessions, Routes(session_end.Route(session_end.REVIEW, "r")))
+    assert Seeing.placed
+    files = subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "ls-tree", "-r", "--name-only", BRANCH],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "rate.py" in files and ".announced" not in files

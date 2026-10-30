@@ -88,6 +88,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.regression import merged_base
 from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
+from crew_org.usage import place_announced
 from crew_org.work_types import TASK
 
 if TYPE_CHECKING:
@@ -265,6 +266,9 @@ def deliver_by_session(
         outcome.ended = True
         return outcome
     profiles.set_project(record)
+    if record is not None:
+        for gap in place_announced(record.intent.scope.uses, worktree):
+            sink.note(EventKind.NOTE, gap, repo=repo, card=number)
     offered = skills.for_task(role, body, worktree, _branch_paths(worktree)) if role else []
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)

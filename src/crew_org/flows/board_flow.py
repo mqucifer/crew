@@ -1685,6 +1685,7 @@ class RepoContext:
                 self._sink.note(EventKind.NOTE, f"{repo}: no checkout to read: {exc}"[:160])
                 self._reading[repo] = None
                 return None
+            self._place_announced(repo, root)
             try:
                 coverage = build(root, repo)
             except CoverageUnavailable as exc:
@@ -1702,6 +1703,18 @@ class RepoContext:
                 self._sink.note(EventKind.NOTE, f"{repo}: {exc}"[:160])
                 self._reading[repo] = None
         return self._reading[repo]
+
+    def _place_announced(self, repo: str, root: Path) -> None:
+        """A major announced to replace what the project pins, as files its steps read and
+        search with no network (crew#969). A step that goes without is told where it is."""
+        from crew_org.usage import place_announced  # noqa: PLC0415
+
+        try:
+            record = read_record(root)
+        except ProjectRecordError:
+            return
+        for gap in place_announced(record.intent.scope.uses, root) if record else []:
+            self._sink.note(EventKind.NOTE, gap, repo=repo)
 
     def focused_for(
         self, repo: str, about: str, extra: list[str] = (), *, beside: int = 0

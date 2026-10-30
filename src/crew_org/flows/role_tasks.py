@@ -165,8 +165,6 @@ REVIEW = "review"
 # A crew alert firing in Grafana, DevOps's in infra (crew#893).
 ALERT = "alert"
 FINDING = "finding"
-# A producer's announced new major, the Architect's in each project that uses it (crew#960).
-ANNOUNCED = "announced"
 # QA's, in qa-suite (crew#896): a merged story's test, an escaped bug's, and a dispute.
 STORY_TEST = "story-test"
 ESCAPED = "escaped-bug"

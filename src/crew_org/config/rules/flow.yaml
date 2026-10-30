@@ -75,13 +75,15 @@ decision.alerts.unread:
     finding in infra, keyed by the day it began; reading them again clears the count.
   origin:
   - crew#893
-decision.announcements.announced_tasks:
+decision.announcements.announced_epics:
   description: A producer's announced new major, read from its `announced.json` beside the contract
-    files a project's record names, opens the Architect's Task in Needs Refinement in each project that
-    pins a release at the major it replaces, once per project, producer and version, never again once
-    closed. Nothing is filed in the producer's own repository.
+    files a project's record names, opens a technical epic to adopt it in Needs Refinement in each
+    project that pins a release at the major it replaces, once per project, producer and version,
+    never again once closed. A ruling Task crew#960 filed for it counts as filed. Nothing is filed in
+    the producer's own repository.
   origin:
   - crew#960
+  - crew#969
 decision.announcements.none_published:
   description: A producer a project uses that publishes no `announced.json` files nothing, and each pass
     notes it.
