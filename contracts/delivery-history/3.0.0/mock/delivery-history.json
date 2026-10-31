@@ -1,0 +1,754 @@
+{
+ "package": "delivery-history",
+ "schema_version": "3.0.0",
+ "date": "2026-09-25",
+ "timezone": "America/Chicago",
+ "crew_repository": "crew",
+ "repositories": [
+  "qa-suite",
+  "sprint-metrics"
+ ],
+ "sprints": [
+  {
+   "name": "Sprint 5",
+   "start": "2026-09-24",
+   "end": "2026-09-24"
+  },
+  {
+   "name": "Sprint 6",
+   "start": "2026-09-25",
+   "end": "2026-09-25"
+  }
+ ],
+ "cards": [
+  {
+   "repo": "qa-suite",
+   "number": 16,
+   "type": null,
+   "title": "The test of sprint-metrics#125: Move the card model into card.py",
+   "url": "https://github.com/mqucifer/qa-suite/issues/16",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-26T00:14:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "task",
+    "kind": "story-test",
+    "for_project": "sprint-metrics"
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 41,
+   "type": "Goal",
+   "title": "Goal: a report anyone can run",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/41",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-19T23:30:00Z",
+   "closed": "2026-09-20T23:30:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "unknown",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 48,
+   "type": "Goal",
+   "title": "Goal: the tool presents, not just reports",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/48",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "sponsor",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 59,
+   "type": "Epic",
+   "title": "Stable JSON API",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/59",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 62,
+   "type": "Epic",
+   "title": "A five-second health summary",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/62",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Inbox (Goals)",
+   "status_set": "2026-09-23T23:30:00Z",
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 63,
+   "type": "Epic",
+   "title": "A trend line a person can read",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/63",
+   "parent": 48,
+   "points": null,
+   "sprint": null,
+   "status": "Inbox (Goals)",
+   "status_set": "2026-09-23T23:30:00Z",
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 105,
+   "type": "Epic",
+   "title": "A JSON report of one sprint",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/105",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T01:30:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 110,
+   "type": "Story",
+   "title": "Write the sprint report as JSON",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/110",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-24T23:53:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 111,
+   "type": "Story",
+   "title": "Show the prior sprint beside it",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/111",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T00:23:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 112,
+   "type": "Story",
+   "title": "Exit 2 when the sprint is missing",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/112",
+   "parent": 105,
+   "points": 3.0,
+   "sprint": "Sprint 5",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-25T01:03:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 123,
+   "type": "Epic",
+   "title": "Split crew_performance.py into seven modules",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/123",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "In Progress",
+   "status_set": null,
+   "created": "2026-09-25T23:38:00Z",
+   "closed": null,
+   "technical": true,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "technical_epic",
+    "kind": "design",
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 124,
+   "type": "Epic",
+   "title": "One entry point for the CLI and the service",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/124",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-25T23:38:00Z",
+   "closed": null,
+   "technical": true,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "technical_epic",
+    "kind": "main-red",
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 125,
+   "type": "Story",
+   "title": "Move the card model into card.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/125",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T00:13:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 126,
+   "type": "Story",
+   "title": "Move the metric functions into metrics.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/126",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T00:51:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 127,
+   "type": "Story",
+   "title": "Extract threshold logic into thresholds.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/127",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T01:55:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 128,
+   "type": "Story",
+   "title": "Move the report into report.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/128",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T02:23:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 129,
+   "type": "Story",
+   "title": "Move sprint ranges into sprint_range.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/129",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "In Progress",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 130,
+   "type": "Story",
+   "title": "Move serve into serve.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/130",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T02:50:00Z",
+   "technical": false,
+   "closed_as": "not_planned",
+   "superseded_because": "story_problem",
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 131,
+   "type": "Story",
+   "title": "Move the CLI into cli.py",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/131",
+   "parent": 123,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Blocked",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 132,
+   "type": "Story",
+   "title": "Serve the trend from the package",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/132",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 133,
+   "type": "Story",
+   "title": "Add the package's entry point",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/133",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": "2026-09-26T03:03:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 136,
+   "type": "Story",
+   "title": "Read the sprint from the service's query",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/136",
+   "parent": 124,
+   "points": 3.0,
+   "sprint": "Sprint 6",
+   "status": "Reviewing",
+   "status_set": null,
+   "created": "2026-09-22T23:30:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 151,
+   "type": "Bug",
+   "title": "The trend line overflows at 375px",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/151",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-26T02:40:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "finding",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 152,
+   "type": null,
+   "title": "Release for epic 123",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/152",
+   "parent": 123,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-25T23:40:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "task",
+    "kind": "release",
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 153,
+   "type": "Bug",
+   "title": "The summary's numbers are off by one",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/153",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-26T02:45:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "operator",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
+  }
+ ],
+ "periods": [
+  {
+   "sprint": "Sprint 5",
+   "start": "2026-09-24",
+   "end": "2026-09-24",
+   "file": "events/2026-09-24.json",
+   "events": 39
+  },
+  {
+   "sprint": "Sprint 6",
+   "start": "2026-09-25",
+   "end": "2026-09-25",
+   "file": "events/2026-09-25.json",
+   "events": 133
+  }
+ ],
+ "sprint_metrics": {
+  "release": "4.2.1",
+  "answers": {
+   "Sprint 5": {
+    "throughput": 3,
+    "points_delivered": 9,
+    "first_attempt_numerator": 2,
+    "first_attempt_denominator": 3,
+    "first_attempt_rate_percent": 67,
+    "wip_violations": 0,
+    "blocked_aging_days": 0,
+    "cycle_time_days": 0,
+    "lead_time_days": 3,
+    "cycle_time_minutes": 26,
+    "lead_time_minutes": 2936,
+    "superseded_count": 0,
+    "superseded_points": 0,
+    "superseded_breakdown": {
+     "sponsor": 0,
+     "story_problem": 0
+    },
+    "top_failure_causes": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "failure_breakdown": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 1
+     }
+    ],
+    "flags": {
+     "first_attempt_rate_percent": false,
+     "blocked_aging_days": false,
+     "cycle_time_days": false,
+     "lead_time_days": false,
+     "cycle_time_minutes": false,
+     "lead_time_minutes": false,
+     "throughput": false,
+     "wip_violations": false
+    },
+    "prior": null,
+    "delta": null
+   },
+   "Sprint 6": {
+    "throughput": 5,
+    "points_delivered": 15,
+    "first_attempt_numerator": 2,
+    "first_attempt_denominator": 5,
+    "first_attempt_rate_percent": 40,
+    "wip_violations": 0,
+    "blocked_aging_days": 0,
+    "cycle_time_days": 0,
+    "lead_time_days": 4,
+    "cycle_time_minutes": 33,
+    "lead_time_minutes": 4451,
+    "superseded_count": 1,
+    "superseded_points": 3,
+    "superseded_breakdown": {
+     "sponsor": 0,
+     "story_problem": 1
+    },
+    "top_failure_causes": [
+     {
+      "class": "EDIT",
+      "role": "Developer",
+      "count": 3
+     },
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 3
+     }
+    ],
+    "failure_breakdown": [
+     {
+      "class": "VERIFY",
+      "role": "Developer",
+      "count": 3
+     },
+     {
+      "class": "EDIT",
+      "role": "Developer",
+      "count": 3
+     }
+    ],
+    "flags": {
+     "first_attempt_rate_percent": true,
+     "blocked_aging_days": false,
+     "cycle_time_days": false,
+     "lead_time_days": false,
+     "cycle_time_minutes": false,
+     "lead_time_minutes": false,
+     "throughput": false,
+     "wip_violations": false
+    },
+    "prior": {
+     "throughput": 3,
+     "points_delivered": 9,
+     "first_attempt_numerator": 2,
+     "first_attempt_denominator": 3,
+     "first_attempt_rate_percent": 67,
+     "wip_violations": 0,
+     "blocked_aging_days": 0,
+     "cycle_time_days": 0,
+     "lead_time_days": 3,
+     "cycle_time_minutes": 26,
+     "lead_time_minutes": 2936,
+     "superseded_count": 0,
+     "superseded_points": 0,
+     "superseded_breakdown": {
+      "sponsor": 0,
+      "story_problem": 0
+     }
+    },
+    "delta": {
+     "throughput": 2,
+     "points_delivered": 6,
+     "first_attempt_numerator": 0,
+     "first_attempt_denominator": 2,
+     "first_attempt_rate_percent": -27,
+     "wip_violations": 0,
+     "blocked_aging_days": 0,
+     "cycle_time_days": 0,
+     "lead_time_days": 1,
+     "cycle_time_minutes": 7,
+     "lead_time_minutes": 1515,
+     "superseded_count": 1,
+     "superseded_points": 3,
+     "superseded_breakdown": 1
+    }
+   }
+  }
+ }
+}
