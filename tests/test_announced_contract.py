@@ -33,9 +33,16 @@ def _schemas(directory: Path) -> dict[str, dict]:
 
 def test_delivery_history_2_0_0_shipped_exactly_as_announced():
     """Its announcement recorded the fingerprint; the switch removed the announced copy."""
-    assert ANNOUNCED == []
-    assert dh.SCHEMA_VERSION == "2.0.0"
-    assert contract.read_versions()["2.0.0"] == contract.fingerprint(contract.schemas())
+    assert dh.SCHEMA_VERSION.split(".")[0] == "2"
+    assert contract.read_versions()[dh.SCHEMA_VERSION] == contract.fingerprint(contract.schemas())
+
+
+def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
+    assert [p.name for p in ANNOUNCED] == ["3.0.0"]
+    schema = _schemas(contract.CONTRACTS / "3.0.0")["schema.json"]
+    # What leaves: the crew's per-story results (crew#963). Each story's events stay.
+    assert "stories" not in schema["$defs"]["Analysis"]["properties"]
+    assert not {"StoryPattern", "Repeated", "StoryCost"} & set(schema["$defs"])
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)
