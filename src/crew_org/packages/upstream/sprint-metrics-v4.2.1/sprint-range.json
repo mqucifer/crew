@@ -1,0 +1,1834 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "api_version",
+    "window",
+    "sprints"
+  ],
+  "properties": {
+    "api_version": {
+      "type": "string"
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "sprint_count",
+        "no_data",
+        "verdicts",
+        "biggest_improvement",
+        "worst_dip",
+        "turns",
+        "too_short"
+      ],
+      "properties": {
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        },
+        "sprint_count": {
+          "type": "integer"
+        },
+        "no_data": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verdicts": {
+          "type": "object",
+          "required": [
+            "cycle_time_days",
+            "lead_time_days",
+            "cycle_time_minutes",
+            "lead_time_minutes",
+            "throughput",
+            "points_delivered",
+            "wip_violations",
+            "blocked_aging_days",
+            "first_attempt_rate_percent",
+            "first_attempt_numerator",
+            "first_attempt_denominator",
+            "superseded_count",
+            "superseded_points",
+            "change_failure_count",
+            "change_failure_rate_percent",
+            "mean_time_to_recovery_minutes",
+            "model_minutes_middle",
+            "model_minutes_total",
+            "input_tokens_middle",
+            "input_tokens_total",
+            "output_tokens_middle",
+            "output_tokens_total"
+          ],
+          "properties": {
+            "cycle_time_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "lead_time_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "cycle_time_minutes": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "lead_time_minutes": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "throughput": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "points_delivered": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "wip_violations": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "blocked_aging_days": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_rate_percent": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_numerator": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "first_attempt_denominator": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "superseded_count": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "superseded_points": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "change_failure_count": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "change_failure_rate_percent": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "mean_time_to_recovery_minutes": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "model_minutes_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "model_minutes_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "input_tokens_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "input_tokens_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "output_tokens_middle": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            },
+            "output_tokens_total": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "verdict": {
+                  "type": "string"
+                },
+                "first_sprint": {
+                  "type": "string"
+                },
+                "last_sprint": {
+                  "type": "string"
+                },
+                "first_value": {
+                  "type": "integer"
+                },
+                "last_value": {
+                  "type": "integer"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "precision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "verdict",
+                "first_sprint",
+                "last_sprint",
+                "first_value",
+                "last_value",
+                "unit",
+                "precision"
+              ]
+            }
+          }
+        },
+        "biggest_improvement": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "worst_dip": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "measure": {
+              "type": "string"
+            },
+            "from_sprint": {
+              "type": "string"
+            },
+            "to_sprint": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "precision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "measure",
+            "from_sprint",
+            "to_sprint",
+            "size",
+            "unit",
+            "precision"
+          ]
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sprint": {
+                "type": "string"
+              },
+              "measure": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sprint",
+              "measure"
+            ]
+          }
+        },
+        "too_short": {
+          "type": "boolean"
+        }
+      }
+    },
+    "sprints": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "cycle_time_days",
+          "lead_time_days",
+          "throughput",
+          "wip_violations",
+          "blocked_aging_days",
+          "points_delivered",
+          "first_attempt_numerator",
+          "first_attempt_denominator",
+          "superseded_count",
+          "superseded_points",
+          "first_attempt_rate_percent",
+          "failure_breakdown",
+          "top_failure_causes",
+          "superseded_breakdown",
+          "flags",
+          "prior",
+          "delta",
+          "cycle_time_minutes",
+          "lead_time_minutes"
+        ],
+        "properties": {
+          "cycle_time_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lead_time_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "throughput": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "wip_violations": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "blocked_aging_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "points_delivered": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_numerator": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_denominator": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "superseded_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "superseded_points": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_attempt_rate_percent": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failure_breakdown": {
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "top_failure_causes": {
+            "type": [
+              "array",
+              "object",
+              "null"
+            ]
+          },
+          "superseded_breakdown": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "flags": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "cycle_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lead_time_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "story_costs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "card_id": {
+                  "type": "string"
+                },
+                "model_minutes": {
+                  "type": "integer"
+                },
+                "input_tokens": {
+                  "type": "integer"
+                },
+                "cached_input_percent": {
+                  "type": "integer"
+                },
+                "output_tokens": {
+                  "type": "integer"
+                },
+                "reasoning_output_percent": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "card_id",
+                "model_minutes",
+                "input_tokens",
+                "cached_input_percent",
+                "output_tokens",
+                "reasoning_output_percent"
+              ]
+            }
+          },
+          "cost": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "middle": {
+                "type": "object",
+                "properties": {
+                  "model_minutes": {
+                    "type": "integer"
+                  },
+                  "input_tokens": {
+                    "type": "integer"
+                  },
+                  "output_tokens": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "model_minutes",
+                  "input_tokens",
+                  "output_tokens"
+                ]
+              },
+              "total": {
+                "type": "object",
+                "properties": {
+                  "model_minutes": {
+                    "type": "integer"
+                  },
+                  "input_tokens": {
+                    "type": "integer"
+                  },
+                  "output_tokens": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "model_minutes",
+                  "input_tokens",
+                  "output_tokens"
+                ]
+              }
+            },
+            "required": [
+              "middle",
+              "total"
+            ]
+          },
+          "rework": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "started": {
+                "type": "integer"
+              },
+              "sent_backs": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "card_id": {
+                      "type": "string"
+                    },
+                    "send_backs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "card_id",
+                    "send_backs"
+                  ]
+                }
+              },
+              "qa_returns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "card_id": {
+                      "type": "string"
+                    },
+                    "returns": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "step": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "reason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "step",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "card_id",
+                    "returns"
+                  ]
+                }
+              },
+              "by_step": {
+                "type": "object",
+                "properties": {
+                  "sent_backs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  },
+                  "qa_returns": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "required": [
+              "started",
+              "sent_backs"
+            ]
+          },
+          "roster": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "completed_stories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "released_epics": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "achieved_goals": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "completed_stories",
+              "released_epics",
+              "achieved_goals"
+            ]
+          },
+          "dora": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "release_frequency": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_failure_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_failure_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "mean_time_to_recovery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "release_frequency",
+              "lead_time_days",
+              "change_failure_count",
+              "change_failure_rate_percent",
+              "mean_time_to_recovery_minutes"
+            ]
+          },
+          "working_time": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "per_step": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "minutes": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "minutes"
+                  ]
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "per_step",
+              "total"
+            ]
+          },
+          "cost_by_kind": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "addition": {
+                "type": "integer"
+              },
+              "change": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "addition",
+              "change"
+            ]
+          },
+          "model_time_split": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "refinement": {
+                "type": "integer"
+              },
+              "delivery": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "refinement",
+              "delivery"
+            ]
+          },
+          "idle": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "sprint_duration_minutes": {
+                "type": "integer"
+              },
+              "idle_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "sprint_duration_minutes",
+              "idle_minutes"
+            ]
+          },
+          "prior": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_points": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_breakdown": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_minutes_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_minutes_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "input_tokens_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "input_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "addition_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_split_refinement_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_split_delivery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "idle_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          },
+          "delta": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "cycle_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "throughput": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "wip_violations": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "blocked_aging_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "points_delivered": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_numerator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_denominator": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_points": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "first_attempt_rate_percent": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "superseded_breakdown": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "cycle_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "lead_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_minutes_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_minutes_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "input_tokens_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "input_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens_middle": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "output_tokens_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "addition_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_working_time_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_split_refinement_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "model_time_split_delivery_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "idle_minutes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -87,7 +87,16 @@ another step rather than refusing the package. The crew's code writes
 that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
-**2.0.0 is announced** and replaces 1.x on 2026-11-06: what changes is under ["Announced: delivery-history 2.0.0"](#announced-delivery-history-200) below.
+**2.0.0 replaced 1.x** (crew#905), as announced a week before: it carries sprint-metrics
+4.2.1's answers in place of 1.3.1's.
+- **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
+  `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
+  `escalation_count` as a measure in what changed. The crew's own record of escalations stays:
+  the `escalated` events and pattern, and each story's `escalations`.
+- **What changes shape:** the failure causes, `top_failure_causes`, become a list of class,
+  role and count, as `failure_breakdown` already is, in place of a map of class to count.
+- **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
+  with cards in them named as `repo#n`.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -146,21 +155,6 @@ is ADR 0022.
   `crew sprint close` does, and its retro says which, or why not. A sprint left
   without one gets it at the next tick. A package carries the sprints up to the
   one that ended last, never one under way (crew#738).
-
-### Announced: delivery-history 2.0.0
-
-**2.0.0 replaces 1.x on 2026-11-06** (crew#905), a week after the announcement
-merged; if that merge slips, the date moves with it. Its schemas and mock are in
-[`contracts/delivery-history/2.0.0/`](contracts/delivery-history/2.0.0/), and until then the
-package follows 1.x. 2.0.0 carries sprint-metrics 4.2.1's answers in place of 1.3.1's:
-- **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
-  `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
-  `escalation_count` as a measure in what changed. The crew's own record of escalations stays:
-  the `escalated` events and pattern, and each story's `escalations`.
-- **What changes shape:** the failure causes, `top_failure_causes`, become a list of class,
-  role and count, as `failure_breakdown` already is, in place of a map of class to count.
-- **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
-  with cards in them named as `repo#n`.
 
 ## The two gates
 

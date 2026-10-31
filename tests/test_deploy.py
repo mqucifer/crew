@@ -184,7 +184,14 @@ def _checks(*answers: bool):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
+    # The crew's own pin is read from the checkout a tick runs; here, one at 1.3.1, so
+    # the deploy's tests don't move each time the real pin does.
+    checkout = tmp_path / "checkout"
+    pin = checkout / "src" / "crew_org" / "packages" / "sprint_metrics_answers.py"
+    pin.parent.mkdir(parents=True)
+    pin.write_text('RELEASE = "1.3.1"\n')
+    monkeypatch.setattr(deploy, "_CHECKOUT", checkout)
     gh = Gh()
     board = Cards(gh)
     infra = Infra(tmp_path / "infra")
@@ -244,6 +251,17 @@ def test_a_release_deploys_only_at_the_major_its_readers_pin():
     assert deploy.held_by("1.3.3", [(crew, "1.3.1")]) is None
     assert deploy.held_by("2.0.0", [(crew, "1.3.1")]) == (crew, "1.3.1")
     assert deploy.held_by("1.4.0", [(crew, None)]) == (crew, "unread")
+
+
+def test_sprint_metrics_4_2_1_deploys_with_no_hold_once_the_crew_reads_it():
+    """sprint-metrics 4.0.0 was held at 1.3.1's pin (crew#905): the pin is read from this
+    checkout, so the next tick after the merge holds no 4.x release, and a 1.x one waits."""
+    reader = Reader("crew", "crew", "src/crew_org/packages/sprint_metrics_answers.py", "RELEASE")
+    pins = [(reader, deploy.reader_pin(Gh(), reader))]
+    assert pins == [(reader, "4.2.1")]
+    assert deploy.held_by("4.2.1", pins) is None
+    assert deploy.held_by("1.3.3", pins) == (reader, "4.2.1")
+    assert deploy.held_by("5.0.0", pins) == (reader, "4.2.1")
 
 
 # --- the deploy ---------------------------------------------------------------------------
