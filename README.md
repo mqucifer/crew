@@ -191,8 +191,20 @@ means (ADR 0022), so the package stops carrying the crew's own result for each s
     which doesn't show it.
   - **A story's journey** takes its sentence from `text`, its path's delivered state from
     `delivered`, and its "What it cost" from `wall_clock_seconds` and `cost.model_calls`.
-  - **Its tests:** `crew-presentation/test_sprint_overview.py` in mqucifer/qa-suite reads
-    `analysis.stories` and `pattern`, and its own tests' fixtures build `analysis.stories`.
+  - **Its tests:** its own tests' fixtures build `analysis.stories`, and two files in
+    mqucifer/qa-suite read it, which act differently on a package without it:
+    - `crew-presentation/test_sprint_overview.py` reads it and `pattern`. All three of its tests
+      fail, at `assert sprints`: with no stories, no sprint qualifies. `qa-suite / qa` is a
+      required check, so the pin's pull request can't merge without an admin's override, which
+      is how mqucifer/crew-presentation#250 merged past other tests' failures.
+    - `crew-presentation/test_story_journey_details.py` reads it in two tests,
+      `test_journey_page_shows_cost_section` and `test_journey_page_omits_cost_when_no_wall_clock`.
+      Both loop over an empty list and pass having checked nothing, so nothing says "What it
+      cost" has lost its check. `test_journey_page_shows_event_timeline` reads events and `cards`,
+      and still checks.
+    - QA's per-story test Tasks are paused (mqucifer/crew#981), so no such Task updates these
+      tests. A Developer's dispute of a failing test still opens one, which only the failing file
+      can reach.
   - **Not read today:** `misses`, `escalations`, `repeated`, and the rest of `cost`.
 - **What each is now,** from a story's events, which all stay, and `cards`:
   - `delivered`: its `card_moved` to Done, or a card's `closed` when `closed_as` is `completed`.
