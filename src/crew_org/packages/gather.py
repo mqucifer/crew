@@ -48,6 +48,7 @@ def history_now(
             except ValueError:
                 continue
     cards = board.cards()
+    bodies = board.bodies()
     # Every repository with cards on the board, paused or not: a pause doesn't
     # take a project out of the history.
     repositories = sorted({c.repo for c in cards if c.repo})
@@ -67,7 +68,23 @@ def history_now(
             date=today,
             generated=datetime.now(UTC),
             sprint_metrics=answers(started) if answers else None,
+            bodies=bodies,
+            filers=filers(org),
         )
+    )
+
+
+def filers(org: dict[str, Any]) -> dh.Filers:
+    """Who files cards, as `org.yaml` names them and as the board's GraphQL says them:
+    `mqucifer-crew` where `trust` and REST say `mqucifer-crew[bot]`."""
+    trust = org.get("trust") or {}
+    named = org.get("filers") or {}
+    since = named.get("operator_since")
+    return dh.Filers(
+        crew=frozenset(login.removesuffix("[bot]") for login in trust.get("crew") or ()),
+        sponsor=trust.get("sponsor"),
+        operator=named.get("operator"),
+        operator_since=datetime.fromisoformat(str(since)) if since else None,
     )
 
 

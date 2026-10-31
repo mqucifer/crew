@@ -31,11 +31,20 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_2_0_0_shipped_exactly_as_announced():
-    """Its announcement recorded the fingerprint; the switch removed the announced copy."""
+def test_delivery_history_2_0_0_shipped_exactly_as_announced_and_2_1_0_only_adds_to_it():
+    """Its announcement recorded the fingerprint; the switch removed the announced copy.
+
+    2.1.0 is that, plus how each card was filed (crew#974): take `filed` out and the
+    schemas are exactly 2.0.0's, so a reader of 2.0.0 loses nothing.
+    """
     assert ANNOUNCED == []
-    assert dh.SCHEMA_VERSION == "2.0.0"
-    assert contract.read_versions()["2.0.0"] == contract.fingerprint(contract.schemas())
+    assert dh.SCHEMA_VERSION == "2.1.0"
+    schemas = contract.schemas()
+    defs = schemas["schema.json"]["$defs"]
+    del defs["Filed"]
+    del defs["Card"]["properties"]["filed"]
+    defs["Card"]["required"].remove("filed")
+    assert contract.read_versions()["2.0.0"] == contract.fingerprint(schemas)
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)

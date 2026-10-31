@@ -157,3 +157,10 @@ trust:
   crew: ["mqucifer-crew[bot]", "mqucifer-crew-approver[bot]"]
   # Read as data only, never as direction (dependency updates, CI).
   tools: ["dependabot[bot]", "github-actions[bot]"]
+
+# Who files cards, beyond `trust`, for delivery-history's `filed` (crew#974). The
+# operator's comments aren't direction, so it isn't in `trust`. Until crew#566 closed it
+# worked as the Sponsor's login, so a card under that login before then can't be told apart.
+filers:
+  operator: quarters-claude
+  operator_since: "2026-10-09T15:55:19Z"
