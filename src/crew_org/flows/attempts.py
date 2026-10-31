@@ -6,13 +6,12 @@ events, and a Developer session's runs are its own records (crew#778). A pull
 request's body kept only the total, and nothing added them up. This reads the
 events back, turns each failure into a cause that can be counted (the same
 mistake reads the same whatever file or name it hit), and reports a sprint's
-stories: which landed first time, what the others took, and the causes that
-recur.
+stories: what each took, and the causes that recur.
 
 The data is the crew's, because only the crew has it. The metric is
-sprint-metrics' (Goal sprint-metrics#87), which reads what `crew export` writes.
-The diagnosis is the retro's, which is shown the causes and files the ones that
-recur.
+sprint-metrics' (Goal sprint-metrics#87), so what `crew export` writes says what
+happened and no first try (crew#963). The diagnosis is the retro's, which is shown
+the crew's own count and the causes, and files the ones that recur.
 """
 
 from __future__ import annotations
@@ -292,7 +291,6 @@ def sprint_report(
                 "repo": c.repo,
                 "status": c.status,
                 "superseded": bool(getattr(c, "superseded", False)),
-                "first_try": not any(its(a, c) for a in ours),
                 "attempts": [
                     {
                         "class": a.failure_class,
@@ -345,19 +343,29 @@ def retries_text(report: dict[str, Any]) -> str:
     # A superseded story never landed, on any attempt: one never started would
     # otherwise count as landing first time (crew#558). Its failures still count.
     landed = [s for s in stories if not s.get("superseded")]
-    first = sum(1 for s in landed if s["first_try"])
+    first = sum(1 for s in landed if not s["attempts"])
     lines = [f"{first} of {len(landed)} stories landed on their first attempt."]
     if len(landed) < len(stories):
         lines[0] += f" {len(stories) - len(landed)} more were superseded before they landed."
     if report.get("returned"):
         lines[0] += f" {report['returned']} went back to the Business Analyst."
+    return "\n".join(lines + _cause_lines(report))
+
+
+def causes_text(report: dict[str, Any]) -> str:
+    """The causes alone, most widespread first: what `crew export` prints."""
+    return "\n".join(_cause_lines(report))
+
+
+def _cause_lines(report: dict[str, Any]) -> list[str]:
+    lines = []
     for c in report["causes"]:
         cards = ", ".join(f"#{n}" for n in c["cards"])
         times = "once" if c["count"] == 1 else f"{c['count']} times"
         # The key is how a fix names the cause it fixes (#199).
         key = f"; cause {c['key']}" if c.get("key") else ""
         lines.append(f"- {c['class']}: {c['cause']} ({times}, on {cards}{key})")
-    return "\n".join(lines)
+    return lines
 
 
 def _line_at(text: str, index: int) -> str:

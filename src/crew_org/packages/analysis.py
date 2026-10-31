@@ -17,15 +17,15 @@ Three parts, as crew-presentation's design reference shows them (crew#521):
 - **decided by the crew:** the Architect's design revisions the crew merged,
   and the technical epics it filed, from a design or a failing `main`, which
   skip the Sponsor's gate (crew#192, crew#335).
-- **a story's pattern:** one per story or bug, the facts behind it, and what it
-  cost.
 - **a story's deliveries in Developer sessions** (crew#778): one from its first
   session to its outcome, with what its sessions cost and how they ended.
+
+A story gets no result of its own (crew#963): what happened to it is its events, and
+what that adds up to, first try among it, is sprint-metrics' to say (ADR 0022).
 """
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Iterable
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -78,9 +78,7 @@ def analyse(
                 decided=_decided(sprint, events, cards, zone),
             )
         )
-    return dh.Analysis(
-        sprints=out, stories=_stories(events, cards), deliveries=_deliveries(events, cards)
-    )
+    return dh.Analysis(sprints=out, deliveries=_deliveries(events, cards))
 
 
 # --- what changed --------------------------------------------------------------------
@@ -262,133 +260,6 @@ def _decided(
         if c.type == EPIC and c.technical and c.created and _within(c.created, sprint, zone)
     ]
     return sorted(out, key=lambda d: (d.at, d.repo, d.number))
-
-
-# --- a story's pattern ---------------------------------------------------------------------
-
-
-def _stories(events: list[dh.Event], cards: list[dh.Card]) -> list[dh.StoryPattern]:
-    by_card: dict[tuple[str, int], list[dh.Event]] = {}
-    for e in events:
-        ref = getattr(e, "card", None)
-        if isinstance(ref, dh.CardRef):
-            by_card.setdefault((ref.repo, ref.number), []).append(e)
-    fixes = [e for e in events if isinstance(e, dh.PullMerged) and e.crews_own]
-    out = []
-    for card in cards:
-        mine = by_card.get((card.repo, card.number))
-        if card.type in DELIVERED and mine:
-            out.append(_story(card, mine, fixes))
-    return out
-
-
-def _story(card: dh.Card, events: list[dh.Event], fixes: list[dh.PullMerged]) -> dh.StoryPattern:
-    moves = [e for e in events if isinstance(e, dh.CardMoved)]
-    attempts = [e for e in events if isinstance(e, dh.Attempt)]
-    calls = [e for e in events if isinstance(e, dh.ModelCall)]
-    blocks = [m for m in moves if m.to_column == columns.BLOCKED]
-    escalations = sum(1 for e in events if isinstance(e, dh.Escalated))
-    superseded = card.closed_as == "not_planned"
-    delivered = None
-    if not superseded:
-        done = [m.at for m in moves if m.to_column == columns.DONE]
-        delivered = min(done) if done else card.closed if card.closed_as == "completed" else None
-    # A story delivered in sessions misses when review or QA returns it, or it goes
-    # back to the Business Analyst. The gate's returns before review don't count: the
-    # Developer is still working (the Sponsor, 2026-10-18, crew#778).
-    in_sessions = any(_in_session(e) for e in events)
-    returns = [e.at for e in events if in_sessions and _returned(e)]
-    trouble = [a.at for a in attempts] + [b.at for b in blocks] + returns
-    me = dh.CardRef(repo=card.repo, number=card.number)
-    crew_fixes = [
-        dh.PullRef(repo=f.repo, number=f.number)
-        for f in fixes
-        if me in f.about and trouble and delivered and min(trouble) < f.at <= delivered
-    ]
-    if superseded:
-        pattern: dh.Pattern = "superseded"
-    elif delivered and not trouble:
-        pattern = "first_try"
-    elif delivered and crew_fixes and not escalations:
-        pattern = "crew_fix"
-    elif delivered and escalations:
-        pattern = "escalated"
-    elif delivered:
-        pattern = "retried"
-    elif card.status == columns.BLOCKED:
-        pattern = "blocked"
-    else:
-        pattern = "open"
-    reasons = Counter((a.failure_class, a.reason) for a in attempts if a.reason)
-    repeated = None
-    if reasons:
-        (failure_class, reason), count = reasons.most_common(1)[0]
-        if count > 1:
-            repeated = dh.Repeated(failure_class=failure_class, reason=str(reason), count=count)
-    worked = [e.at for e in events if isinstance(e, dh.WorkStarted | dh.ModelCall)]
-    cost = (
-        None
-        if not calls
-        else dh.StoryCost(
-            model_calls=len(calls),
-            prompt_tokens=sum(c.prompt_tokens or 0 for c in calls),
-            completion_tokens=sum(c.completion_tokens or 0 for c in calls),
-            reasoning_tokens=sum(c.reasoning_tokens or 0 for c in calls),
-            cached_tokens=sum(c.cached_tokens or 0 for c in calls),
-            model_seconds=round(sum(c.seconds or 0.0 for c in calls), 1),
-        )
-    )
-    return dh.StoryPattern(
-        card=dh.CardRef(repo=card.repo, number=card.number),
-        pattern=pattern,
-        misses=len(attempts) + len(returns),
-        blocks=len(blocks),
-        escalations=escalations,
-        crew_fixes=crew_fixes,
-        repeated=repeated,
-        delivered=delivered,
-        wall_clock_seconds=(
-            (delivered - min(worked)).total_seconds()
-            if delivered and worked and min(worked) <= delivered
-            else None
-        ),
-        cost=cost,
-        text=_story_text(pattern, len(attempts) + len(returns), len(blocks), crew_fixes, repeated),
-    )
-
-
-def _story_text(
-    pattern: dh.Pattern,
-    misses: int,
-    blocks: int,
-    crew_fixes: list[dh.PullRef],
-    repeated: dh.Repeated | None,
-) -> str:
-    parts = []
-    if misses:
-        parts.append(f"missed {_times(misses)}")
-    if blocks:
-        parts.append(f"was blocked {_times(blocks)}")
-    trouble = " and ".join(parts)
-    if pattern == "superseded":
-        text = "Superseded: closed as not planned, never built."
-    elif pattern == "first_try":
-        text = "Landed first try."
-    elif pattern == "crew_fix":
-        fixes = "fix" if len(crew_fixes) == 1 else "fixes"
-        names = _join([_name(f) for f in crew_fixes])
-        text = f"{_capital(trouble)}, then landed after the crew's own {fixes} {names} merged."
-    elif pattern == "escalated":
-        text = f"{_capital(trouble)}, then landed after it was escalated."
-    elif pattern == "retried":
-        text = f"{_capital(trouble)}, then landed."
-    elif pattern == "blocked":
-        text = f"Blocked now; it {trouble} first." if trouble else "Blocked now."
-    else:
-        text = f"Not delivered yet; it {trouble} so far." if trouble else "Not delivered yet."
-    if repeated and repeated.count >= REPEATS:
-        text += f" It was refused {repeated.count} times with the same reason."
-    return text
 
 
 # --- a story's deliveries in Developer sessions (crew#778) --------------------------------
@@ -596,14 +467,6 @@ def _name(ref: dh.CardRef | dh.PullRef) -> str:
 
 def _capital(text: str) -> str:
     return text[:1].upper() + text[1:]
-
-
-def _times(n: int) -> str:
-    return {1: "once", 2: "twice"}.get(n, f"{n} times")
-
-
-def _join(names: list[str]) -> str:
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
 def _minutes(value: float) -> str:

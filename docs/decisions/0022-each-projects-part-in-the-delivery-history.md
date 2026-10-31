@@ -33,7 +33,9 @@ in each piece."
 - **A Goal for one of them says what it's sent and what's wanted back.** It doesn't
   design the project's API or model: how to do it is that project's crew's job.
 - **The crew's analysis is written by its code from the data,** never by a model
-  (ADR 0020): what changed, what needs attention, a story's pattern.
+  (ADR 0020): what changed, what needs attention, what it decided. A story gets no
+  result of its own: what happened to it is its events, and what first try means is
+  sprint-metrics' to say, from the events it's sent (the Sponsor, 2026-10-30, crew#963).
 
 ## Consequences
 
@@ -50,3 +52,6 @@ in each piece."
 
 - 2026-10-07: Accepted. The Sponsor set the scope of each piece while planning the
   path to crew-presentation (crew#521).
+- 2026-10-30: A story's pattern leaves the crew's analysis, with delivery-history
+  3.0.0: the crew logs what happened, and sprint-metrics decides first try (the
+  Sponsor, crew#963).

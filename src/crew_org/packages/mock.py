@@ -10,7 +10,11 @@ writes it with the schemas, and the tests check the committed one is current.
 (Sprint 6 in sprint-metrics, the night of 25 September): a module split into
 stories, #127 refused three times until two fixes to the crew landed, a design
 revision the crew merged on its own, and UX epics waiting at the Sponsor's
-gate. The numbers and titles are made up to read true; none is a measurement.
+gate. The events and titles are made up to read true; none is a measurement.
+
+**Its sprint-metrics answers are computed from those events** (crew#963): what the
+feed would send the service, counted by the service's rules, so each sprint's totals
+agree with the stories under them.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from typing import Any
 
 from crew_org.packages import delivery_history as dh
 from crew_org.packages import sprint_metrics_answers as sma
+from crew_org.packages.sprint_metrics_feed import feed
 from crew_org.tools.github_project import Card
 
 DIRECTORY = "mock"
@@ -273,7 +278,7 @@ def _cites(minutes: float, issue: int, cards: list[str]) -> Raw:
 
 
 def _delivered(start: float, card: int, pr: int, *, calls: int = 2) -> list[Raw]:
-    """A story that landed first time: claimed, built, reviewed, proven and merged."""
+    """A story with nothing sent back: claimed, built, reviewed, proven and merged."""
     events = [
         _moved(start, card, "Sprint Backlog", "In Progress"),
         _work(start, card, "Developer"),
@@ -308,7 +313,7 @@ def _events() -> list[Raw]:
     day_before = -24 * 60
     reason = "no definition named 'DEFAULT_THRESHOLDS'. This file defines: THRESHOLDS"
     events = [
-        # Sprint 5: two stories land first time, one after a failing test.
+        # Sprint 5: three stories land, one after a failing test.
         *_delivered(day_before, 110, 115),
         *_delivered(day_before + 30, 111, 116),
         _moved(day_before + 60, 112, "Sprint Backlog", "In Progress"),
@@ -643,44 +648,90 @@ def _pulls() -> dict[str, list[dict[str, Any]]]:
     }
 
 
-# Each sprint's numbers as sprint-metrics would compute them from the mock's cards.
-_SPRINT_5 = {
-    "throughput": 3,
-    "points_delivered": 9,
-    "first_attempt_numerator": 2,
-    "first_attempt_denominator": 3,
-    "first_attempt_rate_percent": 67,
-    "wip_violations": 0,
-    "blocked_aging_days": 0,
-    "cycle_time_days": 0,
-    "lead_time_days": 1,
-    "cycle_time_minutes": 410,
-    "lead_time_minutes": 1900,
-    "superseded_count": 0,
-    "superseded_points": 0,
-    "superseded_breakdown": {"sponsor": 0, "story_problem": 0},
-    "top_failure_causes": [{"class": "VERIFY", "role": "Developer", "count": 1}],
-}
-_SPRINT_6 = {
-    "throughput": 6,
-    "points_delivered": 18,
-    "first_attempt_numerator": 3,
-    "first_attempt_denominator": 6,
-    "first_attempt_rate_percent": 50,
-    "wip_violations": 0,
-    "blocked_aging_days": 1,
-    "cycle_time_days": 0,
-    "lead_time_days": 1,
-    "cycle_time_minutes": 655,
-    "lead_time_minutes": 1500,
-    "superseded_count": 1,
-    "superseded_points": 3,
-    "superseded_breakdown": {"sponsor": 0, "story_problem": 1},
-    "top_failure_causes": [
-        {"class": "VERIFY", "role": "Developer", "count": 2},
-        {"class": "EDIT", "role": "Developer", "count": 1},
-    ],
-}
+def _times_of(rows: list[dict[str, Any]], kind: str) -> list[datetime]:
+    return [datetime.fromisoformat(r["timestamp"]) for r in rows if r["type"] == kind]
+
+
+def _mean(values: list[int]) -> int:
+    return round(sum(values) / len(values)) if values else 0
+
+
+def _whole_minutes(gap: timedelta) -> int:
+    return round(gap.total_seconds() / 60)
+
+
+def _returns(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    return [
+        (r["failure_class"], r.get("failure_role") or "")
+        for r in rows
+        if r["type"] == "attempt_failed"
+    ]
+
+
+def _causes(items: list[tuple[tuple[str, str], int]]) -> list[dict[str, Any]]:
+    return [{"class": c, "role": r, "count": n} for (c, r), n in items]
+
+
+def _numbers(sent: list[dict[str, Any]], sprint: str) -> dict[str, Any]:
+    """One sprint's numbers, from what the feed sends, by sprint-metrics' rules at `RELEASE`.
+
+    Its cards are those that finished or were superseded in the sprint. A card's
+    attempts are 1 plus its `attempt_failed` events, whichever sprint they fell in.
+    """
+    by_card: dict[str, list[dict[str, Any]]] = {}
+    for row in sent:
+        by_card.setdefault(row["card_id"], []).append(row)
+    cards = [
+        rows
+        for rows in by_card.values()
+        if any(r["sprint"] == sprint and r["type"] in ("finished", "superseded") for r in rows)
+    ]
+    done = [rows for rows in cards if _times_of(rows, "finished")]
+    gone = [rows for rows in cards if not _times_of(rows, "finished")]
+    cycles, leads, cycle_days, lead_days, aging = [], [], [], [], [0]
+    for rows in done:
+        ended = _times_of(rows, "finished")[-1]
+        started = _times_of(rows, "started")[0]
+        filed = datetime.fromisoformat(rows[0]["card"]["created_at"])
+        cycles.append(ended - started)
+        leads.append(ended - filed)
+        # The days are counted between dates, as the service keeps them.
+        cycle_days.append((ended.date() - started.date()).days)
+        lead_days.append((ended.date() - filed.date()).days)
+        blocked = _times_of(rows, "blocked")
+        # By the day, as the service keeps it: unblocked the same day is still blocked.
+        if blocked and not any(u.date() > blocked[-1].date() for u in _times_of(rows, "unblocked")):
+            aging.append((ended.date() - blocked[-1].date()).days)
+    returns: dict[tuple[str, str], int] = {}
+    for rows in done:
+        for key in _returns(rows):
+            returns[key] = returns.get(key, 0) + 1
+    first = sum(1 for rows in done if not _returns(rows))
+    because = [rows[-1]["because"] for rows in gone]
+    return {
+        "throughput": len(done),
+        "points_delivered": sum(rows[-1]["card"]["points"] for rows in done),
+        "first_attempt_numerator": first,
+        "first_attempt_denominator": len(done),
+        "first_attempt_rate_percent": round(100 * first / len(done)),
+        # The service sets no limit, so none can be broken.
+        "wip_violations": 0,
+        "blocked_aging_days": max(aging),
+        "cycle_time_days": _mean(cycle_days),
+        "lead_time_days": _mean(lead_days),
+        "cycle_time_minutes": _mean([_whole_minutes(c) for c in cycles]),
+        "lead_time_minutes": _mean([_whole_minutes(gap) for gap in leads]),
+        "superseded_count": len(gone),
+        "superseded_points": sum(rows[-1]["card"]["points"] for rows in gone),
+        "superseded_breakdown": {
+            "sponsor": because.count("sponsor"),
+            "story_problem": because.count("story_problem"),
+        },
+        "top_failure_causes": _causes(
+            sorted(returns.items(), key=lambda item: (-item[1], item[0]))[:3]
+        ),
+        "failure_breakdown": _causes(sorted(returns.items(), key=lambda item: -item[1])),
+    }
 
 
 def _answer(now: dict[str, Any], prior: dict[str, Any] | None, **rest: Any) -> dict[str, Any]:
@@ -702,6 +753,13 @@ def _answer(now: dict[str, Any], prior: dict[str, Any] | None, **rest: Any) -> d
 
 def range_body() -> dict[str, Any]:
     """sprint-metrics' GET /range for Sprints 5 and 6, in the pinned release's shape."""
+    history, periods, _ = build_without_answers()
+    sent = feed(history, periods.values()).events
+    five, six = _numbers(sent, "Sprint 5"), _numbers(sent, "Sprint 6")
+    breakdown = {
+        "Sprint 5": five.pop("failure_breakdown"),
+        "Sprint 6": six.pop("failure_breakdown"),
+    }
     body: dict[str, Any] = {
         "api_version": "4",
         # The range's own verdicts, which the package doesn't carry: under three
@@ -720,19 +778,8 @@ def range_body() -> dict[str, Any]:
             "too_short": True,
         },
         "sprints": {
-            "Sprint 5": _answer(
-                _SPRINT_5,
-                None,
-                failure_breakdown=[{"class": "VERIFY", "role": "Developer", "count": 1}],
-            ),
-            "Sprint 6": _answer(
-                _SPRINT_6,
-                dict(_SPRINT_5),
-                failure_breakdown=[
-                    {"class": "VERIFY", "role": "Developer", "count": 2},
-                    {"class": "EDIT", "role": "Developer", "count": 1},
-                ],
-            ),
+            "Sprint 5": _answer(five, None, failure_breakdown=breakdown["Sprint 5"]),
+            "Sprint 6": _answer(six, dict(five), failure_breakdown=breakdown["Sprint 6"]),
         },
     }
     body["sprints"]["Sprint 6"]["flags"]["first_attempt_rate_percent"] = True
@@ -746,7 +793,7 @@ def _sprint_metrics() -> dh.SprintMetrics:
     )
 
 
-def inputs() -> dh.Inputs:
+def _inputs(answers: dh.SprintMetrics | None) -> dh.Inputs:
     return dh.Inputs(
         events=_events(),
         cards=_cards(),
@@ -757,8 +804,17 @@ def inputs() -> dh.Inputs:
         timezone="America/Chicago",
         date=date(2026, 9, 25),
         generated=T + timedelta(hours=6),
-        sprint_metrics=_sprint_metrics(),
+        sprint_metrics=answers,
     )
+
+
+def build_without_answers() -> tuple[dh.DeliveryHistory, dict[str, dh.PeriodEvents], dh.Manifest]:
+    """The mock as it stands before sprint-metrics has answered: what its answers count."""
+    return dh.build(_inputs(None))
+
+
+def inputs() -> dh.Inputs:
+    return _inputs(_sprint_metrics())
 
 
 def files() -> dict[str, str]:

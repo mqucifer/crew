@@ -406,10 +406,17 @@ def test_a_story_returned_and_worked_again_is_a_second_delivery():
     assert (found[(664, 2)].outcome, found[(664, 2)].submissions) == ("open", 1)
 
 
-def test_the_gates_returns_dont_spoil_a_first_try_and_reviews_do():
-    stories = {s.card.number: s for s in build(STORIES, CARDS)[0].analysis.stories}
-    assert (stories[663].pattern, stories[663].misses) == ("first_try", 0)
-    assert (stories[662].pattern, stories[662].misses) == ("retried", 1)
+def _returns_sent(history, files, number):
+    sent = feed(history, files.values()).events
+    return [
+        e for e in sent if e["type"] == "attempt_failed" and e["card_id"].endswith(f"#{number}")
+    ]
+
+
+def test_the_gates_returns_arent_sent_as_returns_and_reviews_are():
+    history, files, _ = build(STORIES, CARDS)
+    assert _returns_sent(history, files, 663) == []
+    assert len(_returns_sent(history, files, 662)) == 1
     gate_only = [started(0, 663), ended(1, 663), gate(2, 663, False, ["scope.protected_path"])]
     gate_only += [
         started(3, 663, rework=True),
@@ -417,8 +424,8 @@ def test_the_gates_returns_dont_spoil_a_first_try_and_reviews_do():
         moved(5, 663, "In Progress", "Reviewing"),
     ]
     gate_only += [moved(6, 663, "Reviewing", "QAing"), moved(7, 663, "QAing", "Done")]
-    (story,) = [s for s in build(gate_only, CARDS)[0].analysis.stories if s.card.number == 663]
-    assert (story.pattern, story.misses) == ("first_try", 0)
+    history, files, _ = build(gate_only, CARDS)
+    assert _returns_sent(history, files, 663) == []
 
 
 # --- decision 8's three numbers, from the package ------------------------------------------
@@ -443,16 +450,23 @@ def measures(history: dh.DeliveryHistory, files: dict[str, dh.PeriodEvents]) -> 
     events = [e for p in files.values() for e in p.events]
     worked = {(e.card.repo, e.card.number) for e in events if e.kind == "session_started"}
     returned = {(e.card.repo, e.card.number) for e in events if e.kind == "returned"}
-    costs = {(s.card.repo, s.card.number): s.cost for s in history.analysis.stories if s.cost}
+    calls = [e for e in events if e.kind == "model_call"]
+    costs: dict[tuple[str, int], list[Any]] = {}
+    for c in calls:
+        costs.setdefault((c.card.repo, c.card.number), []).append(c)
     return {
         "first_attempt_rate_percent": round(100 * len(first) / len(delivered)),
         "per_story": {
             key[1]: (
-                c.model_seconds,
-                c.prompt_tokens,
-                round(100 * c.cached_tokens / c.prompt_tokens),
+                round(sum(c.seconds or 0.0 for c in mine), 1),
+                sum(c.prompt_tokens or 0 for c in mine),
+                round(
+                    100
+                    * sum(c.cached_tokens or 0 for c in mine)
+                    / sum(c.prompt_tokens or 0 for c in mine)
+                ),
             )
-            for key, c in costs.items()
+            for key, mine in costs.items()
         },
         "returned_rate_percent": round(100 * len(returned & worked) / len(worked)),
     }

@@ -31,11 +31,11 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_2_0_0_shipped_exactly_as_announced():
+def test_delivery_history_3_0_0_shipped_exactly_as_announced():
     """Its announcement recorded the fingerprint; the switch removed the announced copy."""
     assert ANNOUNCED == []
-    assert dh.SCHEMA_VERSION == "2.0.0"
-    assert contract.read_versions()["2.0.0"] == contract.fingerprint(contract.schemas())
+    assert dh.SCHEMA_VERSION == "3.0.0"
+    assert contract.read_versions()["3.0.0"] == contract.fingerprint(contract.schemas())
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)

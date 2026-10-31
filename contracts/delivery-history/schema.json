@@ -18,19 +18,10 @@
           },
           "title": "Sprints",
           "type": "array"
-        },
-        "stories": {
-          "description": "Every story and bug with events.",
-          "items": {
-            "$ref": "#/$defs/StoryPattern"
-          },
-          "title": "Stories",
-          "type": "array"
         }
       },
       "required": [
         "sprints",
-        "stories",
         "deliveries"
       ],
       "title": "Analysis",
@@ -420,7 +411,7 @@
     },
     "Delivery": {
       "additionalProperties": false,
-      "description": "One delivery of a story in Developer sessions, from its first session to its outcome.\n\nDerived from the package's own events (crew#778, decision 8). An attempt is the\nbranch handed to review and QA (the Sponsor, 2026-10-18): `submissions` counts\nthem, and the gate's returns before review are `gate_rounds`, which don't spoil a\nfirst attempt. Outcomes: `done` (moved to Done), `returned` (to the Business\nAnalyst), `blocked` (left for a person: a choice, or nowhere to return it),\n`interrupted` (its last session was, and none followed), `open`.",
+      "description": "One delivery of a story in Developer sessions, from its first session to its outcome.\n\nDerived from the package's own events (crew#778, decision 8). It says what its\nsessions did, and no verdict on it: `submissions` counts the branch handed to\nreview and QA, and the gate's returns before review are `gate_rounds`.\nOutcomes: `done` (moved to Done), `returned` (to the Business\nAnalyst), `blocked` (left for a person: a choice, or nowhere to return it),\n`interrupted` (its last session was, and none followed), `open`.",
       "properties": {
         "blocked_on": {
           "anyOf": [
@@ -742,50 +733,6 @@
         "events"
       ],
       "title": "Period",
-      "type": "object"
-    },
-    "PullRef": {
-      "additionalProperties": false,
-      "properties": {
-        "number": {
-          "title": "Number",
-          "type": "integer"
-        },
-        "repo": {
-          "title": "Repo",
-          "type": "string"
-        }
-      },
-      "required": [
-        "repo",
-        "number"
-      ],
-      "title": "PullRef",
-      "type": "object"
-    },
-    "Repeated": {
-      "additionalProperties": false,
-      "description": "The refusal a story got most often, when the crew's check wrote its reason.",
-      "properties": {
-        "count": {
-          "title": "Count",
-          "type": "integer"
-        },
-        "failure_class": {
-          "title": "Failure Class",
-          "type": "string"
-        },
-        "reason": {
-          "title": "Reason",
-          "type": "string"
-        }
-      },
-      "required": [
-        "failure_class",
-        "reason",
-        "count"
-      ],
-      "title": "Repeated",
       "type": "object"
     },
     "Sprint": {
@@ -1714,159 +1661,6 @@
         "answers"
       ],
       "title": "SprintMetrics",
-      "type": "object"
-    },
-    "StoryCost": {
-      "additionalProperties": false,
-      "description": "What a story's model calls cost in tokens and time. No money is recorded.",
-      "properties": {
-        "cached_tokens": {
-          "default": 0,
-          "description": "Of its prompt tokens, those the server's prefix cache held.",
-          "title": "Cached Tokens",
-          "type": "integer"
-        },
-        "completion_tokens": {
-          "title": "Completion Tokens",
-          "type": "integer"
-        },
-        "model_calls": {
-          "title": "Model Calls",
-          "type": "integer"
-        },
-        "model_seconds": {
-          "description": "Time spent in its model calls.",
-          "title": "Model Seconds",
-          "type": "number"
-        },
-        "prompt_tokens": {
-          "title": "Prompt Tokens",
-          "type": "integer"
-        },
-        "reasoning_tokens": {
-          "title": "Reasoning Tokens",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "model_calls",
-        "prompt_tokens",
-        "completion_tokens",
-        "reasoning_tokens",
-        "cached_tokens",
-        "model_seconds"
-      ],
-      "title": "StoryCost",
-      "type": "object"
-    },
-    "StoryPattern": {
-      "additionalProperties": false,
-      "description": "A story's path, as one pattern, the facts behind it, and a sentence.\n\nThe patterns, first that fits: `superseded` (closed as not planned),\n`first_try` (delivered with no miss and no block), `crew_fix` (delivered,\nand a fix to the crew merged between its first miss and its delivery, from\na crew issue that cites it), `escalated`, `retried` (delivered after\nmisses), `blocked` (in Blocked now), `open`. A fix whose issue doesn't cite\nthe story isn't counted, however close in time: nothing is guessed.",
-      "properties": {
-        "blocks": {
-          "description": "Moves into Blocked.",
-          "title": "Blocks",
-          "type": "integer"
-        },
-        "card": {
-          "$ref": "#/$defs/CardRef"
-        },
-        "cost": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/StoryCost"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "None when none of its model calls could be placed: older calls don't name their repository, and are left out rather than guessed."
-        },
-        "crew_fixes": {
-          "description": "Fixes to the crew, from issues that cite it, that merged between its first miss and its delivery.",
-          "items": {
-            "$ref": "#/$defs/PullRef"
-          },
-          "title": "Crew Fixes",
-          "type": "array"
-        },
-        "delivered": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Delivered"
-        },
-        "escalations": {
-          "description": "Times it was escalated: none in sprints after escalation retired (ADR 0032).",
-          "title": "Escalations",
-          "type": "integer"
-        },
-        "misses": {
-          "description": "Attempts that didn't land. For a story delivered in sessions, its returns by review or QA, or to the Business Analyst; never the gate's before review.",
-          "title": "Misses",
-          "type": "integer"
-        },
-        "pattern": {
-          "enum": [
-            "first_try",
-            "crew_fix",
-            "escalated",
-            "retried",
-            "superseded",
-            "blocked",
-            "open"
-          ],
-          "title": "Pattern",
-          "type": "string"
-        },
-        "repeated": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Repeated"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "text": {
-          "description": "The sentence the crew's code wrote from these values.",
-          "title": "Text",
-          "type": "string"
-        },
-        "wall_clock_seconds": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "From the first work on it to its delivery; none until it's delivered.",
-          "title": "Wall Clock Seconds"
-        }
-      },
-      "required": [
-        "card",
-        "pattern",
-        "misses",
-        "blocks",
-        "escalations",
-        "crew_fixes",
-        "repeated",
-        "delivered",
-        "wall_clock_seconds",
-        "cost",
-        "text"
-      ],
-      "title": "StoryPattern",
       "type": "object"
     }
   },

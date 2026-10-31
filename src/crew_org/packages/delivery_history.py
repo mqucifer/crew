@@ -39,7 +39,7 @@ from crew_org.sendbacks import Step
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "3.0.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -528,77 +528,16 @@ class SprintAnalysis(_Part):
     decided: list[Decided]
 
 
-Pattern = Literal["first_try", "crew_fix", "escalated", "retried", "superseded", "blocked", "open"]
-
-
-class Repeated(_Part):
-    """The refusal a story got most often, when the crew's check wrote its reason."""
-
-    failure_class: str
-    reason: str
-    count: int
-
-
-class StoryCost(_Part):
-    """What a story's model calls cost in tokens and time. No money is recorded."""
-
-    model_calls: int
-    prompt_tokens: int
-    completion_tokens: int
-    reasoning_tokens: int
-    cached_tokens: int = Field(
-        default=0, description="Of its prompt tokens, those the server's prefix cache held."
-    )
-    model_seconds: float = Field(description="Time spent in its model calls.")
-
-
-class StoryPattern(_Part):
-    """A story's path, as one pattern, the facts behind it, and a sentence.
-
-    The patterns, first that fits: `superseded` (closed as not planned),
-    `first_try` (delivered with no miss and no block), `crew_fix` (delivered,
-    and a fix to the crew merged between its first miss and its delivery, from
-    a crew issue that cites it), `escalated`, `retried` (delivered after
-    misses), `blocked` (in Blocked now), `open`. A fix whose issue doesn't cite
-    the story isn't counted, however close in time: nothing is guessed.
-    """
-
-    card: CardRef
-    pattern: Pattern
-    misses: int = Field(
-        description="Attempts that didn't land. For a story delivered in sessions, its "
-        "returns by review or QA, or to the Business Analyst; never the gate's before review."
-    )
-    blocks: int = Field(description="Moves into Blocked.")
-    escalations: int = Field(
-        description="Times it was escalated: none in sprints after escalation retired (ADR 0032)."
-    )
-    crew_fixes: list[PullRef] = Field(
-        description="Fixes to the crew, from issues that cite it, that merged between its "
-        "first miss and its delivery."
-    )
-    repeated: Repeated | None
-    delivered: datetime | None
-    wall_clock_seconds: float | None = Field(
-        description="From the first work on it to its delivery; none until it's delivered."
-    )
-    cost: StoryCost | None = Field(
-        description="None when none of its model calls could be placed: older calls don't "
-        "name their repository, and are left out rather than guessed."
-    )
-    text: str = Field(description="The sentence the crew's code wrote from these values.")
-
-
 Gap = Literal["session_not_ended", "session_not_started"]
 
 
 class Delivery(_Part):
     """One delivery of a story in Developer sessions, from its first session to its outcome.
 
-    Derived from the package's own events (crew#778, decision 8). An attempt is the
-    branch handed to review and QA (the Sponsor, 2026-10-18): `submissions` counts
-    them, and the gate's returns before review are `gate_rounds`, which don't spoil a
-    first attempt. Outcomes: `done` (moved to Done), `returned` (to the Business
+    Derived from the package's own events (crew#778, decision 8). It says what its
+    sessions did, and no verdict on it: `submissions` counts the branch handed to
+    review and QA, and the gate's returns before review are `gate_rounds`.
+    Outcomes: `done` (moved to Done), `returned` (to the Business
     Analyst), `blocked` (left for a person: a choice, or nowhere to return it),
     `interrupted` (its last session was, and none followed), `open`.
     """
@@ -649,7 +588,6 @@ class Delivery(_Part):
 
 class Analysis(_Part):
     sprints: list[SprintAnalysis] = Field(description="Every sprint started by the package's date.")
-    stories: list[StoryPattern] = Field(description="Every story and bug with events.")
     deliveries: list[Delivery] = Field(
         default_factory=list,
         description="Every delivery in Developer sessions, by story, oldest first.",

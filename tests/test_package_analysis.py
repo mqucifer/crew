@@ -1,6 +1,6 @@
 """The crew's own analysis in delivery-history, written by code from the data (crew#521).
 
-What changed, what needs attention and a story's pattern, as crew-presentation's
+What changed, what needs attention and what the crew decided, as crew-presentation's
 design reference shows them. Every sentence is a template with measures and names
 filled in (ADR 0020, ADR 0022).
 """
@@ -117,105 +117,11 @@ def analyse(events, cards, *, sprints=(SPRINT,), answers=None) -> dh.Analysis:
     )
 
 
-def story(result: dh.Analysis, number: int) -> dh.StoryPattern:
-    return next(s for s in result.stories if s.card.number == number)
-
-
-# --- a story's pattern ----------------------------------------------------------------
-
-
-def test_a_story_delivered_with_no_miss_landed_first_try():
-    events = [
-        dh.WorkStarted(at=at(0), card=ref(1), pull=None, role="Developer"),
-        call(1, 5),
-        moved(1, 20, "In Progress", "Reviewing"),
-        moved(1, 40, "Merging", "Done"),
-    ]
-    found = story(analyse(events, [card(1, closed_as="completed")]), 1)
-    assert found.pattern == "first_try"
-    assert found.text == "Landed first try."
-    assert found.delivered == at(40)
-    assert found.wall_clock_seconds == 40 * 60
-
-
-def test_a_crew_fix_merging_between_its_misses_and_delivery_is_its_pattern():
-    """The story-journey board's pattern: refused, the crew fixed itself, then it landed."""
-    events = [
-        attempt(127, 0, 1, reason=REASON),
-        attempt(127, 2, 2, reason=REASON),
-        attempt(127, 4, 3, reason=REASON),
-        moved(127, 6, "In Progress", "Blocked"),
-        crew_fix(208, 15),
-        crew_fix(209, 24),
-        # Close in time, but its issue doesn't cite this story.
-        crew_fix(211, 25, about=(128,)),
-        moved(127, 30, "Merging", "Done"),
-        # Merged after it landed: not between.
-        crew_fix(210, 50),
-    ]
-    found = story(analyse(events, [card(127, closed_as="completed")]), 127)
-    assert found.pattern == "crew_fix"
-    assert [f.number for f in found.crew_fixes] == [208, 209]
-    assert (found.misses, found.blocks) == (3, 1)
-    assert found.repeated == dh.Repeated(failure_class="EDIT", reason=REASON, count=3)
-    assert found.text == (
-        "Missed 3 times and was blocked once, then landed after the crew's own fixes "
-        "crew#208 and crew#209 merged. It was refused 3 times with the same reason."
-    )
-
-
-def test_an_escalated_story_and_a_retried_one_say_so():
-    events = [
-        attempt(1, 0, 1, failure="TEST"),
-        dh.Escalated(at=at(1), card=ref(1), role="Developer"),
-        moved(1, 10, "Merging", "Done"),
-        attempt(2, 0, 1, failure="TEST"),
-        attempt(2, 2, 2, failure="LINT"),
-        moved(2, 10, "Merging", "Done"),
-    ]
-    result = analyse(events, [card(1), card(2)])
-    assert story(result, 1).pattern == "escalated"
-    assert story(result, 1).text == "Missed once, then landed after it was escalated."
-    assert story(result, 2).pattern == "retried"
-    assert story(result, 2).text == "Missed twice, then landed."
-    # A failure class alone isn't the same failure: no reason, no repeat.
-    assert story(result, 2).repeated is None
-
-
-def test_a_superseded_story_was_never_built_though_it_moved_to_done():
-    events = [attempt(5, 0, 1), moved(5, 10, "Ready", "Done")]
-    found = story(analyse(events, [card(5, closed_as="not_planned")]), 5)
-    assert (found.pattern, found.delivered) == ("superseded", None)
-    assert found.text == "Superseded: closed as not planned, never built."
-
-
-def test_an_open_story_is_blocked_or_not_delivered_yet():
-    events = [attempt(6, 0, 1), moved(6, 2, "In Progress", "Blocked"), call(7, 0)]
-    result = analyse(events, [card(6, status="Blocked"), card(7, status="In Progress")])
-    assert story(result, 6).text == "Blocked now; it missed once and was blocked once first."
-    assert story(result, 7).pattern == "open"
-    assert story(result, 7).text == "Not delivered yet."
-    assert story(result, 7).wall_clock_seconds is None
-    # No call placed to it: its cost is unknown, not nothing.
-    assert story(result, 6).cost is None
-
-
-def test_a_storys_cost_is_its_calls_tokens_and_time():
-    events = [call(1, 0, seconds=12.25), call(1, 5, prompt=500, reasoning=None, seconds=7.5)]
-    cost = story(analyse(events, [card(1, status="In Progress")]), 1).cost
-    assert cost == dh.StoryCost(
-        model_calls=2,
-        prompt_tokens=1500,
-        completion_tokens=400,
-        reasoning_tokens=150,
-        model_seconds=19.8,
-    )
-
-
-def test_goals_epics_and_cards_with_no_events_have_no_pattern():
-    events = [moved(10, 0, "Inbox (Goals)", "Needs Refinement")]
-    result = analyse(events, [card(10, type_="Epic"), card(11)])
-    assert result.stories == []
+def test_goals_epics_and_stories_get_no_result_of_their_own():
+    """A story's path is its events; what it adds up to is sprint-metrics' (crew#963)."""
+    result = analyse([attempt(1, 0, 1), moved(1, 10, "Merging", "Done")], [card(1)])
+    assert "stories" not in dh.Analysis.model_fields
+    assert "stories" not in result.model_dump()
 
 
 # --- what needs attention ------------------------------------------------------------------

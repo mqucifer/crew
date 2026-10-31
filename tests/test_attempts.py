@@ -17,6 +17,7 @@ from crew_org.flows.attempts import (
     Cause,
     cause_of,
     causes_of,
+    causes_text,
     first_error,
     read_attempts,
     retries_text,
@@ -110,7 +111,7 @@ def retry(card: int, failure_class: str, at: str, **detail) -> dict:
     }
 
 
-def test_a_sprints_stories_carry_their_attempts_and_first_try(tmp_path):
+def test_a_sprints_stories_carry_their_attempts_and_no_verdict(tmp_path):
     events = write_events(
         tmp_path,
         [
@@ -125,8 +126,9 @@ def test_a_sprints_stories_carry_their_attempts_and_first_try(tmp_path):
     )
 
     by_number = {s["number"]: s for s in report["stories"]}
-    assert by_number[76]["first_try"] and by_number[76]["attempts"] == []
-    assert not by_number[73]["first_try"]
+    # What first try means is sprint-metrics' to say (crew#963).
+    assert all("first_try" not in s for s in report["stories"])
+    assert by_number[76]["attempts"] == []
     assert by_number[73]["attempts"] == [
         {
             "class": "SCHEMA",
@@ -171,7 +173,7 @@ def test_only_the_sprints_own_attempts_count_on_a_number_reused_elsewhere(tmp_pa
     report = sprint_report("Sprint 27", cards, attempts, returned=0)
 
     by_number = {s["number"]: s for s in report["stories"]}
-    assert by_number[129]["first_try"] and by_number[129]["attempts"] == []
+    assert by_number[129]["attempts"] == []
     assert [a["class"] for a in by_number[127]["attempts"]] == ["EDIT"]
 
 
@@ -185,6 +187,14 @@ def test_the_retro_is_told_the_first_try_rate_and_the_causes():
     assert text.startswith("1 of 4 stories landed on their first attempt.")
     assert "- SCHEMA: no test (2 times, on #73, #75; cause " in text
     assert "(once, on #74; cause " in text, "each cause with its key, for a fix to cite (#199)"
+
+
+def test_the_export_prints_the_causes_and_no_first_try_rate():
+    attempts = [Attempt(73, "Developer", "SCHEMA", "no test", "no test")]
+    report = sprint_report("S", [story(73), story(74)], attempts, 1)
+    text = causes_text(report)
+    assert text.startswith("- SCHEMA: no test (once, on #73; cause ")
+    assert "first attempt" not in text
 
 
 def test_a_superseded_story_never_landed_first_time_but_its_failures_count():
@@ -370,7 +380,7 @@ def test_a_review_or_qa_return_is_an_attempt_and_the_story_is_not_first_try(tmp_
     )
     report = sprint_report("Sprint 7", [story(145, "Sprint 7")], read_attempts(events), 0)
     (s,) = report["stories"]
-    assert not s["first_try"]
+    assert s["attempts"]
     assert [a["class"] for a in s["attempts"]] == ["QA", "REVIEW"]
     text = retries_text(report)
     assert "- REVIEW: tests/test_prior.py: the design note says omit the stdout check (once" in text
