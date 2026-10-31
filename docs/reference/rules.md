@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 80 |
-| A setting that changes what the tick does | 211 |
+| A setting that changes what the tick does | 213 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -37,7 +37,7 @@ section; one no line holds for is unplaced, never guessed.
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 72 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 157 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
@@ -539,6 +539,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.org.design.skip_label`<br>design.skip_label = no:design | scope | `src/crew_org/config/org.yaml:design.skip_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.estimation.max_story_points`<br>estimation.max_story_points = 8 | scope | `src/crew_org/config/org.yaml:estimation.max_story_points` | — | — | src/crew_org/config/org.yaml | crew#756 |
 | `config.org.estimation.scale`<br>estimation.scale = [1, 2, 3, 5, 8] | scope | `src/crew_org/config/org.yaml:estimation.scale` | — | — | src/crew_org/config/org.yaml | crew#756 |
+| `config.org.filers.operator`<br>filers.operator = quarters-claude | guards | `src/crew_org/config/org.yaml:filers.operator` | — | — | src/crew_org/config/org.yaml | — |
+| `config.org.filers.operator_since`<br>filers.operator_since = 2026-10-09T15:55:19Z | guards | `src/crew_org/config/org.yaml:filers.operator_since` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.refinement.look`<br>refinement.look = True | flow | `src/crew_org/config/org.yaml:refinement.look` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.refinement.resplit_stop`<br>refinement.resplit_stop = 3 | flow | `src/crew_org/config/org.yaml:refinement.resplit_stop` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.sandbox.engine`<br>sandbox.engine = docker | guards | `src/crew_org/config/org.yaml:sandbox.engine` | — | — | src/crew_org/config/org.yaml | — |

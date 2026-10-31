@@ -1,10 +1,11 @@
 {
  "package": "delivery-history",
- "schema_version": "2.0.0",
+ "schema_version": "2.1.0",
  "date": "2026-09-25",
  "timezone": "America/Chicago",
  "crew_repository": "crew",
  "repositories": [
+  "qa-suite",
   "sprint-metrics"
  ],
  "sprints": [
@@ -21,6 +22,52 @@
  ],
  "cards": [
   {
+   "repo": "qa-suite",
+   "number": 16,
+   "type": null,
+   "title": "The test of sprint-metrics#125: Move the card model into card.py",
+   "url": "https://github.com/mqucifer/qa-suite/issues/16",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-26T00:14:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "task",
+    "kind": "story-test",
+    "for_project": "sprint-metrics"
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 41,
+   "type": "Goal",
+   "title": "Goal: a report anyone can run",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/41",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Done",
+   "status_set": null,
+   "created": "2026-09-19T23:30:00Z",
+   "closed": "2026-09-20T23:30:00Z",
+   "technical": false,
+   "closed_as": "completed",
+   "superseded_because": null,
+   "filed": {
+    "by": "unknown",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
    "repo": "sprint-metrics",
    "number": 48,
    "type": "Goal",
@@ -35,7 +82,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "sponsor",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -52,7 +105,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -69,7 +128,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -86,7 +151,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -103,7 +174,13 @@
    "closed": "2026-09-25T01:30:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -120,7 +197,13 @@
    "closed": "2026-09-24T23:53:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -137,7 +220,13 @@
    "closed": "2026-09-25T00:23:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -154,7 +243,13 @@
    "closed": "2026-09-25T01:03:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -171,7 +266,13 @@
    "closed": null,
    "technical": true,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "technical_epic",
+    "kind": "design",
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -188,7 +289,13 @@
    "closed": null,
    "technical": true,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "technical_epic",
+    "kind": "main-red",
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -205,7 +312,13 @@
    "closed": "2026-09-26T00:13:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -222,7 +335,13 @@
    "closed": "2026-09-26T00:51:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -239,7 +358,13 @@
    "closed": "2026-09-26T01:55:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -256,7 +381,13 @@
    "closed": "2026-09-26T02:23:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -273,7 +404,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -290,7 +427,13 @@
    "closed": "2026-09-26T02:50:00Z",
    "technical": false,
    "closed_as": "not_planned",
-   "superseded_because": "story_problem"
+   "superseded_because": "story_problem",
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -307,7 +450,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -324,7 +473,13 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -341,7 +496,13 @@
    "closed": "2026-09-26T03:03:00Z",
    "technical": false,
    "closed_as": "completed",
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
   },
   {
    "repo": "sprint-metrics",
@@ -358,7 +519,82 @@
    "closed": null,
    "technical": false,
    "closed_as": null,
-   "superseded_because": null
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "split",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 151,
+   "type": "Bug",
+   "title": "The trend line overflows at 375px",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/151",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Needs Refinement",
+   "status_set": null,
+   "created": "2026-09-26T02:40:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "finding",
+    "kind": null,
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 152,
+   "type": null,
+   "title": "Release for epic 123",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/152",
+   "parent": 123,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-25T23:40:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "crew",
+    "activity": "task",
+    "kind": "release",
+    "for_project": null
+   }
+  },
+  {
+   "repo": "sprint-metrics",
+   "number": 153,
+   "type": "Bug",
+   "title": "The summary's numbers are off by one",
+   "url": "https://github.com/mqucifer/sprint-metrics/issues/153",
+   "parent": null,
+   "points": null,
+   "sprint": null,
+   "status": "Ready",
+   "status_set": null,
+   "created": "2026-09-26T02:45:00Z",
+   "closed": null,
+   "technical": false,
+   "closed_as": null,
+   "superseded_because": null,
+   "filed": {
+    "by": "operator",
+    "activity": null,
+    "kind": null,
+    "for_project": null
+   }
   }
  ],
  "periods": [

@@ -39,7 +39,7 @@ from crew_org.sendbacks import Step
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -68,6 +68,75 @@ class Sprint(_Part):
     name: str
     start: date
     end: date = Field(description="The sprint's last day, inclusive.")
+
+
+FiledBy = Literal["crew", "sponsor", "operator", "other", "unknown"]
+FiledActivity = Literal[
+    "finding",
+    "task",
+    "technical_epic",
+    "split",
+    "proposed_goal",
+    "skeleton_goal",
+    "record_change",
+    "retro",
+    "standup",
+]
+# A Task's kind (`flows/role_tasks.py`), a technical epic's cause, or a record's change.
+FiledKind = Literal[
+    "alert",
+    "announced",
+    "ci-services",
+    "deploy",
+    "diagram",
+    "dispute",
+    "escaped-bug",
+    "finding",
+    "first-diagram",
+    "first-workspace",
+    "need",
+    "release",
+    "review",
+    "story-test",
+    "adoption",
+    "design",
+    "main-red",
+    "release-check",
+    "onboarding",
+    "revisit",
+]
+
+
+class Filed(_Part):
+    """How a card came to be filed: the agent and the activity, as W3C PROV has it.
+
+    What the crew wrote when it filed the card, and no judgement of it. Unknown is
+    said, never guessed: cards older than a mark say what they can (crew#974).
+    """
+
+    by: FiledBy = Field(
+        default="unknown",
+        description="Who filed the issue, by its author on GitHub. `other` is anyone else. "
+        "`unknown` is an issue with no author, or one under the Sponsor's login from before "
+        "the operator had its own (crew#566), which can't be told apart.",
+    )
+    activity: FiledActivity | None = Field(
+        default=None,
+        description="What opened it, for the crew's own: a role's finding, a role's Task, a "
+        "technical epic, a split of filed work, a proposed or skeleton Goal, a change to a "
+        "project's record, or a sprint's retro or standup. None for anyone else's, and for an "
+        "older card of the crew's with nothing written to read it from.",
+    )
+    kind: FiledKind | None = Field(
+        default=None,
+        description="A Task's kind, a technical epic's cause, or a record's change. A later "
+        "MINOR may add kinds: accept one you don't know.",
+    )
+    for_project: str | None = Field(
+        default=None,
+        description="The project a card filed in another repository is for, by its "
+        "`project:` label: QA's Tasks in qa-suite. Their `repo` is qa-suite.",
+    )
 
 
 class Card(_Part):
@@ -99,6 +168,7 @@ class Card(_Part):
         "again at the Sponsor's request, or after a story problem. None when no re-split "
         "recorded it.",
     )
+    filed: Filed = Field(default_factory=Filed, description="How it came to be filed.")
 
 
 Mover = Literal["crew", "person", "platform"]
@@ -728,6 +798,17 @@ class Manifest(_Part):
 # --- building it ---------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Filers:
+    """Whose logins say who filed a card, as GraphQL names them. Unnamed, every card is unknown."""
+
+    crew: frozenset[str] = frozenset()
+    sponsor: str | None = None
+    operator: str | None = None
+    # Before this the operator worked as the Sponsor's login (crew#566).
+    operator_since: datetime | None = None
+
+
 @dataclass
 class Inputs:
     """What the package is built from. Raw: nothing here leaves as it is."""
@@ -745,6 +826,9 @@ class Inputs:
     generated: datetime
     # sprint-metrics' answers for the sprints it covers, or None without the service.
     sprint_metrics: SprintMetrics | None = None
+    # Each card's issue body, by (repo, number): only what `how_filed` names from it leaves.
+    bodies: dict[tuple[str, int], str] = field(default_factory=dict)
+    filers: Filers = field(default_factory=Filers)
 
 
 # The labels that mark the crew's own design decisions (crew#192): on a technical
@@ -1317,6 +1401,84 @@ def _superseded_because(
     return out
 
 
+# What each filing path writes, restated from the flows as the labels above are. A mark
+# counts at the head of the body, where those paths write it: QA's Task on an escaped bug
+# carries the bug's whole body, its finding mark too.
+SPLIT_MARK = "<!-- crew:split -->"
+_BY_MARK = "<!-- crew:by "
+_HEAD_MARK = re.compile(
+    r"\s*<!-- crew:(?:task role=\S+ kind=(?P<task>\S+) key=\S+ -->"
+    r"|(?P<finding>finding) key="
+    r"|(?P<cause>main-red|release-check|adoption)\b"
+    r"|(?P<split>split) -->)"
+)
+_FILING_LABELS: dict[str, tuple[Any, Any]] = {
+    "proposed-goal": ("proposed_goal", None),
+    "skeleton": ("skeleton_goal", None),
+    "retro-finding": ("finding", None),
+    "diagnosis": ("finding", None),
+    "retro": ("retro", None),
+    "standup": ("standup", None),
+    REVISIT_LABEL: ("record_change", "revisit"),
+}
+_RECORD_TITLES: dict[str, Any] = {
+    "Onboard this project: its record for the crew": "onboarding",
+    "Design this project: the Architect's section of its record": "design",
+    "Revisit this project's design": "revisit",
+}
+_PROJECT_LABEL = "project:"
+
+
+def _filed_by(card: Any, filers: Filers) -> FiledBy:
+    author = card.author
+    if not author or not filers.crew:
+        return "unknown"
+    if author in filers.crew:
+        return "crew"
+    if author == filers.operator:
+        return "operator"
+    if author != filers.sponsor:
+        return "other"
+    since = filers.operator_since
+    return "sponsor" if since and card.created and card.created >= since else "unknown"
+
+
+def _activity(card: Any, body: str) -> tuple[FiledActivity | None, FiledKind | None]:
+    """What opened one of the crew's own cards, from what it wrote, first that fits."""
+    head = _HEAD_MARK.match(body)
+    if head and head["task"]:
+        kind = _one_of(head["task"], FiledKind)
+        return ("finding" if kind == "finding" else "task"), kind
+    if head and head["finding"]:
+        return "finding", None
+    if head and head["cause"]:
+        return "technical_epic", head["cause"]  # type: ignore[return-value]
+    if head and head["split"]:
+        return "split", None
+    if TECHNICAL in card.labels:
+        return "technical_epic", ("design" if _BY_MARK in body else None)
+    for label, filed in _FILING_LABELS.items():
+        if label in card.labels:
+            return filed
+    if card.title in _RECORD_TITLES:
+        return "record_change", _RECORD_TITLES[card.title]
+    # Nesting is best effort, so a parent says a split and its absence says nothing.
+    return ("split" if card.parent is not None else None), None
+
+
+def how_filed(card: Any, body: str, filers: Filers) -> Filed:
+    """How a board card was filed. Marks and labels are read only on the crew's own cards:
+    the repositories are public, and anyone can write a mark into an issue."""
+    by = _filed_by(card, filers)
+    if by != "crew":
+        return Filed(by=by)
+    activity, kind = _activity(card, body)
+    project = next(
+        (x.removeprefix(_PROJECT_LABEL) for x in card.labels if x.startswith(_PROJECT_LABEL)), None
+    )
+    return Filed(by=by, activity=activity, kind=kind, for_project=project)
+
+
 def _cards(inputs: Inputs) -> list[Card]:
     because = _superseded_because(inputs)
     out = []
@@ -1342,6 +1504,7 @@ def _cards(inputs: Inputs) -> list[Card]:
                 superseded_because=(
                     because.get((c.repo, c.number)) if _closed_as(c) == "not_planned" else None
                 ),
+                filed=how_filed(c, inputs.bodies.get((c.repo, c.number), ""), inputs.filers),
             )
         )
     return sorted(out, key=lambda c: (c.repo, c.number))

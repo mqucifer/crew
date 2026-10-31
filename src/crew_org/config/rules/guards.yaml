@@ -156,6 +156,8 @@ config.const.sandbox.PROBE_TIMEOUT:
 config.org.sandbox.engine:
 config.org.sandbox.image:
 config.org.sandbox.mode:
+config.org.filers.operator:
+config.org.filers.operator_since:
 config.org.trust.crew:
 config.org.trust.sponsor:
 config.org.trust.tools:

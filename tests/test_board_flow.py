@@ -635,6 +635,23 @@ def test_stories_carry_points_and_inherited_priority(monkeypatch):
     assert [m[1] for m in board.moves] == [READY, READY]
 
 
+def test_a_story_says_at_its_head_that_a_split_filed_it(monkeypatch):
+    """Nesting is best effort, so a parent alone can't say so (crew#974)."""
+    board, issues = FakeBoard([epic_card(3)]), FakeIssues()
+    run_split(board, issues, monkeypatch)
+    assert issues.created
+    assert all(i["body"].startswith(board_flow.SPLIT_MARK) for i in issues.created)
+
+
+def test_an_epic_says_at_its_head_that_a_split_filed_it():
+    issues = FakeIssues()
+    board_flow.create_epic_cards(
+        FakeBoard([]), issues, EventSink(None), repo="sm", goal=card(1), proposal=PROPOSAL
+    )
+    assert issues.created
+    assert all(i["body"].startswith(board_flow.SPLIT_MARK) for i in issues.created)
+
+
 class TaskIssues(FakeIssues):
     """The issues a role's Task is opened against (crew#839)."""
 

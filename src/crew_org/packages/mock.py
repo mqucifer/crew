@@ -25,6 +25,8 @@ from crew_org.tools.github_project import Card
 
 DIRECTORY = "mock"
 SM = "sprint-metrics"
+QA = "qa-suite"
+CREW, SPONSOR, OPERATOR = "mqucifer-crew", "mquarters", "quarters-claude"
 # 18:30 on Sprint 6's day in Chicago.
 T = datetime(2026, 9, 25, 23, 30, tzinfo=UTC)
 # An event as the log records it: (the log it came from, the event).
@@ -464,13 +466,16 @@ def _card(
     points: float | None = None,
     sprint: str | None = None,
     labels: tuple[str, ...] | set[str] = (),
+    repo: str = SM,
+    author: str = CREW,
 ) -> Card:
     return Card(
         item_id=f"mock-{number}",
         number=number,
-        repo=SM,
+        repo=repo,
+        author=author,
         title=title,
-        url=f"https://github.com/mqucifer/{SM}/issues/{number}",
+        url=f"https://github.com/mqucifer/{repo}/issues/{number}",
         work_type=work_type,
         status=status,
         status_set=status_set,
@@ -517,11 +522,24 @@ def _cards() -> list[Card]:
 
     return [
         _card(
+            41,
+            "Goal: a report anyone can run",
+            "Goal",
+            "Done",
+            # Under the Sponsor's login, before the operator had its own: unknown.
+            created=_when(-6 * 24 * 60),
+            closed=_when(-5 * 24 * 60),
+            labels={"goal"},
+            author=SPONSOR,
+        ),
+        _card(
             48,
             "Goal: the tool presents, not just reports",
             "Goal",
             "Needs Refinement",
             created=filed,
+            labels={"goal"},
+            author=SPONSOR,
         ),
         _card(59, "Stable JSON API", "Epic", "Needs Refinement", created=filed, parent=48),
         _card(
@@ -579,7 +597,56 @@ def _cards() -> list[Card]:
         story(133, "Add the package's entry point", 124, s6, "Done", _when(213)),
         story(132, "Serve the trend from the package", 124, s6, "Ready"),
         story(136, "Read the sprint from the service's query", 124, s6, "Reviewing"),
+        _card(
+            151,
+            "The trend line overflows at 375px",
+            "Bug",
+            "Needs Refinement",
+            created=_when(190),
+            labels={"bug"},
+        ),
+        _card(
+            152,
+            "Release for epic 123",
+            "Task",
+            "Ready",
+            created=_when(10),
+            parent=123,
+            labels={"role:devops"},
+        ),
+        _card(
+            153,
+            "The summary's numbers are off by one",
+            "Bug",
+            "Ready",
+            created=_when(195),
+            labels={"bug"},
+            author=OPERATOR,
+        ),
+        _card(
+            16,
+            f"The test of {SM}#125: Move the card model into card.py",
+            "Task",
+            "Ready",
+            created=_when(44),
+            labels={"role:qa", f"project:{SM}"},
+            repo=QA,
+        ),
     ]
+
+
+def _bodies() -> dict[tuple[str, int], str]:
+    """What the crew's filing paths write, as far as the package reads it (crew#974). Epics
+    59, 62, 63 and the stories are read from their parents; 105 has nothing to read."""
+    by = "**The work:** {}\n\n<!-- crew:by Architect -->\n— *Architect*"
+    return {
+        (SM, 123): by.format("split it"),
+        (SM, 124): "<!-- crew:main-red workflow=ci -->\n**The work:** make `ci` pass again",
+        (SM, 136): "<!-- crew:split -->\n\nAs a reader, I want it",
+        (SM, 151): "<!-- crew:finding key=s133-bug-v0.2.0 -->\n\n**What happens:** it overflows",
+        (SM, 152): "<!-- crew:task role=devops kind=release key=epic-123 -->\n\n**Role:** DevOps",
+        (QA, 16): f"<!-- crew:task role=qa kind=story-test key={SM}-s125 -->\n\n**Role:** QA",
+    }
 
 
 def _pull(
@@ -753,11 +820,18 @@ def inputs() -> dh.Inputs:
         sprints=dh.sprints_from(SPRINTS),
         pulls=_pulls(),
         crew_repository="crew",
-        repositories=[SM],
+        repositories=[QA, SM],
         timezone="America/Chicago",
         date=date(2026, 9, 25),
         generated=T + timedelta(hours=6),
         sprint_metrics=_sprint_metrics(),
+        bodies=_bodies(),
+        filers=dh.Filers(
+            crew=frozenset({CREW}),
+            sponsor=SPONSOR,
+            operator=OPERATOR,
+            operator_since=_when(-4 * 24 * 60),
+        ),
     )
 
 
