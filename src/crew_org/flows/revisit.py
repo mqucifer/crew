@@ -865,6 +865,37 @@ def _give_to_epic(
     sink.note(EventKind.NOTE, f"#{epic} owns design work: {work[:70]}", card=epic)
 
 
+def file_technical_epic(
+    issues: Any, board: Any, sink: EventSink, *, repo: str, title: str, body: str, summary: str
+) -> dict[str, Any]:
+    """Open one technical epic, signed, and place it: it skips the Sponsor's gate (crew#192)."""
+    color, description = LABELS[TECHNICAL]
+    issues.ensure_label(repo, TECHNICAL, color=color, description=description)
+    issue: dict[str, Any] = issues.create(
+        repo, title[:200], artifacts.signed(body, BY), labels=[TECHNICAL]
+    )
+    place_technical_epic(board, sink, repo=repo, issue=issue, summary=summary)
+    return issue
+
+
+def place_technical_epic(
+    board: Any, sink: EventSink, *, repo: str, issue: dict[str, Any], summary: str
+) -> None:
+    item = board.add_issue(issue["node_id"])
+    move_card(
+        board,
+        sink,
+        item_id=item,
+        to=NEEDS_REFINEMENT,
+        by=BY,
+        card=issue["number"],
+        summary=summary,
+        # Just added, so the board's cache doesn't know its repository yet.
+        repo=repo,
+    )
+    board.set_select(item, "Work Type", EPIC_TYPE)
+
+
 def _file_epics(
     issues: Any,
     board: Any,
@@ -875,41 +906,26 @@ def _file_epics(
     source: str,
     result: Revisits,
 ) -> list[int]:
-    color, description = LABELS[TECHNICAL]
-    issues.ensure_label(repo, TECHNICAL, color=color, description=description)
     filed: list[int] = []
     for change in changes:
         # The work, not the record edit, is what refinement splits (#309). A
         # design declared before `work` existed falls back to `what`.
         work = str(change.get("work") or change["what"])
-        issue = issues.create(
-            repo,
-            work[:200],
-            artifacts.signed(
-                f"**The work:** {work}\n\n"
-                f"**What changes in the design:** {change['what']}\n\n"
-                f"**What the project does now:** {change.get('was') or 'nothing'}\n\n"
-                f"**Why:** {change.get('why') or ''}\n\n"
-                f"{source} Technical work: the crew "
-                "decided it, so it goes straight to refinement rather than to the Sponsor's "
-                "gate (mqucifer/crew#192).",
-                BY,
-            ),
-            labels=[TECHNICAL],
-        )
-        item = board.add_issue(issue["node_id"])
-        move_card(
+        issue = file_technical_epic(
+            issues,
             board,
             sink,
-            item_id=item,
-            to=NEEDS_REFINEMENT,
-            by=BY,
-            card=issue["number"],
-            summary=f"technical epic — {work[:50]}",
-            # Just added, so the board's cache doesn't know its repository yet.
             repo=repo,
+            title=work,
+            body=f"**The work:** {work}\n\n"
+            f"**What changes in the design:** {change['what']}\n\n"
+            f"**What the project does now:** {change.get('was') or 'nothing'}\n\n"
+            f"**Why:** {change.get('why') or ''}\n\n"
+            f"{source} Technical work: the crew "
+            "decided it, so it goes straight to refinement rather than to the Sponsor's "
+            "gate (mqucifer/crew#192).",
+            summary=f"technical epic — {work[:50]}",
         )
-        board.set_select(item, "Work Type", EPIC_TYPE)
         filed.append(issue["number"])
         result.epics.append((repo, issue["number"]))
     return filed

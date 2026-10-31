@@ -6,5 +6,8 @@
   "dependencies": {
     "jsdom": "27.4.0",
     "mermaid": "11.17.2"
+  },
+  "overrides": {
+    "katex": "0.19.1"
   }
 }

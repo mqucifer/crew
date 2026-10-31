@@ -472,17 +472,19 @@ def test_decision_8s_numbers_are_computed_from_the_package():
 # --- sprint-metrics' feed --------------------------------------------------------------------
 
 
-def test_the_feed_counts_a_sessions_attempts_as_times_handed_to_review():
+def test_the_feed_sends_a_sessions_returns_and_no_count_of_its_attempts():
+    """sprint-metrics counts a card's attempts from its returns (crew#963)."""
     history, files, _ = build(STORIES, CARDS)
     sent = feed(history, files.values()).events
     failed = [e for e in sent if e["type"] == "attempt_failed"]
-    assert [
-        (e["card_id"], e["attempt_number"], e["failure_class"], e["failure_role"]) for e in failed
-    ] == [("sprint-metrics#662", 1, "REVIEW", "Code Reviewer")]
+    assert [(e["card_id"], e["failure_class"], e["failure_role"]) for e in failed] == [
+        ("sprint-metrics#662", "REVIEW", "Code Reviewer")
+    ]
+    assert not any("attempt_number" in e for e in failed)
     finished = {e["card_id"]: e["card"] for e in sent if e["type"] == "finished"}
-    assert finished["sprint-metrics#662"]["attempts"] == 2
+    assert not any("attempts" in card for card in finished.values())
     assert finished["sprint-metrics#662"]["failure_class"] == "REVIEW"
-    assert finished["sprint-metrics#663"]["attempts"] == 1
+    assert "failure_class" not in finished["sprint-metrics#663"]
 
 
 def test_a_qa_return_is_an_attempt_and_escalations_attempts_arent_counted_twice():
@@ -501,7 +503,7 @@ def test_a_qa_return_is_an_attempt_and_escalations_attempts_arent_counted_twice(
     ]
     assert failed == [("REVIEW", "Code Reviewer"), ("QA", "QA Engineer")]
     (finished,) = [e for e in sent if e["type"] == "finished"]
-    assert finished["card"]["attempts"] == 3
+    assert "attempts" not in finished["card"]
 
 
 # --- records that are missing, partial or malformed (the Sponsor, 2026-10-18) -----------

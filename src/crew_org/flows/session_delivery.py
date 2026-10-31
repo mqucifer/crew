@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, Any
 from crew_org import profiles, sendbacks
 from crew_org.crews import epic_rows
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import gates, role_tasks
+from crew_org.flows import gates, role_tasks, unreleased
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.delivery import (
     DeliveryOutcome,
@@ -88,6 +88,7 @@ from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.tools.regression import merged_base
 from crew_org.tools.workspace import CheckResult, CommandResult, check, shown_test
+from crew_org.usage import place_announced
 from crew_org.work_types import TASK
 
 if TYPE_CHECKING:
@@ -265,6 +266,9 @@ def deliver_by_session(
         outcome.ended = True
         return outcome
     profiles.set_project(record)
+    if record is not None:
+        for gap in place_announced(record.intent.scope.uses, worktree):
+            sink.note(EventKind.NOTE, gap, repo=repo, card=number)
     offered = skills.for_task(role, body, worktree, _branch_paths(worktree)) if role else []
     note, rows = story_notes(issues, card, repo), story_rows(issues, card, repo)
     diagram = story_diagram(issues, card, repo)
@@ -1361,7 +1365,15 @@ def pr_title(
     """The Task's title, or a release's with the version its changelog moved to once the
     branch has moved it (crew#948). A release is told from the marker; a Task opened
     before its title named the release keeps the title it has."""
-    if marked is None or marked.kind != role_tasks.RELEASE or not marked.key.startswith("epic-"):
+    if marked is None or marked.kind != role_tasks.RELEASE:
+        return card.title
+    if marked.key.startswith(unreleased.KEY_PREFIX):
+        # No epic behind it (crew#961): the version DevOps chose, once the branch says it.
+        version = role_tasks.released_version(worktree)
+        if "CHANGELOG.md" not in _branch_paths(worktree) or not version:
+            return card.title
+        return unreleased.unreleased_title(f"{issues.owner}/{repo}", version)
+    if not marked.key.startswith("epic-"):
         return card.title
     epic, full = marked.key.removeprefix("epic-"), f"{issues.owner}/{repo}"
     if (

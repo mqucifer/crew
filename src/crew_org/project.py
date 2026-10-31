@@ -566,7 +566,7 @@ def _serves(readers: list[Reader]) -> list[str]:
 
 def _uses(uses: list[Use], root: Path | None) -> list[str]:
     """Each producer's usage notes, and what it provides at the release this project pins."""
-    from crew_org.usage import contract, notes  # noqa: PLC0415
+    from crew_org.usage import announced, contract, notes  # noqa: PLC0415
 
     lines: list[str] = []
     for use in uses:
@@ -581,4 +581,7 @@ def _uses(uses: list[Use], root: Path | None) -> list[str]:
         provided = contract(use, root)
         if provided:
             lines += [provided, ""]
+        coming = announced(use, root)
+        if coming:
+            lines += [coming, ""]
     return lines

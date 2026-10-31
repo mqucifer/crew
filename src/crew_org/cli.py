@@ -1804,9 +1804,9 @@ def announced(
         help="The producers' ref to read announcements at: a branch shows an unmerged one.",
     ),
 ) -> None:
-    """What a pass would file in a project for its producers' announced majors (crew#960).
+    """What a pass would file in a project for its producers' announced majors (crew#969).
 
-    Each Task's title and body, or the one already filed, rendered and nothing more:
+    Each adoption epic's title and body, or what's already filed, rendered and nothing more:
     it reads the project's record, its pins and its producers' `announced.json`, and
     opens nothing.
     """

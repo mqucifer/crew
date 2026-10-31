@@ -1,4 +1,5 @@
-"""A producer's announced new major opens an item in each project that uses it (crew#960)."""
+"""A producer's announced new major opens an adoption epic in each project that uses it
+(crew#960, crew#969)."""
 
 from __future__ import annotations
 
@@ -6,8 +7,11 @@ import json
 
 from crew_org.columns import NEEDS_REFINEMENT
 from crew_org.flows import announcements as an
-from crew_org.flows.role_tasks import ANNOUNCED, ARCHITECT, marked
+from crew_org.flows import role_tasks as rt
+from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL
 from crew_org.project import RECORD_PATH
+from crew_org.tools.github_project import Card
+from crew_org.usage import ANNOUNCED_FILE
 from tests.role_task_fakes import Board, Issues, events, sink
 
 RECORD = """
@@ -76,11 +80,11 @@ def producer(announced=ANNOUNCEMENT, *, at_pin=None, versions=("1.10.0", "1.11.0
     """The crew's files as its main and the pinned tag have them; design-system announces none."""
     pinned = {f"{DIR}/versions.json": json.dumps(dict.fromkeys(versions, "f"))}
     if at_pin is not None:
-        pinned[f"{DIR}/{an.ANNOUNCED_FILE}"] = json.dumps(at_pin)
+        pinned[f"{DIR}/{ANNOUNCED_FILE}"] = json.dumps(at_pin)
     files = {
         ("mqucifer/crew", "HEAD"): {
             "README.md": README,
-            **({f"{DIR}/{an.ANNOUNCED_FILE}": json.dumps(announced)} if announced else {}),
+            **({f"{DIR}/{ANNOUNCED_FILE}": json.dumps(announced)} if announced else {}),
         },
         ("mqucifer/crew", TAG): pinned,
     }
@@ -94,44 +98,105 @@ def producer(announced=ANNOUNCEMENT, *, at_pin=None, versions=("1.10.0", "1.11.0
     return read
 
 
-def run(issues, board, s, read, repos=frozenset({"crew-presentation"})):
-    return an.announced_tasks(issues, board, s, repos=set(repos), cards=[], read=read)
+def run(issues, board, s, read, repos=frozenset({"crew-presentation"}), cards=()):
+    return an.announced_epics(issues, board, s, repos=set(repos), cards=list(cards), read=read)
 
 
-def test_an_announced_major_opens_one_architect_task_in_needs_refinement(tmp_path):
+def test_an_announced_major_opens_one_technical_epic_in_needs_refinement(tmp_path):
     issues, board, s = Project(), Board(), sink(tmp_path)
     done = run(issues, board, s, producer())
     assert done.opened == [("crew-presentation", 901)]
-    task = issues.issues[901]
-    assert task["title"] == "delivery-history 2.0.0 replaces 1.x on 2026-11-06"
-    found = marked(task["body"])
-    assert (found.role, found.kind) == (ARCHITECT, ANNOUNCED)
-    assert found.key == "mqucifer/crew:delivery-history@2.0.0"
-    assert [lab["name"] for lab in task["labels"]] == ["role:architect"]
+    epic = issues.issues[901]
+    # The contract, the major and the date it replaces the old one.
+    assert epic["title"] == "Adopt delivery-history 2.0.0 before it replaces 1.x on 2026-11-06"
+    assert [lab["name"] for lab in epic["labels"]] == [TECHNICAL]
+    assert an.adoption_key(epic["body"]) == "mqucifer/crew:delivery-history@2.0.0"
+    # No role's Task: nothing says a role works it, and refinement splits it.
+    assert rt.marked(epic["body"]) is None
     # The changelog whole, the date, where the new contract is, and what it pins now.
-    assert CHANGELOG in task["body"]
-    assert "**2026-11-06**" in task["body"]
+    assert CHANGELOG in epic["body"]
+    assert "**2026-11-06**" in epic["body"]
     assert (
         "https://github.com/mqucifer/crew/tree/HEAD/contracts/delivery-history/2.0.0/"
-        in task["body"]
+        in epic["body"]
     )
-    assert f"`{TAG}`" in task["body"] and "1.11.0" in task["body"]
-    # Triaged as any finding: no points, in Needs Refinement.
+    assert f"`{TAG}`" in epic["body"] and "1.11.0" in epic["body"]
+    # As any technical epic: an Epic in Needs Refinement, past the Sponsor's gate.
     assert ("status", "item-N901", NEEDS_REFINEMENT) in board.done
-    assert not any(d[0] == "number" for d in board.done)
-    [event] = [e for e in events(tmp_path) if e["kind"] == "role_task.opened"]
-    assert event["detail"]["event"] == "producer.announced"
-    assert event["detail"]["rule"] == "decision.announcements.announced_tasks"
-    assert event["detail"]["version"] == "2.0.0"
+    assert ("select", "item-N901", "Work Type", EPIC_TYPE) in board.done
+    assert "mqucifer/crew#192" in epic["body"]
+    [said] = [e for e in events(tmp_path) if e["kind"] == "note" and "#901" in e["summary"]]
+    assert "crew-presentation#901" in said["summary"]
+    assert said["detail"]["rule"] == "decision.announcements.announced_epics"
+
+
+def test_the_epic_s_refinement_does_the_ruling_and_staying_is_a_decision(tmp_path):
+    issues, board, s = Project(), Board(), sink(tmp_path)
+    run(issues, board, s, producer())
+    body = issues.issues[901]["body"]
+    assert "If nothing it reads changes, this epic closes with that said" in body
+    assert "never the default when nobody acts" in body
+
+
+def _on_board(number=901):
+    return Card(
+        item_id=f"item-N{number}",
+        number=number,
+        title="Adopt",
+        status=NEEDS_REFINEMENT,
+        repo="crew-presentation",
+    )
 
 
 def test_a_second_pass_files_nothing_again_even_once_closed(tmp_path):
     issues, board, s = Project(), Board(), sink(tmp_path)
     run(issues, board, s, producer())
-    assert run(issues, board, s, producer()).opened == []
+    assert run(issues, board, s, producer(), cards=[_on_board()]).opened == []
     issues.issues[901]["state"] = "closed"
     assert run(issues, board, s, producer()).opened == []
     assert len(issues.issues) == 1
+
+
+def test_a_closed_ruling_task_from_before_counts_as_filed(tmp_path):
+    # mqucifer/crew-presentation#207, the ruling crew#960 filed: its adoption was filed by
+    # hand as mqucifer/crew-presentation#211, so 2.0.0 there files nothing more.
+    issues, board, s = Project(), Board(), sink(tmp_path)
+    key = "mqucifer/crew:delivery-history@2.0.0"
+    issues.add(
+        207,
+        f"<!-- crew:task role=architect kind=announced key={key} -->\n\nRuled.",
+        ("role:architect",),
+        state="closed",
+    )
+    assert run(issues, board, s, producer()).opened == []
+    assert set(issues.issues) == {207} and board.done == []
+    [item] = an.plan(issues, "crew-presentation", read=producer()).items
+    assert item.filed == 207
+    assert "Already filed as crew-presentation#207" in an.render_plan(
+        an.plan(issues, "crew-presentation", read=producer())
+    )
+
+
+def test_an_epic_the_board_refused_is_placed_next_pass_not_filed_again(tmp_path):
+    issues, board, s = Project(), Board(), sink(tmp_path)
+    board.fail = "add"
+    done = run(issues, board, s, producer())
+    assert done.opened == [] and "not placed" in done.failed[0][1]
+    board.fail = None
+    again = run(issues, board, s, producer())
+    assert again.opened == [("crew-presentation", 901)]
+    assert len(issues.issues) == 1
+    assert ("status", "item-N901", NEEDS_REFINEMENT) in board.done
+
+
+def test_an_epic_on_the_board_or_closed_isn_t_placed_again(tmp_path):
+    issues, board, s = Project(), Board(), sink(tmp_path)
+    run(issues, board, s, producer())
+    board.done.clear()
+    assert run(issues, board, s, producer(), cards=[_on_board()]).opened == []
+    issues.issues[901]["state"] = "closed"
+    assert run(issues, board, s, producer()).opened == []
+    assert board.done == []
 
 
 def test_a_producer_that_publishes_no_announcements_files_nothing_and_says_so(tmp_path):
@@ -182,7 +247,7 @@ def test_an_unreadable_announcement_or_pin_is_held_and_files_nothing(tmp_path):
     issues, board, s = Project(), Board(), sink(tmp_path)
 
     def broken(repo, path, ref="HEAD"):
-        if path.endswith(an.ANNOUNCED_FILE) and ref == "HEAD":
+        if path.endswith(ANNOUNCED_FILE) and ref == "HEAD":
             return "{not json"
         return None
 
@@ -196,11 +261,11 @@ def test_an_unreadable_announcement_or_pin_is_held_and_files_nothing(tmp_path):
     assert "names no release" in unpinned.failed[0][1]
 
 
-def test_a_task_github_refuses_is_held_and_tried_next_pass(tmp_path):
+def test_an_epic_github_refuses_is_held_and_tried_next_pass(tmp_path):
     issues, board, s = Project(), Board(), sink(tmp_path)
     issues.fail = "create"
     done = run(issues, board, s, producer())
-    assert done.opened == [] and "not opened" in done.failed[0][1]
+    assert done.opened == [] and "not filed" in done.failed[0][1]
     issues.fail = None
     assert run(issues, board, s, producer()).opened == [("crew-presentation", 901)]
 
@@ -209,11 +274,11 @@ def test_the_dry_run_renders_what_a_pass_would_file_and_opens_nothing(tmp_path):
     issues = Project()
     plan = an.plan(issues, "crew-presentation", read=producer())
     [item] = plan.items
-    assert item.title == "delivery-history 2.0.0 replaces 1.x on 2026-11-06"
+    assert item.title == "Adopt delivery-history 2.0.0 before it replaces 1.x on 2026-11-06"
     assert item.filed is None
     assert issues.done == [] and issues.issues == {}
     text = an.render_plan(plan)
-    assert "Would file in crew-presentation: delivery-history 2.0.0 replaces 1.x" in text
+    assert "Would file in crew-presentation: Adopt delivery-history 2.0.0" in text
     assert CHANGELOG in text
     assert "mqucifer/design-system publishes no announcements" in text
 
@@ -228,4 +293,4 @@ def test_the_dry_run_renders_what_a_pass_would_file_and_opens_nothing(tmp_path):
 def test_the_dry_run_reads_the_producer_at_the_ref_it_is_given():
     read = producer()
     an.plan(Project(), "crew-presentation", read=read, ref="feat/960")
-    assert ("mqucifer/crew", f"{DIR}/{an.ANNOUNCED_FILE}", "feat/960") in read.asked
+    assert ("mqucifer/crew", f"{DIR}/{ANNOUNCED_FILE}", "feat/960") in read.asked

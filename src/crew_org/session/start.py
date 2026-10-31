@@ -19,6 +19,7 @@ from crew_org.project import RECORD_PATH, ProjectRecordError, _uses, brief, read
 from crew_org.session.tools import SKIPPED, VIEW_LINES
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.repo_context import _close_to, _is_test, select_files
+from crew_org.usage import announced_summary
 
 HINTS = 15
 _TEST_ID = re.compile(r"(tests/[\w/]+\.py)(?:::([\w\[\]-]+(?:::[\w\[\]-]+)?))?")
@@ -205,6 +206,9 @@ def how_it_works(record: Any, root: Path) -> tuple[str, dict[str, str]]:
         text += "\n\n**What the producers this project uses say, and what they provide:** "
         text += "; ".join(f"`{p}` ({_size(len(t))})" for p, t in notes.items())
         text += ". View them as files."
+    coming = [line for u in uses for line in announced_summary(u, root)]
+    if coming:
+        text += "\n\n**Announced:** " + " ".join(coming)
     return text, notes
 
 

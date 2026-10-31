@@ -33,6 +33,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
 from crew_org.flows import role_tasks as rt
 from crew_org.flows.moves import move_card
+from crew_org.git_ops import exclude_folder
 from crew_org.llm import reraise_if_down
 from crew_org.rulebook import says
 from crew_org.tools.github_issues import IssueClient
@@ -235,6 +236,11 @@ def test_task(
     ).number
 
 
+_WORK = "## The work"
+_DONE_WHEN = "## Done when"
+_QUOTE = re.compile(r"^## The (?:story|bug) as it merged$", re.MULTILINE)
+
+
 def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[str, str]:
     """The title and body of QA's Task for a merged story or bug, from GitHub as it is."""
     project, number = card.repo or "", card.number or 0
@@ -281,6 +287,24 @@ def test_body(issues: IssueClient, *, card: Card, kind: str, key: str) -> tuple[
     return title[:120], body
 
 
+def own_and_quoted(body: str) -> tuple[str, str]:
+    """A QA Task's own criteria, and the story or bug its body quotes, or "" (crew#971).
+
+    Written by `test_body`: the quote sits between the work and `## Done when`, and
+    carries the story's own `## Acceptance criteria`, which aren't the Task's. Its
+    `## Done when` is the last, so a quoted one isn't taken for it.
+    """
+    done = body.rfind(_DONE_WHEN)
+    criteria = body[done + len(_DONE_WHEN) :].strip() if done != -1 else ""
+    before = body[:done] if done != -1 else body
+    quote = _QUOTE.search(before)
+    quoted = before[quote.end() :].strip() if quote else ""
+    work = before[: quote.start()] if quote else before
+    start = work.find(_WORK)
+    rules = work[start + len(_WORK) :].strip() if start != -1 else work.strip()
+    return f"{criteria}\n\n**The rules of this Task**\n\n{rules}".strip(), quoted
+
+
 def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> None:
     """Put `project` at `ref` (its default branch when "") under `REFERENCE` in a QA
     Task's worktree, for its session to read: never committed, since the clone's
@@ -291,7 +315,7 @@ def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> Non
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
-    _exclude(worktree)
+    exclude_folder(worktree, REFERENCE)
     archive = subprocess.run(
         ["git", "archive", "--format=tar", ref or "HEAD"],
         cwd=clone,
@@ -299,27 +323,6 @@ def place_reference(ws: Any, worktree: Path, project: str, ref: str = "") -> Non
         capture_output=True,
     )
     subprocess.run(["tar", "-x", "-C", str(target)], input=archive.stdout, check=True)
-
-
-def _exclude(worktree: Path) -> None:
-    """Name `REFERENCE` in the git directory's `info/exclude`, which every worktree of
-    the clone shares, once."""
-    common = subprocess.run(
-        ["git", "rev-parse", "--git-common-dir"],
-        cwd=worktree,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    path = (worktree / common).resolve() / "info" / "exclude"
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
-    line = f"/{REFERENCE}/"
-    if line in current.splitlines():
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        current + ("\n" if current and not current.endswith("\n") else "") + line + "\n"
-    )
 
 
 # On QA's Task when it closes with no change, saying why: for the record, and for the

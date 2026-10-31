@@ -722,14 +722,6 @@ flows.delivery.reconcile_orphans:filter:6298460e:
   at: flows/delivery.py:reconcile_orphans
   if: c.status == IN_PROGRESS and c.work_type in DELIVERED
   rule: decision.delivery.reconcile_orphans
-flows.delivery.reconcile_orphans:move:7762cd32:
-  at: flows/delivery.py:reconcile_orphans
-  if: branch in open_prs
-  rule: decision.delivery.reconcile_orphans
-flows.delivery.reconcile_orphans:skip:95859012:
-  at: flows/delivery.py:reconcile_orphans
-  if: awaiting_rework(issues, repo, branch, card) is not None
-  rule: decision.delivery.reconcile_orphans
 flows.delivery.rule_on_contract:end:1f5d8473:
   at: flows/delivery.py:rule_on_contract
   if: ruling.decision != 'amend'
@@ -1634,9 +1626,21 @@ flows.seen_moves.seen_moves:filter:c8522a40:
   at: flows/seen_moves.py:seen_moves
   if: not _the_crews(c, logged)
   not_a_rule: 'observes what a person did: no decision of the crew''s'
-flows.session_delivery.pr_title:end:07783790:
+flows.session_delivery.pr_title:end:023af79d:
   at: flows/session_delivery.py:pr_title
-  if: marked is None or marked.kind != role_tasks.RELEASE or (not marked.key.startswith('epic-'))
+  if: marked is None or marked.kind != role_tasks.RELEASE
+  not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
+flows.session_delivery.pr_title:end:a06b45c9:
+  at: flows/session_delivery.py:pr_title
+  if: marked.key.startswith(unreleased.KEY_PREFIX)
+  not_a_rule: 'names a release''s pull request (crew#961): routes nothing'
+flows.session_delivery.pr_title:end:9533c7d6:
+  at: flows/session_delivery.py:pr_title
+  if: "'CHANGELOG.md' not in _branch_paths(worktree) or not version"
+  not_a_rule: 'names a release''s pull request (crew#961): routes nothing'
+flows.session_delivery.pr_title:end:7ee142e3:
+  at: flows/session_delivery.py:pr_title
+  if: not marked.key.startswith('epic-')
   not_a_rule: 'names a release''s pull request (crew#948): routes nothing'
 flows.session_delivery.pr_title:end:143c9dcf:
   at: flows/session_delivery.py:pr_title
@@ -2150,26 +2154,54 @@ flows.alerts.task_body:filter:21f1398f:
   at: flows/alerts.py:task_body
   if: not k.startswith('__')
   not_a_rule: 'a render: leaves Grafana''s routing labels out of the Task''s text'
-flows.announcements._items:skip:d5da2c50:
-  at: flows/announcements.py:_items
-  if: replaced != at or _major(version) <= at
-  rule: decision.announcements.announced_tasks
+flows.announcements._filed_key:end:ad2d25f7:
+  at: flows/announcements.py:_filed_key
+  if: key is not None
+  rule: decision.announcements.announced_epics
+flows.announcements._placed_late:end:f3c34e98:
+  at: flows/announcements.py:_placed_late
+  if: item.epic is None or item.filed is None
+  rule: decision.announcements.announced_epics
+flows.announcements._placed_late:end:ad8328a9:
+  at: flows/announcements.py:_placed_late
+  if: any((c.repo == repo and c.number == item.filed for c in cards))
+  rule: decision.announcements.announced_epics
 flows.announcements.plan:result:unannounced:8ecfb5c4:
   at: flows/announcements.py:plan
   if: found is None
   rule: decision.announcements.none_published
-flows.announcements.plan:filter:498725a4:
-  at: flows/announcements.py:plan
-  if: (m := rt.marked(i.get('body'))) is not None and m.kind == rt.ANNOUNCED
-  rule: decision.announcements.announced_tasks
-flows.announcements.announced_tasks:skip:0690b827:
-  at: flows/announcements.py:announced_tasks
+flows.announcements.announced_epics:skip:0690b827:
+  at: flows/announcements.py:announced_epics
   if: item.filed is not None
-  rule: decision.announcements.announced_tasks
-flows.announcements.announced_tasks:result:opened:c1a81f37:
-  at: flows/announcements.py:announced_tasks
+  rule: decision.announcements.announced_epics
+flows.announcements.announced_epics:skip:9191fd4d:
+  at: flows/announcements.py:announced_epics
+  if: not _placed_late(board, sink, repo=repo, item=item, cards=cards)
+  rule: decision.announcements.announced_epics
+flows.unreleased.in_flight:end:e2b694bb:
+  at: flows/unreleased.py:in_flight
+  if: issue.get('state') == 'open' and found is not None and (found.kind == rt.RELEASE)
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:skip:06716c63:
+  at: flows/unreleased.py:in_flight
+  if: epic.repo != repo or epic.work_type != 'Epic' or epic.state == 'CLOSED'
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:filter:7c54c7ce:
+  at: flows/unreleased.py:in_flight
+  if: c.repo == repo and c.parent == epic.number
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.in_flight:end:e72fd511:
+  at: flows/unreleased.py:in_flight
+  if: any((c.work_type == 'Story' for c in under)) and (not any((rt.role_of(c) is rt.DEVOPS for c in under)))
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.unreleased_releases:result:waiting:3a888507:
+  at: flows/unreleased.py:unreleased_releases
+  if: why
+  rule: decision.unreleased.unreleased_releases
+flows.unreleased.unreleased_releases:result:opened:c1a81f37:
+  at: flows/unreleased.py:unreleased_releases
   if: opened.new
-  rule: decision.announcements.announced_tasks
+  rule: decision.unreleased.unreleased_releases
 flows.merge.returned_for_conflict:end:7287767e:
   at: flows/merge.py:returned_for_conflict
   if: not head
@@ -2223,3 +2255,40 @@ flows.session_delivery.resolve:end:dd0d08a9:
   at: flows/session_delivery.py:resolve
   if: verdict.already_done or verdict.disagree
   rule: delivery.resolve_conflicts
+flows.delivery.reconcile_orphans:move:a0dc57be:
+  at: flows/delivery.py:reconcile_orphans
+  if: branch in open_prs[own]
+  rule: decision.delivery.reconcile_orphans
+flows.delivery.reconcile_orphans:skip:5d48f3d6:
+  at: flows/delivery.py:reconcile_orphans
+  if: awaiting_rework(issues, own, branch, card) is not None
+  rule: decision.delivery.reconcile_orphans
+flows.review.standing_reviews:end:22cbb3ed:
+  at: flows/review.py:standing_reviews
+  if: not _qa_task(card)
+  rule: decision.review.against_the_story
+flows.review.back_to_review:skip:940994a7:
+  at: flows/review.py:back_to_review
+  if: (card.repo or repo) != repo or card.state == 'CLOSED' or card.status not in (IN_PROGRESS, BLOCKED,
+    SPRINT_BACKLOG) or (not _qa_task(card))
+  rule: decision.review.against_the_story
+flows.review.back_to_review:filter:c169cd3d:
+  at: flows/review.py:back_to_review
+  if: REVIEW_MARKER in (r.get('body') or '') and head and (r.get('commit_id') == head)
+  rule: decision.review.against_the_story
+flows.review.back_to_review:skip:4c4f74bb:
+  at: flows/review.py:back_to_review
+  if: not ours or not _against_the_story(ours[-1])
+  rule: decision.review.against_the_story
+flows.review.back_to_review:label:be662956:
+  at: flows/review.py:back_to_review
+  if: '''blocked'' in card.labels'
+  rule: decision.review.against_the_story
+flows.review.story_criteria:end:35ba261e:
+  at: flows/review.py:story_criteria
+  if: _qa_task(card)
+  rule: decision.review.against_the_story
+flows.review.what_tests_cover:end:22cbb3ed:
+  at: flows/review.py:what_tests_cover
+  if: not _qa_task(card)
+  rule: decision.review.against_the_story

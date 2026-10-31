@@ -75,18 +75,27 @@ decision.alerts.unread:
     finding in infra, keyed by the day it began; reading them again clears the count.
   origin:
   - crew#893
-decision.announcements.announced_tasks:
+decision.announcements.announced_epics:
   description: A producer's announced new major, read from its `announced.json` beside the contract
-    files a project's record names, opens the Architect's Task in Needs Refinement in each project that
-    pins a release at the major it replaces, once per project, producer and version, never again once
-    closed. Nothing is filed in the producer's own repository.
+    files a project's record names, opens a technical epic to adopt it in Needs Refinement in each
+    project that pins a release at the major it replaces, once per project, producer and version,
+    never again once closed. A ruling Task crew#960 filed for it counts as filed. Nothing is filed in
+    the producer's own repository.
   origin:
   - crew#960
+  - crew#969
 decision.announcements.none_published:
   description: A producer a project uses that publishes no `announced.json` files nothing, and each pass
     notes it.
   origin:
   - crew#960
+decision.unreleased.unreleased_releases:
+  description: Entries under a project's `[Unreleased]` that no epic in flight will release open
+    DevOps's release Task, once per version they follow, a PATCH when they're only fixes. An open
+    release Task, or an open epic with stories and no release Task yet, carries them instead; a
+    project never released waits for its first epic's.
+  origin:
+  - crew#961
 decision.backlog_order.what_is_ordered:
   description: The Product Owner ranks the open epics with no Rank. One it can't place yet is held for
     the work it builds on, and an order it can't give is recorded as failed.
@@ -251,6 +260,11 @@ decision.resplit.stop:
   - crew#859
 decision.revert.refused:
 decision.revert.return_card:
+decision.review.against_the_story:
+  description: QA's Task refused against the story it quotes, not its own criteria, goes back to review
+    wherever the refusal left it.
+  origin:
+  - crew#971
 decision.review.deploy_review:
   origin:
   - crew#215
