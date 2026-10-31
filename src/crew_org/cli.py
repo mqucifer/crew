@@ -2120,16 +2120,16 @@ def export(
 ) -> None:
     """Export a sprint's stories and their attempts, for sprint-metrics to read (#157).
 
-    Which stories landed on their first attempt, what the others took (each
-    retry's failure class, role and first error line), the causes across them,
-    and how many went back to the Business Analyst. Nothing is sent anywhere: it
-    writes one JSON file.
+    What each story took (each retry's failure class, role and first error line),
+    the causes across them, and how many went back to the Business Analyst. What
+    first try means is sprint-metrics' to say (crew#963). Nothing is sent anywhere:
+    it writes one JSON file.
     """
     import json
 
     from crew_org.auth import resolve_credentials
     from crew_org.config import load_env
-    from crew_org.flows.attempts import read_attempts, retries_text, sprint_report
+    from crew_org.flows.attempts import causes_text, read_attempts, sprint_report
     from crew_org.tools.github_project import ProjectClient
     from crew_org.work_types import DELIVERED
 
@@ -2159,7 +2159,7 @@ def export(
     path = Path(out) if out else VAR / "exports" / f"{repo}-{sprint.replace(' ', '-')}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    console.print(escape(retries_text(report)))
+    console.print(escape(causes_text(report)))
     console.print(
         f"[dim]{report['returned']} returned · {len(report['model_calls'])} model calls"
         f" · written to {path}[/]"
@@ -2621,8 +2621,6 @@ def package_build(
     console.print(f"{manifest.events} events · schema {manifest.schema_version} · {archive}")
     for why, count in manifest.left_out.items():
         console.print(f"[dim]left out: {count} × {escape(why)}[/]")
-    for what, count in manifest.gaps.items():
-        console.print(f"[dim]built around: {count} × {escape(what)}[/]")
 
 
 @package_app.command("release")

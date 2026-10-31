@@ -1,9 +1,10 @@
 """delivery-history carries the Developer's session, and decision 8's numbers come from it.
 
 crew#778, Stage F. The session's events reach the package by their names and
-counts only (ADR 0020, ADR 0010). Each story's deliveries in sessions are derived
-from them, and the three measures the Sponsor set (ADR 0032, decisions 8 and 9)
-are computed here from a built package: the first-attempt rate, where an attempt
+counts only (ADR 0020, ADR 0010). The package works nothing out from them (the
+Sponsor, 2026-10-31, crew#963), and the three measures the Sponsor set (ADR 0032,
+decisions 8 and 9) are computed here from a built package's events, to prove they
+hold what's needed: the first-attempt rate, where an attempt
 is the branch handed to review and QA (the Sponsor, 2026-10-18); the model time
 and tokens per story, across roles; and the rate of stories returned to the
 Business Analyst. sprint-metrics computes them once the Sponsor's Goal lands.
@@ -241,10 +242,6 @@ STORIES = [
 CARDS = [card(662), card(663), card(664, "Ready"), card(665, "Blocked"), card(666, "In Progress")]
 
 
-def deliveries(history):
-    return {(d.card.number, d.number): d for d in history.analysis.deliveries}
-
-
 # --- what reaches the package ------------------------------------------------------------
 
 
@@ -338,40 +335,10 @@ def test_a_refinement_steps_session_is_left_out_and_counted():
     assert manifest.left_out == {"refinement session": 3}
 
 
-# --- the deliveries ------------------------------------------------------------------------
+# --- a stop between sessions -------------------------------------------------------------
 
 
-def test_a_delivery_counts_its_submissions_apart_from_the_gates_returns():
-    history, _, _ = build(STORIES, CARDS)
-    d = deliveries(history)[(662, 1)]
-    assert (d.outcome, d.sessions, d.submissions, d.gate_rounds, d.review_returns) == (
-        "done",
-        3,
-        2,
-        1,
-        1,
-    )
-    assert d.gate_rules == ["contract.declared_tests", "scope.protected_path"]
-    assert (d.rework_rounds, d.resumes, d.runs, d.first_green_run) == (2, 0, 2, 2)
-    assert (d.model_calls, d.prompt_tokens, d.cached_tokens) == (30, 300_000, 270_000)
-    assert d.ended == T + timedelta(minutes=19)
-
-
-def test_a_delivery_ends_returned_blocked_or_interrupted():
-    found = deliveries(build(STORIES, CARDS)[0])
-    returned = found[(664, 1)]
-    assert (returned.outcome, returned.returned_because, returned.stop) == (
-        "returned",
-        "session blocked",
-        "ceiling",
-    )
-    assert (returned.ceiling, returned.since_action) == ("reading", 2)
-    assert (found[(665, 1)].outcome, found[(665, 1)].blocked_on) == ("blocked", "choice")
-    interrupted = found[(666, 1)]
-    assert (interrupted.outcome, interrupted.sessions, interrupted.resumes) == ("interrupted", 2, 1)
-
-
-def test_a_delivery_stopped_between_sessions_takes_the_stop_from_its_return():
+def test_a_stop_between_sessions_is_on_its_return():
     """crew#790: its last session ended `done`, so only the return names the stop."""
     rule = "check.delivery.lint_or_tests_failed"
     events = [started(0, 664), ended(1, 664), gate(2, 664, False, [rule])]
@@ -380,36 +347,23 @@ def test_a_delivery_stopped_between_sessions_takes_the_stop_from_its_return():
     events += [
         raw(9, "story.returned", 664, reason="session blocked", kind="stop", stop="gate_repeat")
     ]
-    history, files, _ = build(events, CARDS)
-    d = deliveries(history)[(664, 1)]
-    assert (d.outcome, d.stop, d.blocked_on) == ("returned", "gate_repeat", "stop")
-    assert (d.sessions, d.gate_rounds, d.gate_rules) == (3, 3, [rule])
+    _, files, _ = build(events, CARDS)
     (returned,) = kinds(files, "returned")
-    assert returned.stop == "gate_repeat"
+    assert (returned.stop, returned.blocked_on) == ("gate_repeat", "stop")
+    assert [g.rules for g in kinds(files, "gate_checked")] == [[rule], [rule], [rule]]
 
 
-def test_a_story_already_done_is_handed_on_when_it_goes_to_qa():
-    events = [started(0, 662), ended(1, 662), moved(2, 662, "In Progress", "QAing")]
-    events += [moved(3, 662, "QAing", "Done")]
-    d = deliveries(build(events, CARDS)[0])[(662, 1)]
-    assert (d.outcome, d.submissions) == ("done", 1)
-
-
-def test_a_story_returned_and_worked_again_is_a_second_delivery():
-    events = [
-        *STORIES,
-        started(50, 664),
-        ended(51, 664),
-        moved(52, 664, "In Progress", "Reviewing"),
+def _returns_sent(history, files, number):
+    sent = feed(history, files.values()).events
+    return [
+        e for e in sent if e["type"] == "attempt_failed" and e["card_id"].endswith(f"#{number}")
     ]
-    found = deliveries(build(events, CARDS)[0])
-    assert (found[(664, 2)].outcome, found[(664, 2)].submissions) == ("open", 1)
 
 
-def test_the_gates_returns_dont_spoil_a_first_try_and_reviews_do():
-    stories = {s.card.number: s for s in build(STORIES, CARDS)[0].analysis.stories}
-    assert (stories[663].pattern, stories[663].misses) == ("first_try", 0)
-    assert (stories[662].pattern, stories[662].misses) == ("retried", 1)
+def test_the_gates_returns_arent_sent_as_returns_and_reviews_are():
+    history, files, _ = build(STORIES, CARDS)
+    assert _returns_sent(history, files, 663) == []
+    assert len(_returns_sent(history, files, 662)) == 1
     gate_only = [started(0, 663), ended(1, 663), gate(2, 663, False, ["scope.protected_path"])]
     gate_only += [
         started(3, 663, rework=True),
@@ -417,8 +371,8 @@ def test_the_gates_returns_dont_spoil_a_first_try_and_reviews_do():
         moved(5, 663, "In Progress", "Reviewing"),
     ]
     gate_only += [moved(6, 663, "Reviewing", "QAing"), moved(7, 663, "QAing", "Done")]
-    (story,) = [s for s in build(gate_only, CARDS)[0].analysis.stories if s.card.number == 663]
-    assert (story.pattern, story.misses) == ("first_try", 0)
+    history, files, _ = build(gate_only, CARDS)
+    assert _returns_sent(history, files, 663) == []
 
 
 # --- decision 8's three numbers, from the package ------------------------------------------
@@ -430,29 +384,47 @@ def measures(history: dh.DeliveryHistory, files: dict[str, dh.PeriodEvents]) -> 
     The return rate's denominator is the stories worked in sessions: once delivery
     runs sessions, the stories started in the sprint, as the Goal's draft asks.
     """
-    by_story: dict[tuple[str, int], list[dh.Delivery]] = {}
-    for d in history.analysis.deliveries:
-        by_story.setdefault((d.card.repo, d.card.number), []).append(d)
+    events = [e for p in files.values() for e in p.events]
+    moves: dict[tuple[str, int], list[Any]] = {}
+    for e in events:
+        if e.kind == "card_moved":
+            moves.setdefault((e.card.repo, e.card.number), []).append(e)
     delivered = [
         key
-        for key, ds in by_story.items()
-        if ds[-1].outcome == "done"
+        for key, mine in moves.items()
+        if mine[-1].to_column == "Done"
         and next(c for c in history.cards if (c.repo, c.number) == key).closed_as != "not_planned"
     ]
-    first = [key for key in delivered if sum(d.submissions for d in by_story[key]) == 1]
-    events = [e for p in files.values() for e in p.events]
+    # An attempt is the branch handed to review and QA: into Reviewing, or into QAing from
+    # elsewhere, as a story already done goes.
+    first = [
+        key
+        for key in delivered
+        if sum(
+            m.to_column == "Reviewing" or (m.to_column == "QAing" and m.from_column != "Reviewing")
+            for m in moves[key]
+        )
+        == 1
+    ]
     worked = {(e.card.repo, e.card.number) for e in events if e.kind == "session_started"}
     returned = {(e.card.repo, e.card.number) for e in events if e.kind == "returned"}
-    costs = {(s.card.repo, s.card.number): s.cost for s in history.analysis.stories if s.cost}
+    calls = [e for e in events if e.kind == "model_call"]
+    costs: dict[tuple[str, int], list[Any]] = {}
+    for c in calls:
+        costs.setdefault((c.card.repo, c.card.number), []).append(c)
     return {
         "first_attempt_rate_percent": round(100 * len(first) / len(delivered)),
         "per_story": {
             key[1]: (
-                c.model_seconds,
-                c.prompt_tokens,
-                round(100 * c.cached_tokens / c.prompt_tokens),
+                round(sum(c.seconds or 0.0 for c in mine), 1),
+                sum(c.prompt_tokens or 0 for c in mine),
+                round(
+                    100
+                    * sum(c.cached_tokens or 0 for c in mine)
+                    / sum(c.prompt_tokens or 0 for c in mine)
+                ),
             )
-            for key, c in costs.items()
+            for key, mine in costs.items()
         },
         "returned_rate_percent": round(100 * len(returned & worked) / len(worked)),
     }
@@ -509,38 +481,18 @@ def test_a_qa_return_is_an_attempt_and_escalations_attempts_arent_counted_twice(
 # --- records that are missing, partial or malformed (the Sponsor, 2026-10-18) -----------
 
 
-def test_a_session_that_crashed_is_built_around_and_named():
-    """A start with no end, then the card moved on: interrupted, and said so."""
-    events = [started(0, 662), turn(1, 662, 1), run(2, 662, "suite", ok=True)]
-    events += [moved(30, 662, "In Progress", "Ready")]
-    history, files, manifest = build(events, CARDS)
-    d = deliveries(history)[(662, 1)]
-    assert (d.outcome, d.gaps, d.runs, d.first_green_run) == (
-        "interrupted",
-        ["session_not_ended"],
-        1,
-        1,
-    )
-    assert manifest.gaps == {"session_not_ended": 1}
-
-
-def test_a_session_with_nothing_after_its_start_may_still_be_running():
-    history, _, manifest = build([started(0, 662), turn(1, 662, 1)], CARDS)
-    d = deliveries(history)[(662, 1)]
-    assert (d.outcome, d.ended, d.gaps) == ("open", None, ["session_not_ended"])
-
-
-def test_a_session_started_again_after_one_that_never_ended_is_a_resume():
-    events = [started(0, 662), started(10, 662, rework=True), ended(11, 662)]
-    d = deliveries(build(events, CARDS)[0])[(662, 1)]
-    assert (d.sessions, d.resumes, d.gaps, d.model_calls) == (2, 1, ["session_not_ended"], 10)
-
-
-def test_an_end_with_no_start_still_counts_what_it_cost():
-    history, _, manifest = build([ended(5, 662), moved(6, 662, "In Progress", "Reviewing")], CARDS)
-    d = deliveries(history)[(662, 1)]
-    assert (d.sessions, d.model_calls, d.submissions, d.gaps) == (1, 10, 1, ["session_not_started"])
-    assert manifest.gaps == {"session_not_started": 1}
+def test_a_session_with_no_end_or_no_start_is_packaged_as_it_was_recorded():
+    """Nothing is guessed: no end is made up for a crash, and no start for an end."""
+    crashed = [started(0, 662), turn(1, 662, 1), run(2, 662, "suite", ok=True)]
+    crashed += [moved(30, 662, "In Progress", "Ready")]
+    _, files, manifest = build(crashed, CARDS)
+    assert len(kinds(files, "session_started")) == 1
+    assert not kinds(files, "session_ended")
+    assert not manifest.left_out
+    _, files, manifest = build([ended(5, 662), moved(6, 662, "In Progress", "Reviewing")], CARDS)
+    assert not kinds(files, "session_started")
+    assert kinds(files, "session_ended")[0].model_calls == 10
+    assert not manifest.left_out
 
 
 def test_a_malformed_session_event_is_left_out_and_counted_and_the_rest_is_built():
@@ -566,8 +518,8 @@ def test_a_malformed_session_event_is_left_out_and_counted_and_the_rest_is_built
     assert started_.start_chars == {}
     assert next(e for e in kinds(files, "tool_call") if e.tool == "run").exit_codes == []
     # The story whose records were whole is built as ever.
-    assert deliveries(history)[(663, 1)].outcome == "done"
-    assert deliveries(history)[(662, 1)].gaps == ["session_not_ended"]
+    assert [e.how for e in kinds(files, "session_ended") if e.card.number == 663] == ["done"]
+    assert not [e for e in kinds(files, "session_ended") if e.card.number == 662]
     schema = json.loads((contract.CONTRACTS / "schema.json").read_text())
     jsonschema.validate(json.loads(history.model_dump_json()), schema)
     feed(history, files.values())  # the feed builds from it too
@@ -599,10 +551,9 @@ def test_the_packages_return_reasons_are_the_crews_and_its_rule_ids_fit_the_gate
 def test_a_session_stopped_by_a_full_context_is_packaged_with_its_stop():
     """crew#857: a compaction that can't get back under the limit is a stop of its own."""
     events = [started(0, 664), ended(1, 664, "blocked", stop="context_full")]
-    history, files, _ = build(events, CARDS)
+    _, files, _ = build(events, CARDS)
     (stopped,) = kinds(files, "session_ended")
     assert (stopped.how, stopped.blocked_on, stopped.stop) == ("blocked", "stop", "context_full")
-    assert deliveries(history)[(664, 1)].stop == "context_full"
 
 
 def test_a_done_in_the_wrong_shape_counts_only_its_objects():

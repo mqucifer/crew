@@ -141,7 +141,7 @@ def test_the_crew_s_own_descriptions_reach_the_brief():
     from crew_org.packages.contract import schemas
 
     fields = usage.described_fields(schemas()["schema.json"])
-    assert fields["analysis.sprints[].as_of"].startswith("The moment it describes")
+    assert fields["periods[].file"].startswith("Its events file")
     assert "sprint_metrics.answers.<key>.cycle_time_days" in fields
 
 
