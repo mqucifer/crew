@@ -177,51 +177,65 @@ It says what the crew wrote and adds no counts: what it means is the reader's.
 **3.0.0 replaces 2.x on 2026-11-07** (crew#963), a week after the announcement merged; if that
 merge slips, the date moves with it. Its schemas and mock are in
 [`contracts/delivery-history/3.0.0/`](contracts/delivery-history/3.0.0/), and until then the
-package follows 2.x. The crew logs what happened and sprint-metrics decides what first try
-means (ADR 0022), so the package stops carrying the crew's own result for each story:
-- **What leaves:** `analysis.stories`, whole, with every field of each entry: `card`,
-  `pattern` (`first_try`, `crew_fix`, `escalated`, `retried`, `superseded`, `blocked`, `open`),
-  `misses`, `blocks`, `escalations`, `crew_fixes`, `repeated`, `delivered`,
-  `wall_clock_seconds`, `cost` and `text`. `StoryPattern`, `Repeated` and `StoryCost` leave the
-  schema with it.
+package follows 2.x. The package carries what happened and sprint-metrics' answers. A count, a
+sum, a verdict or a sentence worked out from those isn't the crew's to send (the Sponsor,
+2026-10-31; ADR 0022), so the crew's analysis leaves:
+- **What leaves:** `analysis`, whole, and the manifest's `gaps`:
+  - `analysis.stories`, with every field of each entry: `card`, `pattern` (`first_try`,
+    `crew_fix`, `escalated`, `retried`, `superseded`, `blocked`, `open`), `misses`, `blocks`,
+    `escalations`, `crew_fixes`, `repeated`, `delivered`, `wall_clock_seconds`, `cost` and `text`.
+  - `analysis.sprints`, with each sprint's `as_of`, `changed`, `attention` and `decided`.
+  - `analysis.deliveries`, what a story's Developer sessions did.
+  - `manifest.gaps`, counted from `deliveries`.
 - **What crew-presentation reads today that leaves,** at its `build.py` and templates:
   - **The sprint overview's story list** comes only from `analysis.stories`: an entry shows when
     its `delivered` falls in the sprint, by its `card`, with its `blocks` as the attempt blocks
     and its `pattern` as the status word and badge. `crew_fixes` is carried to the template,
     which doesn't show it.
+  - **The sprint overview's "What changed"** comes only from `analysis.sprints[].changed`: its
+    `text`, `measure`, `previous` and `now`.
+  - **The sprint overview's "Decided by the crew"** comes only from `analysis.sprints[].decided`:
+    its `at`, `text`, `kind` and `number`.
   - **A story's journey** takes its sentence from `text`, its path's delivered state from
     `delivered`, and its "What it cost" from `wall_clock_seconds` and `cost.model_calls`.
-  - **Its tests:** its own tests' fixtures build `analysis.stories`, and two files in
-    mqucifer/qa-suite read it, which act differently on a package without it:
-    - `crew-presentation/test_sprint_overview.py` reads it and `pattern`. All three of its tests
-      fail, at `assert sprints`: with no stories, no sprint qualifies. `qa-suite / qa` is a
-      required check, so the pin's pull request can't merge without an admin's override, which
-      is how mqucifer/crew-presentation#250 merged past other tests' failures.
-    - `crew-presentation/test_story_journey_details.py` reads it in two tests,
-      `test_journey_page_shows_cost_section` and `test_journey_page_omits_cost_when_no_wall_clock`.
-      Both loop over an empty list and pass having checked nothing, so nothing says "What it
-      cost" has lost its check. `test_journey_page_shows_event_timeline` reads events and `cards`,
-      and still checks.
-    - QA's per-story test Tasks are paused (mqucifer/crew#981), so no such Task updates these
-      tests. A Developer's dispute of a failing test still opens one, which only the failing file
-      can reach.
-  - **Not read today:** `misses`, `escalations`, `repeated`, and the rest of `cost`.
-- **What each is now,** from a story's events, which all stay, and `cards`:
-  - `delivered`: its `card_moved` to Done, or a card's `closed` when `closed_as` is `completed`.
-  - `blocks`: its `card_moved` events into Blocked. `escalations`: its `escalated` events.
-  - `misses` and `repeated`: its `attempt`, `returned` and `sent_back` events, its
-    `work_finished` events with a verdict, and each `attempt`'s `reason`.
-  - `crew_fixes`: `pull_merged` events with `crews_own` whose `about` names the story.
-  - `cost` and `wall_clock_seconds`: its `model_call` events, timed from its first
-    `work_started` or `model_call`.
-  - The `superseded` pattern: a card's `closed_as` of `not_planned`.
-  - `pattern` and `text`: nothing replaces them, because a verdict on a story is what leaves.
-    A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
-    `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
-- **What stays:** every event; sprint-metrics' answers; each card, with the `filed` 2.1.0 added;
-  `analysis.sprints` (`changed`, `attention`, `decided`), whose `first_attempt_rate_percent` is sprint-metrics' number the crew
-  words; and `analysis.deliveries`, which says what a story's Developer sessions did and gives
-  no verdict.
+  - **Not read today:** `attention`, `deliveries`, `manifest.gaps`, and each story's `misses`,
+    `escalations`, `repeated` and the rest of `cost`.
+- **Its tests:** its own tests' fixtures build `analysis`, and three files in mqucifer/qa-suite
+  read it, which act differently on 3.0.0:
+  - `crew-presentation/test_sprint_overview.py` reads `analysis.stories` and `pattern`. All three
+    of its tests fail, at `assert sprints`: with no stories, no sprint qualifies. `qa-suite / qa`
+    is a required check, so the pin's pull request can't merge without an admin's override, which
+    is how mqucifer/crew-presentation#250 merged past other tests' failures.
+  - `crew-presentation/test_story_journey_details.py` reads `analysis.stories` in
+    `test_journey_page_shows_cost_section` and `test_journey_page_omits_cost_when_no_wall_clock`.
+    Both loop over an empty list and pass having checked nothing, so nothing says "What it cost"
+    has lost its check. `test_journey_page_shows_event_timeline` reads events and `cards`, and
+    still checks.
+  - `crew-presentation/test_escalation_removed.py` reads `analysis.sprints[].changed` in
+    `test_changed_trend_shows_no_escalation_entry`, which compares the "What changed" entries on
+    the page with the package's. With none in the package it passes only while the page shows
+    none, so a "What changed" built from sprint-metrics' answers would fail it. Its other two
+    tests read sprint-metrics' answers and events, and still check.
+  - QA's per-story test Tasks are paused (mqucifer/crew#981), so no such Task updates these tests.
+    A Developer's dispute of a failing test still opens one.
+- **What the site can show now:** an event or a card's field. A count, a sum, a verdict or a
+  sentence comes from sprint-metrics, by a Goal there. So:
+  - **The sprint measures `changed` worded** are already in `sprint_metrics.answers`, each with
+    its `prior`: `first_attempt_rate_percent`, `throughput`, `points_delivered`,
+    `blocked_aging_days`, `wip_violations`, `cycle_time_minutes`, `lead_time_minutes` and
+    `superseded_count`. Its sentence and `better` have no source.
+  - **`crew_fixes_merged`** has no sprint-metrics source. Each merge it counted is a `pull_merged`
+    event with `crews_own`.
+  - **What `decided` listed** is an event or a card's field, without its sentence: a `pull_merged`
+    event with `design_revision`, and an epic's card with `technical` and `created`.
+  - **A story's first-try badge, its sentence, and any per-story count or sum,** such as "What it
+    cost", have no source until sprint-metrics answers them. A sprint's first-try figures are
+    sprint-metrics': `first_attempt_numerator`, `first_attempt_denominator` and
+    `first_attempt_rate_percent`.
+  - **What happened to a story** is its events: `card_moved` to Done or into Blocked, a card's
+    `closed_as`, and its `attempt`, `returned`, `sent_back`, `escalated` and `model_call` events.
+- **What stays:** every event; each card, with the `filed` 2.1.0 added; `sprints`; `periods`;
+  sprint-metrics' answers; and the manifest's `left_out`.
 - **What changes shape:** nothing else in the package. **What's added:** nothing.
 - **The mock's numbers change:** its sprint-metrics answers are now computed from its own
   events, so each sprint's totals agree with its stories. Its Sprint 6 was 6 delivered and 3

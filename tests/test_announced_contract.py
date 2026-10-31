@@ -48,10 +48,21 @@ def test_delivery_history_2_0_0_shipped_exactly_as_announced_and_2_1_0_only_adds
 
 def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
     assert [p.name for p in ANNOUNCED] == ["3.0.0"]
-    schema = _schemas(contract.CONTRACTS / "3.0.0")["schema.json"]
-    # What leaves: the crew's per-story results (crew#963). Each story's events stay.
-    assert "stories" not in schema["$defs"]["Analysis"]["properties"]
-    assert not {"StoryPattern", "Repeated", "StoryCost"} & set(schema["$defs"])
+    announced = _schemas(contract.CONTRACTS / "3.0.0")
+    schema = announced["schema.json"]
+    # What leaves: what the crew worked out from its events (the Sponsor, crew#963).
+    assert "analysis" not in schema["properties"]
+    assert "gaps" not in announced["manifest.schema.json"]["properties"]
+    assert not {
+        "Analysis",
+        "SprintAnalysis",
+        "Delivery",
+        "StoryPattern",
+        "Repeated",
+        "StoryCost",
+    } & set(schema["$defs"])
+    # What stays: what happened, and sprint-metrics' answers.
+    assert {"sprints", "cards", "periods", "sprint_metrics"} <= set(schema["properties"])
     # What stays: how each card was filed (crew#974). 3.0.0 is built on 2.1.0.
     current = contract.schemas()["schema.json"]["$defs"]
     assert schema["$defs"]["Filed"] == current["Filed"]
