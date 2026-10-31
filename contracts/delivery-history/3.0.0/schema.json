@@ -142,6 +142,10 @@
           ],
           "title": "Created"
         },
+        "filed": {
+          "$ref": "#/$defs/Filed",
+          "description": "How it came to be filed."
+        },
         "number": {
           "title": "Number",
           "type": "integer"
@@ -278,7 +282,8 @@
         "closed",
         "technical",
         "closed_as",
-        "superseded_because"
+        "superseded_because",
+        "filed"
       ],
       "title": "Card",
       "type": "object"
@@ -686,6 +691,105 @@
         "gaps"
       ],
       "title": "Delivery",
+      "type": "object"
+    },
+    "Filed": {
+      "additionalProperties": false,
+      "description": "How a card came to be filed: the agent and the activity, as W3C PROV has it.\n\nWhat the crew wrote when it filed the card, and no judgement of it. Unknown is\nsaid, never guessed: cards older than a mark say what they can (crew#974).",
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "enum": [
+                "finding",
+                "task",
+                "technical_epic",
+                "split",
+                "proposed_goal",
+                "skeleton_goal",
+                "record_change",
+                "retro",
+                "standup"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What opened it, for the crew's own: a role's finding, a role's Task, a technical epic, a split of filed work, a proposed or skeleton Goal, a change to a project's record, or a sprint's retro or standup. None for anyone else's, and for an older card of the crew's with nothing written to read it from.",
+          "title": "Activity"
+        },
+        "by": {
+          "default": "unknown",
+          "description": "Who filed the issue, by its author on GitHub. `other` is anyone else. `unknown` is an issue with no author, or one under the Sponsor's login from before the operator had its own (crew#566), which can't be told apart.",
+          "enum": [
+            "crew",
+            "sponsor",
+            "operator",
+            "other",
+            "unknown"
+          ],
+          "title": "By",
+          "type": "string"
+        },
+        "for_project": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The project a card filed in another repository is for, by its `project:` label: QA's Tasks in qa-suite. Their `repo` is qa-suite.",
+          "title": "For Project"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "alert",
+                "announced",
+                "ci-services",
+                "deploy",
+                "diagram",
+                "dispute",
+                "escaped-bug",
+                "finding",
+                "first-diagram",
+                "first-workspace",
+                "need",
+                "release",
+                "review",
+                "story-test",
+                "adoption",
+                "design",
+                "main-red",
+                "release-check",
+                "onboarding",
+                "revisit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A Task's kind, a technical epic's cause, or a record's change. A later MINOR may add kinds: accept one you don't know.",
+          "title": "Kind"
+        }
+      },
+      "required": [
+        "by",
+        "activity",
+        "kind",
+        "for_project"
+      ],
+      "title": "Filed",
       "type": "object"
     },
     "Period": {

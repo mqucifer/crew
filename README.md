@@ -112,7 +112,7 @@ a 2.0.0 reader reads on.
   `repo` is `qa-suite`.
 It says what the crew wrote and adds no counts: what it means is the reader's.
 
-**3.0.0 is announced** and replaces 2.x on 2026-11-06: what changes is under ["Announced: delivery-history 3.0.0"](#announced-delivery-history-300) below.
+**3.0.0 is announced** and replaces 2.x on 2026-11-07: what changes is under ["Announced: delivery-history 3.0.0"](#announced-delivery-history-300) below.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -174,7 +174,7 @@ It says what the crew wrote and adds no counts: what it means is the reader's.
 
 ### Announced: delivery-history 3.0.0
 
-**3.0.0 replaces 2.x on 2026-11-06** (crew#963), a week after the announcement merged; if that
+**3.0.0 replaces 2.x on 2026-11-07** (crew#963), a week after the announcement merged; if that
 merge slips, the date moves with it. Its schemas and mock are in
 [`contracts/delivery-history/3.0.0/`](contracts/delivery-history/3.0.0/), and until then the
 package follows 2.x. The crew logs what happened and sprint-metrics decides what first try
@@ -206,8 +206,8 @@ means (ADR 0022), so the package stops carrying the crew's own result for each s
   - `pattern` and `text`: nothing replaces them, because a verdict on a story is what leaves.
     A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
     `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
-- **What stays:** every event; sprint-metrics' answers; `analysis.sprints` (`changed`,
-  `attention`, `decided`), whose `first_attempt_rate_percent` is sprint-metrics' number the crew
+- **What stays:** every event; sprint-metrics' answers; each card, with the `filed` 2.1.0 added;
+  `analysis.sprints` (`changed`, `attention`, `decided`), whose `first_attempt_rate_percent` is sprint-metrics' number the crew
   words; and `analysis.deliveries`, which says what a story's Developer sessions did and gives
   no verdict.
 - **What changes shape:** nothing else in the package. **What's added:** nothing.

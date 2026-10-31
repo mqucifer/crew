@@ -52,7 +52,7 @@ def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
     # What leaves: the crew's per-story results (crew#963). Each story's events stay.
     assert "stories" not in schema["$defs"]["Analysis"]["properties"]
     assert not {"StoryPattern", "Repeated", "StoryCost"} & set(schema["$defs"])
-    # What stays: how each card was filed (crew#974), built on 2.1.0 and no adoption's work.
+    # What stays: how each card was filed (crew#974). 3.0.0 is built on 2.1.0.
     current = contract.schemas()["schema.json"]["$defs"]
     assert schema["$defs"]["Filed"] == current["Filed"]
     assert schema["$defs"]["Card"] == current["Card"]
