@@ -95,6 +95,9 @@ from crew_org.work_types import TASK
 EPIC_PROPOSAL_MARKER = "<!-- crew:epic-proposal -->"
 
 STORY_SPLIT_MARKER = "<!-- crew:story-split -->"
+# At the head of each card a split files: nesting is best effort, so a parent alone
+# can't say how it was filed (crew#974).
+SPLIT_MARK = "<!-- crew:split -->"
 
 # A split that failed, and a split the crew has stopped attempting. Both are
 # comments because the comment history *is* the record (§10) — and a failed
@@ -1384,7 +1387,7 @@ def create_epic_cards(
         issue = issues.create(
             repo,
             epic.title,
-            render_epic_body(epic, goal.number or 0, goal.title),
+            f"{SPLIT_MARK}\n\n{render_epic_body(epic, goal.number or 0, goal.title)}",
             # The UX Designer writes its note once the stories are split (#377).
             labels=[NEEDS_HUMAN],
         )
@@ -2314,7 +2317,8 @@ def refine_epics(
                 issue = issues.create(
                     repo,
                     story.title,
-                    render_story_body(
+                    f"{SPLIT_MARK}\n\n"
+                    + render_story_body(
                         story,
                         number,
                         epic_card.title,

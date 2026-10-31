@@ -194,6 +194,9 @@ class Board:
     def cards(self):
         return mock.inputs().cards
 
+    def bodies(self):
+        return mock.inputs().bodies
+
     def sprints(self):
         return mock.SPRINTS
 

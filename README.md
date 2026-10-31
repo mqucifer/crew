@@ -98,6 +98,20 @@ is ADR 0022.
 - **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
   with cards in them named as `repo#n`.
 
+**2.1.0 adds how each card was filed** (crew#974), as `filed` on each card. Nothing leaves, so
+a 2.0.0 reader reads on.
+- **`by`:** who filed it, by the issue's author: `crew`, `sponsor`, `operator`, `other`, or
+  `unknown`. A card under the Sponsor's login from before the operator had its own (crew#566,
+  2026-10-09) is `unknown`: the two can't be told apart.
+- **`activity`:** for the crew's own, what opened it: `finding`, `task`, `technical_epic`,
+  `split`, `proposed_goal`, `skeleton_goal`, `record_change`, `retro` or `standup`. It's None
+  for anyone else's, and for an older card of the crew's with nothing written to read it from.
+- **`kind`:** a Task's kind, a technical epic's cause (`main-red`, `release-check`, `adoption`,
+  `design`) or a record's change. A later MINOR may add one, so accept one you don't know.
+- **`for_project`:** the project a card filed in another repository is for: QA's Tasks, whose
+  `repo` is `qa-suite`.
+It says what the crew wrote and adds no counts: what it means is the reader's.
+
 **3.0.0 replaced 2.x** (crew#963), as announced a week before. The crew logs what happened and
 sprint-metrics decides what first try means (ADR 0022), so the package carries no result of the
 crew's own for each story.
@@ -114,8 +128,9 @@ crew's own for each story.
   - `pattern` and `text`: nothing replaces them, because a verdict on a story is what left.
     A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
     `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
-- **What stayed:** every event, sprint-metrics' answers, `analysis.sprints` and
-  `analysis.deliveries`, which says what a story's sessions did and gives no verdict.
+- **What stayed:** every event, sprint-metrics' answers, each card's `filed` (2.1.0),
+  `analysis.sprints` and `analysis.deliveries`, which says what a story's sessions did and
+  gives no verdict.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events

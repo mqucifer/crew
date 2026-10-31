@@ -38,6 +38,13 @@ def test_delivery_history_3_0_0_shipped_exactly_as_announced():
     assert contract.read_versions()["3.0.0"] == contract.fingerprint(contract.schemas())
 
 
+def test_delivery_history_3_0_0_keeps_how_each_card_was_filed():
+    # 2.1.0's field (crew#974) doesn't leave with the per-story results, so needs no adoption.
+    schema = contract.schemas()["schema.json"]["$defs"]
+    assert "filed" in schema["Card"]["required"]
+    assert "Filed" in schema
+
+
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)
 def test_an_announced_version_is_recorded_with_exactly_its_schemas(directory):
     assert contract.read_versions()[directory.name] == contract.fingerprint(_schemas(directory))
