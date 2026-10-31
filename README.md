@@ -73,8 +73,8 @@ The crew publishes data about how it works as **packages**, like reports
 (ADR 0021). `delivery-history` is the first: the board's sprints that have started, its cards, and
 every move, attempt, model call and merge, up to its date, sprint-metrics'
 answers for each sprint, as it computed them, and the crew's own analysis of
-them: what changed each sprint, what needed attention at its end, and each
-story's pattern. Since 1.6.0 it carries the Developer's sessions (crew#778) by
+them: what changed each sprint, what needed attention at its end, and what the crew
+decided. Since 1.6.0 it carries the Developer's sessions (crew#778) by
 their names and counts, never their paths, commands or words, and each story's
 deliveries in them: its sessions, the times it reached review, the gate's rounds
 before that, what it cost and how it ended. Since 1.10.0 it carries every send-back
@@ -92,13 +92,30 @@ is ADR 0022.
 - **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
   `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
   `escalation_count` as a measure in what changed. The crew's own record of escalations stays:
-  the `escalated` events and pattern, and each story's `escalations`.
+  the `escalated` events.
 - **What changes shape:** the failure causes, `top_failure_causes`, become a list of class,
   role and count, as `failure_breakdown` already is, in place of a map of class to count.
 - **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
   with cards in them named as `repo#n`.
 
-**3.0.0 is announced** and replaces 2.x on 2026-11-06: what changes is under ["Announced: delivery-history 3.0.0"](#announced-delivery-history-300) below.
+**3.0.0 replaced 2.x** (crew#963), as announced a week before. The crew logs what happened and
+sprint-metrics decides what first try means (ADR 0022), so the package carries no result of the
+crew's own for each story.
+- **What left:** `analysis.stories`, whole, with each story's `pattern`, `misses`, `blocks`,
+  `escalations`, `crew_fixes`, `repeated`, `delivered`, `wall_clock_seconds`, `cost` and `text`.
+- **What each is now,** from a story's events, which all stayed, and `cards`:
+  - `delivered`: its `card_moved` to Done, or a card's `closed` when `closed_as` is `completed`.
+  - `blocks`: its `card_moved` events into Blocked. `escalations`: its `escalated` events.
+  - `misses` and `repeated`: its `attempt`, `returned` and `sent_back` events, its
+    `work_finished` events with a verdict, and each `attempt`'s `reason`.
+  - `crew_fixes`: `pull_merged` events with `crews_own` whose `about` names the story.
+  - `cost` and `wall_clock_seconds`: its `model_call` events, timed from its first
+    `work_started` or `model_call`.
+  - `pattern` and `text`: nothing replaces them, because a verdict on a story is what left.
+    A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
+    `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
+- **What stayed:** every event, sprint-metrics' answers, `analysis.sprints` and
+  `analysis.deliveries`, which says what a story's sessions did and gives no verdict.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -131,8 +148,9 @@ is ADR 0022.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first
-  release. It's regenerated with the schema and shows every kind of event,
-  pattern and finding the schema allows. Its numbers and titles are made up.
+  release. It's regenerated with the schema and shows every kind of event and
+  finding the schema allows. Its events and titles are made up, and its sprint-metrics
+  answers are computed from those events, so each sprint's totals agree with its stories.
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`
   (`-2` for a second on one day), with the archive as its asset. It reaches a
   project as a pull request that changes one line: `delivery-history.tag` at the
@@ -157,49 +175,6 @@ is ADR 0022.
   `crew sprint close` does, and its retro says which, or why not. A sprint left
   without one gets it at the next tick. A package carries the sprints up to the
   one that ended last, never one under way (crew#738).
-
-### Announced: delivery-history 3.0.0
-
-**3.0.0 replaces 2.x on 2026-11-06** (crew#963), a week after the announcement merged; if that
-merge slips, the date moves with it. Its schemas and mock are in
-[`contracts/delivery-history/3.0.0/`](contracts/delivery-history/3.0.0/), and until then the
-package follows 2.x. The crew logs what happened and sprint-metrics decides what first try
-means (ADR 0022), so the package stops carrying the crew's own result for each story:
-- **What leaves:** `analysis.stories`, whole, with every field of each entry: `card`,
-  `pattern` (`first_try`, `crew_fix`, `escalated`, `retried`, `superseded`, `blocked`, `open`),
-  `misses`, `blocks`, `escalations`, `crew_fixes`, `repeated`, `delivered`,
-  `wall_clock_seconds`, `cost` and `text`. `StoryPattern`, `Repeated` and `StoryCost` leave the
-  schema with it.
-- **What crew-presentation reads today that leaves,** at its `build.py` and templates:
-  - **The sprint overview's story list** comes only from `analysis.stories`: an entry shows when
-    its `delivered` falls in the sprint, by its `card`, with its `blocks` as the attempt blocks
-    and its `pattern` as the status word and badge. `crew_fixes` is carried to the template,
-    which doesn't show it.
-  - **A story's journey** takes its sentence from `text`, its path's delivered state from
-    `delivered`, and its "What it cost" from `wall_clock_seconds` and `cost.model_calls`.
-  - **Its tests:** `crew-presentation/test_sprint_overview.py` in mqucifer/qa-suite reads
-    `analysis.stories` and `pattern`, and its own tests' fixtures build `analysis.stories`.
-  - **Not read today:** `misses`, `escalations`, `repeated`, and the rest of `cost`.
-- **What each is now,** from a story's events, which all stay, and `cards`:
-  - `delivered`: its `card_moved` to Done, or a card's `closed` when `closed_as` is `completed`.
-  - `blocks`: its `card_moved` events into Blocked. `escalations`: its `escalated` events.
-  - `misses` and `repeated`: its `attempt`, `returned` and `sent_back` events, its
-    `work_finished` events with a verdict, and each `attempt`'s `reason`.
-  - `crew_fixes`: `pull_merged` events with `crews_own` whose `about` names the story.
-  - `cost` and `wall_clock_seconds`: its `model_call` events, timed from its first
-    `work_started` or `model_call`.
-  - The `superseded` pattern: a card's `closed_as` of `not_planned`.
-  - `pattern` and `text`: nothing replaces them, because a verdict on a story is what leaves.
-    A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
-    `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
-- **What stays:** every event; sprint-metrics' answers; `analysis.sprints` (`changed`,
-  `attention`, `decided`), whose `first_attempt_rate_percent` is sprint-metrics' number the crew
-  words; and `analysis.deliveries`, which says what a story's Developer sessions did and gives
-  no verdict.
-- **What changes shape:** nothing else in the package. **What's added:** nothing.
-- **The mock's numbers change:** its sprint-metrics answers are now computed from its own
-  events, so each sprint's totals agree with its stories. Its Sprint 6 was 6 delivered and 3
-  first attempts by hand; it's now 5 and 2, and its other measures moved with them.
 
 ## The two gates
 
