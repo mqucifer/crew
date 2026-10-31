@@ -31,10 +31,19 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_2_0_0_shipped_exactly_as_announced():
-    """Its announcement recorded the fingerprint; the switch removed the announced copy."""
-    assert dh.SCHEMA_VERSION.split(".")[0] == "2"
-    assert contract.read_versions()[dh.SCHEMA_VERSION] == contract.fingerprint(contract.schemas())
+def test_delivery_history_2_0_0_shipped_exactly_as_announced_and_2_1_0_only_adds_to_it():
+    """Its announcement recorded the fingerprint; the switch removed the announced copy.
+
+    2.1.0 is that, plus how each card was filed (crew#974): take `filed` out and the
+    schemas are exactly 2.0.0's, so a reader of 2.0.0 loses nothing.
+    """
+    assert dh.SCHEMA_VERSION == "2.1.0"
+    schemas = contract.schemas()
+    defs = schemas["schema.json"]["$defs"]
+    del defs["Filed"]
+    del defs["Card"]["properties"]["filed"]
+    defs["Card"]["required"].remove("filed")
+    assert contract.read_versions()["2.0.0"] == contract.fingerprint(schemas)
 
 
 def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
@@ -43,6 +52,10 @@ def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
     # What leaves: the crew's per-story results (crew#963). Each story's events stay.
     assert "stories" not in schema["$defs"]["Analysis"]["properties"]
     assert not {"StoryPattern", "Repeated", "StoryCost"} & set(schema["$defs"])
+    # What stays: how each card was filed (crew#974), built on 2.1.0 and no adoption's work.
+    current = contract.schemas()["schema.json"]["$defs"]
+    assert schema["$defs"]["Filed"] == current["Filed"]
+    assert schema["$defs"]["Card"] == current["Card"]
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)

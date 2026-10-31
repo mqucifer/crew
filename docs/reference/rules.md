@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 80 |
-| A setting that changes what the tick does | 211 |
+| A setting that changes what the tick does | 213 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -37,7 +37,7 @@ section; one no line holds for is unplaced, never guessed.
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
-| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 72 |
+| Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 157 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
@@ -532,13 +532,15 @@ section; one no line holds for is unplaced, never guessed.
 | `config.org.board.columns`<br>board.columns = ['Inbox (Goals)', 'Needs Refinement', 'Ready', 'Sprint Backlog', 'In Progress', 'Reviewing', 'QAing', 'Merging', 'Done'] | flow | `src/crew_org/config/org.yaml:board.columns` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.board.human_gates`<br>board.human_gates = ['Inbox (Goals)'] | flow | `src/crew_org/config/org.yaml:board.human_gates` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.delivery.ci_same_failure_stop`<br>delivery.ci_same_failure_stop = 3 | flow | `src/crew_org/config/org.yaml:delivery.ci_same_failure_stop` | — | — | src/crew_org/config/org.yaml | crew#944 |
-| `config.org.delivery.qa_tests_from`<br>delivery.qa_tests_from = 2026-10-30 | flow | `src/crew_org/config/org.yaml:delivery.qa_tests_from` | — | — | src/crew_org/config/org.yaml | crew#945 |
+| `config.org.delivery.qa_tests_from`<br>delivery.qa_tests_from = None | flow | `src/crew_org/config/org.yaml:delivery.qa_tests_from` | — | — | src/crew_org/config/org.yaml | crew#945 |
 | `config.org.delivery.repos`<br>delivery.repos = ['sprint-metrics', 'infra', 'crew-presentation', 'qa-suite'] | flow | `src/crew_org/config/org.yaml:delivery.repos` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.force_label`<br>design.force_label = needs:design | scope | `src/crew_org/config/org.yaml:design.force_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.revisit_conflicts`<br>design.revisit_conflicts = 3 | scope | `src/crew_org/config/org.yaml:design.revisit_conflicts` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.design.skip_label`<br>design.skip_label = no:design | scope | `src/crew_org/config/org.yaml:design.skip_label` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.estimation.max_story_points`<br>estimation.max_story_points = 8 | scope | `src/crew_org/config/org.yaml:estimation.max_story_points` | — | — | src/crew_org/config/org.yaml | crew#756 |
 | `config.org.estimation.scale`<br>estimation.scale = [1, 2, 3, 5, 8] | scope | `src/crew_org/config/org.yaml:estimation.scale` | — | — | src/crew_org/config/org.yaml | crew#756 |
+| `config.org.filers.operator`<br>filers.operator = quarters-claude | guards | `src/crew_org/config/org.yaml:filers.operator` | — | — | src/crew_org/config/org.yaml | — |
+| `config.org.filers.operator_since`<br>filers.operator_since = 2026-10-09T15:55:19Z | guards | `src/crew_org/config/org.yaml:filers.operator_since` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.refinement.look`<br>refinement.look = True | flow | `src/crew_org/config/org.yaml:refinement.look` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.refinement.resplit_stop`<br>refinement.resplit_stop = 3 | flow | `src/crew_org/config/org.yaml:refinement.resplit_stop` | — | — | src/crew_org/config/org.yaml | — |
 | `config.org.sandbox.engine`<br>sandbox.engine = docker | guards | `src/crew_org/config/org.yaml:sandbox.engine` | — | — | src/crew_org/config/org.yaml | — |

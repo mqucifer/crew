@@ -297,6 +297,26 @@ query($owner: String!, $number: Int!, $cursor: String) {
 }
 """.replace("{page_size}", str(PAGE_SIZE))
 
+_BODIES_QUERY = """
+query($owner: String!, $number: Int!, $cursor: String) {
+  organization(login: $owner) {
+    projectV2(number: $number) {
+      items(first: {page_size}, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          content {
+            ... on Issue {
+              number body
+              repository { name }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+""".replace("{page_size}", str(PAGE_SIZE))
+
 _ITEMS_QUERY = """
 query($owner: String!, $number: Int!, $cursor: String) {
   organization(login: $owner) {
@@ -517,6 +537,28 @@ class ProjectClient:
             page = items["pageInfo"]
             if not page["hasNextPage"]:
                 return cards
+            cursor = page["endCursor"]
+
+    def bodies(self) -> dict[tuple[str, int], str]:
+        """Every issue's body on the board, by (repo, number).
+
+        Its own query, as `status_history` is: the package reads them once a build, and
+        `cards()` is read many times a tick, so it stays without them.
+        """
+        found: dict[tuple[str, int], str] = {}
+        cursor: str | None = None
+        while True:
+            items = self._project(
+                _BODIES_QUERY, owner=self.owner, number=self.number, cursor=cursor
+            )["items"]
+            for node in items["nodes"]:
+                content = node.get("content") or {}
+                repo = (content.get("repository") or {}).get("name")
+                if repo and content.get("number"):
+                    found[(repo, content["number"])] = content.get("body") or ""
+            page = items["pageInfo"]
+            if not page["hasNextPage"]:
+                return found
             cursor = page["endCursor"]
 
     def status_history(self) -> list[BoardMove]:
