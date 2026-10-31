@@ -38,6 +38,28 @@ def test_delivery_history_3_0_0_shipped_exactly_as_announced():
     assert contract.read_versions()["3.0.0"] == contract.fingerprint(contract.schemas())
 
 
+def test_delivery_history_3_0_0_carries_what_happened_and_sprint_metrics_answers():
+    # The Sponsor, on crew#963: what's worked out from those isn't the crew's to send.
+    schemas = contract.schemas()
+    index = schemas["schema.json"]
+    assert sorted(index["properties"]) == [
+        "cards",
+        "crew_repository",
+        "date",
+        "package",
+        "periods",
+        "repositories",
+        "schema_version",
+        "sprint_metrics",
+        "sprints",
+        "timezone",
+    ]
+    assert not {"Analysis", "SprintAnalysis", "Change", "Attention", "Decided", "Delivery"} & set(
+        index["$defs"]
+    )
+    assert "gaps" not in schemas["manifest.schema.json"]["properties"]
+
+
 def test_delivery_history_3_0_0_keeps_how_each_card_was_filed():
     # 2.1.0's field (crew#974) doesn't leave with the per-story results, so needs no adoption.
     schema = contract.schemas()["schema.json"]["$defs"]

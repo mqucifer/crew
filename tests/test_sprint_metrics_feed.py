@@ -75,7 +75,6 @@ def _history(cards: list[dh.Card]) -> dh.DeliveryHistory:
         sprints=[dh.Sprint(name="Sprint 22", start=DAY, end=DAY)],
         cards=cards,
         periods=[],
-        analysis=dh.Analysis(sprints=[]),
     )
 
 

@@ -72,19 +72,16 @@ substitute for using that gate.
 The crew publishes data about how it works as **packages**, like reports
 (ADR 0021). `delivery-history` is the first: the board's sprints that have started, its cards, and
 every move, attempt, model call and merge, up to its date, sprint-metrics'
-answers for each sprint, as it computed them, and the crew's own analysis of
-them: what changed each sprint, what needed attention at its end, and what the crew
-decided. Since 1.6.0 it carries the Developer's sessions (crew#778) by
-their names and counts, never their paths, commands or words, and each story's
-deliveries in them: its sessions, the times it reached review, the gate's rounds
-before that, what it cost and how it ended. Since 1.10.0 it carries every send-back
+answers for each sprint, as it computed them. It carries what happened, and works
+nothing out: a count, a sum, a verdict or a sentence is sprint-metrics' to calculate, by a
+Goal there (ADR 0022). Since 1.6.0 it carries the Developer's sessions (crew#778) by
+their names and counts, never their paths, commands or words. Since 1.10.0 it carries every send-back
 (crew#862): finished work sent back to its own step or an earlier one, by the step that
 sent it, the step it went back to, the rule that decided, and its round. What counts as
 one is in [`docs/reference/records.md`](docs/reference/records.md). Since 1.11.0 a session's tools include `delete_file`
 (crew#839). The steps are a closed
 list today, and a later MINOR version may add to it, so read a step you don't know as
-another step rather than refusing the package. The crew's code writes
-that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
+another step rather than refusing the package. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
 **2.0.0 replaced 1.x** (crew#905), as announced a week before: it carries sprint-metrics
@@ -112,25 +109,17 @@ a 2.0.0 reader reads on.
   `repo` is `qa-suite`.
 It says what the crew wrote and adds no counts: what it means is the reader's.
 
-**3.0.0 replaced 2.x** (crew#963), as announced a week before. The crew logs what happened and
-sprint-metrics decides what first try means (ADR 0022), so the package carries no result of the
-crew's own for each story.
-- **What left:** `analysis.stories`, whole, with each story's `pattern`, `misses`, `blocks`,
-  `escalations`, `crew_fixes`, `repeated`, `delivered`, `wall_clock_seconds`, `cost` and `text`.
-- **What each is now,** from a story's events, which all stayed, and `cards`:
-  - `delivered`: its `card_moved` to Done, or a card's `closed` when `closed_as` is `completed`.
-  - `blocks`: its `card_moved` events into Blocked. `escalations`: its `escalated` events.
-  - `misses` and `repeated`: its `attempt`, `returned` and `sent_back` events, its
-    `work_finished` events with a verdict, and each `attempt`'s `reason`.
-  - `crew_fixes`: `pull_merged` events with `crews_own` whose `about` names the story.
-  - `cost` and `wall_clock_seconds`: its `model_call` events, timed from its first
-    `work_started` or `model_call`.
-  - `pattern` and `text`: nothing replaces them, because a verdict on a story is what left.
-    A sprint's first-try figures are sprint-metrics': `first_attempt_numerator`,
-    `first_attempt_denominator` and `first_attempt_rate_percent` in `sprint_metrics.answers`.
-- **What stayed:** every event, sprint-metrics' answers, each card's `filed` (2.1.0),
-  `analysis.sprints` and `analysis.deliveries`, which says what a story's sessions did and
-  gives no verdict.
+**3.0.0 replaced 2.x** (crew#963), as announced a week before. The package carries what
+happened and sprint-metrics' answers: a count, a sum, a verdict or a sentence worked out from
+those isn't the crew's to send (the Sponsor, 2026-10-31; ADR 0022).
+- **What left:** `analysis`, whole: `stories`, `deliveries` and `sprints`, with each sprint's
+  `changed`, `attention` and `decided`. And the manifest's `gaps`, counted from `deliveries`.
+- **What a reader does now:** it can show an event or a card's field. A count, a sum, a verdict
+  or a sentence comes from sprint-metrics, by a Goal there. `sprint_metrics.answers`, with
+  `prior`, already holds the sprint measures `changed` worded. `crew_fixes_merged` has no
+  sprint-metrics source.
+- **What stayed:** every event, each card with its `filed`, `sprints`, `periods`,
+  sprint-metrics' answers, and the manifest's `left_out`.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -163,8 +152,8 @@ crew's own for each story.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first
-  release. It's regenerated with the schema and shows every kind of event and
-  finding the schema allows. Its events and titles are made up, and its sprint-metrics
+  release. It's regenerated with the schema and shows every kind of event the
+  schema allows. Its events and titles are made up, and its sprint-metrics
   answers are computed from those events, so each sprint's totals agree with its stories.
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`
   (`-2` for a second on one day), with the archive as its asset. It reaches a
@@ -173,7 +162,7 @@ crew's own for each story.
   tags, but only the latest seven and each month's first keep their archives.
   The archive holds one directory, named for the tag
   (`delivery-history-<date>/`), and in it `manifest.json`, the index
-  `delivery-history.json` (sprints, cards, periods and the analysis), one events
+  `delivery-history.json` (sprints, cards, periods and sprint-metrics' answers), one events
   file per sprint under `events/` (days between sprints get their own), and the
   schemas it follows: `schema.json`, `manifest.schema.json` and
   `events.schema.json`. It carries everything up to its date, so a consumer needs only

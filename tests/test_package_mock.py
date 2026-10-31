@@ -34,15 +34,12 @@ def test_the_mock_matches_the_committed_schema():
 
 def test_the_mock_shows_every_kind_a_consumer_meets():
     files = mock.files()
-    index = json.loads(files["delivery-history.json"])
     events = [
         e
         for path, text in files.items()
         if path.startswith("events/")
         for e in json.loads(text)["events"]
     ]
-    analysis = index["analysis"]
-    sprints = analysis["sprints"]
     assert {e["kind"] for e in events} == {
         "card_moved",
         "work_started",
@@ -67,17 +64,6 @@ def test_the_mock_shows_every_kind_a_consumer_meets():
         "platform",
     }
     assert any(e["kind"] == "attempt" and e["reason"] for e in events)
-    assert {a["kind"] for s in sprints for a in s["attention"]} == {
-        "waiting_on_sponsor",
-        "blocked",
-        "repeated_refusal",
-    }
-    assert {d["kind"] for s in sprints for d in s["decided"]} == {
-        "design_revision_merged",
-        "technical_epic_filed",
-    }
-    assert {c["source"] for s in sprints for c in s["changed"]} == {"sprint-metrics", "crew"}
-    assert {d["outcome"] for d in analysis["deliveries"]} == {"returned", "open"}
     assert any(e["kind"] == "work_finished" and e["verdict"] for e in events)
     assert json.loads(files["manifest.json"])["left_out"] == {}
 
@@ -126,10 +112,10 @@ def test_the_mock_s_answers_are_the_numbers_its_stories_add_up_to():
 def test_the_package_carries_no_crew_calculated_first_try():
     """The crew logs what happened; sprint-metrics decides what first try means (crew#963)."""
     index = contract.schemas()["schema.json"]
-    assert "stories" not in index["$defs"]["Analysis"]["properties"]
     assert not {"StoryPattern", "Repeated", "StoryCost"} & set(index["$defs"])
     built = json.loads(mock.files()["delivery-history.json"])
-    assert "stories" not in built["analysis"]
+    assert "analysis" not in built
+    assert "gaps" not in json.loads(mock.files()["manifest.json"])
     # Sprint-metrics' own numbers keep their names; the crew's verdict's are gone.
     for name, schema in contract.schemas().items():
         text = json.dumps(schema)

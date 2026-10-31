@@ -2621,8 +2621,6 @@ def package_build(
     console.print(f"{manifest.events} events · schema {manifest.schema_version} · {archive}")
     for why, count in manifest.left_out.items():
         console.print(f"[dim]left out: {count} × {escape(why)}[/]")
-    for what, count in manifest.gaps.items():
-        console.print(f"[dim]built around: {count} × {escape(what)}[/]")
 
 
 @package_app.command("release")

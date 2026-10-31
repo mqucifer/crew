@@ -16,6 +16,11 @@ an event's summary, which carries prompt snippets.
 by `crew package schema`, and its version lives here. A change to the model
 without a new version fails the tests (ADR 0021).
 
+**What happened, and no working out (the Sponsor, 2026-10-31, crew#963).** It carries
+events, cards and sprints, and sprint-metrics' answers. A count, a sum, a verdict or a
+sentence worked out from those isn't the crew's to send: a reader who wants one asks
+sprint-metrics, by a Goal there.
+
 This is the crew's part. sprint-metrics' answers join it, as a MINOR version,
 once sprint-metrics publishes its schemas (mqucifer/sprint-metrics#461) and
 takes the crew's sprints (mqucifer/sprint-metrics#462). Nothing is released
@@ -25,7 +30,6 @@ until then: the Sponsor, 2026-10-08.
 from __future__ import annotations
 
 import re
-from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -239,7 +243,7 @@ class Attempt(_Part):
     Escalation's policy decides these, so they end with escalation (ADR 0032, Stage
     E): earlier sprints keep theirs, and later ones have none. A story delivered in
     Developer sessions misses on review's and QA's returns instead (`verdict` on
-    `work_finished`), and its deliveries are in the analysis.
+    `work_finished`).
     """
 
     kind: Literal["attempt"] = "attempt"
@@ -535,135 +539,6 @@ class Period(_Part):
     events: int
 
 
-# --- the crew's analysis (ADR 0022): written by `analysis.py` from the data, never a model
-
-
-Measure = Literal[
-    "first_attempt_rate_percent",
-    "throughput",
-    "points_delivered",
-    "blocked_aging_days",
-    "wip_violations",
-    "cycle_time_minutes",
-    "lead_time_minutes",
-    "superseded_count",
-    "crew_fixes_merged",
-]
-
-
-class Change(_Part):
-    """A measure that moved since the sprint before.
-
-    sprint-metrics' measures are its own numbers, as it answered them: the crew
-    picks which moves to say and words them, and never recomputes one.
-    """
-
-    measure: Measure
-    source: Literal["sprint-metrics", "crew"]
-    previous: float
-    now: float
-    better: bool | None = Field(description="Whether it moved for the better; none if neither.")
-    text: str = Field(description="The sentence the crew's code wrote from these values.")
-
-
-class Attention(_Part):
-    """Something that needed a person, or kept going wrong, as the sprint stood at its end."""
-
-    kind: Literal["waiting_on_sponsor", "blocked", "repeated_refusal"]
-    card: CardRef
-    since: datetime | None = Field(description="When it started waiting, or was blocked.")
-    count: int | None = Field(description="For a repeated refusal, how many times it came.")
-    reason: str | None = Field(description="For a repeated refusal, the reason that repeated.")
-    text: str = Field(description="The sentence the crew's code wrote from these values.")
-
-
-class Decided(_Part):
-    """Something the crew decided on its own in the sprint, without asking anyone."""
-
-    kind: Literal["design_revision_merged", "technical_epic_filed"]
-    at: datetime
-    repo: str
-    number: int = Field(description="The pull request merged, or the epic filed.")
-    text: str = Field(description="The sentence the crew's code wrote from these values.")
-
-
-class SprintAnalysis(_Part):
-    sprint: str
-    as_of: datetime = Field(
-        description="The moment it describes: the sprint's end, or the "
-        "package's date for a sprint still running."
-    )
-    changed: list[Change]
-    attention: list[Attention]
-    decided: list[Decided]
-
-
-Gap = Literal["session_not_ended", "session_not_started"]
-
-
-class Delivery(_Part):
-    """One delivery of a story in Developer sessions, from its first session to its outcome.
-
-    Derived from the package's own events (crew#778, decision 8). It says what its
-    sessions did, and no verdict on it: `submissions` counts the branch handed to
-    review and QA, and the gate's returns before review are `gate_rounds`.
-    Outcomes: `done` (moved to Done), `returned` (to the Business
-    Analyst), `blocked` (left for a person: a choice, or nowhere to return it),
-    `interrupted` (its last session was, and none followed), `open`.
-    """
-
-    card: CardRef
-    number: int = Field(description="Which delivery of the story this is, from 1.")
-    started: datetime
-    ended: datetime | None
-    outcome: Literal["done", "returned", "blocked", "interrupted", "open"]
-    sessions: int
-    submissions: int = Field(
-        description="Times its branch was handed to review and QA: a move into Reviewing, "
-        "or into QAing from anywhere else, as a story already done is."
-    )
-    gate_rounds: int = Field(description="Times the gate at `done` returned it before review.")
-    gate_rules: list[str] = Field(description="The rules the gate's returns were by.")
-    review_returns: int = Field(description="Returns by review or QA.")
-    rework_rounds: int = Field(
-        description="Sessions started after a return by the gate, review or QA (P2)."
-    )
-    resumes: int = Field(description="Sessions started after an interrupted one (P3).")
-    model_calls: int
-    model_seconds: float
-    prompt_tokens: int
-    cached_tokens: int
-    completion_tokens: int
-    reasoning_tokens: int
-    runs: int
-    first_green_run: int | None = Field(
-        description="Of its runs, from 1, the first whole suite that passed."
-    )
-    stop: Stop | None = Field(
-        description="What stopped its last session, or the delivery between sessions "
-        "(the backstop, or the gates' same findings again), if anything did."
-    )
-    blocked_on: BlockedOn | None
-    ceiling: Literal["reading", "re_viewing"] | None
-    since_action: int | None = Field(description="Its last session's signals at the end.")
-    most_views: int | None
-    edits_since_run: int | None
-    empty_lookups: int | None
-    returned_because: ReturnReason | None
-    gaps: list[Gap] = Field(
-        description="What its records lacked, built around: a session with no end (a "
-        "crash, or still running), or an end with no start. Nothing is guessed."
-    )
-
-
-class Analysis(_Part):
-    sprints: list[SprintAnalysis] = Field(description="Every sprint started by the package's date.")
-    deliveries: list[Delivery] = Field(
-        default_factory=list,
-        description="Every delivery in Developer sessions, by story, oldest first.",
-    )
-
-
 class SprintMetrics(_Part):
     """sprint-metrics' answers for every sprint the package covers, as it gave them (ADR 0022).
 
@@ -696,7 +571,6 @@ class DeliveryHistory(_Part):
     sprints: list[Sprint]
     cards: list[Card]
     periods: list[Period] = Field(description="Every period with events, oldest first.")
-    analysis: Analysis
     sprint_metrics: SprintMetrics | None = Field(
         default=None,
         description="sprint-metrics' part. None only in a build without the service: "
@@ -725,11 +599,6 @@ class Manifest(_Part):
     events: int
     left_out: dict[str, int] = Field(
         description="Events the crew recorded but couldn't place, by why. None are guessed."
-    )
-    gaps: dict[str, int] = Field(
-        default_factory=dict,
-        description="What the crew's records lacked and the build went around, by what: "
-        "a session with no end, or an end with no start (`Delivery.gaps`).",
     )
 
 
@@ -1504,10 +1373,6 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
             schema_version=SCHEMA_VERSION, sprint=sprint, start=start, end=end, events=grouped
         )
         periods.append(Period(sprint=sprint, start=start, end=end, file=path, events=len(grouped)))
-    # Imported here: the analysis reads this module's models.
-    from crew_org.packages.analysis import analyse  # noqa: PLC0415
-
-    cards = _cards(inputs)
     history = DeliveryHistory(
         schema_version=SCHEMA_VERSION,
         date=inputs.date,
@@ -1515,17 +1380,8 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
         crew_repository=inputs.crew_repository,
         repositories=sorted(inputs.repositories),
         sprints=sprints,
-        cards=cards,
+        cards=_cards(inputs),
         periods=periods,
-        analysis=analyse(
-            events,
-            cards,
-            sprints,
-            answers=inputs.sprint_metrics.answers if inputs.sprint_metrics else {},
-            crew_repository=inputs.crew_repository,
-            zone=ZoneInfo(inputs.timezone),
-            day=inputs.date,
-        ),
         sprint_metrics=inputs.sprint_metrics,
     )
     manifest = Manifest(
@@ -1534,7 +1390,6 @@ def build(inputs: Inputs) -> tuple[DeliveryHistory, dict[str, PeriodEvents], Man
         generated=inputs.generated,
         events=len(events),
         left_out=dict(sorted(left_out.items())),
-        gaps=dict(sorted(Counter(g for d in history.analysis.deliveries for g in d.gaps).items())),
     )
     return history, files, manifest
 
