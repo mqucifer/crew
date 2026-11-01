@@ -63,6 +63,16 @@ query($owner: String!, $repo: String!, $number: Int!, $branch: String!) {
 }
 """
 
+_BODY_EDITS = """
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      userContentEdits(first: 100) { nodes { editor { login } } }
+    }
+  }
+}
+"""
+
 _PULLS = """
 query($owner: String!, $repo: String!, $cursor: String) {
   repository(owner: $owner, name: $repo) {
@@ -867,6 +877,19 @@ class IssueClient:
             if not info.get("hasNextPage"):
                 return pulls
             cursor = info.get("endCursor")
+
+    def people_who_edited(self, repo: str, number: int) -> set[str]:
+        """Who outside the crew has edited this issue's body (crew#989).
+
+        Only an account with write access can edit one, so unlike a comment on a public
+        repository it needs no trust check. Only GraphQL has it, and it spells an App's
+        login without `[bot]`. A deleted account has no login, and still counts.
+        """
+        data = self._graphql(_BODY_EDITS, owner=self.owner, repo=repo, number=number)
+        edits = ((data.get("repository") or {}).get("issue") or {}).get("userContentEdits") or {}
+        logins = {(node.get("editor") or {}).get("login") or "ghost" for node in edits["nodes"]}
+        ours = self.trust.crew | self.trust.tools
+        return {login for login in logins if login not in ours and f"{login}[bot]" not in ours}
 
     def _graphql(self, query: str, **variables: Any) -> dict[str, Any]:
         response = self._client.post(GRAPHQL, json={"query": query, "variables": variables})

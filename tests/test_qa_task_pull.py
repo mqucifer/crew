@@ -268,7 +268,7 @@ def test_the_prompt_labels_the_story_as_what_the_tests_cover(monkeypatch):
     own = text.index("## Acceptance criteria this must satisfy")
     cover = text.index("## What the tests should cover")
     assert own < text.index("the Task's own") < cover < text.index("the story's")
-    assert "`conflicts_with`" not in text
+    assert "`doing_it`" not in text
 
 
 def test_a_story_review_has_no_such_section(monkeypatch):
@@ -281,7 +281,7 @@ def test_a_story_review_has_no_such_section(monkeypatch):
     monkeypatch.setattr(review_crew.calls, "ask", ask)
     review_crew.review_diff(TITLE, "diff --git a/x b/x\n+x\n", acceptance_criteria="1. It works")
     assert "## What the tests should cover" not in asked["text"]
-    assert "`conflicts_with`" in asked["text"]
+    assert "`doing_it`" in asked["text"]
 
 
 def test_a_tasks_review_says_it_was_judged_as_a_task(monkeypatch):
