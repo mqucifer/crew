@@ -775,3 +775,73 @@ All four were filed:
 - **"Ticks stopped" found none** for the second sprint running. It's a candidate for removal.
 - **"The crew's retro against this one" found something again,** this time a wrong cause. It stays.
 - **The event logs `operator.jsonl` and `sponsor.jsonl` are no longer written.** The interventions check reads the working log instead.
+
+## Sprints 36 to 38, 2026-11-01: the retros got the numbers wrong, and a misrouted review nearly lost work
+Worked together, three sprints late. Items from the first ticks of Sprint 39 are included where they came out of the same work. **Not done:** section 3 (drift) wasn't checked. No working log was kept for these sprints, so stop reasons are read from the events, the reflog and the operator's notes.
+
+### 1. Interventions
+| | Sprint 36 | Sprint 37 | Sprint 38 |
+|---|---|---|---|
+| Tick runs / passes | 5 / 15 | 3 / 14 | 11 / 29 |
+| Tick minutes / model minutes | 184 / 83 | 697 / 468 | 816 / 605 |
+| Crew PRs merged | 10 | 5 | 4 |
+
+- **Hand fixes on a story:**
+  - mqucifer/crew-presentation#244: edited by hand, as a design revision has no rework path.
+  - mqucifer/crew-presentation#270: put back after a misrouted review, at the Sponsor's word.
+  - mqucifer/crew-presentation#271: criteria edited twice, at the Sponsor's word. The first corrected a story that broke their no-duplicates rule. The second cleared up the operator's own ambiguous wording.
+- **Runs stopped:** the mqucifer/sprint-metrics#888 rollback, false "stranded" reads on mqucifer/qa-suite#20 and mqucifer/qa-suite#21, and the mqucifer/crew-presentation#270 misroute. One in Sprint 36 has no recorded cause.
+- **Serial restarts:** an epic's stories took one tick each, because a tick ends minutes after a delivery, with its CI still running. Five restarts in a row in Sprint 38.
+- **`crew moves --people` shows 0 for all three sprints,** though at least 4 moves were by people. `board_moves.attribute` reads `card.seen_moved` as the crew's own log.
+
+### 2. Where a person was asked
+- **Mechanism:** mqucifer/qa-suite#16, mqucifer/qa-suite#20 and mqucifer/qa-suite#21 were blocked with no way out (`delivery.open_pull_request`). mqucifer/crew#972 closed the way there. The `blocked` label for mqucifer/qa-suite#16 landed on closed mqucifer/crew-presentation#16, the wrong repository.
+- **Mechanism:** mqucifer/crew-presentation#266's `needs:rework` came from the misroute.
+- **Mechanism:** mqucifer/infra#73 and mqucifer/infra#74 needed the Sponsor's merge. The crew gets 403 reading infra's check runs, so `deploy.merge_records` has probably never worked: mqucifer/infra#44 was the Sponsor's merge too. Cause not confirmed. M8's "only the Sponsor's merge" isn't met.
+- **Content:** mqucifer/crew-presentation#191. The Sponsor's answer is on the issue.
+
+### 4. Repeats and cost
+| | Sprint 34 | Sprint 35 | Sprint 36 | Sprint 37 | Sprint 38 |
+|---|---|---|---|---|---|
+| CI returns | 3 | 5 | 2 | 3 | 2 |
+| Review returns | 6 | 0 | 0 | 8 | 2 |
+| Gate returns | 4 | 17 | 1 | 2 | 0 |
+| Conflict rebuilds | 2 | 1 | 0 | 7 | 1 |
+| Coverage-map failures | 27 | 24 | 4 | 12 | 6 |
+
+- **Time after a card's first return:** Sprint 36 12 of 83 model minutes, Sprint 37 about 132 of 468, Sprint 38 40 of 605.
+- **Conflict rebuilds:** of 8 in Sprints 37 and 38, 5 were in qa-suite's `crew-presentation/README.md` and 3 in crew-presentation's `CHANGELOG.md`: shared files every change edits.
+- **The coverage map** still fails every sprint, now in qa-suite. mqucifer/crew#950 looked into sprint-metrics' case.
+- **Model failures:** `llm.failed` and `llm.empty` 0, `llm.refused` 1, not repeated. All 113 sessions ended `done`.
+- **From Sprint 39:**
+  - **mqucifer/crew-presentation#278:** a returned CI log showed only passes, because `log_tail` kept the last group, not the failed one. Fixed by mqucifer/crew#986.
+  - **mqucifer/crew-presentation#276:** a review finding marked `conflicts_with` closed the PR and set the epic to re-split, though the finding protected that criterion. A re-split would have closed every unstarted story.
+  - **mqucifer/sprint-metrics#920:** any Task for the UX Designer runs as a release review, so a finding sent there blocks at once.
+  - **mqucifer/sprint-metrics#923:** a two-word docs change was stopped by no progress, on a test of the doc's wording.
+  - **mqucifer/crew-presentation#280 and mqucifer/crew-presentation#285:** the UX review refiled what triage had closed on the last release.
+  - **Announcements:** `usage._file` is `lru_cache`d, so a tick keeps what it read at its start, though the docs say each pass reads them.
+
+### 5. The crew's own retro
+- **The first-try figure was wrong in all three.** The defect the retro itself should catch:
+  - **Sprint 38's "29 of 30":** 11 of those cards were still in Sprint Backlog. Card numbers carry no repository, so mqucifer/sprint-metrics#270 was taken for mqucifer/crew-presentation#270. Really 13 of 16 Done with no return. It also says 24 delivered, where its own table shows 16.
+  - **Sprint 36's "5 of 5":** mqucifer/qa-suite#8 had 3 returns.
+  - **Sprint 37's "13 of 20"** counts review returns only. With CI, gate and merge returns it's 8 of 20.
+- **"Needs you: nothing" in all three,** with mqucifer/crew-presentation#214 waiting.
+- **It saw what this didn't:** the 21-hour wait on mqucifer/crew-presentation#214, the gap in mqucifer/crew#979, the lost tick in a sequential chain.
+- **It missed:** the mqucifer/sprint-metrics#888 rollback, the misroute's cause, the changelog, and mqucifer/crew-presentation#250's blocked pin.
+- **Its defects:** only mqucifer/crew#979, in three sprints.
+
+### 6. Proposed, for the Sponsor to agree
+Ranked by what each risks:
+1. **A review finding can't re-split an epic by itself.** `conflicts_with` needs the finding's request to break the criterion, and started or approved work holds the return for a person. Evidence: mqucifer/crew-presentation#276. It nearly closed approved stories.
+2. **The crew can merge its deploy records.** Find the cause of the 403 on infra's check runs, and surface it instead of noting it each pass. Evidence: mqucifer/infra#44, mqucifer/infra#73, mqucifer/infra#74.
+3. **A change's changelog entry lives apart from a shared file,** and a release's contents come from what its tag reaches (towncrier, Changesets, release-please). The Sponsor's framing: a ledger problem. Evidence: 3 of 8 conflict rebuilds, the entries under the wrong release on mqucifer/crew-presentation#220, the wrong issue and stale line in mqucifer/crew-presentation#253 and mqucifer/crew-presentation#289, and mqucifer/crew-presentation#265 taking four entries unseen.
+4. **The retro's figures come from sprint-metrics, and events carry the repository.** Evidence: section 5.
+5. **A tick waits for a delivered PR's CI rather than ending.** Evidence: one tick per story, with serial restarts.
+6. **A UX Designer's finding runs as a Task.** Evidence: mqucifer/sprint-metrics#920.
+
+**Checks:**
+- **"Ticks stopped" found something this time,** so it stays, against the last entry's removal candidate.
+- **Model failures found nothing** for all three sprints, and is a candidate for removal.
+- **The retro against the data found something again,** and the wrong first-try count is now a repeat. It's a candidate for the crew to check itself, once it reads sprint-metrics' numbers.
+- **A working log wasn't kept,** so this entry reads events and the operator's notes instead. Holding this until three sprints had passed cost detail.
