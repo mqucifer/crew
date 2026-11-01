@@ -628,6 +628,10 @@ flows.delivery._deliver_and_move:result:settled:05fe0b23:
   at: flows/delivery.py:_deliver_and_move
   if: outcome.routed == 'settled'
   rule: decision.qa_tasks.no_test
+flows.delivery._gates_disagree:end:fd96d21c:
+  at: flows/delivery.py:_gates_disagree
+  if: story_problem.a_person_kept_it(issues, repo, card.number or 0)
+  rule: story.return_held
 flows.delivery._gates_disagree:end:dc3ba109:
   at: flows/delivery.py:_gates_disagree
   if: rounds < story_problem.MAX_ROUND_TRIPS
@@ -1389,10 +1393,9 @@ flows.revert.request_revert:end:dcb9f907:
   at: flows/revert.py:request_revert
   if: refusal
   rule: decision.revert.refused
-flows.review._to_product_owner:end:0ecc81be:
+flows.review._to_product_owner:end:c33042c3:
   at: flows/review.py:_to_product_owner
-  if: not story_problem.return_to_refinement(board, issues, sink, card, repo=repo, cards=board.cards(),
-    comment=comment, reason='review conflicts with a criterion')
+  if: not went
   rule: story.review_conflicts_with_criterion
 flows.review.cards_by_branch:filter:c13977cf:
   at: flows/review.py:cards_by_branch
@@ -1414,10 +1417,9 @@ flows.review.review_open_pulls:result:failed:b8fab000:
   at: flows/review.py:review_open_pulls
   if: trigger is not None
   rule: decision.review.deploy_review
-flows.review.review_open_pulls:result:returned:f744e44f:
+flows.review.review_open_pulls:result:returned:01574ffa:
   at: flows/review.py:review_open_pulls
-  if: event == 'REQUEST_CHANGES' and verdict.conflicts and _to_product_owner(card, verdict, number, board=board,
-    issues=writer or issues, sink=sink, repo=repo)
+  if: went
   rule: story.review_conflicts_with_criterion
 flows.review.story_criteria:end:5815ecc1:
   at: flows/review.py:story_criteria
@@ -1662,6 +1664,10 @@ flows.session_end._merged_tests:end:7f2ee007:
   at: flows/session_end.py:_merged_tests
   if: not tests
   not_a_rule: 'a report or a render: lists, decides nothing'
+flows.session_end._return:end:a25d2a2c:
+  at: flows/session_end.py:_return
+  if: went
+  rule: story.return_to_refinement
 flows.session_end._ruled:end:e3655272:
   at: flows/session_end.py:_ruled
   if: 'ruling is not None and ruling.decision == ''amend'''
@@ -1826,6 +1832,10 @@ flows.story_problem.record_pinned:end:c643c7b9:
   at: flows/story_problem.py:record_pinned
   if: not record.text_for(issues, repo, epic)
   not_a_rule: 'nothing to act on: a value is absent'
+flows.story_problem.return_to_refinement:end:18bda625:
+  at: flows/story_problem.py:return_to_refinement
+  if: why
+  rule: story.return_held
 flows.story_problem.return_to_refinement:end:56a2547c:
   at: flows/story_problem.py:return_to_refinement
   if: epic is None or card.work_type == TASK

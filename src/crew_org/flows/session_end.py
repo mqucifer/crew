@@ -40,7 +40,7 @@ from crew_org.flows import artifacts, delivery, gates, role_tasks
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.moves import move_card
-from crew_org.flows.story_problem import return_to_refinement
+from crew_org.flows.story_problem import held_comment, return_to_refinement
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
@@ -785,9 +785,10 @@ def _return(
     """Back to the Business Analyst by the path a story takes back to refinement (#189).
 
     A story with no epic has nothing to be split again: it's blocked for a person,
-    with the same evidence, as today.
+    with the same evidence, as today. So is one whose re-split would replace work a
+    person should see first (crew#989).
     """
-    if card.parent is not None and return_to_refinement(
+    went = return_to_refinement(
         board,
         issues,
         sink,
@@ -797,9 +798,20 @@ def _return(
         comment=comment,
         reason=reason,
         **detail,
-    ):
+    )
+    if went:
         held(rule, repo=card.repo or repo, card=card.number)
         return Route(REFINEMENT, rule, comment=comment, verdict=verdict)
+    if went.held:
+        return blocked_for_a_person(
+            card,
+            repo=repo,
+            comment=held_comment(card, comment, went.held),
+            rule=Rule.RETURN_HELD,
+            board=board,
+            issues=issues,
+            sink=sink,
+        )
     return blocked_for_a_person(
         card,
         repo=repo,

@@ -30,6 +30,15 @@ The Sponsor, 2026-10-21 and 22 (crew#859).
   every kept story, so the epic's order stays true.
 - **Started work is never discarded.** A re-split that would replace a started story
   waits, naming it; a started story it keeps doesn't hold it.
+- **A return that would replace work a person should see first waits for them.** A
+  story's return reads what its re-split would replace, by the rule above. If that's a
+  started story, one a person has edited, or one the Sponsor has commented on, or the crew
+  can't read which, nothing goes back: the story is blocked for a person, with its pull
+  request open, no `needs:rework`, and no other card moved. Its comment says what's at risk
+  and how to decide. Moved to `In Progress`, its author carries on, and its round trips
+  don't hold it again until its next delivery. A story nobody has touched stays the crew's
+  to replace: nothing else records a person's approval of a story, and holding every later
+  story would send most story problems to a person.
 - **The split is shown what it keeps and what it replaces,** each whole, and writes stories
   only for the replaced ones, accounting for each. The rows and tests the kept stories
   follow count for the record's checks, and the criteria check reads the kept stories
@@ -84,3 +93,7 @@ round is recorded, so the stop is set from evidence.
 - **2026-10-21:** decided in the Sponsor's review of the flow (crew#859).
 - **2026-10-22:** one rule for what's affected, and nothing new across epics (the Sponsor,
   on crew#859). Built by crew#859.
+- **2026-11-01:** a return that would replace started work, or a story a person has touched,
+  waits for a person (the Sponsor agreed it from the operator's retro, crew#989). A review of
+  mqucifer/crew-presentation#276 would otherwise have closed mqucifer/crew-presentation#271,
+  whose criteria had been edited at the Sponsor's word.

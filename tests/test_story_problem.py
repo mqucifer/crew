@@ -57,8 +57,13 @@ class Issues:
         self._branches = branches
         self.labels, self.added, self.posted = set(), [], []
 
+    owner = "mqucifer"
+
+    def people_who_edited(self, repo, number):
+        return set()
+
     def sub_issues(self, repo, number):
-        return [{"number": n} for n in (97, 98, 99, 100)]
+        return [{"number": n} for n in (96, 97, 98, 99)]
 
     def branches(self, repo):
         return [{"name": b} for b in self._branches]
@@ -76,28 +81,46 @@ class Issues:
 
 def test_the_story_and_its_unbuilt_siblings_go_back_and_the_epic_says_why():
     """What the Sponsor did by hand for #97, #98 and #99."""
-    board, issues = Board(), Issues(branches=["feat/100-already-building"])
+    board, issues = Board(), Issues(branches=["feat/96-already-building"])
     cards = [
+        story(96, status="In Progress"),
         story(97),
         story(98, status="Sprint Backlog"),
         story(99, status="Sprint Backlog"),
-        story(100, status="In Progress"),
     ]
     sent = return_to_refinement(
+        board,
+        issues,
+        EventSink(),
+        cards[1],
+        repo=REPO,
+        cards=cards,
+        comment="the evidence on #97",
+        reason="gate round trips",
+    )
+    assert sent
+    assert board.status == {"S97": "Ready", "S98": "Ready", "S99": "Ready"}, "#96 has a branch"
+    assert {item for item, field in board.cleared if field == "Sprint"} == {"S97", "S98", "S99"}
+    assert NEEDS_REWORK in issues.labels and (54, NEEDS_REWORK) in issues.added
+    assert issues.posted == [(54, issues.posted[0][1])] and "the evidence" in issues.posted[0][1]
+
+
+def test_a_later_sibling_with_work_started_holds_the_return_and_moves_nothing():
+    """It would be refused at the re-split, with the story already gone (crew#859)."""
+    board, issues = Board(), Issues(branches=["feat/98-already-building"])
+    cards = [story(97), story(98, status="In Progress")]
+    went = return_to_refinement(
         board,
         issues,
         EventSink(),
         cards[0],
         repo=REPO,
         cards=cards,
-        comment="the evidence",
+        comment="the evidence on #97",
         reason="gate round trips",
     )
-    assert sent
-    assert board.status == {"S97": "Ready", "S98": "Ready", "S99": "Ready"}, "#100 has a branch"
-    assert {item for item, field in board.cleared if field == "Sprint"} == {"S97", "S98", "S99"}
-    assert NEEDS_REWORK in issues.labels and (54, NEEDS_REWORK) in issues.added
-    assert issues.posted == [(54, issues.posted[0][1])] and "the evidence" in issues.posted[0][1]
+    assert not went and "#98" in went.held
+    assert board.status == {} and issues.posted == [] and NEEDS_REWORK not in issues.labels
 
 
 def test_a_story_with_no_epic_is_not_sent_anywhere():
@@ -144,7 +167,7 @@ def test_an_earlier_sibling_stays_in_its_sprint():
         cards[1],
         repo=REPO,
         cards=cards,
-        comment="the evidence",
+        comment="the evidence on #98",
         reason="gate round trips",
     )
     assert board.status == {"S98": "Ready", "S99": "Ready"}

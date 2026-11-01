@@ -113,12 +113,19 @@ to make. When the two disagree, both findings stand and the card returns to
 `In Progress` carrying each.
 
 The Reviewer is shown the story's acceptance criteria as well as the Goal's
-record and target diagram. A finding the criteria rule out — asking the author
-to break a criterion, because the record says otherwise — is not a change to request: the
-Reviewer names the criterion it conflicts with, and the story goes back to
-refinement on that first review, for the Product Owner to settle (crew#252).
+record and target diagram. A finding about a criterion quotes it and says what doing
+it does to it (crew#989). `keeps_it`, where the code breaks the criterion or could, and
+the fix mends or protects it, is an ordinary change for the author to make. `breaks_it`,
+asking the author to break a criterion because the record says otherwise, is not a
+change to request: the story goes back to refinement on that first review, for the
+Product Owner to settle (crew#252).
 If the gates still disagree, the limit of three round trips (crew#243) sends
 it back, or blocks it for a person when it has no epic to be split again.
+
+Either way, a return whose re-split would replace started work, or a story a person
+has edited or the Sponsor has commented on, waits for a person instead (crew#989, ADR
+0037): the story is blocked, saying what's at risk and how to decide, and nothing else
+moves or closes.
 
 A story the code already satisfies needs no change. The Developer's session may
 call `done` with no change on the branch, naming, for each criterion, the
