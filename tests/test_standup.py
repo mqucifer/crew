@@ -111,6 +111,16 @@ def test_it_says_when_the_tick_stopped_rather_than_settled():
     assert "**Tick at 14:05 UTC** — 6 passes, stopped at the pass cap." in s.text
 
 
+def test_it_says_when_ci_ended_the_tick():
+    """Not the pass cap: raising --passes wouldn't have helped (crew#993)."""
+    result = run(passes=1, settled=False)
+    result.ci_stopped = "CI ran past the 60-minute limit on sprint-metrics PR #911 (tests)"
+    assert (
+        "**Tick at 14:05 UTC** — 1 pass, "
+        "CI ran past the 60-minute limit on sprint-metrics PR #911 (tests)." in standup(result).text
+    )
+
+
 def test_write_standup_exists_behind_the_capability():
     """Criterion 4: the Scrum Master's `write_standup` has a function behind it."""
     with open("src/crew_org/config/agents.yaml") as fh:

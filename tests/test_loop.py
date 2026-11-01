@@ -438,6 +438,242 @@ def test_nothing_queued_ends_the_tick_at_once(crew, monkeypatch):
     assert passes["n"] == 1 and crew.issues.polls == 0
 
 
+# --- crew#993: a delivered pull request's CI is waited for, not left to the next tick -----------
+
+
+HELD = loop.RunningCI("crew-presentation", 268, 274, "64cab28", ("checks",))
+
+
+class Checks:
+    """GitHub's answer for each head: running for the first `running[head]` reads."""
+
+    def __init__(self, running=None, unreadable=()):
+        self.running = dict(running or {})
+        self.unreadable = set(unreadable)
+        self.reads: list[str] = []
+
+    def check_runs(self, repo, sha):
+        self.reads.append(sha)
+        if sha in self.unreadable:
+            raise RuntimeError("403 from GitHub")
+        if self.running.get(sha, 0) > 0:
+            self.running[sha] -= 1
+            return [{"name": "checks", "status": "in_progress", "conclusion": None}]
+        return [{"name": "checks", "status": "completed", "conclusion": "success"}]
+
+
+def held_on_ci(monkeypatch, *held_by_pass):
+    """A review phase that holds each pass's pull requests on CI, then moves nothing more.
+
+    A pass with nothing held reviews whatever was held before it, which is movement.
+    Sleeps are recorded, and advance the clock they're measured by.
+    """
+    passes = {"n": 0}
+    now = {"t": 0.0}
+    slept: list[float] = []
+
+    def review(_crew):
+        passes["n"] += 1
+        held = list(held_by_pass[passes["n"] - 1]) if passes["n"] <= len(held_by_pass) else []
+        reviewed = not held and passes["n"] <= len(held_by_pass)
+        return loop.PhaseOutcome("review", moved=reviewed, ci_running=held)
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now["t"] += seconds
+
+    monkeypatch.setattr(loop, "PHASES", (("review", review),))
+    monkeypatch.setattr(loop.time, "sleep", sleep)
+    monkeypatch.setattr(loop.time, "monotonic", lambda: now["t"])
+    return passes, slept
+
+
+def notes_of(crew):
+    seen = []
+    crew.sink.subscribe(seen.append)
+    return seen
+
+
+def test_ci_that_ended_during_the_pass_is_reviewed_with_no_wait(crew, monkeypatch):
+    """mqucifer/crew-presentation#268: PR #274's review read its CI at 00:13:30 and held it,
+    `checks` finished at 00:17:12, and the tick ended at 00:20:00 with the board called
+    stable. So the first read comes before any sleep."""
+    passes, slept = held_on_ci(monkeypatch, [HELD], [])
+    crew.issues = Checks()
+    result = loop.run(crew)
+
+    assert passes["n"] == 3, "held, then the pass that reviews it, then one that moves nothing"
+    assert slept == []
+    assert result.settled
+
+
+def test_a_delivered_story_is_reviewed_in_the_same_tick_once_its_ci_ends(crew, monkeypatch):
+    passes, slept = held_on_ci(monkeypatch, [HELD], [])
+    crew.issues = Checks(running={"64cab28": 3})
+    seen = notes_of(crew)
+    result = loop.run(crew)
+
+    assert passes["n"] == 3, "waited, and went on to the pass that reviews it"
+    assert slept == [loop.CI_POLL] * 3
+    assert result.settled and not result.ci_stopped
+    said = [e for e in seen if "CI" in e.summary]
+    assert "crew-presentation PR #274 (checks)" in said[0].summary, "it says what it waits on"
+    assert said[-1].summary == "waited 90s for CI: 1 of 1 ended"
+    assert said[-1].detail["waited_s"] == 90.0
+
+
+def test_a_serial_epic_runs_in_one_tick_without_a_restart(crew, monkeypatch):
+    """Five restarts in a row in Sprint 38: one story of an epic each. Each story's head gets
+    the whole limit, so the time spent on one doesn't count against the next."""
+    first = loop.RunningCI("crew-presentation", 268, 274, "first", ("checks",))
+    second = loop.RunningCI("crew-presentation", 269, 275, "second", ("checks",))
+    polls = int(loop.CI_WAIT / loop.CI_POLL) - 1
+    passes, _ = held_on_ci(monkeypatch, [first], [], [second], [])
+    crew.issues = Checks(running={"first": polls, "second": polls})
+    result = loop.run(crew, max_passes=10)
+
+    assert passes["n"] == 5, "each story held and reviewed, then a pass that moves nothing"
+    assert result.settled and not result.ci_stopped
+
+
+def test_ci_past_the_limit_ends_the_tick_and_says_so(crew, monkeypatch):
+    passes, slept = held_on_ci(monkeypatch, [HELD], [HELD], [HELD])
+    crew.issues = Checks(running={"64cab28": 10**6})
+    seen = notes_of(crew)
+    result = loop.run(crew)
+
+    assert passes["n"] == 1, "no pass is spent reading a board nothing can have changed"
+    assert sum(slept) == loop.CI_WAIT
+    assert not result.settled, "the board isn't stable: it's waiting on CI"
+    assert result.ci_stopped == (
+        "CI ran past the 60-minute limit on crew-presentation PR #274 (checks)"
+    )
+    finished = [e for e in seen if e.kind == loop.EventKind.TICK_FINISHED]
+    assert result.ci_stopped in finished[-1].summary
+    assert "pass cap" not in finished[-1].summary
+    assert any(
+        e.summary == result.ci_stopped and e.detail.get("rule") == "gate.ci_before_review"
+        for e in seen
+    )
+
+
+def test_ci_that_cannot_be_read_says_that_rather_than_that_it_ran_long(crew, monkeypatch):
+    held_on_ci(monkeypatch, [HELD])
+    crew.issues = Checks(unreadable={"64cab28"})
+    result = loop.run(crew)
+
+    assert not result.settled
+    assert result.ci_stopped == (
+        "CI on crew-presentation PR #274 couldn't be read for the 60-minute limit: "
+        "RuntimeError: 403 from GitHub"
+    )
+
+
+def test_a_stuck_run_holds_up_a_finished_one_only_once(crew, monkeypatch):
+    """The stuck one has had its limit, so the later pass reads it once and doesn't wait."""
+    stuck = loop.RunningCI("sprint-metrics", 899, 911, "stuck", ("tests",))
+    passes, slept = held_on_ci(monkeypatch, [HELD, stuck], [stuck])
+    crew.issues = Checks(running={"stuck": 10**6})
+    result = loop.run(crew)
+
+    assert sum(slept) == loop.CI_WAIT, "the limit, once"
+    assert passes["n"] == 2
+    assert "sprint-metrics PR #911" in result.ci_stopped
+
+
+def test_the_last_pass_doesn_t_wait_for_what_no_pass_is_left_to_review(crew, monkeypatch):
+    passes, slept = held_on_ci(monkeypatch, [HELD])
+    crew.issues = Checks(running={"64cab28": 10**6})
+    result = loop.run(crew, max_passes=1)
+
+    assert passes["n"] == 1 and slept == [] and crew.issues.reads == []
+    assert not result.settled, "stopped at the cap, with CI still to come"
+    assert not result.ci_stopped
+
+
+def test_nothing_held_on_ci_ends_the_tick_at_once(crew, monkeypatch):
+    """A tick still ends when nothing can move for another reason."""
+    passes = {"n": 0}
+
+    def deliver(_crew):
+        passes["n"] += 1
+        return loop.PhaseOutcome("deliver", held=["#269 — waits for #268 in the same epic"])
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
+    crew.issues = Checks()
+    result = loop.run(crew)
+
+    assert passes["n"] == 1 and crew.issues.reads == []
+    assert result.settled and result.stuck
+
+
+def test_the_queue_is_waited_for_before_ci(crew, monkeypatch):
+    """A landing can release more than a review would, and the next pass waits for CI anyway."""
+    passes = {"n": 0}
+
+    def deliver(_crew):
+        passes["n"] += 1
+        first = passes["n"] == 1
+        return loop.PhaseOutcome(
+            "deliver",
+            ci_running=[HELD] if first else [],
+            result=type(
+                "R", (), {"in_queue": [("sprint-metrics", 245, "main")] if first else []}
+            )(),
+        )
+
+    class Both(Queue, Checks):
+        def __init__(self):
+            Queue.__init__(self, for_polls=0)
+            Checks.__init__(self)
+
+    monkeypatch.setattr(loop, "PHASES", (("deliver", deliver),))
+    monkeypatch.setattr(loop.time, "sleep", lambda _s: None)
+    crew.issues = Both()
+    result = loop.run(crew)
+
+    assert passes["n"] == 2 and crew.issues.polls == 1 and crew.issues.reads == []
+    assert result.settled
+
+
+def test_a_hold_that_ended_is_not_reported_as_still_stuck():
+    """The wait makes this ordinary: CI held a card in one pass and the next reviewed it. The
+    tick isn't stuck on what an earlier pass was waiting for."""
+    result = loop.LoopResult(
+        outcomes=[
+            loop.PhaseOutcome("review", held=["#268 — CI still running"]),
+            loop.PhaseOutcome("review", moved=True),
+        ],
+        settled=True,
+    )
+    assert not result.stuck
+
+
+def test_review_says_what_ci_it_holds_a_card_on(crew, monkeypatch):
+    """The tick's log named the sibling and never CI."""
+    from crew_org.flows import review
+    from crew_org.flows.review import ReviewOutcome, ReviewResult
+
+    def held(*_a, **kw):
+        return ReviewResult(
+            skipped=[ReviewOutcome(pr=274, approved=False, skipped="CI still running")],
+            ci_running=[(268, 274, "64cab28", ["checks", "qa-suite / qa"])],
+        )
+
+    monkeypatch.setattr(review, "review_open_pulls", held)
+    monkeypatch.setattr(loop, "_clone", lambda *_a: None)
+    crew.repos = {"crew-presentation"}
+    outcome = loop._review(crew)
+
+    assert outcome.moved is False
+    assert outcome.ci_running == [
+        loop.RunningCI("crew-presentation", 268, 274, "64cab28", ("checks", "qa-suite / qa"))
+    ]
+    assert outcome.held == [
+        "#268 — CI still running on PR #274: checks, qa-suite / qa; reviewed once it ends"
+    ]
+
+
 # --- #388: bookkeeping first, so holds see the board as it stands ------------------------------
 
 

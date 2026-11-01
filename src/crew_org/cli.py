@@ -257,7 +257,7 @@ def tick(
         log.event(
             tick_log,
             "tick.finished",
-            f"{result.passes} passes, {'settled' if result.settled else 'stopped at the pass cap'}",
+            f"{result.passes} passes, {'settled' if result.settled else result.stopped_by}",
             passes=result.passes,
             settled=result.settled,
         )
@@ -445,7 +445,11 @@ def _render_tick(result) -> None:
         )
 
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
-    if result.failed:
+    if result.ci_stopped:
+        console.print(
+            f"\n[yellow]{passes} — {escape(result.ci_stopped)}.[/] The next tick looks again."
+        )
+    elif result.failed:
         console.print(
             f"\n[yellow]{passes}, {len(result.failed)} phase failures.[/] The board moved as "
             "far as the rest of the pass could take it."

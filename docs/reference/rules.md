@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 80 |
-| A setting that changes what the tick does | 213 |
+| A setting that changes what the tick does | 215 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 157 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 159 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -57,7 +57,7 @@ section; one no line holds for is unplaced, never guessed.
 | `delivery.round_trips_no_epic`<br>The gates kept returning it, and it has no epic to be split again: for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:_gates_disagree | crew#778 |
 | `delivery.route_failed`<br>Where a session's ending sends the story couldn't be settled: blocked for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:_land<br>src/crew_org/flows/session_delivery.py:_route | — |
 | `delivery.workspace_unready`<br>The story's workspace container didn't start, or its setup failed (crew#778). | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_delivery.py:deliver_by_session | crew#690<br>crew#778 |
-| `gate.ci_before_review`<br>CI failed on the pull request's head: back to the Developer with its log, unreviewed.<br>Cases: `skip.review.ci_failed_on_its_head` (src/crew_org/flows/review.py:review_open_pulls), `skip.review.ci_still_running` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/ci.py:return_for_ci<br>src/crew_org/flows/review.py:review_open_pulls<br>src/crew_org/sendbacks.py:<module> | crew#756 |
+| `gate.ci_before_review`<br>CI failed on the pull request's head: back to the Developer with its log, unreviewed. While it runs, review waits, and a tick with nothing else to move waits with it.<br>Cases: `skip.review.ci_failed_on_its_head` (src/crew_org/flows/review.py:review_open_pulls), `skip.review.ci_still_running` (src/crew_org/flows/review.py:review_open_pulls) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/ci.py:return_for_ci<br>src/crew_org/flows/ci.py:running_checks<br>src/crew_org/flows/loop.py:run<br>src/crew_org/flows/loop.py:wait_for_ci<br>src/crew_org/flows/review.py:review_open_pulls<br>src/crew_org/sendbacks.py:<module> | crew#756 |
 | `gate.criteria_cannot_all_pass`<br>A split's criteria contradict each other or a merged test. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/criteria_check.py:to_product_owner<br>src/crew_org/sendbacks.py:<module> | — |
 | `gate.criteria_repair`<br>The criteria check flagged stories whose criteria can't all pass: they're rewritten. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
 | `gate.criteria_resplit`<br>The criteria check's findings named no story to repair: the epic is split again whole. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/sendbacks.py:<module> | — |
@@ -448,6 +448,8 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.look.REDIRECTS`<br>REDIRECTS = 5 | — | `src/crew_org/tools/look.py:REDIRECTS` | — | — | src/crew_org/tools/look.py:REDIRECTS | — |
 | `config.const.look.TEXT_CHARS`<br>TEXT_CHARS = 6000 | — | `src/crew_org/tools/look.py:TEXT_CHARS` | — | — | src/crew_org/tools/look.py:TEXT_CHARS | crew#846 |
 | `config.const.look.TIMEOUT`<br>TIMEOUT = 180 | — | `src/crew_org/tools/look.py:TIMEOUT` | — | — | src/crew_org/tools/look.py:TIMEOUT | crew#846 |
+| `config.const.loop.CI_POLL`<br>CI_POLL = 30.0 | flow | `src/crew_org/flows/loop.py:CI_POLL` | — | — | src/crew_org/flows/loop.py:CI_POLL | — |
+| `config.const.loop.CI_WAIT`<br>How long a pass that moved nothing waits for CI on a pull request held from review (crew#993), per head, per tick. | flow | `src/crew_org/flows/loop.py:CI_WAIT` | — | — | src/crew_org/flows/loop.py:CI_WAIT | crew#993 |
 | `config.const.loop.MAX_PASSES`<br>MAX_PASSES = 5 | flow | `src/crew_org/flows/loop.py:MAX_PASSES` | — | — | src/crew_org/flows/loop.py:MAX_PASSES | — |
 | `config.const.loop.QUEUE_POLL`<br>QUEUE_POLL = 15.0 | flow | `src/crew_org/flows/loop.py:QUEUE_POLL` | — | — | src/crew_org/flows/loop.py:QUEUE_POLL | — |
 | `config.const.loop.QUEUE_WAIT`<br>How long a pass that moved nothing waits for pull requests it left in the merge queue (#314). | flow | `src/crew_org/flows/loop.py:QUEUE_WAIT` | — | — | src/crew_org/flows/loop.py:QUEUE_WAIT | crew#314 |

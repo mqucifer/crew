@@ -494,6 +494,7 @@ def test_review_waits_while_ci_runs_on_the_head(monkeypatch):
 
     assert board.moves == [] and not issues.submitted
     assert result.skipped[0].skipped == "CI still running"
+    assert result.ci_running == [(6, 14, HEAD, ["tests"])], "what the tick waits for"
 
 
 def test_a_green_head_or_one_without_ci_is_reviewed(monkeypatch):
