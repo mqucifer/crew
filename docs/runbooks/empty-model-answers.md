@@ -58,7 +58,7 @@ grep '"llm.empty"' var/events/tick.jsonl | tail
 Each event carries the model, whether a structured answer was requested, and the card, role and purpose being worked on. The prompt size is on the `llm.finished` just before it.
 
 ### 2. LiteLLM's request log (every request, with usage and the response)
-The container is `litellm-temp-db`, database `litellm`, user `litellm_admin`. Never print the `.env` values.
+The container is `litellm-temp-db`, database `litellm`, user `litellm_admin`. Never print the `.env` values. Claude's guard refuses `docker exec` on this container (crew#997), so a person runs these queries, and the export under "Reproducing it", with `!`.
 
 Each call split into thinking and answer tokens:
 ```sql
