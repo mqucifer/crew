@@ -22,7 +22,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts, qa_tasks, role_tasks, story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
-from crew_org.flows.ci import return_for_ci
+from crew_org.flows.ci import return_for_ci, running_checks
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.history import latest_answer, past_reviews
@@ -72,6 +72,9 @@ class ReviewResult:
     failed: list[tuple[int, str]] = field(default_factory=list)
     # (story, epic) sent back to refinement over a conflict with its own criteria.
     returned: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR, head, the checks not finished) held while CI runs, so the tick can wait
+    # for it rather than stop while it is about to end (crew#993).
+    ci_running: list[tuple[int, int, str, list[str]]] = field(default_factory=list)
 
 
 def render_review(verdict: ReviewVerdict, deploy: ReviewVerdict | None = None) -> str:
@@ -369,8 +372,10 @@ def review_open_pulls(
                         ReviewOutcome(pr=number, approved=False, skipped="CI failed on its head")
                     )
                     continue
-                if any(r.get("status") != "completed" for r in runs):
+                running = running_checks(runs)
+                if running:
                     held(Rule.CI_BEFORE_REVIEW, repo=repo, card=story.number)
+                    result.ci_running.append((story.number or 0, number, head, running))
                     result.skipped.append(
                         ReviewOutcome(pr=number, approved=False, skipped="CI still running")
                     )

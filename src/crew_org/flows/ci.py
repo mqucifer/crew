@@ -364,6 +364,11 @@ def _stopped(
     )
 
 
+def running_checks(runs: list[dict[str, Any]]) -> list[str]:
+    """The checks on a head that haven't finished, by name."""
+    return [r.get("name") or "a check" for r in runs if r.get("status") != "completed"]
+
+
 def latest_ci_verdict(issues: IssueClient, repo: str, pull: int) -> str:
     """The last CI failure reported on a pull request, for the next delivery."""
     try:
