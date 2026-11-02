@@ -18,7 +18,8 @@ whether or not the rule is remembered:
 - reaching into a running service (crew#997): `docker exec`, `cp` or `inspect` on
   one, a Postgres client against the shared server, or reading a service's
   environment. It reads the commands in the call, and a script the call runs. A
-  script that holds the container's name in a variable gets past it.
+  script that holds the container's name in a variable gets past it. A read of
+  LiteLLM's own logs stays open, told from a write by its text alone.
 
 Exit 2 refuses the command, with the reason on stderr for Claude to read.
 Anything this script can't parse is allowed: it is a guard, not a gate.
@@ -390,7 +391,9 @@ class Shell:
                 self.i += 1
                 return
             if c == "\\":
-                text.append(self.s[self.i : self.i + 2])
+                # In double quotes the shell drops a backslash only before these.
+                pair = self.s[self.i : self.i + 2]
+                text.append(pair[1:] if close and pair[1:] in ('"', "\\", "$", "`") else pair)
                 self.i += 2
             elif c in "$`":
                 self.expansion(w, text)
@@ -457,6 +460,9 @@ class Shell:
                 break
             lines.append(line)
         doc.text = "\n".join(lines)
+        if doc.expands:
+            # What the program gets: the shell drops a backslash before these here too.
+            doc.text = re.sub(r"\\([\\$`])", r"\1", doc.text)
         if doc.expands:
             Shell("\n".join(lines)).expanding(doc.body, [], close="")
 
@@ -622,6 +628,61 @@ INSPECT_FIELD = re.compile(
     r"|NetworkSettings(?:\.\w+)*|Mounts|Source|Destination|Type)"
 )
 
+# LiteLLM's logs stay open to reads (the Sponsor, on crew#997), and only by this route.
+# It tells a read by its text. This is not a permission: litellm_admin owns the server,
+# so nothing in the database stops what this matching lets past. So anything it can't
+# read as a read is refused, and it leaves the role, the database and the SQL to check.
+LOGS_CONTAINER, LOGS_ROLE, LOGS_DATABASE = "litellm-temp-db", "litellm_admin", "litellm"
+LOGS_ROUTE = "`docker exec litellm-temp-db psql -U litellm_admin -d litellm`"
+LOGS_EXEC_OPTIONS = {"-i", "-t", "-it", "-ti", "--interactive", "--tty"}
+# How psql formats its answer changes nothing else. Not -f, -o, -L, -h, -p, -l or -v.
+PSQL_FLAGS = set("AtqXx")
+PSQL_VALUES = set("UdcFR")
+PSQL_LONG_FLAGS = {"--no-align", "--tuples-only", "--quiet", "--no-psqlrc", "--expanded", "--csv"}
+PSQL_LONG_VALUES = {
+    "--username": "U",
+    "--dbname": "d",
+    "--command": "c",
+    "--field-separator": "F",
+    "--record-separator": "R",
+}
+# Strings, quoted names and comments, in one pass from the left, as Postgres reads them:
+# stripped one kind at a time, `select '--'; drop table t; --'` loses its drop. In an E''
+# string a backslash can hide its closing quote, so it has its own rule, and one that
+# never closes is refused. U&'' is refused: it can spell a name or a keyword in escapes.
+SQL_SKIP = re.compile(
+    r"""\b[eE]'(?:[^'\\]|\\.|'')*'|(?P<escape>\b[eE]'|\b[uU]&['"])"""
+    r"""|'(?:[^']|'')*'|"(?P<name>(?:[^"]|"")*)"|--[^\r\n]*|/\*.*?\*/""",
+    re.DOTALL,
+)
+# Left over outside a string: psql's own commands, a shell value, a dollar-quoted body
+# or a string that never closed. The guard can't say what any of them does. The one psql
+# command it allows is describing a table or listing them, alone: `\d "LiteLLM_SpendLogs"`.
+SQL_UNKNOWN = re.compile(r"""['"$`\\]""")
+SQL_DESCRIBE = re.compile(r'\s*\\dt?\+?(?:\s+"?[\w.]+"?)?\s*')
+SQL_FIRST_WORD = re.compile(r"[(\s]*(\w+)")
+SQL_READS = {"select", "with", "explain", "show", "values", "table"}
+# What a statement that starts as a read can still write with: a CTE, `select into`,
+# `for update`, `explain analyze`. The rest are refused by their first word already,
+# and named here so a reader needn't work that out.
+SQL_WRITE = re.compile(
+    r"\b(?:insert|update|delete|merge|into|create|execute|declare|truncate|drop|alter|grant"
+    r"|revoke|copy|for\s+(?:key\s+)?share)\b",
+    re.IGNORECASE,
+)
+# A read past LiteLLM's logs, or one that changes state. litellm_admin can do all of these.
+# The last line takes a query as a string, which the matching above doesn't read.
+SQL_ELSEWHERE = re.compile(
+    r"\b(?:sprint_metrics|dblink\w*|lo_\w+|loread|lowrite|set_config|nextval|setval"
+    r"|(?:query|table|schema|database|cursor)_to_\w+|ts_stat|ts_rewrite|crosstab\w*)\b",
+    re.IGNORECASE,
+)
+SQL_CATALOG = re.compile(r"\bpg_\w+", re.IGNORECASE)
+SQL_CATALOG_READS = {"pg_catalog", "pg_class", "pg_namespace", "pg_attribute", "pg_tables"}
+SQL_CATALOG_READS |= {"pg_indexes", "pg_stat_user_tables", "pg_stat_user_indexes", "pg_typeof"}
+SQL_CATALOG_READS |= {"pg_size_pretty", "pg_total_relation_size", "pg_relation_size"}
+SQL_CATALOG_READS |= {"pg_table_size", "pg_indexes_size", "pg_column_size"}
+
 # A Python script's call to one of these, as a list or as a string, up to where the
 # call ends. A shell script needs none of this: the parser reads it as it is. Without
 # a way to shell out, the words are only data, as in a script that edits a test.
@@ -662,19 +723,104 @@ def narrow_format(template: str) -> bool:
     return bool(fields) and all(INSPECT_FIELD.fullmatch(f) for f in fields)
 
 
+def parse_psql(texts: list[str], call_only: bool) -> tuple[list[str], list[str], list[str]] | None:
+    """The roles, databases and -c values in these words, or None if off the logs route.
+
+    A Python script's call was split into words without its quoting, so `call_only`
+    stops at -c: what follows isn't reliable, and usually sits in a variable anyway.
+    """
+    found: dict[str, list[str]] = {"U": [], "d": [], "c": [], "F": [], "R": []}
+    i = 0
+    while i < len(texts):
+        text = texts[i]
+        i += 1
+        if text in PSQL_LONG_FLAGS:
+            continue
+        if text.startswith("--"):
+            name, equals, value = text.partition("=")
+            letter = PSQL_LONG_VALUES.get(name)
+            if not letter or (not equals and i >= len(texts)):
+                return None
+            if call_only and letter == "c":
+                break
+            if not equals:
+                value = texts[i]
+                i += 1
+            found[letter].append(value)
+        elif text.startswith("-") and len(text) > 1:
+            j = 1
+            while j < len(text):
+                letter = text[j]
+                j += 1
+                if letter in PSQL_FLAGS:
+                    continue
+                if letter not in PSQL_VALUES:
+                    return None
+                if call_only and letter == "c":
+                    return found["U"], found["d"], found["c"]
+                value = text[j:]
+                j = len(text)
+                if not value:
+                    if i >= len(texts):
+                        return None
+                    value = texts[i]
+                    i += 1
+                found[letter].append(value)
+        else:
+            return None
+    return found["U"], found["d"], found["c"]
+
+
+def sql_reads(sql: str) -> bool:
+    """True if this text, as far as text can tell, only reads LiteLLM's logs."""
+    if SQL_DESCRIBE.fullmatch(sql):
+        return not SQL_ELSEWHERE.search(sql)
+    outside, names, at = [], [], 0
+    for found in SQL_SKIP.finditer(sql):
+        if found["escape"]:
+            return False
+        outside.append(sql[at : found.start()])
+        if found["name"] is not None:
+            names.append(found["name"])
+        at = found.end()
+    outside.append(sql[at:])
+    rest = " ".join(outside)
+    statements = [s for s in rest.split(";") if s.strip()]
+    if not statements or SQL_UNKNOWN.search(rest) or SQL_WRITE.search(rest):
+        return False
+    for statement in statements:
+        first = SQL_FIRST_WORD.match(statement)
+        if not first or first.group(1).lower() not in SQL_READS:
+            return False
+    named = " ".join([rest, *names])
+    if SQL_ELSEWHERE.search(named):
+        return False
+    return all(c.lower() in SQL_CATALOG_READS for c in SQL_CATALOG.findall(named))
+
+
 class Reach:
     """Walks one Bash call, and refuses what reaches a running service."""
 
-    def __init__(self, whole: str, cwd: Path, read_files: bool = True) -> None:
+    def __init__(
+        self, whole: str, cwd: Path, read_files: bool = True, call_only: bool = False
+    ) -> None:
         self.whole = whole
         self.cwd = cwd
         self.read_files = read_files
+        self.call_only = call_only
         self.written: dict[str, str] = {}
+        self.piped: Command | None = None
 
     def run(self, text: str, inside: bool = False, around: str = "") -> None:
         with contextlib.suppress(ValueError, IndexError):
-            for cmd in Shell(text).commands():
-                self.command(cmd, inside, around)
+            self.sequence(Shell(text).commands(), inside, around)
+
+    def sequence(self, commands: list[Command], inside: bool, around: str) -> None:
+        before, self.piped = self.piped, None
+        for cmd in commands:
+            self.command(cmd, inside, around)
+            self.piped = cmd if cmd.piped else None
+        self.piped = before
 
     def names_service(self, word: Word) -> bool:
         if SERVICE.search(word.raw.lstrip("\"'/")):
@@ -692,8 +838,7 @@ class Reach:
             if PROC_ENVIRON.fullmatch(word.text):
                 refuse_reach(f"`{word.text}` holds a running process's environment")
             for sub in word.subs:
-                for inner in sub:
-                    self.command(inner, inside, around)
+                self.sequence(sub, inside, around)
         for op, target in cmd.redirects:
             if op in (">", ">>") and cmd.heredocs:
                 self.written[target.text] = cmd.heredocs[0].text
@@ -722,7 +867,7 @@ class Reach:
         elif name in WRAPPERS:
             self.wrapped(name, cmd, args, inside, around)
         elif name in DOCKERS:
-            self.docker(name, args, inside, around)
+            self.docker(name, cmd, args, inside, around)
         elif name in CLIENTS:
             self.client(name, args, around)
         elif name in SHELLS or name == "eval":
@@ -746,7 +891,7 @@ class Reach:
         if name == "ssh" and args and " " in args[-1].text:
             self.run(args[-1].text, inside, around)
 
-    def docker(self, name: str, args: list[Word], inside: bool, around: str) -> None:
+    def docker(self, name: str, cmd: Command, args: list[Word], inside: bool, around: str) -> None:
         rest = args
         if name == "docker":
             rest = args[after_options(args, DOCKER_OPTIONS) :]
@@ -765,6 +910,14 @@ class Reach:
             at = after_options(rest, EXEC_OPTIONS)
             target = rest[at] if at < len(rest) else None
             if target and self.names_service(target):
+                if self.reads_logs(cmd, rest[:at], target, rest[at + 1 :]):
+                    return
+                if LOGS_CONTAINER in target.raw:
+                    refuse_reach(
+                        f"Only a read of LiteLLM's own database passes on {LOGS_CONTAINER}: "
+                        f"{LOGS_ROUTE}, with SQL in -c or on stdin that the guard can read as a "
+                        "SELECT. Nothing else on that server, and no write"
+                    )
                 refuse_reach(f"`docker exec {target.text}` reaches into a running service")
             self.inner(rest[at + 1 :], True, around)
         elif sub == "cp":
@@ -776,6 +929,42 @@ class Reach:
                 if Path(word.text).name in CLIENTS | SHELLS:
                     self.inner(rest[i:], False, around)
                     return
+
+    def reads_logs(
+        self, cmd: Command, options: list[Word], target: Word, words: list[Word]
+    ) -> bool:
+        """True for the one route into a service that stays open: see LOGS_CONTAINER."""
+        if target.text != LOGS_CONTAINER or self.unresolved(target):
+            return False
+        if {w.text for w in options} - LOGS_EXEC_OPTIONS or not words or words[0].text != "psql":
+            return False
+        texts = [w.text for w in words[1:]]
+        parsed = parse_psql(texts, self.call_only)
+        if not parsed or parsed[0] != [LOGS_ROLE] or parsed[1] != [LOGS_DATABASE]:
+            return False
+        if self.call_only:
+            return not SQL_WRITE.search(" ".join(texts))
+        return all(sql_reads(sql) for sql in parsed[2] or [self.stdin_sql(cmd)])
+
+    def stdin_sql(self, cmd: Command) -> str:
+        """The SQL this command gets on stdin, if the guard can see it. "" if not."""
+        if cmd.heredocs:
+            return cmd.heredocs[-1].text
+        for op, target in cmd.redirects:
+            if op == "<":
+                return self.script_text(target.text)
+        if not self.piped or not self.piped.words:
+            return ""
+        name = Path(self.piped.words[0].text).name
+        args = [w.text for w in self.piped.words[1:] if not w.text.startswith("-")]
+        if name == "cat" and self.piped.heredocs and not args:
+            return self.piped.heredocs[-1].text
+        if name in ("echo", "printf"):
+            # All of it, format included: only a bare %s is known to add nothing. echo and
+            # printf may turn a backslash into something else, so that can't be read.
+            text = " ".join(args[1:] if name == "printf" and args[:1] == ["%s"] else args)
+            return "" if "\\" in text else text
+        return self.script_text(args[0]) if name == "cat" and len(args) == 1 else ""
 
     def inner(self, words: list[Word], inside: bool, around: str) -> None:
         if words:
@@ -892,7 +1081,7 @@ class Reach:
             return
         for call in SCRIPT_CALL.finditer(text):
             words = " ".join(SCRIPT_TOKEN.split(call.group()))
-            Reach(text, self.cwd, read_files=False).run(words)
+            Reach(text, self.cwd, read_files=False, call_only=True).run(words)
 
 
 def check_reach(command: str, cwd: Path) -> None:
