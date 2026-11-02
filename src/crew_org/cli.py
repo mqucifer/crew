@@ -2784,7 +2784,7 @@ def package_push(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Say what would go; send nothing."),
 ) -> None:
-    """Push the crew's history to sprint-metrics: its sprints, then its stories' events (#280).
+    """Push the crew's history to sprint-metrics: its sprints, then its events (#280, #985).
 
     Built from delivery-history, so only what may leave the crew goes. Safe to run
     again: the service stores each event once.

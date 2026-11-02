@@ -121,6 +121,8 @@ class Rule(StrEnum):
     """Its Developer session ended blocked on a missing file or fact, or was stopped."""
     RETURN_CONTRACT_RULING = "story.contract_ruling"
     """At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed."""
+    RETURN_HELD = "story.return_held"
+    """Its re-split would replace started work, or a story a person has touched: for a person."""
 
     # --- a Developer session's ending (session_end.py) ---
     SESSION_CHOICE = "session.choice"

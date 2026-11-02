@@ -550,6 +550,7 @@ skip.waits_for_the_sponsors_answer:
   - skip.goal_look.waits_for_the_sponsors_answer_on
   description: An epic waits for the Sponsor's answer before it's refined further.
 story.contract_ruling:
+story.return_held:
 story.return_to_refinement:
   cases:
   - story.pinned_tests

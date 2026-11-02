@@ -11,8 +11,8 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 
 | Kind | Rules |
 |---|---|
-| The crew's own decisions (`rules.Rule`) | 35 |
-| An answer's form refuses it | 38 |
+| The crew's own decisions (`rules.Rule`) | 36 |
+| An answer's form refuses it | 39 |
 | The call layer refuses any answer | 4 |
 | A flow's own check sends the answer back | 29 |
 | A guard on a change sends it back | 0 |
@@ -33,12 +33,12 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 73 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 70 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 159 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 160 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 112 |
@@ -80,6 +80,7 @@ section; one no line holds for is unplaced, never guessed.
 | `session.choice`<br>Its session ended blocked on a choice no one has made: for the Sponsor. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_end.py:_blocked | — |
 | `session.no_epic`<br>Its session ended blocked, and it has no epic to be split again: for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_end.py:_return | — |
 | `story.contract_ruling`<br>At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_end.py:_ruled<br>src/crew_org/rules.py:<module><br>src/crew_org/sendbacks.py:<module> | — |
+| `story.return_held`<br>Its re-split would replace started work, or a story a person has touched: for a person. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/delivery.py:_gates_disagree<br>src/crew_org/flows/review.py:_to_product_owner<br>src/crew_org/flows/session_end.py:_return<br>src/crew_org/flows/story_problem.py:_held | — |
 | `story.return_to_refinement`<br>A story goes back to refinement when its problem is the story's, not the code's.<br>Cases: `decision.story_problem.return_to_refinement` (src/crew_org/flows/story_problem.py:return_to_refinement), `story.gate_round_trips` (src/crew_org/rules.py:Rule), `story.pinned_tests` (src/crew_org/rules.py:Rule), `story.review_conflicts_with_criterion` (src/crew_org/rules.py:Rule) | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/story_problem.py:return_to_refinement<br>src/crew_org/rules.py:<module><br>src/crew_org/sendbacks.py:<module> | crew#189<br>crew#242<br>crew#778<br>crew#859 |
 | `story.session_blocked`<br>Its Developer session ended blocked on a missing file or fact, or was stopped. | flow | `src/crew_org/rules.py:Rule` | — | — | src/crew_org/flows/session_end.py:_blocked<br>src/crew_org/rules.py:<module><br>src/crew_org/sendbacks.py:<module> | — |
 
@@ -101,6 +102,7 @@ section; one no line holds for is unplaced, never guessed.
 | `form.EpicProposal.at_the_level_of_intent`<br>…. | scope | `src/crew_org/crews/refinement_crew.py:EpicProposal._at_the_level_of_intent` | Product Owner | — | src/crew_org/crews/refinement_crew.py:EpicProposal._at_the_level_of_intent | crew#815<br>crew#846 |
 | `form.EpicProposal.decomposed`<br>two epics share a title; each must be a distinct slice | scope | `src/crew_org/crews/refinement_crew.py:EpicProposal._decomposed` | Product Owner | — | src/crew_org/crews/refinement_crew.py:EpicProposal._decomposed | — |
 | `form.Finding.is_actionable`<br>say specifically what to change. | answer_shape | `src/crew_org/crews/review_crew.py:Finding._is_actionable` | Code Reviewer<br>DevOps Engineer | — | src/crew_org/crews/review_crew.py:Finding._is_actionable | — |
+| `form.Finding.says_what_it_does_to_the_criterion`<br>quote the criterion and say what doing it does to it, `keeps_it` or `breaks_it`, or give neither | answer_shape | `src/crew_org/crews/review_crew.py:Finding._says_what_it_does_to_the_criterion` | Code Reviewer<br>DevOps Engineer | `Finding.doing_it`'s description | src/crew_org/crews/review_crew.py:Finding._says_what_it_does_to_the_criterion | crew#989 |
 | `form.GoalSettlement.one_or_the_other`<br>give the Goal's record, or one question for the Sponsor, not both and not neither | answer_shape | `src/crew_org/crews/settle_crew.py:GoalSettlement._one_or_the_other` | Product Owner | — | src/crew_org/crews/settle_crew.py:GoalSettlement._one_or_the_other | crew#858 |
 | `form.GoalSettlement.stripped`<br>stripped (repairs the answer, never refuses it) | answer_shape | `src/crew_org/crews/settle_crew.py:GoalSettlement._stripped` | Product Owner | — | src/crew_org/crews/settle_crew.py:GoalSettlement._stripped | — |
 | `form.MissingEpics.decomposed`<br>name the epic the goal still lacks: at least one | scope | `src/crew_org/crews/refinement_crew.py:MissingEpics._decomposed` | Product Owner | — | src/crew_org/crews/refinement_crew.py:MissingEpics._decomposed | — |

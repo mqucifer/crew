@@ -101,9 +101,15 @@ class Board:
 class Issues:
     def __init__(self):
         self.labels, self.added, self.posted = set(), [], []
+        self.edited_by = {}
+
+    owner = "mqucifer"
+
+    def people_who_edited(self, repo, number):
+        return self.edited_by.get(number, set())
 
     def sub_issues(self, repo, number):
-        return [{"number": 124}]
+        return [{"number": n} for n in (124, 125)]
 
     def branches(self, repo):
         return []
@@ -384,6 +390,21 @@ def test_a_story_with_no_epic_is_blocked_for_a_person_with_the_same_evidence():
     routed, board, issues, _ = route(ending, card=story(parent=None))
     assert routed.rule == Rule.SESSION_NO_EPIC and board.status == {"S124": "Blocked"}
     assert STORY_PROBLEM_MARKER not in issues.posted[0][1]
+
+
+def test_a_session_blocked_with_a_persons_edit_on_a_later_story_is_held_for_a_person():
+    later = story(125)
+    later.status = "Ready"
+    issues = Issues()
+    issues.edited_by = {125: {"quarters-claude"}}
+    ending = Ending("blocked", {"missing": "a file", "kind": "file"}, evidence=EVIDENCE)
+    routed, board, issues, seen = route(ending, board=Board([story(), later]), issues=issues)
+    assert routed.rule == Rule.RETURN_HELD and routed.to == session_end.BLOCKED_FOR_A_PERSON
+    assert board.status == {"S124": "Blocked"} and not issues.labels
+    (posted,) = issues.posted
+    assert posted[0] == 124 and "#125" in posted[1]
+    assert STORY_PROBLEM_MARKER not in posted[1]
+    assert not [e for e in seen if e.kind is EventKind.STORY_RETURNED]
 
 
 def test_an_interrupted_session_isnt_routed():

@@ -164,6 +164,15 @@ form.Finding.is_actionable:
   messages:
     default: say specifically what to change. A finding an author cannot act on is not a finding.
   told_in: Finding.action
+form.Finding.says_what_it_does_to_the_criterion:
+  description: Refused if it quotes a criterion without saying what doing it does to it, or says so of
+    none.
+  messages:
+    default: quote the criterion and say what doing it does to it, `keeps_it` or `breaks_it`, or give
+      neither
+  origin:
+  - crew#989
+  told_in: Finding.doing_it
 form.GoalSettlement.one_or_the_other:
   description: Refused unless it gives a record or one question for the Sponsor, not both.
   messages:

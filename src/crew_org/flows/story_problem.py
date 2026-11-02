@@ -11,21 +11,95 @@ A story goes back to be split again, with the evidence on its epic, when the
 gates keep returning it, when its review asks for what a criterion forbids, when
 the Business Analyst rules against the merged tests it changed, or when its
 Developer session ends blocked on what the story doesn't give (crew#778).
+
+Unless its re-split would replace work a person should see first: then nothing is
+closed or moved but the story, which waits for them (crew#989, ADR 0037).
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from crew_org import sendbacks
 from crew_org.columns import READY
-from crew_org.events import CrewEvent, EventKind, EventSink
-from crew_org.flows import artifacts
-from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, started
+from crew_org.events import CrewEvent, EventKind, EventSink, held
+from crew_org.flows import artifacts, resplit
+from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER, sponsor_notes, started
 from crew_org.flows.moves import move_card
+from crew_org.rules import Rule
 from crew_org.tools.github_project import Card
 from crew_org.work_types import TASK
+
+# On the story a return was held on: moved out of Blocked after this, a person has spoken.
+RETURN_HELD_MARKER = "<!-- crew:return-held -->"
+
+
+@dataclass(frozen=True)
+class Returned:
+    """What became of a return: true when the story went back."""
+
+    back: bool
+    # Why it waits for a person instead, and nothing was closed or moved.
+    held: str = ""
+
+    def __bool__(self) -> bool:
+        return self.back
+
+    @property
+    def settled(self) -> bool:
+        """Back, or with a person: either way, not its author's to repair."""
+        return self.back or bool(self.held)
+
+
+def _at_risk(
+    issues: Any, repo: str, card: Card, siblings: list[Card], busy: set[int], comment: str
+) -> tuple[str, list[int]]:
+    """What the re-split this return leads to would replace that a person should see first.
+
+    By the rule the re-split itself goes by (ADR 0037). Started work, which it would refuse
+    anyway, and any story a person has touched. Nothing records a person's approval of a
+    story: mqucifer/crew-presentation#271's was only an edit to its criteria, in Ready with
+    nothing started. A story nobody has touched is the crew's to replace, as before.
+    """
+    numbers = [card.number or 0, *(c.number or 0 for c in siblings)]
+    named = resplit.named_in(comment, owner=issues.owner, repo=repo, among=numbers)
+    plan = resplit.affected(numbers, named=named, started=busy)
+    touched, unread = [], []
+    for number in plan.replaced:
+        try:
+            if issues.people_who_edited(repo, number) or sponsor_notes(issues, repo, number):
+                touched.append(number)
+        except Exception:  # noqa: BLE001 - not knowing isn't leave to replace it
+            unread.append(number)
+
+    def refs(numbers: list[int]) -> str:
+        return ", ".join(f"#{n}" for n in numbers)
+
+    why = [
+        *([f"work has started on {refs(list(plan.started))}"] if plan.started else []),
+        *([f"a person has edited or spoken on {refs(touched)}"] if touched else []),
+        *([f"the crew couldn't read who has touched {refs(unread)}"] if unread else []),
+    ]
+    return "; ".join(why), sorted({*plan.started, *touched, *unread})
+
+
+def held_comment(card: Card, comment: str, why: str, *, pull: int | None = None) -> str:
+    """What the story says while it waits: what's at risk, the evidence, and the way out."""
+    evidence = comment.replace(f"{STORY_PROBLEM_MARKER}\n", "").replace(
+        " went back to refinement:", " would go back to refinement:", 1
+    )
+    close = f"close PR #{pull}, " if pull is not None else ""
+    return (
+        f"**Held for a person: a re-split of epic #{card.parent} would replace work you should "
+        f"see first.** {why[0].upper()}{why[1:]}. Nothing was closed, and no other card moved."
+        f"\n\n{evidence}\n\n"
+        "**To decide:** for its author to carry on, remove `blocked` and move it to "
+        f"`In Progress`. To split the epic again, {close}remove `blocked`, move it to `Ready`, "
+        f"and put `needs:rework` on #{card.parent}, saying what to settle.\n\n"
+        f"{RETURN_HELD_MARKER}"
+    )
 
 
 def return_to_refinement(
@@ -40,8 +114,10 @@ def return_to_refinement(
     reason: str,
     round_: int | None = None,
     **detail: Any,
-) -> bool:
-    """Send the story's epic back to be split again. False if it has no epic.
+) -> Returned:
+    """Send the story's epic back to be split again. Not if it has no epic, or if its
+    re-split would replace work a person should see first: `held` says what, and the
+    caller blocks the story for them, with `held_comment`.
 
     `reason` is why, for the event, from `rules.RETURN_RULES`: "gate round trips"
     (the gates kept returning it, #242), "review conflicts with a criterion",
@@ -58,11 +134,11 @@ def return_to_refinement(
     # A role's Task isn't split from its epic, so splitting the epic again can't
     # mend it: it goes to a person, as a story with no epic does (crew#839).
     if epic is None or card.work_type == TASK:
-        return False
+        return Returned(False)
     try:
         children = {c["number"] for c in issues.sub_issues(repo, epic)}
-    except Exception:  # noqa: BLE001
-        children = set()
+    except Exception:  # noqa: BLE001 - not knowing isn't leave to replace them
+        return _held(sink, card, repo, f"the crew couldn't read epic #{epic}'s stories", [])
     siblings = [
         c
         for c in cards
@@ -73,6 +149,9 @@ def return_to_refinement(
         and c.work_type != TASK
     ]
     busy = started(issues, repo, siblings)
+    why, at_risk = _at_risk(issues, repo, card, siblings, busy, comment)
+    if why:
+        return _held(sink, card, repo, why, at_risk)
     back = [card] + [
         c
         for c in siblings
@@ -130,7 +209,20 @@ def return_to_refinement(
             round_=round_,
             stories=len(back),
         )
-    return True
+    return Returned(True)
+
+
+def _held(sink: EventSink, card: Card, repo: str, why: str, at_risk: list[int]) -> Returned:
+    held(Rule.RETURN_HELD, repo=repo, card=card.number)
+    sink.note(
+        EventKind.NOTE,
+        f"#{card.number} held for a person, not returned: {why}"[:160],
+        card=card.number,
+        repo=repo,
+        at_risk=at_risk,
+        rule=Rule.RETURN_HELD,
+    )
+    return Returned(False, held=why)
 
 
 # One pinned test as `evidence` lists it.
@@ -194,6 +286,22 @@ def round_trips(issues: Any, repo: str, number: int) -> int:
     except Exception:  # noqa: BLE001
         return 0
     return sum(1 for c in comments if (c.get("body") or "").startswith(DELIVERED))
+
+
+def a_person_kept_it(issues: Any, repo: str, number: int) -> bool:
+    """Was this story moved out of a held return, with no delivery since? Its author carries
+    on at a person's word, so its round trips don't send it to them again until then."""
+    try:
+        bodies = [c.get("body") or "" for c in issues.comments(repo, number)]
+    except Exception:  # noqa: BLE001
+        return False
+    last = None
+    for body in bodies:
+        if RETURN_HELD_MARKER in body:
+            last = True
+        elif body.startswith(DELIVERED):
+            last = False
+    return bool(last)
 
 
 def round_trip_evidence(issues: Any, repo: str, card: Card, pull: int | None, rounds: int) -> str:
