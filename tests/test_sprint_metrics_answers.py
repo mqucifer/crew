@@ -52,8 +52,8 @@ def test_the_mock_s_failure_causes_are_4_x_s_list_of_class_role_and_count():
     """1.x answered `{"VERIFY": 2}`; 4.x answers a list, as its failure breakdown is."""
     six = mock.range_body()["sprints"][SIX]
     assert six["top_failure_causes"] == [
-        {"class": "VERIFY", "role": "Developer", "count": 2},
-        {"class": "EDIT", "role": "Developer", "count": 1},
+        {"class": "EDIT", "role": "Developer", "count": 3},
+        {"class": "VERIFY", "role": "Developer", "count": 3},
     ]
     assert (
         sma.checked(mock.range_body(), [FIVE, SIX])[SIX]["top_failure_causes"]
@@ -79,7 +79,7 @@ def test_an_answer_is_carried_with_only_what_the_schema_names():
     answers = sma.checked(found, [FIVE, SIX])
     six = answers[SIX]
     assert "new_measure" not in six
-    assert six["failure_breakdown"][0] == {"class": "VERIFY", "role": "Developer", "count": 2}
+    assert six["failure_breakdown"][0] == {"class": "VERIFY", "role": "Developer", "count": 3}
     assert "a sentence as a key" not in six["flags"]
     assert six["prior"]["throughput"] == 3 and answers[FIVE]["prior"] is None
 

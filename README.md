@@ -72,19 +72,16 @@ substitute for using that gate.
 The crew publishes data about how it works as **packages**, like reports
 (ADR 0021). `delivery-history` is the first: the board's sprints that have started, its cards, and
 every move, attempt, model call and merge, up to its date, sprint-metrics'
-answers for each sprint, as it computed them, and the crew's own analysis of
-them: what changed each sprint, what needed attention at its end, and each
-story's pattern. Since 1.6.0 it carries the Developer's sessions (crew#778) by
-their names and counts, never their paths, commands or words, and each story's
-deliveries in them: its sessions, the times it reached review, the gate's rounds
-before that, what it cost and how it ended. Since 1.10.0 it carries every send-back
+answers for each sprint, as it computed them. It carries what happened, and works
+nothing out: a count, a sum, a verdict or a sentence is sprint-metrics' to calculate, by a
+Goal there (ADR 0022). Since 1.6.0 it carries the Developer's sessions (crew#778) by
+their names and counts, never their paths, commands or words. Since 1.10.0 it carries every send-back
 (crew#862): finished work sent back to its own step or an earlier one, by the step that
 sent it, the step it went back to, the rule that decided, and its round. What counts as
 one is in [`docs/reference/records.md`](docs/reference/records.md). Since 1.11.0 a session's tools include `delete_file`
 (crew#839). The steps are a closed
 list today, and a later MINOR version may add to it, so read a step you don't know as
-another step rather than refusing the package. The crew's code writes
-that analysis from fixed sentences, never a model. What it may carry is ADR 0020; who does what with it
+another step rather than refusing the package. What it may carry is ADR 0020; who does what with it
 is ADR 0022.
 
 **2.0.0 replaced 1.x** (crew#905), as announced a week before: it carries sprint-metrics
@@ -92,7 +89,7 @@ is ADR 0022.
 - **What leaves:** `escalation_count` and `escalation_rate_percent`, from each answer and its
   `prior`, `delta` and `flags`, which sprint-metrics took out in its 4.0.0; and
   `escalation_count` as a measure in what changed. The crew's own record of escalations stays:
-  the `escalated` events and pattern, and each story's `escalations`.
+  the `escalated` events.
 - **What changes shape:** the failure causes, `top_failure_causes`, become a list of class,
   role and count, as `failure_breakdown` already is, in place of a map of class to count.
 - **What's added:** 4.x's costs, rework, roster, working and idle time, and DORA measures,
@@ -112,7 +109,17 @@ a 2.0.0 reader reads on.
   `repo` is `qa-suite`.
 It says what the crew wrote and adds no counts: what it means is the reader's.
 
-**3.0.0 is announced** and replaces 2.x on 2026-11-07: what changes is under ["Announced: delivery-history 3.0.0"](#announced-delivery-history-300) below.
+**3.0.0 replaced 2.x** (crew#963), as announced a week before. The package carries what
+happened and sprint-metrics' answers: a count, a sum, a verdict or a sentence worked out from
+those isn't the crew's to send (the Sponsor, 2026-10-31; ADR 0022).
+- **What left:** `analysis`, whole: `stories`, `deliveries` and `sprints`, with each sprint's
+  `changed`, `attention` and `decided`. And the manifest's `gaps`, counted from `deliveries`.
+- **What a reader does now:** it can show an event or a card's field. A count, a sum, a verdict
+  or a sentence comes from sprint-metrics, by a Goal there. `sprint_metrics.answers`, with
+  `prior`, already holds the sprint measures `changed` worded. `crew_fixes_merged` has no
+  sprint-metrics source.
+- **What stayed:** every event, each card with its `filed`, `sprints`, `periods`,
+  sprint-metrics' answers, and the manifest's `left_out`.
 
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
@@ -145,8 +152,9 @@ It says what the crew wrote and adds no counts: what it means is the reader's.
 - **A mock** is in [`contracts/delivery-history/mock/`](contracts/delivery-history/mock/):
   a whole package, laid out as a release's archive is, built by the same code
   from illustrative inputs, so a project can build against it before the first
-  release. It's regenerated with the schema and shows every kind of event,
-  pattern and finding the schema allows. Its numbers and titles are made up.
+  release. It's regenerated with the schema and shows every kind of event the
+  schema allows. Its events and titles are made up, and its sprint-metrics
+  answers are computed from those events, so each sprint's totals agree with its stories.
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`
   (`-2` for a second on one day), with the archive as its asset. It reaches a
   project as a pull request that changes one line: `delivery-history.tag` at the
@@ -154,7 +162,7 @@ It says what the crew wrote and adds no counts: what it means is the reader's.
   tags, but only the latest seven and each month's first keep their archives.
   The archive holds one directory, named for the tag
   (`delivery-history-<date>/`), and in it `manifest.json`, the index
-  `delivery-history.json` (sprints, cards, periods and the analysis), one events
+  `delivery-history.json` (sprints, cards, periods and sprint-metrics' answers), one events
   file per sprint under `events/` (days between sprints get their own), and the
   schemas it follows: `schema.json`, `manifest.schema.json` and
   `events.schema.json`. It carries everything up to its date, so a consumer needs only
@@ -171,75 +179,6 @@ It says what the crew wrote and adds no counts: what it means is the reader's.
   `crew sprint close` does, and its retro says which, or why not. A sprint left
   without one gets it at the next tick. A package carries the sprints up to the
   one that ended last, never one under way (crew#738).
-
-### Announced: delivery-history 3.0.0
-
-**3.0.0 replaces 2.x on 2026-11-07** (crew#963), a week after the announcement merged; if that
-merge slips, the date moves with it. Its schemas and mock are in
-[`contracts/delivery-history/3.0.0/`](contracts/delivery-history/3.0.0/), and until then the
-package follows 2.x. The package carries what happened and sprint-metrics' answers. A count, a
-sum, a verdict or a sentence worked out from those isn't the crew's to send (the Sponsor,
-2026-10-31; ADR 0022), so the crew's analysis leaves:
-- **What leaves:** `analysis`, whole, and the manifest's `gaps`:
-  - `analysis.stories`, with every field of each entry: `card`, `pattern` (`first_try`,
-    `crew_fix`, `escalated`, `retried`, `superseded`, `blocked`, `open`), `misses`, `blocks`,
-    `escalations`, `crew_fixes`, `repeated`, `delivered`, `wall_clock_seconds`, `cost` and `text`.
-  - `analysis.sprints`, with each sprint's `as_of`, `changed`, `attention` and `decided`.
-  - `analysis.deliveries`, what a story's Developer sessions did.
-  - `manifest.gaps`, counted from `deliveries`.
-- **What crew-presentation reads today that leaves,** at its `build.py` and templates:
-  - **The sprint overview's story list** comes only from `analysis.stories`: an entry shows when
-    its `delivered` falls in the sprint, by its `card`, with its `blocks` as the attempt blocks
-    and its `pattern` as the status word and badge. `crew_fixes` is carried to the template,
-    which doesn't show it.
-  - **The sprint overview's "What changed"** comes only from `analysis.sprints[].changed`: its
-    `text`, `measure`, `previous` and `now`.
-  - **The sprint overview's "Decided by the crew"** comes only from `analysis.sprints[].decided`:
-    its `at`, `text`, `kind` and `number`.
-  - **A story's journey** takes its sentence from `text`, its path's delivered state from
-    `delivered`, and its "What it cost" from `wall_clock_seconds` and `cost.model_calls`.
-  - **Not read today:** `attention`, `deliveries`, `manifest.gaps`, and each story's `misses`,
-    `escalations`, `repeated` and the rest of `cost`.
-- **Its tests:** its own tests' fixtures build `analysis`, and three files in mqucifer/qa-suite
-  read it, which act differently on 3.0.0:
-  - `crew-presentation/test_sprint_overview.py` reads `analysis.stories` and `pattern`. All three
-    of its tests fail, at `assert sprints`: with no stories, no sprint qualifies. `qa-suite / qa`
-    is a required check, so the pin's pull request can't merge without an admin's override, which
-    is how mqucifer/crew-presentation#250 merged past other tests' failures.
-  - `crew-presentation/test_story_journey_details.py` reads `analysis.stories` in
-    `test_journey_page_shows_cost_section` and `test_journey_page_omits_cost_when_no_wall_clock`.
-    Both loop over an empty list and pass having checked nothing, so nothing says "What it cost"
-    has lost its check. `test_journey_page_shows_event_timeline` reads events and `cards`, and
-    still checks.
-  - `crew-presentation/test_escalation_removed.py` reads `analysis.sprints[].changed` in
-    `test_changed_trend_shows_no_escalation_entry`, which compares the "What changed" entries on
-    the page with the package's. With none in the package it passes only while the page shows
-    none, so a "What changed" built from sprint-metrics' answers would fail it. Its other two
-    tests read sprint-metrics' answers and events, and still check.
-  - QA's per-story test Tasks are paused (mqucifer/crew#981), so no such Task updates these tests.
-    A Developer's dispute of a failing test still opens one.
-- **What the site can show now:** an event or a card's field. A count, a sum, a verdict or a
-  sentence comes from sprint-metrics, by a Goal there. So:
-  - **The sprint measures `changed` worded** are already in `sprint_metrics.answers`, each with
-    its `prior`: `first_attempt_rate_percent`, `throughput`, `points_delivered`,
-    `blocked_aging_days`, `wip_violations`, `cycle_time_minutes`, `lead_time_minutes` and
-    `superseded_count`. Its sentence and `better` have no source.
-  - **`crew_fixes_merged`** has no sprint-metrics source. Each merge it counted is a `pull_merged`
-    event with `crews_own`.
-  - **What `decided` listed** is an event or a card's field, without its sentence: a `pull_merged`
-    event with `design_revision`, and an epic's card with `technical` and `created`.
-  - **A story's first-try badge, its sentence, and any per-story count or sum,** such as "What it
-    cost", have no source until sprint-metrics answers them. A sprint's first-try figures are
-    sprint-metrics': `first_attempt_numerator`, `first_attempt_denominator` and
-    `first_attempt_rate_percent`.
-  - **What happened to a story** is its events: `card_moved` to Done or into Blocked, a card's
-    `closed_as`, and its `attempt`, `returned`, `sent_back`, `escalated` and `model_call` events.
-- **What stays:** every event; each card, with the `filed` 2.1.0 added; `sprints`; `periods`;
-  sprint-metrics' answers; and the manifest's `left_out`.
-- **What changes shape:** nothing else in the package. **What's added:** nothing.
-- **The mock's numbers change:** its sprint-metrics answers are now computed from its own
-  events, so each sprint's totals agree with its stories. Its Sprint 6 was 6 delivered and 3
-  first attempts by hand; it's now 5 and 2, and its other measures moved with them.
 
 ## The two gates
 

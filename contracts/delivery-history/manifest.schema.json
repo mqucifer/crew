@@ -11,14 +11,6 @@
       "title": "Events",
       "type": "integer"
     },
-    "gaps": {
-      "additionalProperties": {
-        "type": "integer"
-      },
-      "description": "What the crew's records lacked and the build went around, by what: a session with no end, or an end with no start (`Delivery.gaps`).",
-      "title": "Gaps",
-      "type": "object"
-    },
     "generated": {
       "format": "date-time",
       "title": "Generated",
@@ -49,8 +41,7 @@
     "schema_version",
     "generated",
     "events",
-    "left_out",
-    "gaps"
+    "left_out"
   ],
   "title": "Manifest",
   "type": "object"

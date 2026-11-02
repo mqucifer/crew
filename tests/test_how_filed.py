@@ -424,20 +424,20 @@ CARD_AT_2_0_0 = {
 }
 
 
-def test_a_reader_of_2_0_0_still_finds_everything_it_read():
+def test_a_reader_of_2_0_0_still_finds_everything_it_read_on_a_card():
+    # 3.0.0 takes the crew's per-story results (crew#963), and nothing from a card.
     schema = json.loads((contract.CONTRACTS / "schema.json").read_text())
     defined = schema["$defs"]["Card"]
     assert set(defined["properties"]) >= CARD_AT_2_0_0
     assert set(defined["required"]) >= CARD_AT_2_0_0
     index = json.loads(mock.files()["delivery-history.json"])
-    assert index["schema_version"].split(".")[0] == "2"
+    assert index["schema_version"] == dh.SCHEMA_VERSION
     for found in index["cards"]:
         assert set(found) >= CARD_AT_2_0_0
 
 
-def test_the_version_is_a_minor_after_2_0_0():
-    assert dh.SCHEMA_VERSION == "2.1.0"
-    assert "2.0.0" in contract.read_versions()
+def test_the_field_came_as_a_minor_after_2_0_0():
+    assert {"2.0.0", "2.1.0"} <= set(contract.read_versions())
 
 
 def test_the_mock_shows_every_way_a_consumer_meets_a_card_filed():

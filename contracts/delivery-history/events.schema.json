@@ -2,7 +2,7 @@
   "$defs": {
     "Attempt": {
       "additionalProperties": false,
-      "description": "An attempt that didn't land, and what the crew decided to do about it.\n\n`reason` is present only when one of the crew's own checks wrote it with\nnothing but names filled in (ADR 0020); otherwise the failure class stands\nalone.\n\nEscalation's policy decides these, so they end with escalation (ADR 0032, Stage\nE): earlier sprints keep theirs, and later ones have none. A story delivered in\nDeveloper sessions misses on review's and QA's returns instead (`verdict` on\n`work_finished`), and its deliveries are in the analysis.",
+      "description": "An attempt that didn't land, and what the crew decided to do about it.\n\n`reason` is present only when one of the crew's own checks wrote it with\nnothing but names filled in (ADR 0020); otherwise the failure class stands\nalone.\n\nEscalation's policy decides these, so they end with escalation (ADR 0032, Stage\nE): earlier sprints keep theirs, and later ones have none. A story delivered in\nDeveloper sessions misses on review's and QA's returns instead (`verdict` on\n`work_finished`).",
       "properties": {
         "at": {
           "format": "date-time",

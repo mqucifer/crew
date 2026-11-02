@@ -31,42 +31,40 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_2_0_0_shipped_exactly_as_announced_and_2_1_0_only_adds_to_it():
-    """Its announcement recorded the fingerprint; the switch removed the announced copy.
+def test_delivery_history_3_0_0_shipped_exactly_as_announced():
+    """Its announcement recorded the fingerprint; the switch removed the announced copy."""
+    assert ANNOUNCED == []
+    assert dh.SCHEMA_VERSION == "3.0.0"
+    assert contract.read_versions()["3.0.0"] == contract.fingerprint(contract.schemas())
 
-    2.1.0 is that, plus how each card was filed (crew#974): take `filed` out and the
-    schemas are exactly 2.0.0's, so a reader of 2.0.0 loses nothing.
-    """
-    assert dh.SCHEMA_VERSION == "2.1.0"
+
+def test_delivery_history_3_0_0_carries_what_happened_and_sprint_metrics_answers():
+    # The Sponsor, on crew#963: what's worked out from those isn't the crew's to send.
     schemas = contract.schemas()
-    defs = schemas["schema.json"]["$defs"]
-    del defs["Filed"]
-    del defs["Card"]["properties"]["filed"]
-    defs["Card"]["required"].remove("filed")
-    assert contract.read_versions()["2.0.0"] == contract.fingerprint(schemas)
+    index = schemas["schema.json"]
+    assert sorted(index["properties"]) == [
+        "cards",
+        "crew_repository",
+        "date",
+        "package",
+        "periods",
+        "repositories",
+        "schema_version",
+        "sprint_metrics",
+        "sprints",
+        "timezone",
+    ]
+    assert not {"Analysis", "SprintAnalysis", "Change", "Attention", "Decided", "Delivery"} & set(
+        index["$defs"]
+    )
+    assert "gaps" not in schemas["manifest.schema.json"]["properties"]
 
 
-def test_delivery_history_3_0_0_is_announced_while_the_package_stays_on_2_x():
-    assert [p.name for p in ANNOUNCED] == ["3.0.0"]
-    announced = _schemas(contract.CONTRACTS / "3.0.0")
-    schema = announced["schema.json"]
-    # What leaves: what the crew worked out from its events (the Sponsor, crew#963).
-    assert "analysis" not in schema["properties"]
-    assert "gaps" not in announced["manifest.schema.json"]["properties"]
-    assert not {
-        "Analysis",
-        "SprintAnalysis",
-        "Delivery",
-        "StoryPattern",
-        "Repeated",
-        "StoryCost",
-    } & set(schema["$defs"])
-    # What stays: what happened, and sprint-metrics' answers.
-    assert {"sprints", "cards", "periods", "sprint_metrics"} <= set(schema["properties"])
-    # What stays: how each card was filed (crew#974). 3.0.0 is built on 2.1.0.
-    current = contract.schemas()["schema.json"]["$defs"]
-    assert schema["$defs"]["Filed"] == current["Filed"]
-    assert schema["$defs"]["Card"] == current["Card"]
+def test_delivery_history_3_0_0_keeps_how_each_card_was_filed():
+    # 2.1.0's field (crew#974) doesn't leave with the per-story results, so needs no adoption.
+    schema = contract.schemas()["schema.json"]["$defs"]
+    assert "filed" in schema["Card"]["required"]
+    assert "Filed" in schema
 
 
 @pytest.mark.parametrize("directory", ANNOUNCED, ids=lambda p: p.name)
