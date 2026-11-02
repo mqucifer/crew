@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -755,3 +756,302 @@ def test_a_script_file_that_does_not_name_a_reach_is_allowed(tmp_path, name, tex
 
 def test_a_script_the_guard_cannot_find_is_allowed(tmp_path):
     assert run_guard("python3 not-here.py", tmp_path).returncode == 0
+
+
+# --- LiteLLM's logs (the Sponsor's direction, on mqucifer/crew#997) -----------
+# Claude reads them without restriction. The guard tells a read by its text, and
+# nothing in the database stops a write: litellm_admin owns the server.
+
+LOGS = "docker exec litellm-temp-db psql -U litellm_admin -d litellm"
+
+READING_LITELLMS_LOGS = [
+    # infra's runbooks/empty-model-answers.md, as written there.
+    f'{LOGS} -At -c "select proxy_server_request::text from \\"LiteLLM_SpendLogs\\" '
+    'where prompt_tokens = <N> order by \\"startTime\\" limit 1;" > request.json',
+    # The spellings past sessions used.
+    f"{LOGS} -Atc 'select count(*) from \"LiteLLM_SpendLogs\"'",
+    f"{LOGS} -tAc 'select 1'",
+    "docker exec -i litellm-temp-db psql -U litellm_admin -d litellm -At -c 'select 1'",
+    "docker exec litellm-temp-db psql -Ulitellm_admin -dlitellm -c 'select 1'",
+    "docker exec litellm-temp-db psql --username=litellm_admin --dbname=litellm -c 'select 1'",
+    "docker exec litellm-temp-db psql -d litellm -U litellm_admin --csv -c 'select 1'",
+    f"{LOGS} -At -R x -F y -c 'select 1'",
+    "docker container exec litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
+    f"timeout 20 {LOGS} -c 'select 1'",
+    f"bash -c \"{LOGS} -c 'select 1'\"",
+    f"R=$({LOGS} -At -c 'select 1')",
+    # SQL on stdin, where the guard can read it.
+    "docker exec -i litellm-temp-db psql -U litellm_admin -d litellm -At <<'EOF'\nselect 1;\nEOF",
+    f"{LOGS} <<< 'select 1'",
+    f"echo 'select 1;' | {LOGS}",
+    f"printf '%s' 'select 1;' | {LOGS}",
+    f"printf 'select 1;' | {LOGS}",
+    f"cat <<'EOF' | {LOGS} -At\nselect 1;\nEOF",
+    f"cat > q.sql <<'EOF'\nselect 1;\nEOF\n{LOGS} -At < q.sql",
+    f"cat > q.sql <<'EOF'\nselect 1;\nEOF\ncat q.sql | {LOGS} -At",
+    # A read, whatever its words say.
+    f"{LOGS} -c \"select 'drop table x; delete'\"",
+    f"{LOGS} -c 'select \"update\" from t'",
+    f'{LOGS} -c "select 1 -- drop table x"',
+    f"{LOGS} -c 'select 1 /* delete from t */'",
+    f"{LOGS} -c 'select call_type, updated_at from t'",
+    f"{LOGS} -c 'with x as (select 1) select * from x'",
+    f"{LOGS} -c 'select 1; select 2;'",
+    f"{LOGS} -c '(select 1) union (select 2)'",
+    f"{LOGS} -c 'explain select 1'",
+    f"{LOGS} -c 'show server_version'",
+    f"{LOGS} -c 'select column_name from information_schema.columns'",
+    f"{LOGS} -c \"select pg_size_pretty(pg_total_relation_size('x'))\"",
+    # A shell value inside a SQL string, as the transcript reads do.
+    f"RID=abc; {LOGS} -At -c \"select response from t where request_id = '$RID'\"",
+    # Describing a table is a read, and the only psql command that is one here.
+    f"{LOGS} -c '\\d \"LiteLLM_SpendLogs\"'",
+    f"{LOGS} -c '\\d+ \"LiteLLM_SpendLogs\"'",
+    f"{LOGS} -c '\\dt'",
+    # docker logs was never in question.
+    "docker logs --since 10m crew-litellm",
+]
+
+
+@pytest.mark.parametrize("command", READING_LITELLMS_LOGS)
+def test_reading_litellms_logs_is_allowed(tmp_path, command):
+    done = run_guard(command, tmp_path)
+    assert done.returncode == 0, f"{command}\n{done.stderr}"
+
+
+WRITING_THROUGH_THE_LOGS_ROUTE = [
+    "insert into t values (1)",
+    "update t set a = 1",
+    "delete from t",
+    "drop table t",
+    "create table t (a int)",
+    "alter table t add a int",
+    "truncate t",
+    "grant all on t to x",
+    "copy t to '/tmp/x'",
+    "copy t from program 'sh'",
+    "do $$ begin end $$",
+    "set role postgres",
+    "begin",
+    "vacuum",
+    "call f()",
+    # A write behind a read.
+    "select 1; drop table t",
+    "select 1; -- note\ndrop table t",
+    "select 1 /* note */; delete from t",
+    "with d as (delete from t returning *) select * from d",
+    "select * into t2 from t",
+    "select * from t for update",
+    "explain analyze delete from t",
+    "explain analyze create table t2 as select 1",
+    # A write hidden from a matcher that reads strings and comments in the wrong order.
+    "select '--'; drop table t; --'",
+    "select E'\\''; drop table t; --'",
+    "select 1 -- x\rdrop table t",
+    'select U&"\\0064" from t',
+    "select $$a$$; drop table t",
+    # psql's own commands.
+    "\\l",
+    "\\du",
+    "\\dg",
+    "\\d sprint_metrics.board_events",
+    '\\d "sprint_metrics"."board_events"',
+    "\\d t \\! env",
+    "\\dt\n\\! env",
+    "\\! env",
+    "\\copy t to '/tmp/x'",
+    "\\c postgres",
+    "\\o /tmp/x",
+    "\\i /tmp/x.sql",
+    "select 1 \\g /tmp/x",
+    "select 1 \\gexec",
+    # A read that reaches past LiteLLM's logs: the server's files, other databases, roles.
+    "select pg_read_file('/proc/1/environ')",
+    "select \"pg_read_file\"('/etc/passwd')",
+    "select lo_export(1, '/tmp/x')",
+    "select * from dblink('dbname=sprint_metrics', 'select 1') as t(a int)",
+    "select * from pg_authid",
+    "select * from pg_shadow",
+    "select datname from pg_database",
+    "select * from sprint_metrics.board_events",
+    'select * from "sprint_metrics"."board_events"',
+    "select query_to_xml('delete from t', true, true, '')",
+    "select set_config('role', 'postgres', false)",
+    "select nextval('s')",
+    # These run a query given to them as a string, and a string isn't read.
+    "select * from ts_stat('delete from t returning 1')",
+    "select ts_rewrite('a'::tsquery, 'delete from t')",
+    "select * from crosstab('delete from t')",
+    "select * from t for share",
+    "select * from t for key share",
+    # What the guard can't read.
+    "$SQL",
+    "select * from $T",
+    "select 'unclosed",
+    "",
+]
+
+OFF_THE_LOGS_ROUTE = [
+    # The incident's, still refused.
+    "docker exec litellm-temp-db psql -U postgres -l",
+    "docker exec litellm-temp-db psql -U sprint_metrics -d sprint_metrics -c 'select 1'",
+    "docker exec litellm-temp-db pg_dump -U litellm_admin -d litellm",
+    "docker exec litellm-temp-db pg_restore -U litellm_admin -d litellm x.dump",
+    # Another role, another database, or neither named.
+    "docker exec litellm-temp-db psql -U postgres -d litellm -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin -d postgres -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin -d sprint_metrics -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin -c 'select 1'",
+    "docker exec litellm-temp-db psql -d litellm -c 'select 1'",
+    "docker exec litellm-temp-db psql -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin -d litellm -d postgres -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin postgres -c 'select 1'",
+    "docker exec litellm-temp-db psql -U litellm_admin -d 'dbname=postgres' -c 'select 1'",
+    # Options that leave the read: another server, a file, a variable, a listing.
+    f"{LOGS} -l",
+    f"{LOGS} -Atl",
+    f"{LOGS} -f /tmp/q.sql",
+    f"{LOGS} -h other -c 'select 1'",
+    f"{LOGS} -p 5433 -c 'select 1'",
+    f"{LOGS} -o /tmp/out -c 'select 1'",
+    f"{LOGS} -L /tmp/log -c 'select 1'",
+    f"{LOGS} -v x=1 -c 'select 1'",
+    # docker exec options that change what runs.
+    "docker exec -e PGDATABASE=postgres litellm-temp-db "
+    "psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec -u root litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec --env-file x litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
+    # Another way in: a shell in the container reads its environment.
+    "docker exec litellm-temp-db sh -c "
+    '\'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"\'',
+    "docker exec litellm-temp-db env X=1 psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec litellm-temp-db printenv POSTGRES_USER",
+    "docker exec litellm-temp-db ls",
+    # Another way to name it, or another container.
+    "C=litellm-temp-db; docker exec \"$C\" psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker compose exec litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec crew-litellm psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec pg-997 psql -h litellm-temp-db -U litellm_admin -d litellm -c 'select 1'",
+    # SQL it can't see.
+    LOGS,
+    f"python3 make_sql.py | {LOGS}",
+    f"{LOGS} < not-here.sql",
+    f"cat not-here.sql | {LOGS}",
+    f"echo $SQL | {LOGS}",
+    # printf's format is SQL too.
+    f"printf 'drop table t;%s' 'select 1' | {LOGS}",
+    f"printf 'select 1;%s' 'drop table t' | {LOGS}",
+    f"cat <<'EOF' | {LOGS}\ndrop table t;\nEOF",
+    f'{LOGS} -c "$SQL"',
+]
+
+
+@pytest.mark.parametrize("sql", WRITING_THROUGH_THE_LOGS_ROUTE)
+@pytest.mark.parametrize(
+    "shape",
+    [
+        lambda sql: f"{LOGS} -c {shlex.quote(sql)}",
+        lambda sql: f"{LOGS} -At <<'EOF'\n{sql}\nEOF",
+    ],
+    ids=["dash-c", "stdin"],
+)
+def test_anything_but_a_read_through_the_logs_route_is_refused(tmp_path, shape, sql):
+    done = run_guard(shape(sql), tmp_path)
+    assert done.returncode == 2, sql
+    assert "Only a read of LiteLLM's own database" in done.stderr
+    assert "HTTP API" in done.stderr
+
+
+@pytest.mark.parametrize("command", OFF_THE_LOGS_ROUTE)
+def test_anything_off_the_logs_route_is_refused(tmp_path, command):
+    done = run_guard(command, tmp_path)
+    assert done.returncode == 2, command
+    assert "HTTP API" in done.stderr
+
+
+# A Python script's SQL usually sits in a variable, out of the guard's sight, so it
+# checks the call: this is how infra's scripts and this repo's experiments read logs.
+@pytest.mark.parametrize(
+    "call",
+    [
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm"]',
+        '["docker", "exec", "-i", "litellm-temp-db", "psql", "-U", "litellm_admin",'
+        ' "-d", "litellm",'
+        ' "-At", "-c", QUERY.format(a=1)]',
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
+        ' "-c", "select 1"]',
+    ],
+)
+def test_a_python_script_reading_litellms_logs_is_allowed(tmp_path, call):
+    (tmp_path / "x.py").write_text(f"import subprocess\nsubprocess.run({call})\n")
+    done = run_guard("python3 x.py", tmp_path)
+    assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "postgres", "-d", "litellm"]',
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "postgres"]',
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
+        ' "-l"]',
+        '["docker", "exec", "litellm-temp-db", "pg_dump", "-U", "litellm_admin", "-d", "litellm"]',
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
+        ' "-c", "delete from t"]',
+    ],
+)
+def test_a_python_script_off_the_logs_route_is_refused(tmp_path, call):
+    (tmp_path / "x.py").write_text(f"import subprocess\nsubprocess.run({call})\n")
+    assert run_guard("python3 x.py", tmp_path).returncode == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # An E'' string is an ordinary read, as a past session's `|| E'\n====='` was.
+        f"{LOGS} -Atc \"select 'a' || E'\\n=====' from t\"",
+        f"{LOGS} -Atc \"select E'it\\'s; drop table t'\"",
+        f"{LOGS} -At <<'EOF'\nselect E'\\\\';\nEOF",
+        # The shell hands Postgres a backslash and a closed string: still a read.
+        f"{LOGS} -Atc \"select E'\\\\\\\\''; drop table t; --'\"",
+        # psql is told `\"` nowhere here: double quotes are the shell's.
+        f'{LOGS} -Atc "select \\"startTime\\" from \\"LiteLLM_SpendLogs\\""',
+    ],
+)
+def test_the_guard_reads_a_string_as_postgres_gets_it(tmp_path, command):
+    done = run_guard(command, tmp_path)
+    assert done.returncode == 0, f"{command}\n{done.stderr}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Each reaches Postgres as `E'\''; drop table t; --'`: the drop is live. Read
+        # without the shell's own escaping, the drop looks like it's inside a string.
+        f"{LOGS} -At <<EOF\nselect E'\\\\''; drop table t; --'\nEOF",
+        f"{LOGS} -Atc \"select E'\\\\''; drop table t; --'\"",
+        f"{LOGS} <<< \"select E'\\\\''; drop table t; --'\"",
+        # An E'' string that never closes can't be read.
+        f"{LOGS} -Atc \"select E'\\\\'\"",
+        # In single quotes `\"` isn't the shell's: psql gets a backslash command.
+        f"{LOGS} -Atc 'select \\\"; drop table t; \\\"'",
+        f"{LOGS} -At <<'EOF'\nselect \\\"; drop table t; \\\"\nEOF",
+        # echo and printf can turn a backslash into something else, by shell.
+        f"echo \"select E'\\\\\\\\''; drop table t; --'\" | {LOGS}",
+        f"printf 'select 1;\\144rop table t' | {LOGS}",
+    ],
+)
+def test_a_write_the_shell_uncovers_is_refused(tmp_path, command):
+    assert run_guard(command, tmp_path).returncode == 2, command
+
+
+def test_the_guard_can_be_run_by_hand(tmp_path):
+    done = run_guard(f"python3 {SCRIPT}", tmp_path)
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_shell_script_reading_litellms_logs_is_held_to_the_same_rule(tmp_path):
+    (tmp_path / "x.sh").write_text(f"{LOGS} -At -c 'select 1'\n")
+    assert run_guard("bash x.sh", tmp_path).returncode == 0
+    (tmp_path / "x.sh").write_text(f"{LOGS} -At -c 'delete from t'\n")
+    assert run_guard("bash x.sh", tmp_path).returncode == 2
