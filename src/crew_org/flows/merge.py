@@ -25,7 +25,7 @@ from crew_org import sendbacks
 from crew_org.columns import BLOCKED, DONE, IN_PROGRESS, MERGING
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts, qa_tasks, role_tasks
-from crew_org.flows.ci import return_for_ci
+from crew_org.flows.ci import return_for_ci, running_checks
 from crew_org.flows.moves import move_card
 from crew_org.git_ops import MergeConflict, branch_name
 from crew_org.llm import reraise_if_down
@@ -166,7 +166,7 @@ def unproven(issues: IssueClient, repo: str, head: str | None) -> Landed | None:
         runs = issues.check_runs(repo, head or "")
     except Exception as exc:  # noqa: BLE001
         return Landed(Landing.UNPROVEN, f"its checks couldn't be read: {exc}"[:120])
-    running = [r.get("name") or "a check" for r in runs if r.get("status") != "completed"]
+    running = running_checks(runs)
     if running:
         return Landed(Landing.CHECKING, "checks still running: " + ", ".join(running[:3]))
     failed = [r.get("name") or "a check" for r in runs if r.get("conclusion") in FAILED_CONCLUSIONS]

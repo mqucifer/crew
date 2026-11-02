@@ -144,7 +144,7 @@ def write_standup(
     quiet = not (moved or blocked or failed or decided or released)
 
     passes = f"{result.passes} pass" + ("es" if result.passes != 1 else "")
-    state = "settled" if result.settled else "stopped at the pass cap"
+    state = "settled" if result.settled else result.stopped_by
     lines = [f"**Tick at {at:%H:%M} UTC** — {passes}, {state}."]
     if quiet:
         lines += ["", "Nothing moved."]

@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from crew_org import log, profiles
@@ -40,6 +40,7 @@ from crew_org.events import (
 )
 from crew_org.git_ops import Workspace
 from crew_org.process import ProcessRules
+from crew_org.rules import Rule
 from crew_org.tools import github_http
 from crew_org.tools.github_http import GitHubThrottled
 from crew_org.tools.github_issues import IssueClient
@@ -57,6 +58,27 @@ MAX_PASSES = 5
 # is 60. Past this, the tick ends and the next one picks up what landed.
 QUEUE_WAIT = 600.0
 QUEUE_POLL = 15.0
+# How long a pass that moved nothing waits for CI on a pull request held from review
+# (crew#993), per head, per tick. Nothing else can move and no model is running, so a
+# high limit costs only the wait. Of about 600 CI runs read on 2026-11-01, across the
+# projects, all but three took under 9 minutes: one took 22, and two that ran no jobs
+# took 67. So about three times that 22, to be lowered from the wait's own notes.
+CI_WAIT = 3600.0
+CI_POLL = 30.0
+
+
+@dataclass(frozen=True)
+class RunningCI:
+    """A pull request held from review while CI runs on its head."""
+
+    repo: str
+    card: int
+    pull: int
+    head: str
+    checks: tuple[str, ...]
+
+    def __str__(self) -> str:
+        return f"{self.repo} PR #{self.pull} ({', '.join(self.checks)})"
 
 
 @dataclass
@@ -140,6 +162,8 @@ class PhaseOutcome:
     # the summary — #31 blocked on an exhausted escalation budget and the run
     # reported only that its sibling was waiting.
     blocked: list[str] = field(default_factory=list)
+    # Pull requests this phase held while CI runs, which the tick waits for (crew#993).
+    ci_running: list[RunningCI] = field(default_factory=list)
 
 
 @dataclass
@@ -159,6 +183,13 @@ class LoopResult:
     # cannot be pushed over. It can still *be* over, after a limit is lowered
     # or cards are moved by hand, and nothing said so.
     over_limit: dict[str, tuple[int, int]] = field(default_factory=dict)
+    # Why waiting for CI ended the tick, or "": raising the pass cap wouldn't help (crew#993).
+    ci_stopped: str = ""
+
+    @property
+    def stopped_by(self) -> str:
+        """What ended a tick that didn't settle, in words."""
+        return self.ci_stopped or "stopped at the pass cap"
 
     @property
     def failed(self) -> list[PhaseOutcome]:
@@ -183,9 +214,10 @@ class LoopResult:
 
         Different from `settled`. A pass can move nothing because there is
         nothing to do, or because nothing it could do was allowed — and those
-        are opposite states reported identically until now.
+        are opposite states reported identically until now. As of the last pass
+        each phase ran: a card an earlier pass held on CI may be reviewed since.
         """
-        return any(o.held for o in self.outcomes)
+        return any(self.held(o.name) for o in self.outcomes)
 
     def last(self, name: str) -> PhaseOutcome | None:
         """The most recent outcome for one phase."""
@@ -710,6 +742,7 @@ def _review(crew: Crew) -> PhaseOutcome:
     reviewed = skipped = 0
     failed: list[str] = []
     returned: list[str] = []
+    running: list[RunningCI] = []
     cards = crew.board.cards()
     # In a tick on a project, qa-suite's pull requests of that project's Tasks, and
     # none of another's (crew#945).
@@ -731,6 +764,10 @@ def _review(crew: Crew) -> PhaseOutcome:
         returned += [f"#{n}" for n, _epic in result.returned]
         skipped += len(result.skipped)
         failed += [f"PR #{n} — {why}" for n, why in result.failed]
+        running += [
+            RunningCI(repo, card, pr, head, tuple(checks))
+            for card, pr, head, checks in result.ci_running
+        ]
         moved_any = moved_any or bool(result.reviewed)
     return PhaseOutcome(
         "review",
@@ -742,7 +779,13 @@ def _review(crew: Crew) -> PhaseOutcome:
             else ""
         ),
         counts={"reviewed": reviewed, "already judged": skipped, "returned": len(returned)},
-        held=failed,
+        held=failed
+        + [
+            f"#{ci.card} — CI still running on PR #{ci.pull}: {', '.join(ci.checks)}; "
+            "reviewed once it ends"
+            for ci in running
+        ],
+        ci_running=running,
     )
 
 
@@ -932,6 +975,82 @@ def wait_for_queue(
     return len(queued) - len(pending), clock() - start
 
 
+def wait_for_ci(
+    crew: Crew,
+    running: list[RunningCI],
+    spent: dict[tuple[str, str], float],
+    *,
+    sleep: Callable[[float], None] | None = None,
+    clock: Callable[[], float] | None = None,
+) -> tuple[int, str]:
+    """Wait until CI ends on each of `running`, or each has had CI_WAIT this tick.
+
+    Returns how many ended and, when none did, why the tick stops. Waits for all of them,
+    so one pass reviews them together: passes are capped, and each repeats its reads.
+
+    Reads before it sleeps. A pass takes minutes after its review phase, so CI has often
+    ended by now: the `checks` of mqucifer/crew-presentation#268's pull request ended 2
+    minutes 48 seconds before its tick called the board stable.
+
+    `spent` is each head's wait so far, so a stuck run holds up a pass once, and the time
+    one story took isn't counted against the next. A lookup that fails counts as still
+    running, and is named if it lasts to the limit.
+    """
+    from crew_org.flows.ci import running_checks  # noqa: PLC0415
+
+    # Looked up when called, not bound at import, so a test's stand-in is seen.
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    limit = f"{CI_WAIT / 60:.0f}-minute limit"
+    pending = {(ci.repo, ci.head): ci for ci in running}
+    unread: dict[tuple[str, str], str] = {}
+    told = False
+    start = clock()
+    while True:
+        for key, ci in sorted(pending.items()):
+            try:
+                checks = running_checks(crew.issues.check_runs(ci.repo, ci.head))
+            except Exception as exc:  # noqa: BLE001
+                unread[key] = f"{type(exc).__name__}: {exc}"[:120]
+                continue
+            unread.pop(key, None)
+            if checks:
+                pending[key] = replace(ci, checks=tuple(checks))
+            else:
+                del pending[key]
+        waited = clock() - start
+        if not any(spent.get(key, 0.0) + waited < CI_WAIT for key in pending):
+            break
+        if not told:
+            told = True
+            crew.sink.note(
+                EventKind.NOTE,
+                f"waiting for CI, up to the {limit}: " + "; ".join(map(str, pending.values())),
+                rule=Rule.CI_BEFORE_REVIEW,
+                limit_s=CI_WAIT,
+            )
+        sleep(CI_POLL)
+    for key in pending:
+        spent[key] = spent.get(key, 0.0) + waited
+    ended = len(running) - len(pending)
+    crew.sink.note(
+        EventKind.NOTE,
+        f"waited {waited:.0f}s for CI: {ended} of {len(running)} ended",
+        rule=Rule.CI_BEFORE_REVIEW,
+        waited_s=round(waited, 1),
+        ended=ended,
+        running=len(running),
+    )
+    if ended:
+        return ended, ""
+    return 0, "; ".join(
+        f"CI on {ci.repo} PR #{ci.pull} couldn't be read for the {limit}: {unread[key]}"
+        if key in unread
+        else f"CI ran past the {limit} on {ci}"
+        for key, ci in sorted(pending.items())
+    )
+
+
 def diagnose_blocked_cards(crew: Crew) -> list[tuple[str, int]]:
     """Diagnose what this tick left blocked for a person, as the Senior Engineer."""
     from pathlib import Path  # noqa: PLC0415
@@ -1062,6 +1181,8 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     result = LoopResult()
     # The holds and skips no event names, collected for the tick's end (crew#756).
     holds = holding()
+    # How long each head's CI has been waited for this tick (crew#993).
+    ci_spent: dict[tuple[str, str], float] = {}
 
     # Model calls, their tokens and the tools they used, for the whole tick: a
     # log blind to what the model did can't say what a run cost.
@@ -1193,6 +1314,18 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
                 )
                 if left:
                     continue
+            # Nor has it settled while CI runs on a pull request a review is holding:
+            # its siblings wait on it, and each tick finished one story of an epic (crew#993).
+            running = [c for o in result.outcomes[-len(PHASES) :] for c in o.ci_running]
+            if running:
+                if result.passes >= max_passes:
+                    break
+                ended, why = wait_for_ci(crew, running, ci_spent)
+                if ended:
+                    continue
+                result.ci_stopped = why
+                crew.sink.note(EventKind.NOTE, why, rule=Rule.CI_BEFORE_REVIEW)
+                break
             result.settled = True
             break
 
@@ -1220,7 +1353,7 @@ def run(crew: Crew, *, max_passes: int = MAX_PASSES) -> LoopResult:
     crew.sink.note(
         EventKind.TICK_FINISHED,
         f"{result.passes} pass{'es' if result.passes != 1 else ''}, "
-        f"{'stable' if result.settled else 'stopped at the pass cap'}, "
+        f"{'stable' if result.settled else result.stopped_by}, "
         f"{len(result.failed)} failed",
         held=held_so_far(holds),
     )
