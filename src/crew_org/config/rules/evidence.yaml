@@ -276,6 +276,11 @@ form.story.enough_criteria:
   told_in: Story.acceptance_criteria, RepairedStory.acceptance_criteria
 guard.reproduce.check:
   messages:
+    checks_less: "This bug's fix is only in its tests, so none of them has to fail on main:\
+      \ the proof is the named tests passing, with each merged test the branch keeps still\
+      \ making every check it made, as it was or rewritten. These checks, made as merged, are\
+      \ gone:\n\n{tests}\n\nPut each back. A check the criteria say is wrong is replaced\
+      \ by the right one, never dropped."
     default: The fix passes the checks, but {why}. Change them so at least one fails against the code
       as merged, for the reason the bug describes.
     recorded: "The crew filed this bug from the merged tests a workspace turned on, which fail\
@@ -283,15 +288,10 @@ guard.reproduce.check:
       \ the bug. On this branch they don't all pass in the workspace yet:\n\n{tests}\n\nEach\
       \ has to run and pass there, and a file that hung has to run to its end, every test\
       \ in it passing."
-    test_only: 'The defect looks like the test itself: this branch changes only tests, the
-      named ones'' files among them ({files}), and none of them fails against the code as merged:
-      {passed} pass there. A bug''s test has to fail on main, and a fix to the test itself
-      can''t make one, so no change to this branch can meet this check. The way out is back to
-      refinement, as a story: its criteria hold as they are.'
   origin:
   - crew#407
   - crew#839
-  - crew#949
+  - crew#1005
   owner: Developer
 session.run:
   description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint

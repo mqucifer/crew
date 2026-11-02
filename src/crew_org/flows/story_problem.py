@@ -102,6 +102,17 @@ def held_comment(card: Card, comment: str, why: str, *, pull: int | None = None)
     )
 
 
+def no_epic_comment(comment: str) -> str:
+    """What a story with no epic says when it's blocked for a person instead of going back:
+    where it went. mqucifer/crew-presentation#300's said it "went back to refinement", the
+    words for an epic's story, and went to Blocked (crew#1005)."""
+    return comment.replace(f"{STORY_PROBLEM_MARKER}\n", "").replace(
+        " went back to refinement: ",
+        " went to Blocked, for a person: it has no epic to split again, and ",
+        1,
+    )
+
+
 def return_to_refinement(
     board: Any,
     issues: Any,

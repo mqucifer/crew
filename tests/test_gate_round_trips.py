@@ -167,6 +167,8 @@ def test_past_the_limit_a_story_with_no_epic_is_blocked_for_a_person(monkeypatch
     assert (145, "blocked") in issues.labels
     (evidence,) = issues.pr_comments
     assert not evidence.startswith(STORY_PROBLEM_MARKER) and "delivered 6 times" in evidence
+    assert evidence.startswith("**#145 went to Blocked, for a person: it has no epic to split")
+    assert blocked.blocked_reason.startswith("**#145 went to Blocked")
     assert "stdout is empty" in evidence and "the design note says not to" in evidence
     assert issues.closed_pulls == [], "the pull request stays, for the person to read"
 

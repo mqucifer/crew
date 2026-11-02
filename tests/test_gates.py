@@ -358,34 +358,141 @@ def test_a_bugs_tests_must_fail_without_the_fix(repo, monkeypatch):
     assert [f.rule for f in verdict.findings] == ["guard.reproduce.check"]
 
 
-def test_a_bug_whose_fix_is_only_its_tests_is_told_it_is_a_story_s_work(repo, monkeypatch):
-    """mqucifer/sprint-metrics#868 (crew#949): the defect was a stale test, so its fix was
-    in the test file alone, and nothing could fail on main. The gate said the same thing
-    5 times; this finding names the shape, and is final."""
-    passed = reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"])
-    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: passed)
-    # The test was the defect: it pinned a value, and the fix loosens it. Declared, as
-    # the story's Existing tests line says.
-    (repo / TESTS).write_text(MERGED_TESTS.replace("== 100", "<= 100"))
+def _all_pass(monkeypatch, seen: list | None = None) -> None:
+    """The named tests, run as merged with only their files from the branch, all pass."""
+
+    def reproduces(worktree, merged, tests, **kw):
+        if seen is not None:
+            seen.append(tests)
+        return reproduction.Reproduction(passed=[f"{p}::{t}" for p, t in tests])
+
+    monkeypatch.setattr(reproduction, "reproduces", reproduces)
+
+
+def test_a_bug_whose_failure_shows_off_main_passes_with_a_fix_in_its_tests(repo, monkeypatch):
+    """mqucifer/crew-presentation#300 (crew#1005): its test failed only on the pin's branch,
+    so on main it passed. The fix branches the test on what it's given and adds one, in
+    the test file alone: nothing could fail on main, and the gate refused it as final."""
+    seen: list = []
+    _all_pass(monkeypatch, seen)
+    (repo / TESTS).write_text(
+        MERGED_TESTS.replace(
+            "    assert rate(2, 1) == 100\n",
+            "    assert rate(2, 1) == 100\n    assert rate(1, 1) == 100\n",
+        )
+        + "\n\ndef test_rate_of_one():\n    assert rate(1, 2) == 50\n"
+    )
+    said = done(
+        (f"{TESTS}::test_rate_is_capped", "it only held for one pin"),
+        criteria=[
+            {"criterion": "capped on either pin", "test": f"{TESTS}::test_rate_is_capped"},
+            {"criterion": "a half", "test": f"{TESTS}::test_rate_of_one"},
+        ],
+    )
+    verdict = at_done(repo, said, card=card("Bug"))
+    assert verdict.passed, verdict.findings
+    assert seen == [[(TESTS, "test_rate_is_capped"), (TESTS, "test_rate_of_one")]], "they ran"
+    assert verdict.fixed_in_tests == [f"{TESTS}::test_rate_is_capped"]
+    text = "\n".join(gates.pr_sections(verdict))
+    assert gates.FIXED_IN_TESTS_HEADING in text
+    assert "not in the code they test" in text, "the Code Reviewer judges where the defect is"
+
+
+def test_a_bug_whose_defect_is_a_stale_test_passes_with_the_test_removed(repo, monkeypatch):
+    """mqucifer/sprint-metrics#868 (crew#949, crew#1005): the Sponsor dropped a stale test;
+    its other tests show the file holds. Removing a merged test is declared, and ruled
+    on as any other merged test's change is."""
+    _all_pass(monkeypatch)
+    (repo / TESTS).write_text(MERGED_TESTS.split("\n\n\ndef test_rate_of_nothing")[0] + "\n")
+    said = done(
+        (f"{TESTS}::test_rate_of_nothing", "stale: the Sponsor dropped it"),
+        criteria=[{"criterion": "the file holds", "test": f"{TESTS}::test_rate_is_capped"}],
+    )
+    story = CHANGES.replace("test_rate_is_capped", "test_rate_of_nothing")
+    verdict = at_done(repo, said, story=story, card=card("Bug"))
+    assert verdict.passed, verdict.findings
+    assert verdict.declared == {f"{TESTS}::test_rate_of_nothing": "stale: the Sponsor dropped it"}
+
+
+@pytest.mark.parametrize(
+    "weaker",
+    [
+        "    rate(2, 1)\n",  # its assertion removed
+        "    assert True\n",  # an assertion that can't fail
+    ],
+)
+def test_a_fix_in_its_tests_that_drops_what_a_test_checks_goes_back(repo, monkeypatch, weaker):
+    """Nothing failing on main, the test passing is the proof: a test made to pass by
+    checking less proves nothing (crew#1005)."""
+    _all_pass(monkeypatch)
+    (repo / TESTS).write_text(MERGED_TESTS.replace("    assert rate(2, 1) == 100\n", weaker))
     said = done((f"{TESTS}::test_rate_is_capped", "it pinned the cap"))
     verdict = at_done(repo, said, card=card("Bug"))
     (finding,) = verdict.findings
-    assert finding.rule == "guard.reproduce.check" and finding.final
-    assert finding.says.startswith("The defect looks like the test itself")
-    assert "The way out is back to refinement, as a story" in finding.says
-    assert f"`{TESTS}`" in finding.says
+    assert finding.rule == "guard.reproduce.check"
+    assert f"- `{TESTS}::test_rate_is_capped`: `assert rate(2, 1) == 100`" in finding.says
+    assert "replaced by the right one, never dropped" in finding.says
+    assert not verdict.fixed_in_tests
+
+
+# mqucifer/crew-presentation#300's test_build_check_exits_zero, its checks cut to a few:
+# as merged, and as its fix left them, each attempt-chart check rewritten in place.
+MERGED_CHECKS = [
+    "assert result.returncode == 0",
+    "assert sprint_files",
+    "assert 'attempt-legend' in page",
+    "assert 'attempt-row' in page",
+]
+FIXED_CHECKS = [
+    "assert result.returncode == 0",
+    "assert sprint_files",
+    "assert 'class=\"attempt-legend\"' in page",
+    "assert 'class=\"attempt-row\"' in page",
+    "assert 'class=\"story-list\"' in page",
+    "assert 'class=\"attempt-row\"' not in page",
+]
+
+
+def test_a_check_rewritten_in_place_is_kept_and_one_deleted_is_dropped():
+    """Counting let a fix that added checks delete a merged one: on the real branch,
+    blanking `assert sprint_files` still left 18 checks of 15 (crew#1005)."""
+    assert gates.dropped_checks(MERGED_CHECKS, FIXED_CHECKS) == []
+    without = [c for c in FIXED_CHECKS if not c.startswith("assert sprint_files")]
+    assert gates.dropped_checks(MERGED_CHECKS, without) == [MERGED_CHECKS[1]]
+    # A rewritten check blanked: its `not in` twin checks the reverse, so it can't stand in.
+    without = [c for c in FIXED_CHECKS if "attempt-row\"' in page" not in c]
+    assert gates.dropped_checks(MERGED_CHECKS, without) == [MERGED_CHECKS[3]]
+
+
+def test_a_bug_whose_branch_only_adds_a_test_that_passes_on_main_goes_back(repo, monkeypatch):
+    """No merged test changed and no code: the bug isn't fixed, and its test shows nothing."""
+    _all_pass(monkeypatch)
+    (repo / TESTS).write_text(MERGED_TESTS + "\n\ndef test_rate_of_one():\n    assert True\n")
+    said = done(criteria=[{"criterion": "a half", "test": f"{TESTS}::test_rate_of_one"}])
+    (finding,) = at_done(repo, said, card=card("Bug")).findings
+    assert finding.says.startswith("The fix passes the checks, but ")
+
+
+def test_a_fix_in_its_tests_whose_named_test_skipped_goes_back(repo, monkeypatch):
+    """A skipped test never ran, so it shows nothing, whatever the branch changes."""
+    skipped = reproduction.Reproduction(skipped={f"{TESTS}::test_rate_is_capped": "no db"})
+    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: skipped)
+    (repo / TESTS).write_text(MERGED_TESTS.replace("== 100", "== 100 * 1"))
+    said = done((f"{TESTS}::test_rate_is_capped", "it pinned the cap"))
+    (finding,) = at_done(repo, said, card=card("Bug")).findings
+    assert "was skipped, not run: no db" in finding.says
 
 
 def test_a_product_bug_whose_test_passes_on_main_still_goes_back_to_reproduce_it(repo, monkeypatch):
     """The branch changes the code as well as its test: the test has to show the bug."""
-    passed = reproduction.Reproduction(passed=[f"{TESTS}::test_rate_is_capped"])
-    monkeypatch.setattr(reproduction, "reproduces", lambda *a, **kw: passed)
+    _all_pass(monkeypatch)
     uncap(repo)
     said = done((f"{TESTS}::test_rate_is_capped", "the cap is gone"))
-    (finding,) = at_done(repo, said, card=card("Bug")).findings
-    assert finding.rule == "guard.reproduce.check" and not finding.final
+    verdict = at_done(repo, said, card=card("Bug"))
+    (finding,) = verdict.findings
+    assert finding.rule == "guard.reproduce.check"
     assert finding.says.startswith("The fix passes the checks, but ")
-    assert "looks like the test itself" not in finding.says
+    assert not verdict.fixed_in_tests
 
 
 def test_the_pull_request_lists_the_declared_tests_apart_from_the_questions(repo):

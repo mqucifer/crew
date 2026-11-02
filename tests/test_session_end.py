@@ -389,7 +389,14 @@ def test_a_story_with_no_epic_is_blocked_for_a_person_with_the_same_evidence():
     ending = Ending("blocked", {"missing": "a file", "kind": "file"}, evidence=EVIDENCE)
     routed, board, issues, _ = route(ending, card=story(parent=None))
     assert routed.rule == Rule.SESSION_NO_EPIC and board.status == {"S124": "Blocked"}
-    assert STORY_PROBLEM_MARKER not in issues.posted[0][1]
+    said = issues.posted[0][1]
+    assert STORY_PROBLEM_MARKER not in said
+    # It names where it went (crew#1005): mqucifer/crew-presentation#300's said refinement.
+    assert said.startswith(
+        "**#124 went to Blocked, for a person: it has no epic to split again, and its "
+        "Developer session ended blocked"
+    )
+    assert "went back to refinement" not in said
 
 
 def test_a_session_blocked_with_a_persons_edit_on_a_later_story_is_held_for_a_person():
