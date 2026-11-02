@@ -1,8 +1,8 @@
 """Claude Code PreToolUse guard for the crew repo (crew#458).
 
 Run by `.claude/settings.json` before every Bash command Claude runs here. It
-reads the hook's JSON on stdin and refuses four things CLAUDE.md forbids, so
-they hold whether or not the rule is remembered:
+reads the hook's JSON on stdin and refuses what CLAUDE.md forbids, so it holds
+whether or not the rule is remembered:
 
 - a push to main: every change lands through a pull request;
 - a pull or merge from origin in the main checkout while a tick runs: the crew
@@ -14,7 +14,11 @@ they hold whether or not the rule is remembered:
 - a secret on a command line or in a command's output: arguments show in `ps`
   and the session's command record (CWE-214), output reaches the transcript
   (CWE-532). It also runs before the Read tool, which would print a `.env`, and
-  refuses sourcing one, which runs a value with a space as a command.
+  refuses sourcing one, which runs a value with a space as a command;
+- reaching into a running service (crew#997): `docker exec`, `cp` or `inspect` on
+  one, a Postgres client against the shared server, or reading a service's
+  environment. It reads the commands in the call, and a script the call runs. A
+  script that holds the container's name in a variable gets past it.
 
 Exit 2 refuses the command, with the reason on stderr for Claude to read.
 Anything this script can't parse is allowed: it is a guard, not a gate.
@@ -265,6 +269,7 @@ class Heredoc:
         self.expands = expands
         self.strip_tabs = strip_tabs
         self.body = body or Word()
+        self.text = self.body.text
 
 
 class Command:
@@ -451,6 +456,7 @@ class Shell:
             if (line.lstrip("\t") if doc.strip_tabs else line) == doc.delimiter:
                 break
             lines.append(line)
+        doc.text = "\n".join(lines)
         if doc.expands:
             Shell("\n".join(lines)).expanding(doc.body, [], close="")
 
@@ -575,6 +581,324 @@ def check_read(path: str) -> None:
         refuse_secret(f"the Read tool on {Path(path).name} puts its secrets in the transcript")
 
 
+# --- running services ------------------------------------------------------
+# A builder told to use a throwaway reached the real ones (crew#997). Read with
+# the parser above, so a name in a commit message or a grep pattern is only a word.
+# The shared Postgres publishes no port (infra's runbooks/the-stack.md), so a client
+# reaches it from inside a container or over its network, never from the host.
+
+SERVICE = re.compile(r"(?<![\w./-])(?:litellm(?:-[\w.-]+)?|crew-[\w.-]+)(?![\w.-])")
+SHARED_POSTGRES = re.compile(r"litellm-temp-db|litellm_default")
+# infra's compose/mac projects: their service names don't all say whose they are.
+MAC_PROJECT = re.compile(
+    r"(?:-p|--project-name)[ =](?:litellm|sprint-metrics|telemetry|open-webui)\b"
+)
+PROC_ENVIRON = re.compile(r"/proc/[^/]+/environ")
+PYTHON = re.compile(r"python[\d.]*")
+BSD_PS_ENV = re.compile(r"[a-zA-Z]*e[a-zA-Z]*")
+PS_ENV = re.compile(r"-[a-zA-Z]*E[a-zA-Z]*")
+
+DOCKERS = {"docker", "docker-compose"}
+CLIENTS = {"psql", "pg_dump", "pg_restore", "pg_dumpall"}
+# Each runs the command it's given, so the guard looks at that command instead.
+WRAPPERS = {"sudo", "env", "timeout", "gtimeout", "nice", "nohup", "command", "exec", "xargs"}
+WRAPPERS |= {"ssh", "uv", "caffeinate", "stdbuf"}
+
+# The options that take a value, so the word after one isn't read as the target.
+DOCKER_OPTIONS = {"--context", "-c", "--host", "-H", "--config", "--log-level", "-l"}
+DOCKER_OPTIONS |= {"--tlscacert", "--tlscert", "--tlskey"}
+EXEC_OPTIONS = {"-e", "--env", "--env-file", "-u", "--user", "-w", "--workdir", "--detach-keys"}
+INSPECT_OPTIONS = {"--type"}
+COMPOSE_OPTIONS = {"-f", "--file", "-p", "--project-name", "--project-directory", "--env-file"}
+COMPOSE_OPTIONS |= {"--profile", "--ansi", "--parallel", "--progress", "--workdir"}
+COMPOSE_EXEC_OPTIONS = {"-e", "--env", "--index", "-u", "--user", "-w", "--workdir"}
+
+# What the runbooks and everyday checks read of a service. None holds its environment.
+# Not .Config.Cmd or .Args: a secret can sit on a command line. `.Source` and its
+# neighbours are a mount's own fields, read from inside `range .Mounts`.
+INSPECT_FIELD = re.compile(
+    r"\.(?:Id|Name|Image|Created|RestartCount|Config\.Image|Config\.Labels|Config\.User"
+    r"|State(?:\.\w+)*|HostConfig\.RestartPolicy(?:\.\w+)?|HostConfig\.PortBindings"
+    r"|NetworkSettings(?:\.\w+)*|Mounts|Source|Destination|Type)"
+)
+
+# A Python script's call to one of these, as a list or as a string, up to where the
+# call ends. A shell script needs none of this: the parser reads it as it is. Without
+# a way to shell out, the words are only data, as in a script that edits a test.
+SHELLS_OUT = re.compile(r"subprocess|\bos\.(?:system|popen|exec|spawn)")
+SCRIPT_CALL = re.compile(
+    r"""\b(?:docker(?:-compose)?|psql|pg_dump|pg_restore|pg_dumpall)["',\s][^\])]{0,300}"""
+)
+SCRIPT_TOKEN = re.compile(r"""[\s"',\[]+""")
+PY_COMMENT = re.compile(r"(?m)^\s*#.*$")
+SCRIPT_LIMIT = 1_000_000
+
+REACH_RULE = "CLAUDE.md, Never: reaching into a running service."
+REACH_ROUTE = (
+    "Real data comes through a service's HTTP API or a file the operator provides. A throwaway "
+    "of your own, under another name, is fine, with these same clients. A person can run this "
+    "command themselves with `!`."
+)
+
+
+def refuse_reach(what: str) -> None:
+    refuse(f"{what}. {REACH_RULE}\n{REACH_ROUTE}")
+
+
+def after_options(words: list[Word], takes_value: set[str]) -> int:
+    """The index of the first word that isn't an option or an option's value."""
+    i = 0
+    while i < len(words) and words[i].text.startswith("-"):
+        i += 2 if words[i].text in takes_value else 1
+    return i
+
+
+def narrow_format(template: str) -> bool:
+    """True for an inspect template that reads only the fields in INSPECT_FIELD."""
+    if "$" in template:
+        return False
+    inner = " ".join(re.findall(r"\{\{(.*?)\}\}", template))
+    fields = re.findall(r"(?<![\w.])\.[\w.]*", re.sub(r'"[^"]*"|`[^`]*`', "", inner))
+    return bool(fields) and all(INSPECT_FIELD.fullmatch(f) for f in fields)
+
+
+class Reach:
+    """Walks one Bash call, and refuses what reaches a running service."""
+
+    def __init__(self, whole: str, cwd: Path, read_files: bool = True) -> None:
+        self.whole = whole
+        self.cwd = cwd
+        self.read_files = read_files
+        self.written: dict[str, str] = {}
+
+    def run(self, text: str, inside: bool = False, around: str = "") -> None:
+        with contextlib.suppress(ValueError, IndexError):
+            for cmd in Shell(text).commands():
+                self.command(cmd, inside, around)
+
+    def names_service(self, word: Word) -> bool:
+        if SERVICE.search(word.raw.lstrip("\"'/")):
+            return True
+        # `$C` or xargs' `{}`: unknown, unless this call also names a service.
+        return self.unresolved(word) and bool(SERVICE.search(self.whole))
+
+    @staticmethod
+    def unresolved(word: Word) -> bool:
+        return bool(word.names or word.subs or "{" in word.text)
+
+    def command(self, cmd: Command, inside: bool, around: str) -> None:
+        targets = [t for _, t in cmd.redirects]
+        for word in [*cmd.words, *targets, *(doc.body for doc in cmd.heredocs)]:
+            if PROC_ENVIRON.fullmatch(word.text):
+                refuse_reach(f"`{word.text}` holds a running process's environment")
+            for sub in word.subs:
+                for inner in sub:
+                    self.command(inner, inside, around)
+        for op, target in cmd.redirects:
+            if op in (">", ">>") and cmd.heredocs:
+                self.written[target.text] = cmd.heredocs[0].text
+
+        start = 0
+        while start < len(cmd.words) and (
+            ASSIGNMENT.match(cmd.words[start].raw) or cmd.words[start].raw in KEYWORDS
+        ):
+            start += 1
+        if start == len(cmd.words):
+            return
+        around = " ".join([around, *(w.raw for w in cmd.words)])
+        self.program(cmd, cmd.words[start:], inside, around)
+
+    def program(self, cmd: Command, words: list[Word], inside: bool, around: str) -> None:
+        first, args = words[0].text, words[1:]
+        name, texts = Path(first).name, [w.text for w in args]
+        if inside and (name == "printenv" or prints_environment(name, args)):
+            refuse_reach(f"`{' '.join([name, *texts])}` in a container prints its environment")
+        if name == "ps" and (
+            texts and BSD_PS_ENV.fullmatch(texts[0]) or any(PS_ENV.fullmatch(t) for t in texts)
+        ):
+            refuse_reach("`ps` with its environment flag prints a process's environment")
+        if name == "cd" and texts:
+            self.cwd = (self.cwd / Path(texts[0]).expanduser()).resolve()
+        elif name in WRAPPERS:
+            self.wrapped(name, cmd, args, inside, around)
+        elif name in DOCKERS:
+            self.docker(name, args, inside, around)
+        elif name in CLIENTS:
+            self.client(name, args, around)
+        elif name in SHELLS or name == "eval":
+            self.shell(name, cmd, texts, inside, around)
+        elif PYTHON.fullmatch(name):
+            self.python(cmd, texts)
+        elif "/" in first:
+            self.script_file(first)
+
+    def wrapped(self, name: str, cmd: Command, args: list[Word], inside: bool, around: str) -> None:
+        for i, word in enumerate(args):
+            base = Path(word.text).name
+            if (
+                base in DOCKERS | CLIENTS | SHELLS
+                or base == "eval"
+                or PYTHON.fullmatch(base)
+                or word.text.startswith(("./", "../"))
+            ):
+                self.program(cmd, args[i:], inside, around)
+                return
+        if name == "ssh" and args and " " in args[-1].text:
+            self.run(args[-1].text, inside, around)
+
+    def docker(self, name: str, args: list[Word], inside: bool, around: str) -> None:
+        rest = args
+        if name == "docker":
+            rest = args[after_options(args, DOCKER_OPTIONS) :]
+            if rest and rest[0].text == "compose":
+                self.compose(rest[1:], inside, around)
+                return
+            if rest and rest[0].text == "container":
+                rest = rest[1:]
+        else:
+            self.compose(args, inside, around)
+            return
+        if not rest:
+            return
+        sub, rest = rest[0].text, rest[1:]
+        if sub == "exec":
+            at = after_options(rest, EXEC_OPTIONS)
+            target = rest[at] if at < len(rest) else None
+            if target and self.names_service(target):
+                refuse_reach(f"`docker exec {target.text}` reaches into a running service")
+            self.inner(rest[at + 1 :], True, around)
+        elif sub == "cp":
+            self.copy(rest)
+        elif sub == "inspect":
+            self.inspect(rest)
+        elif sub == "run":
+            for i, word in enumerate(rest):
+                if Path(word.text).name in CLIENTS | SHELLS:
+                    self.inner(rest[i:], False, around)
+                    return
+
+    def inner(self, words: list[Word], inside: bool, around: str) -> None:
+        if words:
+            self.program(Command(), words, inside, around)
+
+    def copy(self, words: list[Word]) -> None:
+        for word in words:
+            host = word.text.partition(":")[0]
+            if ":" in word.text and (
+                SERVICE.search(host) or self.unresolved(word) and SERVICE.search(self.whole)
+            ):
+                refuse_reach(f"`docker cp {word.text}` reaches into a running service")
+
+    def inspect(self, words: list[Word]) -> None:
+        template, targets, i = None, [], 0
+        while i < len(words):
+            text = words[i].text
+            if text in ("-f", "--format") and i + 1 < len(words):
+                template = words[i + 1].text
+                i += 1
+            elif text.startswith(("-f=", "--format=")):
+                template = text.partition("=")[2]
+            elif text in INSPECT_OPTIONS:
+                i += 1
+            elif not text.startswith("-"):
+                targets.append(words[i])
+            i += 1
+        if template and re.search(r"\bEnv\b", template):
+            refuse_reach("`docker inspect` of `.Config.Env` prints a container's environment")
+        reached = any(self.names_service(t) for t in targets) or (
+            not targets and SERVICE.search(self.whole)
+        )
+        if reached and not (template and narrow_format(template)):
+            refuse_reach(
+                "`docker inspect` of a running service shows its environment. Only a --format "
+                "of its image, labels or state reads less"
+            )
+
+    def compose(self, args: list[Word], inside: bool, around: str) -> None:
+        at = after_options(args, COMPOSE_OPTIONS)
+        options, rest = " ".join(w.text for w in args[:at]), args[at:]
+        if not rest or rest[0].text not in ("exec", "cp"):
+            return
+        sub, rest = rest[0].text, rest[1:]
+        theirs = bool(MAC_PROJECT.search(options)) or "compose/mac" in f"{options} {self.cwd}"
+        if sub == "cp":
+            if theirs:
+                refuse_reach("`docker compose cp` in infra's stack reaches into a running service")
+            self.copy(rest)
+            return
+        at = after_options(rest, COMPOSE_EXEC_OPTIONS)
+        target = rest[at] if at < len(rest) else None
+        if target and (theirs or self.names_service(target)):
+            refuse_reach(f"`docker compose exec {target.text}` reaches into a running service")
+        self.inner(rest[at + 1 :], True, around)
+
+    def client(self, name: str, args: list[Word], around: str) -> None:
+        if SHARED_POSTGRES.search(around) or (
+            any(self.unresolved(w) for w in args) and SHARED_POSTGRES.search(self.whole)
+        ):
+            refuse_reach(f"`{name}` against the shared Postgres reaches into a running service")
+
+    def shell(self, name: str, cmd: Command, texts: list[str], inside: bool, around: str) -> None:
+        if name == "eval":
+            self.run(" ".join(texts), inside, around)
+            return
+        flag = next((k for k, t in enumerate(texts) if re.fullmatch(r"-[a-z]*c[a-z]*", t)), -1)
+        if 0 <= flag < len(texts) - 1:
+            self.run(texts[flag + 1], inside, around)
+            return
+        for doc in cmd.heredocs:
+            self.run(doc.text, inside, around)
+        path = next((t for t in texts if not t.startswith("-")), "")
+        self.read_shell(self.script_text(path))
+
+    def python(self, cmd: Command, texts: list[str]) -> None:
+        if "-m" in texts:
+            return
+        for doc in cmd.heredocs:
+            self.read_python(doc.text)
+        if "-c" in texts[:-1]:
+            self.read_python(texts[texts.index("-c") + 1])
+            return
+        self.read_python(self.script_text(next((t for t in texts if not t.startswith("-")), "")))
+
+    def script_file(self, path: str) -> None:
+        text = self.script_text(path)
+        if path.endswith(".py") or "python" in text.partition("\n")[0]:
+            self.read_python(text)
+        else:
+            self.read_shell(text)
+
+    def script_text(self, path: str) -> str:
+        """A script this call wrote, or the one on disk. "" if it can't be read."""
+        if path in self.written:
+            return self.written[path]
+        if not path or not self.read_files:
+            return ""
+        with contextlib.suppress(OSError, ValueError):
+            file = self.cwd / Path(path).expanduser()
+            if file.stat().st_size <= SCRIPT_LIMIT:
+                return file.read_text()
+        return ""
+
+    def read_shell(self, text: str) -> None:
+        if text:
+            Reach(text, self.cwd, read_files=False).run(text)
+
+    def read_python(self, text: str) -> None:
+        text = PY_COMMENT.sub("", text)
+        if re.search(r"/proc/(?:\d+|self|\{[^}]*\})/environ", text):
+            refuse_reach("a script reads `/proc/<pid>/environ`, a running process's environment")
+        if not SHELLS_OUT.search(text):
+            return
+        for call in SCRIPT_CALL.finditer(text):
+            words = " ".join(SCRIPT_TOKEN.split(call.group()))
+            Reach(text, self.cwd, read_files=False).run(words)
+
+
+def check_reach(command: str, cwd: Path) -> None:
+    Reach(command, cwd).run(command)
+
+
 def main() -> None:
     try:
         payload = json.load(sys.stdin)
@@ -590,6 +914,7 @@ def main() -> None:
 
     check_gh_body(command, cwd)
     check_secrets(command)
+    check_reach(command, cwd)
     for words in segments(command):
         if words[0] == "cd" and len(words) > 1:
             cwd = (cwd / words[1]).expanduser().resolve()
