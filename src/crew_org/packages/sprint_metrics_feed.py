@@ -39,6 +39,13 @@ was split again. One with no reason recorded is left out and counted, never
 guessed. `replaced_by` isn't sent: the crew doesn't record which stories replaced
 it.
 
+**Every card also sends one `filed` event** (sprint-metrics 4.3.0, crew#985): who
+filed it, what opened it and the project it's for, as facts from `Card.filed`. This
+is every card, not only stories: a Goal or a QA Task isn't delivered work, but it
+was filed. Its time is when the card was created, and its sprint the one whose days
+that falls in, wherever the card was later planned. A card filed outside every sprint
+is left out and counted, and what isn't known is left off the event: never guessed.
+
 Pushing is safe to repeat: the service stores an event once by card, type and
 time, and updates a sprint registered again in place.
 """
@@ -48,7 +55,9 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from crew_org import columns, sendbacks
 from crew_org.flows.attempts import QA, REVIEW
@@ -56,6 +65,7 @@ from crew_org.packages.delivery_history import (
     REVIEWERS,
     Card,
     DeliveryHistory,
+    FiledActivity,
     PeriodEvents,
     SentBack,
 )
@@ -85,6 +95,19 @@ _ROLE_BY_STEP = {
     Step.REVIEW: "Code Reviewer",
     Step.DEPLOY_REVIEW: "DevOps Engineer",
     Step.QA: "QA Engineer",
+}
+# What opened a card, in sprint-metrics' three kinds: a role's finding, a split of filed
+# work, and the crew's own process for the rest.
+_OPENER: dict[FiledActivity, str] = {
+    "finding": "found",
+    "split": "split",
+    "task": "process",
+    "technical_epic": "process",
+    "proposed_goal": "process",
+    "skeleton_goal": "process",
+    "record_change": "process",
+    "retro": "process",
+    "standup": "process",
 }
 
 
@@ -190,7 +213,35 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
                 if _failure_role(missed[0]):
                     body["card"]["failure_role"] = _failure_role(missed[0])
         events.append(body)
+    events = sorted(
+        [*_filed_events(history, left_out), *events],
+        key=lambda e: datetime.fromisoformat(e["timestamp"]),
+    )
     return Feed(sprints=sprints, events=events, left_out=left_out)
+
+
+def _filed_events(history: DeliveryHistory, left_out: Counter[str]) -> list[dict[str, Any]]:
+    """One event per card: how it was filed, in the sprint whose days it was filed in."""
+    zone = ZoneInfo(history.timezone)
+    out = []
+    for card in history.cards:
+        if card.created is None:
+            left_out["card with no created date"] += 1
+            continue
+        day = card.created.astimezone(zone).date()
+        sprint = next((s.name for s in history.sprints if s.start <= day <= s.end), None)
+        if sprint is None:
+            left_out["card filed outside every sprint"] += 1
+            continue
+        body = _event(card, "filed", sprint, card.created.isoformat())
+        if card.filed.by != "unknown":
+            body["filer"] = card.filed.by
+        if card.filed.activity is not None:
+            body["opener"] = _OPENER[card.filed.activity]
+        if card.filed.for_project is not None:
+            body["project"] = card.filed.for_project
+        out.append(body)
+    return out
 
 
 def _review_return(event: Any) -> bool:
@@ -249,7 +300,8 @@ def _event(card: Card, kind: str, sprint: str, at: str) -> dict[str, Any]:
     if card.created:
         # The time as well as the day: sprint-metrics 1.3.0's minutes need it (crew#683).
         body["created_at"] = card.created.isoformat()
-    if card.points is not None:
+    # Not on `filed`: the service reads a superseded card's points from its first row.
+    if card.points is not None and kind != "filed":
         body["points"] = int(card.points)
     return {
         "api_version": API_VERSION,
