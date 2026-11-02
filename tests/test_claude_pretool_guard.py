@@ -917,11 +917,13 @@ OFF_THE_LOGS_ROUTE = [
     f"{LOGS} -L /tmp/log -c 'select 1'",
     f"{LOGS} -v x=1 -c 'select 1'",
     # docker exec options that change what runs.
-    "docker exec -e PGDATABASE=postgres litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
+    "docker exec -e PGDATABASE=postgres litellm-temp-db "
+    "psql -U litellm_admin -d litellm -c 'select 1'",
     "docker exec -u root litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
     "docker exec --env-file x litellm-temp-db psql -U litellm_admin -d litellm -c 'select 1'",
     # Another way in: a shell in the container reads its environment.
-    'docker exec litellm-temp-db sh -c \'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"\'',
+    "docker exec litellm-temp-db sh -c "
+    '\'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select 1"\'',
     "docker exec litellm-temp-db env X=1 psql -U litellm_admin -d litellm -c 'select 1'",
     "docker exec litellm-temp-db printenv POSTGRES_USER",
     "docker exec litellm-temp-db ls",
@@ -973,7 +975,8 @@ def test_anything_off_the_logs_route_is_refused(tmp_path, command):
     "call",
     [
         '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm"]',
-        '["docker", "exec", "-i", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
+        '["docker", "exec", "-i", "litellm-temp-db", "psql", "-U", "litellm_admin",'
+        ' "-d", "litellm",'
         ' "-At", "-c", QUERY.format(a=1)]',
         '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
         ' "-c", "select 1"]',
@@ -990,7 +993,8 @@ def test_a_python_script_reading_litellms_logs_is_allowed(tmp_path, call):
     [
         '["docker", "exec", "litellm-temp-db", "psql", "-U", "postgres", "-d", "litellm"]',
         '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "postgres"]',
-        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm", "-l"]',
+        '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
+        ' "-l"]',
         '["docker", "exec", "litellm-temp-db", "pg_dump", "-U", "litellm_admin", "-d", "litellm"]',
         '["docker", "exec", "litellm-temp-db", "psql", "-U", "litellm_admin", "-d", "litellm",'
         ' "-c", "delete from t"]',
