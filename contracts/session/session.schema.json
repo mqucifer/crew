@@ -1,0 +1,255 @@
+{
+  "$defs": {
+    "SessionCard": {
+      "additionalProperties": false,
+      "description": "The card a session worked on, as far as sprint-metrics needs to read it.",
+      "properties": {
+        "created": {
+          "description": "The day the card was filed, as on every event.",
+          "format": "date",
+          "title": "Created",
+          "type": "string"
+        },
+        "created_at": {
+          "description": "The time it was filed.",
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "Goal",
+                "Epic",
+                "Story",
+                "Bug"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The card's type on the board. None for a role's Task, which has none.",
+          "title": "Type"
+        }
+      },
+      "required": [
+        "created",
+        "created_at",
+        "type"
+      ],
+      "title": "SessionCard",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What happened in one session: its card, role, start, finish, model time and tokens.\n\nThe same identity as every event the intake takes, with the role added: a re-sent\nsession is the same `card_id` (or none), `type`, `timestamp` and `role`. Two members\nof a panel can start on one card in the same moment.",
+  "properties": {
+    "api_version": {
+      "const": "1",
+      "description": "The intake's version.",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "cached_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Of its prompt tokens, those the server's prefix cache held.",
+      "title": "Cached Tokens"
+    },
+    "card": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SessionCard"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "None exactly when `card_id` is."
+    },
+    "card_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9._-]+#[0-9]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The card, as `repo#number`. A review's card is the one its pull request closes, when it closes exactly one. None when there's no card to name: a pull request that closes none (`pull` says which), or a session on no card, such as a retro.",
+      "title": "Card Id"
+    },
+    "completion_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Tokens answered.",
+      "title": "Completion Tokens"
+    },
+    "epic": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9._-]+#[0-9]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The epic the card's split from, as `repo#number`, so a story's sessions add up to its epic. None for a card with no parent, as a Bug has.",
+      "title": "Epic"
+    },
+    "finished": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When it finished. None when the record has no finish: the tick stopped partway, so its minutes are unknown, never zero.",
+      "title": "Finished"
+    },
+    "model_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Its model calls' time, in seconds. A call with no time recorded adds nothing. None, never zero, when no call of it has one.",
+      "title": "Model Seconds"
+    },
+    "part": {
+      "anyOf": [
+        {
+          "enum": [
+            "refinement",
+            "delivery"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Planning or building, by the step of the crew its model calls were for. `refinement`: refine, design, panel, goal look, order, revisit. `delivery`: deliver, session, qa, review, deploy review, resolution. None: the retro, which is neither, or a session whose calls name no step, or that has none recorded.",
+      "title": "Part"
+    },
+    "prompt_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Tokens sent; None as for the time.",
+      "title": "Prompt Tokens"
+    },
+    "pull": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9._-]+#[0-9]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The pull request a review worked on, as `repo#number`. None for other work.",
+      "title": "Pull"
+    },
+    "reasoning_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Of those, the ones spent reasoning.",
+      "title": "Reasoning Tokens"
+    },
+    "role": {
+      "description": "The role that worked. A later MINOR may add roles.",
+      "enum": [
+        "Product Owner",
+        "Business Analyst",
+        "Architect",
+        "UX Designer",
+        "QA Engineer",
+        "Developer",
+        "Code Reviewer",
+        "DevOps Engineer",
+        "Scrum Master"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "sprint": {
+      "description": "The sprint whose days it started in.",
+      "minLength": 1,
+      "title": "Sprint",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "When the session started.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "type": {
+      "const": "session",
+      "description": "The new event type mqucifer/crew#1001 sends.",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "api_version",
+    "type",
+    "card_id",
+    "timestamp",
+    "sprint",
+    "card",
+    "epic",
+    "pull",
+    "role",
+    "part",
+    "finished",
+    "model_seconds",
+    "prompt_tokens",
+    "cached_tokens",
+    "completion_tokens",
+    "reasoning_tokens"
+  ],
+  "title": "SessionEvent",
+  "type": "object"
+}

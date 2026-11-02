@@ -1,0 +1,18 @@
+{
+  "api_version": "1",
+  "type": "session",
+  "card_id": null,
+  "timestamp": "2026-09-26T04:30:00Z",
+  "sprint": "Sprint 6",
+  "card": null,
+  "epic": null,
+  "pull": null,
+  "role": "Scrum Master",
+  "part": null,
+  "finished": "2026-09-26T04:34:00Z",
+  "model_seconds": 240.0,
+  "prompt_tokens": 40100,
+  "cached_tokens": 0,
+  "completion_tokens": 2600,
+  "reasoning_tokens": 1400
+}

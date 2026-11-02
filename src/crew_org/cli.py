@@ -2535,12 +2535,13 @@ def _close_and_report(
 
 @package_app.command("schema")
 def package_schema() -> None:
-    """Write delivery-history's schema and its mock into contracts/, from the model (ADR 0021).
+    """Write delivery-history's schema and its mock into contracts/, from the model (ADR 0021),
+    and the shape of a session with its examples (crew#1000).
 
-    Refused when the schema changed and SCHEMA_VERSION didn't: raise it, MAJOR
+    Refused when a schema changed and its version didn't: raise it, MAJOR
     if a consumer could break on the change, MINOR if it only adds.
     """
-    from crew_org.packages import contract, mock  # noqa: PLC0415
+    from crew_org.packages import contract, mock, session_shape  # noqa: PLC0415
     from crew_org.packages import sprint_metrics_answers as sma  # noqa: PLC0415
 
     fetched = sma.fetch_schema()
@@ -2548,6 +2549,7 @@ def package_schema() -> None:
         console.print(f"fetched {fetched.relative_to(contract.ROOT)}")
     try:
         written = contract.write()
+        written += session_shape.write()
     except contract.StaleVersion as exc:
         console.print(f"[red]{escape(str(exc))}[/]")
         raise typer.Exit(code=1) from None

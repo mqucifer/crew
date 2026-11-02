@@ -1,0 +1,22 @@
+{
+  "api_version": "1",
+  "type": "session",
+  "card_id": "sprint-metrics#101",
+  "timestamp": "2026-09-25T20:30:00Z",
+  "sprint": "Sprint 6",
+  "card": {
+    "created": "2026-09-23",
+    "created_at": "2026-09-23T23:30:00Z",
+    "type": "Goal"
+  },
+  "epic": null,
+  "pull": null,
+  "role": "Product Owner",
+  "part": "refinement",
+  "finished": "2026-09-25T20:36:00Z",
+  "model_seconds": 214.5,
+  "prompt_tokens": 61200,
+  "cached_tokens": 48800,
+  "completion_tokens": 2410,
+  "reasoning_tokens": 1120
+}
