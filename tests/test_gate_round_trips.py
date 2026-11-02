@@ -12,6 +12,7 @@ from crew_org.flows import delivery
 from crew_org.flows.board_flow import NEEDS_REWORK, STORY_PROBLEM_MARKER
 from crew_org.flows.delivery import DeliveryResult
 from crew_org.flows.story_problem import MAX_ROUND_TRIPS, round_trips
+from crew_org.tools.github_issues import Trust
 from crew_org.tools.github_project import Card
 
 REPO = "sprint-metrics"
@@ -47,9 +48,17 @@ class Issues:
         ]
         self.story.append({"body": QA_RETURN})
         self.closed_pulls, self.pr_comments, self.epic_comments, self.labels = [], [], [], []
+        self.edited_by = {}
+
+    owner = "mqucifer"
+    # Set, so a comment with no author isn't taken as the Sponsor's.
+    trust = Trust(sponsor="mquarters", crew=frozenset(), tools=frozenset())
 
     def comments(self, repo, number):
         return self.story if number == 145 else []
+
+    def people_who_edited(self, repo, number):
+        return self.edited_by.get(number, set())
 
     def pull_for_branch(self, repo, branch, *, known=None):
         return {"number": 164, "head": {"sha": "abc"}}
@@ -160,3 +169,43 @@ def test_past_the_limit_a_story_with_no_epic_is_blocked_for_a_person(monkeypatch
     assert not evidence.startswith(STORY_PROBLEM_MARKER) and "delivered 6 times" in evidence
     assert "stdout is empty" in evidence and "the design note says not to" in evidence
     assert issues.closed_pulls == [], "the pull request stays, for the person to read"
+
+
+def test_past_the_limit_with_a_persons_edit_on_a_later_story_it_is_held_and_its_pr_stays():
+    """No code path closes a pull request with that story at risk (crew#989)."""
+    issues, board = Issues(deliveries=6), Board()
+    issues.edited_by = {146: {"quarters-claude"}}
+    went, result = gates_disagree(issues, board)
+    assert went and result.returned == []
+    (blocked,) = result.blocked
+    assert blocked.blocked_rule == "story.return_held"
+    assert board.status == {"S145": "Blocked"} and (145, "blocked") in issues.labels
+    assert issues.closed_pulls == [] and issues.epic_comments == []
+    assert (59, NEEDS_REWORK) not in issues.labels
+    (held,) = issues.pr_comments
+    assert "#146" in held and "delivered 6 times" in held
+    assert "went back to refinement" not in held and "would go back to refinement" in held
+    assert "close PR #164" in held, "the re-split's way out names the pull request"
+    assert blocked.blocked_reason.startswith("**Held for a person")
+
+
+def test_a_person_who_moves_it_out_of_the_hold_gets_its_repair_not_the_hold_again():
+    issues, board = Issues(deliveries=6), Board()
+    issues.edited_by = {146: {"quarters-claude"}}
+    gates_disagree(issues, board)
+    issues.story.append({"body": issues.pr_comments[0]})
+
+    board.status.clear()
+    went, result = gates_disagree(issues, board)
+    assert not went and result.blocked == [] and board.status == {}
+
+
+def test_the_persons_word_lasts_until_the_next_delivery():
+    issues, board = Issues(deliveries=6), Board()
+    issues.edited_by = {146: {"quarters-claude"}}
+    gates_disagree(issues, board)
+    issues.story.append({"body": issues.pr_comments[0]})
+    issues.story.append({"body": "Implemented in #164 on `b`. Lint and tests pass. (7)"})
+
+    went, result = gates_disagree(issues, board)
+    assert went and result.blocked[0].blocked_rule == "story.return_held"

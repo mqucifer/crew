@@ -81,6 +81,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids. |
 | `story.session_blocked` | Its Developer session ended blocked on a missing file or fact, or was stopped. |
 | `story.contract_ruling` | At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed. |
+| `story.return_held` | Its re-split would replace started work, or a story a person has touched: for a person. |
 | `session.choice` | Its session ended blocked on a choice no one has made: for the Sponsor. |
 | `session.no_epic` | Its session ended blocked, and it has no epic to be split again: for a person. |
 | `hold.sibling` | It waits for an earlier story in the same epic. |
@@ -246,6 +247,7 @@ names, what it means, and where those notes are written:
 | `hold.wip_limit` | The next column is at its limit. | `flows/board_flow.py:refine_epics`, `flows/delivery.py:deliver`, `flows/loop.py:run`, `flows/sprint.py:start_sprint` |
 | `skip.board_flow.rework_refused` | A Goal the Sponsor sent back is decomposed again only on their word, and once, its unstarted epics superseded. An epic sent back goes through decision.resplit.affected (crew#859). | `flows/board_flow.py:resplit_gate`, `flows/board_flow.py:rework_gate` |
 | `skip.board_flow.waits_for_planned` | An epic covered only by planned stories waits for them: it closes when they land, and is split again if one closes undelivered. | `flows/board_flow.py:settle_wait` |
+| `story.return_held` | Its re-split would replace started work, or a story a person has touched: for a person. | `flows/story_problem.py:_held` |
 
 ### Notes that name no rule
 

@@ -732,6 +732,8 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
     rounds = story_problem.round_trips(issues, repo, card.number or 0)
     if rounds < story_problem.MAX_ROUND_TRIPS:
         return False
+    if story_problem.a_person_kept_it(issues, repo, card.number or 0):
+        return False
     branch = branch_name(card.number or 0, card.title)
     try:
         pull = issues.pull_for_branch(repo, branch, known=card.open_pull_on(branch))
@@ -739,7 +741,7 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
         pull = None
     number = pull["number"] if pull else None
     comment = story_problem.round_trip_evidence(issues, repo, card, number, rounds)
-    if not story_problem.return_to_refinement(
+    went = story_problem.return_to_refinement(
         board,
         issues,
         sink,
@@ -749,15 +751,21 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
         comment=comment,
         reason="gate round trips",
         round_=rounds,
-    ):
+    )
+    if not went:
         from crew_org.flows.session_end import blocked_for_a_person  # noqa: PLC0415
 
-        said = comment.replace(story_problem.STORY_PROBLEM_MARKER + "\n", "")
+        said = (
+            story_problem.held_comment(card, comment, went.held, pull=number)
+            if went.held
+            else comment.replace(story_problem.STORY_PROBLEM_MARKER + "\n", "")
+        )
+        rule = Rule.RETURN_HELD if went.held else Rule.ROUND_TRIPS_NO_EPIC
         blocked_for_a_person(
             card,
             repo=repo,
             comment=said,
-            rule=Rule.ROUND_TRIPS_NO_EPIC,
+            rule=rule,
             board=board,
             issues=issues,
             sink=sink,
@@ -766,7 +774,7 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
             DeliveryOutcome(
                 card=card.number or 0,
                 blocked_reason=said.splitlines()[0][:400],
-                blocked_rule=Rule.ROUND_TRIPS_NO_EPIC,
+                blocked_rule=rule,
             )
         )
         return True

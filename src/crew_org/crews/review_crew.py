@@ -10,6 +10,8 @@ is not a review and an author cannot act on it.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from crew_org import calls
@@ -37,11 +39,20 @@ class Finding(BaseModel):
             "having that doesn't hold it up"
         ),
     )
-    conflicts_with: str = Field(
+    criterion: str = Field(
+        default="",
+        description="The acceptance criterion this finding is about, quoted. Empty when none",
+    )
+    # One field said "the criterion doing this would break", and the only place to name a
+    # criterion: crew-presentation#276 filled it with the one its fix protected, and a
+    # one-line fix closed the pull request. So the form asks the question itself.
+    doing_it: Literal["", "keeps_it", "breaks_it"] = Field(
         default="",
         description=(
-            "The acceptance criterion, quoted, that the code would break if the author did "
-            "what this finding asks. Empty when it breaks none"
+            "What doing what `action` asks does to `criterion`. `keeps_it`: the code breaks "
+            "it, or could, and the action mends or protects it, so the author can do it. "
+            "`breaks_it`: the code meets it, and doing the action would stop the code meeting "
+            "it, so the author can't. Empty when `criterion` is"
         ),
     )
 
@@ -51,6 +62,12 @@ class Finding(BaseModel):
         if len(value.strip()) < MIN_ACTION_CHARS:
             refuse("form.Finding.is_actionable")
         return value
+
+    @model_validator(mode="after")
+    def _says_what_it_does_to_the_criterion(self) -> Finding:
+        if bool(self.criterion.strip()) != bool(self.doing_it):
+            refuse("form.Finding.says_what_it_does_to_the_criterion")
+        return self
 
 
 class ReviewVerdict(BaseModel):
@@ -76,7 +93,7 @@ class ReviewVerdict(BaseModel):
     @property
     def conflicts(self) -> list[Finding]:
         """Findings the story's own criteria contradict: the Product Owner's to settle (#252)."""
-        return [f for f in self.findings if f.blocking and f.conflicts_with.strip()]
+        return [f for f in self.findings if f.blocking and f.doing_it == "breaks_it"]
 
     @property
     def notes(self) -> list[Finding]:
@@ -211,10 +228,13 @@ def review_diff(
                     else ""
                 )
                 + (
-                    "The acceptance criteria are the product's decisions. If a finding would "
-                    "have the author break one of them, whatever the design note says, set its "
-                    "`conflicts_with` to that criterion: the story goes to the Product Owner to "
-                    "settle, not back to the author.\n"
+                    "The acceptance criteria are the product's decisions. When a finding is "
+                    "about one, quote it in `criterion` and say in `doing_it` what doing what "
+                    "you ask does to it. `keeps_it`, when the code breaks it or could, and your "
+                    "action mends or protects it: the author does that. `breaks_it`, when the "
+                    "code meets it and your action, whatever the design note says, would stop "
+                    "it: the story goes to the Product Owner to settle, not back to the "
+                    "author.\n"
                     if acceptance_criteria and not tests_cover
                     else ""
                 )
