@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+from crew_org.crews.review_crew import ReviewVerdict
 from crew_org.events import EventSink
-from crew_org.flows import loop
+from crew_org.flows import loop, review
 from crew_org.flows.delivery import DeliveryResult
 from crew_org.process import ProcessRules
+from tests.test_review import BOT, crew_pull
+from tests.test_review_conflicts import CONFLICT, sibling, story
+from tests.test_review_conflicts import Board as ReturnBoard
+from tests.test_review_conflicts import Issues as ReturnIssues
 
 
 class FakeBoard:
@@ -672,6 +677,128 @@ def test_review_says_what_ci_it_holds_a_card_on(crew, monkeypatch):
     assert outcome.held == [
         "#268 — CI still running on PR #274: checks, qa-suite / qa; reviewed once it ends"
     ]
+
+
+# --- crew#993 meets crew#989: a story held for a person, and the CI a tick waits for -------------
+
+
+class HeldBoard(ReturnBoard):
+    """A board whose cards are where the moves put them, as the next pass reads them."""
+
+    def counts(self, cards=None):
+        return {}
+
+    def set_status(self, item_id, column):
+        super().set_status(item_id, column)
+        self._cards[:] = [
+            c.model_copy(update={"status": column}) if c.item_id == item_id else c
+            for c in self._cards
+        ]
+
+
+class ChecksOnHeads(ReturnIssues):
+    """Pull requests with heads, whose CI runs for its first `running[head]` reads, and
+    whose reviews stay on the head they judged, as GitHub's do."""
+
+    def __init__(self, pulls, running):
+        super().__init__(pulls)
+        self.running = running
+
+    def check_runs(self, repo, sha):
+        if self.running.get(sha, 0) > 0:
+            self.running[sha] -= 1
+            return [{"name": "tests", "status": "in_progress", "conclusion": None}]
+        return [{"name": "tests", "status": "completed", "conclusion": "success"}]
+
+    def create_review(self, repo, number, *, event, body):
+        super().create_review(repo, number, event=event, body=body)
+        head = next(p["head"]["sha"] for p in self._pulls if p["number"] == number)
+        state = {"APPROVE": "APPROVED", "REQUEST_CHANGES": "CHANGES_REQUESTED"}[event]
+        self._reviews.setdefault(number, []).append(
+            {"user": {"login": BOT}, "body": body, "commit_id": head, "state": state}
+        )
+        return {}
+
+
+def ticking_with_reviews(crew, monkeypatch, cards, pulls, running, verdicts):
+    """A tick of the real review phase, on a board and pull requests that answer as GitHub's."""
+    issues, board = ChecksOnHeads(pulls, running), HeldBoard(cards)
+    issues.children = [c.number for c in cards]
+    crew.issues = crew.reviewer = issues
+    crew.board, crew.reviewer_login = board, BOT
+    slept: list[float] = []
+    now = {"t": 0.0}
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now["t"] += seconds
+
+    remaining = iter(verdicts)
+    monkeypatch.setattr(review, "review_diff", lambda *_a, **_k: next(remaining))
+    monkeypatch.setattr(loop, "PHASES", (("review", loop._review),))
+    monkeypatch.setattr(loop, "_clone", lambda *_a: None)
+    monkeypatch.setattr(loop.time, "sleep", sleep)
+    monkeypatch.setattr(loop.time, "monotonic", lambda: now["t"])
+    return issues, board, slept
+
+
+def pull_on(number, branch, head):
+    made = crew_pull(number=number, branch=branch)
+    made["head"]["sha"] = head
+    return made
+
+
+def test_a_story_held_for_a_person_after_the_wait_isn_t_waited_for_again(crew, monkeypatch):
+    """CI ends, the review's conflict holds the story with its pull request open, and the tick
+    ends. Its CI is run again, and that isn't review's to wait for: the card is with a person."""
+    issues, board, slept = ticking_with_reviews(
+        crew,
+        monkeypatch,
+        [story(), sibling()],
+        [pull_on(14, "feat/6-show-metric-6", "head6")],
+        {"head6": 1},
+        [],
+    )
+    issues.edited_by = {7: {"mquarters"}}
+
+    def judge(*_a, **_k):
+        issues.running["head6"] = 99
+        return CONFLICT
+
+    monkeypatch.setattr(review, "review_diff", judge)
+    result = loop.run(crew)
+
+    assert board.moves == [("S6", "Blocked")]
+    assert issues.closed == [], "its pull request stays open"
+    assert slept == [], "CI had ended by the wait's first read, and nothing else was waited for"
+    assert result.passes == 3
+    assert result.settled and not result.ci_stopped
+    assert not result.stuck, "the hold on CI has ended, and the review phase says so"
+
+
+def test_a_story_held_for_a_person_leaves_the_tick_waiting_for_its_siblings_ci(crew, monkeypatch):
+    """The sibling with CI running is what the re-split would replace, so it's what holds the
+    story. It isn't held with it: it's reviewed in the same tick once its CI ends."""
+    issues, board, slept = ticking_with_reviews(
+        crew,
+        monkeypatch,
+        [story(), sibling(status="Reviewing")],
+        [
+            pull_on(14, "feat/6-show-metric-6", "head6"),
+            pull_on(15, "feat/7-show-metric-7", "head7"),
+        ],
+        # Pass 1 and pass 2's review reads, then the wait's first read, then its second.
+        {"head7": 3},
+        [CONFLICT, ReviewVerdict(summary="Sound.", approve=True)],
+    )
+    issues.branch_names = ["feat/7-show-metric-7"]
+
+    result = loop.run(crew)
+
+    assert board.moves == [("S6", "Blocked"), ("S7", "QAing")]
+    assert issues.closed == []
+    assert slept == [loop.CI_POLL]
+    assert result.settled and not result.ci_stopped
 
 
 # --- #388: bookkeeping first, so holds see the board as it stands ------------------------------
