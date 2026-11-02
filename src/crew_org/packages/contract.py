@@ -91,19 +91,26 @@ def check_version(versions: dict[str, str], version: str, print_: str) -> None:
         raise StaleVersion(f"SCHEMA_VERSION {version} isn't later than {max(later, key=_version)}")
 
 
-def write(directory: Path = CONTRACTS) -> list[Path]:
-    """Write the schemas, and record this version's fingerprint if it's new."""
-    files = schemas()
+def write(
+    directory: Path = CONTRACTS,
+    files: dict[str, dict[str, Any]] | None = None,
+    version: str = dh.SCHEMA_VERSION,
+) -> list[Path]:
+    """Write the schemas, and record this version's fingerprint if it's new.
+
+    The package's by default; another contract names its own files and version.
+    """
+    files = schemas() if files is None else files
     print_ = fingerprint(files)
     versions = read_versions(directory)
-    check_version(versions, dh.SCHEMA_VERSION, print_)
+    check_version(versions, version, print_)
     directory.mkdir(parents=True, exist_ok=True)
     written = []
     for name, content in files.items():
         path = directory / name
         path.write_text(_dump(content), encoding="utf-8")
         written.append(path)
-    versions[dh.SCHEMA_VERSION] = print_
+    versions[version] = print_
     path = directory / VERSIONS
     path.write_text(_dump(dict(sorted(versions.items(), key=lambda kv: _version(kv[0])))))
     written.append(path)

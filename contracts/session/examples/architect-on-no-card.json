@@ -1,0 +1,18 @@
+{
+  "api_version": "1",
+  "type": "session",
+  "card_id": null,
+  "timestamp": "2026-09-25T20:50:00Z",
+  "sprint": "Sprint 6",
+  "card": null,
+  "epic": null,
+  "pull": null,
+  "role": "Architect",
+  "part": "refinement",
+  "finished": "2026-09-25T21:04:00Z",
+  "model_seconds": 402.1,
+  "prompt_tokens": 118400,
+  "cached_tokens": 90300,
+  "completion_tokens": 5120,
+  "reasoning_tokens": 2980
+}
