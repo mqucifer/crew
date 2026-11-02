@@ -20,6 +20,10 @@ config.const.board_flow.REFINE_FOCUS_ABOVE_CHARS:
   origin:
   - crew#231
   - crew#62
+config.const.loop.CI_POLL:
+config.const.loop.CI_WAIT:
+  origin:
+  - crew#993
 config.const.loop.MAX_PASSES:
 config.const.loop.QUEUE_POLL:
 config.const.loop.QUEUE_WAIT:
