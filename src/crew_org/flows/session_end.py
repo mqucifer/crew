@@ -40,7 +40,7 @@ from crew_org.flows import artifacts, delivery, gates, role_tasks
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.conclusion import story_rows
 from crew_org.flows.moves import move_card
-from crew_org.flows.story_problem import held_comment, return_to_refinement
+from crew_org.flows.story_problem import held_comment, no_epic_comment, return_to_refinement
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
@@ -589,8 +589,6 @@ def _repeated(ending: Ending, leaving: Leaving | None) -> str:
     if ending.stop != "gate_repeat" or leaving is None or not leaving.findings:
         return ""
     quoted = "\n\n".join(_quoted(first_lines(f.says)) for f in leaving.findings[-1])
-    if ((ending.evidence or {}).get("stop") or {}).get("final"):
-        return f"**What the gates found:**\n\n{quoted}"
     return f"**What the gates sent back each time:**\n\n{quoted}"
 
 
@@ -604,9 +602,6 @@ def stopped_by(ending: Ending, leaving: Leaving | None = None) -> str:
             f"the backstop: {minutes} minutes of model time over "
             f"{_count(sessions, 'session')}, the delivery's {BACKSTOP_S // 3600} hours"
         )
-    if ending.stop == "gate_repeat" and seen.get("final"):
-        # A finding no change can meet stops its first round (crew#949).
-        return "the gates at `done`, whose finding no change to the branch can meet"
     if ending.stop == "gate_repeat":
         last = leaving.findings[-1] if leaving and leaving.findings else []
         return (
@@ -815,7 +810,7 @@ def _return(
     return blocked_for_a_person(
         card,
         repo=repo,
-        comment=comment.replace(STORY_PROBLEM_MARKER + "\n", ""),
+        comment=no_epic_comment(comment),
         rule=Rule.SESSION_NO_EPIC,
         board=board,
         issues=issues,

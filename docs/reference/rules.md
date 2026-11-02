@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 80 |
-| A setting that changes what the tick does | 215 |
+| A setting that changes what the tick does | 216 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -41,7 +41,7 @@ section; one no line holds for is unplaced, never guessed.
 | When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 160 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
-| Unplaced | | 112 |
+| Unplaced | | 113 |
 
 ## The crew's own decisions (`rules.Rule`)
 
@@ -227,7 +227,11 @@ section; one no line holds for is unplaced, never guessed.
 
 {}{} | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 | `guard.regression.broken_contracts`<br>guard.regression.broken_contracts | contracts | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
-| `guard.reproduce.check`<br>The fix passes the checks, but {}. Change them so at least one fails against the code as merged, for the reason the bug describes. | evidence | `src/crew_org/flows/gates.py:_as_recorded` | Developer | — | src/crew_org/flows/gates.py:_as_recorded<br>src/crew_org/flows/gates.py:_reproduced | crew#407<br>crew#778<br>crew#839<br>crew#949 |
+| `guard.reproduce.check`<br>This bug's fix is only in its tests, so none of them has to fail on main: the proof is the named tests passing, with each merged test the branch keeps still making every check it made, as it was or rewritten. These checks, made as merged, are gone:
+
+{}
+
+Put each back. A check the criteria say is wrong is replaced by the right one, never dropped. | evidence | `src/crew_org/flows/gates.py:_as_recorded` | Developer | — | src/crew_org/flows/gates.py:_as_recorded<br>src/crew_org/flows/gates.py:_reproduced | crew#1005<br>crew#407<br>crew#778<br>crew#839 |
 | `guard.role_tasks.out_of_scope`<br>A role's Task changes only its role's area (crew#839); what else it needs is its own finding, a bug or another Task. | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 
 ## The crew changes the work itself, and records it
@@ -428,6 +432,7 @@ section; one no line holds for is unplaced, never guessed.
 | `config.const.diagnosis_crew.MAX_FILES`<br>MAX_FILES = 8 | — | `src/crew_org/crews/diagnosis_crew.py:MAX_FILES` | — | — | src/crew_org/crews/diagnosis_crew.py:MAX_FILES | — |
 | `config.const.enclosing.NAME_CHARS`<br>The longest name shown, so a hit stays one short line: a long heading or key path keeps its start and its end (crew#807). | — | `src/crew_org/session/enclosing.py:NAME_CHARS` | — | — | src/crew_org/session/enclosing.py:NAME_CHARS | crew#807 |
 | `config.const.epic_notes.OTHER_STORY_CHARS`<br>Each other story's direction, as much as says what it covers. | scope | `src/crew_org/flows/epic_notes.py:OTHER_STORY_CHARS` | — | — | src/crew_org/flows/epic_notes.py:OTHER_STORY_CHARS | — |
+| `config.const.gates._REWRITTEN`<br>How alike a rewritten check is to the one it replaces: difflib's own cutoff for a close match (`get_close_matches`). | — | `src/crew_org/flows/gates.py:_REWRITTEN` | — | — | src/crew_org/flows/gates.py:_REWRITTEN | crew#1005 |
 | `config.const.git.OUTPUT_CHARS`<br>The most of a reply's output read: the rest is cut, and git stopped. | — | `src/crew_org/session/git.py:OUTPUT_CHARS` | — | — | src/crew_org/session/git.py:OUTPUT_CHARS | crew#778 |
 | `config.const.git.TIMEOUT`<br>A git command that runs longer than this is stopped. | — | `src/crew_org/session/git.py:TIMEOUT` | — | — | src/crew_org/session/git.py:TIMEOUT | crew#778 |
 | `config.const.github_http.ATTEMPTS`<br>ATTEMPTS = 3 | — | `src/crew_org/tools/github_http.py:ATTEMPTS` | — | — | src/crew_org/tools/github_http.py:ATTEMPTS | — |

@@ -758,7 +758,7 @@ def _gates_disagree(card: Card, *, board, issues, sink, repo: str, result) -> bo
         said = (
             story_problem.held_comment(card, comment, went.held, pull=number)
             if went.held
-            else comment.replace(story_problem.STORY_PROBLEM_MARKER + "\n", "")
+            else story_problem.no_epic_comment(comment)
         )
         rule = Rule.RETURN_HELD if went.held else Rule.ROUND_TRIPS_NO_EPIC
         blocked_for_a_person(

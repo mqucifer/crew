@@ -32,6 +32,7 @@ session can't end with a `done` that fails it (`missing_named_tests`).
 from __future__ import annotations
 
 import ast
+import difflib
 import fnmatch
 import re
 from collections import Counter
@@ -61,9 +62,6 @@ class Finding:
     says: str
     # How many things it names, where the retro counts them (crew#839's tests at `done`).
     count: int = 0
-    # No change to the branch can meet it, so the delivery stops in this round, as the
-    # same findings 3 rounds running stop it (crew#949).
-    final: bool = False
 
 
 @dataclass
@@ -90,6 +88,9 @@ class Verdict:
     # Merged tests a workspace Task's services turn on that fail, where the branch caused
     # none of them: the Developer's bug once it merges, not the Task's (crew#839).
     for_developer: dict[str, str] = field(default_factory=dict)
+    # A bug fixed in its tests alone: the merged tests it changes or removes, for the
+    # Code Reviewer to judge that the defect is theirs (crew#1005).
+    fixed_in_tests: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -281,6 +282,8 @@ def _named(said: dict[str, Any]) -> list[str]:
 
 # The pull request's section of changed merged tests the story doesn't name (decision 6).
 QUESTIONS_HEADING = "## For the Code Reviewer: merged tests changed that the story doesn't name"
+# A bug's fix that changes only tests, which nothing failing on main proved (crew#1005).
+FIXED_IN_TESTS_HEADING = "## For the Code Reviewer: a bug fixed in its tests"
 
 
 def pr_sections(verdict: Verdict) -> list[str]:
@@ -306,6 +309,19 @@ def pr_sections(verdict: Verdict) -> list[str]:
             "",
         ]
         lines += [f"- `{key}`: {line}" for key, line in sorted(verdict.for_developer.items())]
+    if verdict.fixed_in_tests:
+        lines += [
+            "",
+            FIXED_IN_TESTS_HEADING,
+            "",
+            "This bug's fix changes only tests, so no test of it failed on main, as a "
+            "product bug's has to. The gates held that its named tests pass and that each "
+            "merged test it keeps still makes every check it made, as it was or rewritten. "
+            "Judge whether the defect is in these tests, as the report says, and not in the "
+            "code they test, and whether a rewritten check still checks what it did:",
+            "",
+        ]
+        lines += [f"- `{key}`" for key in verdict.fixed_in_tests]
     return lines
 
 
@@ -807,9 +823,14 @@ def _reproduced(
     default branch's workspace when it has one (crew#839). `missing` says why a bug the
     crew filed from turned-on tests has no record to stand in.
 
-    A branch that changes only tests, every named one's file among them, with none
-    failing as merged, is a fix to the tests themselves: nothing it does can fail on main,
-    so the finding says so and is final (mqucifer/sprint-metrics#868, crew#949)."""
+    A bug whose fix changes only tests is fixed in them: its defect is a test
+    (mqucifer/sprint-metrics#868's was stale after a release), or its failure shows only
+    off main (mqucifer/crew-presentation#300's, on a pin's branch). Nothing it does can
+    fail on main, so its proof is the run above, which with only tests changed is the
+    branch itself: every named test runs and passes, and each merged test it keeps still
+    makes every check it made, so it can't pass by checking less (the Sponsor, crew#1005). It
+    has to change a merged test in a named test's file: a branch that only adds tests
+    fixes nothing, and still has to show the bug."""
     tests = [profile_for(t.partition("::")[0]).split_test_id(t) for t in named if t]
     if not tests:
         return
@@ -819,33 +840,200 @@ def _reproduced(
             note(f"reproduction not checked: {found.unchecked}")
         return
     refusal = found.refusal()
-    files = sorted({path for path, _ in tests})
-    changed = paths or []
-    if (
-        refusal
-        and found.passed
-        and not (found.skipped or found.hung)
-        and set(files) <= set(changed)
-        and all(profile_for(p).is_test_path(p) for p in changed)
-    ):
-        verdict.findings.append(
-            Finding(
-                "guard.reproduce.check",
-                says(
+    fixed = _fixed_in_tests(worktree, merged, tests, paths or [])
+    if refusal and fixed and not (found.skipped or found.hung):
+        if weaker := checks_less(worktree, merged, paths or []):
+            verdict.findings.append(
+                Finding(
                     "guard.reproduce.check",
-                    "test_only",
-                    files=", ".join(f"`{f}`" for f in files),
-                    passed=", ".join(found.passed),
-                ),
-                final=True,
+                    says(
+                        "guard.reproduce.check",
+                        "checks_less",
+                        tests="\n".join(
+                            f"- `{key}`: `{made}`"
+                            for key, gone in sorted(weaker.items())
+                            for made in gone
+                        ),
+                    ),
+                )
             )
-        )
+        else:
+            verdict.fixed_in_tests = fixed
         return
     if refusal:
         why = f"{refusal}. {missing}" if missing else refusal
         verdict.findings.append(
             Finding("guard.reproduce.check", says("guard.reproduce.check", why=why))
         )
+
+
+def _fixed_in_tests(
+    worktree: Path, merged: regression.Merged, tests: list[tuple[str, str]], paths: list[str]
+) -> list[str]:
+    """The merged tests a bug's fix changes or removes, when it changes only tests and
+    some are in a named test's file; else none (crew#1005)."""
+    if not paths or not all(profile_for(p).is_test_path(p) for p in paths):
+        return []
+    files = {path for path, _ in tests}
+    changed = changed_tests(worktree, merged, paths)
+    return sorted(key for key in changed if key.partition("::")[0] in files)
+
+
+# A call that checks, by its name: pytest's context managers, and a mock's or unittest's
+# `assert...` methods.
+_CHECKING_CALLS = frozenset({"raises", "warns", "deprecated_call"})
+# How alike a rewritten check is to the one it replaces: difflib's own cutoff for a close
+# match (`get_close_matches`).
+_REWRITTEN = 0.6
+
+
+def _checks(node: ast.AST) -> list[str]:
+    """The checks a test makes, written in it, as source, in order: each `assert` that can
+    fail, without its message, which checks nothing, and each call that checks. `assert
+    True` can't fail, so it isn't one."""
+    found: list[ast.expr | ast.stmt] = []
+    for each in ast.walk(node):
+        if isinstance(each, ast.Assert) and not isinstance(each.test, ast.Constant):
+            found.append(each)
+        elif isinstance(each, ast.Call):
+            called = each.func
+            name = (
+                called.attr
+                if isinstance(called, ast.Attribute)
+                else called.id
+                if isinstance(called, ast.Name)
+                else ""
+            )
+            if name.startswith("assert") or name in _CHECKING_CALLS:
+                found.append(each)
+    return [
+        f"assert {ast.unparse(n.test)}" if isinstance(n, ast.Assert) else ast.unparse(n)
+        for n in sorted(found, key=lambda n: (n.lineno, n.col_offset))
+    ]
+
+
+def dropped_checks(was: list[str], now: list[str]) -> list[str]:
+    """The checks in `was` that `now` has nothing for: neither the same check nor one
+    rewritten from it, the closest left that's alike enough (crew#1005).
+
+    Counting wasn't enough. mqucifer/crew-presentation#300's fix rewrote its test's 4
+    attempt-chart checks in place and added 4: with any one merged check deleted, it
+    still had more than it started with. The most alike are paired first, so what's left
+    is what was dropped.
+    """
+    left = list(now)
+    unmatched = []
+    for made in was:
+        if made in left:
+            left.remove(made)
+        else:
+            unmatched.append(made)
+    alike = sorted(
+        (
+            (_alike(made, other), i, j)
+            for i, made in enumerate(unmatched)
+            for j, other in enumerate(left)
+        ),
+        key=lambda pair: (-pair[0], pair[1], pair[2]),
+    )
+    paired: set[int] = set()
+    taken: set[int] = set()
+    for ratio, i, j in alike:
+        if ratio < _REWRITTEN:
+            break
+        if i not in paired and j not in taken:
+            paired.add(i)
+            taken.add(j)
+    return [made for i, made in enumerate(unmatched) if i not in paired]
+
+
+def _alike(made: str, other: str) -> float:
+    """How alike `other` is to `made`, as a rewrite of it: 0 when it checks the reverse.
+
+    Two checks of one shape differ in their values, so their values are compared: on
+    mqucifer/crew-presentation#300 each was `assert '...' in page`, and compared whole,
+    `'attempt-row'` came out as like `'class="story-list"'` as a rewrite would be. Of two
+    shapes, as `== 100` rewritten `<= 100` is, the whole check is compared.
+    """
+    if _opposite(made, other):
+        return 0.0
+    if (shape := _shape(made)) is not None and shape == _shape(other):
+        return difflib.SequenceMatcher(a=repr(_values(made)), b=repr(_values(other))).ratio()
+    return difflib.SequenceMatcher(a=made, b=other).ratio()
+
+
+def _shape(made: str) -> str | None:
+    """A check's code with its values left out, or None if it doesn't parse."""
+    try:
+        tree = ast.parse(made)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant):
+            node.value = None
+    return ast.dump(tree)
+
+
+def _values(made: str) -> list[Any]:
+    return [n.value for n in ast.walk(ast.parse(made)) if isinstance(n, ast.Constant)]
+
+
+# A comparison and the one that checks its reverse.
+_REVERSED = {
+    ast.In: ast.NotIn,
+    ast.NotIn: ast.In,
+    ast.Eq: ast.NotEq,
+    ast.NotEq: ast.Eq,
+    ast.Is: ast.IsNot,
+    ast.IsNot: ast.Is,
+}
+
+
+def _opposite(made: str, other: str) -> bool:
+    """Does `other` check the reverse of `made`: `not in` for `in`, `!=` for `==`, `not x`
+    for `x`?"""
+    tested = [_asserted(c) for c in (made, other)]
+    a, b = tested
+    if a is None or b is None:
+        return False
+    negated = [isinstance(t, ast.UnaryOp) and isinstance(t.op, ast.Not) for t in tested]
+    if negated[0] != negated[1]:
+        return True
+    if isinstance(a, ast.Compare) and isinstance(b, ast.Compare) and len(a.ops) == len(b.ops):
+        return any(_REVERSED.get(type(x)) is type(y) for x, y in zip(a.ops, b.ops, strict=True))
+    return False
+
+
+def _asserted(made: str) -> ast.expr | None:
+    """What an `assert` check tests, or None for a call that checks."""
+    try:
+        parsed = ast.parse(made).body
+    except SyntaxError:
+        return None
+    return parsed[0].test if parsed and isinstance(parsed[0], ast.Assert) else None
+
+
+def checks_less(
+    worktree: Path, merged: regression.Merged, paths: list[str]
+) -> dict[str, list[str]]:
+    """Each merged Python test the branch keeps but changes, by `path::name`, with the
+    checks it made as merged that it no longer does (crew#1005).
+
+    A test removed whole isn't here: that's a declared change, ruled on as any other
+    merged test's is (`_declared_tests`). A check rewritten, its value or wording changed,
+    is the review's to judge.
+    """
+    found: dict[str, list[str]] = {}
+    for key, how in changed_tests(worktree, merged, paths).items():
+        path, _, name = key.partition("::")
+        if how != "changed" or not name or not path.endswith(".py"):
+            continue
+        was = _tests_in(merged.text(path) or "").get(name)
+        now = _tests_in((worktree / path).read_text(encoding="utf-8", errors="ignore")).get(name)
+        gone = dropped_checks(_checks(was), _checks(now)) if was and now else []
+        if gone:
+            found[key] = gone
+    return found
 
 
 def _as_recorded(

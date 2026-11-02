@@ -840,6 +840,10 @@ flows.gates.at_done:filter:cbd17a84:
   at: flows/gates.py:at_done
   if: 'not _is_test(key)'
   rule: guard.regression.broken_contracts
+flows.gates.checks_less:skip:828a7a63:
+  at: flows/gates.py:checks_less
+  if: how != 'changed' or not name or (not path.endswith('.py'))
+  rule: guard.reproduce.check
 flows.gates.entries:filter:638e95bd:
   at: flows/gates.py:entries
   if: 'isinstance(item, dict)'
