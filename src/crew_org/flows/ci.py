@@ -46,6 +46,8 @@ _STATE = re.compile(r"(\S+) service is (\w+)")
 # A test pytest says failed, in its short summary: what one return failed on.
 _FAILED_TEST = re.compile(r"^(?:FAILED|ERROR) (\S+::\S+)", re.MULTILINE)
 _DOCKER_LOGS = re.compile(r"##\[command\]\S*docker logs (?:--details )?(\w+)")
+# What a project's `.github/crew/run_checks.py` prints after a failed check's group.
+_CHECK_FAILED = re.compile(r"failed \(exit \d+\): (.+)")
 
 
 def services_seen(lines: list[str]) -> str:
@@ -104,33 +106,76 @@ def services_seen(lines: list[str]) -> str:
     return "\n".join(parts)
 
 
+def failed_checks(lines: list[str]) -> list[tuple[int, int]]:
+    """Where each failed check of `run_checks.py` is in a log: from its group's header to
+    just past its verdict. A verdict follows the group that ran that same command; a line
+    of a check's own output that only reads like one doesn't."""
+    found: list[tuple[int, int]] = []
+    for end, line in enumerate(lines):
+        verdict = _CHECK_FAILED.fullmatch(line)
+        if verdict and end and lines[end - 1] == "##[endgroup]":
+            header = f"##[group]{verdict.group(1)}"
+            start = next((i for i in range(end - 1, -1, -1) if lines[i] == header), None)
+            if start is not None:
+                found.append((start, end + 1))
+    return found
+
+
+def _keep_end(text: str, room: int) -> str:
+    """The end of `text` within `room`, from a line boundary."""
+    if len(text) <= room:
+        return text
+    return "…\n" + text[-(room - 2) :].split("\n", 1)[-1]
+
+
+def _share_room(parts: list[str], room: int) -> str:
+    """Each part's end, joined within `room`: an even share, and what a short part leaves
+    goes to the longer ones."""
+    room -= len(parts) - 1
+    kept: dict[int, str] = {}
+    by_size = sorted(range(len(parts)), key=lambda i: len(parts[i]))
+    for done, i in enumerate(by_size):
+        kept[i] = _keep_end(parts[i], room // (len(parts) - done))
+        room -= len(kept[i])
+    return "\n".join(kept[i] for i in range(len(parts)))
+
+
 def log_tail(text: str) -> str:
-    """The failing step of a job log: from its header to the error, cleaned, after what
-    the job's services did (`services_seen`).
+    """The failure of a job log, cleaned, after what the job's services did
+    (`services_seen`): each check that failed, or else the failing step to its error.
 
     A job log ends with post-job cleanup, so its last lines are rarely the
     failure. GitHub marks the failure `##[error]`, and the step that ran it
     starts at the `##[group]` before. Without a marker, the log's end. A job with
-    no services gets the failing step alone, as before.
+    no services gets the failure alone, as before.
+
+    `run_checks.py` runs every check before it exits, so its `##[error]` comes after the
+    last check's group, passed or not. That group alone showed mqucifer/crew-presentation#278's
+    Developer only passes, and its next session changed nothing (crew#984). So each check
+    that says it failed is shown instead, sharing the room, each keeping its end: where
+    pytest says what failed.
     """
     lines = _ANSI.sub("", _STAMP.sub("", text)).strip().splitlines()
     services = services_seen(lines)
     if len(services) > LOG_TAIL_CHARS // 2:
         # The services' part never takes more than half: the failure is the rest.
         services = "…\n" + services[-(LOG_TAIL_CHARS // 2 - 2) :].split("\n", 1)[-1]
-    error = next((i for i, line in enumerate(lines) if line.startswith("##[error]")), None)
-    if error is not None:
-        start = max(
-            (i for i, line in enumerate(lines[:error]) if line.startswith("##[group]")),
-            default=0,
-        )
-        errors = [line for line in lines[error:] if line.startswith("##[error]")]
-        lines = lines[start:error] + errors
-    clean = "\n".join(lines).strip()
     room = LOG_TAIL_CHARS - (len(services) + 2 if services else 0)
-    if len(clean) > room:
-        cut = clean[-(room - 2) :]
-        clean = "…\n" + cut.split("\n", 1)[-1]
+    error = next((i for i, line in enumerate(lines) if line.startswith("##[error]")), None)
+    failed = failed_checks(lines) if error is not None else []
+    if failed:
+        after = [line for line in lines[failed[-1][1] :] if line.startswith("##[error]")]
+        parts = ["\n".join(lines[start:end]) for start, end in failed]
+        clean = _share_room([*parts, "\n".join(after)] if after else parts, room)
+    else:
+        if error is not None:
+            start = max(
+                (i for i, line in enumerate(lines[:error]) if line.startswith("##[group]")),
+                default=0,
+            )
+            errors = [line for line in lines[error:] if line.startswith("##[error]")]
+            lines = lines[start:error] + errors
+        clean = _keep_end("\n".join(lines).strip(), room)
     return f"{services}\n\n{clean}" if services else clean
 
 
@@ -317,6 +362,11 @@ def _stopped(
         f"{said}",
         by=None,
     )
+
+
+def running_checks(runs: list[dict[str, Any]]) -> list[str]:
+    """The checks on a head that haven't finished, by name."""
+    return [r.get("name") or "a check" for r in runs if r.get("status") != "completed"]
 
 
 def latest_ci_verdict(issues: IssueClient, repo: str, pull: int) -> str:

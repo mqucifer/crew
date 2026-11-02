@@ -22,7 +22,7 @@ from crew_org.events import CrewEvent, EventKind, EventSink, attributed, held
 from crew_org.flows import artifacts, qa_tasks, role_tasks, story_problem
 from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
-from crew_org.flows.ci import return_for_ci
+from crew_org.flows.ci import return_for_ci, running_checks
 from crew_org.flows.conclusion import story_diagram, story_rows
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.history import latest_answer, past_reviews
@@ -72,6 +72,9 @@ class ReviewResult:
     failed: list[tuple[int, str]] = field(default_factory=list)
     # (story, epic) sent back to refinement over a conflict with its own criteria.
     returned: list[tuple[int, int]] = field(default_factory=list)
+    # (card, PR, head, the checks not finished) held while CI runs, so the tick can wait
+    # for it rather than stop while it is about to end (crew#993).
+    ci_running: list[tuple[int, int, str, list[str]]] = field(default_factory=list)
 
 
 def render_review(verdict: ReviewVerdict, deploy: ReviewVerdict | None = None) -> str:
@@ -89,8 +92,10 @@ def _verdict_lines(lines: list[str], verdict: ReviewVerdict) -> str:
         lines += ["## Findings", ""]
         for finding in blocking:
             lines += [f"**`{finding.file}`** — {finding.concern}", f"→ {finding.action}", ""]
-            if finding.conflicts_with.strip():
-                lines += [f"Conflicts with the story's criterion: {finding.conflicts_with}", ""]
+            if finding.doing_it == "breaks_it":
+                lines += [f"Conflicts with the story's criterion: {finding.criterion}", ""]
+            elif finding.doing_it == "keeps_it":
+                lines += [f"Keeps the story's criterion: {finding.criterion}", ""]
     if verdict.notes:
         lines += ["## Notes, not blocking", ""]
         for finding in verdict.notes:
@@ -367,8 +372,10 @@ def review_open_pulls(
                         ReviewOutcome(pr=number, approved=False, skipped="CI failed on its head")
                     )
                     continue
-                if any(r.get("status") != "completed" for r in runs):
+                running = running_checks(runs)
+                if running:
                     held(Rule.CI_BEFORE_REVIEW, repo=repo, card=story.number)
+                    result.ci_running.append((story.number or 0, number, head, running))
                     result.skipped.append(
                         ReviewOutcome(pr=number, approved=False, skipped="CI still running")
                     )
@@ -567,22 +574,25 @@ def review_open_pulls(
                 elif (
                     event == "REQUEST_CHANGES"
                     and verdict.conflicts
-                    and _to_product_owner(
-                        card,
-                        verdict,
-                        number,
-                        board=board,
-                        issues=writer or issues,
-                        sink=sink,
-                        repo=repo,
-                    )
+                    and (
+                        went := _to_product_owner(
+                            card,
+                            verdict,
+                            number,
+                            board=board,
+                            issues=writer or issues,
+                            sink=sink,
+                            repo=repo,
+                        )
+                    ).settled
                 ):
-                    held(
-                        "story.review_conflicts_with_criterion",
-                        repo=card.repo or repo,
-                        card=card.number,
-                    )
-                    result.returned.append((card.number or 0, card.parent or 0))
+                    if went:
+                        held(
+                            "story.review_conflicts_with_criterion",
+                            repo=card.repo or repo,
+                            card=card.number,
+                        )
+                        result.returned.append((card.number or 0, card.parent or 0))
                 elif event == "REQUEST_CHANGES":
                     move_card(
                         board,
@@ -887,26 +897,30 @@ def what_tests_cover(issues: IssueClient, card: Card | None, default_repo: str) 
 
 def _to_product_owner(
     card: Card, verdict: ReviewVerdict, pull: int, *, board, issues, sink, repo: str
-) -> bool:
-    """A finding the story's criteria contradict goes back to refinement at once (#252).
+) -> story_problem.Returned:
+    """A finding that doing it would break a criterion goes back to refinement at once (#252).
 
     Asking the author to break a criterion can't settle the story, and a repair
     round only finds that out slowly: #145 went round six times. The Product
-    Owner decides which holds, and the epic is split again. True if it went back.
+    Owner decides which holds, and the epic is split again. Unless that re-split would
+    replace work a person should see first: then the story is blocked for them, with its
+    pull request open (crew#989). Says what the finding says, not what it means:
+    mqucifer/crew-presentation#266 was told the reverse of what its review found.
     """
     repo = card.repo or repo
     found = "\n\n".join(
-        f"**`{f.file}`**: {f.concern}\n→ {f.action}\n\nThe criterion: {f.conflicts_with}"
+        f"**`{f.file}`**: {f.concern}\n→ {f.action}\n\n"
+        f"The criterion it says this would break: {f.criterion}"
         for f in verdict.conflicts
     )
     comment = (
         f"{STORY_PROBLEM_MARKER}\n"
         f"**#{card.number} went back to refinement: its review conflicts with its criteria.**"
-        f"\n\nThe Code Reviewer asked for a change to *{card.title}* (PR #{pull}) that the "
-        "story's own acceptance criterion rules out.\n\n"
+        f"\n\nThe Code Reviewer says the change it asks for on *{card.title}* (PR #{pull}) "
+        "would break the story's own acceptance criterion.\n\n"
         f"{found}\n\nSettle which holds before this epic is split again."
     )
-    if not story_problem.return_to_refinement(
+    went = story_problem.return_to_refinement(
         board,
         issues,
         sink,
@@ -915,20 +929,33 @@ def _to_product_owner(
         cards=board.cards(),
         comment=comment,
         reason="review conflicts with a criterion",
-    ):
-        return False
+    )
+    if went.held:
+        from crew_org.flows.session_end import blocked_for_a_person  # noqa: PLC0415
+
+        blocked_for_a_person(
+            card,
+            repo=repo,
+            comment=story_problem.held_comment(card, comment, went.held, pull=pull),
+            rule=Rule.RETURN_HELD,
+            board=board,
+            issues=issues,
+            sink=sink,
+        )
+    if not went:
+        return went
     with contextlib.suppress(Exception):
         issues.comment(
             repo,
             pull,
             signed(
-                f"Closed: #{card.number} went back to refinement. Its review asked for a "
-                "change its own criteria rule out. See its epic.",
+                f"Closed: #{card.number} went back to refinement. The Code Reviewer says the "
+                "change it asked for would break the story's own criterion. See its epic.",
                 "Code Reviewer",
             ),
         )
         issues.close_pull(repo, pull)
-    return True
+    return went
 
 
 def _resolved_diff(issues: IssueClient, repo: str, resolved: Resolved) -> str:

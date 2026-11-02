@@ -59,7 +59,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
 | `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
 | `delivery.pull_request_failed` | The branch was pushed, and its pull request couldn't be opened. |
-| `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. |
+| `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. While it runs, review waits, and a tick with nothing else to move waits with it. |
 | `gate.review_changes_requested` | The Code Reviewer or DevOps Engineer requested changes. |
 | `gate.qa_unproven` | QA found criteria the work doesn't prove. |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. |
@@ -81,6 +81,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `story.review_conflicts_with_criterion` | The review asks for what a criterion forbids. |
 | `story.session_blocked` | Its Developer session ended blocked on a missing file or fact, or was stopped. |
 | `story.contract_ruling` | At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed. |
+| `story.return_held` | Its re-split would replace started work, or a story a person has touched: for a person. |
 | `session.choice` | Its session ended blocked on a choice no one has made: for the Sponsor. |
 | `session.no_epic` | Its session ended blocked, and it has no epic to be split again: for a person. |
 | `hold.sibling` | It waits for an earlier story in the same epic. |
@@ -240,12 +241,14 @@ names, what it means, and where those notes are written:
 | `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. | `flows/session_delivery.py:deliver_by_session` |
 | `delivery.resolve_conflicts` | Approved and conflicting with main: a session resolves the conflicts alone (crew#933). | `flows/session_delivery.py:resolve` |
 | `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). | `flows/session_delivery.py:kept_work` |
+| `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. While it runs, review waits, and a tick with nothing else to move waits with it. | `flows/loop.py:run`, `flows/loop.py:wait_for_ci` |
 | `gate.criteria_cannot_all_pass` | A split's criteria contradict each other or a merged test. | `flows/criteria_check.py:to_product_owner` |
 | `hold.builds_on` | It waits for a story it builds on. | `flows/delivery.py:deliver` |
 | `hold.sibling` | It waits for an earlier story in the same epic. | `flows/delivery.py:deliver` |
 | `hold.wip_limit` | The next column is at its limit. | `flows/board_flow.py:refine_epics`, `flows/delivery.py:deliver`, `flows/loop.py:run`, `flows/sprint.py:start_sprint` |
 | `skip.board_flow.rework_refused` | A Goal the Sponsor sent back is decomposed again only on their word, and once, its unstarted epics superseded. An epic sent back goes through decision.resplit.affected (crew#859). | `flows/board_flow.py:resplit_gate`, `flows/board_flow.py:rework_gate` |
 | `skip.board_flow.waits_for_planned` | An epic covered only by planned stories waits for them: it closes when they land, and is split again if one closes undelivered. | `flows/board_flow.py:settle_wait` |
+| `story.return_held` | Its re-split would replace started work, or a story a person has touched: for a person. | `flows/story_problem.py:_held` |
 
 ### Notes that name no rule
 

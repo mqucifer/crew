@@ -105,6 +105,18 @@ request, like any other file.
   the value. A check for a leaked secret matches inside that process, never
   with `grep "$KEY"`. Never print a `.env`, with Bash or the Read tool.
   *Guarded by the hook.*
+- **Reaching into a running service** (crew#997): `docker exec`,
+  `docker compose exec`, `docker cp` or `docker inspect` on `litellm-temp-db` or
+  any `crew-*` or `litellm` container, a Postgres client against the shared
+  server, or reading a service's environment. Real data comes through a service's
+  HTTP API or a file the operator provides, and a person can run the command with
+  `!`. A throwaway of your own, under another name, is fine. **LiteLLM's logs stay
+  open to reads, with no person needed:** `docker exec litellm-temp-db psql -U
+  litellm_admin -d litellm` with a read, and `docker logs`. No write, and nothing
+  else on that server. *Guarded by the hook, which reads commands and the scripts
+  they name. It tells a read by its text, and the role could write, so the rule
+  still holds where the text misleads it. So it does where a script holds the
+  container's name in a variable, which gets past it.*
 - **Unvetted generated code run outside the sandbox.** Released crew-built
   software is ordinary software, and is still deployed in a container.
 - **A check weakened to make something pass.** A test deleted to go green counts.

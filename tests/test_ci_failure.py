@@ -13,7 +13,14 @@ from pathlib import Path
 
 import httpx
 
-from crew_org.flows.ci import CI_MARKER, LOG_TAIL_CHARS, SERVICE_LOG_LINES, job_id, log_tail
+from crew_org.flows.ci import (
+    CI_MARKER,
+    LOG_TAIL_CHARS,
+    SERVICE_LOG_LINES,
+    failing_tests,
+    job_id,
+    log_tail,
+)
 from crew_org.flows.delivery import awaiting_rework, prior_verdicts
 from crew_org.tools.github_issues import IssueClient, QueueState
 from tests.test_merge import FakeIssues, QueueIssues, card, run
@@ -222,6 +229,149 @@ def test_a_long_service_log_leaves_the_failure_most_of_the_room():
     assert len(services) <= LOG_TAIL_CHARS // 2
     assert f"line {SERVICE_LOG_LINES * 3 - 1} " in services and "line 0 " not in services
     assert step.endswith("exit code 1.")
+
+
+# --- the check that failed, among those that ran (crew#984) -----------------------------------
+
+CHECKS_LOG = Path(__file__).parent / "fixtures/ci_logs/crew-presentation-278-checks.log.gz"
+
+
+def check(command: str, *output: str, code: int = 0) -> list[str]:
+    """One check as a project's `.github/crew/run_checks.py` prints it."""
+    verdict = f"failed (exit {code})" if code else "passed"
+    return [f"##[group]{command}", *output, "##[endgroup]", f"{verdict}: {command}"]
+
+
+def test_a_failed_check_is_shown_though_a_later_one_passed():
+    """mqucifer/crew-presentation#278's run, as the crew reads it: test_browser.py failed
+    and test_tokens.py passed after it, and the returned log held only test_tokens.py's
+    passes, so the Developer's next session changed nothing."""
+    shown = log_tail(gzip.decompress(CHECKS_LOG.read_bytes()).decode())
+    assert len(shown) <= LOG_TAIL_CHARS
+    assert "test_announced_3_0_0_mock_shows_story_rows" in shown
+    assert "E       AssertionError: .announced 3.0.0 mock not found" in shown
+    assert "failed (exit 1): python -m pytest tests/test_browser.py -v" in shown
+    assert shown.endswith("##[error]Process completed with exit code 1.")
+    assert "test_tokens.py" not in shown and "Post job cleanup" not in shown
+    assert failing_tests(shown) == {
+        "tests/test_browser.py::test_announced_3_0_0_mock_shows_story_rows"
+    }
+
+
+def test_each_failed_check_is_shown_and_the_passes_between_them_are_not():
+    raw = "\n".join(
+        [
+            "##[group]Run python .github/crew/run_checks.py",
+            "##[endgroup]",
+            *check("ruff check .", "E501 line too long", code=1),
+            *check("pytest tests/a.py", "tests/a.py::test_fine PASSED"),
+            *check("pytest tests/b.py", "E   assert 1 == 2", code=2),
+            *check("pytest tests/c.py", "tests/c.py::test_also_fine PASSED"),
+            "Failed: ruff check ., pytest tests/b.py",
+            "##[error]Process completed with exit code 1.",
+            "Post job cleanup.",
+        ]
+    )
+    assert log_tail(raw) == "\n".join(
+        [
+            *check("ruff check .", "E501 line too long", code=1),
+            *check("pytest tests/b.py", "E   assert 1 == 2", code=2),
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+
+
+def test_several_long_failures_share_the_limit_and_each_keeps_its_end():
+    def noisy(name: str) -> list[str]:
+        return [*(f"{name} line {i} " + "x" * 80 for i in range(400)), f"E   {name} broke"]
+
+    raw = "\n".join(
+        [
+            *check("pytest tests/a.py", *noisy("a"), code=1),
+            *check("pytest tests/b.py", *noisy("b"), code=1),
+            *check("pytest tests/c.py", *noisy("c"), code=1),
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+    shown = log_tail(raw)
+    assert len(shown) <= LOG_TAIL_CHARS
+    for name in "abc":
+        assert f"E   {name} broke" in shown
+        assert f"failed (exit 1): pytest tests/{name}.py" in shown
+    assert shown.count("…\n") == 3
+    assert shown.endswith("##[error]Process completed with exit code 1.")
+
+
+def test_a_short_failure_leaves_its_room_to_a_long_one():
+    long = [*(f"line {i} " + "x" * 80 for i in range(400)), "E   b broke"]
+    raw = "\n".join(
+        [
+            *check("ruff check .", "E501 line too long", code=1),
+            *check("pytest tests/b.py", *long, code=1),
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+    shown = log_tail(raw)
+    assert shown.startswith("##[group]ruff check .\nE501 line too long\n")
+    assert LOG_TAIL_CHARS - 200 <= len(shown) <= LOG_TAIL_CHARS
+
+
+def test_an_error_a_failed_check_printed_itself_is_shown_once_and_keeps_its_place():
+    """A tool can print its own `::error::`, so the first marker isn't always the last
+    thing the step said: a check that failed after it still shows, as do those before."""
+    raw = "\n".join(
+        [
+            *check("ruff check .", "##[error]E501 line too long", code=1),
+            *check("pytest tests/a.py", "tests/a.py::test_fine PASSED"),
+            *check("pytest tests/b.py", "E   assert 1 == 2", code=1),
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+    shown = log_tail(raw)
+    assert shown.count("##[error]E501 line too long") == 1
+    assert "E   assert 1 == 2" in shown and "test_fine" not in shown
+    assert shown.endswith("##[error]Process completed with exit code 1.")
+
+
+def test_a_failed_check_comes_after_what_the_services_did():
+    raw = "\n".join(
+        [
+            *started("db", "aa11"),
+            "db service is healthy.",
+            *check("pytest tests/a.py", "E   assert 1 == 2", code=1),
+            *check("pytest tests/b.py", "tests/b.py::test_fine PASSED"),
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+    services, _, step = log_tail(raw).partition("\n\n")
+    assert services.splitlines()[1] == "- `db`: healthy"
+    assert "E   assert 1 == 2" in step and "test_fine" not in step
+
+
+def test_output_that_only_reads_like_a_verdict_is_not_one():
+    """A check's own output can print such a line: only the one straight after a group
+    that ran that same command is its verdict."""
+    raw = "\n".join(
+        [
+            "##[group]Run ./deploy.sh",
+            "##[endgroup]",
+            "failed (exit 1): retrying the upload",
+            "##[group]Uploading",
+            "E   the real failure",
+            "##[endgroup]",
+            "failed (exit 1): something else",
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
+    assert log_tail(raw) == "\n".join(
+        [
+            "##[group]Uploading",
+            "E   the real failure",
+            "##[endgroup]",
+            "failed (exit 1): something else",
+            "##[error]Process completed with exit code 1.",
+        ]
+    )
 
 
 def test_a_check_run_names_its_job():

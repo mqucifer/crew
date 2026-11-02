@@ -72,7 +72,8 @@ class Rule(StrEnum):
 
     # --- gates ---
     CI_BEFORE_REVIEW = "gate.ci_before_review"
-    """CI failed on the pull request's head: back to the Developer with its log, unreviewed."""
+    """CI failed on the pull request's head: back to the Developer with its log, unreviewed.
+    While it runs, review waits, and a tick with nothing else to move waits with it."""
     REVIEW_CHANGES_REQUESTED = "gate.review_changes_requested"
     """The Code Reviewer or DevOps Engineer requested changes."""
     QA_UNPROVEN = "gate.qa_unproven"
@@ -120,6 +121,8 @@ class Rule(StrEnum):
     """Its Developer session ended blocked on a missing file or fact, or was stopped."""
     RETURN_CONTRACT_RULING = "story.contract_ruling"
     """At `done`, the Business Analyst ruled it shouldn't change the merged tests it changed."""
+    RETURN_HELD = "story.return_held"
+    """Its re-split would replace started work, or a story a person has touched: for a person."""
 
     # --- a Developer session's ending (session_end.py) ---
     SESSION_CHOICE = "session.choice"
