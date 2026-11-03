@@ -950,9 +950,9 @@ flows.goal_look.rows_from:skip:a632648f:
   at: flows/goal_look.py:rows_from
   if: looked_at and view.epic not in looked_at
   not_a_rule: a delivered epic is shown as background; nothing is split from it
-flows.history.latest_answer:filter:5b48d4f2:
+flows.history.latest_answer:filter:36182919:
   at: flows/history.py:latest_answer
-  if: ANSWERED_MARKER in (c.get('body') or '')
+  if: marker in (c.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
 flows.history.past_qa:filter:36182919:
   at: flows/history.py:past_qa
@@ -1807,6 +1807,10 @@ flows.sprint.under_a_parked_epic:filter:2d489f4d:
   if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.parent
     is not None) and ((c.repo or '', c.parent) in parked) and works(c, repos)
   rule: decision.sprint.parked
+flows.standup._lists:skip:e7edb1e2:
+  at: flows/standup.py:_lists
+  if: not items
+  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.aging_blocked:skip:6fbb6a02:
   at: flows/standup.py:aging_blocked
   if: card.status != rules.blocked_column or card.state == 'CLOSED'
@@ -1823,6 +1827,10 @@ flows.standup.waiting_on_a_person:filter:070ae157:
   at: flows/standup.py:waiting_on_a_person
   if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (WAITS_LABEL not in card.labels) and (card.status
     == BLOCKED or card.needs_human)
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.standup.write_standup:filter:02bb24e4:
+  at: flows/standup.py:write_standup
+  if: items
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.write_standup:filter:8ab5a662:
   at: flows/standup.py:write_standup

@@ -75,3 +75,33 @@ def test_a_contract_change_names_what_it_changes():
 
 def test_a_story_that_touches_no_merged_test_has_no_line():
     assert "Existing tests" not in render_story_body(split_story(), 54, "F")
+
+
+def test_the_story_s_first_sentence_reads_as_english():
+    """crew#1009: 24 of 40 split bodies read "As a **The Sponsor…**", as
+    mqucifer/sprint-metrics#957 does. The lines a parser reads are unchanged."""
+    real = split_story(
+        pinned_behaviour="opt-in: only with --range",
+        builds_on=[955],
+    ).model_copy(
+        update={
+            "as_a": "The Sponsor, through the per-sprint answers the crew reads back",
+            "i_want": "The same entry to also carry each epic's to-date session time",
+            "so_that": "I can see the session time an epic has taken in total",
+        }
+    )
+    body = render_story_body(real, 941, "Answer each epic's session time")
+    assert body.startswith(
+        "As **the Sponsor, through the per-sprint answers the crew reads back**, I want "
+        "**the same entry to also carry each epic's to-date session time**, so that "
+        "**I can see the session time an epic has taken in total**.\n\n## Acceptance criteria\n"
+    )
+    for line in ("**Existing tests** —", "**Builds on** — #955", "**Estimate** — 3 points"):
+        assert f"\n{line}" in body
+    assert "\n1. **Given** g\n   **When** w\n   **Then** t\n" in body
+    plain = render_story_body(split_story(), 54, "F")
+    assert plain.startswith("As a **lead**, I want **flags**, so that **see breaches**.")
+    operator = split_story().model_copy(update={"as_a": "operator", "i_want": "An alert"})
+    assert render_story_body(operator, 54, "F").startswith(
+        "As an **operator**, I want **an alert**,"
+    )

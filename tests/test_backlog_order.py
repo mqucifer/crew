@@ -136,3 +136,43 @@ def test_a_hold_on_work_that_isn_t_listed_is_refused():
 def test_planning_takes_epics_by_priority_then_rank():
     cards = [epic(65, rank=1), epic(62, rank=3), epic(63), epic(64, rank=2)]
     assert [c.number for c in approved_epics(cards)] == [65, 64, 62, 63]
+
+
+def test_a_new_epic_is_shown_by_its_for_and_outcome_whatever_marker_comes_first():
+    """crew#1008: an epic split today starts with its split marker and a blank line, the
+    shape of mqucifer/sprint-metrics#941, so its first paragraph was only the marker."""
+    from crew_org.crews.refinement_crew import Epic
+    from crew_org.flows.board_flow import SPLIT_MARK, render_epic_body
+
+    body = f"{SPLIT_MARK}\n\n" + render_epic_body(
+        Epic(
+            title="Answer each epic's session time",
+            reader="The Sponsor, through the per-sprint answers the crew reads back",
+            outcome="For each epic with a story whose sessions ran in a sprint: its minutes.",
+            rationale="Asked at the level the Sponsor manages.",
+            separately_deliverable=(
+                "It ships as its own release: the reader can read each epic's totals "
+                "in the per-sprint answers without the per-story detail answer."
+            ),
+        ),
+        938,
+        "Session time",
+    )
+    cards = [epic(62)]
+    replies = iter([BacklogOrder(order=[62])])
+    calls = []
+
+    def order(**kw):
+        calls.append(kw)
+        return next(replies)
+
+    issues = Issues()
+    issues.bodies[62] = body
+    bo.order_backlogs(
+        Board(), issues, EventSink(None), cards, repos={"sprint-metrics"}, order=order
+    )
+    new = calls[0]["new"]
+    assert "**For** — The Sponsor, through the per-sprint answers the crew reads back" in new
+    assert "**Outcome** — For each epic with a story whose sessions ran in a sprint" in new
+    assert "crew:split" not in new
+    assert "**Why**" not in new, "the rest of the body is left for refinement"

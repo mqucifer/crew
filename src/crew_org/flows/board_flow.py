@@ -1482,12 +1482,37 @@ def existing_tests_line(pinned: str) -> str:
     )
 
 
+# Words a model starts a story's part with in capitals, which mid-sentence read lower.
+_LOWER = re.compile(r"the|a|an|each|every|to|this|that|these|those|its|their|my|our|all|any|no")
+
+
+def _mid_sentence(part: str) -> str:
+    part = part.strip()
+    first = part.split(" ", 1)[0]
+    return part[:1].lower() + part[1:] if _LOWER.fullmatch(first.lower()) else part
+
+
+def story_sentence(story: Story) -> str:
+    """ "As a …, I want …, so that …", reading as English (crew#1009): "As a **The
+    Sponsor**" was 24 of 40 split bodies."""
+    who = _mid_sentence(story.as_a)
+    article = (
+        ""
+        if who.split(" ", 1)[0] in ("the", "a", "an")
+        else ("an " if who[:1].lower() in tuple("aeiou") else "a ")
+    )
+    return (
+        f"As {article}**{who}**, I want **{_mid_sentence(story.i_want)}**, "
+        f"so that **{_mid_sentence(story.so_that)}**."
+    )
+
+
 def render_story_body(
     story: Story, epic_number: int, epic_title: str, *, on_goal: bool = False
 ) -> str:
     """A story issue, written so a test can be derived from it directly."""
     lines = [
-        f"As a **{story.as_a}**, I want **{story.i_want}**, so that **{story.so_that}**.",
+        story_sentence(story),
         "",
         "## Acceptance criteria",
         "",

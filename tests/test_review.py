@@ -510,3 +510,38 @@ def test_a_pull_request_without_a_card_is_reviewed_whatever_ci_says(monkeypatch)
     issues = CIIssues([pull(author=HUMAN)], [failed])
     result, _ = run_with_board(issues, APPROVAL, monkeypatch, [waiting_card()])
     assert result.reviewed
+
+
+def test_a_sent_back_pull_request_s_next_review_is_given_the_rework_reply(monkeypatch):
+    """crew#1007: the Developer's reply to a send-back is its `crew:rework` comment,
+    and the Code Reviewer is shown it, so a finding answered isn't raised again."""
+    from crew_org.flows.delivery import REWORK_MARKER
+
+    seen = {}
+
+    def fake_review(title, diff, *, acceptance_criteria="", prior_verdicts="", **_evidence):
+        seen["prior"] = prior_verdicts
+        return ReviewVerdict(summary="ok", approve=True)
+
+    class Commented(FakeIssues):
+        def comments(self, repo, number):
+            return [
+                {"body": f"{REWORK_MARKER}\n**Re-worked.** an older reply"},
+                {"body": "a person's comment"},
+                {"body": f"{REWORK_MARKER}\n**Re-worked.** named the file in the error"},
+            ]
+
+    monkeypatch.setattr(review_flow, "review_diff", fake_review)
+    pulls = [
+        {
+            "number": 7,
+            "title": "t",
+            "user": {"login": HUMAN},
+            "head": {"ref": "feat/7-a-thing", "sha": "new"},
+        }
+    ]
+    reviews = {7: [{"body": f"{REVIEW_MARKER}\nname the file", "commit_id": "old"}]}
+    review_open_pulls(Commented(pulls, reviews), EventSink(None), repo="r", bot_login=BOT)
+    assert "name the file" in seen["prior"]
+    assert "named the file in the error" in seen["prior"]
+    assert "an older reply" not in seen["prior"]

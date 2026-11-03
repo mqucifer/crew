@@ -144,7 +144,7 @@ def test_qa_s_dispute_pull_request_names_the_head_its_test_runs_against():
 
     reached = SimpleNamespace(said={"summary": "Fixed the test"}, sections=[])
     outcome = SimpleNamespace(attempts=1, autofixed=[], unsafe_fixes=[])
-    body = session_delivery.pr_body(_task(), reached, outcome, [], by="QA Engineer", marks=LINE)
+    body = session_delivery.pr_body(_task(), reached, outcome, by="QA Engineer", marks=LINE)
     assert LINE in body
 
 

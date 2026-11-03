@@ -267,7 +267,7 @@ def test_done_and_the_gates_pass_opens_the_pull_request(ws, deliver):
     assert outcome.pr == 700 and outcome.ended and Held.instances[0].stopped
     body = issues.pulls[0]["body"]
     assert "Shows the rate." in body and "`tests/test_rate.py::test_shown`" in body
-    assert "`rate.py` (new)" in body and "Closes #662" in body
+    assert "Closes #662" in body
     assert "## For the Code Reviewer\n\n- `tests/test_rate.py::test_old`: why?" in body
     assert pushed(ws).splitlines()[0] == "feat(662): Show the rate"
 
@@ -1486,3 +1486,32 @@ def test_a_session_has_the_announced_files_and_they_are_never_pushed(ws, deliver
         check=True,
     ).stdout
     assert "rate.py" in files and ".announced" not in files
+
+
+def test_the_pull_request_says_done_s_summary_once_and_lists_no_files(ws, deliver):
+    """crew#1009: 70 of 76 bodies printed the summary twice and listed the files GitHub's
+    Files tab shows. What review and DevOps read of it, its `## Verification`, is as it was,
+    and so are `Closes` and the gates' sections."""
+    from crew_org.tools.review_evidence import _section
+
+    sessions = Sessions({"writes": {"rate.py": "RATE = 1\n"}, "ending": Ending("done", DONE)})
+    sections = ["", "## For the Code Reviewer", "", "- `tests/test_rate.py::test_old`: why?"]
+    issues = Issues()
+    deliver(
+        ws,
+        sessions,
+        Routes(
+            session_end.Route(session_end.REVIEW, "decision.delivery.outcome", sections=sections)
+        ),
+        issues,
+    )
+    body = issues.pulls[0]["body"]
+    assert body.startswith("Shows the rate.\n") and body.count("Shows the rate.") == 1
+    assert "rate.py` (new)" not in body and "## Changes" not in body
+    assert _section(body, "Verification") == (
+        "Lint and the full test suite pass in its workspace container.\n\n- Developer sessions: 1"
+    )
+    assert "- The rate is shown: `tests/test_rate.py::test_shown`" in body
+    assert "**Docs:** none needed" in body
+    assert "\nCloses #662\n" in body + "\n"
+    assert "## For the Code Reviewer\n\n- `tests/test_rate.py::test_old`: why?" in body
