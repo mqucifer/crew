@@ -17,6 +17,7 @@ Holds are only ever added here, never removed.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -72,8 +73,22 @@ def with_holds(body: str, numbers: set[int]) -> str:
     return "\n".join([*lines[:at], line, "", *lines[at:]])
 
 
-def _first_paragraph(text: str) -> str:
-    return next((p.strip() for p in (text or "").split("\n\n") if p.strip()), "")[:400]
+# A marker comes first in an epic's body, for the readers that need it there.
+_MARKER = re.compile(r"<!--.*?-->", re.DOTALL)
+# What an epic is, as `render_epic_body` writes it (ADR 0035).
+_INTENT = ("**For** —", "**Outcome** —")
+
+
+def _intent(text: str) -> str:
+    """What the Product Owner reads of an epic it hasn't ranked (crew#1008).
+
+    Its For and Outcome, or the first paragraph of a body without them, such as a
+    person's epic. Markers are skipped: one was the whole of every split epic's first
+    paragraph.
+    """
+    paragraphs = [p.strip() for p in _MARKER.sub("", text or "").split("\n\n") if p.strip()]
+    said = [p for p in paragraphs if p.startswith(_INTENT)]
+    return "\n".join(p[:400] for p in said or paragraphs[:1])
 
 
 def order_backlogs(
@@ -127,7 +142,7 @@ def order_backlogs(
             lines.append(f"- … and {len(stories) - MAX_STORIES} more unstarted stories, not shown")
         backlog = "\n".join(lines)
         new = "\n\n".join(
-            f"#{e.number} {e.title}\n{_first_paragraph(_body(issues, repo, e.number or 0))}"
+            f"#{e.number} {e.title}\n{_intent(_body(issues, repo, e.number or 0))}"
             for e in unranked
         )
         sink.note(EventKind.NOTE, f"{repo} backlog order: {len(backlog):,} chars of backlog")
