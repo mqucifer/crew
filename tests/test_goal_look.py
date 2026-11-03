@@ -299,3 +299,29 @@ def test_the_comment_says_what_each_found():
     assert "**Where a sprint's figures come from:** The delivery-history package" in text
     assert "Both epics draw the same chart" in text and "**The reader:** The Sponsor" in text
     assert "<!-- crew:goal-look-data " in text
+
+
+def test_the_comment_opens_with_a_short_summary_and_folds_the_rest_at_the_bottom():
+    """crew#1009: the look on mqucifer/sprint-metrics#938 showed 22,000 characters, and no
+    step reads them. The marker stays first, the detail is folded below the summary, and
+    the data a later look reads is whole."""
+    from crew_org.crews.goal_look_crew import BeyondTheGoal
+
+    long = "The delivery-history package, " + "read as published. " * 40
+    asked = BeyondTheGoal(question="Should a sprint's figures be public?", why="Not the Goal's")
+    look = system(
+        decided=[system().decided[0].model_copy(update={"decision": long})],
+        beyond_the_goal=[asked],
+    )
+    result = goal_look_crew.LookResult(look, reader(FIRST, SECOND), {"UX Designer": "cut off"})
+    text = goal_look.render(result, context())
+    assert text.startswith(goal_look.LOOK_MARKER + "\n")
+    summary, _, folded = text.partition("<details>")
+    assert folded, "the detail is folded"
+    assert len(summary) < 1000
+    assert "Where a sprint's figures come from" in summary and long not in summary
+    assert "Should a sprint's figures be public?" in summary, "what the Sponsor is asked"
+    assert "UX Designer" in summary and "cut off" in summary, "a role that didn't answer"
+    assert long in folded and "Both epics draw the same chart" in folded
+    assert folded.index("</details>") < folded.index("<!-- crew:goal-look-data ")
+    assert goal_look.read_look(text) == ([FIRST, SECOND], result)

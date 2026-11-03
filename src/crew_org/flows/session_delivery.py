@@ -920,7 +920,6 @@ def _land(
                     card,
                     reached,
                     outcome,
-                    _changes(worktree, since),
                     by=by,
                     # QA's changed test runs against the disputed pull request (crew#945).
                     marks=dispute_line(issues, repo, number)
@@ -1383,14 +1382,17 @@ def pr_body(
     card: Card,
     reached: Delivered,
     outcome: DeliveryOutcome,
-    changes: list[str],
     *,
     by: str = "Developer",
     marks: str = "",
 ) -> str:
     """The pull request: what `done` said, how it was checked, and what the gates noted,
     signed by the role whose sessions did the work. `marks` are for the workflows that
-    read the body: a QA dispute's names the pull request its test runs against."""
+    read the body: a QA dispute's names the pull request its test runs against.
+
+    The summary is said once, and the files are left to GitHub's Files tab (crew#1009).
+    A `## ` heading follows `## Verification`, which review and DevOps read up to the
+    next one."""
     from crew_org.flows import session_end  # noqa: PLC0415
     from crew_org.flows.artifacts import signed  # noqa: PLC0415
 
@@ -1403,11 +1405,9 @@ def pr_body(
         "",
         f"- {by} sessions: {outcome.attempts}",
         "",
-        "## Changes",
+        "## Criteria",
         "",
-        *(f"- {change}" for change in changes),
-        "",
-        session_end.last_done(reached.said).rstrip(),
+        session_end.done_tests(reached.said).rstrip(),
     ]
     if outcome.autofixed or outcome.unsafe_fixes:
         lines += ["", "## Fixed by the project's own tools before the checks", ""]

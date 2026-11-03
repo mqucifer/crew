@@ -1807,6 +1807,10 @@ flows.sprint.under_a_parked_epic:filter:2d489f4d:
   if: c.status == SPRINT_BACKLOG and c.work_type in DELIVERED and (c.state != 'CLOSED') and (c.parent
     is not None) and ((c.repo or '', c.parent) in parked) and works(c, repos)
   rule: decision.sprint.parked
+flows.standup._lists:skip:e7edb1e2:
+  at: flows/standup.py:_lists
+  if: not items
+  not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.aging_blocked:skip:6fbb6a02:
   at: flows/standup.py:aging_blocked
   if: card.status != rules.blocked_column or card.state == 'CLOSED'
@@ -1823,6 +1827,10 @@ flows.standup.waiting_on_a_person:filter:070ae157:
   at: flows/standup.py:waiting_on_a_person
   if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (WAITS_LABEL not in card.labels) and (card.status
     == BLOCKED or card.needs_human)
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.standup.write_standup:filter:02bb24e4:
+  at: flows/standup.py:write_standup
+  if: items
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.write_standup:filter:8ab5a662:
   at: flows/standup.py:write_standup

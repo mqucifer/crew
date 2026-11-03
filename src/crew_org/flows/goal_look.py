@@ -119,15 +119,26 @@ def _list(items: list[str]) -> list[str]:
 
 
 def render(result: LookResult, context: GoalContext) -> str:
-    """Both answers as the Goal's comment, with the answers as data."""
+    """Both answers as the Goal's comment, with the answers as data.
+
+    A short summary first, and the whole look folded below it (crew#1009): no step
+    reads the visible part, only the marker and the data, and a person reads the top.
+    """
     lines = [
         LOOK_MARKER,
         "## The Goal's look",
         "",
         "The Architect and the UX Designer read "
         + ", ".join(context.looking_at)
-        + " before any is split. Kept as the record of the look; the Goal's record is "
-        "what the Product Owner settles from it.",
+        + " before any is split.",
+        "",
+        *_summary(result),
+        "",
+        "<details>",
+        "<summary>The whole look</summary>",
+        "",
+        "Kept as the record of the look; the Goal's record is what the Product Owner "
+        "settles from it.",
         "",
     ]
     if (system := result.system) is not None:
@@ -159,6 +170,7 @@ def render(result: LookResult, context: GoalContext) -> str:
         lines.append("")
     for role, why in result.failed.items():
         lines += [f"### {role}", "", f"Did not answer: {why}", ""]
+    lines += ["</details>"]
     data = {
         "looked_at": context.looking_at,
         "system": result.system.model_dump() if result.system else None,
@@ -169,6 +181,22 @@ def render(result: LookResult, context: GoalContext) -> str:
     escaped = json.dumps(data).replace("--", "\\u002d\\u002d")
     lines += ["", f"<!-- crew:goal-look-data {escaped} -->"]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _summary(result: LookResult) -> list[str]:
+    """What the look decided, by name, what it asks the Sponsor, and who didn't answer."""
+    lines = []
+    if (system := result.system) is not None:
+        named = "; ".join(d.context for d in system.decided) or "nothing"
+        lines += [f"- **Decided ({len(system.decided)}):** {named}"]
+        lines += [f"- **Risks and seams:** {len(system.callouts)}"]
+        lines += [f"- **For the Sponsor:** {b.question}" for b in system.beyond_the_goal]
+        if system.needs:
+            lines += [f"- **Needs, for DevOps:** {len(system.needs)}"]
+    if (reader := result.reader) is not None:
+        lines += [f"- **The UX Designer:** {len(reader.epics)} epics read for their reader"]
+    lines += [f"- **{role} did not answer:** {why}" for role, why in result.failed.items()]
+    return lines
 
 
 def read_look(comment: str) -> tuple[list[str], LookResult] | None:

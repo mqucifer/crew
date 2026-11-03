@@ -420,3 +420,76 @@ def test_with_several_delivery_repos_the_standup_links_cards_by_the_board():
         cards=[("sprint-metrics", 12)],
     )
     assert "- mqucifer/sprint-metrics#12" in issues.posted[-1][1]
+
+
+# --- crew#1009: what needs the Sponsor first, and no list repeated unchanged --------------
+
+
+def test_what_needs_the_sponsor_comes_first():
+    """Only 7 of 35 stand-ups put it in the first 200 characters (crew#1009)."""
+    s = write_standup(
+        run(
+            PhaseOutcome("deliver", moved=True, counts={"delivered": 3}),
+            PhaseOutcome("admit", held=["Sprint 40 is full: 40 of 40 points"]),
+        ),
+        sprint=SPRINT,
+        at=AT,
+        waiting=["#920", "#923"],
+        aging=[("#12", 4)],
+        awaiting=["#296"],
+    )
+    assert s.text.index("**Waiting on a person**") < 200
+    for later in ("**Moved**", "**Waiting**\n"):
+        assert s.text.index("#12: blocked 4 days") < s.text.index(later)
+    assert s.text.index("Waiting on a person") < s.text.index("Awaiting your approval")
+
+
+def test_a_list_unchanged_since_the_last_stand_up_is_named_not_repeated():
+    """mqucifer/crew#1004: the same Waiting on a person list, three ticks running."""
+    held = PhaseOutcome("deliver", held=["#947 — waits for #946 in the same epic"])
+    first = write_standup(
+        run(held), sprint=SPRINT, at=AT, waiting=["#920", "#923"], aging=[], stack=["- x down"]
+    )
+    moved = PhaseOutcome("deliver", moved=True, counts={"delivered": 1})
+    again = write_standup(
+        run(moved, held),
+        sprint=SPRINT,
+        at=AT,
+        waiting=["#920", "#923", "#938"],
+        aging=[],
+        stack=["- x down"],
+        last=first.text,
+    )
+    assert "- #938" in again.text, "a list that changed is shown whole"
+    assert "#947 — waits" not in again.text
+    assert "Unchanged since the last stand-up: Waiting (1)." in again.text
+    assert "**Stack health**\n- x down" in again.text, "never left out (crew#889)"
+    third = write_standup(
+        run(moved, held),
+        sprint=SPRINT,
+        at=AT,
+        waiting=["#920", "#923", "#938"],
+        aging=[],
+        last=again.text,
+    )
+    assert "- #938" not in third.text
+    assert "Unchanged since the last stand-up: Waiting on a person (3)." in third.text
+    assert "Waiting (1)" in third.text
+
+
+def test_the_retro_reads_a_stand_up_without_its_lists_record():
+    issues = FakeIssues()
+    s = write_standup(run(), sprint=SPRINT, at=AT, waiting=["#12"], aging=[])
+    record_standup(issues, EventSink(None), s, sprint=SPRINT, crew_repo=CREW)
+    _, text = standups_for_retro(issues, CREW, SPRINT)
+    assert "- #12" in text and "crew:standup-lists" not in text
+
+
+def test_the_next_stand_up_is_given_the_last_one_recorded():
+    issues = FakeIssues()
+    assert standup_mod.last_standup(issues, CREW, SPRINT) == ""
+    moved = run(PhaseOutcome("deliver", moved=True, counts={"delivered": 1}))
+    for waiting in (["#12"], ["#13"]):
+        s = write_standup(moved, sprint=SPRINT, at=AT, waiting=waiting, aging=[])
+        record_standup(issues, EventSink(None), s, sprint=SPRINT, crew_repo=CREW)
+    assert "- #13" in standup_mod.last_standup(issues, CREW, SPRINT)

@@ -22,6 +22,8 @@ with it.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -38,6 +40,9 @@ ROLE = "Scrum Master"
 EPIC = "Epic"
 STANDUP_LABEL = "standup"
 QUIET_MARKER = "<!-- crew:standup-quiet -->"
+# Each list's digest, at the end of a stand-up, so the next one names a list that
+# hasn't changed rather than repeating it (crew#1009). Read only by `write_standup`.
+_LISTS = re.compile(r"<!-- crew:standup-lists ?(.*?) -->")
 
 # The retro reads the sprint's standups; this bounds how much. Whole standups
 # only, newest kept, and the number dropped is said — a retro should not reason
@@ -117,12 +122,17 @@ def write_standup(
     skeleton_only: dict[str, str] | None = None,
     stack: list[str] = (),
     released: str | None = None,
+    last: str = "",
 ) -> Standup:
     """The Scrum Master's standup for one tick, from the tick's own result.
 
     `released` is why a package that was due wasn't released (crew#889). It's said
     beside the stack's health and is never quiet, so a run of quiet ticks can't hide
     it: one yellow line a tick in the console went unseen for two sprints.
+
+    What needs the Sponsor comes first, then what the tick did (crew#1009). A list
+    the `last` stand-up showed as it is now is named with its count, not repeated.
+    The stack's health is always said in full.
     """
     from crew_org.flows.loop import PHASES  # noqa: PLC0415
 
@@ -148,37 +158,78 @@ def write_standup(
     lines = [f"**Tick at {at:%H:%M} UTC** — {passes}, {state}."]
     if quiet:
         lines += ["", "Nothing moved."]
-    sections = [
-        ("Moved", moved),
-        ("Decided by the crew", decided),
-        ("Blocked this tick", blocked),
-        ("Failed", failed),
-        ("Waiting", held),
-        ("Waiting on a person", [f"- {name}" for name in waiting]),
+    for_the_sponsor = [
+        ("person", "Waiting on a person", [f"- {name}" for name in waiting]),
         (
+            "approval",
             "Awaiting your approval (epics at the gate; they move when you decide)",
             [f"- {name}" for name in awaiting],
         ),
         (
+            "aging",
             "Blocked past the threshold",
             [f"- {name}: {blocked_for(days)}" for name, days in aging],
         ),
-        ("Over a WIP limit", breaches),
+    ]
+    # What the crew runs on, when something isn't healthy (#335).
+    health = [*stack, *([f"- **release**: {released}"] if released else [])]
+    this_tick = [
+        ("Moved", moved),
+        ("Decided by the crew", decided),
+        ("Blocked this tick", blocked),
+        ("Failed", failed),
+    ]
+    standing = [
+        ("waiting", "Waiting", held),
+        ("wip", "Over a WIP limit", breaches),
         (
+            "not-ready",
             "Not worked: not ready",
             [f"- {repo}: {why}" for repo, why in sorted((not_ready or {}).items())],
         ),
         (
+            "skeleton",
             "Only the skeleton Goal: not ready for others",
             [f"- {repo}: {why}" for repo, why in sorted((skeleton_only or {}).items())],
         ),
-        # What the crew runs on, when something isn't healthy (#335).
-        ("Stack health", [*stack, *([f"- **release**: {released}"] if released else [])]),
     ]
-    for title, items in sections:
+    before = _digests(last)
+    lines += _lists(for_the_sponsor, before)
+    for title, items in [("Stack health", health), *this_tick]:
         if items:
             lines += ["", f"**{title}**", *items]
+    lines += _lists(standing, before)
+    now = " ".join(
+        f"{key}={_digest(items)}" for key, _t, items in [*for_the_sponsor, *standing] if items
+    )
+    lines += ["", f"<!-- crew:standup-lists {now} -->"]
     return Standup(text="\n".join(lines), quiet=quiet)
+
+
+def _digest(items: list[str]) -> str:
+    return hashlib.sha256("\n".join(items).encode()).hexdigest()[:12]
+
+
+def _digests(standup: str) -> dict[str, str]:
+    found = _LISTS.search(standup or "")
+    pairs = (pair.partition("=") for pair in (found.group(1).split() if found else []))
+    return {key: value for key, _, value in pairs}
+
+
+def _lists(lists: list[tuple[str, str, list[str]]], before: dict[str, str]) -> list[str]:
+    """Each list in full, or by its count where the last stand-up showed it as it is."""
+    lines: list[str] = []
+    same = []
+    for key, title, items in lists:
+        if not items:
+            continue
+        if before.get(key) == _digest(items):
+            same.append(f"{title.partition(' (')[0]} ({len(items)})")
+        else:
+            lines += ["", f"**{title}**", *items]
+    if same:
+        lines += ["", f"_Unchanged since the last stand-up: {', '.join(same)}._"]
+    return lines
 
 
 def _at_the_gate(card: Card) -> bool:
@@ -322,13 +373,22 @@ def record_standup(
     return number, True
 
 
+def last_standup(issues: IssueClient, crew_repo: str, sprint: str) -> str:
+    """The sprint's last stand-up, for the next to compare its lists with, or ''."""
+    number = find_standup(issues, crew_repo, sprint)
+    if number is None:
+        return ""
+    bodies = [c.get("body") or "" for c in issues.comments(crew_repo, number)]
+    return next((b for b in reversed(bodies) if _LISTS.search(b)), "")
+
+
 def standups_for_retro(issues: IssueClient, crew_repo: str, sprint: str) -> tuple[int | None, str]:
     """The sprint's standup issue, and its standups as text for the retro to read."""
     number = find_standup(issues, crew_repo, sprint)
     if number is None:
         return None, ""
     bodies = [
-        (c.get("body") or "").replace(QUIET_MARKER, "").strip()
+        _LISTS.sub("", (c.get("body") or "").replace(QUIET_MARKER, "")).strip()
         for c in issues.comments(crew_repo, number)
     ]
     kept: list[str] = []

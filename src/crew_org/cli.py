@@ -347,6 +347,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str, released: str | N
     from crew_org.flows.standup import (  # noqa: PLC0415
         aging_blocked,
         awaiting_approval,
+        last_standup,
         record_standup,
         waiting_on_a_person,
         write_standup,
@@ -374,6 +375,7 @@ def _take_standup(crew, result, *, crew_repo: str, owner: str, released: str | N
             skeleton_only=crew.skeleton_only,
             stack=stack_problems(),
             released=released,
+            last=last_standup(crew.issues, crew_repo, crew.sprint),
         )
         number, commented = record_standup(
             crew.issues,
