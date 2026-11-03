@@ -43,7 +43,7 @@ from typing import Any
 
 from crew_org.flows import delivery, role_tasks
 from crew_org.flows.attempts import repair_report
-from crew_org.profiles import profile_for
+from crew_org.profiles import _TITLE, profile_for
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
 from crew_org.session.tools import ACCEPTED
@@ -223,6 +223,8 @@ def at_done(
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.findings += no_changelog_entry(worktree, card)
+    if merged is not None:
+        verdict.findings += reads_only_unreleased(worktree, merged, paths)
     verdict.check = run_checks(worktree)
     if merged is not None and role_tasks.changes_workspace(role, worktree, paths):
         _turned_on(worktree, merged, paths, verdict)
@@ -595,6 +597,227 @@ def no_changelog_entry(
                 + (f" and {len(shipped) - 5} more" if len(shipped) > 5 else ""),
             ),
         )
+    ]
+
+
+# What a test reads that is the changelog's structure, not an entry: a heading, or a
+# subheading's name. A release keeps these where they are.
+_SUBHEADINGS = frozenset({"added", "changed", "deprecated", "removed", "fixed", "security"})
+# A JavaScript test's check that the text holds a string: `toContain("...")`.
+_JS_HOLDS = re.compile(r"""\.(?:toContain|includes|toMatch|match)\(\s*(['"`])(.*?)\1""")
+_JS_UNRELEASED = re.compile(r"""(?<!replace\()(?<!replaceAll\()(['"`/])[^'"`/\n]*Unreleased""")
+
+
+def reads_only_unreleased(
+    worktree: Path, merged: regression.Merged, paths: list[str]
+) -> list[Finding]:
+    """Each test the branch adds or changes that reads a changelog entry only from
+    `## [Unreleased]` (crew#1014).
+
+    A release moves `[Unreleased]`'s entries to its dated section and changes no test, so
+    such a test fails at the next release: sprint-metrics' 4.5.0 failed on two in a day
+    (mqucifer/sprint-metrics#969, mqucifer/sprint-metrics#977). Read from the test's code,
+    not run: a test that finds the `[Unreleased]` section, by a string naming it or a
+    helper in its file that returns it, and checks that what it found holds a string.
+    A string that's a heading or a subheading's name is the changelog's structure, which a
+    release keeps, so a test of that (that `[Unreleased]` comes first, its subheadings'
+    order) goes on.
+    """
+    pinned: list[str] = []
+    for path in paths:
+        if not profile_for(path).is_test_path(path) or not (worktree / path).is_file():
+            continue
+        now = (worktree / path).read_text(encoding="utf-8", errors="ignore")
+        was = merged.text(path) or ""
+        if path.endswith(".py"):
+            pinned += [f"{path}::{name}" for name in _py_pinned(now, was)]
+        else:
+            pinned += [f"{path}::{title}" for title in _js_pinned(now, was)]
+    if not pinned:
+        return []
+    return [
+        Finding(
+            "check.gates.reads_only_unreleased",
+            says(
+                "check.gates.reads_only_unreleased",
+                tests="\n".join(f"- `{t}`" for t in pinned),
+            ),
+            count=len(pinned),
+        )
+    ]
+
+
+def _structure(text: str) -> bool:
+    """Is a string a test checks for the changelog's structure, not an entry?"""
+    said = text.strip().lstrip("#").strip().strip("[]").lower()
+    return text.strip().startswith("#") or "unreleased" in said or said in _SUBHEADINGS
+
+
+def _names_unreleased(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and "unreleased" in node.value.lower()
+    )
+
+
+def _from_unreleased(func: ast.FunctionDef | ast.AsyncFunctionDef, helpers: set[str]) -> set[str]:
+    """The names in `func` that hold what it found of `[Unreleased]`: assigned from an
+    expression with a string naming it or a call of a helper that returns it, or from one
+    another, and each the function asserts is the `[Unreleased]` heading. A `replace` of
+    the heading writes a changelog; it reads nothing from one."""
+    written = {
+        id(arg)
+        for call in ast.walk(func)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr in ("replace", "replaceAll")
+        for arg in call.args
+    }
+    held: set[str] = set()
+
+    def reads(expr: ast.AST | None) -> bool:
+        return expr is not None and (
+            _uses(expr, held, helpers)
+            or any(_names_unreleased(n) and id(n) not in written for n in ast.walk(expr))
+        )
+
+    def hold(target: ast.AST) -> None:
+        held.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
+
+    while True:
+        before = len(held)
+        for node in ast.walk(func):
+            if isinstance(node, ast.Assign) and reads(node.value):
+                for target in node.targets:
+                    hold(target)
+            elif (isinstance(node, ast.AnnAssign | ast.AugAssign) and reads(node.value)) or (
+                isinstance(node, ast.For | ast.AsyncFor | ast.comprehension) and reads(node.iter)
+            ):
+                hold(node.target)
+            elif (
+                isinstance(node, ast.Assert)
+                and isinstance(node.test, ast.Compare)
+                and all(isinstance(op, ast.Eq) for op in node.test.ops)
+            ):
+                # `assert first.group(1) == "Unreleased"`: `first` is that section. Not
+                # `"## [Unreleased]" in readme`, which reads nothing from the changelog.
+                sides = [node.test.left, *node.test.comparators]
+                if any(_names_unreleased(s) for s in sides):
+                    for side in sides:
+                        hold(side)
+        if len(held) == before:
+            return held
+
+
+def _uses(expr: ast.AST, held: set[str], helpers: set[str]) -> bool:
+    """Does `expr` use what was read of `[Unreleased]`: a name holding it, or a helper's
+    call?"""
+    return any(
+        (isinstance(n, ast.Name) and n.id in held)
+        or (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in helpers)
+        for n in ast.walk(expr)
+    )
+
+
+def _returns(func: ast.FunctionDef | ast.AsyncFunctionDef, helpers: set[str]) -> bool:
+    """Does a helper return what it read of `[Unreleased]`?"""
+    held = _from_unreleased(func, helpers)
+    return any(
+        isinstance(r, ast.Return) and r.value is not None and _uses(r.value, held, helpers)
+        for r in ast.walk(func)
+    )
+
+
+def _holds_an_entry(func: ast.AST, held: set[str], helpers: set[str]) -> bool:
+    """Does `func` check that what it read of `[Unreleased]` holds a string that isn't
+    the changelog's structure: `"x" in section`, `assertIn("x", section)`?"""
+
+    def entry(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and not _structure(node.value)
+        )
+
+    checks = [n.test for n in ast.walk(func) if isinstance(n, ast.Assert)]
+    checks += [
+        n
+        for n in ast.walk(func)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr.startswith("assert")
+    ]
+    for made in checks:
+        for node in ast.walk(made):
+            if isinstance(node, ast.Compare) and entry(node.left):
+                if any(
+                    isinstance(op, ast.In) and _uses(c, held, helpers)
+                    for op, c in zip(node.ops, node.comparators, strict=True)
+                ):
+                    return True
+            elif isinstance(node, ast.Call) and len(node.args) >= 2:
+                called = node.func.attr if isinstance(node.func, ast.Attribute) else ""
+                if (
+                    called in ("assertIn", "search", "match", "fullmatch", "findall")
+                    and entry(node.args[0])
+                    and _uses(node.args[1], held, helpers)
+                ):
+                    return True
+    return False
+
+
+def _py_pinned(now: str, was: str) -> list[str]:
+    """The Python tests in `now`, added or changed since `was`, that read an entry only
+    from `[Unreleased]`."""
+    try:
+        tree = ast.parse(now)
+    except SyntaxError:
+        return []
+    before = _tests_in(was) if was else {}
+    functions = [n for n in tree.body if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]
+    helpers: set[str] = set()
+    # A helper returns the section if what it returns is read from it, and one calling
+    # such a helper does too.
+    while found := {
+        f.name
+        for f in functions
+        if not f.name.startswith("test") and f.name not in helpers and _returns(f, helpers)
+    }:
+        helpers |= found
+    pinned = []
+    for name, node in _tests_in(now).items():
+        if name in before and ast.dump(before[name]) == ast.dump(node):
+            continue
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if _holds_an_entry(node, _from_unreleased(node, helpers), helpers):
+            pinned.append(name)
+    return pinned
+
+
+def _js_tests(source: str) -> dict[str, str]:
+    """A JavaScript test file's tests, by title, each with its text up to the next."""
+    found = list(_TITLE.finditer(source))
+    return {
+        m.group(2): source[m.start() : found[i + 1].start() if i + 1 < len(found) else None]
+        for i, m in enumerate(found)
+    }
+
+
+def _js_pinned(now: str, was: str) -> list[str]:
+    """The tests in a test file in another language, added or changed since `was`, that
+    find `[Unreleased]` by a string naming it and check a string that isn't a heading.
+
+    Read as text: the crew has no parser for them (crew#404).
+    """
+    before = _js_tests(was)
+    return [
+        title
+        for title, text in _js_tests(now).items()
+        if before.get(title) != text
+        and _JS_UNRELEASED.search(text)
+        and any(not _structure(m.group(2)) for m in _JS_HOLDS.finditer(text))
     ]
 
 

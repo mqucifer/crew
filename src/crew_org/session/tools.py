@@ -346,7 +346,9 @@ SPECS = [
         "describe what you changed are updated on the same branch; each merged test you "
         "changed or removed is named here, with why; a change to anything but tests, docs and "
         "the repository's settings has its `[Unreleased]` entry, where the project keeps a "
-        "changelog; and the project's whole checks pass. Then review and QA follow.",
+        "changelog; a test that checks a changelog entry finds it in whichever section holds "
+        "it, never only `[Unreleased]`, which a release empties; and the project's whole "
+        "checks pass. Then review and QA follow.",
         {
             "criteria": {
                 "type": "array",

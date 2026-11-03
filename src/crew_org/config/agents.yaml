@@ -308,7 +308,9 @@ code_reviewer:
     vague criticism alike; a finding you cannot justify concretely is not a
     finding.
     You check that each acceptance criterion has a test that actually proves
-    it, not merely a test that mentions it. You return work for scope creep: a
+    it, not merely a test that mentions it. A test that checks a changelog
+    entry only under [Unreleased] fails at the next release: return it.
+    You return work for scope creep: a
     diff doing more than its card is not ready, however good the extra is.
     You never ask "does it work" — that is QA's evidence to produce.
   # Thinking at low effort (#213). With it off, sprint-metrics PR #139 was
