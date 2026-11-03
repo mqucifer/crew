@@ -646,3 +646,212 @@ def test_a_protected_path_deleted_goes_back(repo):
     verdict = at_done(repo, done())
     assert "guard.bounds.out_of_bounds" in [f.rule for f in verdict.findings]
     assert "`.crew/project.yaml` is protected" in verdict.findings[0].says
+
+
+# --- a test reads a changelog entry wherever it sits (crew#1014) ---------------------------------
+
+# sprint-metrics' own tests at 41865bb, cut to what each needs. A release moves
+# `[Unreleased]`'s entries to its dated section and can't change a test, so one that
+# reads an entry only from `[Unreleased]` fails at the next release: 4.5.0 did, twice.
+SM_HELPERS = '''
+import re
+from pathlib import Path
+
+CHANGELOG = Path(__file__).parent.parent / "CHANGELOG.md"
+_HEADING_RE = re.compile(r"^## \\[([^\\]]+)\\](.*)$", re.MULTILINE)
+
+
+def _unreleased_body_span(content: str) -> tuple[int, int]:
+    """Return (start, end) char positions of the [Unreleased] section body."""
+    headings = list(_HEADING_RE.finditer(content))
+    first = headings[0]
+    assert first.group(1) == "Unreleased"
+    end = headings[1].start() if len(headings) > 1 else len(content)
+    return first.end(), end
+
+
+def _subheading_bodies(content: str, subheading: str) -> list[str]:
+    """Return the body text of every section that has the given subheading line."""
+    bodies = []
+    for m in re.finditer(rf"^{re.escape(subheading)}\\s*$", content, re.MULTILINE):
+        start = m.end()
+        next_h = re.search(r"^### |^## \\[", content[start:], re.MULTILINE)
+        end = start + next_h.start() if next_h else len(content)
+        bodies.append(content[start:end])
+    return bodies
+
+
+def check_unreleased_first_and_subheadings(changelog_text: str) -> list[str]:
+    violations = []
+    headings = list(_HEADING_RE.finditer(changelog_text))
+    first = headings[0]
+    if first.group(1) != "Unreleased":
+        violations.append(f"First section is {first.group(0)!r}")
+    return violations
+'''
+# Reads `[Unreleased]` for its structure: an entry test isn't one (mqucifer/sprint-metrics#977).
+SM_STRUCTURE = '''
+
+def test_rule_unreleased_first_with_subheadings_in_order():
+    """AC4: [Unreleased] is the first section with Added, Changed, Fixed,
+    Removed subheadings in that order."""
+    content = CHANGELOG.read_text()
+    assert check_unreleased_first_and_subheadings(content) == []
+    mutated = content.replace(
+        "## [Unreleased]",
+        "## [1.3.3] - 2026-10-19\\n\\n### Added\\n\\n### Changed\\n\\n### Fixed\\n"
+        "\\n### Removed\\n\\n## [Unreleased]",
+        1,
+    )
+    violations = check_unreleased_first_and_subheadings(mutated)
+    assert violations, "expected a violation when [Unreleased] is not first"
+    assert "Unreleased" in violations[0], (
+        f"message must name the offending heading: {violations[0]}"
+    )
+    start, end = _unreleased_body_span(content)
+    body = content[start:end]
+    mutated = content[:start] + body.replace("### Removed\\n", "", 1) + content[end:]
+    violations = check_unreleased_first_and_subheadings(mutated)
+    missing = [v for v in violations if "missing" in v]
+    assert missing, f"expected a missing-subheading violation: {violations}"
+    assert "### Removed" in missing[0], f"message must name the missing subheading: {missing[0]}"
+'''
+# As mqucifer/sprint-metrics#969 fixed them: in whichever section holds the entry.
+SM_EVERY_SECTION = '''
+
+def test_unreleased_added_names_session_event():
+    """The changelog names the intake accepting a 'session' event,
+    in whichever section the entry currently sits in."""
+    content = CHANGELOG.read_text()
+    added = _subheading_bodies(content, "### Added")
+    assert any(
+        "session" in body and "intake" in body and "accepts" in body for body in added
+    )
+
+
+def test_unreleased_changed_names_api_version_move():
+    content = CHANGELOG.read_text()
+    changed = _subheading_bodies(content, "### Changed")
+    assert any('"11"' in body for body in changed)
+    assert any("api_version" in body for body in changed)
+'''
+# The two mqucifer/sprint-metrics#977 names, as merged: each reads `[Unreleased]` alone.
+SM_UNRELEASED_ONLY = '''
+
+def test_unreleased_added_names_session_epics():
+    """AC6: CHANGELOG.md's [Unreleased] Added section records that /range now
+    answers each epic's in-sprint session time."""
+    content = CHANGELOG.read_text()
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    added_section = unreleased[unreleased.index("### Added") :]
+    assert "session_epics" in added_section
+    assert "epic" in added_section
+    assert "in-sprint session minutes" in added_section
+
+
+def test_changelog_records_to_date():
+    content = CHANGELOG.read_text()
+    start = content.index("## [Unreleased]")
+    end = content.index("## [", start + 1)
+    unreleased = content[start:end]
+    added_section = unreleased[unreleased.index("### Added") :]
+    assert "session_epics_to_date" in added_section
+    assert "to date" in added_section or "to-date" in added_section
+'''
+CHANGELOG_TESTS = "tests/test_changelog.py"
+
+
+def _pinned(repo: Path) -> list[gates.Finding]:
+    merged = regression.merged_base(repo)
+    return gates.reads_only_unreleased(repo, merged, reproduction._changed(repo, merged.sha))
+
+
+def test_a_test_reading_an_entry_only_from_unreleased_goes_back_by_name(kept):
+    (kept / CHANGELOG_TESTS).write_text(SM_HELPERS + SM_UNRELEASED_ONLY)
+    (finding,) = _pinned(kept)
+    assert finding.rule == "check.gates.reads_only_unreleased"
+    assert finding.count == 2
+    for name in ("test_unreleased_added_names_session_epics", "test_changelog_records_to_date"):
+        assert f"`{CHANGELOG_TESTS}::{name}`" in finding.says
+    assert "whichever section" in finding.says and "every section" in finding.says
+    verdict = at_done(kept, done())
+    assert "check.gates.reads_only_unreleased" in [f.rule for f in verdict.findings]
+
+
+def test_a_structure_test_and_one_reading_every_section_go_on(kept):
+    (kept / CHANGELOG_TESTS).write_text(SM_HELPERS + SM_STRUCTURE + SM_EVERY_SECTION)
+    assert _pinned(kept) == []
+
+
+def test_a_test_reading_unreleased_through_a_helper_goes_back(kept):
+    (kept / CHANGELOG_TESTS).write_text(
+        SM_HELPERS + "\n\ndef test_names_the_move():\n"
+        "    content = CHANGELOG.read_text()\n"
+        "    start, end = _unreleased_body_span(content)\n"
+        '    assert "api_version" in content[start:end]\n'
+    )
+    (finding,) = _pinned(kept)
+    assert f"`{CHANGELOG_TESTS}::test_names_the_move`" in finding.says
+
+
+def test_only_the_tests_the_branch_adds_or_changes_are_read(kept):
+    """One already merged is another bug's to fix, as mqucifer/sprint-metrics#977 is."""
+    (kept / CHANGELOG_TESTS).write_text(SM_HELPERS + SM_UNRELEASED_ONLY)
+    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "merged")
+    git(kept, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
+    (kept / CHANGELOG_TESTS).write_text(
+        SM_HELPERS + SM_UNRELEASED_ONLY + SM_STRUCTURE + SM_EVERY_SECTION
+    )
+    assert _pinned(kept) == []
+
+
+class JavaScriptProject:
+    class design:  # noqa: N801
+        from crew_org.project import Part
+
+        parts = [Part(path="", language="javascript", tests=["tests/**/*.test.js"])]
+
+
+@pytest.fixture
+def javascript():
+    from crew_org import profiles
+
+    profiles.set_project(JavaScriptProject())
+    yield
+    profiles.clear()
+
+
+def test_a_javascript_test_reading_only_unreleased_goes_back(kept, javascript):
+    (kept / "tests/changelog.test.js").write_text(
+        'import { readFileSync } from "node:fs";\n'
+        'const text = readFileSync("CHANGELOG.md", "utf8");\n\n'
+        'test("unreleased is first", () => {\n'
+        '  expect(text.indexOf("## [Unreleased]")).toBeLessThan(text.indexOf("## [1."));\n'
+        '  expect(text.split("## [Unreleased]")[1]).toContain("### Added");\n'
+        "});\n\n"
+        'test("names the attempt chart", () => {\n'
+        '  const unreleased = text.split("## [Unreleased]")[1].split("## [")[0];\n'
+        '  expect(unreleased).toContain("attempt chart");\n'
+        "});\n\n"
+        'test("names the story list", () => {\n'
+        '  expect(text).toContain("story list");\n'
+        "});\n"
+    )
+    (finding,) = _pinned(kept)
+    assert "`tests/changelog.test.js::names the attempt chart`" in finding.says
+    assert finding.count == 1
+
+
+def test_a_test_that_a_doc_names_the_heading_goes_on(kept):
+    """sprint-metrics' README test: it checks the README says `## [Unreleased]`, and
+    reads nothing from the changelog."""
+    (kept / "tests/test_docs.py").write_text(
+        "def test_readme_versioning_states_unreleased_first_with_subheadings():\n"
+        "    section = _versioning_section()\n"
+        '    assert "## [Unreleased]" in section\n'
+        '    assert "Added, Changed, Fixed" in section\n'
+    )
+    assert _pinned(kept) == []
