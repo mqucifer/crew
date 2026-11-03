@@ -24,6 +24,7 @@ from crew_org.flows.artifacts import signed
 from crew_org.flows.board_flow import STORY_PROBLEM_MARKER
 from crew_org.flows.ci import return_for_ci, running_checks
 from crew_org.flows.conclusion import story_diagram, story_rows
+from crew_org.flows.delivery import REWORK_MARKER
 from crew_org.flows.epic_notes import story_notes
 from crew_org.flows.history import latest_answer, past_reviews
 from crew_org.flows.merge import Resolved, resolution_diff, resolved_at
@@ -410,7 +411,7 @@ def review_open_pulls(
                     prior_verdicts=_with_resolution(
                         _with_answer(
                             past_reviews(issues, repo, number, marker=REVIEW_MARKER, head=head),
-                            latest_answer(issues, repo, number),
+                            latest_answer(issues, repo, number, marker=REWORK_MARKER),
                         ),
                         resolved,
                     ),
@@ -983,11 +984,11 @@ def _with_resolution(prior: str, resolved: Resolved | None) -> str:
 
 
 def _with_answer(prior: str, answer: str) -> str:
-    """The Reviewer's earlier reviews, and the author's answer to the last, if any (#161)."""
+    """The Reviewer's earlier reviews, and the author's reply to the last, if any (crew#1007)."""
     if not answer:
         return prior
     return (
-        f"{prior}\n\n## The author's answer to your last review\n\n{answer}\n\n"
-        "They answered that the code already satisfies your findings, with the evidence "
-        "above, and made no change. Check that evidence against the code you are shown."
+        f"{prior}\n\n## The author's reply to your last review\n\n{answer}\n\n"
+        "That is what they changed for your findings, or why they changed nothing. Check "
+        "it against the code you are shown."
     )

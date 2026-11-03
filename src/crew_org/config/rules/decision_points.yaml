@@ -950,9 +950,9 @@ flows.goal_look.rows_from:skip:a632648f:
   at: flows/goal_look.py:rows_from
   if: looked_at and view.epic not in looked_at
   not_a_rule: a delivered epic is shown as background; nothing is split from it
-flows.history.latest_answer:filter:5b48d4f2:
+flows.history.latest_answer:filter:36182919:
   at: flows/history.py:latest_answer
-  if: ANSWERED_MARKER in (c.get('body') or '')
+  if: marker in (c.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
 flows.history.past_qa:filter:36182919:
   at: flows/history.py:past_qa
