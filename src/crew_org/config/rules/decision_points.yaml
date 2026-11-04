@@ -1201,6 +1201,94 @@ flows.qa_tasks.settle_disputes:result:waiting:d76ec67e:
   at: flows/qa_tasks.py:settle_disputes
   if: task.get('state') != 'closed' and (not approved)
   rule: decision.qa_tasks.dispute_settled
+flows.merge.ready_to_land:filter:9d508a88:
+  at: flows/merge.py:ready_to_land
+  if: PIN_LABEL not in c.labels
+  rule: decision.pins.sponsor_merges
+flows.pins._follow:filter:b1ec14cf:
+  at: flows/pins.py:_follow
+  if: release.pinned_tag((p.get('head') or {}).get('ref') or '')
+  rule: decision.pins.upgrade_work
+flows.pins._follow:filter:f9b741d9:
+  at: flows/pins.py:_follow
+  if: (n := pull_of(i)) is not None
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.pins._follow:result:waiting:41e3e8d5:
+  at: flows/pins.py:_follow
+  if: card is None
+  rule: decision.pins.upgrade_work
+flows.pins._card:end:979f8665:
+  at: flows/pins.py:_card
+  if: issue.get('state') == 'closed'
+  rule: decision.pins.upgrade_work
+flows.pins._card:filter:10d8ebfe:
+  at: flows/pins.py:_card
+  if: c.repo == consumer and c.number == own
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.pins._card:end:b9d43b55:
+  at: flows/pins.py:_card
+  if: card is not None
+  not_a_rule: 'does a thing once: skips what''s already done'
+flows.pins._card:result:opened:8eff8072:
+  at: flows/pins.py:_card
+  if: new
+  not_a_rule: 'a report or a render: lists, decides nothing'
+flows.pins._step:end:88cf8ca1:
+  at: flows/pins.py:_step
+  if: card.status == BLOCKED and WAITS_LABEL in card.labels
+  rule: decision.pins.settled
+flows.pins._step:result:waiting:8a481d74:
+  at: flows/pins.py:_step
+  if: card.status != MERGING
+  rule: decision.pins.upgrade_work
+flows.pins._step:result:waiting:190c22f8:
+  at: flows/pins.py:_step
+  if: not runs or running
+  rule: decision.pins.sponsor_merges
+flows.pins._step:result:sponsor:13554b97:
+  at: flows/pins.py:_step
+  if: not failed
+  rule: decision.pins.sponsor_merges
+flows.pins._step:end:89b1be81:
+  at: flows/pins.py:_step
+  if: said is None
+  rule: decision.ci.same_failure_stop
+flows.pins._route:filter:1e8350ac:
+  at: flows/pins.py:_route
+  if: not ci.failing_tests(text)
+  rule: decision.pins.upgrade_work
+flows.pins._waits:filter:9462f713:
+  at: flows/pins.py:_waits
+  if: (m := _WAITS.search(c.get('body') or '')) is not None and m.group(1) == head
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.pins._waits:end:00ed48fa:
+  at: flows/pins.py:_waits
+  if: not found
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.pins._settle:end:644384f3:
+  at: flows/pins.py:_settle
+  if: on is None
+  rule: decision.pins.settled
+flows.pins._settle:end:3145b843:
+  at: flows/pins.py:_settle
+  if: ci.CI_MARKER.format(head=head) in said
+  rule: decision.pins.settled
+flows.pins._settle:result:waiting:8c7188cf:
+  at: flows/pins.py:_settle
+  if: closed and issue.get('state_reason') == 'not_planned'
+  rule: decision.pins.settled
+flows.pins._settle:result:waiting:9f2391f9:
+  at: flows/pins.py:_settle
+  if: waiting
+  rule: decision.pins.settled
+flows.pins._close:filter:4b239703:
+  at: flows/pins.py:_close
+  if: c.repo == consumer and c.number == number
+  not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.pins._close:move:e0ab83df:
+  at: flows/pins.py:_close
+  if: card is not None and card.status != DONE
+  rule: decision.pins.sponsor_merges
 flows.qa_tasks.waits_for_story:end:5d9dcee0:
   at: flows/qa_tasks.py:waits_for_story
   if: task.repo != SUITE or role is None or role.key != rt.QA.key
@@ -1852,10 +1940,10 @@ flows.standup.find_standup:end:1420ee02:
   at: flows/standup.py:find_standup
   if: marker(sprint) in (issue.get('body') or '')
   not_a_rule: 'does a thing once: skips what''s already done'
-flows.standup.waiting_on_a_person:filter:070ae157:
+flows.standup.waiting_on_a_person:filter:2da8e8dd:
   at: flows/standup.py:waiting_on_a_person
-  if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (WAITS_LABEL not in card.labels) and (card.status
-    == BLOCKED or card.needs_human)
+  if: card.state != 'CLOSED' and (not _at_the_gate(card)) and (not card.labels & {WAITS_LABEL, UPGRADE})
+    and (card.status == BLOCKED or card.needs_human)
   not_a_rule: 'a report or a render: lists, decides nothing'
 flows.standup.write_standup:filter:02bb24e4:
   at: flows/standup.py:write_standup

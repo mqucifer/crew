@@ -1268,6 +1268,8 @@ _FILING_LABELS: dict[str, tuple[Any, Any]] = {
     "retro": ("retro", None),
     "standup": ("standup", None),
     REVISIT_LABEL: ("record_change", "revisit"),
+    # A release's pin, the crew's upgrade work (crew#1028): a Task with no role's kind.
+    "pin": ("task", None),
 }
 _RECORD_TITLES: dict[str, Any] = {
     "Onboard this project: its record for the crew": "onboarding",

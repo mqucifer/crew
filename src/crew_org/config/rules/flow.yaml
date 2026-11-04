@@ -294,6 +294,25 @@ decision.rework_gate:
   origin:
   - crew#192
   - crew#440
+decision.pins.settled:
+  description: A pin waiting on its upgrade work goes on once all of it is in, QA's Task approved or closed
+    and the Developer's bug closed as completed. An empty commit runs its checks again, and its card goes
+    back to Merging. QA saying its tests stand files the Developer's bug instead. Work closed without a
+    fix blocks the card for a person, saying why.
+  origin:
+  - crew#1028
+decision.pins.sponsor_merges:
+  description: A release's pin pull request waits in Merging while its checks run and once they pass;
+    the Sponsor merges it, and the crew never lands it. Merged or superseded, its card closes.
+  origin:
+  - crew#1028
+decision.pins.upgrade_work:
+  description: A release's pin pull request has a card, a Task labelled pin. A failed check goes back
+    with its log as upgrade work, by finding routing (crew#1018) - a QA test failing in qa-suite opens
+    QA's Task there, shaped as a dispute so its fix runs against the pin's head; anything else is the
+    Developer's bug in the consumer - and the card waits on it in Blocked, labelled waits:upgrade.
+  origin:
+  - crew#1028
 decision.qa_tasks.already_justified:
   description: A Developer disputing a QA test QA already justified, its file unchanged, opens no new
     Task; its session is told the test stands, with QA's why and the Task's link, and changes the code.

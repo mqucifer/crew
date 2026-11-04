@@ -783,7 +783,7 @@ def _go_on(
                 f"`{QA_CHECK}` passes."
             )
         else:
-            _rerun(ws, repo, live, task=link)
+            _rerun(ws, repo, live, message=f"ci: run QA's check again, now {link} changed the test")
             body = (
                 f"{answered}\n**QA changed the disputed test** ({link}). `{QA_CHECK}` runs again."
                 + (
@@ -821,13 +821,13 @@ def _go_on(
     )
 
 
-def _rerun(ws: Any, repo: str, pull: dict[str, Any], *, task: str) -> None:
+def _rerun(ws: Any, repo: str, pull: dict[str, Any], *, message: str) -> None:
     """Move the pull request's head by an empty commit, so its checks run again."""
     branch = (pull.get("head") or {}).get("ref") or ""
     work = ws.for_repo(repo)
     path = work.open(branch, resume=True)
     try:
-        work.commit(f"ci: run QA's check again, now {task} changed the test", allow_empty=True)
+        work.commit(message, allow_empty=True)
         work.push()
     finally:
         work.close(path)

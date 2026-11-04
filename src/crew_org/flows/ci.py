@@ -203,6 +203,20 @@ def failing_tests(text: str) -> frozenset[str]:
     return frozenset(_FAILED_TEST.findall(text))
 
 
+# A failed check's heading in `report`.
+_REPORTED = re.compile(r"^### `(.+?)`: \S+$", re.MULTILINE)
+
+
+def by_check(said: str) -> dict[str, str]:
+    """A CI report's part for each failed check, by the check's name, as `report` wrote
+    it: whose work a failure is depends on which check failed (crew#1028)."""
+    heads = list(_REPORTED.finditer(said))
+    return {
+        head.group(1): said[head.end() : nxt.start() if nxt else len(said)].strip()
+        for head, nxt in zip(heads, [*heads[1:], None], strict=True)
+    }
+
+
 def job_id(run: dict[str, Any]) -> int | None:
     """The Actions job behind a check run or a job record."""
     found = _JOB.search(run.get("details_url") or run.get("html_url") or "")
@@ -251,19 +265,25 @@ def return_for_ci(
     frm: str = MERGING,
     rule: str = "",
     stop: int | None = None,
-) -> None:
+    to: str = IN_PROGRESS,
+    who: str = "",
+) -> str | None:
     """Send a card back to whoever built it with what CI said: approved, or before review.
-    A role's Task goes back to its role, not the Developer (crew#944).
+    A role's Task goes back to its role, not the Developer (crew#944). Returns what CI
+    said, or None when it stopped for a person.
 
     Returned `stop` times running for the same failing tests, it's blocked for a person
     with the log instead (`delivery.ci_same_failure_stop`): another session would be
     shown the same failure it has already answered.
+
+    A pin pull request's card goes `to` Blocked instead, with `who` its upgrade work,
+    which the caller opens from what CI said (`flows.pins`, crew#1028).
     """
     from crew_org.flows.role_tasks import role_of  # noqa: PLC0415
 
     number = card.number or 0
     role = role_of(card)
-    who = f"the {role.name if role is not None else 'Developer'}"
+    who = who or f"the {role.name if role is not None else 'Developer'}"
     head = (pull.get("head") or {}).get("sha", "")
     marker = CI_MARKER.format(head=head)
     names = ", ".join(f"`{r.get('name')}`" for r in failed[:MAX_JOBS])
@@ -285,7 +305,7 @@ def return_for_ci(
         and all(failing_tests(b) == tests for b in earlier[-(stop - 1) :])
     ):
         _stopped(board, issues, sink, card, repo=repo, pull=pull, frm=frm, stop=stop, said=said)
-        return
+        return None
     if not already:
         issues.comment(
             repo,
@@ -299,7 +319,7 @@ def return_for_ci(
         board,
         sink,
         item_id=card.item_id,
-        to=IN_PROGRESS,
+        to=to,
         by=None,
         card=number,
         frm=frm,
@@ -319,6 +339,7 @@ def return_for_ci(
         else sum(CI_MARKER_PREFIX in b and marker not in b for b in bodies) + 1,
         jobs=len(failed),
     )
+    return said
 
 
 def _stopped(

@@ -39,7 +39,7 @@ CONSUMERS = {"crew-presentation": 10}
 # Releases whose archives are kept, newest first, beside the first of each month.
 KEEP_DAILY = 7
 # A consumer pull request's branch: one per release, so a later one supersedes it.
-_BRANCH = re.compile(rf"^chore/\d+-{dh.NAME}-")
+_BRANCH = re.compile(rf"^chore/\d+-({dh.NAME}-.+)$")
 
 _TAG = re.compile(rf"^{dh.NAME}-(\d{{4}}-\d{{2}}-\d{{2}})(?:-(\d+))?$")
 
@@ -78,6 +78,12 @@ def refusal(history: dh.DeliveryHistory) -> str | None:
     if missing:
         return f"sprint-metrics has no answer for {', '.join(missing)}"
     return None
+
+
+def pinned_tag(branch: str) -> str | None:
+    """The release a consumer pull request's branch pins, or None for any other branch."""
+    found = _BRANCH.match(branch)
+    return found.group(1) if found else None
 
 
 def tag_day(tag: str) -> tuple[date, int] | None:
