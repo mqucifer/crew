@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 
 from crew_org.events import EventKind, EventSink
 from crew_org.flows import role_tasks as rt
+from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
@@ -145,10 +146,12 @@ def _body(repo: str, found: Waiting, version: str) -> str:
         f"merged since, as an epic's release does (ADR 0019). {why_version} The section is "
         "dated today, as this Task's start says. Where merges left more than one "
         "`[Unreleased]` heading, the release gathers them into its one section, by kind.\n\n"
-        "**CI:** CI runs green on the release, with nothing skipped that it should run.",
+        "**CI:** CI runs green on the release, with nothing skipped that it should run.\n\n"
+        + RELEASE_STEP,
         done_when=[
             "`CHANGELOG.md` moves every `[Unreleased]` entry to the new version, dated today",
             "The version is bumped where the project keeps it",
+            RELEASE_DONE,
         ],
     )
 

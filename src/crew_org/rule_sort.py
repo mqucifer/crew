@@ -97,6 +97,11 @@ SORTED: dict[str, tuple[str, str]] = {
     "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
     "check.gates.no_changelog_entry": (GATE, "a story's `[Unreleased]` entry, at `done`"),
     "check.gates.reads_only_unreleased": (GATE, "a test reading only `[Unreleased]`, at `done`"),
+    "check.gates.a_story_sets_the_api_version": (GATE, "a story moving `api_version`, at `done`"),
+    "check.gates.a_release_clears_the_declared_changes": (
+        GATE,
+        "a release's `api_version` and declared changes, at `done`",
+    ),
     "check.gates.conflicts_left": (GATE, "a resolution's conflict markers, at `done`"),
     "check.gates.the_business_analyst_ruled_that": (
         GATE,
