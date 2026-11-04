@@ -308,3 +308,20 @@ def test_a_triage_names_the_bugs_repository(monkeypatch):
     started, finished = [e for e in sink.events if e.kind in ("agent.started", "agent.finished")]
     assert (started.card, started.detail["repo"]) == (593, "sm")
     assert (finished.card, finished.detail["repo"]) == (593, "sm")
+
+
+def test_a_triage_s_model_calls_carry_its_card_and_repository(monkeypatch):
+    """crew#1001: unwrapped, its calls carried no card, so its session's calls weren't exact."""
+    from crew_org.events import working  # noqa: PLC0415
+
+    seen: list[dict[str, Any]] = []
+
+    def triage(*args: Any, **kwargs: Any) -> Triage:
+        seen.append(working())
+        return _triage("not_a_bug")
+
+    monkeypatch.setattr(bugs, "triage_bug", triage)
+    bugs.triage_bugs(
+        Board(), Issues(), Recorded(), [_card()], default_repo="other", context=Context(), failed=[]
+    )
+    assert seen and seen[0]["card"] == 593 and seen[0]["repo"] == "sm"

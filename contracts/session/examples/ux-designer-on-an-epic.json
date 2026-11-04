@@ -6,17 +6,12 @@
   "sprint": "Sprint 6",
   "card": {
     "created": "2026-09-23",
-    "created_at": "2026-09-23T23:30:00Z",
-    "type": "Epic"
+    "created_at": "2026-09-23T23:30:00Z"
   },
-  "epic": null,
-  "pull": null,
   "role": "UX Designer",
-  "part": "refinement",
-  "finished": "2026-09-25T21:31:00Z",
-  "model_seconds": 611.8,
-  "prompt_tokens": 201000,
-  "cached_tokens": 170900,
-  "completion_tokens": 7640,
-  "reasoning_tokens": 3310
+  "start": "2026-09-25T21:10:00Z",
+  "end": "2026-09-25T21:31:00Z",
+  "model_seconds": 612,
+  "input_tokens": 201000,
+  "output_tokens": 7640
 }

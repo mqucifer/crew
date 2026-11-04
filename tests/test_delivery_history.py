@@ -302,6 +302,63 @@ def test_a_review_keyed_by_its_card_with_its_pull_request_reads_the_same():
     assert work["pull"] == {"repo": "sprint-metrics", "number": 463}
 
 
+def test_a_review_keeps_the_card_it_names_when_its_pull_request_closes_none():
+    """crew-presentation#133 closed no card, and its review ran for #127, as the event
+    says (crew#1001): the card stays, so the review's session counts for the story."""
+    review = (
+        "tick",
+        {
+            "at": at(0),
+            "kind": "agent.started",
+            "role": "Code Reviewer",
+            "card": 455,
+            "detail": {"pr": 463},
+            "ctx": {"repo": "sprint-metrics"},
+        },
+    )
+    pulls = {
+        "sprint-metrics": [
+            {
+                "number": 463,
+                "title": "Show the story",
+                "created_at": at(-30),
+                "merged_at": at(10),
+                "closed_at": at(10),
+                "closes": [],
+            }
+        ]
+    }
+
+    data, _ = built([review], pulls=pulls)
+    [work] = [e for e in data["events"] if e["kind"] == "work_started"]
+    assert work["card"] == {"repo": "sprint-metrics", "number": 455}
+    assert work["pull"] == {"repo": "sprint-metrics", "number": 463}
+
+
+def test_an_old_review_keyed_by_its_pull_request_has_no_card_when_it_closes_none():
+    """Before crew#449 the number was the pull request's own: it names no card."""
+    review = (
+        "tick",
+        {"at": at(0), "kind": "agent.started", "role": "Code Reviewer", "card": 463, "detail": {}},
+    )
+    pulls = {
+        "sprint-metrics": [
+            {
+                "number": 463,
+                "title": "Bump the package",
+                "created_at": at(-30),
+                "merged_at": at(10),
+                "closed_at": at(10),
+                "closes": [],
+            }
+        ]
+    }
+    data, _ = built([review], pulls=pulls)
+    [work] = [e for e in data["events"] if e["kind"] == "work_started"]
+    assert work["card"] is None
+    assert work["pull"] == {"repo": "sprint-metrics", "number": 463}
+
+
 def test_a_reviewers_number_no_pull_request_fits_is_left_out_not_taken_for_a_card():
     """crew-presentation#15 and an unlisted sprint-metrics pull request 15 share a number."""
     review = (

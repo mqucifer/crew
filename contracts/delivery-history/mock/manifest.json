@@ -1,8 +1,8 @@
 {
   "package": "delivery-history",
   "date": "2026-09-25",
-  "schema_version": "3.0.0",
+  "schema_version": "4.0.0",
   "generated": "2026-09-26T05:30:00Z",
-  "events": 172,
+  "events": 175,
   "left_out": {}
 }

@@ -1,18 +1,12 @@
 {
   "api_version": "1",
   "type": "session",
-  "card_id": null,
   "timestamp": "2026-09-25T23:50:00Z",
   "sprint": "Sprint 6",
-  "card": null,
-  "epic": null,
-  "pull": "sprint-metrics#141",
   "role": "Code Reviewer",
-  "part": "delivery",
-  "finished": "2026-09-25T23:51:00Z",
-  "model_seconds": 21.6,
-  "prompt_tokens": 3120,
-  "cached_tokens": 0,
-  "completion_tokens": 410,
-  "reasoning_tokens": 220
+  "start": "2026-09-25T23:50:00Z",
+  "end": "2026-09-25T23:51:00Z",
+  "model_seconds": 22,
+  "input_tokens": 3120,
+  "output_tokens": 410
 }

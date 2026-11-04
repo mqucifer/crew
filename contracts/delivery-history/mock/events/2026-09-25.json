@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "3.0.0",
+ "schema_version": "4.0.0",
  "sprint": "Sprint 6",
  "start": "2026-09-25",
  "end": "2026-09-25",
@@ -47,6 +47,43 @@
    "crews_own": false,
    "design_revision": true,
    "about": []
+  },
+  {
+   "kind": "step_started",
+   "at": "2026-09-25T23:40:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "criteria check"
+  },
+  {
+   "kind": "model_call",
+   "at": "2026-09-25T23:42:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "refine",
+   "model": "crew-general",
+   "prompt_tokens": 18000,
+   "completion_tokens": 900,
+   "reasoning_tokens": 600,
+   "cached_tokens": null,
+   "seconds": 96.0,
+   "failed": false
+  },
+  {
+   "kind": "step_ended",
+   "at": "2026-09-25T23:43:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "criteria check"
   },
   {
    "kind": "card_moved",

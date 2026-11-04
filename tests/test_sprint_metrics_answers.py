@@ -40,12 +40,21 @@ def test_the_release_s_published_schema_is_here():
     assert "cycle_time_minutes" in sma.entry_schema()["required"]
 
 
-def test_the_crew_reads_4_2_1_whose_answers_have_no_escalation_measures():
+def test_the_crew_reads_4_5_0_whose_answers_have_no_escalation_measures():
     """sprint-metrics 4.0.0 took the escalation measures out of /range (crew#905)."""
-    assert sma.RELEASE == "4.2.1"
+    assert sma.RELEASE == "4.5.0"
     named = sma.entry_schema()["properties"]
     assert "escalation_count" not in named and "escalation_rate_percent" not in named
     assert "window" in sma.range_schema()["required"]
+
+
+def test_4_5_0_answers_each_story_s_and_epic_s_session_time():
+    """The answers the crew's sessions fill (crew#1001), so they reach delivery-history."""
+    named = sma.entry_schema()["properties"]
+    for answer in ("session_stories", "session_planning", "session_epics", "session_epics_to_date"):
+        assert answer in named, answer
+    assert set(named["working_time"]["required"]) == {"stories", "planning", "cardless", "total"}
+    assert set(named["model_time_split"]["required"]) == {"planning", "delivery"}
 
 
 def test_the_mock_s_failure_causes_are_4_x_s_list_of_class_role_and_count():
