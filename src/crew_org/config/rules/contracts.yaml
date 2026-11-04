@@ -1,4 +1,39 @@
 # What other work relies on, and declared changes to it. Declared once each (crew#756, ADR 0031): change a rule here.
+check.gates.a_release_clears_the_declared_changes:
+  description: At `done`, a release Task in a project that keeps `declared-changes.json` empties its
+    `changes`, and moves its `api_version` once, by one, when anything was declared; with nothing
+    declared, the version stays (crew#1019).
+  messages:
+    default: '`declared-changes.json` declares changes to the answers ({changes}), so this release moves
+      `api_version` from "{before}" to "{after}", and the code''s with it, and empties `changes`. The
+      branch has `api_version` "{version}" and {left} changes left.'
+    nothing: '`declared-changes.json` declares nothing, so the responses offer what they did and
+      `api_version` stays "{before}". The branch moves it to "{version}": put it back.'
+    unreadable: '`declared-changes.json` can''t be read on this branch: {why}. Keep it a JSON object with
+      `api_version` and an empty `changes` list.'
+  origin:
+  - crew#1019
+  - mqucifer/sprint-metrics#953
+  - mqucifer/sprint-metrics#959
+  owner: DevOps Engineer
+check.gates.a_story_sets_the_api_version:
+  cases:
+  - told.business_analyst.a_criterion_never_names_a_version
+  description: At `done`, a story, a bug or a Task that isn't the release leaves `api_version` in
+    `declared-changes.json` as merged, and the file readable, since the release moves the version
+    once (crew#1019).
+  messages:
+    default: 'This branch moves `api_version` in `declared-changes.json` from "{before}" to "{after}".
+      The release moves it, once, for everything declared, so put it back. Declare what this changes
+      in the responses under `changes` instead.'
+    unreadable: '`declared-changes.json` can''t be read on this branch: {why}. Keep it a JSON object
+      with `api_version` as merged and `changes`, each an object with `response`, `path` (the answer''s
+      JSONPath) and `why`.'
+  origin:
+  - crew#1019
+  - mqucifer/sprint-metrics#953
+  - mqucifer/sprint-metrics#959
+  owner: Developer
 check.gates.no_changelog_entry:
   description: At `done`, a story or a bug whose branch changes what the project ships adds a line under
     `## [Unreleased]` in `CHANGELOG.md`, since a release ships what `[Unreleased]` holds. Tests, docs,

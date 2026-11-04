@@ -27,6 +27,8 @@ from typing import Any
 from crew_org.columns import NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.declared_changes import FILE as DECLARED
+from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient, load_trust
@@ -80,6 +82,8 @@ DEVOPS = TaskRole(
     scope=(
         ".github/*",
         "CHANGELOG.md",
+        # What the answers' stories declared, which the release empties (crew#1019).
+        DECLARED,
         "pyproject.toml",
         "uv.lock",
         "package.json",
@@ -205,6 +209,43 @@ def role_of(card: Card) -> TaskRole | None:
     if role is not None and role.key == QA.key:
         return for_project(role, project_of(card.labels))
     return role
+
+
+# A file a finding's **Where:** names: a path with a folder or an extension, as the
+# roles write it ("docs/service.md, the api-version paragraph", "tests/test_x.py::test_y").
+# Not a URL, nor a route like `/range`, which start or sit after a `/`.
+_URL = re.compile(r"\S+://\S*")
+_PATH = re.compile(r"(?<![\w/.:-])[\w.*-]+(?:/[\w.*-]+)*")
+_EXTENSION = re.compile(r"\w\w+\.[A-Za-z]\w{0,5}$")
+# The scopes' file names with neither, such as `Dockerfile`.
+_BARE = frozenset(
+    g
+    for r in (ARCHITECT, DEVOPS, UX, QA)
+    for g in (*r.scope, *(g for _, s in r.scope_in for g in s))
+    if not any(c in g for c in "/.*")
+)
+
+
+def named_paths(where: str) -> list[str]:
+    """The files a finding's **Where:** names, in its order."""
+    found = (m.group().rstrip(".") for m in _PATH.finditer(_URL.sub(" ", where)))
+    return [p for p in found if "/" in p.strip("/") or _EXTENSION.search(p) or p in _BARE]
+
+
+def finding_role(owner: str, story: Card, repo: str, where: str) -> TaskRole | None:
+    """The role whose Task a finding opens, or None when it goes as a bug: owned by no
+    role, or naming no file, or one that role's Task may not change in `repo` (crew#1018).
+
+    QA's and the Architect's Tasks about files neither may change there
+    (mqucifer/sprint-metrics#964, mqucifer/sprint-metrics#968) could only end blocked.
+    """
+    role = ROLES.get(owner)
+    paths = named_paths(where)
+    if role is None or not paths:
+        return None
+    if role.key == QA.key:
+        role = for_project(role, project_of(story.labels))
+    return None if outside_scope(role, paths, repo) else role
 
 
 def outside_scope(role: TaskRole, paths: list[str], repo: str = "") -> list[str]:
@@ -688,6 +729,8 @@ def file_findings(
     found_while: str = "",
 ) -> list[int]:
     """File a role's findings outside its story: a Task for the role it names, or a bug.
+    A finding goes as a bug when the files its **Where:** names aren't all that role's
+    to change in `repo`, or it names none (crew#1018).
 
     At most `cap` per owner for each story and round (a pull request's head), and each
     filing recorded, so a finding said again in other words in a later round shows in
@@ -724,8 +767,9 @@ def file_findings(
             found_while
             or f"The {by} found this while judging #{number}, outside what that story changes."
         ) + f"\n\n**Where:** {finding.where}\n\n**Evidence:** {finding.evidence}"
+        role = finding_role(finding.owner, story, repo, finding.where)
         try:
-            if finding.owner == "bug":
+            if role is None:
                 filed_as = _file_bug(
                     issues,
                     board,
@@ -736,9 +780,10 @@ def file_findings(
                     why=why,
                     by=by,
                     cards=cards,
+                    what=finding.what,
                 )
             else:
-                role = ROLES[finding.owner]
+                project = project_of(story.labels) if role.key == QA.key else ""
                 filed_as = open_task(
                     issues,
                     board,
@@ -761,6 +806,7 @@ def file_findings(
                     column=NEEDS_REFINEMENT,
                     by=by,
                     event="finding",
+                    labels=(project_label(project),) if project else (),
                 ).number
         except Exception as exc:  # noqa: BLE001
             reraise_if_down(exc)
@@ -792,6 +838,11 @@ def file_findings(
                     "owner": finding.owner,
                     "filed": filed_as,
                     "round": round_key,
+                    **(
+                        {"rule": "decision.role_tasks.finding_as_bug"}
+                        if role is None and finding.owner != "bug"
+                        else {}
+                    ),
                 },
             )
         )
@@ -1251,9 +1302,10 @@ def _file_bug(
     why: str,
     by: str,
     cards: list[Card],
+    what: str = "",
 ) -> int:
     """A bug, filed the way a collaborator files one (ADR 0027): triage takes it from
-    refinement with no work type."""
+    refinement with no work type. `what` is said whole, where the title is cut short."""
     wanted = _FINDING_BUG.format(key=key)
     found = next(
         (i for i in issues.labelled(repo, BUG_LABEL) if wanted in (i.get("body") or "")), None
@@ -1262,7 +1314,7 @@ def _file_bug(
         found = issues.create(
             repo,
             title,
-            f"{wanted}\n\n**What happens:** {title}\n\n{why}\n\n"
+            f"{wanted}\n\n**What happens:** {what.strip() or title}\n\n{why}\n\n"
             "**Expected:** what the project's criteria and docs say.",
             labels=[BUG_LABEL],
         )
@@ -1742,11 +1794,12 @@ def epic_release_task(
         "**Release:** release what `[Unreleased]` holds, another epic's merged entries "
         "included (ADR 0019). The version is the one the most significant entry needs "
         "(Keep a Changelog, SemVer), or the Product Owner's call where the epic's record "
-        "makes one. The section is dated today, as this Task's start says.",
+        "makes one. The section is dated today, as this Task's start says.\n\n" + RELEASE_STEP,
         done_when=[
             "CI runs every test the epic's stories added, and none it should run is skipped",
             "`CHANGELOG.md` moves `[Unreleased]` to the new version, dated today",
             "The version is bumped where the project keeps it",
+            RELEASE_DONE,
         ],
     )
     try:

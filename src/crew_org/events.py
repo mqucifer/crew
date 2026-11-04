@@ -276,6 +276,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "reasoning_tokens",
         "cached_tokens",
         "total_tokens",
+        "retried",
     ),
     EventKind.LLM_CALL_FAILED: (
         "model",
@@ -286,6 +287,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "output_schema",
         "error",
         "duration_s",
+        "retried",
     ),
     EventKind.LLM_CALL_EMPTY: (),
     EventKind.LLM_CALL_REFUSED: (
@@ -430,7 +432,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
     ),
     EventKind.ROLE_TASK_HELD: ("repo", "task_role", "waits_for", "rule"),
     EventKind.ROLE_TASK_SETTLED: ("repo", "task_role", "task_kind", "project", "rule"),
-    EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error", "counts"),
+    EventKind.FINDING_FILED: ("repo", "owner", "filed", "round", "error", "counts", "rule"),
     EventKind.DEPLOY_STARTED: ("repo", "service", "from", "to", "rule"),
     EventKind.DEPLOY_HEALTHY: ("repo", "service", "from", "to", "attempts", "seconds", "pr"),
     EventKind.DEPLOY_ROLLED_BACK: (

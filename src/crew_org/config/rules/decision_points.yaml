@@ -857,6 +857,18 @@ flows.gates.checks_less:skip:828a7a63:
   at: flows/gates.py:checks_less
   if: how != 'changed' or not name or (not path.endswith('.py'))
   rule: guard.reproduce.check
+flows.gates.declared_changes:end:988b1ee5:
+  at: flows/gates.py:declared_changes
+  if: 'merged is None'
+  rule: check.gates.a_story_sets_the_api_version
+flows.gates.declared_changes:end:a3163373:
+  at: flows/gates.py:declared_changes
+  if: found is not None and found.role is role_tasks.DEVOPS and (found.kind == RELEASE)
+  rule: check.gates.a_release_clears_the_declared_changes
+flows.gates.declared_changes:end:aff00976:
+  at: flows/gates.py:declared_changes
+  if: 'before is None and after is None'
+  rule: check.gates.a_story_sets_the_api_version
 flows.gates.entries:filter:638e95bd:
   at: flows/gates.py:entries
   if: 'isinstance(item, dict)'
@@ -1573,6 +1585,10 @@ flows.role_tasks.existing:filter:158652dc:
   at: flows/role_tasks.py:existing
   if: wanted in (i.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.role_tasks.finding_role:end:b6549015:
+  at: flows/role_tasks.py:finding_role
+  if: role is None or not paths
+  rule: decision.role_tasks.finding_as_bug
 flows.role_tasks.first_diagram_task:end:071aea68:
   at: flows/role_tasks.py:first_diagram_task
   if: issues.file_at(repo, DIAGRAM_PATH, issues.default_branch(repo)) is not None

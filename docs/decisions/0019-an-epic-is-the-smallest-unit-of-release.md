@@ -42,6 +42,17 @@ Two problems showed up with it (crew#816):
   as it adds its documentation criterion, so a release assembles what's there.
 - **A release story is dated by the crew,** with the real day. The model never
   supplies a date or a version on its own.
+- **A story declares the answers it changes; the release moves api_version once**
+  (the Sponsor, 2026-11-04, crew#1019). A project whose responses carry an
+  `api_version` keeps `declared-changes.json` at its root, for Python and JavaScript
+  alike: the version the responses carry now, and each answer a story added, changed
+  or removed on purpose, by its RFC 9535 JSONPath, with why. The project's additive
+  check accepts exactly what it lists, and nothing for good. A story never sets a
+  version, and no criterion names one. The release Task, when anything is listed,
+  moves `api_version` up by one, the code's with it, and empties the list, so a
+  declaration holds for that release only. This is Changesets' and towncrier's
+  pattern: each change writes what it changes for the release, and the release
+  consumes it. The gates at `done` hold both ends.
 
 ## Consequences
 
@@ -70,3 +81,7 @@ Two problems showed up with it (crew#816):
   merge: the decision stands, and the missing step was ours, not a reason to hold.
 - 2026-10-22: the release is DevOps's Task, opened by the split, in place of the
   release story, and it waits for the Sponsor's approving review (crew#839, ADR 0034).
+- 2026-11-04: a story declares the answers it changes in `declared-changes.json`, and
+  the release moves `api_version` once and empties it. Decided by the Sponsor at the
+  Sprint 40 retro, after sprint-metrics' api_version went from "10" to "16" in a day
+  and its additive check was loosened for good (crew#1019).
