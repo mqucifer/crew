@@ -21,7 +21,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A gate at `done` sends a session's branch back | 15 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 80 |
+| The tick decides a card's handling, found by the decision-point audit | 81 |
 | A setting that changes what the tick does | 216 |
 | Told, and not checked by anything above | 148 |
 
@@ -38,7 +38,7 @@ section; one no line holds for is unplaced, never guessed.
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 160 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 161 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 19 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 113 |
@@ -328,6 +328,7 @@ Put each back. A check the criteria say is wrong is replaced by the right one, n
 | `decision.role_tasks.carry_out`<br>Do what the triage decided, on the issue and the board. | flow | `src/crew_org/flows/role_tasks.py:carry_out` | — | — | src/crew_org/flows/role_tasks.py:carry_out<br>src/crew_org/flows/role_tasks.py:tasks_to_triage | crew#839 |
 | `decision.role_tasks.ci_services`<br>Each repository whose main passes its checks with its services gets DevOps's CI Task, as a story's `done` would open it. | flow | `src/crew_org/flows/ci_from_main.py:ci_services_from_main` | — | — | src/crew_org/flows/ci_from_main.py:ci_services_from_main<br>src/crew_org/flows/role_tasks.py:ci_services_task | crew#839 |
 | `decision.role_tasks.epic_split`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/role_tasks.py:pending_release_tasks | crew#192<br>crew#816<br>crew#839<br>crew#858<br>crew#859 |
+| `decision.role_tasks.finding_as_bug`<br>The role whose Task a finding opens, or None when it goes as a bug: owned by no role, or naming no file, or one that role's Task may not change in `repo` (crew#1018). | flow | `src/crew_org/flows/role_tasks.py:finding_role` | — | — | src/crew_org/flows/role_tasks.py:finding_role | crew#1018<br>sprint-metrics#964<br>sprint-metrics#968 |
 | `decision.role_tasks.first_diagram`<br>The Architect's first Task in a repository with no diagram: draw it (crew#839). | flow | `src/crew_org/flows/role_tasks.py:first_diagram_task` | — | — | src/crew_org/flows/role_tasks.py:first_diagram_task | crew#839 |
 | `decision.role_tasks.first_workspace`<br>DevOps's first Task in a repository with no workspace file: write it (crew#860). | flow | `src/crew_org/flows/role_tasks.py:first_workspace_task` | — | — | src/crew_org/flows/role_tasks.py:first_workspace_task | ADR 0032<br>crew#839<br>crew#860 |
 | `decision.role_tasks.goal_epics_done`<br>Close an epic when its stories are Done, and a goal when its epics are. | flow | `src/crew_org/flows/acceptance.py:close_finished_parents` | — | — | src/crew_org/flows/acceptance.py:close_finished_parents | crew#174<br>crew#185<br>crew#187<br>crew#839<br>crew#858<br>sprint-metrics#184 |

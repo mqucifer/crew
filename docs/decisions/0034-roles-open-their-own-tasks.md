@@ -70,7 +70,10 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
 - **A finding outside the story:** the Code Reviewer, DevOps's deploy review and QA name
   what they saw outside the story in their verdict. Each is filed for its owner as a
   Task, which the Business Analyst triages as a bug, or as a bug. One per owner for each
-  story and round, every filing recorded, to be tuned from that evidence.
+  story and round, every filing recorded, to be tuned from that evidence. It's the
+  owner's Task only when every file its **Where:** names is in that role's scope in
+  that repository; one naming no file, or a file the role may not change, is a bug,
+  for the Developer, with the same what, where and evidence (crew#1018).
 - **The role's session** works its Task through the Developer's path, with its role in
   the Developer's place and the Developer's tools. It may change only its role's area,
   checked at `done`; the Architect's diagram must render. It also has its gate's own
@@ -130,11 +133,11 @@ and merge like a bug; and nothing a role finds is dropped as pre-existing.
 - **Its corrections:** each names its page, width, what it saw, what the reader should
   meet instead, its standard, and its owner. `done` refuses one on a page and width it
   never looked at on the published site, so each is filed with its screenshot, uploaded
-  to the reviewed Release. Each is a bug, or a Task for the role it belongs to, through
-  the same filing as a finding outside a story, up to ten per owner (one for a story's
-  reviewers, as before). Then the Task is closed and Done. It never blocks a merge.
-- **A finding another role files for the UX Designer** is worked by the same session,
-  on the version readers meet now.
+  to the reviewed Release. It goes through the same filing as a finding outside a
+  story, up to ten per owner (one for a story's reviewers, as before); since it names a
+  page, not a file, that files it as a bug (crew#1018). Then the Task is closed and Done. It never blocks a merge.
+- **A finding another role files for the UX Designer** is a bug: its Task changes no
+  file (crew#1018).
 - **One that can't be worked** (no live release, its session stopped) is blocked for a
   person, as a Task is.
 
@@ -225,3 +228,4 @@ ADR 0006 in mqucifer/project-print decided QA's repository, its test bed and its
   unread is DevOps's finding.
 - **2026-10-25:** QA's Tasks built in M10 (crew#896): filed in qa-suite, a story's test opening at its merge, and the dispute.
 - **2026-10-26:** a workspace finding met again tells its Task once per story, and reopens it when closed (crew#917): the gate had filed into closed mqucifer/sprint-metrics#743 three times with nothing said.
+- **2026-11-04:** a finding is a role's Task only when its role may change every file it names there, and otherwise a bug (the Sponsor, the Sprint 40 retro; crew#1018): QA's and the Architect's Tasks about a project's tests, `docs/service.md` and `src/` could only end blocked (mqucifer/sprint-metrics#964, mqucifer/sprint-metrics#968).

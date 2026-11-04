@@ -364,6 +364,12 @@ decision.role_tasks.epic_split:
   origin:
   - crew#839
   - crew#816
+decision.role_tasks.finding_as_bug:
+  description: A finding outside a story opens its owner's Task only when every file its Where names is
+    one that role's Task may change in that repository. One naming no file, or another file, is filed as
+    a bug for the Developer, with the same what, where and evidence.
+  origin:
+  - crew#1018
 decision.role_tasks.first_diagram:
   description: A worked repository with no diagram of its system gets the Architect's Task to draw one,
     once; not one waiting for its walking skeleton.
@@ -425,8 +431,8 @@ decision.ux_review.release_review_tasks:
   - crew#830
 decision.ux_review.reviewed:
   description: A UX Designer's Task is worked by its review session, not the Developer's path. Its
-    corrections are filed as bugs or Tasks, up to ten per owner, each with its page, width, standard and
-    screenshot; then it's closed and Done, with no pull request. It never blocks a merge.
+    corrections are filed as bugs, since each names a page and not a file (crew#1018), up to ten per owner,
+    each with its page, width, standard and screenshot; then it's closed and Done, with no pull request. It never blocks a merge.
   origin:
   - crew#830
 decision.sprint.capacity:
