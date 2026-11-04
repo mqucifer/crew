@@ -1585,6 +1585,10 @@ flows.role_tasks.existing:filter:158652dc:
   at: flows/role_tasks.py:existing
   if: wanted in (i.get('body') or '')
   not_a_rule: 'reads what''s recorded (a marker, a comment, a past verdict): no decision'
+flows.role_tasks.finding_role:end:b6549015:
+  at: flows/role_tasks.py:finding_role
+  if: role is None or not paths
+  rule: decision.role_tasks.finding_as_bug
 flows.role_tasks.first_diagram_task:end:071aea68:
   at: flows/role_tasks.py:first_diagram_task
   if: issues.file_at(repo, DIAGRAM_PATH, issues.default_branch(repo)) is not None

@@ -291,9 +291,10 @@ def test_a_review_files_each_correction_with_its_screenshot_and_closes(tmp_path,
     assert ran["step"].tools == ("look",) and ran["step"].step == "release_review"
     assert "review `v0.1.2` as its readers meet it" in ran["parts"]["task"]
     assert "WCAG 2.2 1.4.10 Reflow" in ran["parts"]["task"]
-    # Two bugs and a DevOps Task: more than one per owner, each its own issue.
+    # More than one per owner, each its own issue. DevOps's correction names a page, not
+    # a file its Task may change, so it's a bug too (crew#1018).
     bugs = [i for i in issues.issues.values() if {"name": "bug"} in i["labels"]]
-    assert len(bugs) == 2
+    assert len(bugs) == 3
     first = bugs[0]["body"]
     assert "reviewing `v0.1.2` as its readers meet it" in first
     assert f"{SITE}index.html at 375px" in first
@@ -301,8 +302,7 @@ def test_a_review_files_each_correction_with_its_screenshot_and_closes(tmp_path,
     assert "![`index.html` at 375px](https://github.com/dl/ux-v0.1.2-index-html-375.png)" in first
     assert issues.uploaded[0] == ("ux-v0.1.2-index-html-375.png", "image/png")
     assert len(issues.uploaded) == 3
-    devops = [i for i in issues.issues.values() if {"name": "role:devops"} in i["labels"]]
-    assert len(devops) == 1
+    assert not [i for i in issues.issues.values() if {"name": "role:devops"} in i["labels"]]
     # Closed and Done, with what the readers meet and what was filed, on the Task.
     assert ("close", 901) in issues.done
     assert ("status", "I901", "Done") in board.done
