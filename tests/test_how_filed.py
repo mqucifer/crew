@@ -18,6 +18,7 @@ import pytest
 from crew_org.packages import contract, gather, mock
 from crew_org.packages import delivery_history as dh
 from crew_org.tools.github_project import Card, ProjectClient
+from crew_org.work_types import PIN_LABEL
 
 NOW = datetime(2026, 10, 30, 18, 0, tzinfo=UTC)
 OPERATOR_SINCE = datetime(2026, 10, 9, 15, 55, 19, tzinfo=UTC)
@@ -184,6 +185,7 @@ def test_an_older_crew_card_with_nothing_written_is_unknown_never_a_guess():
         (("diagnosis",), "finding"),
         (("retro",), "retro"),
         (("standup",), "standup"),
+        (("pin",), "task"),
     ],
 )
 def test_a_path_that_marks_by_label_is_read_from_it(labels, activity):
@@ -237,6 +239,7 @@ def test_the_marks_and_labels_are_the_flows_own():
         retro.RETRO_LABEL: ("retro", None),
         standup.STANDUP_LABEL: ("standup", None),
         dh.REVISIT_LABEL: ("record_change", "revisit"),
+        PIN_LABEL: ("task", None),
     }
     assert dh.how_filed(card(), main_watch.RED_MARKER.format(workflow="ci"), FILERS).kind == (
         "main-red"
@@ -305,6 +308,7 @@ FILING_PATHS = {
     ("revisit.py", "file_technical_epic"),
     ("role_tasks.py", "open_task"),
     ("role_tasks.py", "_file_bug"),
+    ("pins.py", "_card"),
     ("standup.py", "record_standup"),
 }
 

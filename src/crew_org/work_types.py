@@ -25,6 +25,9 @@ DELIVERED = frozenset({STORY, BUG, TASK})
 # tests (`flows.role_tasks`).
 SUITE = "qa-suite"
 PROJECT_LABEL = "project:"
+# A release's pin pull request in a consumer has a card, a Task with this label: the
+# crew follows its checks, and the Sponsor merges it (`flows.pins`, crew#1028).
+PIN_LABEL = "pin"
 
 
 def works(card: Card, repos: set[str] | None) -> bool:

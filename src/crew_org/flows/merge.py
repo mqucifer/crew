@@ -37,7 +37,7 @@ from crew_org.tools.github_issues import (
     IssueError,
 )
 from crew_org.tools.github_project import Card, ProjectClient
-from crew_org.work_types import DELIVERED, TASK, open_in, works
+from crew_org.work_types import DELIVERED, PIN_LABEL, TASK, open_in, works
 
 STORY_TYPE = "Story"
 
@@ -244,9 +244,9 @@ def ready_to_land(cards: list[Card], repos: set[str] | None = None) -> list[Card
     which blocks those cards and labels them for a person.
     """
     # QA's Tasks after the stories, so a disputed story lands before QA's changed test
-    # in the same pass (crew#945).
+    # in the same pass (crew#945). Never a release's pin: the Sponsor merges it (crew#1028).
     return sorted(
-        open_in(cards, MERGING, repos=repos),
+        (c for c in open_in(cards, MERGING, repos=repos) if PIN_LABEL not in c.labels),
         key=lambda c: (c.repo == qa_tasks.SUITE, c.number or 0),
     )
 

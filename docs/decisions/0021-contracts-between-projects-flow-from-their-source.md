@@ -66,6 +66,11 @@ what has been delivered, it can request the producer make it."
   changes the one line naming the package's tag: a file at the consumer's root
   named for the package, such as `delivery-history.tag`. The consumer's CI fetches the
   package and validates it against the schema it names. Merging deploys.
+- **A pull request whose checks fail is the consumer's upgrade work, done by the
+  crew:** whatever the new package breaks is part of the upgrade. It has a card, and
+  a failure goes back with its log: a failing QA test to QA in qa-suite, anything else
+  to the consumer's Developer. Only what the crew can't fix goes to a person, as a
+  block saying why. The Sponsor still merges it once its checks pass.
 - **The consumer's own check is which major versions it can display.** A package on
   a major version it can't display fails the pull request that brought it. It
   keeps no copy of a schema.
@@ -133,3 +138,6 @@ what has been delivered, it can request the producer make it."
   requests what it lacks. Producers keep no list of what consumers read. The Sponsor
   decided it in the M6 planning session (crew#755), rejecting research R6's
   producer-side check.
+- 2026-11-04: A release's pull request whose checks fail is the crew's upgrade work,
+  not a person's: the Sponsor's call on crew#1028, after mqucifer/crew-presentation#294
+  and mqucifer/crew-presentation#303 waited for their work to be filed by hand.

@@ -347,6 +347,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
     from crew_org.flows.decision_log import write_logs  # noqa: PLC0415
     from crew_org.flows.deploy import deploy_releases  # noqa: PLC0415
     from crew_org.flows.main_watch import watch_default_branches  # noqa: PLC0415
+    from crew_org.flows.pins import follow as follow_pins  # noqa: PLC0415
     from crew_org.flows.qa_tasks import (  # noqa: PLC0415
         SUITE,
         QATasks,
@@ -416,6 +417,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         )
         if suite
         else Settled()
+    )
+    # A release's pin pull request is the crew's upgrade work: a failed check goes back
+    # with its log, to QA in qa-suite or the Developer, and the Sponsor merges it (crew#1028).
+    pinned = follow_pins(
+        crew.issues, crew.board, crew.sink, crew.ws, cards=crew.board.cards(), repos=repos
     )
     # A release whose site went live gets the UX Designer's review (crew#830).
     reviews = release_review_tasks(
@@ -497,6 +503,7 @@ def _revisit(crew: Crew) -> PhaseOutcome:
             or tested.opened
             or disputes.returned
             or disputes.rerun
+            or pinned.moved
             or drawn.opened
             or housed.opened
             or ci.opened
@@ -518,6 +525,8 @@ def _revisit(crew: Crew) -> PhaseOutcome:
                 if disputes.returned or disputes.rerun
                 else ""
             )
+            + (f", {len(pinned.returned)} pins returned as upgrade work" if pinned.returned else "")
+            + (f", {len(pinned.rerun)} pins' checks run again" if pinned.rerun else "")
             + (
                 f", {len(reviews.opened)} release reviews for the UX Designer"
                 if reviews.opened
@@ -557,6 +566,11 @@ def _revisit(crew: Crew) -> PhaseOutcome:
         + [f"{where} — {why}" for where, why in tested.failed]
         + [f"#{n} — waits for QA's dispute Task {SUITE}#{t}" for n, t in disputes.waiting]
         + [f"{where} — {why}" for where, why in disputes.failed]
+        + [f"{where} — {why}" for where, why in pinned.waiting + pinned.failed]
+        + [
+            f"{repo}#{n} — the pin's checks pass: the Sponsor merges it"
+            for repo, n in pinned.sponsor
+        ]
         + [f"{repo} — {why}" for repo, why in reviews.failed]
         + [f"{repo} — {why}" for repo, why in announced.failed]
         + [f"{repo} — {why}" for repo, why in fixes.failed]

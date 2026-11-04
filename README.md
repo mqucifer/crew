@@ -158,7 +158,9 @@ those isn't the crew's to send (the Sponsor, 2026-10-31; ADR 0022).
 - **A release** is dated, not versioned: the tag `delivery-history-<date>`
   (`-2` for a second on one day), with the archive as its asset. It reaches a
   project as a pull request that changes one line: `delivery-history.tag` at the
-  project's root, which names the release it shows. Old releases keep their
+  project's root, which names the release it shows. The crew follows its checks: a
+  failure goes back to the crew as upgrade work, and the Sponsor merges it once
+  they pass (crew#1028). Old releases keep their
   tags, but only the latest seven and each month's first keep their archives.
   The archive holds one directory, named for the tag
   (`delivery-history-<date>/`), and in it `manifest.json`, the index
