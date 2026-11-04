@@ -62,6 +62,10 @@ ECHO_CHARS = 4000
 RUNAWAY_CHARS = 2000
 # How much of the answer before the run is shown to the model with the reason.
 RUNAWAY_TAIL = 300
+# Seconds before a call that never got a response is asked once more (crew#1020).
+# Four from 2026-10-26 to 11-03 each cost their phase a tick, about 30 minutes.
+# One try more, not a backoff: a second failure stands, as before.
+RETRY_PAUSE = 10.0
 
 
 @dataclass(frozen=True)
@@ -139,6 +143,22 @@ class ServiceUnavailableError(RuntimeError):
     Named as the client libraries name it, so `llm.backend_down` recognises it and
     no card is blamed for a server that is down.
     """
+
+
+class NoResponse(ServiceUnavailableError):
+    """The call never got a response: no connection, or one dropped before any reply.
+
+    The one failure asked again at once (crew#1020): nothing was generated, so the
+    second try repeats no work, and it isn't a timeout, which would only hit the same
+    wall again. LiteLLM's 500 naming a connection error is this too: the proxy
+    answered, but the model server never did.
+    """
+
+
+def _unavailable(response: httpx.Response) -> ServiceUnavailableError:
+    """The proxy's 5xx, as a backend that's down; one that never reached the model, as that."""
+    kind = NoResponse if "Connection error" in response.text else ServiceUnavailableError
+    return kind(f"{response.status_code}: {response.text[:300]}")
 
 
 def role_spec(key: str, step: str | None = None) -> dict[str, Any]:
@@ -317,21 +337,35 @@ def _usage(data: dict[str, Any]) -> dict[str, int]:
     return found
 
 
-def post(body: dict[str, Any], *, timeout: float = DEFAULT_TIMEOUT) -> dict[str, Any]:
+def _lost(exc: httpx.TransportError, answered: bool) -> ServiceUnavailableError:
+    """A connection that failed: `NoResponse` when it failed before the response began."""
+    kind = ServiceUnavailableError if answered else NoResponse
+    return kind(f"Connection error: {exc}")
+
+
+def post(
+    body: dict[str, Any], *, timeout: float = DEFAULT_TIMEOUT, transport: Any = None
+) -> dict[str, Any]:
     """One request to the proxy. Everything goes through LiteLLM (ADR 0007)."""
+    answered = False
     try:
-        response = httpx.post(
-            f"{base_url()}/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {api_key()}"},
-            timeout=timeout,
-        )
+        with (
+            httpx.Client(transport=transport, timeout=timeout) as client,
+            client.stream(
+                "POST",
+                f"{base_url()}/chat/completions",
+                json=body,
+                headers={"Authorization": f"Bearer {api_key()}"},
+            ) as response,
+        ):
+            answered = True
+            response.read()
     except httpx.TransportError as exc:
         if isinstance(exc, httpx.TimeoutException):
             raise
-        raise ServiceUnavailableError(f"Connection error: {exc}") from exc
+        raise _lost(exc, answered) from exc
     if response.status_code >= 500:
-        raise ServiceUnavailableError(f"{response.status_code}: {response.text[:300]}")
+        raise _unavailable(response)
     response.raise_for_status()
     result: dict[str, Any] = response.json()
     return result
@@ -351,6 +385,7 @@ def stream(
     finish: str | None = None
     response_id = ""
     run = 0
+    answered = False
     try:
         with (
             httpx.Client(transport=transport, timeout=timeout) as client,
@@ -361,9 +396,10 @@ def stream(
                 headers={"Authorization": f"Bearer {api_key()}"},
             ) as response,
         ):
+            answered = True
             if response.status_code >= 500:
                 response.read()
-                raise ServiceUnavailableError(f"{response.status_code}: {response.text[:300]}")
+                raise _unavailable(response)
             if response.status_code >= 400:
                 response.read()
             response.raise_for_status()
@@ -389,12 +425,28 @@ def stream(
     except httpx.TransportError as exc:
         if isinstance(exc, httpx.TimeoutException):
             raise
-        raise ServiceUnavailableError(f"Connection error: {exc}") from exc
+        raise _lost(exc, answered) from exc
     return {
         "id": response_id,
         "choices": [{"message": {"content": "".join(parts)}, "finish_reason": finish}],
         "usage": usage,
     }
+
+
+def _sent(
+    sender: Callable[[dict[str, Any]], dict[str, Any]], body: dict[str, Any], detail: dict[str, Any]
+) -> dict[str, Any]:
+    """The sender's answer, asked once more after a pause when the first never got a response.
+
+    Only `NoResponse`: never a timeout, a model's error or a refusal (crew#1020). The
+    first failure goes on the call's own event as `retried`, so the retro can count them.
+    """
+    try:
+        return sender(body)
+    except NoResponse as exc:
+        detail["retried"] = f"{type(exc).__name__}: {exc}"[:400]
+        time.sleep(RETRY_PAUSE)
+        return sender(body)
 
 
 def _runaway(text: str) -> NoReturn:
@@ -477,7 +529,7 @@ def ask[Answer: BaseModel](
         started = time.monotonic()
         began = datetime.now(UTC)
         try:
-            data = sender(body)
+            data = _sent(sender, body, detail)
         except Exception as exc:
             record(
                 EventKind.LLM_CALL_FAILED,
@@ -572,7 +624,7 @@ def _use_tools(
         )
         told.pop("given_rules", None)
         started = time.monotonic()
-        data = send(body)
+        data = _sent(send, body, detail)
         message = ((data.get("choices") or [{}])[0]).get("message") or {}
         calls_made = message.get("tool_calls") or []
         detail.update(
@@ -674,7 +726,7 @@ def converse(
     started = time.monotonic()
     began = datetime.now(UTC)
     try:
-        data = sender(body)
+        data = _sent(sender, body, call)
     except Exception as exc:
         record(
             EventKind.LLM_CALL_FAILED,
