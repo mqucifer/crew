@@ -857,6 +857,18 @@ flows.gates.checks_less:skip:828a7a63:
   at: flows/gates.py:checks_less
   if: how != 'changed' or not name or (not path.endswith('.py'))
   rule: guard.reproduce.check
+flows.gates.declared_changes:end:988b1ee5:
+  at: flows/gates.py:declared_changes
+  if: 'merged is None'
+  rule: check.gates.a_story_sets_the_api_version
+flows.gates.declared_changes:end:a3163373:
+  at: flows/gates.py:declared_changes
+  if: found is not None and found.role is role_tasks.DEVOPS and (found.kind == RELEASE)
+  rule: check.gates.a_release_clears_the_declared_changes
+flows.gates.declared_changes:end:aff00976:
+  at: flows/gates.py:declared_changes
+  if: 'before is None and after is None'
+  rule: check.gates.a_story_sets_the_api_version
 flows.gates.entries:filter:638e95bd:
   at: flows/gates.py:entries
   if: 'isinstance(item, dict)'
