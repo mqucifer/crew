@@ -57,6 +57,8 @@ def test_the_mock_shows_every_kind_a_consumer_meets():
         "gate_checked",
         "returned",
         "sent_back",
+        "step_started",
+        "step_ended",
     }
     assert {e["by"] for e in events if e["kind"] == "card_moved"} == {
         "crew",

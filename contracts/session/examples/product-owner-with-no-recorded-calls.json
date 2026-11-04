@@ -6,17 +6,9 @@
   "sprint": "Sprint 6",
   "card": {
     "created": "2026-09-23",
-    "created_at": "2026-09-23T23:30:00Z",
-    "type": "Epic"
+    "created_at": "2026-09-23T23:30:00Z"
   },
-  "epic": null,
-  "pull": null,
   "role": "Product Owner",
-  "part": null,
-  "finished": "2026-09-25T20:42:00Z",
-  "model_seconds": null,
-  "prompt_tokens": null,
-  "cached_tokens": null,
-  "completion_tokens": null,
-  "reasoning_tokens": null
+  "start": "2026-09-25T20:40:00Z",
+  "end": "2026-09-25T20:42:00Z"
 }

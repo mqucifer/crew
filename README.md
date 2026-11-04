@@ -196,15 +196,16 @@ answers in place of 4.2.1's, which the crew's sessions now fill.
   without one gets it at the next tick. A package carries the sprints up to the
   one that ended last, never one under way (crew#738).
 
-**The shape of a session is published for sprint-metrics, ahead of sending it**
-(crew#1000): [`contracts/session/`](contracts/session/) holds `session.schema.json`,
-generated from `src/crew_org/packages/session_shape.py` by `crew package schema`,
-`versions.json`, and `examples/`, a session of each role with made-up values. Each session
-carries its card, role, start, finish, model time and tokens, and sprint-metrics adds them
-up; the crew sends no totals (the Sponsor, 2026-11-01). Nothing sends it yet: mqucifer/crew#1001
-does, once mqucifer/sprint-metrics#935 accepts it. A review of a pull request that closes no
-card has `card_id` null and names its `pull`. `part` tells planning from building. There's
-no story kind, because nothing in the record says addition or change.
+**The crew sends each session to sprint-metrics** (crew#1000, crew#1001):
+[`contracts/session/`](contracts/session/) holds `session.schema.json`, generated from
+`src/crew_org/packages/session_shape.py` by `crew package schema`, `versions.json`, and
+`examples/`, a session of each role with made-up values. 2.0.0 is sprint-metrics 4.5.0's
+`session` event, as `crew package push` and the tick send it: its card (or none), role, start,
+end, model seconds, and input and output tokens. sprint-metrics adds them up; the crew sends no
+totals (the Sponsor, 2026-11-01), and sprint-metrics tells planning from building by the
+story's first `started`. A review of a pull request that closes no card keeps the card its
+event names, or has none. There's no story kind, because nothing in the record says addition
+or change.
 
 ## The two gates
 

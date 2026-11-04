@@ -74,6 +74,20 @@ def _work(
     )
 
 
+def _step(minutes: float, card: int, role: str, kind: str, step: str, **detail: Any) -> Raw:
+    """A refinement step's session starting or ending, as `session.steps` writes it."""
+    return (
+        "tick",
+        {
+            "at": _at(minutes),
+            "kind": kind,
+            "role": role,
+            "card": card,
+            "detail": {"repo": SM, "step": step, **detail},
+        },
+    )
+
+
 def _call(
     minutes: float,
     card: int,
@@ -329,6 +343,11 @@ def _events() -> list[Raw]:
         _by_person(-40, 59, "Inbox (Goals)", "Needs Refinement"),
         _work(-10, None, "Architect"),
         _work(7, None, "Architect", done=True),
+        # QA checks the API epic's criteria: a step with no work event of its own, so
+        # only its start and end come through (crew#1001).
+        _step(10, 59, "QA Engineer", "session.started", "criteria check"),
+        _call(12, 59, "QA Engineer", "refine", 18000, 900, 600, 96.0, "c59-check"),
+        _step(13, 59, "QA Engineer", "session.ended", "criteria check", how="done"),
         # The stories of the split.
         *_delivered(20, 125, 134),
         _moved(50, 126, "Sprint Backlog", "In Progress"),
@@ -746,7 +765,8 @@ def _numbers(sent: list[dict[str, Any]], sprint: str) -> dict[str, Any]:
     attempts are 1 plus its `attempt_failed` events, whichever sprint they fell in.
     """
     by_card: dict[str, list[dict[str, Any]]] = {}
-    for row in sent:
+    # The board's numbers: a session counts in the session answers, not in these.
+    for row in (r for r in sent if r["type"] != "session"):
         by_card.setdefault(row["card_id"], []).append(row)
     cards = [
         rows

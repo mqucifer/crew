@@ -66,27 +66,43 @@ def test_the_schema_refuses_what_the_shape_leaves_out():
         {**good, "summary": "a sentence"},
         {**good, "role": "Refinement panel"},
         {**good, "model_seconds": -1},
+        {**good, "model_seconds": 12.5},
         {**good, "card_id": "127"},
         {**good, "type": "started"},
+        {**good, "tokens": 100},
+        {k: v for k, v in good.items() if k != "end"},
     ):
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(bad, schema)
+
+
+def test_it_is_sprint_metrics_4_5_0_s_session_event():
+    """mqucifer/sprint-metrics' docs/service.md at v4.5.0 names these fields (crew#1001)."""
+    assert set(SessionEvent.model_fields) == {
+        "api_version",
+        "type",
+        "card_id",
+        "timestamp",
+        "sprint",
+        "card",
+        "role",
+        "start",
+        "end",
+        "model_seconds",
+        "input_tokens",
+        "output_tokens",
+    }
 
 
 def test_there_are_sessions_of_each_role():
     assert {e.role for e in _examples().values()} == set(get_args(Role))
 
 
-def test_a_review_of_a_pull_request_that_closes_no_card_says_so():
-    review = _examples()["code-reviewer-on-a-pull-request-with-no-card"]
-    assert review.card_id is None and review.card is None
-    assert review.pull == "sprint-metrics#141"
-
-
-def test_a_review_of_a_story_s_pull_request_has_both():
-    review = _examples()["code-reviewer-on-a-story"]
-    assert review.card_id == "sprint-metrics#127"
-    assert review.pull == "sprint-metrics#140"
+def test_a_session_on_no_card_leaves_both_off():
+    review = _examples()["code-reviewer-on-a-pull-request-with-no-card"].sent()
+    assert "card_id" not in review and "card" not in review
+    story = _examples()["code-reviewer-on-a-story"].sent()
+    assert story["card_id"] == "sprint-metrics#127" and story["card"]["created"] == "2026-09-23"
 
 
 def test_a_session_on_no_card_is_allowed_only_with_no_card_at_all():
@@ -97,35 +113,24 @@ def test_a_session_on_no_card_is_allowed_only_with_no_card_at_all():
         SessionEvent.model_validate({**good.model_dump(), "card_id": None})
 
 
-def test_planning_and_building_can_be_told_apart():
-    parts = {e.part for e in _examples().values()}
-    assert {"refinement", "delivery"} <= parts
-    split = _examples()["business-analyst-on-an-epic"]
-    assert split.part == "refinement" and split.card is not None and split.card.type == "Epic"
-    built = _examples()["developer-on-a-story"]
-    assert built.part == "delivery" and built.epic == "sprint-metrics#120"
+def test_a_session_with_no_recorded_calls_leaves_its_measures_off_never_zero():
+    unmeasured = _examples()["product-owner-with-no-recorded-calls"].sent()
+    assert not {"model_seconds", "input_tokens", "output_tokens"} & set(unmeasured)
 
 
-def test_a_session_with_no_recorded_finish_says_so_and_never_says_zero():
-    open_ended = _examples()["developer-with-no-recorded-finish"]
-    assert open_ended.finished is None
-    unmeasured = _examples()["product-owner-with-no-recorded-calls"]
-    assert unmeasured.part is None
-    assert unmeasured.model_seconds is None and unmeasured.prompt_tokens is None
-
-
-def test_a_session_cannot_finish_before_it_started():
+def test_a_session_cannot_finish_before_it_started_and_starts_at_its_timestamp():
     good = _examples()["developer-on-a-story"]
     with pytest.raises(ValueError, match="finish"):
-        SessionEvent.model_validate(
-            {**good.model_dump(), "finished": good.timestamp.replace(year=2020)}
-        )
+        SessionEvent.model_validate({**good.model_dump(), "end": good.start.replace(year=2020)})
+    with pytest.raises(ValueError, match="timestamp"):
+        SessionEvent.model_validate({**good.model_dump(), "timestamp": good.end})
 
 
-def test_the_shape_carries_no_story_kind():
-    """Nothing in the record says addition or change (crew#1000): it's left out, not guessed."""
+def test_the_shape_carries_no_totals_and_no_story_kind():
+    """Each session's own measures only (the Sponsor, 2026-11-01): sprint-metrics adds
+    them up. Nothing in the record says addition or change (crew#1000)."""
     schema = session_shape.schema()
-    assert "kind" not in schema["properties"]
+    assert not {"tokens", "kind", "attempts"} & set(schema["properties"])
     assert "kind" not in schema["$defs"]["SessionCard"]["properties"]
 
 

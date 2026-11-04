@@ -49,6 +49,43 @@
    "about": []
   },
   {
+   "kind": "step_started",
+   "at": "2026-09-25T23:40:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "criteria check"
+  },
+  {
+   "kind": "model_call",
+   "at": "2026-09-25T23:42:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "refine",
+   "model": "crew-general",
+   "prompt_tokens": 18000,
+   "completion_tokens": 900,
+   "reasoning_tokens": 600,
+   "cached_tokens": null,
+   "seconds": 96.0,
+   "failed": false
+  },
+  {
+   "kind": "step_ended",
+   "at": "2026-09-25T23:43:00Z",
+   "card": {
+    "repo": "sprint-metrics",
+    "number": 59
+   },
+   "role": "QA Engineer",
+   "step": "criteria check"
+  },
+  {
    "kind": "card_moved",
    "at": "2026-09-25T23:50:00Z",
    "card": {

@@ -511,3 +511,245 @@ def test_a_cut_to_some_sprints_keeps_only_their_filed_events():
     found = smf.feed(history, [])
     assert _filed_events(smf.only(found, ["Sprint 22"])) == _filed_events(found)
     assert _filed_events(smf.only(found, ["Sprint 23"])) == []
+
+
+# --- sessions (crew#1001): each as what happened, in sprint-metrics 4.5.0's shape ---------
+
+
+def _epic_and_story() -> list[dh.Card]:
+    epic = _card(10, type_="Epic")
+    story = _card(1).model_copy(update={"parent": 10})
+    return [epic, story]
+
+
+def _work(role: str, number: int | None, minutes: float, *, done: bool = False, pull=None):
+    cls = dh.WorkFinished if done else dh.WorkStarted
+    card = _ref(number) if number is not None else None
+    return cls(at=_at(minutes), card=card, pull=pull, role=role)
+
+
+def _call(
+    role: str | None, number: int | None, minutes: float, seconds=None, given=None, said=None
+):
+    return dh.ModelCall(
+        at=_at(minutes),
+        card=_ref(number) if number is not None else None,
+        role=role,
+        step="session",
+        model="crew-local",
+        prompt_tokens=given,
+        completion_tokens=said,
+        reasoning_tokens=None,
+        cached_tokens=None,
+        seconds=seconds,
+        failed=False,
+    )
+
+
+def _step(role: str, number: int | None, minutes: float, step: str, *, ended: bool = False):
+    cls = dh.StepEnded if ended else dh.StepStarted
+    card = _ref(number) if number is not None else None
+    return cls(at=_at(minutes), card=card, role=role, step=step)
+
+
+def _sessions(found: smf.Feed) -> list[dict]:
+    return [e for e in found.events if e["type"] == "session"]
+
+
+def test_a_story_s_session_is_sent_with_its_role_span_model_time_and_tokens():
+    events = [
+        _work("Developer", 1, 0),
+        _call("Developer", 1, 5, seconds=100.4, given=1000, said=50),
+        # A call on no card, by its role inside its span, is its too.
+        _call("Developer", None, 8, seconds=20, given=200, said=10),
+        _work("Developer", 1, 12, done=True),
+    ]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    assert _sessions(found) == [
+        {
+            "api_version": "1",
+            "type": "session",
+            "card_id": "sm#1",
+            "timestamp": "2026-10-11T06:00:00Z",
+            "sprint": "Sprint 22",
+            "card": {"created": "2026-10-11", "created_at": "2026-10-11T01:00:00Z"},
+            "role": "Developer",
+            "start": "2026-10-11T06:00:00Z",
+            "end": "2026-10-11T06:12:00Z",
+            "model_seconds": 120,
+            "input_tokens": 1200,
+            "output_tokens": 60,
+        }
+    ]
+
+
+def test_each_session_follows_the_published_shape_and_sends_no_totals():
+    import json  # noqa: PLC0415
+
+    import jsonschema  # noqa: PLC0415
+
+    from crew_org.packages import session_shape  # noqa: PLC0415
+
+    schema = json.loads((session_shape.CONTRACT / session_shape.SCHEMA).read_text())
+    events = [
+        _work("Developer", 1, 0),
+        _call("Developer", 1, 5, seconds=30, given=10, said=5),
+        _work("Developer", 1, 12, done=True),
+        _call("Scrum Master", None, 40, seconds=60, given=10, said=5),
+    ]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    sessions = _sessions(found)
+    assert len(sessions) == 2
+    for session in sessions:
+        jsonschema.validate(session, schema)
+        assert "tokens" not in session
+    finished = [e for e in found.events if e["type"] == "finished"]
+    assert all("model_seconds" not in e["card"] for e in finished)
+
+
+def test_a_call_by_another_role_or_on_another_card_isn_t_the_session_s():
+    events = [
+        _work("Developer", 1, 0),
+        _call("QA Engineer", 1, 5, seconds=60, given=10, said=1),
+        _call("Developer", 2, 6, seconds=60, given=10, said=1),
+        _work("Developer", 1, 12, done=True),
+    ]
+    cards = [*_epic_and_story(), _card(2)]
+    found = smf.feed(_history(cards), [_period(events)])
+    by = {(s["role"], s["card_id"]): s for s in _sessions(found)}
+    assert "model_seconds" not in by[("Developer", "sm#1")]
+    # Each is a session of its own, which started its seconds before it was recorded.
+    assert by[("QA Engineer", "sm#1")]["start"] == "2026-10-11T06:04:00Z"
+    assert by[("QA Engineer", "sm#1")]["end"] == "2026-10-11T06:05:00Z"
+    assert by[("Developer", "sm#2")]["model_seconds"] == 60
+
+
+def test_a_session_with_no_recorded_finish_is_left_out_and_counted_never_zero():
+    """Its minutes are unknown. Each of its calls ran for its seconds before it was
+    recorded, so each goes as a session of its own, and its model time isn't lost."""
+    found = smf.feed(
+        _history(_epic_and_story()),
+        [_period([_work("Developer", 1, 0), _call("Developer", 1, 5, seconds=60, given=9)])],
+    )
+    [call] = _sessions(found)
+    assert (call["start"], call["end"]) == ("2026-10-11T06:04:00Z", "2026-10-11T06:05:00Z")
+    assert (call["model_seconds"], call["input_tokens"]) == (60, 9)
+    assert found.left_out["session: no recorded finish"] == 1
+
+
+def test_work_with_no_finish_ends_at_its_last_session_end():
+    ended = dh.SessionEnded(
+        at=_at(20),
+        card=_ref(1),
+        how="interrupted",
+        **{f: None for f in dh.SessionEnded.model_fields if f not in ("kind", "at", "card", "how")},
+    )
+    found = smf.feed(_history(_epic_and_story()), [_period([_work("Developer", 1, 0), ended])])
+    [session] = _sessions(found)
+    assert session["end"] == "2026-10-11T06:20:00Z"
+
+
+def test_a_step_s_session_with_no_work_event_of_its_own_is_a_session():
+    """A criteria check, a panel's member, a Goal look's role (crew#1001)."""
+    events = [
+        _step("QA Engineer", 10, 0, "criteria check"),
+        _call("QA Engineer", 10, 3, seconds=90, given=500, said=20),
+        _step("QA Engineer", 10, 4, "criteria check", ended=True),
+    ]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    [session] = _sessions(found)
+    assert (session["card_id"], session["role"], session["model_seconds"]) == (
+        "sm#10",
+        "QA Engineer",
+        90,
+    )
+    assert session["end"] == "2026-10-11T06:04:00Z"
+
+
+def test_a_step_inside_its_role_s_work_on_the_same_card_is_part_of_that_session():
+    """A split runs inside the Business Analyst's work on the epic: one session, not two."""
+    events = [
+        _work("Business Analyst", 10, 0),
+        _step("Business Analyst", 10, 1, "split"),
+        _call("Business Analyst", 10, 5, seconds=60, given=10, said=1),
+        _step("Business Analyst", 10, 9, "split", ended=True),
+        _work("Business Analyst", 10, 10, done=True),
+    ]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    [session] = _sessions(found)
+    assert (session["start"], session["end"], session["model_seconds"]) == (
+        "2026-10-11T06:00:00Z",
+        "2026-10-11T06:10:00Z",
+        60,
+    )
+
+
+def test_a_group_s_work_isn_t_a_session_its_members_are():
+    events = [
+        _work("Refinement panel", 10, 0),
+        _step("Architect", 10, 1, "panel architect"),
+        _step("Architect", 10, 5, "panel architect", ended=True),
+        _step("UX Designer", 10, 1, "panel ux_designer"),
+        _step("UX Designer", 10, 6, "panel ux_designer", ended=True),
+        _work("Refinement panel", 10, 7, done=True),
+    ]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    assert sorted(s["role"] for s in _sessions(found)) == ["Architect", "UX Designer"]
+
+
+def test_a_session_on_no_card_leaves_the_card_off():
+    """A retro, or a review of a pull request that closes no card."""
+    review = _work("Code Reviewer", None, 0, pull=dh.PullRef(repo="sm", number=40))
+    done = _work("Code Reviewer", None, 2, done=True, pull=dh.PullRef(repo="sm", number=40))
+    found = smf.feed(_history(_epic_and_story()), [_period([review, done])])
+    [session] = _sessions(found)
+    assert "card_id" not in session and "card" not in session
+    assert session["role"] == "Code Reviewer"
+
+
+def test_a_session_that_can_t_be_placed_is_left_out_and_counted():
+    between = _period([_work("Developer", 1, 0), _work("Developer", 1, 5, done=True)], sprint=None)
+    unknown = _period([_work("Developer", 9, 0), _work("Developer", 9, 5, done=True)])
+    nobody = _period([_call(None, 1, 5, seconds=30)])
+    untimed = _period([_call("Developer", 1, 5)])
+    history = _history(_epic_and_story()).model_copy(
+        update={"sprints": [dh.Sprint(name="Sprint 22", start=DAY, end=DAY)]}
+    )
+    found = smf.feed(history.model_copy(update={"sprints": []}), [between])
+    assert found.left_out["session: between sprints"] == 1
+    found = smf.feed(history, [unknown, nobody, untimed])
+    assert _sessions(found) == []
+    assert found.left_out["session: card not in the history"] == 1
+    assert found.left_out["model call: by no role"] == 1
+    assert found.left_out["model call: no time, in no session"] == 1
+
+
+def test_a_story_s_events_carry_its_epic_so_its_sessions_add_up_to_it():
+    period = _period([_moved(1, 0, "Ready", "In Progress"), _moved(1, 30, "In Progress", "Done")])
+    found = smf.feed(_history(_epic_and_story()), [period])
+    story = [e for e in found.events if e["card_id"] == "sm#1"]
+    assert story and all(e["epic"] == "sm#10" for e in story)
+
+
+def test_a_card_whose_parent_isn_t_an_epic_carries_no_epic():
+    goal = _card(20, type_="Goal")
+    epic = _card(10, type_="Epic").model_copy(update={"parent": 20})
+    found = smf.feed(
+        _history([goal, epic, _card(1)]), [_period([_moved(1, 0, "Ready", "In Progress")])]
+    )
+    assert all("epic" not in e for e in found.events)
+
+
+def test_a_refused_session_on_no_card_is_reported_by_its_role():
+    events = [_call("Scrum Master", None, 40, seconds=60)]
+    found = smf.feed(_history(_epic_and_story()), [_period(events)])
+    pushed = smf.push(found, lambda path, body: (400, "nope") if path == "/events" else (200, ""))
+    assert pushed.reasons["session 400"].startswith("Scrum Master")
+
+
+def test_a_second_push_of_a_session_is_the_same_session():
+    """sprint-metrics holds a session once by its card, role, start and end."""
+    events = [_work("Developer", 1, 0), _work("Developer", 1, 12, done=True)]
+    first = _sessions(smf.feed(_history(_epic_and_story()), [_period(events)]))
+    again = _sessions(smf.feed(_history(_epic_and_story()), [_period(events)]))
+    assert first == again
