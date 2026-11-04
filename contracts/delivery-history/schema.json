@@ -371,7 +371,7 @@
       "properties": {
         "answers": {
           "additionalProperties": {
-            "$comment": "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v4.2.1/schemas/sprint-range.json",
+            "$comment": "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v4.5.0/schemas/sprint-range.json",
             "properties": {
               "blocked_aging_days": {
                 "type": [
@@ -551,6 +551,24 @@
                       "null"
                     ]
                   },
+                  "model_time_input_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "model_time_minutes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "model_time_output_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
                   "model_time_split_delivery_minutes": {
                     "type": [
                       "integer",
@@ -674,6 +692,72 @@
                   "null"
                 ]
               },
+              "filed": {
+                "properties": {
+                  "crew_total": {
+                    "type": "integer"
+                  },
+                  "found": {
+                    "type": "integer"
+                  },
+                  "from_process": {
+                    "type": "integer"
+                  },
+                  "operator": {
+                    "type": "integer"
+                  },
+                  "other": {
+                    "type": "integer"
+                  },
+                  "self_filed_share": {
+                    "properties": {
+                      "denominator": {
+                        "type": "integer"
+                      },
+                      "numerator": {
+                        "type": "integer"
+                      },
+                      "percent": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "percent",
+                      "numerator",
+                      "denominator"
+                    ],
+                    "type": "object"
+                  },
+                  "split": {
+                    "type": "integer"
+                  },
+                  "sponsor": {
+                    "type": "integer"
+                  },
+                  "total_cards": {
+                    "type": "integer"
+                  },
+                  "unknown": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "crew_total",
+                  "found",
+                  "from_process",
+                  "split",
+                  "unknown",
+                  "sponsor",
+                  "operator",
+                  "other",
+                  "total_cards",
+                  "self_filed_share"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "first_attempt_denominator": {
                 "type": [
                   "integer",
@@ -701,10 +785,7 @@
               "idle": {
                 "properties": {
                   "idle_minutes": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
+                    "type": "integer"
                   },
                   "sprint_duration_minutes": {
                     "type": "integer"
@@ -731,17 +812,39 @@
                   "null"
                 ]
               },
+              "model_time": {
+                "properties": {
+                  "input_tokens": {
+                    "type": "integer"
+                  },
+                  "model_minutes": {
+                    "type": "integer"
+                  },
+                  "output_tokens": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "model_minutes",
+                  "input_tokens",
+                  "output_tokens"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "model_time_split": {
                 "properties": {
                   "delivery": {
                     "type": "integer"
                   },
-                  "refinement": {
+                  "planning": {
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "refinement",
+                  "planning",
                   "delivery"
                 ],
                 "type": [
@@ -842,6 +945,24 @@
                     ]
                   },
                   "model_minutes_total": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "model_time_input_tokens": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "model_time_minutes": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "model_time_output_tokens": {
                     "type": [
                       "integer",
                       "null"
@@ -1072,12 +1193,180 @@
                   "null"
                 ]
               },
+              "session_epics": {
+                "additionalProperties": {
+                  "properties": {
+                    "input_tokens": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "minutes_by_role": {
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "model_minutes": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "output_tokens": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "session_minutes": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "unknown_stories": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "unknown_story_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "session_minutes",
+                    "minutes_by_role",
+                    "model_minutes",
+                    "input_tokens",
+                    "output_tokens"
+                  ],
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "session_epics_to_date": {
+                "additionalProperties": {
+                  "properties": {
+                    "input_tokens": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "minutes_by_role": {
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "model_minutes": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "output_tokens": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "session_minutes": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "unknown_stories": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "unknown_story_count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "session_minutes",
+                    "minutes_by_role",
+                    "model_minutes",
+                    "input_tokens",
+                    "output_tokens"
+                  ],
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              "session_planning": {
+                "properties": {
+                  "model_minutes": {
+                    "type": "integer"
+                  },
+                  "session_minutes": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "session_minutes",
+                  "model_minutes"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "session_stories": {
+                "additionalProperties": {
+                  "properties": {
+                    "input_tokens": {
+                      "type": "integer"
+                    },
+                    "minutes_by_role": {
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "type": "object"
+                    },
+                    "model_minutes": {
+                      "type": "integer"
+                    },
+                    "output_tokens": {
+                      "type": "integer"
+                    },
+                    "session_minutes": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "session_minutes",
+                    "minutes_by_role",
+                    "model_minutes",
+                    "input_tokens",
+                    "output_tokens"
+                  ],
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "story_costs": {
                 "items": {
                   "properties": {
-                    "cached_input_percent": {
-                      "type": "integer"
-                    },
                     "card_id": {
                       "type": "string"
                     },
@@ -1089,18 +1378,13 @@
                     },
                     "output_tokens": {
                       "type": "integer"
-                    },
-                    "reasoning_output_percent": {
-                      "type": "integer"
                     }
                   },
                   "required": [
                     "card_id",
                     "model_minutes",
                     "input_tokens",
-                    "cached_input_percent",
-                    "output_tokens",
-                    "reasoning_output_percent"
+                    "output_tokens"
                   ],
                   "type": "object"
                 },
@@ -1145,33 +1429,26 @@
               },
               "working_time": {
                 "properties": {
-                  "per_step": {
-                    "items": {
-                      "properties": {
-                        "minutes": {
-                          "type": "integer"
-                        },
-                        "step": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "step",
-                        "minutes"
-                      ],
-                      "type": "object"
+                  "cardless": {
+                    "type": "integer"
+                  },
+                  "planning": {
+                    "type": "integer"
+                  },
+                  "stories": {
+                    "additionalProperties": {
+                      "type": "integer"
                     },
-                    "type": "array"
+                    "type": "object"
                   },
                   "total": {
                     "type": "integer"
                   }
                 },
                 "required": [
-                  "per_step",
+                  "stories",
+                  "planning",
+                  "cardless",
                   "total"
                 ],
                 "type": [

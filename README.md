@@ -121,6 +121,22 @@ those isn't the crew's to send (the Sponsor, 2026-10-31; ADR 0022).
 - **What stayed:** every event, each card with its `filed`, `sprints`, `periods`,
   sprint-metrics' answers, and the manifest's `left_out`.
 
+**4.0.0 replaced 3.x** (crew#1001), with no week's notice: the Sponsor waived it on
+2026-11-04, because no reader reads what it drops (mqucifer/crew-presentation at fcd2e07 and
+mqucifer/qa-suite at 3471020, checked outside their mocks). It carries sprint-metrics 4.5.0's
+answers in place of 4.2.1's, which the crew's sessions now fill.
+- **What leaves:** from each answer, `working_time.per_step`, `model_time_split.refinement`
+  (now `planning`), and `story_costs`' `cached_input_percent` and `reasoning_output_percent`.
+  Their data was empty, or a span that counted waiting as working.
+- **What's added:** each story's and each epic's session time, by role, with its model
+  minutes and tokens (`session_stories`, `session_epics`, `session_epics_to_date`), the
+  planning part (`session_planning`) and the sprint's `model_time`. And two events: a
+  refinement step's session starting and ending (`step_started`, `step_ended`), with its
+  card, role and step, so a criteria check's, a panel member's or a Goal look's span is
+  known. Their turns and tool calls stay out.
+- **What changes:** a review of a pull request that closes no card keeps the card its event
+  names, as mqucifer/crew-presentation#133's did.
+
 - **Its schema** is in [`contracts/delivery-history/`](contracts/delivery-history/):
   `schema.json` for the package's index, `events.schema.json` for an events
   file and `manifest.schema.json` for its manifest.

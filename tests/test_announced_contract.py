@@ -31,14 +31,25 @@ def _schemas(directory: Path) -> dict[str, dict]:
     }
 
 
-def test_delivery_history_3_0_0_shipped_exactly_as_announced():
-    """Its announcement recorded the fingerprint; the switch removed the announced copy."""
+def test_delivery_history_4_0_0_shipped_with_nothing_left_announced():
+    """The Sponsor waived 4.0.0's week (crew#1001, 2026-11-04): no reader reads what it
+    drops, so it shipped as it was recorded, and nothing is announced."""
     assert ANNOUNCED == []
-    assert dh.SCHEMA_VERSION == "3.0.0"
-    assert contract.read_versions()["3.0.0"] == contract.fingerprint(contract.schemas())
+    assert dh.SCHEMA_VERSION == "4.0.0"
+    assert contract.read_versions()["4.0.0"] == contract.fingerprint(contract.schemas())
 
 
-def test_delivery_history_3_0_0_carries_what_happened_and_sprint_metrics_answers():
+def test_delivery_history_4_0_0_carries_sprint_metrics_4_5_0_s_answers():
+    """Raising the pin to 4.5.0 drops 4.2.1's per-step working time, its refinement split
+    and its story costs' percents from the embedded schema: a MAJOR (ADR 0021)."""
+    answers = contract.schemas()["schema.json"]["$defs"]["SprintMetrics"]["properties"]["answers"]
+    entry = answers["additionalProperties"]["properties"]
+    assert "per_step" not in entry["working_time"]["properties"]
+    assert "refinement" not in entry["model_time_split"]["properties"]
+    assert "session_stories" in entry and "session_epics_to_date" in entry
+
+
+def test_delivery_history_carries_what_happened_and_sprint_metrics_answers():
     # The Sponsor, on crew#963: what's worked out from those isn't the crew's to send.
     schemas = contract.schemas()
     index = schemas["schema.json"]
@@ -60,7 +71,7 @@ def test_delivery_history_3_0_0_carries_what_happened_and_sprint_metrics_answers
     assert "gaps" not in schemas["manifest.schema.json"]["properties"]
 
 
-def test_delivery_history_3_0_0_keeps_how_each_card_was_filed():
+def test_delivery_history_keeps_how_each_card_was_filed():
     # 2.1.0's field (crew#974) doesn't leave with the per-story results, so needs no adoption.
     schema = contract.schemas()["schema.json"]["$defs"]
     assert "filed" in schema["Card"]["required"]

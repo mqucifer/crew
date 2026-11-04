@@ -43,7 +43,7 @@ from crew_org.sendbacks import Step
 
 NAME: Literal["delivery-history"] = "delivery-history"
 # MAJOR when a consumer could break on the change, MINOR when it only adds.
-SCHEMA_VERSION = "3.0.0"
+SCHEMA_VERSION = "4.0.0"
 
 # How long before its card was filed an event may be and still be that card's.
 # The board dates a card when the issue was created; the crew logs the card
@@ -439,6 +439,32 @@ class SessionEnded(_Part):
     empty_lookups: int | None = Field(description="The session's lookups that found nothing.")
 
 
+class StepStarted(_Part):
+    """A refinement step's session starting: a criteria check, a panel's member, a Goal
+    look's role, a split (crew#807). Only its start and end are carried (crew#1001),
+    not its turns or tool calls, so its span is known where no work event gives one.
+
+    Not `session_started`: that's a Developer's session on a story, and a 3.0.0 reader
+    counts a story delivered in sessions by it.
+    """
+
+    kind: Literal["step_started"] = "step_started"
+    at: datetime
+    card: CardRef | None = Field(description="None for a step on no card, as a design's.")
+    role: str | None
+    step: str = Field(description="The step, as its session names it, e.g. criteria check.")
+
+
+class StepEnded(_Part):
+    """A refinement step's session ending. Its model time is its model calls'."""
+
+    kind: Literal["step_ended"] = "step_ended"
+    at: datetime
+    card: CardRef | None
+    role: str | None
+    step: str
+
+
 class GateChecked(_Part):
     """The crew's gate on a session's branch at `done`, before review (ADR 0032).
 
@@ -522,6 +548,8 @@ Event = Annotated[
     | ToolCall
     | SessionCompacted
     | SessionEnded
+    | StepStarted
+    | StepEnded
     | GateChecked
     | Returned
     | SentBack,
@@ -864,11 +892,16 @@ def _event(
                     left_out.get("work: pull request unknown", 0) + 1
                 )
                 return None
+            closes = reviewed[1]
+            # A pull request that closes no card keeps the card the event names, when it
+            # names one apart from the pull request (crew#1001: crew-presentation#133).
+            if closes is None and "pr" in detail and isinstance(number, int) and number != pr:
+                closes = card()
             if cls is WorkFinished:
                 return WorkFinished(
-                    at=at, card=reviewed[1], pull=reviewed[0], role=role, verdict=_verdict(detail)
+                    at=at, card=closes, pull=reviewed[0], role=role, verdict=_verdict(detail)
                 )
-            return cls(at=at, card=reviewed[1], pull=reviewed[0], role=role)
+            return cls(at=at, card=closes, pull=reviewed[0], role=role)
         ref = card() if isinstance(number, int) else None
         if isinstance(number, int) and ref is None:
             needs_card("work")
@@ -926,9 +959,17 @@ def _event(
         )
     if kind in _SESSION_KINDS or (kind == "tool.finished" and "result" in detail):
         # A refinement step's session names its step (crew#807). The package carries
-        # the Developer's sessions, a story's delivery; a step's isn't one, and is
-        # counted as left out until the package has a place for it.
+        # the Developer's sessions, a story's delivery; a step's isn't one. Its start and
+        # end come through as a step's, so its span is known (crew#1001); its turns and
+        # tool calls are counted as left out.
         if detail.get("step"):
+            if kind in ("session.started", "session.ended"):
+                ref = card() if isinstance(number, int) else None
+                if isinstance(number, int) and ref is None:
+                    needs_card("step")
+                    return None
+                step_cls = StepStarted if kind == "session.started" else StepEnded
+                return step_cls(at=at, card=ref, role=role, step=str(detail["step"]))
             left_out["refinement session"] = left_out.get("refinement session", 0) + 1
             return None
         ref = needs_card("session")

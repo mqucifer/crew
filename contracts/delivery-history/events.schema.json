@@ -1218,6 +1218,110 @@
       "title": "Step",
       "type": "string"
     },
+    "StepEnded": {
+      "additionalProperties": false,
+      "description": "A refinement step's session ending. Its model time is its model calls'.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CardRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "const": "step_ended",
+          "default": "step_ended",
+          "title": "Kind",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "role",
+        "step"
+      ],
+      "title": "StepEnded",
+      "type": "object"
+    },
+    "StepStarted": {
+      "additionalProperties": false,
+      "description": "A refinement step's session starting: a criteria check, a panel's member, a Goal\nlook's role, a split (crew#807). Only its start and end are carried (crew#1001),\nnot its turns or tool calls, so its span is known where no work event gives one.\n\nNot `session_started`: that's a Developer's session on a story, and a 3.0.0 reader\ncounts a story delivered in sessions by it.",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "card": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CardRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None for a step on no card, as a design's."
+        },
+        "kind": {
+          "const": "step_started",
+          "default": "step_started",
+          "title": "Kind",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
+        },
+        "step": {
+          "description": "The step, as its session names it, e.g. criteria check.",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "at",
+        "card",
+        "role",
+        "step"
+      ],
+      "title": "StepStarted",
+      "type": "object"
+    },
     "ToolCall": {
       "additionalProperties": false,
       "description": "One tool call of a session: which tool, how it went, and its sizes. Never its\narguments or its reply, a path, a pattern or a command.",
@@ -1525,6 +1629,8 @@
             "session_ended": "#/$defs/SessionEnded",
             "session_started": "#/$defs/SessionStarted",
             "session_turn": "#/$defs/SessionTurn",
+            "step_ended": "#/$defs/StepEnded",
+            "step_started": "#/$defs/StepStarted",
             "tool_call": "#/$defs/ToolCall",
             "work_finished": "#/$defs/WorkFinished",
             "work_started": "#/$defs/WorkStarted"
@@ -1570,6 +1676,12 @@
           },
           {
             "$ref": "#/$defs/SessionEnded"
+          },
+          {
+            "$ref": "#/$defs/StepStarted"
+          },
+          {
+            "$ref": "#/$defs/StepEnded"
           },
           {
             "$ref": "#/$defs/GateChecked"
