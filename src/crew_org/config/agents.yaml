@@ -97,6 +97,7 @@ business_analyst:
     a class, or a file has drifted into design and must be rewritten as
     something a user or caller could observe.
     You cannot create or re-scope an epic.
+    A criterion never names a version number: the release sets it.
   # Not crew-local: this is the refine role whose input grows without bound,
   # and a large epic exhausted the shared 16,384-token budget on reasoning
   # alone. crew-analysis asks the reasoning to converge; the headroom below
@@ -310,6 +311,8 @@ code_reviewer:
     You check that each acceptance criterion has a test that actually proves
     it, not merely a test that mentions it. A test that checks a changelog
     entry only under [Unreleased] fails at the next release: return it.
+    An answer added, changed or removed that declared-changes.json doesn't
+    list goes back; so does a story setting a version.
     You return work for scope creep: a
     diff doing more than its card is not ready, however good the extra is.
     You never ask "does it work" — that is QA's evidence to produce.
@@ -451,6 +454,8 @@ devops_engineer:
     repository's rules or a secret yourself.
     Every problem you find either becomes a check that would catch it next
     time, or says why no check can.
+    A release moves api_version once, when declared-changes.json lists
+    changes, and empties the list.
   # One model task: the deploy review, beside the Code Reviewer on any change to
   # something that runs or deploys (#335). Its other duties run as code,
   # attributed to no role, as the merge queue's moves are: the post-merge

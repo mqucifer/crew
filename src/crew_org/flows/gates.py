@@ -41,8 +41,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from crew_org.flows import declared_changes as dc
 from crew_org.flows import delivery, role_tasks
 from crew_org.flows.attempts import repair_report
+from crew_org.flows.role_tasks import RELEASE
 from crew_org.profiles import _TITLE, profile_for
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
@@ -223,6 +225,7 @@ def at_done(
 
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.findings += no_changelog_entry(worktree, card)
+    verdict.findings += declared_changes(worktree, card, story)
     if merged is not None:
         verdict.findings += reads_only_unreleased(worktree, merged, paths)
     verdict.check = run_checks(worktree)
@@ -595,6 +598,108 @@ def no_changelog_entry(
                 which,
                 paths=", ".join(f"`{p}`" for p in shipped[:5])
                 + (f" and {len(shipped) - 5} more" if len(shipped) > 5 else ""),
+            ),
+        )
+    ]
+
+
+def declared_changes(worktree: Path, card: Card, story: str) -> list[Finding]:
+    """`declared-changes.json` lists what stories change in the answers, and only the
+    release moves its `api_version`, once (crew#1019).
+
+    A release Task empties `changes` and moves the version by one when anything was
+    declared, and leaves it otherwise. Any other branch leaves the version as merged.
+    A project that keeps no declaration isn't asked for one.
+    """
+    merged = regression.merged_base(worktree)
+    if merged is None:
+        return []
+    target = worktree / dc.FILE
+    after = target.read_text(encoding="utf-8", errors="ignore") if target.is_file() else None
+    try:
+        before = dc.read(merged.text(dc.FILE))
+    except ValueError:
+        # Broken on main isn't this branch's doing: what it leaves is still read.
+        before = None
+    if before is None and after is None:
+        return []
+    found = role_tasks.marked(story)
+    if found is not None and found.role is role_tasks.DEVOPS and found.kind == RELEASE:
+        return _release_clears(before, after)
+    return _story_sets_no_version(before, after)
+
+
+def _left(text: str | None) -> tuple[dc.Declared | None, str]:
+    """The branch's declaration, or why it can't be read: a removed file is one."""
+    try:
+        found = dc.read(text)
+    except ValueError as exc:
+        return None, str(exc)
+    return found, "" if found is not None else f"the branch removes `{dc.FILE}`"
+
+
+def _story_sets_no_version(before: dc.Declared | None, text: str | None) -> list[Finding]:
+    after, why = _left(text)
+    if after is None:
+        return [
+            Finding(
+                "check.gates.a_story_sets_the_api_version",
+                says("check.gates.a_story_sets_the_api_version", "unreadable", why=why),
+            )
+        ]
+    if before is None or after.api_version == before.api_version:
+        return []
+    return [
+        Finding(
+            "check.gates.a_story_sets_the_api_version",
+            says(
+                "check.gates.a_story_sets_the_api_version",
+                before=before.api_version,
+                after=after.api_version,
+            ),
+        )
+    ]
+
+
+def _release_clears(before: dc.Declared | None, text: str | None) -> list[Finding]:
+    after, why = _left(text)
+    if after is None:
+        return [
+            Finding(
+                "check.gates.a_release_clears_the_declared_changes",
+                says("check.gates.a_release_clears_the_declared_changes", "unreadable", why=why),
+            )
+        ]
+    if before is None:
+        return []
+    if not before.changes:
+        if after.api_version == before.api_version:
+            return []
+        return [
+            Finding(
+                "check.gates.a_release_clears_the_declared_changes",
+                says(
+                    "check.gates.a_release_clears_the_declared_changes",
+                    "nothing",
+                    before=before.api_version,
+                    version=after.api_version,
+                ),
+            )
+        ]
+    wanted = dc.next_version(before.api_version)
+    moved = after.api_version == wanted if wanted else after.api_version != before.api_version
+    if moved and not after.changes:
+        return []
+    return [
+        Finding(
+            "check.gates.a_release_clears_the_declared_changes",
+            says(
+                "check.gates.a_release_clears_the_declared_changes",
+                before=before.api_version,
+                after=wanted or "the next version",
+                version=after.api_version,
+                left=len(after.changes),
+                changes=", ".join(f"`{c['path']}` in {c['response']}" for c in before.changes),
             ),
         )
     ]

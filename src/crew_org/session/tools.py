@@ -347,7 +347,9 @@ SPECS = [
         "changed or removed is named here, with why; a change to anything but tests, docs and "
         "the repository's settings has its `[Unreleased]` entry, where the project keeps a "
         "changelog; a test that checks a changelog entry finds it in whichever section holds "
-        "it, never only `[Unreleased]`, which a release empties; and the project's whole "
+        "it, never only `[Unreleased]`, which a release empties; an answer you add, change or "
+        "remove is listed in `declared-changes.json`, where the project keeps one, with its "
+        "`api_version` left as it is; and the project's whole "
         "checks pass. Then review and QA follow.",
         {
             "criteria": {

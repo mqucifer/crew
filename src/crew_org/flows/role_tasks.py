@@ -27,6 +27,8 @@ from typing import Any
 from crew_org.columns import NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.declared_changes import FILE as DECLARED
+from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient, load_trust
@@ -80,6 +82,8 @@ DEVOPS = TaskRole(
     scope=(
         ".github/*",
         "CHANGELOG.md",
+        # What the answers' stories declared, which the release empties (crew#1019).
+        DECLARED,
         "pyproject.toml",
         "uv.lock",
         "package.json",
@@ -1790,11 +1794,12 @@ def epic_release_task(
         "**Release:** release what `[Unreleased]` holds, another epic's merged entries "
         "included (ADR 0019). The version is the one the most significant entry needs "
         "(Keep a Changelog, SemVer), or the Product Owner's call where the epic's record "
-        "makes one. The section is dated today, as this Task's start says.",
+        "makes one. The section is dated today, as this Task's start says.\n\n" + RELEASE_STEP,
         done_when=[
             "CI runs every test the epic's stories added, and none it should run is skipped",
             "`CHANGELOG.md` moves `[Unreleased]` to the new version, dated today",
             "The version is bumped where the project keeps it",
+            RELEASE_DONE,
         ],
     )
     try:
