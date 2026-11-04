@@ -31,7 +31,9 @@ DEFAULT_MAX_TOKENS = 16384
 # Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s
 # gives ~460s for a full implementation), with headroom for reasoning tokens.
 # A timeout shorter than the generation it carries does not fail fast — it
-# fails slowly and repeatedly, because the client retries into the same wall.
+# fails slowly and repeatedly, because a retry runs into the same wall. So a
+# timeout is never retried: only a call that never got a response is, once
+# (`calls.NoResponse`, crew#1020).
 DEFAULT_TIMEOUT = 1800
 
 
@@ -164,7 +166,7 @@ def down(url: str, detail: str) -> str:
 # How a request fails when the proxy can't reach the model server: a connection
 # error, or the proxy's 5xx for one. Not a timeout: a slow generation isn't a
 # dead backend, and treating it as one would stop a tick that was working.
-_DOWN = ("APIConnectionError", "InternalServerError", "ServiceUnavailableError")
+_DOWN = ("APIConnectionError", "InternalServerError", "ServiceUnavailableError", "NoResponse")
 
 
 def backend_down(exc: BaseException) -> bool:

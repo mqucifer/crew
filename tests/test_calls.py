@@ -7,6 +7,7 @@ The real call, through LiteLLM, is in the pull request.
 from __future__ import annotations
 
 import json
+from functools import partial
 
 import httpx
 import pytest
@@ -209,13 +210,12 @@ def test_a_proxy_that_is_down_is_infrastructure_not_a_refusal(seen):
     ]
 
 
-def test_a_connection_refused_by_the_proxy_reads_as_down(monkeypatch):
-    def refuse(*_a, **_k):
+def test_a_connection_refused_by_the_proxy_reads_as_down():
+    def refuse(_request):
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(calls.httpx, "post", refuse)
     with pytest.raises(calls.ServiceUnavailableError) as raised:
-        calls.post({"model": "crew-local"})
+        calls.post({"model": "crew-local"}, transport=httpx.MockTransport(refuse))
     assert backend_down(raised.value)
 
 
@@ -448,3 +448,165 @@ def test_a_conversation_call_sends_the_tools_and_records_it_as_any_call(seen):
     started, finished = (e for e in seen if e.kind.value.startswith("llm."))
     assert started.detail["turn"] == finished.detail["turn"] == 4
     assert finished.detail["tool_calls"] == 0 and finished.detail["completion_tokens"] == 27
+
+
+# --- a call that never got a response is asked once more (crew#1020) ---------------------
+
+# LiteLLM's answer when it can't reach the model server, as the proxy sent it on 10-26,
+# 11-01 and 11-03 (the last in 0.1 s).
+LITELLM_CONNECTION_ERROR = json.dumps(
+    {
+        "error": {
+            "message": "litellm.InternalServerError: InternalServerError: OpenAIException - "
+            "Connection error.. Received Model Group=crew-code-think\n"
+            "Available Model Group Fallbacks=None",
+            "type": None,
+            "param": None,
+            "code": "500",
+        }
+    }
+)
+# A model's own error, passed on by the proxy as a 500: the model answered.
+LITELLM_MODEL_ERROR = json.dumps(
+    {
+        "error": {
+            "message": "litellm.InternalServerError: InternalServerError: OpenAIException - "
+            "Error code: 500 - {'object': 'error', 'message': 'CUDA out of memory'}",
+            "code": "500",
+        }
+    }
+)
+
+
+def no_answer(shape):
+    """One of the ways a call never got a response, as the transport meets it."""
+    if shape == "litellm-500":
+        return httpx.Response(500, text=LITELLM_CONNECTION_ERROR)
+    if shape == "connect":
+        return httpx.ConnectError("[Errno 61] Connection refused")
+    return httpx.RemoteProtocolError("Server disconnected without sending a response.")
+
+
+SHAPES = ["litellm-500", "connect", "server-disconnected"]
+
+
+def transport(*answers):
+    """A proxy that answers in turn: a response, or an error raised before any."""
+    queue = list(answers)
+    sent: list[dict] = []
+
+    def handle(request):
+        sent.append(json.loads(request.content))
+        answer = queue.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    fake = httpx.MockTransport(handle)
+    fake.sent = sent  # type: ignore[attr-defined]
+    return fake
+
+
+def streamed(text):
+    lines = [
+        f"data: {json.dumps({'id': 's1', 'choices': [{'delta': {'content': text}}]})}",
+        f"data: {json.dumps({'id': 's1', 'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}",
+        "data: [DONE]",
+    ]
+    return httpx.Response(200, text="\n\n".join(lines) + "\n\n")
+
+
+@pytest.fixture
+def paused(monkeypatch):
+    waited: list[float] = []
+    monkeypatch.setattr(calls.time, "sleep", waited.append)
+    return waited
+
+
+def llm_events(seen):
+    return [e for e in seen if e.kind.value.startswith("llm.")]
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_an_answer_that_never_got_a_response_is_asked_once_more(seen, paused, shape):
+    fake = transport(no_answer(shape), streamed(GOOD))
+    assert ask(partial(calls.stream, transport=fake)).approved
+    assert len(fake.sent) == 2 and paused == [calls.RETRY_PAUSE]
+    started, finished = llm_events(seen)
+    assert finished.kind is EventKind.LLM_CALL_FINISHED
+    assert "retried" not in started.detail
+    assert finished.detail["retried"].startswith("NoResponse: ")
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_a_conversation_call_that_never_got_a_response_is_asked_once_more(seen, paused, shape):
+    fake = transport(no_answer(shape), httpx.Response(200, json=reply("", finish="tool_calls")))
+    said = calls.converse(
+        "developer",
+        [{"role": "system", "content": "s"}],
+        [],
+        send=partial(calls.post, transport=fake),
+    )
+    assert said.finish_reason == "tool_calls" and len(fake.sent) == 2
+    assert llm_events(seen)[-1].detail["retried"].startswith("NoResponse: ")
+
+
+def test_a_tool_round_that_never_got_a_response_is_asked_once_more(seen, paused):
+    reading = called(("read_file", {"path": "src/metrics.py"}))
+    proxy = Proxy(calls.NoResponse("Connection error: refused"), reading, reply("Done."), GOOD)
+    assert ask(proxy, tools=[reader()]).approved
+    assert len(proxy.sent) == 4
+    first_round = [e for e in llm_events(seen) if e.detail.get("round") == 1]
+    assert first_round[-1].detail["retried"] == "NoResponse: Connection error: refused"
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_a_second_failure_is_reported_as_before(seen, paused, shape):
+    fake = transport(no_answer(shape), no_answer(shape))
+    with pytest.raises(calls.ServiceUnavailableError) as raised:
+        ask(partial(calls.stream, transport=fake))
+    assert backend_down(raised.value) and len(fake.sent) == 2
+    started, failed = llm_events(seen)
+    assert failed.kind is EventKind.LLM_CALL_FAILED
+    assert failed.detail["retried"].startswith("NoResponse: ")
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        httpx.ReadTimeout("timed out"),
+        httpx.ConnectTimeout("timed out"),
+        httpx.Response(500, text=LITELLM_MODEL_ERROR),
+        httpx.Response(400, json={"error": {"message": "context length exceeded"}}),
+    ],
+    ids=["read-timeout", "connect-timeout", "model-500", "model-400"],
+)
+def test_a_timeout_or_a_models_error_is_not_asked_again(seen, paused, answer):
+    fake = transport(answer, streamed(GOOD))
+    with pytest.raises(Exception) as raised:
+        ask(partial(calls.stream, transport=fake))
+    assert not isinstance(raised.value, calls.NoResponse)
+    assert len(fake.sent) == 1 and paused == []
+    assert "retried" not in llm_events(seen)[-1].detail
+
+
+class Dropped(httpx.SyncByteStream):
+    """An answer that began, then the connection dropped: a response was got."""
+
+    def __iter__(self):
+        yield b'data: {"id": "s1", "choices": [{"delta": {"content": "{"}}]}\n\n'
+        raise httpx.RemoteProtocolError("peer closed connection without sending complete body")
+
+
+def test_a_connection_dropped_after_the_answer_began_is_not_asked_again(seen, paused):
+    fake = transport(httpx.Response(200, stream=Dropped()), streamed(GOOD))
+    with pytest.raises(calls.ServiceUnavailableError) as raised:
+        ask(partial(calls.stream, transport=fake))
+    assert not isinstance(raised.value, calls.NoResponse) and backend_down(raised.value)
+    assert len(fake.sent) == 1 and paused == []
+
+
+def test_a_refused_answer_is_asked_again_as_a_refusal_not_a_lost_connection(seen, paused):
+    fake = transport(streamed("not json"), streamed(GOOD))
+    assert ask(partial(calls.stream, transport=fake)).approved
+    assert paused == [] and not any("retried" in e.detail for e in llm_events(seen))

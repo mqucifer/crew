@@ -118,6 +118,9 @@ config.const.calls.EMPTY_LIMIT:
   origin:
   - crew#312
   - sprint-metrics#567
+config.const.calls.RETRY_PAUSE:
+  origin:
+  - crew#1020
 config.const.calls.RUNAWAY_CHARS:
   origin:
   - sprint-metrics#567

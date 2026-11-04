@@ -276,6 +276,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "reasoning_tokens",
         "cached_tokens",
         "total_tokens",
+        "retried",
     ),
     EventKind.LLM_CALL_FAILED: (
         "model",
@@ -286,6 +287,7 @@ FIELDS: dict[EventKind, tuple[str, ...]] = {
         "output_schema",
         "error",
         "duration_s",
+        "retried",
     ),
     EventKind.LLM_CALL_EMPTY: (),
     EventKind.LLM_CALL_REFUSED: (

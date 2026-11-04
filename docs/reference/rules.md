@@ -22,7 +22,7 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
 | The tick decides a card's handling, found by the decision-point audit | 81 |
-| A setting that changes what the tick does | 216 |
+| A setting that changes what the tick does | 217 |
 | Told, and not checked by anything above | 148 |
 
 ## Categories
@@ -33,7 +33,7 @@ section; one no line holds for is unplaced, never guessed.
 
 | Category | Placed by | Rules |
 |---|---|---|
-| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 74 |
+| The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 75 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 14 |
 | Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
@@ -407,6 +407,7 @@ Put each back. A check the criteria say is wrong is replaced by the right one, n
 | `config.const.calls.ATTEMPTS`<br>Three attempts, as CrewAI gave: the first, and two that are told why. | answer_shape | `src/crew_org/calls.py:ATTEMPTS` | — | — | src/crew_org/calls.py:ATTEMPTS | — |
 | `config.const.calls.ECHO_CHARS`<br>Of a refused answer, how much is sent back with its reason: enough to see what was wrong with it, not a second copy of a long answer. | answer_shape | `src/crew_org/calls.py:ECHO_CHARS` | — | — | src/crew_org/calls.py:ECHO_CHARS | — |
 | `config.const.calls.EMPTY_LIMIT`<br>Empty answers in a row before the call gives up early. | answer_shape | `src/crew_org/calls.py:EMPTY_LIMIT` | — | — | src/crew_org/calls.py:EMPTY_LIMIT | crew#312<br>sprint-metrics#567 |
+| `config.const.calls.RETRY_PAUSE`<br>Seconds before a call that never got a response is asked once more (crew#1020). | answer_shape | `src/crew_org/calls.py:RETRY_PAUSE` | — | — | src/crew_org/calls.py:RETRY_PAUSE | crew#1020 |
 | `config.const.calls.RUNAWAY_CHARS`<br>Whitespace in a row, in an answer's JSON, that means it has run away. | answer_shape | `src/crew_org/calls.py:RUNAWAY_CHARS` | — | — | src/crew_org/calls.py:RUNAWAY_CHARS | sprint-metrics#567 |
 | `config.const.calls.RUNAWAY_TAIL`<br>How much of the answer before the run is shown to the model with the reason. | answer_shape | `src/crew_org/calls.py:RUNAWAY_TAIL` | — | — | src/crew_org/calls.py:RUNAWAY_TAIL | — |
 | `config.const.calls.TOOL_ROUNDS`<br>How many rounds of tool calls a step may make before it answers: enough to read the few files a step finds it needs, not a crawl of the repository. | answer_shape | `src/crew_org/calls.py:TOOL_ROUNDS` | — | — | src/crew_org/calls.py:TOOL_ROUNDS | sprint-metrics#567 |
@@ -451,7 +452,7 @@ Put each back. A check the criteria say is wrong is replaced by the right one, n
 | `config.const.history.MAX_VERDICTS`<br>Three is the trail, not the archive. | — | `src/crew_org/flows/history.py:MAX_VERDICTS` | — | — | src/crew_org/flows/history.py:MAX_VERDICTS | — |
 | `config.const.history.MAX_VERDICT_CHARS`<br>Bounded against the prompt, not against the model: the ceiling exists so a long history cannot crowd out the diff or the tests, which are the evidence. | — | `src/crew_org/flows/history.py:MAX_VERDICT_CHARS` | — | — | src/crew_org/flows/history.py:MAX_VERDICT_CHARS | — |
 | `config.const.llm.DEFAULT_MAX_TOKENS`<br>Reasoning models need headroom ABOVE their thinking, and real refinement work thinks hard: a single "propose epics for this goal" task was measured spending 4,097 reasoning tokens and emitting 0 text… | answer_shape | `src/crew_org/llm.py:DEFAULT_MAX_TOKENS` | — | — | src/crew_org/llm.py:DEFAULT_MAX_TOKENS | — |
-| `config.const.llm.DEFAULT_TIMEOUT`<br>Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s gives ~460s for a full implementation), with headroom for reasoning tokens. | answer_shape | `src/crew_org/llm.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/llm.py:DEFAULT_TIMEOUT | — |
+| `config.const.llm.DEFAULT_TIMEOUT`<br>Long enough to carry DEFAULT_MAX_TOKENS at the measured throughput (~36 tok/s gives ~460s for a full implementation), with headroom for reasoning tokens. | answer_shape | `src/crew_org/llm.py:DEFAULT_TIMEOUT` | — | — | src/crew_org/llm.py:DEFAULT_TIMEOUT | crew#1020 |
 | `config.const.llm.PROBE_TIMEOUT`<br>Long enough for a cold model's first token, short enough to fail a pre-flight rather than hang it. | answer_shape | `src/crew_org/llm.py:PROBE_TIMEOUT` | — | — | src/crew_org/llm.py:PROBE_TIMEOUT | — |
 | `config.const.look.EXTERNAL_BYTES`<br>EXTERNAL_BYTES = 10000000 | — | `src/crew_org/tools/look.py:EXTERNAL_BYTES` | — | — | src/crew_org/tools/look.py:EXTERNAL_BYTES | crew#846 |
 | `config.const.look.EXTERNAL_COUNT`<br>EXTERNAL_COUNT = 40 | — | `src/crew_org/tools/look.py:EXTERNAL_COUNT` | — | — | src/crew_org/tools/look.py:EXTERNAL_COUNT | crew#846 |
