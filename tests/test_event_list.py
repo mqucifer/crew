@@ -57,7 +57,8 @@ def test_what_delivery_history_makes_of_a_kind_is_its_own_mapping():
     published = event_list.published()
     assert published[EventKind.WORK_SENT_BACK] == "as `sent_back`"
     assert published[EventKind.AGENT_STARTED] == "as `work_started`"
-    assert published[EventKind.SESSION_ENDED] == "as `session_ended`"
+    # A refinement step's end is a step's (crew#1001); a Developer's is a session's.
+    assert published[EventKind.SESSION_ENDED] == "as `session_ended`, `step_ended`"
     assert published[EventKind.EPIC_RESPLIT] == "read by `_superseded_because`"
     assert EventKind.ROLE_TASK_OPENED not in published
 

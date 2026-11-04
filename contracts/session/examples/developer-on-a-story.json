@@ -6,17 +6,12 @@
   "sprint": "Sprint 6",
   "card": {
     "created": "2026-09-23",
-    "created_at": "2026-09-23T23:30:00Z",
-    "type": "Story"
+    "created_at": "2026-09-23T23:30:00Z"
   },
-  "epic": "sprint-metrics#120",
-  "pull": null,
   "role": "Developer",
-  "part": "delivery",
-  "finished": "2026-09-25T23:42:00Z",
-  "model_seconds": 412.6,
-  "prompt_tokens": 1510300,
-  "cached_tokens": 1462800,
-  "completion_tokens": 11820,
-  "reasoning_tokens": 5940
+  "start": "2026-09-25T23:30:00Z",
+  "end": "2026-09-25T23:42:00Z",
+  "model_seconds": 413,
+  "input_tokens": 1510300,
+  "output_tokens": 11820
 }

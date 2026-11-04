@@ -1,6 +1,6 @@
 {
  "package": "delivery-history",
- "schema_version": "3.0.0",
+ "schema_version": "4.0.0",
  "date": "2026-09-25",
  "timezone": "America/Chicago",
  "crew_repository": "crew",
@@ -610,11 +610,11 @@
    "start": "2026-09-25",
    "end": "2026-09-25",
    "file": "events/2026-09-25.json",
-   "events": 133
+   "events": 136
   }
  ],
  "sprint_metrics": {
-  "release": "4.2.1",
+  "release": "4.5.0",
   "answers": {
    "Sprint 5": {
     "throughput": 3,

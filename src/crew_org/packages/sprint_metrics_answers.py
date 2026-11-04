@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 # The sprint-metrics release the crew reads; the service's deploy keeps to its MAJOR.
-RELEASE = "4.2.1"
+RELEASE = "4.5.0"
 UPSTREAM = Path(__file__).resolve().parent / "upstream"
 SCHEMA_URL = (
     "https://raw.githubusercontent.com/mqucifer/sprint-metrics/v{release}/schemas/sprint-range.json"

@@ -6,17 +6,12 @@
   "sprint": "Sprint 6",
   "card": {
     "created": "2026-09-23",
-    "created_at": "2026-09-23T23:30:00Z",
-    "type": null
+    "created_at": "2026-09-23T23:30:00Z"
   },
-  "epic": null,
-  "pull": null,
   "role": "DevOps Engineer",
-  "part": "delivery",
-  "finished": "2026-09-26T00:21:00Z",
-  "model_seconds": 240.3,
-  "prompt_tokens": 512900,
-  "cached_tokens": 480200,
-  "completion_tokens": 4120,
-  "reasoning_tokens": 1880
+  "start": "2026-09-26T00:10:00Z",
+  "end": "2026-09-26T00:21:00Z",
+  "model_seconds": 240,
+  "input_tokens": 512900,
+  "output_tokens": 4120
 }

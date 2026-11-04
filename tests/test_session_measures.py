@@ -322,8 +322,10 @@ def test_a_step_s_read_rounds_arent_session_tool_calls():
     assert not kinds(files, "tool_call")
 
 
-def test_a_refinement_steps_session_is_left_out_and_counted():
-    """A step's session is on an epic or a Goal, not a story's delivery (crew#807)."""
+def test_a_refinement_steps_session_reaches_the_package_by_its_start_and_end_only():
+    """A step's session is on an epic or a Goal, not a story's delivery (crew#807). Its
+    start and end come through as a step's (3.1.0, crew#1001), so the sessions sent to
+    sprint-metrics have a panel member's span; its turns and tool calls stay out."""
     step = {"step": "panel architect"}
     events = [
         raw(1, "session.started", 660, "Architect", start_chars={"total": 20000}, **step),
@@ -332,7 +334,45 @@ def test_a_refinement_steps_session_is_left_out_and_counted():
     ]
     _, files, manifest = build(events, CARDS)
     assert not kinds(files, "session_started") and not kinds(files, "tool_call")
-    assert manifest.left_out == {"refinement session": 3}
+    [began] = kinds(files, "step_started")
+    [ended] = kinds(files, "step_ended")
+    assert (began.card, began.role, began.step) == (
+        dh.CardRef(repo=SM, number=660),
+        "Architect",
+        "panel architect",
+    )
+    assert (ended.at - began.at).total_seconds() == 120
+    assert manifest.left_out == {"refinement session": 1}
+
+
+def test_a_step_s_session_on_no_card_comes_through_with_none():
+    """A project's design, or a Goal look's settle, may run on no card."""
+    events = [
+        (
+            "tick",
+            {
+                "at": at(1),
+                "kind": "session.started",
+                "role": "Architect",
+                "card": None,
+                "detail": {"step": "design settle"},
+            },
+        ),
+        (
+            "tick",
+            {
+                "at": at(2),
+                "kind": "session.ended",
+                "role": "Architect",
+                "card": None,
+                "detail": {"step": "design settle", "how": "done"},
+            },
+        ),
+    ]
+    _, files, manifest = build(events, CARDS)
+    assert [(e.card, e.role) for e in kinds(files, "step_started")] == [(None, "Architect")]
+    assert len(kinds(files, "step_ended")) == 1
+    assert not manifest.left_out
 
 
 # --- a stop between sessions -------------------------------------------------------------

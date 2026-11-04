@@ -46,8 +46,17 @@ was filed. Its time is when the card was created, and its sprint the one whose d
 that falls in, wherever the card was later planned. A card filed outside every sprint
 is left out and counted, and what isn't known is left off the event: never guessed.
 
+**Every session goes as a `session` event** (sprint-metrics 4.5.0, crew#1001): one
+role's one go at one card or none, its start and end, and its model calls' time and
+tokens. sprint-metrics adds them up, and tells planning from building by the story's
+first `started`: the crew sends no totals (the Sponsor, 2026-11-01). What makes a session,
+and which calls are its, is `session_shape`'s; a session that can't be placed, or has no
+recorded finish, is left out and counted, never sent as zero. Each event of a story
+carries its `epic`, so an epic's sessions add up from its stories'.
+
 Pushing is safe to repeat: the service stores an event once by card, type and
-time, and updates a sprint registered again in place.
+time, a session once by card, role, start and end, and updates a sprint registered
+again in place.
 """
 
 from __future__ import annotations
@@ -55,17 +64,20 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, get_args
 from zoneinfo import ZoneInfo
 
 from crew_org import columns, sendbacks
 from crew_org.flows.attempts import QA, REVIEW
+from crew_org.packages import session_shape
 from crew_org.packages.delivery_history import (
     REVIEWERS,
     Card,
+    CardRef,
     DeliveryHistory,
     FiledActivity,
+    ModelCall,
     PeriodEvents,
     SentBack,
 )
@@ -109,6 +121,9 @@ _OPENER: dict[FiledActivity, str] = {
     "retro": "process",
     "standup": "process",
 }
+# The roles whose work is a session. A group's work event, a "Refinement panel" or a
+# "Goal look", spans its members' sessions, which carry their own roles.
+SESSION_ROLES = frozenset(get_args(session_shape.Role))
 
 
 @dataclass
@@ -124,6 +139,7 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
     """The history as sprint-metrics' sprint definitions and board events."""
     periods = list(periods)
     cards = {(c.repo, c.number): c for c in history.cards}
+    epics = _epics(history.cards)
     in_sessions = {
         (e.card.repo, e.card.number)
         for period in periods
@@ -196,7 +212,7 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
                 left_out["superseded with no reason recorded"] += 1
                 continue
             kind = "superseded"
-        body = _event(card, kind, sprint, event.at.isoformat())
+        body = _event(card, kind, sprint, event.at.isoformat(), epics.get(key))
         if kind == "superseded":
             body["because"] = card.superseded_because
         if kind == "attempt_failed":
@@ -214,13 +230,15 @@ def feed(history: DeliveryHistory, periods: Iterable[PeriodEvents]) -> Feed:
                     body["card"]["failure_role"] = _failure_role(missed[0])
         events.append(body)
     events = sorted(
-        [*_filed_events(history, left_out), *events],
+        [*_filed_events(history, left_out, epics), *events, *_sessions(history, periods, left_out)],
         key=lambda e: datetime.fromisoformat(e["timestamp"]),
     )
     return Feed(sprints=sprints, events=events, left_out=left_out)
 
 
-def _filed_events(history: DeliveryHistory, left_out: Counter[str]) -> list[dict[str, Any]]:
+def _filed_events(
+    history: DeliveryHistory, left_out: Counter[str], epics: dict[tuple[str, int], str]
+) -> list[dict[str, Any]]:
     """One event per card: how it was filed, in the sprint whose days it was filed in."""
     zone = ZoneInfo(history.timezone)
     out = []
@@ -233,7 +251,9 @@ def _filed_events(history: DeliveryHistory, left_out: Counter[str]) -> list[dict
         if sprint is None:
             left_out["card filed outside every sprint"] += 1
             continue
-        body = _event(card, "filed", sprint, card.created.isoformat())
+        body = _event(
+            card, "filed", sprint, card.created.isoformat(), epics.get((card.repo, card.number))
+        )
         if card.filed.by != "unknown":
             body["filer"] = card.filed.by
         if card.filed.activity is not None:
@@ -295,7 +315,17 @@ def _kind(event: Any, sessions: bool = False) -> str | None:
     return None
 
 
-def _event(card: Card, kind: str, sprint: str, at: str) -> dict[str, Any]:
+def _epics(cards: list[Card]) -> dict[tuple[str, int], str]:
+    """Each card whose parent is an epic, and that epic as `repo#number`."""
+    found = {(c.repo, c.number): c for c in cards}
+    return {
+        (c.repo, c.number): f"{c.repo}#{c.parent}"
+        for c in cards
+        if c.parent is not None and getattr(found.get((c.repo, c.parent)), "type", None) == "Epic"
+    }
+
+
+def _event(card: Card, kind: str, sprint: str, at: str, epic: str | None = None) -> dict[str, Any]:
     body: dict[str, Any] = {"created": card.created.date().isoformat() if card.created else ""}
     if card.created:
         # The time as well as the day: sprint-metrics 1.3.0's minutes need it (crew#683).
@@ -303,7 +333,7 @@ def _event(card: Card, kind: str, sprint: str, at: str) -> dict[str, Any]:
     # Not on `filed`: the service reads a superseded card's points from its first row.
     if card.points is not None and kind != "filed":
         body["points"] = int(card.points)
-    return {
+    event = {
         "api_version": API_VERSION,
         "card_id": f"{card.repo}#{card.number}",
         "type": kind,
@@ -311,6 +341,172 @@ def _event(card: Card, kind: str, sprint: str, at: str) -> dict[str, Any]:
         "sprint": sprint,
         "card": body,
     }
+    if epic is not None:
+        # sprint-metrics reads a story's epic from any of its rows (4.5.0's epic answers).
+        event["epic"] = epic
+    return event
+
+
+@dataclass
+class _Span:
+    """One session as it's put together: whose, on what, when, and the calls it holds."""
+
+    role: str
+    card: CardRef | None
+    start: datetime
+    end: datetime | None = None
+    # Until when an unfinished one holds calls: the next session of its role on its card.
+    until: datetime | None = None
+    calls: list[ModelCall] = field(default_factory=list)
+    step: bool = False
+
+
+def _sessions(
+    history: DeliveryHistory, periods: list[PeriodEvents], left_out: Counter[str]
+) -> list[dict[str, Any]]:
+    """Each session the record holds, as sprint-metrics' `session` event (crew#1001)."""
+    events = sorted((e for p in periods for e in p.events), key=lambda e: e.at)
+    spans: list[_Span] = []
+    work: dict[tuple[Any, ...], _Span] = {}
+    steps: dict[tuple[Any, ...], _Span] = {}
+    ended: dict[tuple[str, int], datetime] = {}
+    calls: list[ModelCall] = []
+    for event in events:
+        if event.kind == "model_call":
+            calls.append(event)
+        elif event.kind == "session_ended":
+            ended[(event.card.repo, event.card.number)] = event.at
+        elif event.kind in ("work_started", "work_finished") and event.role in SESSION_ROLES:
+            key = (event.role, event.card, event.pull)
+            began = work.pop(key, None)
+            if began is not None:
+                if event.kind == "work_finished":
+                    began.end = event.at
+                else:
+                    # It never finished: it ended at the last session end on its card.
+                    began.end = _last_end(began, ended)
+            if event.kind == "work_started":
+                work[key] = _Span(event.role, event.card, event.at)
+                spans.append(work[key])
+        elif event.kind in ("step_started", "step_ended") and event.role in SESSION_ROLES:
+            named = (event.role, event.card, event.step)
+            began = steps.pop(named, None)
+            if began is not None and event.kind == "step_ended":
+                began.end = event.at
+            if event.kind == "step_started":
+                steps[named] = _Span(str(event.role), event.card, event.at, step=True)
+                spans.append(steps[named])
+    for began in work.values():
+        began.end = _last_end(began, ended)
+    # A step inside its role's work on the same card is part of that work's session.
+    spans = [s for s in spans if not (s.step and any(_inside(s, w) for w in spans if not w.step))]
+    for s in spans:
+        if s.end is None:
+            later = [o.start for o in spans if o is not s and _same(o, s) and o.start > s.start]
+            s.until = min(later, default=None)
+    by_role: dict[str, list[_Span]] = {}
+    for s in spans:
+        by_role.setdefault(s.role, []).append(s)
+    alone: list[ModelCall] = []
+    for call in calls:
+        held = [s for s in by_role.get(str(call.role), []) if _holds(s, call)]
+        if held:
+            max(held, key=lambda s: s.start).calls.append(call)
+        else:
+            alone.append(call)
+    # A session with no recorded finish can't be sent: its minutes are unknown. Each of its
+    # calls ran for its seconds before it was recorded, so it goes as one no session holds.
+    for unfinished in [s for s in spans if s.end is None]:
+        left_out["session: no recorded finish"] += 1
+        alone += unfinished.calls
+        spans.remove(unfinished)
+    for call in alone:
+        if call.role not in SESSION_ROLES:
+            left_out["model call: by no role"] += 1
+        elif call.seconds is None:
+            left_out["model call: no time, in no session"] += 1
+        else:
+            start = call.at - timedelta(seconds=call.seconds)
+            spans.append(_Span(str(call.role), call.card, start, call.at, calls=[call]))
+    cards = {(c.repo, c.number): c for c in history.cards}
+    sent = []
+    for s in sorted(spans, key=lambda s: s.start):
+        body = _session(s, cards, history, left_out)
+        if body is not None:
+            sent.append(body)
+    return sent
+
+
+def _last_end(span: _Span, ended: dict[tuple[str, int], datetime]) -> datetime | None:
+    at = ended.get((span.card.repo, span.card.number)) if span.card is not None else None
+    return at if at is not None and at >= span.start else None
+
+
+def _same(a: _Span, b: _Span) -> bool:
+    return a.role == b.role and a.card == b.card
+
+
+def _inside(step: _Span, work: _Span) -> bool:
+    return (
+        _same(step, work)
+        and work.start <= step.start
+        and (work.end is None or step.start <= work.end)
+    )
+
+
+def _holds(span: _Span, call: ModelCall) -> bool:
+    """A session's calls are its role's inside its span, on its card or on no card."""
+    if call.role != span.role or (call.card is not None and call.card != span.card):
+        return False
+    if call.at < span.start:
+        return False
+    if span.end is not None:
+        return call.at <= span.end
+    return span.until is None or call.at < span.until
+
+
+def _session(
+    span: _Span,
+    cards: dict[tuple[str, int], Card],
+    history: DeliveryHistory,
+    left_out: Counter[str],
+) -> dict[str, Any] | None:
+    """The session as sent, or None, counted, when it can't be placed."""
+    assert span.end is not None, "an unfinished session is never sent"
+    zone = ZoneInfo(history.timezone)
+    day = span.start.astimezone(zone).date()
+    sprint = next((s.name for s in history.sprints if s.start <= day <= s.end), None)
+    if sprint is None:
+        left_out["session: between sprints"] += 1
+        return None
+    card = cards.get((span.card.repo, span.card.number)) if span.card is not None else None
+    if span.card is not None and card is None:
+        left_out["session: card not in the history"] += 1
+        return None
+    if card is not None and card.created is None:
+        left_out["session: card with no created date"] += 1
+        return None
+
+    def total(name: str) -> int | None:
+        values = [v for c in span.calls if (v := getattr(c, name)) is not None]
+        return round(sum(values)) if values else None
+
+    return session_shape.SessionEvent(
+        api_version=API_VERSION,  # type: ignore[arg-type]
+        type="session",
+        card_id=f"{card.repo}#{card.number}" if card is not None else None,
+        timestamp=span.start,
+        sprint=sprint,
+        card=session_shape.SessionCard(created=card.created.date(), created_at=card.created)
+        if card is not None and card.created is not None
+        else None,
+        role=span.role,  # type: ignore[arg-type]
+        start=span.start,
+        end=span.end,
+        model_seconds=total("seconds"),
+        input_tokens=total("prompt_tokens"),
+        output_tokens=total("completion_tokens"),
+    ).sent()
 
 
 @dataclass
@@ -338,9 +534,9 @@ def push(found: Feed, send: Callable[[str, dict[str, Any]], tuple[int, str]]) ->
         status, text = send("/events", event)
         pushed.events[status] += 1
         if status >= 300:
-            pushed.reasons.setdefault(
-                f"{event['type']} {status}", f"{event['card_id']}: {text[:200]}"
-            )
+            # A session on no card is named by its role.
+            name = event.get("card_id") or event.get("role")
+            pushed.reasons.setdefault(f"{event['type']} {status}", f"{name}: {text[:200]}")
     return pushed
 
 

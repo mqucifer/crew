@@ -20,7 +20,7 @@ from typing import Any
 
 from crew_org.columns import NEEDS_REFINEMENT, READY
 from crew_org.crews.bug_triage_crew import Triage, triage_bug
-from crew_org.events import CrewEvent, EventKind, EventSink
+from crew_org.events import CrewEvent, EventKind, EventSink, attributed
 from crew_org.flows import artifacts
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
@@ -126,7 +126,8 @@ def triage_bugs(
         )
         try:
             shown, focus = context.focused_for(repo, f"{card.title}\n\n{report}")
-            triage = triage_bug(
+            # Its model calls are the bug's, so its session's calls are exact (crew#1001).
+            triage = attributed(triage_bug, card=number, repo=repo)(
                 card.title,
                 report,
                 number=number,
