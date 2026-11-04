@@ -502,6 +502,165 @@ def test_a_finding_that_cant_be_filed_doesnt_stop_the_review(tmp_path):
     )
 
 
+# Real findings filed as Tasks their role couldn't change, 2026-11-03 (crew#1018).
+_REAL = {
+    964: (
+        "qa",
+        "R7 (a session sent twice is held once) is implemented via upsert_session and "
+        "documented in docs/service.md, but no test sends the same session twice and "
+        "asserts the row count remains one.",
+        "tests/test_service.py",
+        "No test in the diff posts the same session event twice and checks the sessions "
+        "table count.",
+    ),
+    981: (
+        "qa",
+        "The api_version paragraph test no longer tracks the CURRENT response version.",
+        "tests/test_docs.py::test_service_md_api_version_paragraph_describes_version_12 "
+        "(lines 1613-1629)",
+        "Lines 1624-1629 assert '\"12\"' in paragraph, '\"11\"' in paragraph, while the "
+        'current version is "16".',
+    ),
+    968: (
+        "architect",
+        "The docs name the release that introduces each api_version by the api_version "
+        "number itself ('release 11.0.0', 'release 10.0.0', etc.).",
+        "docs/service.md, api-version paragraph",
+        "R25: 'the package release is MINOR (4.4.2 to 4.5.0)'; docs say 'it is \"11\" from "
+        "release 11.0.0'.",
+    ),
+    920: (
+        "ux",
+        "docs/service.md's api-version paragraph names the releases by the api_version "
+        "number as a package version.",
+        "docs/service.md, the api-version paragraph (the line beginning 'The /range and "
+        "/trend responses carry their own')",
+        "The CHANGELOG's [4.2.0] entry records 'The response api_version moves from \"4\" "
+        'to "5"\'.',
+    ),
+    979: (
+        "architect",
+        "_attach_range_working_time also carries a dead has_events parameter.",
+        "src/sprint_metrics/time_splits.py",
+        "def _attach_range_working_time(result, conn, labels, has_events): — has_events "
+        "never appears in the function body",
+    ),
+}
+
+
+def _real(number: int):
+    from crew_org.crews.outside import OutsideFinding
+
+    owner, what, where, evidence = _REAL[number]
+    return OutsideFinding(what=what, where=where, evidence=evidence, owner=owner)
+
+
+def _file(tmp_path, found, repo="sprint-metrics", story=None):
+    issues, board = Issues(), Board()
+    story = story or _story(944, "Reviewing", 10).model_copy(update={"repo": repo})
+    filed = role_tasks.file_findings(
+        issues,
+        board,
+        sink(tmp_path),
+        repo=repo,
+        story=story,
+        found=found,
+        by="Code Reviewer",
+        round_key="614a909",
+        cards=[],
+    )
+    return issues, [issues.issues[n] for n in filed]
+
+
+def _labels(issue) -> set[str]:
+    return {lab["name"] for lab in issue["labels"]}
+
+
+@pytest.mark.parametrize("number", sorted(_REAL))
+def test_a_finding_its_role_cant_change_is_filed_as_a_bug(tmp_path, number):
+    """QA changes nothing in a project's repository, and the Architect only its diagram:
+    these five ended blocked as a choice for the Sponsor (crew#1018)."""
+    _, [bug] = _file(tmp_path, [_real(number)])
+    assert _labels(bug) == {"bug"}
+    assert marked(bug["body"]) is None
+    _, what, where, evidence = _REAL[number]
+    for said in (what, f"**Where:** {where}", f"**Evidence:** {evidence}"):
+        assert said in bug["body"]
+    filings = [e["detail"] for e in events(tmp_path) if e["kind"] == "finding.filed"]
+    assert [d.get("rule") for d in filings] == ["decision.role_tasks.finding_as_bug"]
+
+
+def test_an_architect_finding_about_its_diagram_opens_its_task(tmp_path):
+    from crew_org.crews.outside import OutsideFinding
+
+    found = OutsideFinding(
+        what="The diagram still shows the old store",
+        where="docs/architecture.md, the container view",
+        evidence="store.py was replaced by the Postgres store",
+        owner="architect",
+    )
+    _, [task] = _file(tmp_path, [found])
+    assert _labels(task) == {"role:architect"}
+    assert marked(task["body"]).kind == role_tasks.FINDING
+
+
+def test_a_qa_finding_about_its_projects_suite_opens_its_task_there(tmp_path):
+    """In qa-suite, QA may change its project's folder: the Task names the project, so
+    its session may change it (crew#896)."""
+    from crew_org.crews.outside import OutsideFinding
+
+    found = OutsideFinding(
+        what="The intake test never sends a session twice",
+        where="sprint-metrics/test_intake.py",
+        evidence="each test posts once",
+        owner="qa",
+    )
+    story = _task(70, "Reviewing", "qa").model_copy(
+        update={
+            "repo": role_tasks.SUITE,
+            "labels": frozenset({"role:qa", role_tasks.project_label("sprint-metrics")}),
+        }
+    )
+    _, [task] = _file(tmp_path, [found], repo=role_tasks.SUITE, story=story)
+    assert _labels(task) == {"role:qa", "project:sprint-metrics"}
+    filed = story.model_copy(update={"labels": frozenset(_labels(task))})
+    assert role_of(filed).scope_for(role_tasks.SUITE) == ("sprint-metrics/*",)
+
+
+@pytest.mark.parametrize(
+    "where",
+    [
+        "",
+        "the CI workflow's test job",
+        "https://mqucifer.github.io/site/index.html at 375px",
+        # One file the Architect may change, one it may not.
+        "docs/architecture.md and src/sprint_metrics/service.py",
+    ],
+)
+def test_a_finding_with_no_file_or_one_outside_the_scope_goes_as_a_bug(tmp_path, where):
+    from crew_org.crews.outside import OutsideFinding
+
+    found = OutsideFinding(what="w", where=where, evidence="e", owner="architect")
+    _, [bug] = _file(tmp_path, [found])
+    assert _labels(bug) == {"bug"}
+
+
+@pytest.mark.parametrize(
+    ("where", "paths"),
+    [
+        ("tests/test_service.py", ["tests/test_service.py"]),
+        ("docs/service.md, api-version paragraph", ["docs/service.md"]),
+        (_REAL[920][2], ["docs/service.md"]),
+        (_REAL[981][2], ["tests/test_docs.py"]),
+        ("`src/a.py:42` and .github/workflows/ci.yml.", ["src/a.py", ".github/workflows/ci.yml"]),
+        ("the Dockerfile, e.g. its base image 3.12", ["Dockerfile"]),
+        ("https://x.io/site/page.html at 375px", []),
+    ],
+)
+def test_the_files_a_where_names(where, paths):
+    assert role_tasks.named_paths(where) == paths
+
+
 def test_the_verdicts_carry_findings_outside_the_story():
     from crew_org.crews.qa_crew import QAVerdict
     from crew_org.crews.review_crew import ReviewVerdict
