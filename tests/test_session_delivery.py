@@ -1515,3 +1515,107 @@ def test_the_pull_request_says_done_s_summary_once_and_lists_no_files(ws, delive
     assert "**Docs:** none needed" in body
     assert "\nCloses #662\n" in body + "\n"
     assert "## For the Code Reviewer\n\n- `tests/test_rate.py::test_old`: why?" in body
+
+
+# --- a rework takes in its own remote branch before it pushes (crew#1035) ----
+
+
+def diverged(ws, deliver, *, mine: dict[str, str], theirs: dict[str, str]) -> None:
+    """mqucifer/crew-presentation#307: the clone's branch ends in a checkpoint on main,
+    and the pull request's branch on GitHub has commits of its own on the same main."""
+    lost = Ending("interrupted", {"error": "No such container"}, why="workspace_gone")
+    with pytest.raises(SessionInterrupted):
+        deliver(ws, Sessions({"writes": mine, "runs": [GREEN], "ending": lost}), Routes())
+    ws.close()
+    on_origin(ws, BRANCH, theirs)
+
+
+def test_a_rework_takes_in_its_pull_request_s_commits_and_pushes_without_force(
+    ws, deliver, monkeypatch
+):
+    diverged(ws, deliver, mine={"a.py": "a = 1\n"}, theirs={"pr.py": "PR = 1\n"})
+    reviewed = origin_sha(ws, BRANCH)
+    forced = pushes(ws, monkeypatch)
+    outcome = deliver(
+        ws,
+        Sessions({"ending": Ending("done", DONE)}),
+        Routes(session_end.Route(session_end.REVIEW, "r")),
+        Issues(live={"number": 700}),
+        rework=True,
+    )
+    assert outcome.blocked_rule is None and outcome.pr == 700
+    assert forced == [False], "nothing is forced over the review"
+    log = pushed(ws)
+    assert f"on {BRANCH}" in log and "checkpoint(662): run suite passed" in log
+    subprocess.run(
+        ["git", "--git-dir", str(ws.origin), "merge-base", "--is-ancestor", reviewed, BRANCH],
+        check=True,
+    )
+
+
+def test_a_conflict_with_its_pull_request_s_branch_goes_to_the_session(ws, deliver, monkeypatch):
+    diverged(ws, deliver, mine={"rate.py": "RATE = 1\n"}, theirs={"rate.py": "RATE = 2\n"})
+    forced = pushes(ws, monkeypatch)
+    seen: dict[str, str] = {}
+
+    class Resolving(Sessions):
+        def __call__(self, worktree, story, workspace, toolchain, **kw):
+            seen["rate.py"] = (worktree / "rate.py").read_text()
+            return super().__call__(worktree, story, workspace, toolchain, **kw)
+
+    sessions = Resolving({"writes": {"rate.py": "RATE = 3\n"}, "ending": Ending("done", DONE)})
+    outcome = deliver(
+        ws,
+        sessions,
+        Routes(session_end.Route(session_end.REVIEW, "r")),
+        Issues(live={"number": 700}),
+        rework=True,
+    )
+    told = sessions.started[0]["story"]
+    assert f"`origin/{BRANCH}`" in told and "`rate.py`" in told
+    assert "<<<<<<<" in seen["rate.py"] and "|||||||" in seen["rate.py"], "diff3, as crew#933"
+    assert sessions.started[0]["conflicted"] == ("rate.py",), "its `done` checks the markers"
+    assert outcome.blocked_rule is None and forced == [False]
+    log = pushed(ws)
+    assert f"on {BRANCH}" in log and "checkpoint(662): run suite passed" in log
+
+
+def test_a_refused_push_s_block_says_git_s_reason_whole(ws, deliver):
+    """crew-presentation#307's block cut git's message at 400 characters, before
+    `(fetch first)`: with a long branch name, the reason never reached it."""
+    title = "Show the rate " + "and say what it is measured over " * 4
+    story = Card(
+        item_id="I662",
+        number=662,
+        title=title.strip(),
+        status="In Progress",
+        state="OPEN",
+        work_type="Story",
+        repo="sprint-metrics",
+    )
+    branch = session_delivery.branch_name(662, story.title)
+    on_origin(ws, branch, {"pr.py": "PR = 1\n"})
+
+    class Racing(Sessions):
+        """Someone pushes to the pull request's branch while the session works."""
+
+        def __call__(self, worktree, story, workspace, toolchain, **kw):
+            on_origin(ws, branch, {"pr.py": "PR = 2\n"}, base=branch)
+            return super().__call__(worktree, story, workspace, toolchain, **kw)
+
+    seen: list[Any] = []
+    sink = EventSink(None)
+    sink.subscribe(seen.append)
+    outcome = deliver(
+        ws,
+        Racing({"writes": {"a.py": "a = 1\n"}, "ending": Ending("done", DONE)}),
+        Routes(session_end.Route(session_end.REVIEW, "r")),
+        Issues(live={"number": 700}),
+        rework=True,
+        story=story,
+        sink=sink,
+    )
+    assert outcome.blocked_rule == Rule.PUSH_FAILED and not outcome.ended
+    assert f"! [rejected]        {branch} -> {branch} (fetch first)" in outcome.blocked_reason
+    logged = [e for e in seen if e.detail.get("rule") == Rule.PUSH_FAILED]
+    assert logged and "hint:" in logged[0].detail["output"], "git's whole message is logged"

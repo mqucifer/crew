@@ -61,6 +61,8 @@ class Rule(StrEnum):
     """It resumes the card's newest kept work, when it's the crew's (crew#839)."""
     RESOLVE_CONFLICTS = "delivery.resolve_conflicts"
     """Approved and conflicting with main: a session resolves the conflicts alone (crew#933)."""
+    CONFLICT_WITH_OWN_BRANCH = "delivery.conflict_with_own_branch"
+    """A rework conflicts with its pull request's branch: its session resolves it (crew#1035)."""
     WORKSPACE_UNREADY = "delivery.workspace_unready"
     """The story's workspace container didn't start, or its setup failed (crew#778)."""
     ROUND_TRIPS_NO_EPIC = "delivery.round_trips_no_epic"

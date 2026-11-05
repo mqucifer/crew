@@ -77,6 +77,7 @@ from crew_org.git_ops import (
     branch_name,
     conflicts_in,
     kept_name,
+    refusal,
 )
 from crew_org.llm import reraise_if_down
 from crew_org.project import ProjectRecordError, read_record
@@ -253,6 +254,21 @@ def deliver_by_session(
                 paths=list(conflict.files),
                 rule="delivery.conflict_with_main",
             )
+    own, theirs = "", []
+    if live is not None and not rebuilt:
+        # Its pull request's branch, whatever the worktree started from: a rework's push
+        # goes on top of what the review read, never forced over it (crew#1035).
+        theirs = ws.catch_up_with_own()
+        if theirs:
+            sink.note(
+                EventKind.NOTE,
+                f"#{number} conflicts with its pull request's branch in " + ", ".join(theirs),
+                repo=repo,
+                card=number,
+                paths=list(theirs),
+                rule=Rule.CONFLICT_WITH_OWN_BRANCH,
+            )
+            own = own_conflicts(branch, theirs)
     marked = role_tasks.marked(body) if role else None
     project = role_tasks.project_of(card.labels)
     if role is not None and role.key == role_tasks.QA.key and repo == role_tasks.SUITE and project:
@@ -286,6 +302,8 @@ def deliver_by_session(
         story += "\n\n" + unused
     if tried:
         story += "\n\n" + tried
+    if own:
+        story += "\n\n" + own
     # The story's part of the start, measured by what it's made of (the operator, crew#778).
     measured = {
         "card": len(story_text),
@@ -390,6 +408,7 @@ def deliver_by_session(
             skills=offered,
             kind=marked.kind if marked else "",
             disputable=role is None and qa_disputable(issues, repo, live),
+            conflicted=tuple(theirs),
         )
     finally:
         held.stop()
@@ -538,6 +557,7 @@ def _sessions(
     skills: list[Any] | None = None,
     kind: str = "",
     disputable: bool = False,
+    conflicted: tuple[str, ...] = (),
 ) -> Delivered:
     """Sessions until one ends somewhere other than back in a session, within the budget."""
     from crew_org.flows import session_end  # noqa: PLC0415
@@ -593,6 +613,7 @@ def _sessions(
             scope=task.scope_for(repo) if task else (),
             skills=tuple(s.name for s in skills or ()),
             work="Task" if task else "story",
+            conflicted=conflicted,
         )
         session.backstop_s = max(BACKSTOP_S - spent, 0.0)
         ending = attributed(
@@ -878,7 +899,23 @@ def _land(
         if transient_remote(exc):
             raise
         outcome.blocked_rule = Rule.PUSH_FAILED
-        outcome.blocked_reason = f"could not push `{outcome.branch}`: {exc}"[:400]
+        # git's reason whole, and its whole message logged: cut at 400, the reason was
+        # past the long branch names it repeats (crew#1035).
+        refused = refusal(exc)
+        sink.note(
+            EventKind.NOTE,
+            f"#{number} push of `{outcome.branch}` refused",
+            repo=repo,
+            card=number,
+            rule=Rule.PUSH_FAILED,
+            output=getattr(exc, "output", "") or str(exc),
+        )
+        outcome.blocked_reason = (
+            f"could not push `{outcome.branch}`, git refused it:\n"
+            + "\n".join(f"`{line}`" for line in refused.splitlines())
+            if refused
+            else f"could not push `{outcome.branch}`: {exc}"[:400]
+        )
         # The work is only in the clone: kept, so it isn't lost with the block.
         outcome.ended = False
         return outcome
@@ -1809,6 +1846,18 @@ def _unready(outcome: DeliveryOutcome, rule: Rule, why: str) -> DeliveryOutcome:
     outcome.blocked_reason = f"the story's workspace isn't ready: {why}"
     outcome.ended = True
     return outcome
+
+
+def own_conflicts(branch: str, files: list[str]) -> str:
+    """What a rework's session is told when its pull request's branch conflicts with
+    the one it resumed (crew#1035)."""
+    return (
+        f"## Its pull request's branch\n\n`origin/{branch}` has commits this branch "
+        "lacked. They're merged in, and conflict in "
+        + ", ".join(f"`{f}`" for f in files)
+        + ", marked in diff3 style: this branch's side, their base, then the pull "
+        "request's. Resolve them first, keeping what both meant; your `done` commits the merge."
+    )
 
 
 def _merge_base(worktree: Path) -> str:

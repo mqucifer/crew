@@ -387,3 +387,13 @@ def test_qa_judges_only_the_resolution_s_files_from_the_head_it_accepted(monkeyp
     )
     assert seen["changed"] == [PIN] and seen["base"] == "ab12"
     assert "This head resolves conflicts with main" in seen["answered"]
+
+
+def test_a_rework_s_done_is_refused_while_its_own_branch_s_markers_are_left(tmp_path):
+    """A rework handed conflicts with its pull request's branch (crew#1035): its `done`
+    is held to the markers as a resolution's is, and its edits aren't limited."""
+    from crew_org.session import conversation
+
+    (tmp_path / "rate.py").write_text("<<<<<<< HEAD\nA\n||||||| base\n=======\nB\n>>>>>>> o\n")
+    checked = conversation.own_checks(tmp_path, conflicted=("rate.py",))
+    assert [f.rule for f in checked({})] == ["check.gates.conflicts_left"]

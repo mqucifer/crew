@@ -55,6 +55,7 @@ The record's summary says it for a person; the rule is what a count reads.
 | `delivery.push_failed` | The work was done, and the branch couldn't be pushed. |
 | `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). |
 | `delivery.resolve_conflicts` | Approved and conflicting with main: a session resolves the conflicts alone (crew#933). |
+| `delivery.conflict_with_own_branch` | A rework conflicts with its pull request's branch: its session resolves it (crew#1035). |
 | `delivery.workspace_unready` | The story's workspace container didn't start, or its setup failed (crew#778). |
 | `delivery.round_trips_no_epic` | The gates kept returning it, and it has no epic to be split again: for a person. |
 | `delivery.route_failed` | Where a session's ending sends the story couldn't be settled: blocked for a person. |
@@ -239,6 +240,8 @@ names, what it means, and where those notes are written:
 | `decision.role_tasks.ci_services` | Once the first workspace Task is closed, and a story's whole checks pass with the default branch's services up or main's own do in a container with them, DevOps gets its Task to make CI's test job run the same services, once. Main's are run at most once per head commit, and only while the Task isn't opened. | `flows/ci_from_main.py:held_by` |
 | `decision.role_tasks.not_opened` | A role's Task an event should open and GitHub refused is recorded, and the next pass tries again; nothing marks it opened until it is. | `flows/role_tasks.py:not_opened` |
 | `delivery.conflict_with_main` | The branch conflicts with main: resolving it is for a person. | `flows/session_delivery.py:deliver_by_session` |
+| `delivery.conflict_with_own_branch` | A rework conflicts with its pull request's branch: its session resolves it (crew#1035). | `flows/session_delivery.py:deliver_by_session` |
+| `delivery.push_failed` | The work was done, and the branch couldn't be pushed. | `flows/session_delivery.py:_land` |
 | `delivery.resolve_conflicts` | Approved and conflicting with main: a session resolves the conflicts alone (crew#933). | `flows/session_delivery.py:resolve` |
 | `delivery.resume_kept` | It resumes the card's newest kept work, when it's the crew's (crew#839). | `flows/session_delivery.py:kept_work` |
 | `gate.ci_before_review` | CI failed on the pull request's head: back to the Developer with its log, unreviewed. While it runs, review waits, and a tick with nothing else to move waits with it. | `flows/loop.py:run`, `flows/loop.py:wait_for_ci` |
