@@ -23,7 +23,7 @@ A Goal was the Sponsor's alone. Then a consumer's review of what it receives (AD
 A bug reports behaviour that contradicts what was accepted. It doesn't set direction: new behaviour, or a change to what the numbers mean, is a Goal (for example mqucifer/sprint-metrics#597).
 
 **A Goal is the Sponsor's to approve.** The Sponsor writes Goals, and the crew may propose one (the Sponsor, 2026-10-17):
-- **Only a project's Product Owner proposes a Goal,** from a use review or from a request outside every Goal (ADR 0021). The Architect keeps its technical epics, and anyone files bugs.
+- **Only a project's Product Owner proposes a Goal,** from a use review or from a request outside every Goal (ADR 0021). Technical epics are the crew's, debt among them, and anyone files bugs.
 - **The gate is the one a drafted Goal already has** (ADR 0003). A proposed Goal is filed as a draft in `Inbox (Goals)`, without the `goal` label. The Sponsor approves it by applying the label, edits it first, or closes it. Approving one is no new step.
 - **A proposed Goal's decision rows stay the Product Owner's,** binding under ADR 0018. Only what the Sponsor adds under their own heading is the Sponsor's (ADR 0015), so the crew's words never count as the Sponsor's.
 
@@ -31,12 +31,20 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 
 **A bug is any defect, a test's too** (the Sponsor, mqucifer/crew#1005, 2026-11-02). One whose fix is only in tests is still worked as a bug and can reach Done: its defect is a test, as mqucifer/sprint-metrics#868's stale one was, or its failure shows only off main, as mqucifer/crew-presentation#300's did on a pin's branch. Nothing it does can fail on main, so it's proven another way. Its named tests run, with nothing else changed, and pass. Each merged test it keeps still makes every check it made: every `assert` that can fail, and each call that checks, is still there, as it was or rewritten. A rewrite is paired with the most alike check left, at difflib's close-match cutoff of 0.6, two checks of one shape compared by their values, and never with one that checks the reverse (`not in` for `in`). So it can't pass by dropping or blanking a check, and whether a rewritten one still checks what it did is the Code Reviewer's. A merged test it removes whole is a declared change, ruled on as any other merged test's is. It has to change a merged test in a named test's file, and the Code Reviewer is asked to judge that the defect is the tests', not the code's. A branch that changes the code still has to fail on main first.
 
+**Technical debt is the crew's to file and pay** (the Sponsor, mqucifer/crew#1033, 2026-11-05). The Sponsor neither finds it nor approves it. Debt is code that is dead, duplicated or misleading, where fixing it changes no behaviour. It isn't a bug, since nothing accepted behaves wrongly, and no test of it can fail on main. Who files it:
+- **the Code Reviewer, DevOps's deploy review and QA,** from a finding outside their story whose owner they name as `debt`, whatever file it's in;
+- **the Business Analyst,** from triage: a bug it would close because it changes no behaviour becomes debt instead, the same issue;
+- **the Architect,** from a merged design: a change placed as `debt`.
+
+It's filed as a technical epic labelled `debt`, in Needs Refinement, with no Goal and no Sponsor step, and split like any technical epic; its stories carry the label. **It never holds a Goal's epics.** Sprint planning takes the Architect's other technical work first, then one debt story per project while the sprint has none, then the Goals' epics, then the rest of the debt. So Goal work keeps its place, and debt is still paid each sprint. **Its proof is refactoring under unchanged tests** (Fowler, *Refactoring*): the project's whole checks pass, no merged test is removed, and each merged test it changes, where it called what the work removed, still makes every check it made, by the same pairing a bug fixed in its tests is held to.
+
 ## Consequences
 
 - People have a way to report a defect besides writing a Goal, and a bug isn't dressed up as one.
 - Bugs don't hold the critical path (the Sponsor, 2026-10-12).
 - **The crew files a bug from its own finding where a decision says so,** rather than as a retro finding: so far, the Developer's bug for the merged tests a workspace turns on that fail (the Sponsor's decision on mqucifer/crew#839). Its App isn't a collaborator, so triage reads org.yaml's `trust.crew` for it, and those bugs are triaged like any other. Anyone else without access still waits on a person.
 - **Work a consumer finds can become a Goal without the Sponsor writing it.** It still waits on the Sponsor's label, and what the Sponsor decided stays distinguishable from what the Product Owner proposed.
+- **A cleanup finding in code is paid, not lost.** It used to wait until a story happened to touch its file.
 
 ## Changelog
 
@@ -47,3 +55,4 @@ A bug reports behaviour that contradicts what was accepted. It doesn't set direc
 - **2026-10-23:** a bug's test runs in the default branch's workspace, not the networkless sandbox, where a database test could only skip. A bug the crew filed from turned-on tests is reproduced by its own record, read only from the crew's comment at the merged head. mqucifer/sprint-metrics#742 was refused three rounds running for a database test the sandbox skipped (crew#839).
 - **2026-10-29:** a bug whose defect and fix are in the project's tests is triaged as a story, since the reproduction check can't be met by one (mqucifer/crew#949). mqucifer/sprint-metrics#868 was sent back 4 times before the operator re-filed it by hand.
 - **2026-11-02:** replaced by the Sponsor's call on mqucifer/crew#1005: a bug whose fix is only in tests stays a bug, and the reproduction check takes the proof above. Triage no longer makes one a story, and the gate's final finding for it is gone. mqucifer/crew-presentation#300 had no `**Where:**` line, stayed a bug, and was blocked by that finding for a person, holding the 3.0.0 pin.
+- **2026-11-05:** technical debt is the crew's to file and pay, with no Sponsor step (the Sponsor's call on mqucifer/crew#1033). "The Architect keeps its technical epics" became who files debt. mqucifer/sprint-metrics#995, an unused parameter, was filed as a bug because no role could change its file, and closed by triage as "a Task, not a Bug".

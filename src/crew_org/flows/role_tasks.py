@@ -27,6 +27,7 @@ from typing import Any
 from crew_org.columns import NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink
 from crew_org.flows import artifacts
+from crew_org.flows.debt import DEBT, file_debt_epic
 from crew_org.flows.declared_changes import FILE as DECLARED
 from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.flows.moves import move_card
@@ -740,9 +741,10 @@ def file_findings(
     cap: int = 1,
     found_while: str = "",
 ) -> list[int]:
-    """File a role's findings outside its story: a Task for the role it names, or a bug.
-    A finding goes as a bug when the files its **Where:** names aren't all that role's
-    to change in `repo`, or it names none (crew#1018).
+    """File a role's findings outside its story: a Task for the role it names, a bug, or
+    technical debt. A finding goes as a bug when the files its **Where:** names aren't all
+    that role's to change in `repo`, or it names none (crew#1018). One that names debt is
+    a debt epic, whatever file it's in (mqucifer/crew#1033).
 
     At most `cap` per owner for each story and round (a pull request's head), and each
     filing recorded, so a finding said again in other words in a later round shows in
@@ -781,7 +783,19 @@ def file_findings(
         ) + f"\n\n**Where:** {finding.where}\n\n**Evidence:** {finding.evidence}"
         role = finding_role(finding.owner, story, repo, finding.where)
         try:
-            if role is None:
+            if finding.owner == DEBT:
+                filed_as = file_debt_epic(
+                    issues,
+                    board,
+                    sink,
+                    repo=repo,
+                    key=key,
+                    title=title,
+                    what=finding.what,
+                    why=why,
+                    by=by,
+                )
+            elif role is None:
                 filed_as = _file_bug(
                     issues,
                     board,
@@ -851,7 +865,9 @@ def file_findings(
                     "filed": filed_as,
                     "round": round_key,
                     **(
-                        {"rule": "decision.role_tasks.finding_as_bug"}
+                        {"rule": "decision.role_tasks.finding_as_debt"}
+                        if finding.owner == DEBT
+                        else {"rule": "decision.role_tasks.finding_as_bug"}
                         if role is None and finding.owner != "bug"
                         else {}
                     ),

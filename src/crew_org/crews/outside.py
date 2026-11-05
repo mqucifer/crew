@@ -4,7 +4,7 @@ On mqucifer/sprint-metrics#667 DevOps found that the `requires_db` tests never r
 in CI. As a reviewer it could only note it and set it aside as pre-existing, and QA
 then accepted CI proof the job's log showed was skipped (crew#817). A finding the
 change didn't cause now has its own place in a verdict, and is filed: a Task for the
-role whose area it's in, or a bug.
+role whose area it's in, a bug, or technical debt (mqucifer/crew#1033).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Owner = Literal["devops", "architect", "ux", "qa", "bug"]
+Owner = Literal["devops", "architect", "ux", "qa", "bug", "debt"]
 
 
 class OutsideFinding(BaseModel):
@@ -25,7 +25,8 @@ class OutsideFinding(BaseModel):
             "Whose work it is. devops: CI, releases, where things run; architect: the "
             "design, how parts connect, the repository's diagram; ux: what a reader sees; "
             "qa: tests across stories; bug: behaviour that contradicts what the project "
-            "already accepted"
+            "already accepted; debt: code that is dead, duplicated or misleading, where "
+            "fixing it changes no behaviour"
         )
     )
 

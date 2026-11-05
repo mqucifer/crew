@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from crew_org.crews.design_crew import Change, Placement, Placements
 from crew_org.events import EventSink
+from crew_org.flows.loop import LoopResult, PhaseOutcome
 from crew_org.flows.revisit import (
     DESIGN_WORK_HEADER,
     Revisits,
@@ -21,6 +22,7 @@ from crew_org.flows.revisit import (
     file_technical_epics,
     file_unchanged_design_work,
 )
+from crew_org.flows.standup import decided_by_crew
 from tests.test_revisit import REPO, SPLIT, Board, Issues, changes_block, epic, proposal
 
 STORE = Change(
@@ -184,3 +186,41 @@ def test_given_work_sits_above_the_conclusion_once():
 def test_a_placement_on_an_epic_names_it():
     with pytest.raises(ValidationError, match="name it in `epic`"):
         Placement(change=1, kind="epic", why="it's an epic's")
+
+
+DEAD = Change(
+    what="Drop _attach_range_working_time's has_events parameter from the design",
+    was="the helper takes has_events and never reads it",
+    why="a reader looks for a branch that isn't there",
+    needs_work=True,
+    work="Remove the unused has_events parameter and update its callers",
+)
+
+
+def test_the_architects_cleanup_is_filed_as_debt_and_holds_nothing():
+    """Dead, duplicated or misleading code is debt the Architect may file too, and debt
+    never holds a Goal's epics (mqucifer/crew#1033)."""
+    issues = Issues439(bodies={406: OUTCOME})
+    place = Placer(Placement(change=1, kind="debt", why="it removes a dead parameter"))
+    pull = {"number": 82, "body": changes_block(proposal(changes=[DEAD]))}
+    result = Revisits()
+
+    filed = file_technical_epics(
+        issues,
+        Board(),
+        EventSink(),
+        repo=REPO,
+        pull=pull,
+        result=result,
+        cards=[epic(406)],
+        place=place,
+    )
+
+    (created,) = issues.created
+    assert filed == [created["number"]]
+    assert set(created["labels"]) == {"technical", "debt"}
+    assert "the project's tests pass unchanged" in created["body"]
+    assert result.epics == [], "nothing for the project's other epics to wait on"
+    assert result.debt == [(REPO, created["number"])]
+    said = decided_by_crew(LoopResult(outcomes=[PhaseOutcome("revisit", True, result=result)]))
+    assert f"{REPO}#{created['number']}: technical debt from the design" in "\n".join(said)

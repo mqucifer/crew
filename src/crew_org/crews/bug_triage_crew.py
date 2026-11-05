@@ -7,6 +7,9 @@ IEEE 1044's dispositions, in plain words:
   reproduce it, Given/When/Then with the expected behaviour as the Then, and
   sized as a bug is, 1 to 5 points;
 - not a bug: it works as documented, or it asks for new behaviour, which is a Goal;
+- debt: nothing behaves wrongly, but the code is dead, duplicated or misleading, and
+  fixing it changes no behaviour: technical debt, which the crew pays instead of closing
+  it (mqucifer/crew#1033);
 - a duplicate of another issue;
 - more information needed: one question for whoever filed it.
 
@@ -29,7 +32,7 @@ from crew_org.tools.repo_read import Reader
 # The taxonomy sizes a bug 1 to 5 points (ways-of-working, "Work item taxonomy").
 BUG_POINTS = (1, 2, 3, 5)
 
-Outcome = Literal["accepted", "not_a_bug", "duplicate", "more_information"]
+Outcome = Literal["accepted", "not_a_bug", "debt", "duplicate", "more_information"]
 
 
 class Triage(BaseModel):
@@ -37,8 +40,10 @@ class Triage(BaseModel):
         description=(
             "accepted: the behaviour contradicts what the project accepted (its criteria, "
             "its docs, its release notes); not_a_bug: it works as documented, or the report "
-            "asks for new behaviour, which is a Goal; duplicate: another issue already "
-            "reports it; more_information: the report doesn't say enough to tell"
+            "asks for new behaviour, which is a Goal; debt: nothing behaves wrongly, but the "
+            "code is dead, duplicated or misleading, and fixing it changes no behaviour; "
+            "duplicate: another issue already reports it; more_information: the report "
+            "doesn't say enough to tell"
         )
     )
     reason: str = Field(
@@ -92,7 +97,8 @@ def triage_bug(
         "Triage it. Read the code and docs it names before deciding: a report can be "
         "wrong about the cause and right about the behaviour. A bug contradicts what "
         "the project already accepted. A request for behaviour the project never "
-        "promised is not a bug, however reasonable: say it's a Goal. When accepted, "
+        "promised is not a bug, however reasonable: say it's a Goal. Code that is dead, "
+        "duplicated or misleading, whose fix changes no behaviour, is debt. When accepted, "
         "write criteria a test can be written from directly, that fail against the code "
         "as it is now.",
     )

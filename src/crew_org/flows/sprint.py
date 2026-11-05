@@ -30,6 +30,7 @@ from crew_org.columns import (
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows.board_flow import NEEDS_REWORK, TECHNICAL
 from crew_org.flows.board_flow import builds_on as builds_on_line
+from crew_org.flows.debt import is_debt
 from crew_org.flows.moves import move_card
 from crew_org.flows.role_tasks import role_of
 from crew_org.flows.siblings import unlanded_earlier_siblings
@@ -134,6 +135,13 @@ def approved_epics(cards: list[Card]) -> list[Card]:
     )
 
 
+def _planning_order(epic: Card) -> int:
+    """Technical work, then the Goals' epics, then debt (#192, mqucifer/crew#1033)."""
+    if is_debt(epic):
+        return 2
+    return 0 if TECHNICAL in epic.labels else 1
+
+
 def plan_sprint(
     cards: list[Card],
     parents: dict[tuple[str, int], tuple[str, int]],
@@ -193,13 +201,44 @@ def plan_sprint(
     remaining = max(capacity - plan.committed, 0)
     # Technical work first, as refinement already takes it (#192): planned last,
     # the image work 1.0.0 waits on got what Sprint 10's docs work left (#358).
-    epics = sorted(approved_epics(cards), key=lambda e: TECHNICAL not in e.labels)
-    for epic in epics:
+    # Debt is paid every sprint and Goal work keeps its place (mqucifer/crew#1033): one
+    # debt story per project goes ahead of the Goal's epics while the sprint has none,
+    # a first story that goes in as it stands, and the rest after them.
+    epics = sorted(approved_epics(cards), key=_planning_order)
+    owed = {e.repo or "" for e in epics if is_debt(e)} - {
+        c.repo or ""
+        for c in cards
+        if c.sprint == sprint and is_debt(c) and c.work_type != EPIC_TYPE
+    }
+    turns = [(e, False) for e in epics if _planning_order(e) == 0]
+    turns += [(e, True) for e in epics if is_debt(e)]
+    turns += [(e, False) for e in epics if _planning_order(e) > 0]
+    pieces: dict[tuple[str, int], EpicSlice] = {}
+    seen: set[tuple[str, int]] = set()
+    for epic, ahead in turns:
+        if ahead and (epic.repo or "") not in owed:
+            continue
         stories = sorted(
-            (c for key, c in ready.items() if parents.get(key) == epic.key),
+            (c for key, c in ready.items() if parents.get(key) == epic.key and key not in seen),
             key=lambda c: c.number or 0,
         )
         if not stories:
+            continue
+        if ahead:
+            first = stories[0]
+            taken = [c for p in plan.slices for c in p.admitted]
+            wanted = (builds_on or {}).get(first.key, set())
+            if (
+                NEEDS_REWORK not in epic.labels
+                and int(first.points or 0) <= remaining
+                and not _held_by_an_earlier_sibling(cards, first, sprint, taken)
+                and not _waits_on_work_outside(cards, parents, first, wanted, taken)
+            ):
+                early = pieces[epic.key] = EpicSlice(number=epic.number or 0, title=epic.title)
+                plan.slices.append(early)
+                remaining = _fill(early, first, remaining)
+                seen.add(first.key)
+                owed.discard(epic.repo or "")
             continue
         # Sent back to be split again: its stories are about to be superseded.
         # sprint-metrics#59's were re-admitted the tick they went back, and
@@ -209,7 +248,10 @@ def plan_sprint(
             plan.waiting_on_rework += stories
             continue
 
-        piece = EpicSlice(number=epic.number or 0, title=epic.title)
+        piece = pieces.get(epic.key)
+        if piece is None:
+            piece = pieces[epic.key] = EpicSlice(number=epic.number or 0, title=epic.title)
+            plan.slices.append(piece)
         for story in stories:
             # Delivery holds a story until every earlier sibling has landed
             # (`held_by_a_sibling`). Admitted without them, it can't finish:
@@ -227,7 +269,6 @@ def plan_sprint(
                 piece.deferred.append(story)
                 continue
             remaining = _fill(piece, story, remaining)
-        plan.slices.append(piece)
 
     # A parked epic isn't approved, so its stories are missing from `parents`
     # and would otherwise be taken as stories with no epic (crew#673).

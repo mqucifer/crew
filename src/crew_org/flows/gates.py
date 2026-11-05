@@ -15,6 +15,8 @@ used to run on an answer before it was applied:
 - **the whole checks,** by the runner the caller passes: the session's container,
   once delivery runs sessions, with the services the project declares (crew#860);
 - **a bug's tests** fail without the fix (crew#407);
+- **a debt story's tests** are the project's, kept: none removed, none checking less
+  (mqucifer/crew#1033);
 - **no test CI runs skipped** (crew#860): one the branch adds or changes that skipped
   for a reason the project doesn't declare CI-only goes back. One already merged isn't
   the Developer's: it's DevOps's, once the project has a workspace file.
@@ -42,8 +44,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from crew_org.flows import debt, delivery, role_tasks
 from crew_org.flows import declared_changes as dc
-from crew_org.flows import delivery, role_tasks
 from crew_org.flows.attempts import repair_report
 from crew_org.flows.role_tasks import RELEASE
 from crew_org.profiles import _TITLE, profile_for
@@ -248,6 +250,8 @@ def at_done(
     _checked(verdict)
     if merged is not None:
         _skipped(worktree, merged, paths, verdict)
+    if debt.is_debt(card) and merged is not None:
+        verdict.findings += debt_kept(worktree, merged, paths)
     if card.work_type == BUG and merged is not None:
         name = f"reproduce-{card.repo or ''}-{card.number}"
         if recorded is not None and recorded.tests:
@@ -1495,6 +1499,28 @@ def checks_less(
         if gone:
             found[key] = gone
     return found
+
+
+def debt_kept(worktree: Path, merged: regression.Merged, paths: list[str]) -> list[Finding]:
+    """A debt story changes no behaviour, so its proof is refactoring under unchanged
+    tests (Fowler, *Refactoring*; mqucifer/crew#1033): the whole checks pass, no merged
+    test is removed, and each it changes, where it called what the work removed, still
+    makes every check it made (`checks_less`, crew#1005). A non-Python test file is
+    read by its tests' names, so only one removed there is seen.
+    """
+    removed = [k for k, how in changed_tests(worktree, merged, paths).items() if how == "removed"]
+    weaker = checks_less(worktree, merged, paths)
+    if not removed and not weaker:
+        return []
+    lines = [f"- `{key}`: removed" for key in sorted(removed)]
+    lines += [f"- `{key}`: `{made}`" for key, gone in sorted(weaker.items()) for made in gone]
+    return [
+        Finding(
+            "guard.debt.tests_kept",
+            says("guard.debt.tests_kept", tests="\n".join(lines)),
+            count=len(removed) + len(weaker),
+        )
+    ]
 
 
 def _as_recorded(

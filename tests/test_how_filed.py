@@ -308,6 +308,7 @@ FILING_PATHS = {
     ("revisit.py", "file_technical_epic"),
     ("role_tasks.py", "open_task"),
     ("role_tasks.py", "_file_bug"),
+    ("debt.py", "file_debt_epic"),
     ("pins.py", "_card"),
     ("standup.py", "record_standup"),
 }
@@ -344,6 +345,29 @@ def test_a_real_role_task_and_bug_read_back_as_filed():
 
     body = rt.render(rt.DEVOPS, kind=rt.RELEASE, key="k", why="w", work="x", done_when=["d"])
     assert (filed(body).activity, filed(body).kind) == ("task", "release")
+
+
+def test_a_real_debt_epic_reads_back_as_filed_from_a_finding():
+    """mqucifer/crew#1033: a technical epic, but a role's finding opened it."""
+    from crew_org.events import EventSink
+    from crew_org.flows import debt
+    from tests.role_task_fakes import Board, Issues
+
+    issues = Issues()
+    debt.file_debt_epic(
+        issues,
+        Board(),
+        EventSink(None),
+        repo="sm",
+        key="s952-debt-614a909",
+        title="Remove has_events",
+        what="has_events is never used",
+        why="Found while judging #952.",
+        by="Code Reviewer",
+    )
+    created = max(issues.issues.values(), key=lambda i: i["number"])
+    found = filed(created["body"], labels=("technical", "debt"))
+    assert (found.activity, found.kind) == ("finding", None)
 
 
 def test_a_real_design_epic_reads_back_with_its_cause():

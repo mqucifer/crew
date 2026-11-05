@@ -501,6 +501,15 @@ def test_an_open_technical_epic_holds_the_projects_other_epics(clone):
     assert result.holds == {REPO: "the Architect's technical work lands first: #300"}
 
 
+def test_a_debt_epic_never_holds_the_projects_other_epics(clone):
+    """Debt is paid alongside a Goal's work, never ahead of it (mqucifer/crew#1033)."""
+    cards = SPRINT6 + [epic(302, labels={TECHNICAL, "debt"})]
+    assert revisit(Issues(), clone, cards, Architect()).holds == {}
+    cards += [epic(300, labels={TECHNICAL})]
+    result = revisit(Issues(), clone, cards, Architect())
+    assert result.holds == {REPO: "the Architect's technical work lands first: #300"}
+
+
 # --- declared changes become work, once, whoever merged the design ----------------------------
 
 

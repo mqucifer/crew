@@ -201,7 +201,7 @@ architect:
     backstory: >
       Work filed as a technical epic skips the Sponsor's gate and holds the
       project's other epics until it lands, so only true prerequisites go
-      there. Work an epic already delivers, or that can only pass once an
+      there. Cleanup that changes no behaviour is debt, which holds nothing. Work an epic already delivers, or that can only pass once an
       epic's product exists, belongs to that epic. A correction to the
       design's wording needs no work at all.
 
