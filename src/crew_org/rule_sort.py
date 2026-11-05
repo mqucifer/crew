@@ -89,6 +89,7 @@ SORTED: dict[str, tuple[str, str]] = {
     ),
     "guard.regression.broken_contracts": (GATE, "merged code removed or reshaped, on the diff"),
     "guard.reproduce.check": (GATE, "a bug's tests reproduce it, on the branch"),
+    "guard.debt.tests_kept": (GATE, "a debt story keeps the merged tests and their checks"),
     # --- the decisions that end or route a delivery ------------------------------------
     "check.gates.a_service_wont_start": (GATE, "a declared service not running, at `done`"),
     "check.gates.the_checks_timed_out": (GATE, "the checks hung or ran past their bound"),

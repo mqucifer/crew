@@ -37,8 +37,10 @@ from crew_org import sendbacks
 from crew_org.columns import BLOCKED, NEEDS_REFINEMENT, READY
 from crew_org.events import CrewEvent, EventKind, EventSink, held
 from crew_org.flows import artifacts
+from crew_org.flows import debt as debt_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows.board_flow import EPIC_TYPE, TECHNICAL, epics_to_split
+from crew_org.flows.debt import is_debt
 from crew_org.flows.design import (
     DESIGN_PR,
     REVISIT_LABEL,
@@ -84,6 +86,8 @@ class Revisits:
     merged: list[tuple[str, int]] = field(default_factory=list)
     # (repo, epic): technical work filed from a merged design.
     epics: list[tuple[str, int]] = field(default_factory=list)
+    # (repo, epic): debt filed from a merged design, which holds nothing (crew#1033).
+    debt: list[tuple[str, int]] = field(default_factory=list)
     # (repo, why): something that went wrong, retried next pass.
     failed: list[tuple[str, str]] = field(default_factory=list)
     # Projects whose other approved epics wait, and why.
@@ -91,7 +95,14 @@ class Revisits:
 
     @property
     def moved(self) -> bool:
-        return bool(self.proposed or self.unchanged or self.refused or self.merged or self.epics)
+        return bool(
+            self.proposed
+            or self.unchanged
+            or self.refused
+            or self.merged
+            or self.epics
+            or self.debt
+        )
 
 
 def revisit_designs(
@@ -225,7 +236,8 @@ def _revisit(
         return
 
     # Filed this pass as well as on the board: `cards` was read before them,
-    # and refinement runs next in this same pass.
+    # and refinement runs next in this same pass. Debt never holds a Goal's epics: it's
+    # paid alongside them (mqucifer/crew#1033).
     technical = sorted(
         {
             c.number or 0
@@ -234,6 +246,7 @@ def _revisit(
             and c.work_type == EPIC_TYPE
             and c.state != "CLOSED"
             and TECHNICAL in c.labels
+            and not is_debt(c)
         }
         | {n for r, n in result.epics if r == repo}
     )
@@ -823,6 +836,9 @@ def _route(
         elif p is not None and p.kind == "design_text":
             sink.note(EventKind.NOTE, f"{repo}: design text only, no work: {work[:70]}")
             text_only.append(change)
+        elif p is not None and p.kind == "debt":
+            # Filed as debt, which holds no epic (mqucifer/crew#1033).
+            prerequisites.append({**change, "debt": True})
         else:
             prerequisites.append(change)
     return prerequisites, given, text_only
@@ -866,13 +882,28 @@ def _give_to_epic(
 
 
 def file_technical_epic(
-    issues: Any, board: Any, sink: EventSink, *, repo: str, title: str, body: str, summary: str
+    issues: Any,
+    board: Any,
+    sink: EventSink,
+    *,
+    repo: str,
+    title: str,
+    body: str,
+    summary: str,
+    debt: bool = False,
 ) -> dict[str, Any]:
-    """Open one technical epic, signed, and place it: it skips the Sponsor's gate (crew#192)."""
-    color, description = LABELS[TECHNICAL]
-    issues.ensure_label(repo, TECHNICAL, color=color, description=description)
+    """Open one technical epic, signed, and place it: it skips the Sponsor's gate (crew#192).
+    `debt` marks it as debt, which holds no epic (mqucifer/crew#1033)."""
+    if debt:
+        debt_flow.ensure_labels(issues, repo)
+    else:
+        color, description = LABELS[TECHNICAL]
+        issues.ensure_label(repo, TECHNICAL, color=color, description=description)
     issue: dict[str, Any] = issues.create(
-        repo, title[:200], artifacts.signed(body, BY), labels=[TECHNICAL]
+        repo,
+        title[:200],
+        artifacts.signed(body, BY),
+        labels=[TECHNICAL, debt_flow.DEBT] if debt else [TECHNICAL],
     )
     place_technical_epic(board, sink, repo=repo, issue=issue, summary=summary)
     return issue
@@ -911,6 +942,7 @@ def _file_epics(
         # The work, not the record edit, is what refinement splits (#309). A
         # design declared before `work` existed falls back to `what`.
         work = str(change.get("work") or change["what"])
+        as_debt = bool(change.get("debt"))
         issue = file_technical_epic(
             issues,
             board,
@@ -921,11 +953,15 @@ def _file_epics(
             f"**What changes in the design:** {change['what']}\n\n"
             f"**What the project does now:** {change.get('was') or 'nothing'}\n\n"
             f"**Why:** {change.get('why') or ''}\n\n"
-            f"{source} Technical work: the crew "
-            "decided it, so it goes straight to refinement rather than to the Sponsor's "
-            "gate (mqucifer/crew#192).",
-            summary=f"technical epic — {work[:50]}",
+            + (
+                f"{source}\n\n{debt_flow.PROOF}\n\n{debt_flow.ROUTE}"
+                if as_debt
+                else f"{source} Technical work: the crew decided it, so it goes straight to "
+                "refinement rather than to the Sponsor's gate (mqucifer/crew#192)."
+            ),
+            summary=f"{'technical debt' if as_debt else 'technical epic'} — {work[:50]}",
+            debt=as_debt,
         )
         filed.append(issue["number"])
-        result.epics.append((repo, issue["number"]))
+        (result.debt if as_debt else result.epics).append((repo, issue["number"]))
     return filed

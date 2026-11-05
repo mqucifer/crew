@@ -292,19 +292,21 @@ def review_design(
 EPIC = "epic"
 PREREQUISITE = "prerequisite"
 DESIGN_TEXT = "design_text"
+DEBT = "debt"
 
 
 class Placement(BaseModel):
     """Where one declared change's work belongs."""
 
     change: int = Field(description="The change's number in the list, from 1")
-    kind: Literal["epic", "prerequisite", "design_text"] = Field(
+    kind: Literal["epic", "prerequisite", "design_text", "debt"] = Field(
         description=(
             "`epic`: an epic below already delivers this work, or it can only pass once "
             "that epic's product exists. `prerequisite`: no epic delivers it, and the "
             "epics need it first (a dependency, CI infrastructure, a structural move). "
             "`design_text`: it only corrects the design's own wording; nothing in the "
-            "project changes"
+            "project changes. `debt`: no epic needs it first, and it only removes code that "
+            "is dead, duplicated or misleading, changing no behaviour"
         )
     )
     epic: int | None = Field(None, description="With `epic`: that epic's number")

@@ -315,6 +315,17 @@ guard.reproduce.check:
   - crew#839
   - crew#1005
   owner: Developer
+guard.debt.tests_kept:
+  description: A debt story changes no behaviour, so its proof is refactoring under unchanged tests. No
+    merged test is removed, and each it changes still makes every check it made.
+  messages:
+    default: "This is technical debt, which changes no behaviour, so the project's tests are its\
+      \ proof and stay as merged. A test may change only where it calls what the work removes,\
+      \ keeping every check it made. These were removed, or check less:\n\n{tests}\n\nPut\
+      \ each back as merged."
+  origin:
+  - crew#1033
+  owner: Developer
 session.run:
   description: '`run` of tests names them, and needs the project''s checks to run pytest; `run` of lint
     needs a lint among them.'

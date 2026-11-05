@@ -73,7 +73,8 @@ Architect's and DevOps's share. The operator reviewed the design before it was b
   story and round, every filing recorded, to be tuned from that evidence. It's the
   owner's Task only when every file its **Where:** names is in that role's scope in
   that repository; one naming no file, or a file the role may not change, is a bug,
-  for the Developer, with the same what, where and evidence (crew#1018).
+  for the Developer, with the same what, where and evidence (crew#1018). One that
+  names debt is a technical debt epic instead (ADR 0027, mqucifer/crew#1033).
 - **The role's session** works its Task through the Developer's path, with its role in
   the Developer's place and the Developer's tools. It may change only its role's area,
   checked at `done`; the Architect's diagram must render. It also has its gate's own
@@ -229,3 +230,4 @@ ADR 0006 in mqucifer/project-print decided QA's repository, its test bed and its
 - **2026-10-25:** QA's Tasks built in M10 (crew#896): filed in qa-suite, a story's test opening at its merge, and the dispute.
 - **2026-10-26:** a workspace finding met again tells its Task once per story, and reopens it when closed (crew#917): the gate had filed into closed mqucifer/sprint-metrics#743 three times with nothing said.
 - **2026-11-04:** a finding is a role's Task only when its role may change every file it names there, and otherwise a bug (the Sponsor, the Sprint 40 retro; crew#1018): QA's and the Architect's Tasks about a project's tests, `docs/service.md` and `src/` could only end blocked (mqucifer/sprint-metrics#964, mqucifer/sprint-metrics#968).
+- **2026-11-05:** a finding that names debt is a technical debt epic, whatever file it's in (the Sponsor, mqucifer/crew#1033; ADR 0027).

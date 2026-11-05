@@ -862,6 +862,10 @@ flows.gates.at_done:filter:cbd17a84:
   at: flows/gates.py:at_done
   if: 'not _is_test(key)'
   rule: guard.regression.broken_contracts
+flows.gates.debt_kept:filter:b35944d8:
+  at: flows/gates.py:debt_kept
+  if: how == 'removed'
+  rule: guard.debt.tests_kept
 flows.gates.checks_less:skip:828a7a63:
   at: flows/gates.py:checks_less
   if: how != 'changed' or not name or (not path.endswith('.py'))
@@ -1637,10 +1641,10 @@ flows.revisit._revisit:filter:8369b26a:
   at: flows/revisit.py:_revisit
   if: r == repo
   rule: decision.revisit.file_work
-flows.revisit._revisit:filter:b29ed425:
+flows.revisit._revisit:filter:588bdeab:
   at: flows/revisit.py:_revisit
   if: (c.repo or repo) == repo and c.work_type == EPIC_TYPE and (c.state != 'CLOSED') and (TECHNICAL in
-    c.labels)
+    c.labels) and (not is_debt(c))
   rule: decision.revisit.file_work
 flows.revisit._revisit:filter:e8b42df0:
   at: flows/revisit.py:_revisit
@@ -1674,6 +1678,10 @@ flows.revisit.file_unchanged_design_work:end:f7634573:
   at: flows/revisit.py:file_unchanged_design_work
   if: not changes
   rule: decision.revisit.file_work
+flows.debt.file_debt_epic:filter:158652dc:
+  at: flows/debt.py:file_debt_epic
+  if: wanted in (i.get('body') or '')
+  rule: decision.role_tasks.finding_as_debt
 flows.role_tasks._file_bug:filter:158652dc:
   at: flows/role_tasks.py:_file_bug
   if: wanted in (i.get('body') or '')
@@ -1895,9 +1903,37 @@ flows.sprint.plan_sprint:filter:259743e4:
   at: flows/sprint.py:plan_sprint
   if: k not in ready
   rule: decision.sprint.plan_sprint
-flows.sprint.plan_sprint:filter:42122e44:
+flows.sprint.plan_sprint:filter:3ac2dc4d:
   at: flows/sprint.py:plan_sprint
-  if: parents.get(key) == epic.key
+  if: parents.get(key) == epic.key and key not in seen
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:a950b66a:
+  at: flows/sprint.py:plan_sprint
+  if: c.sprint == sprint and is_debt(c) and (c.work_type != EPIC_TYPE)
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:1364a3a7:
+  at: flows/sprint.py:plan_sprint
+  if: _planning_order(e) == 0
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:05ae005a:
+  at: flows/sprint.py:plan_sprint
+  if: is_debt(e)
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:filter:4440d044:
+  at: flows/sprint.py:plan_sprint
+  if: _planning_order(e) > 0
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:skip:984bed8b:
+  at: flows/sprint.py:plan_sprint
+  if: ahead
+  rule: decision.sprint.plan_sprint
+flows.sprint.plan_sprint:skip:c855d11d:
+  at: flows/sprint.py:plan_sprint
+  if: ahead and (epic.repo or '') not in owed
+  rule: decision.sprint.plan_sprint
+flows.sprint._planning_order:end:f5a74be0:
+  at: flows/sprint.py:_planning_order
+  if: is_debt(epic)
   rule: decision.sprint.plan_sprint
 flows.sprint.plan_sprint:filter:54897c3e:
   at: flows/sprint.py:plan_sprint

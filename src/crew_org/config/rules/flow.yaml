@@ -390,6 +390,12 @@ decision.role_tasks.finding_as_bug:
     a bug for the Developer, with the same what, where and evidence.
   origin:
   - crew#1018
+decision.role_tasks.finding_as_debt:
+  description: A finding that names debt, code that is dead, duplicated or misleading whose fix changes
+    no behaviour, is filed as a technical epic marked debt, in Needs Refinement, with no Goal and no
+    Sponsor step, whatever file it's in. It never holds a Goal's epics.
+  origin:
+  - crew#1033
 decision.role_tasks.first_diagram:
   description: A worked repository with no diagram of its system gets the Architect's Task to draw one,
     once; not one waiting for its walking skeleton.

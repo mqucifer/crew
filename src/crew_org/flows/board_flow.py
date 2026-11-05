@@ -61,6 +61,7 @@ from crew_org.flows import (
 from crew_org.flows import conclusion as conclusion_flow
 from crew_org.flows import record as record_flow
 from crew_org.flows import settle as settle_flow
+from crew_org.flows.debt import DEBT, is_debt
 from crew_org.flows.delivered import Delivered, delivered
 from crew_org.flows.goal_look import (
     Turns,
@@ -2354,6 +2355,9 @@ def refine_epics(
                         if again and resplitting
                         else ""
                     ),
+                    # A debt epic's stories carry its mark: the gate holds them to its
+                    # proof (mqucifer/crew#1033).
+                    labels=[DEBT] if is_debt(epic_card) else [],
                 )
                 numbers[story.title] = issue["number"]
                 split_now.append((repo, issue["number"], story.title, number))

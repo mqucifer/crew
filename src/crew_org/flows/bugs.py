@@ -7,6 +7,8 @@ nothing read it. Each refinement pass, the Business Analyst triages it
   becomes a `Bug` in Ready, admitted and built like a story with no epic, wherever its
   defect is: a test's is a bug too (the Sponsor, crew#1005);
 - not a bug, or a duplicate: commented with why, and closed;
+- debt: it changes no behaviour, so it isn't closed but becomes a technical debt epic,
+  the same issue, left in refinement for its split (mqucifer/crew#1033);
 - more information: the question is asked, and the card waits on `needs:human`.
 
 A bug from anyone who isn't a collaborator is left for a person: ADR 0027 says
@@ -21,7 +23,7 @@ from typing import Any
 from crew_org.columns import NEEDS_REFINEMENT, READY
 from crew_org.crews.bug_triage_crew import Triage, triage_bug
 from crew_org.events import CrewEvent, EventKind, EventSink, attributed
-from crew_org.flows import artifacts
+from crew_org.flows import artifacts, debt
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
 from crew_org.tools.github_issues import IssueClient
@@ -187,6 +189,19 @@ def carry_out(
             frm=card.status,
             summary=f"bug accepted, {triage.points} points",
             rule="decision.bugs.carry_out",
+        )
+    elif triage.outcome == "debt":
+        debt.from_bug(
+            issues, board, sink, card, repo=repo, report=report, reason=triage.reason, by=ROLE
+        )
+        artifacts.comment(
+            issues,
+            sink,
+            repo=repo,
+            number=number,
+            body="Not a bug, and not closed: nothing behaves wrongly, so this is technical "
+            f"debt the crew pays, as a technical epic (mqucifer/crew#1033). {triage.reason}",
+            by=ROLE,
         )
     elif triage.outcome == "more_information":
         artifacts.comment(

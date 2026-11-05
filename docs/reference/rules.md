@@ -18,10 +18,10 @@ How often each fired, and the model time it cost, is `crew rules --events`.
 | A guard on a change sends it back | 0 |
 | An edit can't be applied, and why is sent back | 0 |
 | A session's tool refuses a call, and says why in its reply | 24 |
-| A gate at `done` sends a session's branch back | 18 |
+| A gate at `done` sends a session's branch back | 19 |
 | The crew changes the work itself, and records it | 3 |
 | The crew holds work back, said only in words | 12 |
-| The tick decides a card's handling, found by the decision-point audit | 84 |
+| The tick decides a card's handling, found by the decision-point audit | 85 |
 | A setting that changes what the tick does | 217 |
 | Told, and not checked by anything above | 148 |
 
@@ -36,9 +36,9 @@ section; one no line holds for is unplaced, never guessed.
 | The answer parses and is complete (`answer_shape`) | the call layer's refusals, for every form<br>the answer names what it must, gives one answer, and finishes it<br>told at `refinement_crew:AnswerRow`, `refinement_crew:RepairedStory`, `refinement_crew:RowNotForStories` | 75 |
 | The work stays in the story (`scope`) | what work there is, and where it belongs<br>a step that asks to see more than it may<br>constitution §4, §6, §2, §13<br>told at `agents.yaml:architect`, `agents.yaml:architect.design_placement`, `agents.yaml:product_owner`, `agents.yaml:ux_designer`, `bug_triage_crew`, `design_crew:place_changes`, `refinement_crew:decompose_opening`, `refinement_crew:_delivered_block`, `refinement_crew:split_opening`, `settle_crew` | 54 |
 | A change applies cleanly (`edits`) | an edit that can't be applied, or rewrites a file whole; what the crew changes in the work by itself | 15 |
-| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 71 |
+| Tests prove the criteria (`evidence`) | tests that prove the criteria, and their runs<br>constitution §3, §7<br>told at `agents.yaml:business_analyst`, `agents.yaml:business_analyst.bug_triage`, `agents.yaml:qa_engineer`, `agents.yaml:qa_engineer.criteria_check`, `agents.yaml:qa_engineer.tasks`, `criteria_crew`, `qa_crew`, `refinement_crew:repair_opening` | 72 |
 | Safety guards (`guards`) | a path outside the repository or inside .git<br>what the project protects, and what the crew may push<br>the engineering guidelines a design is held to (§19)<br>constitution §14, §19, §20<br>told at `agents.yaml:devops_engineer`, `deploy_review_crew`, `design_crew:DesignProposal`, `design_crew:propose_design`, `design_crew:review_design` | 74 |
-| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 164 |
+| When a card moves (`flow`) | the crew's own decisions (`rules.Rule`): retry, return, block, hold; and the holds said only in words<br>the review gates' one decision from both<br>constitution §5, §9, §11, §1, §12, §17, §18<br>told at `review_crew` | 165 |
 | What other work relies on, and declared changes to it (`contracts`) | merged code and tests other work relies on, and a story's declared changes to them (§15)<br>constitution §15<br>told at `contract_crew` | 22 |
 | Writing guidance (`guidance`) | <br>constitution §8, §10<br>told at `agents.yaml:code_reviewer`, `agents.yaml:scrum_master`, `agents.yaml:senior_engineer`, `retro_crew` | 26 |
 | Unplaced | | 113 |
@@ -231,6 +231,7 @@ section; one no line holds for is unplaced, never guessed.
 | `guard.bounds.out_of_bounds`<br>This change goes outside what the project allows:
 
 {}{} | guards | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
+| `guard.debt.tests_kept`<br>A debt story changes no behaviour, so its proof is refactoring under unchanged tests. No merged test is removed, and each it changes still makes every check it made. | evidence | `src/crew_org/flows/gates.py:debt_kept` | Developer | §2 technical_debt (both cite crew#1033; in §2) | src/crew_org/flows/gates.py:debt_kept | crew#1033<br>crew#778 |
 | `guard.regression.broken_contracts`<br>guard.regression.broken_contracts | contracts | `src/crew_org/flows/gates.py:at_done` | Developer | — | src/crew_org/flows/gates.py:at_done | crew#778 |
 | `guard.reproduce.check`<br>This bug's fix is only in its tests, so none of them has to fail on main: the proof is the named tests passing, with each merged test the branch keeps still making every check it made, as it was or rewritten. These checks, made as merged, are gone:
 
@@ -336,6 +337,7 @@ Put each back. A check the criteria say is wrong is replaced by the right one, n
 | `decision.role_tasks.ci_services`<br>Each repository whose main passes its checks with its services gets DevOps's CI Task, as a story's `done` would open it. | flow | `src/crew_org/flows/ci_from_main.py:ci_services_from_main` | — | — | src/crew_org/flows/ci_from_main.py:ci_services_from_main<br>src/crew_org/flows/role_tasks.py:ci_services_task | crew#839 |
 | `decision.role_tasks.epic_split`<br>Split approved epics into stories, once their Goal's record covers them. | flow | `src/crew_org/flows/board_flow.py:refine_epics` | — | — | src/crew_org/flows/board_flow.py:refine_epics<br>src/crew_org/flows/role_tasks.py:pending_release_tasks | crew#192<br>crew#816<br>crew#839<br>crew#858<br>crew#859 |
 | `decision.role_tasks.finding_as_bug`<br>The role whose Task a finding opens, or None when it goes as a bug: owned by no role, or naming no file, or one that role's Task may not change in `repo` (crew#1018). | flow | `src/crew_org/flows/role_tasks.py:finding_role` | — | — | src/crew_org/flows/role_tasks.py:finding_role | crew#1018<br>sprint-metrics#964<br>sprint-metrics#968 |
+| `decision.role_tasks.finding_as_debt`<br>A debt epic for a role's finding, in Needs Refinement, filed once per `key`. | flow | `src/crew_org/flows/debt.py:file_debt_epic` | — | — | src/crew_org/flows/debt.py:file_debt_epic | crew#1033 |
 | `decision.role_tasks.first_diagram`<br>The Architect's first Task in a repository with no diagram: draw it (crew#839). | flow | `src/crew_org/flows/role_tasks.py:first_diagram_task` | — | — | src/crew_org/flows/role_tasks.py:first_diagram_task | crew#839 |
 | `decision.role_tasks.first_workspace`<br>DevOps's first Task in a repository with no workspace file: write it (crew#860). | flow | `src/crew_org/flows/role_tasks.py:first_workspace_task` | — | — | src/crew_org/flows/role_tasks.py:first_workspace_task | ADR 0032<br>crew#839<br>crew#860 |
 | `decision.role_tasks.goal_epics_done`<br>Close an epic when its stories are Done, and a goal when its epics are. | flow | `src/crew_org/flows/acceptance.py:close_finished_parents` | — | — | src/crew_org/flows/acceptance.py:close_finished_parents | crew#174<br>crew#185<br>crew#187<br>crew#839<br>crew#858<br>sprint-metrics#184 |
@@ -345,7 +347,7 @@ Put each back. A check the criteria say is wrong is replaced by the right one, n
 | `decision.role_tasks.sponsor_approves`<br>Merge what the Sponsor approved, then report on the sprint. | flow | `src/crew_org/flows/close.py:close_sprint` | — | — | src/crew_org/flows/close.py:close_sprint<br>src/crew_org/flows/merge.py:merge_approved<br>src/crew_org/flows/role_tasks.py:for_the_sponsor | crew#839 |
 | `decision.role_tasks.turned_on`<br>The Developer's bug for the merged tests a workspace Task turned on that fail, now they fail on main (crew#839). | flow | `src/crew_org/flows/merge.py:_turned_on` | — | — | src/crew_org/flows/merge.py:_turned_on<br>src/crew_org/flows/merge.py:done_devops_tasks<br>src/crew_org/flows/role_tasks.py:turned_on_at<br>src/crew_org/flows/role_tasks.py:turned_on_filed | crew#839 |
 | `decision.sprint.capacity`<br>Admit a story whole if it fits, defer it if not. | flow | `src/crew_org/flows/sprint.py:_fill` | — | — | src/crew_org/flows/sprint.py:_fill<br>src/crew_org/flows/sprint.py:committed_points | — |
-| `decision.sprint.plan_sprint`<br>Epics past the Sponsor's gate — approving them was the scope decision. | flow | `src/crew_org/flows/sprint.py:approved_epics` | — | — | src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | — |
+| `decision.sprint.plan_sprint`<br>Technical work, then the Goals' epics, then debt (#192, mqucifer/crew#1033). | flow | `src/crew_org/flows/sprint.py:_planning_order` | — | — | src/crew_org/flows/sprint.py:_planning_order<br>src/crew_org/flows/sprint.py:approved_epics<br>src/crew_org/flows/sprint.py:plan_sprint | crew#1033<br>crew#192 |
 | `decision.sprint.start_sprint`<br>Admit the planned stories into the sprint. | flow | `src/crew_org/flows/sprint.py:start_sprint` | — | — | src/crew_org/flows/sprint.py:start_sprint | — |
 | `decision.strain.strained`<br>The files in `repo` that `threshold` stories of one sprint collided in. | flow | `src/crew_org/flows/strain.py:strained` | — | — | src/crew_org/flows/strain.py:strained | — |
 | `decision.unreleased.unreleased_releases`<br>Why an epic's release will ship what waits, or "" when none will. | flow | `src/crew_org/flows/unreleased.py:in_flight` | — | — | src/crew_org/flows/unreleased.py:in_flight<br>src/crew_org/flows/unreleased.py:unreleased_releases | crew#1010<br>crew#961 |

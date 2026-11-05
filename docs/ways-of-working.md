@@ -95,7 +95,8 @@ as one question instead (ADR 0037).
 The first gate is for *what* to build. Work about *how* a project is built
 never goes through it: a technical epic, filed by the crew from the Architect's
 design, starts in `Needs Refinement` (§13, crew#192). The Sponsor sees it in
-the standup as something the crew decided, not as a question.
+the standup as something the crew decided, not as a question. Technical debt
+takes the same path, and holds nothing (§2, mqucifer/crew#1033).
 
 ### Review and QA are two different gates
 
@@ -146,6 +147,8 @@ QA refuses it, it comes back to be built (crew#221).
 | **Story** | A user-visible behaviour change, independently valuable and testable. | 1–8 points |
 | **Task** | Work a role owns, not an epic: the Architect's, DevOps's, and later the UX Designer's and QA's (ADR 0034). An event or the role's own finding opens it, its `role:` label names the role, and that role's session works it to a pull request. It flows like a Bug and needs no Sponsor approval to start. | 1–5 points |
 | **Bug** | Observed behaviour contradicting accepted acceptance criteria. Filed by a collaborator in the organization: today the Sponsor and Claude's account (ADR 0027). | 1–5 points |
+
+**Technical debt** isn't a type of its own: it's an Epic labelled `technical` and `debt` (ADR 0027, mqucifer/crew#1033). Debt is code that is dead, duplicated or misleading, where fixing it changes no behaviour. A role files it from a finding, the Business Analyst from triage instead of closing a bug, and the Architect from a design. It has no Goal and no Sponsor step, is split like any technical epic, and never holds a Goal's epics: each sprint takes one debt story per project ahead of Goal work while it has none, and the rest after it. A debt story's proof is refactoring under unchanged tests: the project's tests pass, none removed and none checking less.
 | **Spike** | A timeboxed investigation answering a specific question. | fixed timebox |
 
 A Spike's output is always a written answer, never production code.
@@ -407,7 +410,9 @@ by the Code Reviewer against §19 and the project's guidelines, then opened as a
 pull request that the crew approves with its reviewing identity and merges once
 CI passes. Only the record's `design` section changes; `intent` stays the
 Sponsor's. Each declared change that needs work on the code becomes a
-`technical` epic in `Needs Refinement`, refined and delivered like any other.
+`technical` epic in `Needs Refinement`, refined and delivered like any other;
+one that only removes dead, duplicated or misleading code is filed as debt, which
+holds nothing (mqucifer/crew#1033).
 The same happens for the changes in a design pull request the Sponsor merged
 from `crew design`. While a revision is open, or its technical epics are, the
 project's other approved epics wait to be split. Their stories are then written

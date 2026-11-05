@@ -635,6 +635,17 @@ def test_stories_carry_points_and_inherited_priority(monkeypatch):
     assert [m[1] for m in board.moves] == [READY, READY]
 
 
+def test_a_debt_epics_stories_carry_its_mark(monkeypatch):
+    """The gate holds a debt story to its proof by this mark (mqucifer/crew#1033)."""
+    debt = epic_card(3).model_copy(update={"labels": frozenset({"technical", "debt"})})
+    board, issues = FakeBoard([debt]), FakeIssues()
+    run_split(board, issues, monkeypatch)
+    assert [i["labels"] for i in issues.created] == [["debt"], ["debt"]]
+    board, issues = FakeBoard([epic_card(3)]), FakeIssues()
+    run_split(board, issues, monkeypatch)
+    assert [i["labels"] for i in issues.created] == [[], []]
+
+
 def test_a_story_says_at_its_head_that_a_split_filed_it(monkeypatch):
     """Nesting is best effort, so a parent alone can't say so (crew#974)."""
     board, issues = FakeBoard([epic_card(3)]), FakeIssues()

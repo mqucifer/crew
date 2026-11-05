@@ -99,6 +99,10 @@ def decided_by_crew(result) -> list[str]:
             for repo, n in found.epics
         ]
         lines += [
+            f"- {repo}#{n}: technical debt from the design, paid alongside the Goals' work"
+            for repo, n in found.debt
+        ]
+        lines += [
             f"- {repo}: the Architect revisited the design and changed nothing (#{n})"
             for repo, n in found.unchanged
         ]
