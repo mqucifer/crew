@@ -824,10 +824,19 @@ flows.gates._declared_why:filter:f9773a2a:
   at: flows/gates.py:_declared_why
   if: 'key and reason'
   rule: check.gates.these_merged_tests_changed
+flows.gates._js_fragment_only:filter:cbb22350:
+  at: flows/gates.py:_js_fragment_only
+  if: before.get(title) != text and any((fragment.search(m.group(2)) for m in strings.finditer(text)))
+  rule: check.gates.reads_only_unreleased
 flows.gates._js_pinned:filter:86cfb7c0:
   at: flows/gates.py:_js_pinned
   if: before.get(title) != text and _JS_UNRELEASED.search(text) and any((not _structure(m.group(2))
     for m in _JS_HOLDS.finditer(text)))
+  rule: check.gates.reads_only_unreleased
+flows.gates._py_fragment_only:filter:015adaa4:
+  at: flows/gates.py:_py_fragment_only
+  if: not (name in previous and ast.dump(previous[name]) == ast.dump(node)) and uses(node, 'fragment')
+    and (not uses(node, 'changelog'))
   rule: check.gates.reads_only_unreleased
 flows.gates._py_pinned:skip:0bc5efa8:
   at: flows/gates.py:_py_pinned
@@ -885,18 +894,30 @@ flows.gates.no_changelog_entry:end:5813bad3:
   at: flows/gates.py:no_changelog_entry
   if: 'before is None'
   rule: check.gates.no_changelog_entry
-flows.gates.no_changelog_entry:end:75512e86:
-  at: flows/gates.py:no_changelog_entry
-  if: 'Counter(unreleased(after)) - Counter(unreleased(before))'
-  rule: check.gates.no_changelog_entry
 flows.gates.no_changelog_entry:end:988b1ee5:
   at: flows/gates.py:no_changelog_entry
   if: 'merged is None'
+  rule: check.gates.no_changelog_entry
+flows.gates.no_changelog_entry:end:9919e236:
+  at: flows/gates.py:no_changelog_entry
+  if: 'added'
   rule: check.gates.no_changelog_entry
 flows.gates.no_changelog_entry:end:b99b3d40:
   at: flows/gates.py:no_changelog_entry
   if: 'not shipped'
   rule: check.gates.no_changelog_entry
+flows.gates.release_collects:end:4af65b37:
+  at: flows/gates.py:release_collects
+  if: 'not target.is_file()'
+  rule: check.gates.a_release_collects_the_changelog
+flows.gates.release_collects:end:7118381a:
+  at: flows/gates.py:release_collects
+  if: found is None or found.role is not role_tasks.DEVOPS or found.kind != RELEASE
+  rule: check.gates.a_release_collects_the_changelog
+flows.gates.release_collects:end:fd2ac64d:
+  at: flows/gates.py:release_collects
+  if: 'not left and (not entries)'
+  rule: check.gates.a_release_collects_the_changelog
 flows.goal_look._epics_of:filter:8c34d0ac:
   at: flows/goal_look.py:_epics_of
   if: c.parent == goal and (c.repo or repo) == repo and (c.work_type == 'Epic') and (c.state != 'CLOSED')

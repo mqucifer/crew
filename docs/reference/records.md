@@ -334,5 +334,5 @@ filled in), and the fields it names.
 | `flows/story_problem.py:return_to_refinement` | #… sprint not cleared: … | — |
 | `flows/template.py:_propose` | …: template changes proposed: … | **`repo`** |
 | `flows/template.py:propose_changes` | …: template changes not proposed: … | **`repo`** |
-| `flows/unreleased.py:unreleased_releases` | …: [Unreleased] … | **`repo`** |
+| `flows/unreleased.py:unreleased_releases` | …: changelog entries … | **`repo`** |
 | `session/steps.py:at_once` | …: … sessions at once, … minutes | **`completion_tokens`**, `failed`, `sessions`, `step`, `tokens_per_s`, `wall_s` |

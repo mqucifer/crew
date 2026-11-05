@@ -137,21 +137,23 @@ check.gates.reads_only_unreleased:
   cases:
   - told.code_reviewer.a_test_that_checks_a_changelog
   description: At `done`, a test the branch adds or changes that reads a changelog entry only from `##
-    [Unreleased]` goes back, since a release moves the entry to its dated section and changes no test.
-    A test of the changelog's structure, its headings and their order, goes on (crew#1014).
+    [Unreleased]`, or only from its fragment in `changes/`, goes back, since a release moves the entry to
+    its dated section, deletes the fragment and changes no test. A test of the changelog's structure, its
+    headings and their order, goes on (crew#1014, crew#1010).
   messages:
-    default: 'These tests read a changelog entry only from `## [Unreleased]`:
+    default: 'These tests read a changelog entry only from `## [Unreleased]` or only from its fragment:
 
       {tests}
 
 
-      A release moves `[Unreleased]`''s entries to its dated section and changes no test, so each would
-      fail at the next release. Find the entry in whichever section holds it, and still fail if it''s
-      gone from every section.'
+      A release moves each entry into its dated section and deletes the fragments, and changes no test,
+      so each would fail at the next release. Find the entry wherever it is, in the fragments or in
+      whichever section of `CHANGELOG.md` holds it, and still fail if it''s in neither.'
   origin:
   - mqucifer/sprint-metrics#969
   - mqucifer/sprint-metrics#977
   - crew#1014
+  - crew#1010
   owner: Developer
 check.gates.the_branch_changes_nothing:
   description: At `done`, a branch that changes nothing goes on only if an existing test proves each criterion

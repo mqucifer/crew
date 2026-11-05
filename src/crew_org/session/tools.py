@@ -339,15 +339,16 @@ SPECS = [
         "Finish: the story is done. First `done` checks that each test you name for a "
         "criterion exists, that each merged test your branch changed or removed is in "
         "`changed_tests`, with why, and that a branch changing what the project ships adds "
-        "its `CHANGELOG.md` line under `## [Unreleased]`; if not, the reply says which, and "
+        "its changelog fragment, `changes/<this issue's number>.<kind>.md`, and writes "
+        "nothing under `[Unreleased]`; if not, the reply says which, and "
         "you fix that, then call `done` again. Then the crew checks your branch, and returns "
         "it if any of these fails: each acceptance criterion has a test that proves it and "
         "passes (a criterion about what a user doc says is proven by that doc); the docs that "
         "describe what you changed are updated on the same branch; each merged test you "
         "changed or removed is named here, with why; a change to anything but tests, docs and "
-        "the repository's settings has its `[Unreleased]` entry, where the project keeps a "
-        "changelog; a test that checks a changelog entry finds it in whichever section holds "
-        "it, never only `[Unreleased]`, which a release empties; an answer you add, change or "
+        "the repository's settings has its fragment, where the project keeps a changelog; a "
+        "test that checks a changelog entry finds it in its fragment or in whichever section "
+        "holds it, never only one, since a release moves it; an answer you add, change or "
         "remove is listed in `declared-changes.json`, where the project keeps one, with its "
         "`api_version` left as it is; and the project's whole "
         "checks pass. Then review and QA follow.",
@@ -408,10 +409,22 @@ SKILL_SPEC = _spec(
     {"name": S},
     ["name"],
 )
+# A release's own build of its changelog section, offered to DevOps's release Task alone
+# by `role_tasks.done_specs` (crew#1010): towncrier's command, which the model knows.
+RELEASE_SPEC = _spec(
+    "towncrier",
+    "towncrier's `build`, as the crew runs it: `build --version <X.Y.Z> --date <YYYY-MM-DD>` "
+    "writes the version's section into `CHANGELOG.md` from the fragments in `changes/`, and "
+    "any entries still under `[Unreleased]`, in Keep a Changelog's order, and deletes the "
+    "fragments, as edits. Add `--draft` to see the section and change nothing.",
+    {"command": S},
+    ["command"],
+)
 _ALL_ACCEPTED = {
     **ACCEPTED,
     **{s["function"]["name"]: s["function"]["parameters"] for s in TASK_SPECS.values()},
     "skill": SKILL_SPEC["function"]["parameters"],
+    "towncrier": RELEASE_SPEC["function"]["parameters"],
 }
 # The tools that end the session, which the loop answers, not `Tools`.
 ENDINGS = ("done", "blocked")
@@ -1315,6 +1328,67 @@ class Tools:
             rule=rule,
         )
 
+    def towncrier(self, command: str) -> Reply:
+        """`towncrier build`, by the crew's own build (`tools/changelog.py`): the version's
+        section from the fragments and what `[Unreleased]` still holds, written and the
+        fragments deleted as edits are. `--draft` only shows it."""
+        from crew_org.tools import changelog  # noqa: PLC0415
+
+        try:
+            words = shlex.split(command)
+        except ValueError:
+            words = []
+        words = words[1:] if words[:1] == ["towncrier"] else words
+        said: dict[str, str] = {}
+        rest = words[1:]
+        while rest:
+            flag, _, value = rest.pop(0).partition("=")
+            if flag in ("--draft", "--yes"):
+                said[flag] = "on"
+            elif flag in ("--version", "--date") and (value or rest):
+                said[flag] = value or rest.pop(0)
+            else:
+                said["?"] = flag
+        if words[:1] != ["build"] or "?" in said:
+            refuse("session.towncrier", "command", command=command)
+        version, date = said.get("--version", ""), said.get("--date", "")
+        if not version or not date:
+            refuse("session.towncrier", "command", command=command)
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
+            refuse("session.towncrier", "version", version=version)
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            refuse("session.towncrier", "date", date=date)
+        cfg = changelog.config_in(self.root)
+        target, rel = self._path(cfg.filename, write=True)
+        if not target.is_file():
+            refuse("session.towncrier", "no_changelog", path=rel)
+        before = self._text(target, rel)
+        if re.search(rf"^##\s+\[{re.escape(version)}\]", before, re.M):
+            refuse("session.towncrier", "released", version=version, path=rel)
+        found = changelog.fragments_in(self.root, cfg.directory)
+        built = changelog.build(before, found, version, date, cfg)
+        if not found and not built.carried:
+            refuse("session.towncrier", "nothing", directory=cfg.directory, path=rel)
+        made = f"{len(found)} fragments in `{cfg.directory}/`" + (
+            f" and {built.carried} entries left under `[Unreleased]`" if built.carried else ""
+        )
+        if "--draft" in said:
+            return Reply(
+                f"Draft only, nothing changed. From {made}:\n\n{built.section}",
+                "ok",
+                f"towncrier: draft of {version}",
+            )
+        self._write(rel, target, "Built", before, built.text)
+        for fragment in found:
+            self.delete_file(fragment.path)
+        return Reply(
+            f"Built `## [{version}] - {date}` in `{rel}` from {made}, and deleted the "
+            f"fragments.\n\n{built.section}",
+            "ok",
+            f"towncrier: built {version}",
+            {"path": rel, "paths": [rel, *(f.path for f in found)], "edit": True},
+        )
+
     def no_progress(self) -> bool:
         """The same first error in the same test after 3 runs with edits between (decision 3)."""
         failed = [r for r in self.runs if not r["ok"]][-3:]
@@ -1358,6 +1432,8 @@ class Tools:
                 return self.task_check(name)
             if name == "skill":
                 return skill(args["name"])
+            if name == "towncrier":
+                return self.towncrier(args["command"])
             refuse("session.arguments", "no_tool", tool=name, tools=", ".join(ACCEPTED))
         except Refusal as exc:
             text = str(exc)

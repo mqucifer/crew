@@ -31,6 +31,7 @@ from crew_org.flows.declared_changes import FILE as DECLARED
 from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.flows.moves import move_card
 from crew_org.llm import reraise_if_down
+from crew_org.tools import changelog
 from crew_org.tools.github_issues import IssueClient, load_trust
 from crew_org.tools.github_project import Card, ProjectClient
 from crew_org.work_types import PROJECT_LABEL, TASK
@@ -82,6 +83,8 @@ DEVOPS = TaskRole(
     scope=(
         ".github/*",
         "CHANGELOG.md",
+        # The changelog fragments the release collects and removes (crew#1010).
+        f"{changelog.DIRECTORY}/*",
         # What the answers' stories declared, which the release empties (crew#1019).
         DECLARED,
         "pyproject.toml",
@@ -296,7 +299,12 @@ def done_specs(
     may change only its scope and isn't QA'd, so on mqucifer/sprint-metrics#738 the
     Architect wrote a test outside its scope to satisfy it, and the gate sent it back.
     """
-    from crew_org.session.tools import SKILL_SPEC, SPECS, TASK_SPECS  # noqa: PLC0415
+    from crew_org.session.tools import (  # noqa: PLC0415
+        RELEASE_SPEC,
+        SKILL_SPEC,
+        SPECS,
+        TASK_SPECS,
+    )
 
     scope = ", ".join(f"`{g}`" for g in role.scope_for(repo))
     tests = covers_tests(role, repo)
@@ -311,6 +319,10 @@ def done_specs(
     if role.key in TASK_SPECS:
         at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
         specs.insert(at, copy.deepcopy(TASK_SPECS[role.key]))
+    if role is DEVOPS and kind == RELEASE:
+        # A release builds its changelog section from the fragments (crew#1010).
+        at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
+        specs.insert(at, copy.deepcopy(RELEASE_SPEC))
     if skills:
         # Only to a Task its skills are for, so another Task's tools are as they were.
         at = next(i for i, s in enumerate(specs) if s["function"]["name"] == "done")
@@ -1756,6 +1768,21 @@ def ci_services_task(
     )
 
 
+# How a release writes its changelog (crew#1010): towncrier's build, from the fragments
+# each story added, in Keep a Changelog's format. Both release Tasks say it.
+CHANGELOG_STEP = (
+    "What waits is the fragments in `changes/`, one per story or fix, and any entries "
+    "still under `[Unreleased]` from before the fragments. Build the version's section with "
+    "`towncrier build --version <X.Y.Z> --date <YYYY-MM-DD>`, the date this Task's start "
+    "says: it writes the section into `CHANGELOG.md` and deletes the fragments it used. "
+    "Don't write the section by hand."
+)
+CHANGELOG_DONE = (
+    "`CHANGELOG.md` has the new version's section, dated today, built from every fragment "
+    "and `[Unreleased]` entry, and none is left"
+)
+
+
 def epic_release_task(
     issues: IssueClient,
     board: ProjectClient,
@@ -1791,13 +1818,13 @@ def epic_release_task(
         "along the way may already have been worked: as a Task or a bug filed from a "
         "finding, or through the gate at `done` that refuses a skipped test CI runs "
         "(mqucifer/crew#860, step 4). Read the epic's stories and their pull requests first.\n\n"
-        "**Release:** release what `[Unreleased]` holds, another epic's merged entries "
-        "included (ADR 0019). The version is the one the most significant entry needs "
-        "(Keep a Changelog, SemVer), or the Product Owner's call where the epic's record "
-        "makes one. The section is dated today, as this Task's start says.\n\n" + RELEASE_STEP,
+        "**Release:** release every changelog entry that waits, another epic's merged "
+        "entries included (ADR 0019). The version is the one the most significant entry "
+        "needs (Keep a Changelog, SemVer), or the Product Owner's call where the epic's "
+        "record makes one. " + CHANGELOG_STEP + "\n\n" + RELEASE_STEP,
         done_when=[
             "CI runs every test the epic's stories added, and none it should run is skipped",
-            "`CHANGELOG.md` moves `[Unreleased]` to the new version, dated today",
+            CHANGELOG_DONE,
             "The version is bumped where the project keeps it",
             RELEASE_DONE,
         ],
@@ -1836,8 +1863,8 @@ _RELEASED = re.compile(r"^## \[(\d+\.\d+\.\d+[^\]]*)\]", re.M)
 
 
 def released_version(worktree: Path) -> str:
-    """The newest version `CHANGELOG.md` names, or "": a release moves `[Unreleased]` to
-    it, so on a release's branch that changed the changelog, it's the one released."""
+    """The newest version `CHANGELOG.md` names, or "": a release writes its section above
+    the others, so on a release's branch that changed the changelog, it's the one released."""
     try:
         text = (worktree / "CHANGELOG.md").read_text(encoding="utf-8")
     except OSError:

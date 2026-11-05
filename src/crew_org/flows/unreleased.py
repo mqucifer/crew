@@ -1,20 +1,24 @@
-"""What waits under `[Unreleased]` with no epic to release it gets a release (crew#961).
+"""What waits in a project's changelog with no epic to release it gets a release
+(crew#961).
 
 A release came only from an epic's release Task (DevOps's, one per epic). A bug has no
-epic, so its fix added a line under `## [Unreleased]` and never shipped:
-crew-presentation's eight fixes from its UX review (mqucifer/crew-presentation#197 to
-mqucifer/crew-presentation#204) sat behind v0.1.2, and its site deploys only a release.
+epic, so its fix's changelog entry never shipped: crew-presentation's eight fixes from
+its UX review (mqucifer/crew-presentation#197 to mqucifer/crew-presentation#204) sat
+behind v0.1.2, and its site deploys only a release.
+
+**What waits** is the changelog fragments in `changes/`, towncrier's, one per story or
+fix (crew#1010), and any entries still under `## [Unreleased]` from before them.
 
 **The standard:** Semantic Versioning, with releases cut in the style of Release Please
-or semantic-release: what waits under `[Unreleased]` is released without waiting for an
-epic, a PATCH when it holds only fixes (Keep a Changelog's `Fixed` and `Security`).
+or semantic-release: what waits is released without waiting for an epic, a PATCH when
+it holds only fixes (Keep a Changelog's `Fixed` and `Security`).
 
-**The rule with an epic:** an epic's release ships everything `[Unreleased]` holds
-(ADR 0019), so while an epic is in flight its release carries the fixes, and none is
-opened for them: two releases a day apart would ship the same lines twice. In flight
-means split and not yet released: a release Task open in the repository, or an open
-epic with stories under it whose release Task isn't open yet. An approved epic not yet
-split holds nothing, since it may wait weeks behind another Goal's.
+**The rule with an epic:** an epic's release ships everything that waits (ADR 0019), so
+while an epic is in flight its release carries the fixes, and none is opened for them:
+two releases a day apart would ship the same lines twice. In flight means split and not
+yet released: a release Task open in the repository, or an open epic with stories under
+it whose release Task isn't open yet. An approved epic not yet split holds nothing,
+since it may wait weeks behind another Goal's.
 
 **The same path as an epic's release:** DevOps's release Task, kind `release`, so its
 session, the Code Reviewer's release review and the Sponsor's approval are the same.
@@ -30,11 +34,11 @@ from crew_org.events import EventKind, EventSink
 from crew_org.flows import role_tasks as rt
 from crew_org.flows.declared_changes import RELEASE_DONE, RELEASE_STEP
 from crew_org.llm import reraise_if_down
+from crew_org.tools import changelog
 from crew_org.tools.github_issues import IssueClient
 from crew_org.tools.github_project import Card, ProjectClient
 
 RULE = "decision.unreleased.unreleased_releases"
-CHANGELOG = "CHANGELOG.md"
 KEY_PREFIX = "unreleased-"
 
 PATCH, MINOR, MAJOR = "PATCH", "MINOR", "MAJOR"
@@ -44,13 +48,12 @@ _FIXES = frozenset({"fixed", "security"})
 _BREAKING = frozenset({"removed"})
 
 _HEADING = re.compile(r"^##\s+\[([^\]]+)\]")
-_SECTION = re.compile(r"^###\s+(.+?)\s*$")
 _VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
 @dataclass
 class Waiting:
-    """What `[Unreleased]` holds, by its Keep a Changelog section."""
+    """What waits to be released, by its Keep a Changelog section."""
 
     entries: list[tuple[str, str]] = field(default_factory=list)
     # The newest version released, or "" for none.
@@ -64,26 +67,36 @@ class Waiting:
         return PATCH if sections <= _FIXES else MINOR
 
 
-def waiting(text: str | None) -> Waiting:
-    """Every entry under `## [Unreleased]`, however many such headings merges left, and
-    the newest version below them."""
-    found = Waiting()
-    inside, section = False, ""
+def waiting(
+    text: str | None,
+    fragments: list[changelog.Fragment] | tuple[()] = (),
+    cfg: changelog.Config | None = None,
+) -> Waiting:
+    """Every entry that waits: each fragment's, and each under a `## [Unreleased]`
+    heading, however many merges left; and the newest version released."""
+    found = Waiting(entries=changelog.unreleased(text))
     for line in (text or "").splitlines():
         heading = _HEADING.match(line)
-        if heading:
-            name = heading.group(1).strip()
-            inside = name.lower() == "unreleased"
-            if not inside and not found.released and _VERSION.match(name):
-                found.released = name
-            section = ""
-            continue
-        sub = _SECTION.match(line)
-        if sub:
-            section = sub.group(1)
-            continue
-        if inside and line.strip().startswith(("- ", "* ")):
-            found.entries.append((section, line.strip()))
+        if heading and _VERSION.match(heading.group(1).strip()):
+            found.released = heading.group(1).strip()
+            break
+    issue_format = (cfg or changelog.Config()).issue_format
+    found.entries += [
+        (changelog.KINDS[f.kind], changelog.entry(f, issue_format)) for f in fragments
+    ]
+    return found
+
+
+def fragments_at(
+    issues: IssueClient, repo: str, ref: str, cfg: changelog.Config
+) -> list[changelog.Fragment]:
+    """The fragments in `repo` at `ref`, each with its text."""
+    found = []
+    for name in sorted(issues.list_dir(repo, cfg.directory, ref)):
+        named = changelog.parse(f"{cfg.directory}/{name}", cfg.directory)
+        if named is not None:
+            text = issues.file_at(repo, named.path, ref) or ""
+            found.append(changelog.Fragment(named.path, named.issue, named.kind, text))
     return found
 
 
@@ -138,18 +151,17 @@ def _body(repo: str, found: Waiting, version: str) -> str:
         rt.DEVOPS,
         kind=rt.RELEASE,
         key=f"{KEY_PREFIX}{found.released}",
-        why=f"`{repo}`'s `[Unreleased]` holds {len(found.entries)} entries merged since "
+        why=f"`{repo}` has {len(found.entries)} changelog entries merged since "
         f"{found.released}, and no epic in flight will release them: a bug's fix has no "
         "epic. What's merged and never released reaches nobody (mqucifer/crew#961).\n\n"
         + "\n".join(entry for _, entry in found.entries),
-        work="**Release:** release what `[Unreleased]` holds, every entry above and any "
-        f"merged since, as an epic's release does (ADR 0019). {why_version} The section is "
-        "dated today, as this Task's start says. Where merges left more than one "
-        "`[Unreleased]` heading, the release gathers them into its one section, by kind.\n\n"
-        "**CI:** CI runs green on the release, with nothing skipped that it should run.\n\n"
+        work="**Release:** release every changelog entry that waits, those above and any "
+        f"merged since, as an epic's release does (ADR 0019). {why_version} "
+        + rt.CHANGELOG_STEP
+        + "\n\n**CI:** CI runs green on the release, with nothing skipped that it should run.\n\n"
         + RELEASE_STEP,
         done_when=[
-            "`CHANGELOG.md` moves every `[Unreleased]` entry to the new version, dated today",
+            rt.CHANGELOG_DONE,
             "The version is bumped where the project keeps it",
             RELEASE_DONE,
         ],
@@ -172,15 +184,17 @@ def unreleased_releases(
     repos: set[str],
     cards: list[Card],
 ) -> Unreleased:
-    """Each project whose `[Unreleased]` holds entries no epic in flight will release gets
+    """Each project with changelog entries waiting that no epic in flight will release gets
     DevOps's release Task for them, once per version it follows. What waits on an epic,
     or on a first release, is noted; what can't be read or opened is held and tried
     again next pass."""
     result = Unreleased()
     for repo in sorted(repos):
         try:
-            text = issues.file_at(repo, CHANGELOG, issues.default_branch(repo))
-            found = waiting(text)
+            branch = issues.default_branch(repo)
+            cfg = changelog.config(issues.file_at(repo, "pyproject.toml", branch))
+            text = issues.file_at(repo, cfg.filename, branch)
+            found = waiting(text, fragments_at(issues, repo, branch, cfg), cfg)
             if not found.entries:
                 continue
             why = (
@@ -190,7 +204,7 @@ def unreleased_releases(
             )
             if why:
                 result.waiting.append((repo, why))
-                sink.note(EventKind.NOTE, f"{repo}: [Unreleased] {why}", repo=repo, rule=RULE)
+                sink.note(EventKind.NOTE, f"{repo}: changelog entries {why}", repo=repo, rule=RULE)
                 continue
             full = f"{issues.owner}/{repo}"
             version = next_version(found.released, found.bump)

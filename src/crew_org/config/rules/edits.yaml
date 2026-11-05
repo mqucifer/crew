@@ -98,3 +98,17 @@ session.write_file:
   origin:
   - crew#778
   owner: Developer
+session.towncrier:
+  description: '`towncrier` builds a new version''s changelog section, from fragments or entries left
+    under `[Unreleased]`, and takes nothing but `build --version --date`, with `--draft` to look.'
+  messages:
+    command: '`towncrier {command}` isn''t a build here. It takes `build --version <X.Y.Z> --date
+      <YYYY-MM-DD>`, the date this Task''s start gives, with `--draft` to see the section first.'
+    date: '`{date}` isn''t a date: give the one this Task''s start says, as YYYY-MM-DD.'
+    no_changelog: 'There''s no `{path}` to build into.'
+    nothing: 'Nothing to release: `{directory}/` holds no fragment and `{path}` no entry under `[Unreleased]`.'
+    released: '`{path}` already has `## [{version}]`: a release takes the next version.'
+    version: '`{version}` isn''t a version: give X.Y.Z, by Semantic Versioning.'
+  origin:
+  - crew#1010
+  owner: DevOps Engineer

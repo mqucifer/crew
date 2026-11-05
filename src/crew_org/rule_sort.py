@@ -95,8 +95,15 @@ SORTED: dict[str, tuple[str, str]] = {
     "check.gates.the_branch_changes_nothing": (GATE, "`done` with an empty diff, at `done`"),
     "check.gates.these_tests_skipped": (GATE, "a skipped test CI runs, at `done`"),
     "check.gates.these_merged_tests_changed": (GATE, "changed merged tests declared, at `done`"),
-    "check.gates.no_changelog_entry": (GATE, "a story's `[Unreleased]` entry, at `done`"),
-    "check.gates.reads_only_unreleased": (GATE, "a test reading only `[Unreleased]`, at `done`"),
+    "check.gates.no_changelog_entry": (GATE, "a story's changelog fragment, at `done`"),
+    "check.gates.reads_only_unreleased": (
+        GATE,
+        "a test reading only `[Unreleased]` or its fragment, at `done`",
+    ),
+    "check.gates.a_release_collects_the_changelog": (
+        GATE,
+        "a release leaving a fragment or an `[Unreleased]` entry, at `done`",
+    ),
     "check.gates.a_story_sets_the_api_version": (GATE, "a story moving `api_version`, at `done`"),
     "check.gates.a_release_clears_the_declared_changes": (
         GATE,
@@ -137,6 +144,7 @@ SORTED: dict[str, tuple[str, str]] = {
         "the repository or runs a program: the reply lists what runs",
     ),
     "session.restore": (FEEDBACK, "no `--source` or files, or a file that can't be written"),
+    "session.towncrier": (FEEDBACK, "anything but a build of a new version, or nothing to build"),
     # --- settings ------------------------------------------------------------------------
     "config.org.sandbox.engine": (WORKSPACE, "the container's engine"),
     "config.org.sandbox.image": (WORKSPACE, "the default image, before a project's own"),

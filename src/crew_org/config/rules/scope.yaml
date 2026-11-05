@@ -198,7 +198,7 @@ form.Story.not_the_release:
   messages:
     default: 'This story cuts the release. The epic''s release is DevOps''s Task, opened when the epic
       is split (ADR 0034): leave it out of the stories. A story that changes what a user sees adds its
-      `[Unreleased]` changelog entry instead (ADR 0019).'
+      changelog fragment instead (ADR 0019).'
   owner: Business Analyst
   told_in: Story
 form.Story.on_the_scale:
