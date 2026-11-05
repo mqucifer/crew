@@ -466,6 +466,12 @@ decision.sprint.plan_sprint:
 decision.sprint.start_sprint:
 decision.strain.strained:
 delivery.conflict_with_main:
+delivery.conflict_with_own_branch:
+  description: A rework with an open pull request fetches and merges its branch on GitHub after main,
+    whatever it resumed from, so its push goes on top of what the review read and is never forced.
+    Conflicts are left in the files in diff3 style, and its session is told the files and resolves them.
+  origin:
+  - crew#1035
 delivery.open_pull_request:
 delivery.pull_request_failed:
 delivery.push_failed:

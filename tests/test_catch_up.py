@@ -99,3 +99,12 @@ def test_a_conflict_is_aborted_and_names_the_paths(repos):
     assert raised.value.files == ["app.py"]
     assert git(clone, "rev-parse", "HEAD") == head
     assert git(clone, "status", "--porcelain") == ""
+
+
+def test_a_branch_github_doesn_t_have_takes_in_nothing(repos):
+    """A rework's own branch is fetched before it's merged (crew#1035); none on GitHub,
+    nothing to take in."""
+    _, clone, ws = repos
+    git(clone, "checkout", "-q", "-b", "feat/33-new")
+    ws.branch = "feat/33-new"
+    assert ws.catch_up_with_own() == []

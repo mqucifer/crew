@@ -117,7 +117,12 @@ NO_PROMPT = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "GCM_INTERACTIVE": "
 
 
 class GitError(RuntimeError):
-    pass
+    """A git command that failed. `output` is git's whole message: the error's own text
+    is cut, and with a long branch name the cut fell before a push's reason (crew#1035)."""
+
+    def __init__(self, message: str = "", output: str = "") -> None:
+        super().__init__(message)
+        self.output = output
 
 
 class MergeConflict(GitError):
@@ -201,8 +206,16 @@ def _run(args: list[str], *, cwd: Path | None = None, token: str | None = None) 
     )
     if result.returncode != 0:
         # git's own words only: never the environment, which carries the credential.
-        raise GitError(f"git {args[0]} failed: {result.stderr.strip()[:300]}")
+        said = result.stderr.strip()
+        raise GitError(f"git {args[0]} failed: {said[:300]}", said)
     return result.stdout.strip()
+
+
+def refusal(error: BaseException) -> str:
+    """The lines of a refused push that say why, each whole: git's `! [rejected] <branch>
+    -> <branch> (fetch first)`. Empty when it has none, as for a failure before the push."""
+    said = getattr(error, "output", "") or str(error)
+    return "\n".join(line.strip() for line in said.splitlines() if line.lstrip().startswith("!"))
 
 
 # What the crew never commits in any project, whatever its `.gitignore` says:
@@ -646,7 +659,32 @@ class Workspace:
         _run([*identity, "commit", "--no-edit"], cwd=self.path)
         return files
 
-    def merge_leaving_conflicts(self) -> list[str]:
+    def catch_up_with_own(self) -> list[str]:
+        """Merge the branch's copy on GitHub, `origin/<branch>`, into the open worktree.
+
+        A rework resumed from the clone's checkpoint can lack commits its pull request
+        has: mqucifer/crew-presentation#307's earlier attempt pushed two that the clone's
+        branch never took in, and the rework's push, never forced over a review, was
+        refused (crew#1035). Fetched, then merged as main is, and its conflicts left in
+        the files for the session, as `merge_leaving_conflicts` leaves main's. Empty when
+        it merged cleanly, or GitHub has no such branch.
+        """
+        if self.path is None or self.branch is None:
+            raise GitError("no worktree open")
+        ref = f"refs/remotes/origin/{self.branch}"
+        try:
+            _run(
+                ["fetch", "origin", f"+refs/heads/{self.branch}:{ref}"],
+                cwd=self.path,
+                token=self.token,
+            )
+        except GitError as exc:
+            if "couldn't find remote ref" not in exc.output:
+                raise
+            return []
+        return self.merge_leaving_conflicts(f"origin/{self.branch}")
+
+    def merge_leaving_conflicts(self, ref: str = "origin/HEAD") -> list[str]:
         """Merge the default branch into the open worktree, its conflicts left in the files.
 
         For a session that resolves them (crew#933): each conflict in diff3 style, so it
@@ -665,7 +703,7 @@ class Workspace:
         ]
         try:
             _run(
-                [*identity, "-c", "merge.conflictStyle=diff3", "merge", "--no-edit", "origin/HEAD"],
+                [*identity, "-c", "merge.conflictStyle=diff3", "merge", "--no-edit", ref],
                 cwd=self.path,
             )
             return []
