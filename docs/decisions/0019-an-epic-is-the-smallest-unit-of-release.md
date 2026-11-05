@@ -33,13 +33,22 @@ Two problems showed up with it (crew#816):
   epic, so a completed epic is never reopened (ADR 0034, crew#839). The Product Owner
   sets the SemVer bump from what the epic changes. The Sponsor approves the release
   PR: the Task's pull request merges only after their approving review (crew#839).
-- **A release ships what `[Unreleased]` holds** (Sponsor, 2026-10-20), including
-  another epic's merged stories. This is trunk-based development: every merged story
+- **A release ships every changelog entry that waits** (Sponsor, 2026-10-20),
+  including another epic's merged stories. This is trunk-based development: every merged story
   has passed review, QA and CI. The version is the one the most significant entry
   needs (Keep a Changelog, SemVer), not the one planned at the split if more has
   landed since.
-- **A story that changes what a user sees adds its `[Unreleased]` changelog entry,**
-  as it adds its documentation criterion, so a release assembles what's there.
+- **A story that changes what a user sees adds its changelog fragment** (the Sponsor,
+  2026-11-03, crew#1010), as it adds its documentation criterion, so a release
+  assembles what's there. The standards are towncrier for the fragments and Keep a
+  Changelog 1.1.0 for `CHANGELOG.md`. A story or a bug adds one file,
+  `changes/<issue>.<kind>.md`, `<kind>` a Keep a Changelog section in lower case,
+  holding its line, and never writes `CHANGELOG.md`. Only the release writes it: its
+  Task builds the version's section with `towncrier build --version --date`, which the
+  crew runs itself, collecting every fragment, and any entry still under
+  `[Unreleased]` from before the switch, then deleting the fragments. A story's test of
+  its entry finds it in its fragment or in whichever section holds it. Each project
+  the crew releases declares the same in its `[tool.towncrier]`.
 - **A release story is dated by the crew,** with the real day. The model never
   supplies a date or a version on its own.
 - **A story declares the answers it changes; the release moves api_version once**
@@ -85,3 +94,8 @@ Two problems showed up with it (crew#816):
   the release moves `api_version` once and empties it. Decided by the Sponsor at the
   Sprint 40 retro, after sprint-metrics' api_version went from "10" to "16" in a day
   and its additive check was loosened for good (crew#1019).
+- 2026-11-04: stories write towncrier changelog fragments in place of `[Unreleased]`
+  entries, and the release builds its section from them, in Keep a Changelog's format.
+  Decided by the Sponsor on 2026-11-03, option A of crew#1010, after `CHANGELOG.md`
+  conflicted in 9 rebuilds in 10 days and tests pinned to `[Unreleased]` broke two
+  releases (crew#1010).

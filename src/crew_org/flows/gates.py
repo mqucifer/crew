@@ -18,8 +18,9 @@ used to run on an answer before it was applied:
 - **no test CI runs skipped** (crew#860): one the branch adds or changes that skipped
   for a reason the project doesn't declare CI-only goes back. One already merged isn't
   the Developer's: it's DevOps's, once the project has a workspace file.
-- **the changelog entry** (crew#816): a story or a bug that changes what the project
-  ships adds a line under `## [Unreleased]`, since a release ships what it holds.
+- **the changelog entry** (crew#816, crew#1010): a story or a bug that changes what the
+  project ships adds its towncrier fragment, `changes/<n>.<kind>.md`, and writes nothing
+  under `[Unreleased]`; a release leaves no fragment behind.
 
 Every gate runs, and every finding goes back together, since a new session starts
 from all of them (P2). A test per criterion and the docs aren't mechanical yet: review
@@ -49,7 +50,7 @@ from crew_org.profiles import _TITLE, profile_for
 from crew_org.project import ProjectRecord
 from crew_org.rulebook import says
 from crew_org.session.tools import ACCEPTED
-from crew_org.tools import bounds, regression, reproduction, services
+from crew_org.tools import bounds, changelog, regression, reproduction, services
 from crew_org.tools.ast_edit import definitions
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, check, shown_test
@@ -226,6 +227,7 @@ def at_done(
     _declared_tests(worktree, merged, paths, said, story, verdict)
     verdict.findings += no_changelog_entry(worktree, card)
     verdict.findings += declared_changes(worktree, card, story)
+    verdict.findings += release_collects(worktree, story)
     if merged is not None:
         verdict.findings += reads_only_unreleased(worktree, merged, paths)
     verdict.check = run_checks(worktree)
@@ -531,12 +533,12 @@ def one_outcome(worktree: Path, said: dict[str, Any]) -> list[Finding]:
 
 
 # What a release ships, said by what it doesn't (crew#816): the tests, the docs and the
-# repository's own settings change nothing a user runs. The changelog is the entry.
-CHANGELOG = "CHANGELOG.md"
+# repository's own settings change nothing a user runs. The changelog's fragment is the
+# entry (crew#1010).
+CHANGELOG = changelog.FILENAME
 NOT_SHIPPED_DIRS = ("docs/", ".github/", ".crew/", ".devcontainer/")
 NOT_SHIPPED_SUFFIXES = (".md", ".rst")
 NOT_SHIPPED_FILES = frozenset({".gitignore", ".gitattributes", ".dockerignore"})
-_HEADING = re.compile(r"^##\s+(.*)$")
 
 
 def ships(path: str) -> bool:
@@ -551,28 +553,16 @@ def ships(path: str) -> bool:
     )
 
 
-def unreleased(text: str | None) -> list[str]:
-    """The entries under a changelog's `## [Unreleased]`, one per list item."""
-    found: list[str] = []
-    inside = False
-    for line in (text or "").splitlines():
-        heading = _HEADING.match(line)
-        if heading:
-            inside = heading.group(1).strip().lower().startswith("[unreleased]")
-            continue
-        if inside and line.strip().startswith(("- ", "* ")):
-            found.append(line.strip())
-    return found
-
-
 def no_changelog_entry(
     worktree: Path, card: Card | None = None, which: str = "default"
 ) -> list[Finding]:
-    """A story or a bug that changes what the project ships adds its `[Unreleased]` entry
-    (the Sponsor, 2026-10-20; crew#816, ADR 0019).
+    """A story or a bug that changes what the project ships adds its changelog fragment,
+    and writes nothing under `[Unreleased]` (the Sponsor, 2026-10-20 and 2026-11-03;
+    crew#816, crew#1010, ADR 0019).
 
-    A release ships what `[Unreleased]` holds, so a story that adds nothing ships
-    unlisted. Not a role's Task: DevOps's release moves the entries. Not a project with no
+    A release ships what the fragments hold, so a story that adds none ships unlisted,
+    and one that edits `CHANGELOG.md` conflicts with every release cut while it's in
+    flight. Not a role's Task: DevOps's release builds the section. Not a project with no
     changelog: there's nothing to add to. `which` is the message, the gate's or `done`'s.
     """
     if card is not None and (role_tasks.role_of(card) or card.work_type not in (STORY, BUG)):
@@ -580,15 +570,37 @@ def no_changelog_entry(
     merged = regression.merged_base(worktree)
     if merged is None:
         return []
-    before = merged.text(CHANGELOG)
+    cfg = changelog.config(merged.text("pyproject.toml"))
+    before = merged.text(cfg.filename)
     if before is None:
         return []
-    shipped = [p for p in reproduction._changed(worktree, merged.sha) if ships(p)]
+    target = worktree / cfg.filename
+    after = target.read_text(encoding="utf-8", errors="ignore") if target.is_file() else None
+    if Counter(changelog.unreleased(after)) - Counter(changelog.unreleased(before)):
+        return [
+            Finding(
+                "check.gates.no_changelog_entry",
+                says(
+                    "check.gates.no_changelog_entry",
+                    "unreleased",
+                    path=cfg.filename,
+                    directory=cfg.directory,
+                ),
+            )
+        ]
+    changed = reproduction._changed(worktree, merged.sha)
+    shipped = [p for p in changed if ships(p)]
     if not shipped:
         return []
-    target = worktree / CHANGELOG
-    after = target.read_text(encoding="utf-8", errors="ignore") if target.is_file() else None
-    if Counter(unreleased(after)) - Counter(unreleased(before)):
+    added = [
+        p
+        for p in changed
+        if changelog.parse(p, cfg.directory) is not None
+        and merged.text(p) is None
+        and (worktree / p).is_file()
+        and (worktree / p).read_text(encoding="utf-8", errors="ignore").strip()
+    ]
+    if added:
         return []
     return [
         Finding(
@@ -596,8 +608,40 @@ def no_changelog_entry(
             says(
                 "check.gates.no_changelog_entry",
                 which,
+                directory=cfg.directory,
                 paths=", ".join(f"`{p}`" for p in shipped[:5])
                 + (f" and {len(shipped) - 5} more" if len(shipped) > 5 else ""),
+            ),
+        )
+    ]
+
+
+def release_collects(worktree: Path, story: str) -> list[Finding]:
+    """A release leaves no fragment and no `[Unreleased]` entry: its section holds them
+    all (crew#1010). One left would ship again, in the next release's notes."""
+    found = role_tasks.marked(story)
+    if found is None or found.role is not role_tasks.DEVOPS or found.kind != RELEASE:
+        return []
+    cfg = changelog.config_in(worktree)
+    target = worktree / cfg.filename
+    if not target.is_file():
+        return []
+    left = [f.path for f in changelog.fragments_in(worktree, cfg.directory)]
+    entries = changelog.unreleased(target.read_text(encoding="utf-8", errors="ignore"))
+    if not left and not entries:
+        return []
+    what = [f"`{p}`" for p in left[:5]] + ([f"and {len(left) - 5} more"] if len(left) > 5 else [])
+    if entries:
+        what.append(
+            f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} under `[Unreleased]`"
+        )
+    return [
+        Finding(
+            "check.gates.a_release_collects_the_changelog",
+            says(
+                "check.gates.a_release_collects_the_changelog",
+                left=", ".join(what),
+                path=cfg.filename,
             ),
         )
     ]
@@ -717,17 +761,19 @@ def reads_only_unreleased(
     worktree: Path, merged: regression.Merged, paths: list[str]
 ) -> list[Finding]:
     """Each test the branch adds or changes that reads a changelog entry only from
-    `## [Unreleased]` (crew#1014).
+    `## [Unreleased]` (crew#1014), or only from its own fragment (crew#1010).
 
-    A release moves `[Unreleased]`'s entries to its dated section and changes no test, so
-    such a test fails at the next release: sprint-metrics' 4.5.0 failed on two in a day
-    (mqucifer/sprint-metrics#969, mqucifer/sprint-metrics#977). Read from the test's code,
-    not run: a test that finds the `[Unreleased]` section, by a string naming it or a
-    helper in its file that returns it, and checks that what it found holds a string.
-    A string that's a heading or a subheading's name is the changelog's structure, which a
-    release keeps, so a test of that (that `[Unreleased]` comes first, its subheadings'
-    order) goes on.
+    A release moves the entries to its dated section, deletes the fragments and changes
+    no test, so such a test fails at the next release: sprint-metrics' 4.5.0 failed on
+    two in a day (mqucifer/sprint-metrics#969, mqucifer/sprint-metrics#977). Read from
+    the test's code, not run: a test that finds the `[Unreleased]` section, by a string
+    naming it or a helper in its file that returns it, and checks that what it found
+    holds a string. A string that's a heading or a subheading's name is the changelog's
+    structure, which a release keeps, so a test of that (that `[Unreleased]` comes first,
+    its subheadings' order) goes on. A test naming a fragment's file, itself or through
+    a name or a helper, that never reads the changelog, is one that reads it alone.
     """
+    fragment = _fragment_pattern(changelog.config_in(worktree).directory)
     pinned: list[str] = []
     for path in paths:
         if not profile_for(path).is_test_path(path) or not (worktree / path).is_file():
@@ -735,9 +781,10 @@ def reads_only_unreleased(
         now = (worktree / path).read_text(encoding="utf-8", errors="ignore")
         was = merged.text(path) or ""
         if path.endswith(".py"):
-            pinned += [f"{path}::{name}" for name in _py_pinned(now, was)]
+            found = _py_pinned(now, was) + _py_fragment_only(now, was, fragment)
         else:
-            pinned += [f"{path}::{title}" for title in _js_pinned(now, was)]
+            found = _js_pinned(now, was) + _js_fragment_only(now, was, fragment)
+        pinned += [f"{path}::{name}" for name in dict.fromkeys(found)]
     if not pinned:
         return []
     return [
@@ -749,6 +796,92 @@ def reads_only_unreleased(
             ),
             count=len(pinned),
         )
+    ]
+
+
+def _fragment_pattern(directory: str) -> re.Pattern[str]:
+    """A string naming a changelog fragment's file: a Markdown file in its folder, or a
+    fragment's own name. Not the folder alone, which a test reading every fragment and
+    the changelog names too."""
+    kinds = "|".join(changelog.KINDS)
+    return re.compile(
+        rf"(?:^|/){re.escape(directory)}/[^/\s]+\.md$|^\+?[^/\s]*\.(?:{kinds})(?:\.\d+)?\.md$"
+    )
+
+
+def _says(node: ast.AST, pattern: re.Pattern[str] | str) -> bool:
+    """Does `node` hold a string constant matching `pattern`, or naming `pattern`'s text?"""
+    for n in ast.walk(node):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            if isinstance(pattern, str):
+                if pattern in n.value.lower():
+                    return True
+            elif pattern.search(n.value):
+                return True
+    return False
+
+
+def _py_fragment_only(now: str, was: str, fragment: re.Pattern[str]) -> list[str]:
+    """The Python tests in `now`, added or changed since `was`, that read a fragment's
+    file and never the changelog: by a string, a module-level name or a helper."""
+    try:
+        tree = ast.parse(now)
+    except SyntaxError:
+        return []
+    reads: dict[str, set[str]] = {"fragment": set(), "changelog": set()}
+
+    def uses(node: ast.AST, what: str) -> bool:
+        said = fragment if what == "fragment" else "changelog"
+        return _says(node, said) or any(
+            (isinstance(n, ast.Name) and n.id in reads[what])
+            or (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id in reads[what]
+            )
+            for n in ast.walk(node)
+        )
+
+    while True:
+        before = {k: len(v) for k, v in reads.items()}
+        for node in tree.body:
+            for what in reads:
+                if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+                    if uses(node.value, what):
+                        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                        reads[what].update(
+                            n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)
+                        )
+                elif (
+                    isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                    and not node.name.startswith("test")
+                    and uses(node, what)
+                ):
+                    reads[what].add(node.name)
+        if {k: len(v) for k, v in reads.items()} == before:
+            break
+    previous = _tests_in(was) if was else {}
+    return [
+        name
+        for name, node in _tests_in(now).items()
+        if not (name in previous and ast.dump(previous[name]) == ast.dump(node))
+        and uses(node, "fragment")
+        and not uses(node, "changelog")
+    ]
+
+
+def _js_fragment_only(now: str, was: str, fragment: re.Pattern[str]) -> list[str]:
+    """The tests in a file in another language, added or changed since `was`, that name a
+    fragment's file, in a file that never names the changelog. Read as text (crew#404)."""
+    if "changelog" in now.lower():
+        return []
+    strings = re.compile(r"""(['"`])([^'"`\n]*)\1""")
+    before = _js_tests(was)
+    return [
+        title
+        for title, text in _js_tests(now).items()
+        if before.get(title) != text
+        and any(fragment.search(m.group(2)) for m in strings.finditer(text))
     ]
 
 

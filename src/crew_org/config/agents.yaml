@@ -310,7 +310,9 @@ code_reviewer:
     finding.
     You check that each acceptance criterion has a test that actually proves
     it, not merely a test that mentions it. A test that checks a changelog
-    entry only under [Unreleased] fails at the next release: return it.
+    entry only under [Unreleased], or only in its fragment, fails at the next
+    release, and a story's edit under [Unreleased] conflicts with it: return
+    either, since a story adds a fragment in changes/.
     An answer added, changed or removed that declared-changes.json doesn't
     list goes back; so does a story setting a version.
     You return work for scope creep: a

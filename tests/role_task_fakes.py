@@ -111,6 +111,14 @@ class Issues:
     def file_at(self, repo: str, path: str, ref: str) -> str | None:
         return self.files.get(path)
 
+    def list_dir(self, repo: str, path: str, ref: str) -> list[str]:
+        inside = f"{path.rstrip('/')}/"
+        return [
+            name.removeprefix(inside)
+            for name in self.files
+            if name.startswith(inside) and "/" not in name.removeprefix(inside)
+        ]
+
     def default_branch(self, repo: str) -> str:
         return "main"
 

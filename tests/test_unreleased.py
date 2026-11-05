@@ -1,4 +1,5 @@
-"""What waits under `[Unreleased]` with no epic to release it gets a release (crew#961)."""
+"""What waits in a changelog with no epic to release it gets a release (crew#961): its
+fragments (crew#1010), and what the old way left under `[Unreleased]`."""
 
 from __future__ import annotations
 
@@ -96,6 +97,71 @@ def test_fixes_waiting_with_no_epic_get_devops_s_release_task_as_a_patch(tmp_pat
     opened = [e for e in events(tmp_path) if e["kind"] == "role_task.opened"]
     assert opened[0]["detail"]["rule"] == unreleased.RULE
     assert opened[0]["detail"]["bump"] == "PATCH"
+
+
+# The same project once set up for towncrier's fragments (crew#1010).
+SET_UP = """# Changelog
+
+<!-- towncrier release notes start -->
+
+## [0.1.2] - 2026-10-17
+
+### Added
+
+- Each row of the attempt chart links to its story (mqucifer/cp#130)
+"""
+TOWNCRIER = '[tool.towncrier]\nissue_format = "mqucifer/cp#{issue}"\n'
+
+
+def test_fixes_waiting_as_fragments_get_the_same_release(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.files.update(
+        {
+            "CHANGELOG.md": SET_UP,
+            "pyproject.toml": TOWNCRIER,
+            "changes/README.md": "One file per change.",
+            "changes/176.fixed.md": "The stats row renders an em dash for a missing value\n",
+            "changes/+css.fixed.md": "Story pages load the site stylesheet\n",
+        }
+    )
+    assert _run(issues, board, s).opened == [("cp", 901)]
+    task = issues.issues[901]
+    assert task["title"] == "Release 0.1.3 of mqucifer/cp's unreleased changes"
+    assert "PATCH" in task["body"] and "2 changelog entries" in task["body"]
+    assert (
+        "- The stats row renders an em dash for a missing value (mqucifer/cp#176)" in task["body"]
+    )
+    assert "- Story pages load the site stylesheet\n" in task["body"]
+    assert "`towncrier build --version <X.Y.Z> --date <YYYY-MM-DD>`" in task["body"]
+
+
+def test_an_added_fragment_makes_it_a_minor(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.files.update({"CHANGELOG.md": SET_UP, "changes/177.added.md": "A journey strip\n"})
+    _run(issues, board, s)
+    assert issues.issues[901]["title"] == "Release 0.2.0 of mqucifer/cp's unreleased changes"
+
+
+def test_the_switch_over_counts_both(tmp_path):
+    """A fix merged the old way and one merged as a fragment: one release, for both."""
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.files.update(
+        {
+            "CHANGELOG.md": FIXES,
+            "pyproject.toml": TOWNCRIER,
+            "changes/305.fixed.md": "The first-attempt rate prints its unit\n",
+        }
+    )
+    _run(issues, board, s)
+    body = issues.issues[901]["body"]
+    assert "3 changelog entries" in body
+    assert "em dash" in body and "stylesheet" in body and "(mqucifer/cp#305)" in body
+
+
+def test_nothing_in_the_folder_but_its_readme_opens_nothing(tmp_path):
+    issues, board, s = Issues(), Board(), sink(tmp_path)
+    issues.files.update({"CHANGELOG.md": SET_UP, "changes/README.md": "One file per change."})
+    assert _run(issues, board, s).opened == []
 
 
 def test_it_is_opened_once_for_what_waits_after_a_version(tmp_path):

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from crew_org.flows import gates
+from crew_org.flows import gates, role_tasks
 from crew_org.tools import regression, reproduction
 from crew_org.tools.github_project import Card
 from crew_org.tools.workspace import CheckResult, CommandResult, check
@@ -518,20 +518,24 @@ def test_done_checks_the_tests_it_names_exist_and_says_write_one_first(repo):
     assert gates.missing_named_tests(repo, done()) == []
 
 
-# --- every story adds its own `[Unreleased]` entry (crew#816, ADR 0019) ---------
+# --- every story adds its own changelog fragment (crew#816, crew#1010) -----------------------
 
+# A project set up for towncrier's fragments: what waits is in `changes/`, and only a
+# release writes `CHANGELOG.md`.
 CHANGELOG = (
-    "# Changelog\n\n## [Unreleased]\n\n### Added\n\n### Changed\n\n### Fixed\n\n"
-    "- An entry another story added\n\n### Removed\n\n"
+    "# Changelog\n\n<!-- towncrier release notes start -->\n\n"
     "## [1.3.3] - 2026-10-19\n\n### Fixed\n\n- A released entry\n"
 )
 
 
 @pytest.fixture
 def kept(repo: Path) -> Path:
-    """The same project, keeping a changelog."""
+    """The same project, keeping a changelog, with another story's fragment merged."""
     git(repo, "checkout", "-q", "main")
     (repo / "CHANGELOG.md").write_text(CHANGELOG)
+    (repo / "changes").mkdir()
+    (repo / "changes/README.md").write_text("One file per change.\n")
+    (repo / "changes/661.added.md").write_text("An entry another story added\n")
     git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
     git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "changelog")
     git(repo, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
@@ -539,31 +543,69 @@ def kept(repo: Path) -> Path:
     return repo
 
 
-def _entry(repo: Path, line: str, under: str = "### Changed\n\n") -> None:
-    text = (repo / "CHANGELOG.md").read_text()
-    (repo / "CHANGELOG.md").write_text(text.replace(under, f"{under}{line}\n", 1))
+def _fragment(repo: Path, name: str = "663.changed.md", text: str = "Uncapped\n") -> None:
+    (repo / "changes").mkdir(exist_ok=True)
+    (repo / "changes" / name).write_text(text)
 
 
 def _rules(repo: Path, work_type: str = "Story") -> list[str]:
     return [f.rule for f in gates.no_changelog_entry(repo, card(work_type))]
 
 
-def test_a_story_that_ships_a_change_and_adds_no_entry_goes_back(kept):
+def test_a_story_that_ships_a_change_and_adds_no_fragment_goes_back(kept):
     uncap(kept)
     (finding,) = gates.no_changelog_entry(kept, card())
     assert finding.rule == "check.gates.no_changelog_entry"
-    assert f"`{MODULE}`" in finding.says and "## [Unreleased]" in finding.says
+    assert f"`{MODULE}`" in finding.says and "`changes/<n>.<kind>.md`" in finding.says
 
 
-def test_its_entry_under_unreleased_lets_it_through(kept):
+def test_its_fragment_lets_it_through(kept):
     uncap(kept)
-    _entry(kept, "- The escalation rate is no longer capped at 100%")
+    _fragment(kept)
     assert _rules(kept) == []
 
 
-def test_an_entry_under_a_released_version_isn_t_one(kept):
+def test_a_fragment_with_no_issue_or_with_a_counter_is_one(kept):
     uncap(kept)
-    _entry(kept, "- Slipped in late", under="## [1.3.3] - 2026-10-19\n\n### Fixed\n\n")
+    _fragment(kept, "+uncap.fixed.md")
+    assert _rules(kept) == []
+    (kept / "changes/+uncap.fixed.md").unlink()
+    _fragment(kept, "663.fixed.2.md")
+    assert _rules(kept) == []
+
+
+def test_a_file_that_isnt_a_fragment_or_is_empty_isnt_one(kept):
+    uncap(kept)
+    for name, text in (("663.md", "Uncapped\n"), ("663.improved.md", "Uncapped\n")):
+        _fragment(kept, name, text)
+    _fragment(kept, "663.changed.md", "\n")
+    assert _rules(kept) == ["check.gates.no_changelog_entry"]
+
+
+def test_changing_a_merged_fragment_isnt_adding_one(kept):
+    uncap(kept)
+    _fragment(kept, "661.added.md", "Reworded\n")
+    assert _rules(kept) == ["check.gates.no_changelog_entry"]
+
+
+def test_an_entry_written_into_changelog_goes_back_with_or_without_a_fragment(kept):
+    """The old way, which conflicted with every release: the Code Reviewer refuses it
+    too, and the gate catches it first."""
+    uncap(kept)
+    _fragment(kept)
+    (kept / "CHANGELOG.md").write_text(
+        CHANGELOG.replace(
+            "<!-- towncrier release notes start -->\n",
+            "<!-- towncrier release notes start -->\n\n## [Unreleased]\n\n### Changed\n\n"
+            "- Uncapped\n",
+        )
+    )
+    (finding,) = gates.no_changelog_entry(kept, card())
+    assert finding.rule == "check.gates.no_changelog_entry"
+    assert "`[Unreleased]`" in finding.says and "`changes/" in finding.says
+    # Even on a branch that ships nothing: a docs story writing the old way.
+    git(kept, "checkout", "-q", "--", MODULE, TESTS)
+    (kept / "changes/663.changed.md").unlink()
     assert _rules(kept) == ["check.gates.no_changelog_entry"]
 
 
@@ -574,7 +616,7 @@ def test_tests_docs_and_settings_ship_nothing(kept):
     assert _rules(kept) == []
 
 
-def test_a_bug_adds_its_entry_and_a_task_doesn_t(kept):
+def test_a_bug_adds_its_fragment_and_a_task_doesn_t(kept):
     uncap(kept)
     assert _rules(kept, "Bug") == ["check.gates.no_changelog_entry"]
     task = card("Task").model_copy(update={"labels": frozenset({"role:devops"})})
@@ -586,14 +628,16 @@ def test_a_project_with_no_changelog_is_not_asked_for_one(repo):
     assert _rules(repo) == []
 
 
-def test_a_story_adding_the_unreleased_section_with_its_entry_counts(kept):
-    (kept / "CHANGELOG.md").write_text("# Changelog\n\n## [1.3.3] - 2026-10-19\n")
-    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "none open")
+def test_the_folder_comes_from_the_projects_towncrier_setup(kept):
+    (kept / "pyproject.toml").write_text('[tool.towncrier]\ndirectory = "newsfragments"\n')
+    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    git(kept, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "setup")
     git(kept, "update-ref", "refs/remotes/origin/HEAD", "HEAD")
     uncap(kept)
-    (kept / "CHANGELOG.md").write_text(
-        "# Changelog\n\n## [Unreleased]\n\n### Changed\n\n- Uncapped\n\n## [1.3.3] - 2026-10-19\n"
-    )
+    _fragment(kept)
+    assert _rules(kept) == ["check.gates.no_changelog_entry"]
+    (kept / "newsfragments").mkdir()
+    (kept / "newsfragments/663.changed.md").write_text("Uncapped\n")
     assert _rules(kept) == []
 
 
@@ -603,6 +647,53 @@ def test_the_gate_sends_it_back_and_done_says_so_first(kept):
     assert "check.gates.no_changelog_entry" in [f.rule for f in verdict.findings]
     (said,) = gates.no_changelog_entry(kept, which="done")
     assert said.says.startswith("Your branch changes what the project ships")
+
+
+# --- a release collects every fragment (crew#1010) ---------------------------------------------
+
+RELEASE_STORY = role_tasks.render(
+    role_tasks.DEVOPS,
+    kind=role_tasks.RELEASE,
+    key="epic-650",
+    why="Epic #650 was split.",
+    work="Release it.",
+    done_when=["Released"],
+)
+
+
+def _release_rules(repo: Path) -> list[str]:
+    return [f.rule for f in gates.release_collects(repo, RELEASE_STORY)]
+
+
+def test_a_release_built_from_the_fragments_goes_on(kept):
+    from crew_org.session.tools import Tools
+
+    reply = Tools(kept, None, SimpleNamespace(verify=[])).call(
+        "towncrier", {"command": "build --version 1.4.0 --date 2026-11-04"}
+    )
+    assert reply.kind == "ok", reply.text
+    assert _release_rules(kept) == []
+
+
+def test_a_release_that_leaves_a_fragment_or_an_unreleased_entry_goes_back(kept):
+    text = CHANGELOG.replace(
+        "## [1.3.3]", "## [1.4.0] - 2026-11-04\n\n### Added\n\n- x\n\n## [1.3.3]"
+    )
+    (kept / "CHANGELOG.md").write_text(text)
+    (finding,) = gates.release_collects(kept, RELEASE_STORY)
+    assert finding.rule == "check.gates.a_release_collects_the_changelog"
+    assert "`changes/661.added.md`" in finding.says and "towncrier build" in finding.says
+    (kept / "changes/661.added.md").unlink()
+    assert _release_rules(kept) == []
+    (kept / "CHANGELOG.md").write_text(
+        text.replace("## [1.4.0]", "## [Unreleased]\n\n### Fixed\n\n- left\n\n## [1.4.0]")
+    )
+    (finding,) = gates.release_collects(kept, RELEASE_STORY)
+    assert "1 entry under `[Unreleased]`" in finding.says
+
+
+def test_only_a_release_is_asked(kept):
+    assert gates.release_collects(kept, "**Work** Uncap the rate.") == []
 
 
 # --- a deletion is a change the gate sees (crew#839) -------------------------------------------
@@ -775,7 +866,7 @@ def test_a_test_reading_an_entry_only_from_unreleased_goes_back_by_name(kept):
     assert finding.count == 2
     for name in ("test_unreleased_added_names_session_epics", "test_changelog_records_to_date"):
         assert f"`{CHANGELOG_TESTS}::{name}`" in finding.says
-    assert "whichever section" in finding.says and "every section" in finding.says
+    assert "whichever section" in finding.says and "in neither" in finding.says
     verdict = at_done(kept, done())
     assert "check.gates.reads_only_unreleased" in [f.rule for f in verdict.findings]
 
