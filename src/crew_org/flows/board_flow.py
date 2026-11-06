@@ -1520,7 +1520,8 @@ def render_story_body(
     ]
     for i, ac in enumerate(story.acceptance_criteria, 1):
         lines += [
-            f"{i}. **Given** {ac.given}",
+            f"{i}. **Rule** {ac.rule}",
+            f"   **Given** {ac.given}",
             f"   **When** {ac.when}",
             f"   **Then** {ac.then}",
             "",

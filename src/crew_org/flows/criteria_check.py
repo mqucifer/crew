@@ -44,7 +44,7 @@ def render_stories(stories: list[Story]) -> str:
     for story in stories:
         lines = [f"### {story.title}"]
         lines += [
-            f"{i}. Given {ac.given} / When {ac.when} / Then {ac.then}"
+            f"{i}. Rule: {ac.rule}\n   Example: {_example(ac)}"
             for i, ac in enumerate(story.acceptance_criteria, 1)
         ]
         # Which lands first, and which rows bind it (crew#839): without them the check
@@ -138,6 +138,7 @@ def check_each(
             conclusion=record_for_story(conclusion, story) if conclusion else "",
             recheck=repaired(was, story) if was else "",
             facts=removed_tests.described(tests[story.title]),
+            rules=[ac.rule for ac in story.acceptance_criteria],
             noted={
                 "story": story.title,
                 "recheck": was is not None,
@@ -220,6 +221,10 @@ def repaired(was: Earlier, story: Story) -> str:
 
 
 def _criterion(ac: Any) -> str:
+    return f"Rule: {ac.rule} / Example: {_example(ac)}"
+
+
+def _example(ac: Any) -> str:
     return f"Given {ac.given} / When {ac.when} / Then {ac.then}"
 
 

@@ -26,7 +26,10 @@ from tests.asked import Stop, capture
 
 
 def criteria(n: int) -> list[AcceptanceCriterion]:
-    return [AcceptanceCriterion(given=f"g{i}", when=f"w{i}", then=f"t{i}") for i in range(n)]
+    return [
+        AcceptanceCriterion(rule="the rule", given=f"g{i}", when=f"w{i}", then=f"t{i}")
+        for i in range(n)
+    ]
 
 
 def story(**overrides) -> Story:

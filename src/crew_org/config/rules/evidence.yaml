@@ -56,6 +56,20 @@ check.qa_crew.check_cited:
   origin:
   - crew#895
   owner: QA Engineer
+check.criteria_crew.between_rules:
+  description: A conflict QA reports quotes the rule of the criterion under check, not only an example
+    of it.
+  messages:
+    default: '{conflicts}: it quotes no rule of the story under check. Each criterion states a rule, and
+      its Given/When/Then is an example of it: two criteria conflict when their rules can''t both hold,
+      not when an example''s wording brushes against another rule. Quote the criterion by its rule, one
+      of {rules}, or leave out a conflict that rests only on an example''s words.'
+  origin:
+  - crew#1037
+  - crew-presentation#296
+  - sprint-metrics#653
+  owner: QA Engineer
+  told_in: CriteriaConflict.criterion
 check.criteria_check.check_each:
   exempt: runs QA's criteria check one story per session and returns its conflicts; refuses nothing.
     Its text is a re-check's start, told to QA, and the conflicts reach the Business Analyst by check.criteria_check.feedback
@@ -219,6 +233,7 @@ config.const.ci.LOG_TAIL_CHARS:
 config.const.ci.MAX_JOBS:
 config.const.ci.SERVICE_LOG_LINES:
 config.const.criteria_check.PLANNED_LIMIT:
+config.const.criteria_crew.QUOTED_WORDS:
 config.const.deploy_evidence.MAX_DEPLOY_EVIDENCE_CHARS:
 config.const.qa_crew.MIN_EVIDENCE_CHARS:
 config.const.review_crew.MAX_DIFF_CHARS:
@@ -232,7 +247,17 @@ form.AcceptanceCriterion.names_what_to_check:
   origin:
   - crew#281
   owner: Business Analyst
-  told_in: AcceptanceCriterion.then
+  told_in: AcceptanceCriterion.rule, AcceptanceCriterion.then
+form.AcceptanceCriterion.states_its_rule:
+  description: Refused if the criterion states no rule for its Given/When/Then to illustrate.
+  messages:
+    default: 'state the criterion''s rule: the behaviour the user gets, with its bounds where they
+      matter. Its Given/When/Then is an example of that rule.'
+  origin:
+  - crew#1037
+  - crew-presentation#296
+  owner: Business Analyst
+  told_in: AcceptanceCriterion.rule
 form.CriterionVerdict.cites_what_it_rests_on:
   description: A proven criterion cites what it rests on, by its kind.
   messages:
@@ -371,6 +396,9 @@ told.criteria_crew.every_criterion_of_the_story_under:
 told.criteria_crew.report_every_criterion_of_the_story:
   guidance: true
   owner: QA Engineer
+told.criteria_crew.two_criteria_conflict_when_their_rules:
+  guidance: true
+  owner: QA Engineer
 told.form.Quote.text:
   guidance: true
   owner: QA Engineer
@@ -389,10 +417,13 @@ told.qa_crew.a_check_proves_only_what_its:
 told.qa_crew.a_criterion_is_proven_only_by:
   guidance: true
   owner: QA Engineer
+told.qa_crew.its_words_are_held_exactly_only:
+  guidance: true
+  owner: QA Engineer
 told.qa_crew.the_crews_guard_reads_python_only:
   guidance: true
   owner: QA Engineer
-told.qa_engineer.criteria_check.two_criteria_that_expect_different_outcomes:
+told.qa_engineer.criteria_check.two_criteria_whose_rules_expect_different:
   guidance: true
   owner: QA Engineer (criteria_check)
 told.qa_engineer.criteria_check.you_dont_judge_style_size_or:

@@ -65,7 +65,8 @@ def accepted_body(report: str, triage: Triage) -> str:
     lines = [report.rstrip(), "", "## Acceptance criteria", ""]
     for i, ac in enumerate(triage.acceptance_criteria, 1):
         lines += [
-            f"{i}. **Given** {ac.given}",
+            f"{i}. **Rule** {ac.rule}",
+            f"   **Given** {ac.given}",
             f"   **When** {ac.when}",
             f"   **Then** {ac.then}",
             "",

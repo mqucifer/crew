@@ -45,8 +45,10 @@ ON_CYCLE_TIME = CriteriaCheck(
     ]
 )
 FIXED = [
-    AcceptanceCriterion(given="data exists", when="I run it", then="the cycle time is 4"),
-    AcceptanceCriterion(given="no data", when="I run it", then="it says so"),
+    AcceptanceCriterion(
+        rule="the rule", given="data exists", when="I run it", then="the cycle time is 4"
+    ),
+    AcceptanceCriterion(rule="the rule", given="no data", when="I run it", then="it says so"),
 ]
 
 

@@ -11,24 +11,27 @@ code exists.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from crew_org.rulebook import Refusal, says
 from crew_org.session import steps
 
 
 class CriteriaConflict(BaseModel):
     story: str = Field(description="The title of the proposed story whose criterion can't be met")
-    criterion: str = Field(description="That criterion, quoted")
+    criterion: str = Field(description="That criterion's rule, quoted")
     against: str = Field(
         description=(
-            "What it contradicts, quoted: another criterion (name its story), or the "
+            "What it contradicts, quoted: another criterion's rule (name its story), or the "
             "merged code or test (name the file and the definition or test), or a row of "
             "the epic's conclusion (name its ID)"
         )
     )
-    why: str = Field(description="Why no implementation can satisfy both")
+    why: str = Field(description="Why no implementation can keep both")
 
 
 class CriteriaCheck(BaseModel):
@@ -65,8 +68,8 @@ def opening(
         "step": "## Your step: check one proposed story's criteria before it exists\n\n"
         "The Business Analyst proposed the stories below, and none is created yet. Report "
         "every criterion of the story under check that can't pass alongside:\n"
-        "- another criterion, in the same story or another one, proposed or planned, that "
-        "expects a different outcome from the same situation;\n"
+        "- another criterion, in the same story or another one, proposed or planned, whose "
+        "rule expects a different outcome from the same situation;\n"
         "- the project's code: a value the code defines or computes differently, or "
         "behaviour a merged test pins. A story that declares it changes those tests (its "
         "Existing tests line says a contract change naming them) is allowed to"
@@ -76,7 +79,11 @@ def opening(
             if conclusion
             else ""
         )
-        + ".\n\nQuote both sides. A criterion that is merely vague, large or worded "
+        # A criterion is a rule and its example; QA quotes the rule (crew#1037).
+        + ".\n\nEach criterion states a rule, and its Given/When/Then is an example of it. "
+        "Two criteria conflict when their rules can't both hold, not when an example's wording "
+        "brushes against another rule. Quote both sides, a criterion by its rule. A criterion "
+        "that is merely vague, large or worded "
         "differently from how you would write it is not a conflict. The stories and their "
         "repair are the Business Analyst's.",
         "recheck": recheck,
@@ -108,6 +115,44 @@ CHECK = steps.Step(
 )
 
 
+# How many of a rule's words in a row count as quoting it, when it isn't quoted whole.
+QUOTED_WORDS = 5
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"\w[\w-]*", re.sub(r"[\"'`“”‘’]", "", text).casefold()))
+
+
+def between_rules(found: CriteriaCheck, rules: Sequence[str]) -> None:
+    """`done` refuses a conflict that quotes no rule of the story under check (crew#1037).
+
+    A criterion is a rule and an example of it. mqucifer/crew-presentation#296's split was
+    refused for an example's line saying "escalated", which another criterion's ban on
+    event-kind names brushed; mqucifer/sprint-metrics#653 had "not a no-op" against a ban
+    on "no-op". Each quoted an example, not the rule it illustrates. A rule quoted in part,
+    `QUOTED_WORDS` of its words in a row, counts. With no rules given, nothing is refused.
+    """
+    plain = [_words(r) for r in rules if r.strip()]
+    if not plain:
+        return
+    missing = []
+    for n, c in enumerate(found.conflicts, start=1):
+        words = _words(c.criterion).split()
+        runs = [" ".join(words[i : i + QUOTED_WORDS]) for i in range(len(words) - QUOTED_WORDS + 1)]
+        quoted = " ".join(words)
+        if not any(r in quoted or any(f" {run} " in f" {r} " for run in runs) for r in plain):
+            missing.append(n)
+    if missing:
+        raise Refusal(
+            says(
+                "check.criteria_crew.between_rules",
+                conflicts=", ".join(f"conflict {n}" for n in missing),
+                rules="; ".join(f"'{r.strip()}'" for r in rules if r.strip()),
+            ),
+            rule="check.criteria_crew.between_rules",
+        )
+
+
 def check_criteria(
     *,
     stories: str,
@@ -119,6 +164,7 @@ def check_criteria(
     order: str = "",
     recheck: str = "",
     facts: str = "",
+    rules: Sequence[str] = (),
     reading: steps.Reading | None = None,
     noted: dict[str, Any] | None = None,
     on_end: Any = None,
@@ -131,8 +177,13 @@ def check_criteria(
     Owner's answers to story problems included: a criterion that goes against one of
     its rows can't be right, however well it reads.
 
-    `send` stands in for the model, as the planted contradiction's test does (crew#860).
+    `rules` are the story's own, which a conflict quotes (`between_rules`). `send` stands in
+    for the model, as the planted contradiction's test does (crew#860).
     """
+
+    def quotes_rules(found: CriteriaCheck) -> None:
+        between_rules(found, rules)
+
     found: CriteriaCheck = steps.run(
         CHECK,
         opening(
@@ -148,6 +199,7 @@ def check_criteria(
         ),
         reading,
         about=stories,
+        check=quotes_rules,
         noted=noted,
         on_end=on_end,
         send=send,

@@ -18,6 +18,7 @@ from tests.asked import capture
 
 REPORT = "**What happens:** `/sprint?label=Sprint%2022` returns nulls.\n**Expected:** its metrics."
 CRITERION = AcceptanceCriterion(
+    rule="A sprint asked for by its label gets its metrics",
     given="a sprint named `Sprint 22` with one finished card",
     when="GET /sprint?label=Sprint%2022 is asked",
     then="the response's throughput is 1",
@@ -145,7 +146,10 @@ def test_an_accepted_bug_keeps_its_report_and_gains_the_story_format():
         REPORT, _triage("accepted", acceptance_criteria=[CRITERION], points=2)
     )
     assert body.startswith(REPORT)
-    assert "## Acceptance criteria\n\n1. **Given** a sprint named `Sprint 22`" in body
+    assert (
+        "## Acceptance criteria\n\n1. **Rule** A sprint asked for by its label gets its metrics\n"
+        "   **Given** a sprint named `Sprint 22`"
+    ) in body
     assert "**Estimate** — 2 points" in body
     assert "Triaged as a bug by the Business Analyst: service.py slices the raw path" in body
 

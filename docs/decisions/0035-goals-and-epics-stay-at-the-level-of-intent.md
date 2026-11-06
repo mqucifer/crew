@@ -35,7 +35,7 @@ upward and copied them down:
 | Project record | The Sponsor, through `crew onboard` | who the project serves, what they need to see or decide, what's out | features, formats, endpoints, which go in the record's design and learned parts as history |
 | Goal | The Sponsor, roughly; the operator may draft it into shape | who reads the result, what it should let them see or decide, what's out | the measures, fields or features |
 | Epic | The Product Owner | which reader it serves and what they can now see or do, in a title and summary the Sponsor approves on | fields, formats, endpoints, files |
-| Story | The Business Analyst | the specifics, with worked examples as its criteria (Example Mapping) | — |
+| Story | The Business Analyst | the specifics: each criterion a rule and a worked example of it (Example Mapping; Specification by Example, as Gherkin's `Rule:` holds its examples), and QA judges it against the rule | — |
 
 - **An epic's reach is checked in code.** An epic that lists fields, formats, endpoints
   or files is sent back, as the quotation check sends back today (crew#815).
@@ -81,3 +81,7 @@ upward and copied them down:
   QA's and DevOps's questions open as their own tasks (ADR 0034, M8). The Architect's and
   the UX Designer's background and tools are built; the Product Owner's `data` tool and
   QA's and DevOps's tools wait for their steps.
+- **2026-11-06:** the Sponsor: a criterion is a rule, illustrated by examples, and QA
+  judges against the rule. The Story row's criteria carry a rule and its example; the
+  rule half of Example Mapping hadn't reached the story, and QA held examples to the
+  letter (crew#1037, mqucifer/crew-presentation#296).
