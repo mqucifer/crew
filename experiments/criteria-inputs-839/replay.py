@@ -76,6 +76,8 @@ def body(part: str) -> str:
 
 
 _CRITERION = re.compile(r"^\d+\. Given (.*?) / When (.*?) / Then (.*)$")
+# The recorded criteria were written before a criterion stated its rule (crew#1037).
+NO_RULE = "(written before criteria stated a rule)"
 
 
 def stories_in(text: str) -> list[Story]:
@@ -85,7 +87,7 @@ def stories_in(text: str) -> list[Story]:
         if not lines or not lines[0].startswith("### "):
             continue
         criteria = [
-            AcceptanceCriterion(given=m[1], when=m[2], then=m[3])
+            AcceptanceCriterion(rule=NO_RULE, given=m[1], when=m[2], then=m[3])
             for ln in lines
             if (m := _CRITERION.match(ln))
         ]
