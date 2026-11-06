@@ -97,18 +97,37 @@ def overreach(text: str) -> list[str]:
 
 
 class AcceptanceCriterion(BaseModel):
-    """One Given/When/Then scenario, per constitution §3."""
+    """A rule and one Given/When/Then example of it, per constitution §3.
 
+    Specification by Example, as Gherkin's `Rule:` holds its examples (crew#1037). Held to
+    exact strings, QA refused mqucifer/crew-presentation#296's split because one example's
+    line said "escalated" while another criterion banned event-kind names.
+    """
+
+    rule: str = Field(
+        description=(
+            "The behaviour the user gets, with its bounds where they matter. The "
+            "Given/When/Then is an example of it"
+        )
+    )
     given: str = Field(description="The precondition")
     when: str = Field(description="The action taken")
     then: str = Field(
         description=(
-            "The observable outcome a test can assert: an exact string, a line or position, "
-            "an order, or a value. Not a quality like 'clear' or 'at a glance'"
+            "What the user sees or gets: a value, a line or position, an order. An exact "
+            "string only when the words are the requirement, such as a heading the "
+            "approved design fixes, and then say so. Not a quality like 'clear'"
         )
     )
 
-    @field_validator("then")
+    @field_validator("rule")
+    @classmethod
+    def _states_its_rule(cls, value: str) -> str:
+        if not value.strip():
+            refuse("form.AcceptanceCriterion.states_its_rule")
+        return value.strip()
+
+    @field_validator("rule", "then")
     @classmethod
     def _names_what_to_check(cls, value: str) -> str:
         """A quality alone isn't a criterion: QA can't prove "clear" (#281)."""
@@ -1011,9 +1030,9 @@ def split_opening(
         "stories, each with acceptance criteria a test can be written from directly and an "
         "estimate. They are delivered one at a time, in your order. The epic's scope is the "
         "Product Owner's, and a design is the Architect's.\n\n"
-        "Each story must satisfy INVEST and carry acceptance criteria a test can be written "
-        "from directly. Split by workflow step, by business rule, or by "
-        "happy-path-then-edge-cases, never by layer.\n\n"
+        "Each story must satisfy INVEST and carry acceptance criteria, each a rule with a "
+        "Given/When/Then example of it a test can be written from. Split by workflow step, "
+        "by business rule, or by happy-path-then-edge-cases, never by layer.\n\n"
         "A story that changes what a user sees (a flag, an output format, a command, a "
         "default) carries a criterion naming its documentation change: which doc, which "
         "section, and what it says. The project's record names where its user docs live. A "

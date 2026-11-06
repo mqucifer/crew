@@ -20,8 +20,8 @@ from crew_org.flows.delivery import declared_contract
 
 def split_story(**kw) -> Story:
     criteria = [
-        AcceptanceCriterion(given="g", when="w", then="t"),
-        AcceptanceCriterion(given="g2", when="w2", then="error"),
+        AcceptanceCriterion(rule="the rule", given="g", when="w", then="t"),
+        AcceptanceCriterion(rule="the rule", given="g2", when="w2", then="error"),
     ]
     return Story(
         title="Flag the table",
@@ -98,7 +98,7 @@ def test_the_story_s_first_sentence_reads_as_english():
     )
     for line in ("**Existing tests** —", "**Builds on** — #955", "**Estimate** — 3 points"):
         assert f"\n{line}" in body
-    assert "\n1. **Given** g\n   **When** w\n   **Then** t\n" in body
+    assert "\n1. **Rule** the rule\n   **Given** g\n   **When** w\n   **Then** t\n" in body
     plain = render_story_body(split_story(), 54, "F")
     assert plain.startswith("As a **lead**, I want **flags**, so that **see breaches**.")
     operator = split_story().model_copy(update={"as_a": "operator", "i_want": "An alert"})

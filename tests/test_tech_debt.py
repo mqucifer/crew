@@ -195,7 +195,9 @@ def test_triage_sends_a_bug_that_changes_no_behaviour_to_technical_debt(tmp_path
 
 def test_debt_carries_no_criteria_its_split_writes_them():
     _triage("debt")
-    criterion = AcceptanceCriterion(given="the module", when="it's read", then="no has_events")
+    criterion = AcceptanceCriterion(
+        rule="the rule", given="the module", when="it's read", then="no has_events"
+    )
     with pytest.raises(ValidationError, match="only an accepted bug has criteria"):
         _triage("debt", acceptance_criteria=[criterion])
 

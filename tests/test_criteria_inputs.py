@@ -55,8 +55,14 @@ def test_a_recheck_is_told_what_it_found_and_what_the_repair_changed():
     [shown] = seen
     told = shown["recheck"]
     assert "This is a re-check" in told and "expects 6" in told, "the conflict it found"
-    assert "Criterion 1, before: Given data exists / When I run it / Then I see a table" in told
-    assert "after: Given data exists / When I run it / Then the cycle time is 4" in told
+    assert (
+        "Criterion 1, before: Rule: the rule / Example: Given data exists / When I run it / "
+        "Then I see a table"
+    ) in told
+    assert (
+        "after: Rule: the rule / Example: Given data exists / When I run it / "
+        "Then the cycle time is 4"
+    ) in told
     assert "Existing tests, before: (none)" in told and "after: opt-in: new flag" in told
     assert "is each conflict above resolved" in told
     assert "### Throughput" in shown["siblings"], "still checked against the others"
@@ -338,8 +344,10 @@ def removing(then: str, pinned: str = "") -> Story:
         i_want="less code",
         so_that="the service is small",
         acceptance_criteria=[
-            AcceptanceCriterion(given="the code", when="it's imported", then=then),
-            AcceptanceCriterion(given="no data", when="it runs", then="it says so"),
+            AcceptanceCriterion(rule="the rule", given="the code", when="it's imported", then=then),
+            AcceptanceCriterion(
+                rule="the rule", given="no data", when="it runs", then="it says so"
+            ),
         ],
         points=2,
         pinned_behaviour=pinned,

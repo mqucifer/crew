@@ -76,8 +76,10 @@ def proposal(*, fails=False) -> StoryProposal:
     if fails:
         raise RuntimeError("the model's server went away")
     criteria = [
-        AcceptanceCriterion(given="a card", when="it's read", then="it counts returns"),
-        AcceptanceCriterion(given="no card", when="it's read", then="it says so"),
+        AcceptanceCriterion(
+            rule="the rule", given="a card", when="it's read", then="it counts returns"
+        ),
+        AcceptanceCriterion(rule="the rule", given="no card", when="it's read", then="it says so"),
     ]
     new = Story(
         title="Count returns with the docs' definition",

@@ -999,7 +999,7 @@ def test_an_epic_with_its_release_task_on_the_board_opens_nothing(tmp_path):
 def _split_story(title: str):
     from crew_org.crews.refinement_crew import AcceptanceCriterion, Story
 
-    criterion = AcceptanceCriterion(given="g", when="w", then="t")
+    criterion = AcceptanceCriterion(rule="the rule", given="g", when="w", then="t")
     return Story(
         title=title,
         as_a="a user",

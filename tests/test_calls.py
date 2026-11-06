@@ -83,7 +83,7 @@ def test_the_messages_are_the_roles_text_and_the_steps_parts():
     proxy = Proxy(GOOD)
     ask(proxy)
     system, user = proxy.sent[0]["messages"]
-    assert system["content"].startswith("You are QA Engineer. You read criteria as the tests")
+    assert system["content"].startswith("You are QA Engineer. You read each criterion as a rule")
     assert "Your personal goal is: Before stories are created" in system["content"]
     assert user["content"].startswith(
         "## The stories\n\nS1\n\nJudge them.\n\nYour answer: A verdict.\n\n"

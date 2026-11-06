@@ -578,8 +578,12 @@ def make_story(title: str, points: int = 3) -> Story:
         i_want="a metric",
         so_that="I can judge the crew",
         acceptance_criteria=[
-            AcceptanceCriterion(given="data exists", when="I run it", then="I see a table"),
-            AcceptanceCriterion(given="no data", when="I run it", then="it says so"),
+            AcceptanceCriterion(
+                rule="the rule", given="data exists", when="I run it", then="I see a table"
+            ),
+            AcceptanceCriterion(
+                rule="the rule", given="no data", when="I run it", then="it says so"
+            ),
         ],
         points=points,
     )

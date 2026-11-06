@@ -28,6 +28,11 @@ from tests.test_session_git import clone  # noqa: F401
 EXITS = "the service exits with a non-zero code"
 ANSWERS_503 = "GET /health answers 503"
 DOWN = "the database is down"
+# Each criterion's rule, which QA quotes a conflict by (crew#1037).
+RULES = {
+    EXITS: "The service stops when it has no database",
+    ANSWERS_503: "The service stays up and reports a missing database",
+}
 
 
 def story(title: str, then: str) -> Story:
@@ -37,8 +42,15 @@ def story(title: str, then: str) -> Story:
         i_want="the service to say when its database is down",
         so_that="I can tell a fault from a quiet sprint",
         acceptance_criteria=[
-            AcceptanceCriterion(given=DOWN, when="the service is running", then=then),
-            AcceptanceCriterion(given="the database is up", when="it starts", then="it serves"),
+            AcceptanceCriterion(
+                rule=RULES[then], given=DOWN, when="the service is running", then=then
+            ),
+            AcceptanceCriterion(
+                rule="A service with its database serves",
+                given="the database is up",
+                when="it starts",
+                then="it serves",
+            ),
         ],
         points=2,
     )
@@ -68,8 +80,8 @@ class Fake:
         conflicts = [
             {
                 "story": title,
-                "criterion": f"Given {DOWN} / When the service is running / Then {own}",
-                "against": f"the other story's criterion: Then {other}",
+                "criterion": f"Rule: {RULES[own]}",
+                "against": f"the other story's criterion: Rule: {RULES[other]}",
                 "why": "with the database down it can't both exit and answer",
             }
             for title, own, other in (
@@ -130,7 +142,9 @@ def test_a_recheck_starts_from_what_it_found_and_a_story_left_as_it_was_keeps_it
     repaired = PLANTED.stories[1].model_copy(
         update={
             "acceptance_criteria": [
-                AcceptanceCriterion(given=DOWN, when="the service is running", then=EXITS),
+                AcceptanceCriterion(
+                    rule=RULES[EXITS], given=DOWN, when="the service is running", then=EXITS
+                ),
                 *PLANTED.stories[1].acceptance_criteria[1:],
             ]
         }
@@ -146,7 +160,10 @@ def test_a_recheck_starts_from_what_it_found_and_a_story_left_as_it_was_keeps_it
     )
     [start] = model.shown
     assert "## This is a re-check" in start and "GET /health answers 503" in start
-    assert f"after: Given {DOWN} / When the service is running / Then {EXITS}" in start
+    assert (
+        f"after: Rule: {RULES[EXITS]} / Example: Given {DOWN} / When the service is running "
+        f"/ Then {EXITS}"
+    ) in start
     assert [c.story for c in again.conflicts] == ["Exit without a database"]
     started = [e for e in seen if e.kind == EventKind.SESSION_STARTED][-1]
     assert started.detail["recheck"] is True and started.detail["story"] == repaired.title

@@ -15,7 +15,9 @@ from crew_org.crews.refinement_crew import AcceptanceCriterion, Epic
 
 
 def criterion(then: str) -> AcceptanceCriterion:
-    return AcceptanceCriterion(given="a sprint's cards", when="the report is run", then=then)
+    return AcceptanceCriterion(
+        rule="the rule", given="a sprint's cards", when="the report is run", then=then
+    )
 
 
 @pytest.mark.parametrize(

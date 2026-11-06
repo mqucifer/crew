@@ -105,7 +105,7 @@ They judge different things and must not be collapsed into one another:
 | Gate | Judges | Asks |
 |---|---|---|
 | **Code Reviewer** | the **diff** | Is this correct, does it reuse what exists, does it stay inside its card? |
-| **QA Engineer** | the **behaviour** | Does the running code satisfy each acceptance criterion as written? |
+| **QA Engineer** | the **behaviour** | Does the running code keep each acceptance criterion's rule, as written? |
 | **DevOps Engineer** | what **runs or deploys** | Can it be run and reached the way it will be deployed? (§20) |
 
 A Reviewer never asks "does it work" — that is QA's evidence to produce. A QA
@@ -163,18 +163,29 @@ Stories are written as:
 As a <role>, I want <capability>, so that <benefit>.
 ```
 
-Acceptance criteria are **Given/When/Then**, one scenario per criterion:
+Acceptance criteria follow Specification by Example: each states a **rule**, the
+behaviour the user gets, and one **Given/When/Then** example of it, as Gherkin's
+`Rule:` holds its examples:
 
 ```
+Rule: <the behaviour the user gets, with its bounds where they matter>
 Given <precondition>
 When <action>
-Then <observable outcome>
+Then <what the user sees or gets>
 ```
 
 Rules:
+- Every criterion states its rule. *Enforced:* a criterion with none is
+  refused (crew#1037).
+- A criterion is judged against its rule, and its example is one case of it.
+  A `Then` is an exact string when the words themselves are the requirement,
+  such as a heading the approved design fixes, and then the criterion says so.
+  Two criteria conflict when their rules can't both hold, not when an example's
+  wording brushes against another rule. *Enforced:* QA's criteria check quotes
+  the rule of the criterion it reports (crew#1037).
 - Every criterion must be **observable** — assertable by a test without reading
   the implementation. "Works correctly" is not a criterion.
-  *Enforced:* a `Then` that leans on a subjective word ("clear", "at a
+  *Enforced:* a rule or a `Then` that leans on a subjective word ("clear", "at a
   glance") is refused, naming the word, unless it also names something
   observable — an exact string, a number, a position or an order. Epics may
   still state qualities; only a story's criteria are held to this (crew#281).
