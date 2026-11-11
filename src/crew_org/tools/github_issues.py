@@ -463,12 +463,23 @@ class IssueClient:
             page += 1
 
     def check_runs(self, repo: str, sha: str) -> list[dict[str, Any]]:
-        """The checks GitHub ran on a commit: name, status and conclusion."""
+        """The checks GitHub ran on a commit: name, status and conclusion.
+
+        Only each check's latest run. A pull request closed and reopened, or a
+        workflow run again, adds a run at the same head beside the old one, and
+        GitHub's own `filter=latest` keeps the old runs of other check suites: a
+        check that failed and then passed counted as failed (crew#1053).
+        """
         response = self._client.get(
             f"{API}/repos/{self.owner}/{repo}/commits/{sha}/check-runs?per_page=100"
         )
         response.raise_for_status()
-        return response.json().get("check_runs", [])
+        latest: dict[tuple[Any, Any], dict[str, Any]] = {}
+        for run in response.json().get("check_runs", []):
+            key = ((run.get("app") or {}).get("id"), run.get("name"))
+            if key not in latest or (run.get("id") or 0) > (latest[key].get("id") or 0):
+                latest[key] = run
+        return list(latest.values())
 
     def failed_checks(self, repo: str, sha: str) -> list[dict[str, Any]]:
         """The checks on a commit that finished and failed (#325)."""
